@@ -204,6 +204,31 @@ let
         };
       }
     ];
+    # path-leaf composition — a BARE path (`./_fixtures/plain-config.nix`) sitting directly in the
+    # module list must be `import`ed and composed (nixpkgs `lib.evalModules` imports a path leaf; the
+    # enabler for a consumer loading `(import-tree ./dir).files`, a bare path LIST). The path file is
+    # ctor-free (engine-agnostic `{ config.value = 42; }`); an inline `P`-param module DECLARES `value`
+    # so nixpkgs' undeclared-option check is satisfied. `config.value == 42` byte-identical both engines.
+    path-leaf = P: [
+      {
+        options.value = P.mkOption {
+          type = P.types.int;
+          default = 0;
+        };
+      }
+      ./_fixtures/plain-config.nix
+    ];
+    # path-INSIDE-`imports` — the same path reached through another module's `imports = [ ./p.nix ]`
+    # (nixpkgs recurses into `imports`, importing each path). `collectModules` must `callM` it too.
+    path-in-imports = P: [
+      {
+        options.value = P.mkOption {
+          type = P.types.int;
+          default = 0;
+        };
+        imports = [ ./_fixtures/plain-config.nix ];
+      }
+    ];
     # the real gen-aspects `aspectSubmodule` shape: keyed collection of submodules, each with a
     # self-referential `config._module.args.aspect = config`, structural options (name / includes as
     # listOf), AND a freeform of nested string keys — the integrated C2 surface, byte-identical.

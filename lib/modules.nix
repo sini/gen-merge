@@ -259,7 +259,10 @@ let
           let
             m = callM m0;
             self = {
-              _file = m0._file or (m._file or "<gen-merge>");
+              # A raw path leaf's provenance IS its path string (nixpkgs-parity error location);
+              # guard `isPath` first so we never `._file`-select a non-attrset. Otherwise the module
+              # carries its own `_file`, else the imported result's, else the engine fallback.
+              _file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or "<gen-merge>"));
               content = m;
             };
             imported = collectModules callM (importsOf m);
@@ -342,9 +345,15 @@ let
 
           # Apply a module by its declared formals, sourcing each from baseArgs then the dynamic
           # module-args set. Using `functionArgs` (static) is what breaks the spine cycle.
+          # A path leaf (`./foo.nix`) — or a path inside another module's `imports` — is `import`ed
+          # then re-entered (nixpkgs imports path modules), so a consumer can load a module tree from
+          # `(import-tree ./dir).files`, a BARE PATH LIST. `callM` is already self-recursive, so an
+          # imported path yielding a function / `__functor` / attrset is handled uniformly below.
           callM =
             m:
-            if isFunction m then
+            if builtins.isPath m then
+              callM (import m)
+            else if isFunction m then
               let
                 formals = functionArgs m;
                 extra = mapAttrs (
