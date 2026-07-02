@@ -1,0 +1,380 @@
+# Core byte-mode merge engine — `evalModuleTree` + the shared `mergeDefs` fold.
+#
+# Design spec §1 (the 7-item primitive) + §2 (API). Reproduces `lib.evalModules` merge OUTPUT for
+# den's surface with none of `lib.types`: collect+flatten imports, tie the self-referential `config`
+# fixpoint (one local `fix` per call — spec §1 item 4), collect per-option defs, priority-resolve
+# (spec §1 priority subset, via ./priority.nix), dispatch structural types to their `.merge`
+# strategy, route unknown keys through the freeformType, and check leaves via the injected gen-types
+# `verify`. Class layering: gen-prelude → gen-types → gen-merge (this) → {gen-schema, gen-aspects}.
+{ prelude, priority }:
+let
+  inherit (prelude)
+    isAttrs
+    isList
+    isFunction
+    functionArgs
+    concatMap
+    foldl'
+    filter
+    map
+    mapAttrs
+    attrNames
+    listToAttrs
+    concatStringsSep
+    optional
+    unique
+    length
+    head
+    all
+    ;
+  inherit (priority)
+    dischargeProperties
+    filterOverrides
+    pushDownProperties
+    mkOptionDefault
+    ;
+
+  showOption = loc: concatStringsSep "." loc;
+
+  reverse =
+    xs:
+    let
+      n = length xs;
+    in
+    prelude.genList (i: prelude.elemAt xs (n - 1 - i)) n;
+
+  # Vendored module-convention helper (audit §4 — a ~2-line pure attrset constructor, NOT the
+  # `lib.types` machinery): tag a module with its definition site for error provenance.
+  setDefaultModuleLocation = file: m: {
+    _file = file;
+    imports = [ m ];
+  };
+
+  # Deep attrset merge (rhs wins at leaves) — used only for the `_module` pseudo-tree.
+  recursiveUpdate =
+    lhs: rhs:
+    lhs
+    // mapAttrs (
+      n: v:
+      if (lhs ? ${n}) && isAttrs (lhs.${n} or null) && isAttrs v then recursiveUpdate lhs.${n} v else v
+    ) rhs;
+
+  # ── module classification ────────────────────────────────────────────────
+  # A module is "structured" if it carries any structural marker; otherwise it is config-shorthand
+  # (the whole attrset is config, minus key/_file metadata). Mirrors nixpkgs unifyModuleSyntax.
+  # `_module` is NOT a structural marker — it is always a CONFIG path (`config._module`), so a
+  # top-level `{ _module.args.x = y; … }` is still config-shorthand (else the whole module would be
+  # dropped), and a top-level `_module` on a structured module is folded into its config.
+  markers = [
+    "imports"
+    "options"
+    "config"
+    "freeformType"
+    "disabledModules"
+  ];
+  isStructured = m: prelude.any (k: m ? ${k}) markers;
+  configOf =
+    m:
+    let
+      base =
+        if isStructured m then
+          (m.config or { })
+        else
+          builtins.removeAttrs m [
+            "key"
+            "_file"
+            "_module"
+          ];
+    in
+    if m ? _module then
+      base // { _module = recursiveUpdate m._module (base._module or { }); }
+    else
+      base;
+  optionsOf = m: m.options or { };
+  importsOf =
+    m:
+    let
+      i = m.imports or [ ];
+    in
+    if isList i then i else [ i ];
+  topFreeformOf = m: m.freeformType or null;
+
+  # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
+  # mergeDefs loc type rawDefs :: combine a list of (possibly property-wrapped) defs into one value.
+  #   rawDefs :: [{ file; value }]   (value may carry mkMerge/mkIf/mkOverride)
+  # Discharge properties → filterOverrides (min-priority wins) → dispatch: a structural type owns
+  # its combine via `.merge`; a leaf (gen-types checker, no `.merge`) merges by mergeOneOption then
+  # `verify`. This is the (loc,defs) contract the whole engine — and the escape-hatch consumers
+  # (spec §1 item 6) — ride.
+  mergeDefs =
+    loc: type: rawDefs:
+    let
+      discharged = concatMap (
+        d:
+        map (x: {
+          inherit (d) file;
+          inherit (x) value priority;
+        }) (dischargeProperties d.value)
+      ) rawDefs;
+      winners = filterOverrides discharged;
+      typeDefs = map (w: { inherit (w) file value; }) winners;
+      result =
+        if winners == [ ] then
+          throw "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
+        else if type != null && type ? merge then
+          type.merge loc typeDefs
+        else
+          mergeLeaf loc winners;
+    in
+    if type != null && type ? verify then
+      (
+        let
+          e = type.verify result;
+        in
+        if e == null then
+          result
+        else
+          throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+      )
+    else
+      result;
+
+  # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
+  # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
+  mergeLeaf =
+    loc: winners:
+    if length winners == 1 then
+      (head winners).value
+    else
+      let
+        vals = map (w: w.value) winners;
+        first = head vals;
+      in
+      if all (v: v == first) vals then
+        first
+      else
+        throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
+
+  # mergeOneOption — the nixpkgs `lib.mergeOneOption` helper: exactly one definition permitted
+  # (else throw). Exported for consumers whose custom `(loc, defs)` merges want unique-def semantics
+  # (e.g. gen-schema's ref types).
+  mergeOneOption =
+    loc: defs:
+    if defs == [ ] then
+      throw "gen-merge: the option `${showOption loc}' is used but not defined"
+    else if length defs != 1 then
+      throw "gen-merge: the option `${showOption loc}' is defined multiple times, but may only be defined once"
+    else
+      (head defs).value;
+
+  # An option merge = mergeDefs + default (as a lowest-priority def) + readOnly + apply.
+  mergeOption =
+    loc: optDecl: rawDefs:
+    let
+      _ro =
+        if (optDecl.readOnly or false) && length rawDefs > 1 then
+          throw "gen-merge: the option `${showOption loc}' is read-only, but it is defined ${toString (length rawDefs)} times"
+        else
+          null;
+      withDefault =
+        rawDefs
+        ++ optional (optDecl ? default) {
+          file = "<default>";
+          value = mkOptionDefault optDecl.default;
+        };
+      merged =
+        if rawDefs == [ ] && !(optDecl ? default) then
+          throw "gen-merge: the option `${showOption loc}' is used but not defined"
+        else
+          mergeDefs loc (optDecl.type or null) withDefault;
+      applied = if optDecl ? apply then optDecl.apply merged else merged;
+    in
+    builtins.seq _ro applied;
+
+  # ── evalModuleTree — one call = one `evalModules`, one local fixpoint ──────
+  evalModuleTree =
+    {
+      modules,
+      specialArgs ? { },
+      check ? true,
+      prefix ? [ ],
+    }:
+    let
+      modList = if isList modules then modules else [ modules ];
+
+      # Flatten a module (function / __functor / attrset), applying functions by their STATIC
+      # formals only (spec §1 item 4 — never force the dynamic `_module.args` spine), and recurse
+      # into `imports` (spec §1 item 5). Returns [{ _file; content }] with imports BEFORE own
+      # content (own defs win at equal priority / append last — nixpkgs order).
+      collectModules =
+        callM: mods:
+        concatMap (
+          m0:
+          let
+            m = callM m0;
+            self = {
+              _file = m0._file or (m._file or "<gen-merge>");
+              content = m;
+            };
+            imported = collectModules callM (importsOf m);
+          in
+          imported ++ [ self ]
+        ) mods;
+
+      result = prelude.fix (
+        result:
+        let
+          baseArgs = specialArgs // {
+            inherit (result) config options;
+          };
+
+          # Apply a module by its declared formals, sourcing each from baseArgs then the dynamic
+          # module-args set. Using `functionArgs` (static) is what breaks the spine cycle.
+          callM =
+            m:
+            if isFunction m then
+              let
+                formals = functionArgs m;
+                extra = mapAttrs (
+                  name: _:
+                  baseArgs.${name} or result.moduleArgs.${name}
+                    or (throw "gen-merge: module argument `${name}' is not defined")
+                ) formals;
+              in
+              m (baseArgs // extra)
+            else if isAttrs m && m ? __functor then
+              callM (m.__functor m)
+            else
+              m;
+
+          flat = collectModules callM modList;
+
+          # Option DECLARATIONS merge across modules by COMBINING fields, not replacing: a second
+          # module declaring `options.foo = mkOption { apply = …; }` layers onto the first's
+          # `{ type; default; }` rather than wiping it (nixpkgs mergeOptionDecls; later fields win on
+          # collision). gen-schema's ref-binding `apply`-override modules rely on this.
+          allOptions = foldl' (
+            acc: e:
+            acc // mapAttrs (k: decl: if acc ? ${k} then acc.${k} // decl else decl) (optionsOf e.content)
+          ) { } flat;
+          declaredNames = attrNames allOptions;
+
+          # Config attrsets (shorthand-aware), config-root properties pushed to keys.
+          pushed = map (e: {
+            inherit (e) _file;
+            attrs = pushDownProperties (configOf e.content);
+          }) flat;
+
+          # The `_module` pseudo-tree: deep-merge every module's `_module`, extract args/freeform.
+          moduleTree = foldl' (
+            acc: p: if p.attrs ? _module then recursiveUpdate acc p.attrs._module else acc
+          ) { } pushed;
+          moduleArgs = moduleTree.args or { };
+
+          # freeformType is priority-resolved (nixpkgs treats it as an option): a top-level
+          # `freeformType` (bare, prio 100) beats a `_module.freeformType = mkDefault …` (prio 1000)
+          # — this is how strict.nix's throw-on-unknown default yields to a kind's own freeform.
+          freeform =
+            let
+              candidates =
+                filter (f: f != null) (map (e: topFreeformOf e.content) flat)
+                ++ optional (moduleTree ? freeformType) moduleTree.freeformType;
+              winners = filterOverrides (concatMap dischargeProperties candidates);
+            in
+            if winners == [ ] then null else (prelude.last winners).value;
+
+          # Definition order is REVERSE flattened-module order — byte-identical to nixpkgs, which
+          # collects defs last-module-first (observable in list-typed options: `[a] [b] [c]` merges
+          # to `[c b a]`; verified against `lib.evalModules`). Order-independent for scalars
+          # (equal-priority ⇒ conflict) and attrsets (`//`), load-bearing only for lists.
+          pushedRev = reverse pushed;
+
+          # per-key raw defs across all config attrsets
+          defsForKey =
+            k:
+            concatMap (
+              p:
+              optional (p.attrs ? ${k}) {
+                file = p._file;
+                value = p.attrs.${k};
+              }
+            ) pushedRev;
+
+          allKeys = filter (k: k != "_module") (unique (concatMap (p: attrNames p.attrs) pushed));
+          freeformKeys = filter (k: !(allOptions ? ${k})) allKeys;
+
+          # declared options — every declared name is present (lazily; undefined+no-default throws
+          # only on access, matching nixpkgs).
+          declaredConfig = listToAttrs (
+            map (k: {
+              name = k;
+              value = mergeOption (prefix ++ [ k ]) allOptions.${k} (defsForKey k);
+            }) declaredNames
+          );
+
+          # freeform — route unknown keys as ONE freeformType def-set (nixpkgs freeform), so
+          # lazyAttrsOf/attrsOf owns the per-key merge.
+          orphans = if freeform == null then freeformKeys else [ ];
+          _orphanCheck =
+            if check && orphans != [ ] then
+              throw "gen-merge: option `${
+                showOption (prefix ++ [ (head orphans) ])
+              }' does not exist (no freeformType to absorb it)"
+            else
+              null;
+          freeformConfig =
+            if freeform == null || freeformKeys == [ ] then
+              { }
+            else
+              let
+                ffDefs = concatMap (
+                  p:
+                  let
+                    sub = builtins.intersectAttrs (listToAttrs (
+                      map (k: {
+                        name = k;
+                        value = null;
+                      }) freeformKeys
+                    )) p.attrs;
+                  in
+                  optional (sub != { }) {
+                    file = p._file;
+                    value = sub;
+                  }
+                ) pushedRev;
+              in
+              freeform.merge prefix ffDefs;
+
+          config = builtins.seq _orphanCheck (declaredConfig // freeformConfig);
+        in
+        {
+          inherit config moduleArgs;
+          options = allOptions;
+        }
+      );
+    in
+    {
+      inherit (result) config options;
+      # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform).
+      type = {
+        name = "moduleTree";
+        merge =
+          loc: defs:
+          (evalModuleTree {
+            inherit specialArgs check;
+            prefix = loc;
+            modules = modList ++ map (d: setDefaultModuleLocation (d.file or "<def>") d.value) defs;
+          }).config;
+      };
+    };
+in
+{
+  inherit
+    evalModuleTree
+    mergeDefs
+    mergeOption
+    mergeOneOption
+    showOption
+    setDefaultModuleLocation
+    ;
+}
