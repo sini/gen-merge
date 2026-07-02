@@ -25,6 +25,7 @@ let
     unique
     length
     head
+    tail
     all
     ;
   inherit (priority)
@@ -50,7 +51,8 @@ let
     imports = [ m ];
   };
 
-  # Deep attrset merge (rhs wins at leaves) — used only for the `_module` pseudo-tree.
+  # Deep attrset merge (rhs wins at leaves) — for the `_module` pseudo-tree and the final
+  # declared-over-freeform config merge (~:433).
   recursiveUpdate =
     lhs: rhs:
     lhs
@@ -58,6 +60,50 @@ let
       n: v:
       if (lhs ? ${n}) && isAttrs (lhs.${n} or null) && isAttrs v then recursiveUpdate lhs.${n} v else v
     ) rhs;
+
+  # An option-decl LEAF is a `mkOption` descriptor (tagged `_type = "option"` at lib/types.nix:39).
+  # Anything else inside the `options` tree is an option-GROUP: a plain attrset of sub-declarations.
+  isOptLeaf = v: isAttrs v && (v._type or null) == "option";
+
+  # mergeOptionDecls — combine two option-decl TREES (nixpkgs mergeModules' descent, byte-mode).
+  # This is what lets `options.a.b.c = mkOption {…}` build a NESTED tree rather than the old
+  # single-level view:
+  #   leaf ∪ leaf  = field-union, later wins (as the flat fold always did — e.g. a ref-binding
+  #                  module layering `apply` onto an earlier `{ type; default; }`);
+  #   group ∪ group = RECURSE (a second module's `options.a.b.d` merges beside `options.a.b.c`);
+  #   leaf ⁄ group at the same path = a hard collision (nixpkgs likewise refuses to make an option
+  #                  the parent of sub-options) — must throw, never silently `//`-merge.
+  # DELIBERATE divergence: nixpkgs' `optionTreeToOption` (modules.nix:895-913) has one sugar case —
+  # raw options merged INTO a `submodule`-typed leaf — that byte-mode does not reproduce (out of the
+  # den surface; submodule nesting rides the separate `submodule`/`attrsOf` `.merge` path). Byte-mode
+  # conservatively throws here rather than risk emitting wrong bytes.
+  mergeOptionDecls =
+    loc: a: b:
+    a
+    // mapAttrs (
+      k: bv:
+      let
+        lk = loc ++ [ k ];
+      in
+      if a ? ${k} then
+        let
+          av = a.${k};
+          aLeaf = isOptLeaf av;
+          bLeaf = isOptLeaf bv;
+        in
+        if aLeaf && bLeaf then
+          av // bv
+        else if (!aLeaf) && (!bLeaf) then
+          mergeOptionDecls lk av bv
+        else
+          throw "gen-merge: option `${showOption lk}' is declared both as an option and as an option-group (leaf/group collision)"
+      else
+        bv
+    ) b;
+
+  # setAttrByPath [ a b c ] v = { a.b.c = v; } — reshape a freeform def to its full nested path.
+  setAttrByPath =
+    path: value: if path == [ ] then value else { ${head path} = setAttrByPath (tail path) value; };
 
   # ── module classification ────────────────────────────────────────────────
   # A module is "structured" if it carries any structural marker; otherwise it is config-shorthand
@@ -221,6 +267,72 @@ let
           imported ++ [ self ]
         ) mods;
 
+      # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
+      # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
+      # GROUP recurses; a config key with NO matching declaration is an UNMATCHED def, bubbled up
+      # with its FULL (relative) path so the ROOT freeform can absorb it or the orphan check can
+      # throw. nixpkgs is strict PER LEVEL, not only at the root — an undeclared key under an
+      # intermediate group throws too (a naive recursion that dropped it would diverge). `loc` is
+      # RELATIVE to `prefix`; a leaf's absolute option location is `prefix ++ loc ++ [ k ]`, while
+      # unmatched paths stay relative (the root reshapes them against `prefix` via `setAttrByPath`).
+      #   rawDefs :: [ { file; value } ]   (value: property-wrapped or a plain sub-attrset)
+      mergeTree =
+        loc: opts: rawDefs:
+        let
+          # Push config-node properties down one level (nixpkgs pushes at EACH descent, so a nested
+          # `a.b = mkIf c { … }' distributes into `b's keys), yielding plain attrsets per module.
+          pushed = map (d: {
+            inherit (d) file;
+            attrs = pushDownProperties d.value;
+          }) rawDefs;
+          subDefs =
+            k:
+            concatMap (
+              p:
+              optional (p.attrs ? ${k}) {
+                inherit (p) file;
+                value = p.attrs.${k};
+              }
+            ) pushed;
+          cfgKeys = unique (concatMap (p: attrNames p.attrs) pushed);
+          undeclaredKeys = filter (k: !(opts ? ${k})) cfgKeys;
+
+          declaredPairs = map (
+            k:
+            let
+              lk = loc ++ [ k ];
+            in
+            if isOptLeaf opts.${k} then
+              {
+                name = k;
+                value = mergeOption (prefix ++ lk) opts.${k} (subDefs k);
+                unmatched = [ ];
+              }
+            else
+              let
+                r = mergeTree lk opts.${k} (subDefs k);
+              in
+              {
+                name = k;
+                inherit (r) value unmatched;
+              }
+          ) (attrNames opts);
+
+          # Undeclared config keys at THIS level → unmatched defs carrying their full path + value.
+          ownUnmatched = concatMap (
+            k:
+            map (p: {
+              inherit (p) file;
+              path = loc ++ [ k ];
+              value = p.attrs.${k};
+            }) (filter (p: p.attrs ? ${k}) pushed)
+          ) undeclaredKeys;
+        in
+        {
+          value = listToAttrs (map (x: { inherit (x) name value; }) declaredPairs);
+          unmatched = ownUnmatched ++ concatMap (x: x.unmatched) declaredPairs;
+        };
+
       result = prelude.fix (
         result:
         let
@@ -249,15 +361,12 @@ let
 
           flat = collectModules callM modList;
 
-          # Option DECLARATIONS merge across modules by COMBINING fields, not replacing: a second
-          # module declaring `options.foo = mkOption { apply = …; }` layers onto the first's
-          # `{ type; default; }` rather than wiping it (nixpkgs mergeOptionDecls; later fields win on
-          # collision). gen-schema's ref-binding `apply`-override modules rely on this.
-          allOptions = foldl' (
-            acc: e:
-            acc // mapAttrs (k: decl: if acc ? ${k} then acc.${k} // decl else decl) (optionsOf e.content)
-          ) { } flat;
-          declaredNames = attrNames allOptions;
+          # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
+          # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
+          # `//`-clobbering the `a.b` group, and a re-declared leaf still field-unions (later wins —
+          # gen-schema's ref-binding `apply`-override modules rely on this). One-level before; a tree
+          # now, so `options.a.b.c = mkOption {…}` composes den-shaped configs (`options.den.*`).
+          allOptions = foldl' (acc: e: mergeOptionDecls prefix acc (optionsOf e.content)) { } flat;
 
           # Config attrsets (shorthand-aware), config-root properties pushed to keys.
           pushed = map (e: {
@@ -286,66 +395,46 @@ let
           # Definition order is REVERSE flattened-module order — byte-identical to nixpkgs, which
           # collects defs last-module-first (observable in list-typed options: `[a] [b] [c]` merges
           # to `[c b a]`; verified against `lib.evalModules`). Order-independent for scalars
-          # (equal-priority ⇒ conflict) and attrsets (`//`), load-bearing only for lists.
+          # (equal-priority ⇒ conflict) and attrsets (`//`), load-bearing only for lists. One reverse
+          # here; the per-level descent preserves it (nixpkgs `reverseList` once, then `zipAttrs`).
           pushedRev = reverse pushed;
 
-          # per-key raw defs across all config attrsets
-          defsForKey =
-            k:
-            concatMap (
-              p:
-              optional (p.attrs ? ${k}) {
-                file = p._file;
-                value = p.attrs.${k};
-              }
-            ) pushedRev;
+          # The realizer's def stream: each module's pushed-down config, REVERSED, minus the
+          # `_module` pseudo-key (handled above via `moduleTree`; it is not a real config path).
+          topDefs = map (p: {
+            file = p._file;
+            value = builtins.removeAttrs p.attrs [ "_module" ];
+          }) pushedRev;
 
-          allKeys = filter (k: k != "_module") (unique (concatMap (p: attrNames p.attrs) pushed));
-          freeformKeys = filter (k: !(allOptions ? ${k})) allKeys;
+          # Realize the whole config tree against the option-decl tree. Declared names are present
+          # lazily (undefined+no-default throws only on access, matching nixpkgs); groups recurse.
+          realized = mergeTree [ ] allOptions topDefs;
+          declaredConfig = realized.value;
 
-          # declared options — every declared name is present (lazily; undefined+no-default throws
-          # only on access, matching nixpkgs).
-          declaredConfig = listToAttrs (
-            map (k: {
-              name = k;
-              value = mergeOption (prefix ++ [ k ]) allOptions.${k} (defsForKey k);
-            }) declaredNames
-          );
-
-          # freeform — route unknown keys as ONE freeformType def-set (nixpkgs freeform), so
-          # lazyAttrsOf/attrsOf owns the per-key merge.
-          orphans = if freeform == null then freeformKeys else [ ];
+          # Unknown keys — at ANY depth — route as ONE freeformType def-set at the ROOT (nixpkgs
+          # freeform), each reshaped to its full nested path so lazyAttrsOf/attrsOf owns the per-key
+          # merge. With no freeform they are orphans → the option does not exist → throw (per level).
           _orphanCheck =
-            if check && orphans != [ ] then
+            if check && freeform == null && realized.unmatched != [ ] then
               throw "gen-merge: option `${
-                showOption (prefix ++ [ (head orphans) ])
+                showOption (prefix ++ (head realized.unmatched).path)
               }' does not exist (no freeformType to absorb it)"
             else
               null;
           freeformConfig =
-            if freeform == null || freeformKeys == [ ] then
+            if freeform == null || realized.unmatched == [ ] then
               { }
             else
-              let
-                ffDefs = concatMap (
-                  p:
-                  let
-                    sub = builtins.intersectAttrs (listToAttrs (
-                      map (k: {
-                        name = k;
-                        value = null;
-                      }) freeformKeys
-                    )) p.attrs;
-                  in
-                  optional (sub != { }) {
-                    file = p._file;
-                    value = sub;
-                  }
-                ) pushedRev;
-              in
-              freeform.merge prefix ffDefs;
+              freeform.merge prefix (
+                map (u: {
+                  inherit (u) file;
+                  value = setAttrByPath u.path u.value;
+                }) realized.unmatched
+              );
 
-          config = builtins.seq _orphanCheck (declaredConfig // freeformConfig);
+          # Declared wins over freeform at shared paths (nixpkgs `recursiveUpdate freeform declared`);
+          # for the common disjoint-key case this is just `//`.
+          config = builtins.seq _orphanCheck (recursiveUpdate freeformConfig declaredConfig);
         in
         {
           inherit config moduleArgs;

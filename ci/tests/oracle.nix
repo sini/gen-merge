@@ -185,6 +185,25 @@ let
       }
       { v = true; }
     ];
+    # nested/structured option-declaration paths — `options.a.b.c = mkOption {…}` must build a
+    # nested option TREE (nixpkgs `lib.evalModules` auto-nests), so `config.a.b.c` resolves and a
+    # SECOND module's `options.a.b.d` merges by RECURSING beside the first (not `//`-clobbering `b`).
+    # This is the prerequisite for composing den-shaped configs (`options.den.schema/hosts/classes`).
+    nested-options = P: [
+      {
+        options.a.b.c = P.mkOption {
+          type = P.types.int;
+          default = 1;
+        };
+      }
+      { config.a.b.c = 7; }
+      {
+        options.a.b.d = P.mkOption {
+          type = P.types.str;
+          default = "x";
+        };
+      }
+    ];
     # the real gen-aspects `aspectSubmodule` shape: keyed collection of submodules, each with a
     # self-referential `config._module.args.aspect = config`, structural options (name / includes as
     # listOf), AND a freeform of nested string keys — the integrated C2 surface, byte-identical.
@@ -312,6 +331,44 @@ in
           e = npConfigOf (fixtures.either-combinator);
         in
         n.unset == null && n.set == "v" && e.s == "left" && e.i == 7;
+      expected = true;
+    };
+
+    # AC#3 — a leaf-vs-group collision at the SAME path (one module declares `a.b` as a leaf option,
+    # another declares `a.b.c`, making `a.b` a group) must THROW in BOTH engines (nixpkgs refuses to
+    # make an option the parent of sub-options; byte-mode must not silently `//`-merge).
+    test-nested-leaf-vs-group-collision-both-throw = {
+      expr =
+        let
+          fx = P: [
+            { options.a.b = P.mkOption { type = P.types.int; }; }
+            { options.a.b.c = P.mkOption { type = P.types.int; }; }
+            { config.a.b.c = 1; }
+          ];
+        in
+        (builtins.tryEval (builtins.deepSeq (gmConfigOf fx) null)).success == false
+        && (builtins.tryEval (builtins.deepSeq (npConfigOf fx) null)).success == false;
+      expected = true;
+    };
+
+    # AC#4 — an undeclared nested key (`config.a.b.z` with no `options.a.b.z`, and no freeformType)
+    # must THROW in BOTH engines: the orphan/undeclared-key check applies PER GROUP LEVEL, not only
+    # at the root. A naive recursion that silently drops it would diverge from nixpkgs.
+    test-nested-undeclared-key-both-throw = {
+      expr =
+        let
+          fx = P: [
+            {
+              options.a.b.c = P.mkOption {
+                type = P.types.int;
+                default = 1;
+              };
+            }
+            { config.a.b.z = 9; }
+          ];
+        in
+        (builtins.tryEval (builtins.deepSeq (gmConfigOf fx) null)).success == false
+        && (builtins.tryEval (builtins.deepSeq (npConfigOf fx) null)).success == false;
       expected = true;
     };
   };
