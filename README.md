@@ -32,13 +32,12 @@ gen-prelude (pure utilities) and takes gen-types' leaf checkers as an **injected
 
 1. **typed options + defaults** — `mkOption { type; default?; apply?; readOnly? }`; a `default`
    desugars to a lowest-priority definition (no separate codepath).
-2. **freeformType** — `lazyAttrsOf` / `attrsOf` routing of undeclared keys.
-3. **per-key `name` + `_module.args`** binding under keyed collections.
-4. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X =
-   config` lets siblings cross-reference.
-5. **`imports` merging** — recursive collect/flatten, imports before own config.
-6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`.
-7. **`deferredModule`** — a lazy, import-usable module value, **never forced** by composition (handed
+1. **freeformType** — `lazyAttrsOf` / `attrsOf` routing of undeclared keys.
+1. **per-key `name` + `_module.args`** binding under keyed collections.
+1. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
+1. **`imports` merging** — recursive collect/flatten, imports before own config.
+1. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`.
+1. **`deferredModule`** — a lazy, import-usable module value, **never forced** by composition (handed
    opaque to the terminal). `functionTo` is intentionally omitted (consumers wrap guard functions as
    data).
 
@@ -50,7 +49,8 @@ lowest priority-number wins, ties merge — over the four anchor constructors (a
 general `mkOverride N`) plus the two combinators `mkMerge` / `mkIf`. The entire nixpkgs **order pass**
 (`mkOrder` / `mkBefore` / `mkAfter`) and the exotic named overrides are deliberately absent — zero
 uses across the surface. Equal-priority definitions merge in **reverse module order**, byte-identical
-to nixpkgs (observable in list-typed options: `[a] [b] [c]` merges to `[c a b]`).
+to nixpkgs (observable in list-typed options: three modules contributing `[a]` `[b]` `[c]` merge to
+`[c b a]`; a single module's `[a b]` beside another's `[c]` merges to `[c a b]`).
 
 ## Usage
 
