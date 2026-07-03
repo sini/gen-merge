@@ -176,7 +176,12 @@ let
 
   # A marker forced EARLY resolves against the composition config (host.port = 0) → 1, and cannot
   # reach osConfig at all — the anti-vacuity reference points.
-  forceEarly = run: key: resolveMarker { config = run.stage1; osConfig = { }; } run.stage1.quirk.${key};
+  forceEarly =
+    run: key:
+    resolveMarker {
+      config = run.stage1;
+      osConfig = { };
+    } run.stage1.quirk.${key};
 
   # Every carried marker's payload is STILL a poison thunk (forcing throws) — proof the composition
   # transported it as opaque data rather than resolving it.
@@ -196,7 +201,9 @@ in
         let
           m = gmRun.carried2.fromConfig;
         in
-        m.__configThunk == true && (m ? __fn) && (builtins.tryEval (builtins.seq m.probe null)).success == false;
+        m.__configThunk == true
+        && (m ? __fn)
+        && (builtins.tryEval (builtins.seq m.probe null)).success == false;
       expected = true;
     };
 
@@ -207,10 +214,7 @@ in
         let
           c = gmRun.carried2;
         in
-        (c ? fromConfig)
-        && (c ? fromOsConfig)
-        && (c ? fromRoute)
-        && stillDeferred c;
+        (c ? fromConfig) && (c ? fromOsConfig) && (c ? fromRoute) && stillDeferred c;
       expected = true;
     };
 
@@ -241,7 +245,8 @@ in
       expected = true;
     };
     test-terminal-byte-identical-and-expected = {
-      expr = gmRun.terminal.resolved == npRun.terminal.resolved && npRun.terminal.resolved == expectedResolved;
+      expr =
+        gmRun.terminal.resolved == npRun.terminal.resolved && npRun.terminal.resolved == expectedResolved;
       expected = true;
     };
 
