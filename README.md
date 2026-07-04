@@ -107,6 +107,48 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
+## Compat mode
+
+The `types` argument is an injection seam, so it can point at nixpkgs' own `lib.types` and run the
+**same byte-mode engine** over unmodified nixpkgs option types — zero adapter code:
+
+```nix
+genMergeCompat = import (fetchGit "https://github.com/sini/gen-merge").outPath {
+  prelude = genPrelude;
+  types = (import "${nixpkgs}/lib").types;   # nixpkgs leaf/structural types, verbatim
+};
+```
+
+nixpkgs option types already speak the `(loc, defs)` merge contract `mergeDefs` dispatches on — a
+nixpkgs type carries a `.merge` (called `type.merge loc defs`) and no gen-types `.verify` (so the
+post-merge verify is skipped) — and nixpkgs property tags (`_type = "override"/"merge"/"if"`) are
+byte-compatible with gen-merge's priority pass, so `mkDefault`/`mkForce`/`mkIf`/`mkMerge` from nixpkgs
+discharge identically. (Pinned by `ci/tests/compat-nixpkgs-types.nix`.)
+
+**When to use it** — a migration on-ramp: bring a custom nixpkgs `mkOptionType` (or an odd leaf type)
+along while porting a config onto the pure-gen module system, instead of rewriting it up front. An
+escape hatch, **not** the fast path.
+
+**Cost profile** (measured — [gen hub `BENCHMARKS.md`](https://github.com/sini/gen/blob/main/BENCHMARKS.md#compat-mode)):
+
+- **leaf-type shims are free** — a nixpkgs leaf's `.merge` is trivial, so the engine keeps the full
+  speedup: hybrid **0.62×** of nixpkgs cpu, vs pure gen-merge's **0.63×**, at `scalar` n=16000.
+- **structural-type shims give the win back** — nixpkgs `submodule.merge` runs `lib.evalModules` per
+  instance, dragging the nixpkgs engine into every subtree: hybrid **0.96×**, vs pure **0.44×**, at
+  `registry` (`attrsOf submodule`) n=2000.
+
+So keep den-hoag's hot registry/aspect paths on gen-merge's structural strategies; reserve compat
+mode for the leaf/custom-type edges of a port.
+
+**One-way boundary** — types flow nixpkgs → engine, not the reverse. A nixpkgs type plugs INTO
+gen-merge because it carries `.merge`; a gen-types checker does **not** run inside nixpkgs'
+`lib.evalModules`, because it is verify-only (no `.merge`). Compat mode injects nixpkgs types into the
+gen-merge engine — it does not export gen-types checkers into `lib.evalModules`.
+
+**Purity** — nixpkgs enters here as an injected VALUE (the `types` argument), exactly as gen-types
+does; `lib/` never gains a nixpkgs dependency (enforced by `ci/tests/purity.nix`) — the same
+value-injection philosophy as [gen-flake](https://github.com/sini/gen-flake).
+
 ## Byte-mode scope (and the deferred structural seam)
 
 This is **byte-mode**: it reproduces nixpkgs' order-sensitive merge exactly — the cut-over

@@ -22,13 +22,27 @@
         prelude = gen-prelude.lib;
         types = genTypes;
       };
+      # Compat mode (ci/tests/compat-nixpkgs-types.nix): the SAME byte-mode engine with nixpkgs
+      # `lib.types` injected as the leaf `types` instead of gen-types. nixpkgs enters as a VALUE here
+      # (never a `lib/` dep — purity.nix); `../lib` stays nixpkgs-free. This is the supported escape
+      # hatch for migration / a custom nixpkgs `mkOptionType`.
+      nixpkgsLib = import "${inputs.nixpkgs}/lib";
+      genMergeCompat = import ../lib {
+        prelude = gen-prelude.lib;
+        types = nixpkgsLib.types;
+      };
     in
     gen.lib.mkCi {
       inherit inputs;
       name = "gen-merge";
       testModules = ./tests;
       specialArgs = {
-        inherit genMerge genTypes;
+        inherit
+          genMerge
+          genTypes
+          genMergeCompat
+          nixpkgsLib
+          ;
       };
     };
 }
