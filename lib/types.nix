@@ -18,7 +18,7 @@ let
     map
     attrNames
     listToAttrs
-    unique
+    foldl'
     optional
     filter
     head
@@ -101,7 +101,8 @@ let
     merge =
       loc: defs:
       let
-        keys = unique (concatMap (d: attrNames d.value) defs);
+        # key union via attrset fold — a list `unique` is O(k²) in key count
+        keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
       in
       listToAttrs (
         map (k: {
@@ -208,7 +209,7 @@ let
       concatLists vals
     else if all isAttrs vals then
       let
-        keys = unique (concatMap attrNames vals);
+        keys = attrNames (foldl' (acc: v: acc // v) { } vals);
       in
       listToAttrs (
         map (k: {

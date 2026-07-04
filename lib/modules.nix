@@ -22,7 +22,6 @@ let
     listToAttrs
     concatStringsSep
     optional
-    unique
     length
     head
     tail
@@ -297,7 +296,8 @@ let
                 value = p.attrs.${k};
               }
             ) pushed;
-          cfgKeys = unique (concatMap (p: attrNames p.attrs) pushed);
+          # key union via attrset fold — a list `unique` is O(k²) in sibling-key count
+          cfgKeys = attrNames (foldl' (acc: p: acc // p.attrs) { } pushed);
           undeclaredKeys = filter (k: !(opts ? ${k})) cfgKeys;
 
           declaredPairs = map (
