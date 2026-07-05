@@ -41,6 +41,57 @@
     }
     { extra2 = "e2"; }
   ];
+  # WIDE freeform coalescing — the same undeclared key `shared` defined across THREE modules at
+  # different priorities (mkDefault < bare < mkForce), plus per-module-unique keys. Pins that the
+  # per-module coalescing of unmatched defs preserves priority resolution through the freeform path
+  # (mkForce wins `shared`) AND absorbs disjoint keys from every module.
+  freeform-multi-priority = P: [
+    { freeformType = P.types.lazyAttrsOf P.types.str; }
+    {
+      shared = P.mkDefault "weak";
+      only1 = "a";
+    }
+    {
+      shared = P.mkForce "forced";
+      only2 = "b";
+    }
+    {
+      shared = "plain";
+      only3 = "c";
+    }
+  ];
+  # LIST-typed freeform values across modules — the same undeclared key `xs` (a `listOf str`) defined
+  # in three modules. nixpkgs concatenates freeform defs in reverse-module order (`[c b a]`); pins
+  # that coalescing emits per-module defs in that same order so the concat is byte-identical (the
+  # order-sensitive twin of `listof-reverse`, through the freeform absorption path).
+  freeform-list-order = P: [
+    { freeformType = P.types.lazyAttrsOf (P.types.listOf P.types.str); }
+    { xs = [ "a" ]; }
+    { xs = [ "b" ]; }
+    { xs = [ "c" ]; }
+  ];
+  # NESTED freeform depth — undeclared keys absorbed UNDER a declared group (`grp` is declared via a
+  # leaf `grp.declared`, so `grp.free*` are unmatched at depth 2). Pins that the unmatched-path
+  # reshaping (`setAttrByPath` at depth > 1) survives per-module coalescing and that declared wins
+  # over freeform at the shared `grp` node. Two modules contribute overlapping nested freeform keys
+  # to exercise the deep `recursiveUpdate` fold across module instances.
+  freeform-nested-depth = P: [
+    {
+      freeformType = P.types.lazyAttrsOf (P.types.lazyAttrsOf P.types.str);
+      options.grp.declared = P.mkOption {
+        type = P.types.str;
+        default = "d";
+      };
+    }
+    {
+      grp.declared = "set";
+      grp.freeA = "fa";
+    }
+    {
+      grp.freeB = "fb";
+      grp.freeA = P.mkForce "fa-forced";
+    }
+  ];
   submodule-name-selfref = P: [
     {
       options.entries = P.mkOption {

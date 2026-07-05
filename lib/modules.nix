@@ -123,6 +123,52 @@ let
   setAttrByPath =
     path: value: if path == [ ] then value else { ${head path} = setAttrByPath (tail path) value; };
 
+  # ── freeform def coalescing (per originating module instance) ──────────────────────────────────
+  # nixpkgs' freeformType option receives a FEW WIDE defs — one per module, each carrying that
+  # module's WHOLE unmatched-config subtree — so the `attrsOf`/`lazyAttrsOf` key-union and per-key
+  # folds run linear in sibling-key count. The realizer instead bubbles undeclared keys up ONE def
+  # PER KEY (`mergeTree`'s `ownUnmatched`), so handing them straight to `freeform.merge` would give it
+  # n single-key defs → its `foldl' (//)` key-union and per-key `concatMap` both go O(n²). Coalescing
+  # rebuilds the per-module shape (byte-identical output): group the unmatched defs by originating
+  # MODULE INSTANCE (a threaded index — NOT `_file`: distinct anonymous modules share the
+  # `<gen-merge>` fallback file yet must stay SEPARATE defs for priority resolution), then emit one
+  # wide def per module in ASCENDING index order. Ascending index = reverse-module order (topDefs is
+  # `pushedRev`), which is the order nixpkgs collects defs in (last module first) — load-bearing for
+  # list-typed freeform values, order-independent for scalars/attrsets.
+  #
+  # Within a module the unmatched paths are DISJOINT, so its subtree is assembled in one pass: depth-1
+  # keys (the wide-freeform hot path) build via `listToAttrs` — O(width) — and the rare deeper keys
+  # (undeclared UNDER a declared group) fold via `recursiveUpdate`. A depth-1 head and a deeper head
+  # can never collide within one module (a key undeclared HERE is captured whole and never descended;
+  # a deeper key rode a DECLARED group), so the two partitions union cleanly.
+  buildModuleUnmatched =
+    entries:
+    let
+      flat = filter (u: length u.path == 1) entries;
+      deep = filter (u: length u.path > 1) entries;
+      flatAttrs = listToAttrs (
+        map (u: {
+          name = head u.path;
+          inherit (u) value;
+        }) flat
+      );
+      deepAttrs = foldl' (acc: u: recursiveUpdate acc (setAttrByPath u.path u.value)) { } deep;
+    in
+    recursiveUpdate flatAttrs deepAttrs;
+
+  coalesceUnmatched =
+    moduleCount: unmatched:
+    concatMap (
+      i:
+      let
+        entries = filter (u: u.modIndex == i) unmatched;
+      in
+      optional (entries != [ ]) {
+        file = (head entries).file;
+        value = buildModuleUnmatched entries;
+      }
+    ) (prelude.genList (i: i) moduleCount);
+
   # ── module classification ────────────────────────────────────────────────
   # A module is "structured" if it carries any structural marker; otherwise it is config-shorthand
   # (the whole attrset is config, minus key/_file metadata). Mirrors nixpkgs unifyModuleSyntax.
@@ -340,8 +386,10 @@ let
         let
           # Push config-node properties down one level (nixpkgs pushes at EACH descent, so a nested
           # `a.b = mkIf c { … }' distributes into `b's keys), yielding plain attrsets per module.
+          # `modIndex` (the originating module instance, threaded from `topDefs`) rides every def so
+          # unmatched keys can be coalesced per module at the root — see `coalesceUnmatched`.
           pushed = map (d: {
-            inherit (d) file;
+            inherit (d) file modIndex;
             attrs = pushDownProperties d.value;
           }) rawDefs;
           subDefs =
@@ -349,7 +397,7 @@ let
             concatMap (
               p:
               optional (p.attrs ? ${k}) {
-                inherit (p) file;
+                inherit (p) file modIndex;
                 value = p.attrs.${k};
               }
             ) pushed;
@@ -378,11 +426,12 @@ let
               }
           ) (attrNames opts);
 
-          # Undeclared config keys at THIS level → unmatched defs carrying their full path + value.
+          # Undeclared config keys at THIS level → unmatched defs carrying their full path + value
+          # (+ the originating `modIndex`, for per-module coalescing at the root).
           ownUnmatched = concatMap (
             k:
             map (p: {
-              inherit (p) file;
+              inherit (p) file modIndex;
               path = loc ++ [ k ];
               value = p.attrs.${k};
             }) (filter (p: p.attrs ? ${k}) pushed)
@@ -466,9 +515,12 @@ let
           pushedRev = reverse pushed;
 
           # The realizer's def stream: each module's pushed-down config, REVERSED, minus the
-          # `_module` pseudo-key (handled above via `moduleTree`; it is not a real config path).
-          topDefs = map (p: {
+          # `_module` pseudo-key (handled above via `moduleTree`; it is not a real config path). The
+          # `modIndex` (position in reverse-module order) rides each def so the root freeform can
+          # coalesce unmatched keys back into one wide def per originating module.
+          topDefs = prelude.imap0 (i: p: {
             file = p._file;
+            modIndex = i;
             value = builtins.removeAttrs p.attrs [ "_module" ];
           }) pushedRev;
 
@@ -487,16 +539,14 @@ let
               }' does not exist (no freeformType to absorb it)"
             else
               null;
+          # Coalesce the per-key unmatched defs into one wide def per originating module BEFORE
+          # `freeform.merge` (see `coalesceUnmatched`) — restores nixpkgs' per-module freeform shape,
+          # so `attrsOf`/`lazyAttrsOf` stays linear in sibling-key count (byte-identical output).
           freeformConfig =
             if freeform == null || realized.unmatched == [ ] then
               { }
             else
-              freeform.merge prefix (
-                map (u: {
-                  inherit (u) file;
-                  value = setAttrByPath u.path u.value;
-                }) realized.unmatched
-              );
+              freeform.merge prefix (coalesceUnmatched (length topDefs) realized.unmatched);
 
           # Declared wins over freeform at shared paths (nixpkgs `recursiveUpdate freeform declared`);
           # for the common disjoint-key case this is just `//`.
@@ -533,13 +583,12 @@ in
     setDefaultModuleLocation
     mkCoreValue
     # Classification/collection predicates shared with the portable-subset lint (lib/lint.nix) so the
-    # lint's view of "declared leaf vs group / structured vs shorthand / imports / decl-tree merge"
-    # cannot DRIFT from the engine's. Additive — the public `lib/default.nix` surface is unchanged.
+    # lint's view of "declared leaf vs group / config-shorthand / imports / decl-tree merge" cannot
+    # DRIFT from the engine's. The export list is EXACTLY what the lint consumes. Additive — the
+    # public `lib/default.nix` surface is unchanged.
     isOptLeaf
-    isStructured
     configOf
     importsOf
-    markers
     mergeOptionDecls
     ;
 }
