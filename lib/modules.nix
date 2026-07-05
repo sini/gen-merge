@@ -164,18 +164,18 @@ let
   topFreeformOf = m: m.freeformType or null;
 
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
-  # mergeDefs loc type rawDefs :: combine a list of (possibly property-wrapped) defs into one value.
-  #   rawDefs :: [{ file; value }]   (value may carry mkMerge/mkIf/mkOverride)
-  # Discharge properties → filterOverrides (min-priority wins) → dispatch: a structural type owns
-  # its combine via `.merge`; a leaf (gen-types checker, no `.merge`) merges by mergeOneOption then
-  # `verify`. This is the (loc,defs) contract the whole engine — and the escape-hatch consumers
-  # (spec §1 item 6) — ride.
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
   # every existing consumer of the exported `mergeDefs` escape hatch (spec §1 item 6) is unchanged.
   # The opt-in fixed-input path is `mergeDefsWith true`, reached ONLY through the evalModuleTree knob.
   mergeDefs = mergeDefsWith false;
 
-  # mergeDefsWith coreShortCircuit :: the shared fold, optionally honouring the fixed-input core
+  # mergeDefsWith coreShortCircuit loc type rawDefs :: combine a list of (possibly property-wrapped)
+  # defs into one value.
+  #   rawDefs :: [{ file; value }]   (value may carry mkMerge/mkIf/mkOverride)
+  # Discharge properties → filterOverrides (min-priority wins) → dispatch: a structural type owns
+  # its combine via `.merge`; a leaf (gen-types checker, no `.merge`) merges by mergeOneOption then
+  # `verify`. This is the (loc,defs) contract the whole engine — and the escape-hatch consumers
+  # (spec §1 item 6) — ride. With `coreShortCircuit` it additionally honours the fixed-input core
   # marker (spec §2.5), checked BEFORE discharge:
   #   • SOLE core def at this loc  → return its `values` directly, skipping discharge/fold/verify —
   #     by contract already the full-merge output, so the result is byte-identical where the core is
@@ -186,7 +186,8 @@ let
   mergeDefsWith =
     coreShortCircuit: loc: type: rawDefs:
     let
-      soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue (head rawDefs).value;
+      coreDef = head rawDefs;
+      soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
       # Fall-through normalization: unwrap a core marker to its `values` (a plain def) before the fold.
       normalized =
         if coreShortCircuit then
@@ -223,7 +224,7 @@ let
         else
           result;
     in
-    if soleCore then (head rawDefs).value.values else checked;
+    if soleCore then coreDef.value.values else checked;
 
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
   # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
@@ -290,11 +291,13 @@ let
       check ? true,
       prefix ? [ ],
       # Opt-in fixed-input kernel (spec §2.5). Default off ⇒ ZERO behaviour change — the core marker
-      # is treated as an ordinary attrset. Firing scope: the top-level REALIZER path (declared leaf
-      # options at any depth, via `mergeOptionWith`); structural-type element merges (attrsOf/listOf
-      # per element) do NOT short-circuit but stay byte-identical (they never see the flag — a
-      # user-supplied type closed over the plain `mergeDefs`). This matches the tier-2 firing contract
-      # (core projection locs are declared-option leaves supplied by the core module).
+      # is treated as an ordinary attrset. Firing scope: the REALIZER path (declared leaf options at
+      # any depth, via `mergeOptionWith`). The flag PROPAGATES through the moduleTree-as-type nested
+      # eval (:519 below), so a nested tree fires consistently; only structural-type element merges
+      # (attrsOf/listOf per-element folds) do NOT short-circuit — they stay byte-identical, never
+      # seeing the flag (a user-supplied type closed over the plain `mergeDefs`). This matches the
+      # tier-2 firing contract (core projection locs are declared-option leaves supplied by the core
+      # module).
       coreShortCircuit ? false,
     }:
     let
