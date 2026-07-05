@@ -101,9 +101,18 @@ recursion); `.provenance` is a lazy per-loc record of WHERE each value came from
 
 `.provenance` is an always-on, lazy tree mirroring `.config`'s loc structure — one record per option
 loc, answering "which files defined this, and which won?" It costs nothing until read (a forced option
-pays ~one extra thunk when the channel is untouched), and reading it never forces the merged VALUE —
-it reads only definition FILES + discharged priorities (the nixpkgs `definitionsWithLocations`
-analogue).
+pays ~one extra thunk when the channel is untouched).
+
+**Forcing contract** (matters to the diff consumer). Reading ANY field of a **declared-option** record
+(`defs` / `winners` / `priority` / `defaulted`) forces that loc's contributing defs to **WHNF** — the
+same property discharge (`dischargeProperties`, which branches on `isAttrs`) the value path runs to
+resolve priorities, so a def that is a bare `throw` fires on a plain `.defs` read. What it does NOT
+force is the **deep / merged VALUE**: the structural `.merge`, leaf `verify`, and `apply` never run for
+a provenance read (those live on the value path). A **freeform** record is stricter-free still — it
+reads only definition FILES (never the def value), because unmatched keys are attributed by `_file`
+without discharge. So: provenance forces the *shape* of who-defined-what (declared: defs to WHNF;
+freeform: files only), never the resolved value. (This is weaker than nixpkgs `definitionsWithLocations`,
+which forces nothing — byte-mode discharges eagerly to resolve priorities.)
 
 Per **declared-option** loc — a rich record:
 
@@ -276,8 +285,14 @@ harness + the equivalence oracle's reference side).
 `nix flake check ./ci` runs the nix-unit suites: `merge` (the 7-item primitive + priority subset),
 `deferred` / `checking` (non-forcing + leaf verification), `oracle` (byte-identity vs
 `lib.evalModules`, with mutation-teeth assertions), `compat` (nixpkgs `lib.types` on the engine),
-`core-kernel` (the fixed-input short-circuit), `lint` (the portable-subset checker — accepts the whole
-`oracle` corpus, rejects one fixture per unsupported construct), and `purity`.
+`core-kernel` (the fixed-input short-circuit), `provenance` (the `.provenance` record shapes + forcing
+contract), `lint` (the portable-subset checker — accepts the whole `oracle` corpus, rejects one fixture
+per unsupported construct), and `purity`.
+
+Running the suites directly through the nix-unit CLI (`nix-unit --flake ./ci#tests`, or the devshell
+`ci` command) needs a raised stack — `ulimit -s unlimited` — at the default 8 MB: nix-unit's own
+traversal of the deep module-system evals overflows it (the pre-commit hook and the devshell command
+raise it automatically; `nix flake check ./ci` is a plain eval and does not need it).
 
 ## Theoretical foundations
 

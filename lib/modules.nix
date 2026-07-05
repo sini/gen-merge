@@ -297,9 +297,14 @@ let
   # for DECLARED options only. `value` is computed by the SAME discharge/priority/verify spine as
   # `mergeDefsWith` (kept parallel — see the note above); `prov` SHARES this call's `discharged` +
   # `filterOverridesRich` let-bindings (ONE discharge, ONE priority pass per loc). `prov` is a separate
-  # lazy attr: an unforced option pays ~one record thunk (never forced), and forcing `prov` alone never
-  # forces the merged VALUE (`defs`/`winners`/`priority`/`defaulted` read only def FILES + discharged
-  # priorities — the nixpkgs `definitionsWithLocations` analogue).
+  # lazy attr: an unforced option pays ~one record thunk (never forced).
+  # FORCING CONTRACT: reading ANY field of the record (`defs`/`winners`/`priority`/`defaulted`) forces
+  # this loc's contributing defs to WHNF — the record reads `discharged`, and `dischargeProperties`
+  # branches on `isAttrs`, so a bare-`throw` def fires even on a plain `.defs` read (the SAME discharge
+  # the value path runs to resolve priorities). What it does NOT force is the merged VALUE: the
+  # structural `.merge` / leaf `verify` / `apply` live on the value path (`checked`), never reached by a
+  # prov read. So provenance forces WHO-defined-what to WHNF, never the resolved value. (Weaker than
+  # nixpkgs `definitionsWithLocations`, which forces nothing — byte-mode discharges eagerly for priority.)
   #   • defs      — every contributing def post property-discharge, pre priority pass (a property tag
   #                 keeps its originating file; a false-`mkIf` sub-def has already dropped in discharge).
   #                 Per-def `priority` = its `mkOverride` wrapper's number, else the default override 100.
