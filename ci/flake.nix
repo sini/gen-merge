@@ -31,6 +31,14 @@
         prelude = gen-prelude.lib;
         types = nixpkgsLib.types;
       };
+      # Internal core seam (lib/modules.nix) — exposes `classifyModule` + the collection predicates that
+      # are NOT on the public `lib/default.nix` surface (the lint-predicate export precedent: additive to
+      # core, public surface unchanged). The classify suite unit-asserts `classifyModule` directly through
+      # this test-only handle; the shipped API (`pureModule`, `evalModuleTree`) is exercised via `genMerge`.
+      genMergeCore = import ../lib/modules.nix {
+        prelude = gen-prelude.lib;
+        priority = import ../lib/priority.nix { prelude = gen-prelude.lib; };
+      };
     in
     gen.lib.mkCi {
       inherit inputs;
@@ -42,6 +50,7 @@
           genTypes
           genMergeCompat
           nixpkgsLib
+          genMergeCore
           ;
       };
     };
