@@ -1,5 +1,5 @@
 # Source-class classification + `pureModule` (design spec §§0.3/3/5) — the srcClass substrate the warm
-# override path (A4-T2) consumes. Nothing consumes it yet beyond these tests.
+# re-eval path consumes. Nothing consumes it yet beyond these tests.
 #
 # The load-bearing WHY (spec §0.3): `builtins.functionArgs` cannot prove a function module clean —
 # `args@{ genSchema, ... }: args.config` shows only `genSchema`, a bare lambda shows `{ }`, yet the

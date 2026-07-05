@@ -263,8 +263,11 @@ let
   # the marker attrset `classifyModule` reads BEFORE `callM` applies it (`callM` applies `__functor`
   # attrsets, so a bare function's cleanliness would be invisible post-application). Contract (§5): the
   # wrapped function reads ONLY its declared formals and EVERY formal resolves from `specialArgs` — the
-  # engine TRUSTS the marker. The tag classifies this wrapper's own content entry marked-pure; entries
-  # reached through the module's `imports` classify independently.
+  # engine TRUSTS the marker. HAZARD (non-local): a formal is unsafe if another module can shadow its
+  # NAME into `_module.args`, making it fixpoint-derived rather than specialArgs-sourced — a lying marker
+  # then reuses stale values silently (README §pureModule spells out the blast radius). The tag
+  # classifies this wrapper's own content entry marked-pure; entries reached through the module's
+  # `imports` classify independently.
   pureModule = f: {
     __pureModule = true;
     __functor = self: f;
@@ -549,7 +552,7 @@ let
               content = m;
               # SOURCE CLASS decided on the PRE-application `m0` (design spec §3). Lazy: the cold path
               # never forces it, so classification (and a path's import) costs nothing until the warm
-              # override path (A4-T2) reads it.
+              # re-eval path reads it.
               srcClass = classifyModule m0;
             };
             imported = collectModules callM (importsOf m);
@@ -840,7 +843,7 @@ in
     importsOf
     mergeOptionDecls
     # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
-    # entry as `srcClass`; shared with the warm eval path (A4-T2) and the classify suite.
+    # entry as `srcClass`; shared with the warm re-eval path and the classify suite.
     classifyModule
     ;
 }

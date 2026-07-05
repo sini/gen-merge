@@ -36,10 +36,10 @@ in
     showOption
     # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; }`.
     mkCoreValue
-    # Source-class substrate (A4 spec §3): the author's `pureModule` clean-module marker. Its companion
-    # `classifyModule` predicate stays on the INTERNAL core seam (lib/modules.nix) — the lint-predicate
-    # export precedent: additive to core, public surface unchanged. The warm override path (A4-T2) and
-    # the classify suite read it through core, not this public surface.
+    # Source-class substrate (design spec §3): the author's `pureModule` clean-module marker. Its
+    # companion `classifyModule` predicate stays on the INTERNAL core seam (lib/modules.nix) — the
+    # lint-predicate export precedent: additive to core, public surface unchanged. The warm re-eval path
+    # and the classify suite read it through core, not this public surface.
     pureModule
     ;
 
