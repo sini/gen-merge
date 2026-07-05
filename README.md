@@ -270,6 +270,10 @@ adversarial suite fixture (a marked module that `@`-captures config, asserted to
 pin it. The two internal memo fields `freeformConfig` / `freeformProv` on the result let a CHAINED warm
 (warmFrom = a warm result) reuse the freeform layer directly.
 
+**Result surface.** The public result is still `config` / `options` / `provenance` (+ `type`);
+`warmDecision` (the decision trace) and `freeformConfig` / `freeformProv` (the freeform memo layers)
+are internal fields — additive, threaded between chained evals, not part of the byte-identity contract.
+
 ## The `types` namespace
 
 `genMerge.types` = gen-types leaf **checkers** ⊎ gen-merge structural **strategies** — the `lib.types`

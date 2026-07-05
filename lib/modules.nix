@@ -783,6 +783,8 @@ let
       # RELATIVE to `prefix`; a leaf's absolute option location is `prefix ++ loc ++ [ k ]`, while
       # unmatched paths stay relative (the root reshapes them against `prefix` via `setAttrByPath`).
       #   rawDefs :: [ { file; value } ]   (value: property-wrapped or a plain sub-attrset)
+      # Signature is `warm: loc: opts: rawDefs` — `warm` is the FIRST positional (threaded unchanged
+      # through the descent), described last here only because it is the warm-path add-on.
       # `warm` = the warm-splice context `{ active; footprintPaths; prevConfig; prevProv }` (or
       # `{ active = false; }`), threaded through the descent. At a declared LEAF whose ABSOLUTE loc is
       # OUTSIDE `footprintPaths`, warm SPLICES `getAttrByPath` of prev's `config`/`provenance` — lazy
@@ -922,10 +924,12 @@ let
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────
           # EDITED tail-count from the engine's OWN flatten of `editedModules` (imports expansion is
-          # config-dependent, so a caller count is untrusted). `decision` is LAZY — the cold path
-          # (`warmFrom == null`) never forces it (`warmActive` short-circuits on the null check), so
-          # classification/footprint cost is ZERO when the knob is off. Warm is REFUSED (cold fallback)
-          # when an edited entry carries `disabledModules` (§2 guard).
+          # config-dependent, so a caller count is untrusted). `decision` is LAZY — the eval PATH is
+          # zero-cost when the knob is off: the cold path (`warmFrom == null`) never forces `decision`
+          # (`warmActive` short-circuits on the null check), so no classification/footprint runs. (An
+          # explicit read of `.warmDecision.modules` on a cold result DOES force classification — the
+          # trace is data on demand, consistent with the `reused`/`remerged` cost note below.) Warm is
+          # REFUSED (cold fallback) when an edited entry carries `disabledModules` (§2 guard).
           editedCount = if editedModules == [ ] then 0 else length (collectModules callM editedModules);
           decision = warmDecide { inherit flat editedCount allOptions; };
           warmActive = warmFrom != null && !decision.disabledRefusal;
