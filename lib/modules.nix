@@ -209,6 +209,10 @@ let
             "key"
             "_file"
             "_module"
+            # Defensive: `callM` consumes the `pureModule` wrapper before its content is recorded, so
+            # the marker never reaches config keys — strip it belt-and-braces so a hand-built shorthand
+            # carrying the key cannot leak it into config.
+            "__pureModule"
           ];
     in
     if m ? _module then
@@ -223,6 +227,48 @@ let
     in
     if isList i then i else [ i ];
   topFreeformOf = m: m.freeformType or null;
+
+  # ── source-class classifier (design spec §0.3 / §3) ────────────────────────
+  # Tag a module with the CLASS of its PRE-application source. The class is decided on `m0` (before
+  # `callM`), because `callM` applies function and `__functor` modules with the WHOLE
+  # `specialArgs // extra` set — nixpkgs application semantics, which byte-mode keeps — so any function
+  # module can reach `config` regardless of its visible formals, and the post-application content is
+  # always a plain attrset that no longer reveals whether config was reachable.
+  #
+  # Consequently `builtins.functionArgs` CANNOT prove a function module clean: `args@{ genSchema, ... }:
+  # args.config` reports only `genSchema` yet the `@`-binding captures the full argument set, and a bare
+  # lambda (`args: args.config`) reports `{ }` — either reads `config` despite its visible formals. So a
+  # function module is DIRTY BY DEFAULT; `pureModule` is the author's explicit clean assertion (§5).
+  #   • attrset (no `__functor`, no `__pureModule`)  → "attrset"   — no body, cannot read anything.
+  #   • path                                          → import it, classify the RESULT.
+  #   • `__pureModule`-marked wrapper                 → "marked-pure" — tags THIS entry only; the
+  #                                                     module's own `imports` classify independently.
+  #   • everything else (functions, bare lambdas,     → "dirty".
+  #     `__functor` attrsets without the marker)
+  classifyModule =
+    m0:
+    if builtins.isPath m0 then
+      classifyModule (import m0)
+    else if isAttrs m0 then
+      if m0 ? __pureModule then
+        "marked-pure"
+      else if m0 ? __functor then
+        "dirty"
+      else
+        "attrset"
+    else
+      "dirty";
+
+  # pureModule (design spec §3 / §5) — the author's clean-module assertion. Wraps a function module in
+  # the marker attrset `classifyModule` reads BEFORE `callM` applies it (`callM` applies `__functor`
+  # attrsets, so a bare function's cleanliness would be invisible post-application). Contract (§5): the
+  # wrapped function reads ONLY its declared formals and EVERY formal resolves from `specialArgs` — the
+  # engine TRUSTS the marker. The tag classifies this wrapper's own content entry marked-pure; entries
+  # reached through the module's `imports` classify independently.
+  pureModule = f: {
+    __pureModule = true;
+    __functor = self: f;
+  };
 
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
@@ -501,6 +547,10 @@ let
               # carries its own `_file`, else the imported result's, else the engine fallback.
               _file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or "<gen-merge>"));
               content = m;
+              # SOURCE CLASS decided on the PRE-application `m0` (design spec §3). Lazy: the cold path
+              # never forces it, so classification (and a path's import) costs nothing until the warm
+              # override path (A4-T2) reads it.
+              srcClass = classifyModule m0;
             };
             imported = collectModules callM (importsOf m);
           in
@@ -778,6 +828,9 @@ in
     showOption
     setDefaultModuleLocation
     mkCoreValue
+    # `pureModule` (design spec §3 / §5) — the author's clean-module assertion; wraps a function module
+    # in the `{ __pureModule = true; __functor = …; }` shape `classifyModule` reads pre-application.
+    pureModule
     # Classification/collection predicates shared with the portable-subset lint (lib/lint.nix) so the
     # lint's view of "declared leaf vs group / config-shorthand / imports / decl-tree merge" cannot
     # DRIFT from the engine's. The export list is EXACTLY what the lint consumes. Additive — the
@@ -786,5 +839,8 @@ in
     configOf
     importsOf
     mergeOptionDecls
+    # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
+    # entry as `srcClass`; shared with the warm eval path (A4-T2) and the classify suite.
+    classifyModule
     ;
 }

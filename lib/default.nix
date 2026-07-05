@@ -36,6 +36,10 @@ in
     showOption
     # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; }`.
     mkCoreValue
+    # Source-class substrate (A4 spec §3): the author's `pureModule` clean-module marker + the
+    # `classifyModule` predicate the warm override path (and the classify suite) reads.
+    pureModule
+    classifyModule
     ;
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.

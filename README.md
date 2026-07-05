@@ -140,6 +140,53 @@ Declared records win over freeform at shared paths (mirroring config's `recursiv
 `.type.merge`) surfaces its `.config` only — the inner tree's provenance is not threaded out through
 the nested merge.
 
+## Source classification & the `pureModule` marker
+
+Every collected module entry carries a **source class** (`classifyModule` decides it on the
+*pre-application* module), the substrate a memoized-override / warm re-eval path reuses to tell which
+locs a clean re-merge may splice unchanged. The classes:
+
+- **`"attrset"`** — an attrset module (or a path that imports to one). No body, cannot read anything
+  ⇒ clean **unconditionally**. This is the provable core.
+- **`"dirty"`** — every function module (bare lambda, `{ … }:` formals, `args@{ … }:` capture, a path
+  that imports to a function, or an `__functor` attrset without the marker). **Dirty by default.**
+- **`"marked-pure"`** — a `pureModule`-wrapped function (below). The author's clean assertion; the tag
+  applies to that wrapper's own entry only — modules reached through its `imports` classify
+  independently.
+
+**Why function modules are dirty by default** (not decidable from formals): `builtins.functionArgs`
+cannot prove a function clean. `args@{ genSchema, ... }: args.config.foo` reports only `genSchema` yet
+the `@`-binding captures the whole argument set, and a bare lambda (`args: args.config.foo`) reports
+`{ }` — either reads `config` regardless of visible formals. The engine applies **every** function
+module with the full `specialArgs // extra` set (nixpkgs application semantics, which byte-mode
+keeps), so a function module can always reach `config`. Only the author knows it doesn't.
+
+### The `pureModule` contract
+
+```nix
+genMerge.pureModule ({ genSchema, ... }: { options.x = genSchema.mkThing; })
+# ⇒ { __pureModule = true; __functor = self: <the fn>; }   (classifies "marked-pure")
+```
+
+`pureModule f` wraps `f` so the marker is readable **before** `callM` applies it (a bare function's
+cleanliness is invisible once applied). The author asserts, and the engine **trusts**:
+
+1. `f` reads **only its declared formals** — no `config` / `options` capture.
+1. **every formal resolves from `specialArgs`** — not from `config`/`options`, and *not* from
+   fixpoint-derived `_module.args`. Which side satisfies a formal is **non-local**: another module can
+   define a `_module.args` entry of the same name, making an innocent-looking formal fixpoint-derived.
+
+A **lying marker** (a marked module that reads `config`/`options` or a fixpoint arg) is an **author
+bug**, not caught at classify time. Blast radius: **silent stale values** under a warm/reuse path —
+the reused loc keeps a previous value that a cold merge would have recomputed — until a byte tooth
+(the standing override oracle, a consumer's CI, or a bench byte gate) diverges warm from cold and
+surfaces it. Unmarked `@`-capture / bare-lambda modules are **safe** (dirty ⇒ always re-merged); the
+marker only ever *loses* safety, never gains it, so mark only modules you can prove satisfy both
+clauses. den-hoag's emit layer can mark its data modules mechanically.
+
+The marker key never reaches config: `callM` consumes the wrapper before the content entry is
+recorded, and `configOf` strips `__pureModule` belt-and-braces.
+
 ## The `types` namespace
 
 `genMerge.types` = gen-types leaf **checkers** ⊎ gen-merge structural **strategies** — the `lib.types`
