@@ -125,6 +125,25 @@ let
   setAttrByPath =
     path: value: if path == [ ] then value else { ${head path} = setAttrByPath (tail path) value; };
 
+  # ── list/path helpers for the warm re-eval path (design spec §§1-3) ─────────
+  # `drop n` / `take n` (gen-prelude ships neither) — index-based, no `++` accumulation.
+  drop =
+    n: xs:
+    let
+      l = length xs;
+    in
+    prelude.genList (i: prelude.elemAt xs (n + i)) (if l > n then l - n else 0);
+  take =
+    n: xs:
+    let
+      l = length xs;
+      m = if n < l then n else l;
+    in
+    prelude.genList (i: prelude.elemAt xs i) (if m > 0 then m else 0);
+  # getAttrByPath [ a b c ] s = s.a.b.c — LAZY attrpath selection (never forces the selected value;
+  # the warm splice reuses prev's memoized leaf thunk, forced only on demand — spec §2).
+  getAttrByPath = path: attrs: foldl' (acc: k: acc.${k}) attrs path;
+
   # ── freeform def coalescing (per originating module instance) ──────────────────────────────────
   # nixpkgs' freeformType option receives a FEW WIDE defs — one per module, each carrying that
   # module's WHOLE unmatched-config subtree — so the `attrsOf`/`lazyAttrsOf` key-union and per-key
@@ -272,6 +291,216 @@ let
     __pureModule = true;
     __functor = self: f;
   };
+
+  # ── module collection (import-expanding), shared by the fixpoint + the warm edited-tail count ──────
+  # Flatten a module (function / __functor / attrset / path), applying it via the caller's `callM`, and
+  # recurse into `imports` (spec §1 item 5). Returns [{ _file; content; srcClass }] with imports BEFORE
+  # own content (own defs win at equal priority / append last — nixpkgs order). `srcClass` is decided on
+  # the PRE-application `m0` (design spec §3) and stays LAZY (the cold path never forces it). Hoisted to
+  # module scope so `evalModuleTree` can flatten `editedModules` with the SAME machinery it flattens the
+  # full list with — the warm path derives the EDITED tail-count from `length (collectModules callM
+  # editedModules)`, never trusting a caller-supplied count (imports expansion is config-dependent).
+  collectModules =
+    callM: mods:
+    concatMap (
+      m0:
+      let
+        m = callM m0;
+        self = {
+          # A raw path leaf's provenance IS its path string (nixpkgs-parity error location); guard
+          # `isPath` first so we never `._file`-select a non-attrset. Otherwise the module carries its
+          # own `_file`, else the imported result's, else the engine fallback.
+          _file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or "<gen-merge>"));
+          content = m;
+          srcClass = classifyModule m0;
+        };
+        imported = collectModules callM (importsOf m);
+      in
+      imported ++ [ self ]
+    ) mods;
+
+  # ── warm re-eval decision layer (design spec §§1-2) ─────────────────────────
+  # The opt-in warm path reuses the previous eval's declared-leaf values/provenance for locs PROVABLY
+  # untouched by an edit (an appended module list) and re-merges the rest inside the normal fixpoint.
+  # `warmDecide` is the PURE decision half (no splicing): given the flattened module list + the EDITED
+  # tail-count + the merged decl tree, it computes the dirty footprint (which declared leaves an edit
+  # can perturb), the coarse freeform-reuse flag, and the disabledModules refusal. `mergeTree` consumes
+  # `footprintPaths` to gate per-leaf splicing (spec §2). Testable in isolation through the core seam.
+
+  # Declared-leaf locs of ONE option-decl tree — walk to `isOptLeaf` (typed registries / scalar leaves
+  # included; untyped groups recurse). The granularity of BOTH the footprint and the splice gate.
+  declLeafPaths =
+    tree:
+    let
+      go =
+        loc: t:
+        concatMap (
+          k:
+          let
+            v = t.${k};
+            lk = loc ++ [ k ];
+          in
+          if isOptLeaf v then
+            [ lk ]
+          else if isAttrs v then
+            go lk v
+          else
+            [ ]
+        ) (attrNames t);
+    in
+    go [ ] tree;
+
+  # DEF footprint of one module's config, guided by the merged decl tree — the lint's discharge-based
+  # descent (lib/lint.nix `descend`), but recording PATHS, not order-probes: it pushes config-node
+  # properties down at each DECLARED-GROUP level and STOPS at a declared leaf (records `onDecl = true`)
+  # or an undeclared key (records `onDecl = false` — a freeform contribution). It NEVER forces a leaf
+  # value — only the config SPINE (keys), bounded by the module's structural size (spec §2: acceptable,
+  # a dirty/edited module re-merges anyway). A def landing on a declared GROUP that is not an attrset
+  # (a type error the cold path would throw on) is conservatively recorded as `onDecl` rather than
+  # descended, so the footprint stays total.
+  moduleDefFootprint =
+    allOptions: content:
+    let
+      descend =
+        opts: loc: attrs:
+        concatMap (
+          k:
+          let
+            lk = loc ++ [ k ];
+            v = attrs.${k};
+          in
+          if (opts ? ${k}) && !(isOptLeaf opts.${k}) then
+            let
+              pv = pushDownProperties v;
+            in
+            if isAttrs pv then
+              descend opts.${k} lk pv
+            else
+              [
+                {
+                  onDecl = true;
+                  path = lk;
+                }
+              ]
+          else if opts ? ${k} then
+            [
+              {
+                onDecl = true;
+                path = lk;
+              }
+            ]
+          else
+            [
+              {
+                onDecl = false;
+                path = lk;
+              }
+            ]
+        ) (attrNames attrs);
+      rootAttrs = builtins.removeAttrs (pushDownProperties (configOf content)) [ "_module" ];
+    in
+    descend allOptions [ ] rootAttrs;
+
+  # `warmDecide { flat; editedCount; allOptions }` — the reusability predicate as a footprint pass.
+  #   • EDITED  = the tail-`editedCount` entries of `flat` (collectModules is concatMap + flatten
+  #               distributes over ++, and the appended list is a strict suffix, so tail-k = the
+  #               flattened edited entries — an EDITED attrset module is still edited, its defs re-merge).
+  #   • CLEAN   = non-edited entries whose `srcClass` is attrset / marked-pure (config-independent).
+  #   • DIRTY   = every other non-edited entry (`srcClass == "dirty"`).
+  # The DIRTY FOOTPRINT = the union, over DIRTY ∪ EDITED entries, of decl paths (`declLeafPaths` of the
+  # entry's own `options`) and def paths landing on declared leaves (`moduleDefFootprint`). A declared
+  # leaf is REUSABLE iff it is OUTSIDE this set (spec §2 — outside it, both the decl set and the def set
+  # at the loc come only from CLEAN modules, so the merge inputs are identical to the previous eval).
+  # FREEFORM is coarse (soundness-forced, spec §2): reuse the whole prev freeform layer iff (a) NO
+  # dirty/edited entry contributes an unmatched (freeform) def path AND (b) NO edited entry contributes
+  # a freeformType candidate at EITHER site (top-level `freeformType` or `_module.freeformType`) — an
+  # edited freeformType flips the priority-resolved winner and changes EVERY freeform loc while naming
+  # none of them. disabledModules on any edited entry ⇒ refuse warm (it would disable a clean base
+  # module invisibly to the footprint — the same failure shape). Each footprint record keeps a `reason`
+  # for the decision trace (spec §4).
+  warmDecide =
+    {
+      flat,
+      editedCount,
+      allOptions,
+    }:
+    let
+      n = length flat;
+      headLen = if n > editedCount then n - editedCount else 0;
+      editedEntries = drop headLen flat;
+      nonEdited = take headLen flat;
+      isCleanEntry = e: e.srcClass == "attrset" || e.srcClass == "marked-pure";
+      cleanEntries = filter isCleanEntry nonEdited;
+      dirtyEntries = filter (e: !(isCleanEntry e)) nonEdited;
+
+      # One entry's footprint + freeform contributions, reason-tagged (`reasonOf kind` — "decl"/"def").
+      footOf =
+        reasonOf: e:
+        let
+          declPaths = map (p: {
+            path = p;
+            reason = reasonOf "decl";
+          }) (declLeafPaths (optionsOf e.content));
+          df = moduleDefFootprint allOptions e.content;
+          defPaths = concatMap (
+            r:
+            if r.onDecl then
+              [
+                {
+                  inherit (r) path;
+                  reason = reasonOf "def";
+                }
+              ]
+            else
+              [ ]
+          ) df;
+          free = concatMap (
+            r:
+            if r.onDecl then
+              [ ]
+            else
+              [
+                {
+                  inherit (r) path;
+                  reason = "freeform-dirty ${e._file}";
+                }
+              ]
+          ) df;
+        in
+        {
+          footprint = declPaths ++ defPaths;
+          inherit free;
+        };
+
+      dirtyF = map (
+        e: footOf (kind: if kind == "decl" then "dirty-decl ${e._file}" else "dirty-def ${e._file}") e
+      ) dirtyEntries;
+      editedF = map (e: footOf (_kind: "edited-def") e) editedEntries;
+      allF = dirtyF ++ editedF;
+      footprint = concatMap (x: x.footprint) allF;
+      footprintPaths = map (r: r.path) footprint;
+      freeContribs = concatMap (x: x.free) allF;
+
+      editedFreeformType = prelude.any (
+        e: (topFreeformOf e.content != null) || ((configOf e.content)._module.freeformType or null != null)
+      ) editedEntries;
+      reuseAllFreeform = freeContribs == [ ] && !editedFreeformType;
+      disabledRefusal = prelude.any (e: e.content ? disabledModules) editedEntries;
+    in
+    {
+      inherit
+        footprint
+        footprintPaths
+        freeContribs
+        reuseAllFreeform
+        disabledRefusal
+        ;
+      modules = {
+        clean = map (e: e._file) cleanEntries;
+        dirty = map (e: e._file) dirtyEntries;
+        edited = map (e: e._file) editedEntries;
+      };
+    };
 
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
@@ -533,32 +762,6 @@ let
       # Rich option merge (`{ value; prov }`) — the realizer reads BOTH the value tree and the
       # provenance tree from one shared discharge/priority pass per declared leaf.
       localMergeOptionRich = mergeOptionWith coreShortCircuit;
-
-      # Flatten a module (function / __functor / attrset), applying functions by their STATIC
-      # formals only (spec §1 item 4 — never force the dynamic `_module.args` spine), and recurse
-      # into `imports` (spec §1 item 5). Returns [{ _file; content }] with imports BEFORE own
-      # content (own defs win at equal priority / append last — nixpkgs order).
-      collectModules =
-        callM: mods:
-        concatMap (
-          m0:
-          let
-            m = callM m0;
-            self = {
-              # A raw path leaf's provenance IS its path string (nixpkgs-parity error location);
-              # guard `isPath` first so we never `._file`-select a non-attrset. Otherwise the module
-              # carries its own `_file`, else the imported result's, else the engine fallback.
-              _file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or "<gen-merge>"));
-              content = m;
-              # SOURCE CLASS decided on the PRE-application `m0` (design spec §3). Lazy: the cold path
-              # never forces it, so classification (and a path's import) costs nothing until the warm
-              # re-eval path reads it.
-              srcClass = classifyModule m0;
-            };
-            imported = collectModules callM (importsOf m);
-          in
-          imported ++ [ self ]
-        ) mods;
 
       # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
       # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
@@ -845,5 +1048,12 @@ in
     # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
     # entry as `srcClass`; shared with the warm re-eval path and the classify suite.
     classifyModule
+    # Warm re-eval decision layer (design spec §§1-2) — `collectModules` (the import-expanding flatten,
+    # hoisted so `editedModules` flattens with the same machinery) + the pure `warmDecide` predicate and
+    # its footprint helpers. On the internal core seam only; the splice EXECUTION rides `evalModuleTree`.
+    collectModules
+    warmDecide
+    declLeafPaths
+    moduleDefFootprint
     ;
 }
