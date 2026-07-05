@@ -187,6 +187,89 @@ clauses. den-hoag's emit layer can mark its data modules mechanically.
 The marker key never reaches config: `callM` consumes the wrapper before the content entry is
 recorded, and `configOf` strips `__pureModule` belt-and-braces.
 
+## Warm re-eval (memoized override)
+
+`evalModuleTree` takes two opt-in knobs that turn a re-eval after an APPENDED edit into a *warm* one —
+reusing the previous result's declared-leaf values/provenance for locs provably untouched by the edit,
+re-merging only the rest inside the normal fixpoint:
+
+```nix
+evalModuleTree {
+  modules       = base ++ edited; # the full list
+  warmFrom      = prevResult;     # the PREVIOUS evalModuleTree result (its config/provenance/freeform ARE the memo)
+  editedModules = edited;         # the APPENDED module list
+}
+```
+
+Default (`warmFrom = null`, `editedModules = [ ]`) ⇒ **zero behaviour change**: the decision is never
+forced, every leaf takes the cold merge, freeform re-merges cold (the `coreShortCircuit` precedent —
+an opt-in knob with a documented firing contract). Warm is the reverse-cone reuse of adios's
+`mkOverride`, but sound under gen-merge's config *fixpoint* (adios has none).
+
+**Firing.** The engine flattens `editedModules` with its OWN `collectModules` — the EDITED entries are
+the tail-k of the full flatten (k = `length (collectModules callM editedModules)`, never a caller
+count, since `imports` expansion is config-dependent). Warm is REFUSED (cold fallback, stated in the
+trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
+to the footprint). Whether an override *reduces* to a modules-append at all is the caller's call
+(gen-flake's `override`); the engine just splices when handed a `warmFrom`.
+
+**The dirty footprint (the reusability predicate).** A module entry is CLEAN (`srcClass` attrset /
+marked-pure — config-independent), DIRTY (function, `srcClass` dirty), or EDITED (in the appended
+tail). The **dirty footprint** is the union, over DIRTY ∪ EDITED entries, of
+
+- their **decl paths** (`declLeafPaths` of the entry's own `options`), and
+- their **def paths** landing on a declared leaf (`moduleDefFootprint` — the portable-lint's
+  discharge-based descent, recording PATHS not values: it pushes config-node properties down at each
+  declared-group level and stops at a declared leaf or an undeclared key, **never forcing a leaf
+  value** — only the config spine, bounded by the module's structural size, which a dirty/edited module
+  re-merges anyway).
+
+A declared leaf is **REUSABLE iff it is outside this footprint** — then both its decl set and its def
+set come only from CLEAN modules (constant attrsets, or marked-pure modules applied with unchanged
+`specialArgs`), so its inputs to the merge are identical to the previous eval and the value/provenance
+are byte-identical.
+
+**Splice at leaves only.** `prev.config` is `recursiveUpdate freeform declared`, so a whole *untyped
+group* splice would capture stale freeform descendants whenever the freeform plane re-merges. At an
+`isOptLeaf` loc (a declared scalar leaf OR a typed registry) the prev value is **declared-only**
+(freeform never wins a declared leaf), so leaf-granularity splicing is sound; untyped declared groups
+RECURSE and splice their leaves. A splice is `getAttrByPath` of prev's `config` / `provenance` — the
+SAME memoized thunk, lazy (an unforced prev leaf stays unforced; a forced one is free).
+
+**Freeform is coarse (soundness-forced).** Freeform is a single root-level opaque merge, and an edited
+`freeformType` candidate flips the priority-resolved winner and changes EVERY freeform loc while naming
+none of them. So the whole prev freeform layer is reused iff (a) NO dirty/edited entry contributes an
+unmatched (freeform) def path AND (b) NO edited entry contributes a `freeformType` at EITHER site
+(top-level `freeformType` or `_module.freeformType`); otherwise ALL freeform re-merges. Per-path
+freeform reuse is deferred (perf impact is ~nil — the target shape is registry-heavy, freeform
+incidental).
+
+**Boundary.** A nested `moduleTree`-as-type merge is always COLD (no `warmFrom` threaded through
+`.type.merge`) — the same boundary provenance draws.
+
+**The decision trace.** Every result carries `.warmDecision` (always-on data; `mode = "cold"` on a
+plain compose):
+
+```nix
+{
+  mode     = "warm" | "cold";                     # cold = the fallback fired (reason stated)
+  reason   = <string|null>;                       # why cold (no warmFrom / disabledModules refusal)
+  reused   = [ <loc-string> … ];                  # the spliced declared leaves (dot-joined)
+  remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
+  modules  = { clean = [ file… ]; dirty = [ … ]; edited = [ … ]; };   # the classification
+}
+```
+
+**Laziness contract.** `mode` / `modules` are cheap (classification only). `reused` / `remerged` are
+`O(declared-locs)` spine-forcing when read (they enumerate the loc partition — never leaf values). This
+is adios's "what was reused vs re-evaluated," delivered as data.
+
+**The `pureModule` teeth here.** A lying marker's stale reuse surfaces as a warm-vs-cold byte
+divergence — the standing override oracle (every consumer's CI), the in-bench byte gate, and the
+adversarial suite fixture (a marked module that `@`-captures config, asserted to diverge visibly) all
+pin it. The two internal memo fields `freeformConfig` / `freeformProv` on the result let a CHAINED warm
+(warmFrom = a warm result) reuse the freeform layer directly.
+
 ## The `types` namespace
 
 `genMerge.types` = gen-types leaf **checkers** ⊎ gen-merge structural **strategies** — the `lib.types`

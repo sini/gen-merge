@@ -756,6 +756,17 @@ let
       # tier-2 firing contract (core projection locs are declared-option leaves supplied by the core
       # module).
       coreShortCircuit ? false,
+      # ── opt-in warm re-eval (design spec §§1-4) ────────────────────────────────────────────────
+      # `warmFrom` = the PREVIOUS `evalModuleTree` result (its `config`/`provenance`/`freeformConfig`/
+      # `freeformProv` ARE the memo — no new table); `editedModules` = the appended module LIST (the
+      # engine flattens it internally, deriving the EDITED tail-count itself). Default null/[ ] ⇒ ZERO
+      # behaviour change (the `coreShortCircuit` precedent): the decision is never forced, `mergeTree`
+      # takes the cold branch, freeform re-merges cold. Warm SPLICES declared-leaf values/provenance
+      # for locs OUTSIDE the dirty footprint (§2), re-merging the rest in the normal fixpoint; a leaf's
+      # spliced value IS prev's memoized thunk (byte-identical by the predicate). Fires only here (the
+      # top eval); the nested moduleTree-as-type merge stays COLD (a boundary, like provenance's).
+      warmFrom ? null,
+      editedModules ? [ ],
     }:
     let
       modList = if isList modules then modules else [ modules ];
@@ -772,8 +783,16 @@ let
       # RELATIVE to `prefix`; a leaf's absolute option location is `prefix ++ loc ++ [ k ]`, while
       # unmatched paths stay relative (the root reshapes them against `prefix` via `setAttrByPath`).
       #   rawDefs :: [ { file; value } ]   (value: property-wrapped or a plain sub-attrset)
+      # `warm` = the warm-splice context `{ active; footprintPaths; prevConfig; prevProv }` (or
+      # `{ active = false; }`), threaded through the descent. At a declared LEAF whose ABSOLUTE loc is
+      # OUTSIDE `footprintPaths`, warm SPLICES `getAttrByPath` of prev's `config`/`provenance` — lazy
+      # attrpath selection, never forcing the reused thunk (spec §2). SPLICE AT LEAVES ONLY: `prev.config`
+      # is `recursiveUpdate freeform declared`, so a whole untyped-GROUP splice would capture stale
+      # freeform descendants when the freeform plane re-merges; at an `isOptLeaf` loc the prev value is
+      # declared-only (freeform never wins a declared leaf), so leaf-granularity splicing is sound —
+      # untyped declared groups recurse and splice THEIR leaves.
       mergeTree =
-        loc: opts: rawDefs:
+        warm: loc: opts: rawDefs:
         let
           # Push config-node properties down one level (nixpkgs pushes at EACH descent, so a nested
           # `a.b = mkIf c { … }' distributes into `b's keys), yielding plain attrsets per module.
@@ -805,19 +824,32 @@ let
             k:
             let
               lk = loc ++ [ k ];
+              abs = prefix ++ lk;
             in
             if isOptLeaf opts.${k} then
-              let
-                m = localMergeOptionRich (prefix ++ lk) opts.${k} (subDefs k);
-              in
-              {
-                name = k;
-                inherit (m) value prov;
-                unmatched = [ ];
-              }
+              if warm.active && !(prelude.elem abs warm.footprintPaths) then
+                # REUSABLE — outside the dirty footprint: splice prev's leaf value + provenance record
+                # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
+                # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
+                # (both the decl set and the def set at this loc come only from CLEAN modules).
+                {
+                  name = k;
+                  value = getAttrByPath abs warm.prevConfig;
+                  prov = getAttrByPath abs warm.prevProv;
+                  unmatched = [ ];
+                }
+              else
+                let
+                  m = localMergeOptionRich abs opts.${k} (subDefs k);
+                in
+                {
+                  name = k;
+                  inherit (m) value prov;
+                  unmatched = [ ];
+                }
             else
               let
-                r = mergeTree lk opts.${k} (subDefs k);
+                r = mergeTree warm lk opts.${k} (subDefs k);
               in
               {
                 name = k;
@@ -888,6 +920,30 @@ let
           # now, so `options.a.b.c = mkOption {…}` composes den-shaped configs (`options.den.*`).
           allOptions = foldl' (acc: e: mergeOptionDecls prefix acc (optionsOf e.content)) { } flat;
 
+          # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────
+          # EDITED tail-count from the engine's OWN flatten of `editedModules` (imports expansion is
+          # config-dependent, so a caller count is untrusted). `decision` is LAZY — the cold path
+          # (`warmFrom == null`) never forces it (`warmActive` short-circuits on the null check), so
+          # classification/footprint cost is ZERO when the knob is off. Warm is REFUSED (cold fallback)
+          # when an edited entry carries `disabledModules` (§2 guard).
+          editedCount = if editedModules == [ ] then 0 else length (collectModules callM editedModules);
+          decision = warmDecide { inherit flat editedCount allOptions; };
+          warmActive = warmFrom != null && !decision.disabledRefusal;
+          warmCtx =
+            if warmActive then
+              {
+                active = true;
+                inherit (decision) footprintPaths;
+                prevConfig = warmFrom.config;
+                prevProv = warmFrom.provenance;
+              }
+            else
+              { active = false; };
+          # Reuse the WHOLE prev freeform layer iff the coarse flag holds (§2, soundness-forced: a
+          # single edited freeformType flips every freeform loc). Else re-merge cold. Byte-identical
+          # either way when the flag holds; the flag exists to keep the SKIP sound.
+          reuseFreeform = warmActive && decision.reuseAllFreeform;
+
           # Config attrsets (shorthand-aware), config-root properties pushed to keys.
           pushed = map (e: {
             inherit (e) _file;
@@ -931,7 +987,7 @@ let
 
           # Realize the whole config tree against the option-decl tree. Declared names are present
           # lazily (undefined+no-default throws only on access, matching nixpkgs); groups recurse.
-          realized = mergeTree [ ] allOptions topDefs;
+          realized = mergeTree warmCtx [ ] allOptions topDefs;
           declaredConfig = realized.value;
 
           # Unknown keys — at ANY depth — route as ONE freeformType def-set at the ROOT (nixpkgs
@@ -947,11 +1003,14 @@ let
           # Coalesce the per-key unmatched defs into one wide def per originating module BEFORE
           # `freeform.merge` (see `coalesceUnmatched`) — restores nixpkgs' per-module freeform shape,
           # so `attrsOf`/`lazyAttrsOf` stays linear in sibling-key count (byte-identical output).
-          freeformConfig =
+          freeformConfigCold =
             if freeform == null || realized.unmatched == [ ] then
               { }
             else
               freeform.merge prefix (coalesceUnmatched (length topDefs) realized.unmatched);
+          # Warm: reuse prev's whole freeform layer (byte-identical when `reuseFreeform`), skipping the
+          # `freeform.merge` re-run; else the cold layer. The cold thunk stays unforced under reuse.
+          freeformConfig = if reuseFreeform then warmFrom.freeformConfig else freeformConfigCold;
 
           # Declared wins over freeform at shared paths (nixpkgs `recursiveUpdate freeform declared`);
           # for the common disjoint-key case this is just `//`.
@@ -970,7 +1029,7 @@ let
           # not enter). Records are grouped by their (joined) loc then reshaped to the nested attrset
           # via `setAttrByPath` — a depth-1 undeclared key and a deeper one can never collide (a key
           # undeclared HERE is captured whole and never descended; cf. `buildModuleUnmatched`).
-          freeformProv =
+          freeformProvCold =
             let
               byPath = foldl' (
                 acc: u:
@@ -997,22 +1056,74 @@ let
                 }
               )
             ) { } (attrNames byPath);
+          # Warm: the freeform provenance layer rides the same reuse decision as its config layer.
+          freeformProv = if reuseFreeform then warmFrom.freeformProv else freeformProvCold;
 
           # Declared provenance wins over freeform at shared paths (mirrors config's
           # `recursiveUpdate freeform declared`): a declared GROUP's sub-records overlay the freeform
           # records that bubbled through it; a declared LEAF record is never shadowed (a declared key
           # is never also unmatched).
           provenance = recursiveUpdate freeformProv realized.prov;
+
+          # ── decision trace (design spec §4) — the memoization DECISION, always-on data on the warm
+          # path (the eval computes the partition anyway). Consumed by gen-flake's `override` (formatted
+          # into its `trace`). Laziness contract: `mode`/`modules` are cheap (classification only);
+          # `reused`/`remerged` are O(declared-locs) SPINE-forcing when read (they enumerate the loc
+          # partition — never leaf values). Cold (`warmFrom == null` or a disabledModules refusal) ⇒
+          # nothing spliced ⇒ `reused = [ ]`, `remerged = { }`, with the cold `reason` stated.
+          warmDecision =
+            let
+              reusableLeaves = filter (l: !(prelude.elem l decision.footprintPaths)) (declLeafPaths allOptions);
+              remergedList = decision.footprint ++ (if reuseFreeform then [ ] else decision.freeContribs);
+              remerged = foldl' (
+                acc: r:
+                acc
+                // {
+                  ${showOption r.path} = acc.${showOption r.path} or r.reason;
+                }
+              ) { } remergedList;
+            in
+            {
+              mode = if warmActive then "warm" else "cold";
+              reason =
+                if warmFrom == null then
+                  "no warmFrom (cold)"
+                else if decision.disabledRefusal then
+                  "disabledModules on an edited module (warm refused)"
+                else
+                  null;
+              reused = if warmActive then map showOption reusableLeaves else [ ];
+              remerged = if warmActive then remerged else { };
+              inherit (decision) modules;
+            };
         in
         {
-          inherit config moduleArgs provenance;
+          inherit
+            config
+            moduleArgs
+            provenance
+            freeformConfig
+            freeformProv
+            warmDecision
+            ;
           options = allOptions;
         }
       );
     in
     {
-      inherit (result) config options provenance;
-      # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform).
+      inherit (result)
+        config
+        options
+        provenance
+        # Freeform layers exposed as internal memo fields (public surface = config/options/provenance):
+        # a CHAINED warm re-eval reuses `warmFrom.freeformConfig`/`freeformProv` directly (spec §2).
+        freeformConfig
+        freeformProv
+        # The memoization decision trace (spec §4); `mode = "cold"` on a plain compose (no warmFrom).
+        warmDecision
+        ;
+      # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform). Nested
+      # evals are always COLD (no `warmFrom` threaded) — a documented boundary, like provenance's.
       type = {
         name = "moduleTree";
         merge =

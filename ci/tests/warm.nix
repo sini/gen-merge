@@ -53,6 +53,27 @@ let
 
   # identity callM — the `warmDecide`/`collectModules` fixtures are all plain attrset modules.
   idCallM = m: m;
+
+  # ── the byte oracle (design spec §6 / the standing A2 tooth) ─────────────────────────────────────
+  # `warmOf base edited` = re-eval of `base ++ edited` warm-started from cold(`base`), with `edited` the
+  # appended list. `coldOf` is the reference. The tooth: warm result toJSON == cold result toJSON on
+  # VALUES and PROVENANCE (toJSON drops nothing here — the fixtures are function-free data).
+  coldOf = mods: evalModuleTree { modules = mods; };
+  warmOf =
+    base: edited:
+    evalModuleTree {
+      modules = base ++ edited;
+      warmFrom = coldOf base;
+      editedModules = edited;
+    };
+  jsonEq = a: b: builtins.toJSON a == builtins.toJSON b;
+  byteOracle =
+    base: edited:
+    let
+      w = warmOf base edited;
+      c = coldOf (base ++ edited);
+    in
+    jsonEq w.config c.config && jsonEq w.provenance c.provenance;
 in
 {
   flake.tests.warm = {
@@ -260,5 +281,475 @@ in
         ];
       };
     };
+
+    # ══ 2b — SPLICE EXECUTION + the byte oracle ═══════════════════════════════════════════════════
+
+    # 1 — registry reuse: clean data modules (a, b) + a dirty module (reads config.a, defines c) + a
+    # 1-module edit (forces a). Reusable locs (b) splice BYTE-equal; the dirty (c) and edited (a) locs
+    # re-merge; the WHOLE result == cold. The decision proves the split actually happened (not a vacuous
+    # cold-equal): b reused, a/c re-merged with their reasons.
+    test-registry-reuse-whole-result-and-decision =
+      let
+        base = [
+          {
+            options.a = mkOption { type = t.str; };
+            options.b = mkOption { type = t.str; };
+            options.c = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+          }
+          {
+            _file = "cb";
+            b = "bv";
+          }
+          (
+            { config, ... }:
+            {
+              _file = "dirty";
+              c = "c-${config.a}";
+            }
+          )
+        ];
+        edited = [
+          {
+            _file = "edit";
+            a = mkForce "ea";
+          }
+        ];
+        w = warmOf base edited;
+      in
+      {
+        expr = {
+          byte = byteOracle base edited;
+          reused = w.warmDecision.reused;
+          remergedA = w.warmDecision.remerged.a or null;
+          remergedC = w.warmDecision.remerged.c or null;
+          mode = w.warmDecision.mode;
+        };
+        expected = {
+          byte = true;
+          reused = [ "b" ];
+          remergedA = "edited-def";
+          remergedC = "dirty-def dirty";
+          mode = "warm";
+        };
+      };
+
+    # 2 — decl-side dirtiness: a dirty module DECLARES an option (b); its loc lands in the footprint and
+    # re-merges (reason "dirty-decl <file>"), even though its value is unchanged. A clean leaf (c) still
+    # reuses. Whole result == cold.
+    test-decl-side-dirtiness =
+      let
+        base = [
+          {
+            options.a = mkOption { type = t.str; };
+            options.c = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+            c = "cv";
+          }
+          (
+            { config, ... }:
+            {
+              _file = "dirty-decl";
+              options.b = mkOption {
+                type = t.str;
+                default = "bd";
+              };
+            }
+          )
+        ];
+        edited = [
+          {
+            _file = "edit";
+            a = mkForce "ea";
+          }
+        ];
+        w = warmOf base edited;
+      in
+      {
+        expr = {
+          byte = byteOracle base edited;
+          remergedB = w.warmDecision.remerged.b or null;
+          reusedC = builtins.elem "c" w.warmDecision.reused;
+        };
+        expected = {
+          byte = true;
+          remergedB = "dirty-decl dirty-decl";
+          reusedC = true;
+        };
+      };
+
+    # 3 — freeform, three scenarios, each == cold:
+    #   (a) clean-only freeform reuses the whole prev layer (edit touches a declared leaf only);
+    #   (b) an EDITED module contributes a NEW freeform key ⇒ ALL freeform re-merges (teeth: reusing prev
+    #       would DROP the new key);
+    #   (c) an EDITED freeformType at EITHER site ⇒ ALL freeform re-merges (the flag is soundness-forced).
+    test-freeform-clean-only-reuses-byte =
+      let
+        base = [
+          {
+            freeformType = t.lazyAttrsOf t.str;
+            options.a = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+            extra = "ev";
+          }
+        ];
+        edited = [
+          {
+            _file = "edit";
+            a = mkForce "ea";
+          }
+        ];
+      in
+      {
+        expr = byteOracle base edited;
+        expected = true;
+      };
+    test-freeform-edited-new-key-remerges-byte =
+      let
+        base = [
+          {
+            freeformType = t.lazyAttrsOf t.str;
+            options.a = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+            extra1 = "e1";
+          }
+        ];
+        edited = [
+          {
+            _file = "edit-free";
+            extra2 = "e2";
+          }
+        ];
+        w = warmOf base edited;
+      in
+      {
+        expr = {
+          byte = byteOracle base edited;
+          # teeth: the new freeform key IS present (freeform was re-merged, not stale-reused)
+          hasNewKey = w.config.extra2 or null;
+        };
+        expected = {
+          byte = true;
+          hasNewKey = "e2";
+        };
+      };
+    test-freeform-edited-toplevel-freeformtype-remerges-byte =
+      let
+        base = [
+          {
+            _module.freeformType = t.lazyAttrsOf t.str;
+            options.a = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+            extra = "ev";
+          }
+        ];
+        edited = [
+          {
+            _file = "edit-fft";
+            freeformType = t.lazyAttrsOf t.anything;
+          }
+        ];
+      in
+      {
+        expr = byteOracle base edited;
+        expected = true;
+      };
+    test-freeform-edited-module-freeformtype-remerges-byte =
+      let
+        base = [
+          {
+            freeformType = t.lazyAttrsOf t.str;
+            options.a = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+            extra = "ev";
+          }
+        ];
+        edited = [
+          {
+            _file = "edit-ffm";
+            _module.freeformType = mkForce (t.lazyAttrsOf t.anything);
+          }
+        ];
+      in
+      {
+        expr = byteOracle base edited;
+        expected = true;
+      };
+
+    # 4 — group-splice hazard: a declared UNTYPED group (grp, holding ONLY the declared leaf grp.x), and
+    # the edit INTRODUCES a freeform key nested under it (grp.free), globally re-merging freeform. Prev
+    # has NO grp.free, so a WHOLE-GROUP splice of `grp` would pin prev's `{ x = "xv"; }` and DROP the new
+    # grp.free entirely. Leaf-granularity splicing (grp.x only) + freeform re-merge yields both — warm ==
+    # cold, with the new freeform descendant present. This is the fixture the leaf-granularity rule exists
+    # for (spec §2).
+    test-group-splice-hazard =
+      let
+        base = [
+          {
+            options.grp.x = mkOption { type = t.str; };
+            freeformType = t.lazyAttrsOf t.anything;
+          }
+          {
+            _file = "cg";
+            grp.x = "xv";
+          }
+        ];
+        edited = [
+          {
+            _file = "edit";
+            grp.free = "fnew";
+          }
+        ];
+        w = warmOf base edited;
+      in
+      {
+        expr = {
+          byte = byteOracle base edited;
+          freshFree = w.config.grp.free; # present via freeform re-merge (a whole-group splice DROPS it)
+          reusedX = w.config.grp.x; # "xv" (leaf-spliced)
+        };
+        expected = {
+          byte = true;
+          freshFree = "fnew";
+          reusedX = "xv";
+        };
+      };
+
+    # 5a — adversarial SAFE: an UNMARKED `@`-capture module reads config.a and defines b; it is DIRTY by
+    # default, so b re-merges and sees the edited config.a. warm == cold (the whole point of
+    # dirty-by-default: an unmarked config reader is never stale-reused).
+    test-adversarial-unmarked-capture-safe =
+      let
+        base = [
+          {
+            options.a = mkOption { type = t.str; };
+            options.b = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+          }
+          (
+            args@{ config, ... }:
+            {
+              _file = "capture";
+              b = "b-${config.a}";
+            }
+          )
+        ];
+        edited = [
+          {
+            _file = "edit";
+            a = mkForce "ea";
+          }
+        ];
+        w = warmOf base edited;
+      in
+      {
+        expr = {
+          byte = byteOracle base edited;
+          b = w.config.b; # "b-ea" (re-merged against the edited config.a)
+        };
+        expected = {
+          byte = true;
+          b = "b-ea";
+        };
+      };
+
+    # 5b — adversarial LYING marker (pins the DOCUMENTED failure mode, spec §5): a `pureModule`-marked
+    # module that LIES — it `@`-captures config and reads config.a, violating the contract. It classifies
+    # CLEAN, so its leaf (b) is stale-spliced from prev. The edit changes config.a, so warm.b ("b-av",
+    # stale) DIVERGES from cold.b ("b-ea"). The divergence is asserted VISIBLE so the docs' warning stays
+    # true — a lying marker is an author bug the standing tooth catches, not a silent-forever hazard.
+    test-adversarial-lying-marker-diverges-visibly =
+      let
+        base = [
+          {
+            options.a = mkOption { type = t.str; };
+            options.b = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+          }
+          (pureModule (
+            args@{ config, ... }:
+            {
+              _file = "liar";
+              b = "b-${config.a}";
+            }
+          ))
+        ];
+        edited = [
+          {
+            _file = "edit";
+            a = mkForce "ea";
+          }
+        ];
+        w = warmOf base edited;
+        c = coldOf (base ++ edited);
+      in
+      {
+        expr = {
+          warmB = w.config.b; # STALE — spliced from prev (config.a was "av")
+          coldB = c.config.b; # FRESH — "b-ea"
+          diverges = w.config.b != c.config.b;
+        };
+        expected = {
+          warmB = "b-av";
+          coldB = "b-ea";
+          diverges = true;
+        };
+      };
+
+    # 6 — disabledModules on an EDITED entry ⇒ warm REFUSED (cold fallback): the trace says mode=cold
+    # with the reason, and the result is byte-identical to the full cold eval (nothing spliced).
+    test-disabled-modules-cold-fallback =
+      let
+        base = [
+          {
+            options.a = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+          }
+        ];
+        edited = [
+          {
+            _file = "edit-dis";
+            disabledModules = [ "x" ];
+            config.a = mkForce "ea";
+          }
+        ];
+        w = warmOf base edited;
+      in
+      {
+        expr = {
+          byte = byteOracle base edited;
+          mode = w.warmDecision.mode;
+          reason = w.warmDecision.reason;
+          reused = w.warmDecision.reused;
+        };
+        expected = {
+          byte = true;
+          mode = "cold";
+          reason = "disabledModules on an edited module (warm refused)";
+          reused = [ ];
+        };
+      };
+
+    # 7 — chained warm: warmFrom = a WARM result, a second append. warm2 reuses warm1's own re-merged
+    # locs; the whole result == cold of the twice-appended list.
+    test-chained-warm =
+      let
+        base = [
+          {
+            options.a = mkOption { type = t.str; };
+            options.b = mkOption { type = t.str; };
+            options.c = mkOption {
+              type = t.str;
+              default = "cd";
+            };
+          }
+          {
+            _file = "ca";
+            a = "av";
+          }
+          {
+            _file = "cb";
+            b = "bv";
+          }
+        ];
+        edit1 = [
+          {
+            _file = "e1";
+            b = mkForce "b1";
+          }
+        ];
+        edit2 = [
+          {
+            _file = "e2";
+            c = mkForce "c2";
+          }
+        ];
+        warm1 = warmOf base edit1;
+        warm2 = evalModuleTree {
+          modules = base ++ edit1 ++ edit2;
+          warmFrom = warm1;
+          editedModules = edit2;
+        };
+        cold2 = coldOf (base ++ edit1 ++ edit2);
+      in
+      {
+        expr = {
+          config = jsonEq warm2.config cold2.config;
+          provenance = jsonEq warm2.provenance cold2.provenance;
+          # warm2 spliced a AND b from warm1 (b was warm1's own re-merge); only c re-merged.
+          reused = warm2.warmDecision.reused;
+        };
+        expected = {
+          config = true;
+          provenance = true;
+          reused = [
+            "a"
+            "b"
+          ];
+        };
+      };
+
+    # 8 — cold-path untouched: a plain eval (no warmFrom) reports mode=cold with an empty partition and
+    # is byte-identical to itself (the 145 pre-warm tests running UNMODIFIED are the real gate; this
+    # pins the always-present trace's cold shape).
+    test-cold-path-trace-shape =
+      let
+        r = evalModuleTree {
+          modules = [
+            {
+              options.a = mkOption { type = t.str; };
+            }
+            {
+              _file = "m";
+              a = "av";
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          mode = r.warmDecision.mode;
+          reason = r.warmDecision.reason;
+          reused = r.warmDecision.reused;
+          remerged = r.warmDecision.remerged;
+          config = r.config;
+        };
+        expected = {
+          mode = "cold";
+          reason = "no warmFrom (cold)";
+          reused = [ ];
+          remerged = { };
+          config = {
+            a = "av";
+          };
+        };
+      };
   };
 }
