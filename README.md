@@ -93,9 +93,43 @@ in
   result.config                     # ⇒ { name = "pinned"; }
 ```
 
-`evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type }`.
-`.config` is the merged output; `.options` is the merged descriptor map (introspection, no nixpkgs
-eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule recursion).
+`evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
+no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
+recursion); `.provenance` is a lazy per-loc record of WHERE each value came from (see below).
+
+## Provenance
+
+`.provenance` is an always-on, lazy tree mirroring `.config`'s loc structure — one record per option
+loc, answering "which files defined this, and which won?" It costs nothing until read (a forced option
+pays ~one extra thunk when the channel is untouched), and reading it never forces the merged VALUE —
+it reads only definition FILES + discharged priorities (the nixpkgs `definitionsWithLocations`
+analogue).
+
+Per **declared-option** loc — a rich record:
+
+```nix
+{
+  defs      = [ { file; priority; } … ];  # ALL contributing defs, post property-discharge, pre
+                                          # priority pass (a property tag keeps its originating
+                                          # file; a false-`mkIf` sub-def has already dropped).
+                                          # Per-def priority = its mkOverride wrapper's number,
+                                          # else the default override priority (100).
+  winners   = [ { file; } … ];            # the defs the priority pass kept (the merge's inputs).
+  priority  = <int>;                      # the effective (min) priority the filter selected.
+  defaulted = <bool>;                     # the option's own `default` supplied the value (the
+                                          # synthetic `<default>` def was the sole winner).
+}
+```
+
+Per **freeform** loc — a REDUCED record: `defs = [ { file; } … ]` (the files whose unmatched subtree
+routes through this loc; **over-inclusive** — a false-`mkIf`-wrapped freeform def still appears here,
+because the freeform pass discharges per key only inside its own `.merge`, which provenance does not
+enter), with `winners` / `priority` / `defaulted` = `null`. `null` means "freeform / not observable",
+**never** "no override present".
+
+Declared records win over freeform at shared paths (mirroring config's `recursiveUpdate freeform declared`). One boundary: a nested `moduleTree`-as-type merge (a tree nested inside a parent tree via
+`.type.merge`) surfaces its `.config` only — the inner tree's provenance is not threaded out through
+the nested merge.
 
 ## The `types` namespace
 

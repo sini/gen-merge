@@ -93,6 +93,30 @@ let
       in
       filter (d: d.priority == minPrio) defs;
 
+  # ── filterOverridesRich : the override pass exposing the selected priority alongside the winners ──
+  # The nixpkgs `filterOverrides'` analogue (winners PLUS the `highestPrio` it resolved). The
+  # provenance channel (lib/modules.nix) reads `highestPrio` for a loc's record `priority`. This is a
+  # SEPARATE impl, NOT `filterOverrides = (filterOverridesRich defs).winners`: the value path (every
+  # structural per-element merge, the freeform pass) calls `filterOverrides` per loc, and routing it
+  # through the `{ winners; highestPrio }` wrapper would allocate a throwaway record per element —
+  # measurably regressing the collection perf workloads. So `filterOverrides` keeps its direct,
+  # allocation-free form and this rich variant is used only (lazily) where `highestPrio` is wanted.
+  filterOverridesRich =
+    defs:
+    if defs == [ ] then
+      {
+        winners = [ ];
+        highestPrio = null;
+      }
+    else
+      let
+        minPrio = foldl' (m: d: if d.priority < m then d.priority else m) (prelude.head defs).priority defs;
+      in
+      {
+        winners = filter (d: d.priority == minPrio) defs;
+        highestPrio = minPrio;
+      };
+
   # ── pushDownProperties : distribute a config-root property into its keys ──────
   # `config = mkIf c { a = 1; }` must behave as `{ a = mkIf c 1; }` (nixpkgs pushDownProperties):
   # the property is pushed to each key BEFORE per-option def collection. Returns a plain attrset
@@ -145,6 +169,7 @@ in
     isProperty
     dischargeProperties
     filterOverrides
+    filterOverridesRich
     pushDownProperties
     defaultPriority
     ;

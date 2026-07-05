@@ -30,8 +30,10 @@ let
   inherit (priority)
     dischargeProperties
     filterOverrides
+    filterOverridesRich
     pushDownProperties
     mkOptionDefault
+    defaultPriority
     ;
 
   showOption = loc: concatStringsSep "." loc;
@@ -226,28 +228,33 @@ let
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
   # every existing consumer of the exported `mergeDefs` escape hatch (spec §1 item 6) is unchanged.
   # The opt-in fixed-input path is `mergeDefsWith true`, reached ONLY through the evalModuleTree knob.
-  mergeDefs = mergeDefsWith false;
-
-  # mergeDefsWith coreShortCircuit loc type rawDefs :: combine a list of (possibly property-wrapped)
-  # defs into one value.
+  #
+  # This is the VALUE-ONLY fold — the hot path the structural strategies (attrsOf/listOf/submodule
+  # per-element merges) and the escape hatch ride. It allocates NO provenance: the always-on channel
+  # (A2 spec §1) is produced by the SEPARATE `mergeDefsRichWith` below, which the realizer invokes ONLY
+  # for the top-level DECLARED options, so a config's thousands of structural sub-merges pay nothing
+  # for a channel they never surface. The two folds share `mergeLeaf`; their discharge/priority/verify
+  # spines are deliberately kept parallel (the provenance suite's value assertions + the oracle guard
+  # against drift), because routing the structural hot path through the rich `{ value; prov }` record
+  # measurably regresses the collection workloads (a per-element record thrown away unread).
+  #
   #   rawDefs :: [{ file; value }]   (value may carry mkMerge/mkIf/mkOverride)
-  # Discharge properties → filterOverrides (min-priority wins) → dispatch: a structural type owns
-  # its combine via `.merge`; a leaf (gen-types checker, no `.merge`) merges by mergeOneOption then
-  # `verify`. This is the (loc,defs) contract the whole engine — and the escape-hatch consumers
-  # (spec §1 item 6) — ride. With `coreShortCircuit` it additionally honours the fixed-input core
-  # marker (spec §2.5), checked BEFORE discharge:
+  # Discharge properties → filterOverrides (min-priority wins) → dispatch: a structural type owns its
+  # combine via `.merge`; a leaf (gen-types checker, no `.merge`) merges by mergeLeaf then `verify`.
+  # With `coreShortCircuit` it additionally honours the fixed-input core marker (spec §2.5), checked
+  # BEFORE discharge:
   #   • SOLE core def at this loc  → return its `values` directly, skipping discharge/fold/verify —
   #     by contract already the full-merge output, so the result is byte-identical where the core is
   #     correct (a WRONG core surfaces here as a divergent value; the gate teeth catch it).
   #   • core def + ANY other def   → conservative fall-through: unwrap each core marker to its
   #     `values` as a plain def and run the normal spine (correctness over the skip). Byte-identical
   #     to a config that had supplied `values` in place of the marker.
+  mergeDefs = mergeDefsWith false;
   mergeDefsWith =
     coreShortCircuit: loc: type: rawDefs:
     let
       coreDef = head rawDefs;
       soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
-      # Fall-through normalization: unwrap a core marker to its `values` (a plain def) before the fold.
       normalized =
         if coreShortCircuit then
           map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
@@ -285,6 +292,93 @@ let
     in
     if soleCore then coreDef.value.values else checked;
 
+  # mergeDefsRichWith coreShortCircuit loc type rawDefs :: the RICH sibling — `{ value; prov }`, the
+  # value plus the merge's PROVENANCE record (A2 spec §1). Used by the realizer path (`mergeOptionWith`)
+  # for DECLARED options only. `value` is computed by the SAME discharge/priority/verify spine as
+  # `mergeDefsWith` (kept parallel — see the note above); `prov` SHARES this call's `discharged` +
+  # `filterOverridesRich` let-bindings (ONE discharge, ONE priority pass per loc). `prov` is a separate
+  # lazy attr: an unforced option pays ~one record thunk (never forced), and forcing `prov` alone never
+  # forces the merged VALUE (`defs`/`winners`/`priority`/`defaulted` read only def FILES + discharged
+  # priorities — the nixpkgs `definitionsWithLocations` analogue).
+  #   • defs      — every contributing def post property-discharge, pre priority pass (a property tag
+  #                 keeps its originating file; a false-`mkIf` sub-def has already dropped in discharge).
+  #                 Per-def `priority` = its `mkOverride` wrapper's number, else the default override 100.
+  #   • winners   — the defs the priority pass kept (the merge's actual inputs).
+  #   • priority  — the effective (min) priority the filter selected (`highestPrio`).
+  #   • defaulted — the synthetic option `default` (`file = "<default>"`, appended by `mergeOptionWith`)
+  #                 is the SOLE surviving winner ⇒ nobody else set the option (the `<default>` def won).
+  # coreShortCircuit skip: the record is SYNTHESIZED from the marker (core def as sole def + winner at
+  # the bare priority, defaulted=false) so the skip stays a skip — the discharge/fold spine never runs.
+  mergeDefsRichWith =
+    coreShortCircuit: loc: type: rawDefs:
+    let
+      coreDef = head rawDefs;
+      soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
+      normalized =
+        if coreShortCircuit then
+          map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
+        else
+          rawDefs;
+      discharged = concatMap (
+        d:
+        map (x: {
+          inherit (d) file;
+          inherit (x) value priority;
+        }) (dischargeProperties d.value)
+      ) normalized;
+      # Value path uses the plain (allocation-free) filterOverrides — SHARED by the prov record's
+      # `winners`. The prov record's `priority` reads `filterOverridesRich`'s `highestPrio` LAZILY (only
+      # when `.priority` is forced), so an unforced provenance channel never pays for the rich wrapper.
+      winners = filterOverrides discharged;
+      typeDefs = map (w: { inherit (w) file value; }) winners;
+      result =
+        if winners == [ ] then
+          throw "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
+        else if type != null && type ? merge then
+          type.merge loc typeDefs
+        else
+          mergeLeaf loc winners;
+      checked =
+        if type != null && type ? verify then
+          (
+            let
+              e = type.verify result;
+            in
+            if e == null then
+              result
+            else
+              throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+          )
+        else
+          result;
+      prov =
+        if soleCore then
+          {
+            defs = [
+              {
+                inherit (coreDef) file;
+                priority = defaultPriority;
+              }
+            ];
+            winners = [ { inherit (coreDef) file; } ];
+            priority = defaultPriority;
+            defaulted = false;
+          }
+        else
+          {
+            defs = map (d: { inherit (d) file priority; }) discharged;
+            winners = map (w: { inherit (w) file; }) winners;
+            priority = (filterOverridesRich discharged).highestPrio;
+            # The `<default>` sentinel is engine-synthesized (never a real `_file`), so it is a safe
+            # marker for "the option default supplied the value".
+            defaulted = winners != [ ] && all (w: w.file == "<default>") winners;
+          };
+    in
+    {
+      value = if soleCore then coreDef.value.values else checked;
+      inherit prov;
+    };
+
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
   # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
   mergeLeaf =
@@ -313,20 +407,28 @@ let
     else
       (head defs).value;
 
-  # An option merge = mergeDefs + default (as a lowest-priority def) + readOnly + apply. The public
-  # `mergeOption` is the non-short-circuiting form; `mergeOptionWith coreShortCircuit` threads the
-  # opt-in kernel into the realizer path (the flag reaches the fold via `mergeDefsWith`). NOTE: a
-  # present `default =` appends a second def, which demotes a lone core def to fall-through — still
-  # byte-identical (the plain `values` beats the mkOptionDefault), only without the spine skip.
-  mergeOption = mergeOptionWith false;
+  # An option merge = mergeDefs + default (as a lowest-priority def) + readOnly + apply. `mergeOption`
+  # is the public value-only form; `mergeOptionWith coreShortCircuit` is the RICH realizer form
+  # (`{ value; prov }`), threading the opt-in kernel into the fold via `mergeDefsRichWith`. The
+  # appended `<default>` def (`file = "<default>"`, priority 1500) is what the fold reads back for the
+  # record's `defaulted` flag. NOTE: a present `default =` appends a second def, which demotes a lone
+  # core def to fall-through — still byte-identical (the plain `values` beats the mkOptionDefault),
+  # only without the spine skip.
+  #
+  # COMMON CASE (no `apply`, no `readOnly` — the bulk of the surface): the rich record is returned
+  # STRAIGHT THROUGH — the realizer's value tree reads `.value`, the provenance tree reads `.prov`, and
+  # NO extra attrset is allocated per option (the always-on channel's per-leaf cost stays ~1 record,
+  # not a re-wrap). Only `apply`/`readOnly` options take the wrapping branch (they transform the value
+  # and/or gate on def count, so they re-wrap; `.prov` rides through unchanged, still lazy behind the
+  # same `_ro` gate the value forces).
+  mergeOption =
+    loc: optDecl: rawDefs:
+    (mergeOptionWith false loc optDecl rawDefs).value;
   mergeOptionWith =
     coreShortCircuit: loc: optDecl: rawDefs:
     let
-      _ro =
-        if (optDecl.readOnly or false) && length rawDefs > 1 then
-          throw "gen-merge: the option `${showOption loc}' is read-only, but it is defined ${toString (length rawDefs)} times"
-        else
-          null;
+      hasApply = optDecl ? apply;
+      readOnly = optDecl.readOnly or false;
       withDefault =
         rawDefs
         ++ optional (optDecl ? default) {
@@ -337,10 +439,23 @@ let
         if rawDefs == [ ] && !(optDecl ? default) then
           throw "gen-merge: the option `${showOption loc}' is used but not defined"
         else
-          mergeDefsWith coreShortCircuit loc (optDecl.type or null) withDefault;
-      applied = if optDecl ? apply then optDecl.apply merged else merged;
+          mergeDefsRichWith coreShortCircuit loc (optDecl.type or null) withDefault;
     in
-    builtins.seq _ro applied;
+    if !hasApply && !readOnly then
+      merged
+    else
+      let
+        _ro =
+          if readOnly && length rawDefs > 1 then
+            throw "gen-merge: the option `${showOption loc}' is read-only, but it is defined ${toString (length rawDefs)} times"
+          else
+            null;
+        applied = if hasApply then optDecl.apply merged.value else merged.value;
+      in
+      {
+        value = builtins.seq _ro applied;
+        prov = builtins.seq _ro merged.prov;
+      };
 
   # ── evalModuleTree — one call = one `evalModules`, one local fixpoint ──────
   evalModuleTree =
@@ -361,7 +476,9 @@ let
     }:
     let
       modList = if isList modules then modules else [ modules ];
-      localMergeOption = mergeOptionWith coreShortCircuit;
+      # Rich option merge (`{ value; prov }`) — the realizer reads BOTH the value tree and the
+      # provenance tree from one shared discharge/priority pass per declared leaf.
+      localMergeOptionRich = mergeOptionWith coreShortCircuit;
 
       # Flatten a module (function / __functor / attrset), applying functions by their STATIC
       # formals only (spec §1 item 4 — never force the dynamic `_module.args` spine), and recurse
@@ -418,15 +535,23 @@ let
           cfgKeys = attrNames (foldl' (acc: p: acc // p.attrs) { } pushed);
           undeclaredKeys = filter (k: !(opts ? ${k})) cfgKeys;
 
+          # Each declared name yields BOTH its merged value and its provenance sub-tree from one
+          # descent: a declared LEAF → the rich option merge's `{ value; prov }` (prov = the record);
+          # a declared GROUP → the recursive subtree's `{ value; prov }` (prov = the sub-tree). Both
+          # trees are assembled at this level by the SAME `listToAttrs` pattern, so provenance mirrors
+          # config's loc structure attribute-for-attribute.
           declaredPairs = map (
             k:
             let
               lk = loc ++ [ k ];
             in
             if isOptLeaf opts.${k} then
+              let
+                m = localMergeOptionRich (prefix ++ lk) opts.${k} (subDefs k);
+              in
               {
                 name = k;
-                value = localMergeOption (prefix ++ lk) opts.${k} (subDefs k);
+                inherit (m) value prov;
                 unmatched = [ ];
               }
             else
@@ -435,7 +560,7 @@ let
               in
               {
                 name = k;
-                inherit (r) value unmatched;
+                inherit (r) value prov unmatched;
               }
           ) (attrNames opts);
 
@@ -452,6 +577,12 @@ let
         in
         {
           value = listToAttrs (map (x: { inherit (x) name value; }) declaredPairs);
+          prov = listToAttrs (
+            map (x: {
+              inherit (x) name;
+              value = x.prov;
+            }) declaredPairs
+          );
           unmatched = ownUnmatched ++ concatMap (x: x.unmatched) declaredPairs;
         };
 
@@ -564,15 +695,62 @@ let
           # Declared wins over freeform at shared paths (nixpkgs `recursiveUpdate freeform declared`);
           # for the common disjoint-key case this is just `//`.
           config = builtins.seq _orphanCheck (recursiveUpdate freeformConfig declaredConfig);
+
+          # ── provenance (A2 spec §1) ────────────────────────────────────────────────────────────
+          # A lazy tree mirroring `config`'s loc structure. Per DECLARED-option loc the rich record
+          # `realized.prov` carries (from mergeTree); per FREEFORM loc a REDUCED record built here
+          # from `realized.unmatched`. `defs` = the files of the unmatched defs at that loc
+          # (winners/priority/defaulted = null — "freeform / not observable", never "no override
+          # present"). It reuses `realized.unmatched` — one per-key def per originating module, each
+          # carrying its `file`, the SAME structures the value-side freeform coalescing consumes; it
+          # does NOT re-walk modules and does NOT force config VALUES (reads only `file`/`path`). It
+          # may be OVER-INCLUSIVE: a false-`mkIf`-wrapped freeform def still shows here (the freeform
+          # pass, like nixpkgs, discharges per key only inside its own `.merge`, which provenance does
+          # not enter). Records are grouped by their (joined) loc then reshaped to the nested attrset
+          # via `setAttrByPath` — a depth-1 undeclared key and a deeper one can never collide (a key
+          # undeclared HERE is captured whole and never descended; cf. `buildModuleUnmatched`).
+          freeformProv =
+            let
+              byPath = foldl' (
+                acc: u:
+                let
+                  key = showOption u.path;
+                in
+                acc
+                // {
+                  ${key} = {
+                    inherit (u) path;
+                    files = (acc.${key}.files or [ ]) ++ [ { inherit (u) file; } ];
+                  };
+                }
+              ) { } realized.unmatched;
+            in
+            foldl' (
+              acc: k:
+              recursiveUpdate acc (
+                setAttrByPath byPath.${k}.path {
+                  defs = byPath.${k}.files;
+                  winners = null;
+                  priority = null;
+                  defaulted = null;
+                }
+              )
+            ) { } (attrNames byPath);
+
+          # Declared provenance wins over freeform at shared paths (mirrors config's
+          # `recursiveUpdate freeform declared`): a declared GROUP's sub-records overlay the freeform
+          # records that bubbled through it; a declared LEAF record is never shadowed (a declared key
+          # is never also unmatched).
+          provenance = recursiveUpdate freeformProv realized.prov;
         in
         {
-          inherit config moduleArgs;
+          inherit config moduleArgs provenance;
           options = allOptions;
         }
       );
     in
     {
-      inherit (result) config options;
+      inherit (result) config options provenance;
       # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform).
       type = {
         name = "moduleTree";
