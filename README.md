@@ -196,7 +196,12 @@ forced) and a data leaf's payload is only probed to WHNF, never deep-walked. The
 declared leaves** — an order marker buried inside a structural-typed value (attrsOf/listOf/submodule
 element defs) rides that strategy's own merge and is out of scope; option **defaults** are not
 force-inspected (a `default = throw "must set"` stays portable), so order-pass is decided on config
-*defs* only. The lint never *applies* a module function (its body needs the `config` fixpoint, which a
+*defs* only. Two further order-marker shapes sit outside this walk and are **not** flagged (both
+zero-use on the den surface, named so the boundary is airtight): an order marker **at a declared-group
+node** (`grp = mkBefore { … }` where `grp` is a group — `pushDownProperties` does not distribute an
+`order` marker, so its fields are walked as child keys, never probed as a marker), and an order marker
+**nested more than one level under a freeform/undeclared key** (`free = { sub = mkAfter […]; }` — only
+the undeclared def's top value is probed for `_type = "order"`). The lint never *applies* a module function (its body needs the `config` fixpoint, which a
 lint must not force — it may throw, and catching throws is disallowed in pure eval; the engine binds
 modules by static formals only). So a function module is opaque except for its formals (only
 `options-introspection` is decidable on it); the other kinds are decided on attrset modules, `import`ed

@@ -33,9 +33,16 @@
 #     forced to WHNF (the `_type` probe), never deep-walked — the engine's exact profile. The walk
 #     STOPS at declared leaves: an order marker buried inside a structural-typed leaf value
 #     (attrsOf/listOf/submodule element defs) rides that strategy's own `mergeDefs` and is out of the
-#     static scope. Option DEFAULTS are NOT force-inspected (the engine realizes a default lazily, on
-#     access; a `default = throw "must set"` must stay portable) — order-pass is decided on config
-#     DEFS only.
+#     static scope. Two further out-of-surface order-marker shapes are likewise NOT flagged (both
+#     zero-use on the den surface, named here so the boundary is airtight): (1) an order marker AT a
+#     declared-GROUP node (`grp = mkBefore { … }` where `grp` is a group, not a leaf) —
+#     `pushDownProperties` does not distribute an `order` marker, so the descent treats its
+#     `_type`/`priority`/`content` as child keys and never probes it as a marker; (2) an order marker
+#     nested MORE than one level under a freeform/undeclared key (`free = { sub = mkAfter […]; }`) —
+#     the undeclared def is discharged and only its TOP value probed for `_type = "order"`, so a
+#     marker a level deeper is unseen. Option DEFAULTS are NOT force-inspected (the engine realizes a
+#     default lazily, on access; a `default = throw "must set"` must stay portable) — order-pass is
+#     decided on config DEFS only.
 #   • the lint NEVER applies a module function (a body's options/config/imports need the `config`
 #     fixpoint, which it must not force — may throw, and catching throws is disallowed in pure eval;
 #     cf. the engine binding modules by static formals only, spec §1 item 4). So a FUNCTION module is
