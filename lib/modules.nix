@@ -532,5 +532,14 @@ in
     showOption
     setDefaultModuleLocation
     mkCoreValue
+    # Classification/collection predicates shared with the portable-subset lint (lib/lint.nix) so the
+    # lint's view of "declared leaf vs group / structured vs shorthand / imports / decl-tree merge"
+    # cannot DRIFT from the engine's. Additive — the public `lib/default.nix` surface is unchanged.
+    isOptLeaf
+    isStructured
+    configOf
+    importsOf
+    markers
+    mergeOptionDecls
     ;
 }

@@ -21,7 +21,7 @@ let
   priority = import ./priority.nix { inherit prelude; };
   core = import ./modules.nix { inherit prelude priority; };
   strategies = import ./types.nix { inherit prelude core; };
-  lintLib = import ./lint.nix { inherit prelude; };
+  lintLib = import ./lint.nix { inherit prelude priority core; };
 in
 {
   # Portable-subset lint (README "Portable-subset lint") — statically flag modules using constructs

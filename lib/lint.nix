@@ -1,46 +1,59 @@
 # Portable-subset lint — flag modules that use constructs OUTSIDE gen-merge's byte-mode surface.
 #
 # gen-merge reproduces `lib.evalModules` OUTPUT byte-for-byte only over the primitive den's surface
-# reduces to (README "The 7-item merge primitive" + "The priority subset"). A module that reaches for
-# a construct the byte-mode engine deliberately does NOT implement will either diverge silently or
-# throw. This lint makes the claim "this module runs on gen-merge and `lib.evalModules` byte-identically"
-# mechanically verifiable: it statically flags the four known boundaries.
+# reduces to (README "The 7-item merge primitive" + "The priority subset"). A module reaching for a
+# construct the byte-mode engine deliberately does NOT implement will diverge silently or throw. This
+# lint makes the claim "this module runs on gen-merge and `lib.evalModules` byte-identically"
+# mechanically verifiable: it statically flags the known boundaries.
 #
-#   1. order pass          — defs tagged `_type = "order"` (`mkOrder`/`mkBefore`/`mkAfter`). nixpkgs
-#                            sorts order-defs by `priority` before the merge; gen-merge's priority
-#                            subset drops that whole pass (README "The priority subset"), so an order
-#                            marker is carried as an ordinary value and silently mis-orders.
-#   2. options-introspection — a module FUNCTION whose declared formals include `options`. The
-#                            byte-mode `.options` is a minimal descriptor map (the merged option-decl
-#                            tree), NOT the nixpkgs `options` structure (no `_type`/`loc`/`declarations`
-#                            per node), so a module introspecting `options` may observe a different shape.
-#   3. typeMerge reliance  — the same option loc DECLARED (with a `type`) in more than one module.
-#                            nixpkgs combines the two declarations through `type.typeMerge` (a functor
-#                            over two `optionType`s); gen-merge's `mergeOptionDecls` field-unions the
-#                            descriptors (later wins), never invoking a typeMerge functor — divergent
-#                            whenever the two types are not the same.
-#   4. functionTo          — an option `type` named `functionTo`. `functionTo` is intentionally omitted
-#                            from the byte-mode type surface (README §7 — consumers wrap guard functions
-#                            as data); a `functionTo` leaf has no gen-merge strategy.
+#   1. order-pass          — a def carrying an `_type = "order"` marker (`mkOrder`/`mkBefore`/`mkAfter`).
+#                            nixpkgs sorts order-defs by `priority` before merge; gen-merge's priority
+#                            subset drops that pass (README "The priority subset"), so the marker is
+#                            carried as an ordinary value and silently mis-orders.
+#   2. options-introspection — a module FUNCTION whose formals include `options`. Byte-mode `.options`
+#                            is a minimal descriptor map (the merged decl tree), not the reference
+#                            `options` structure (no per-node `_type`/`loc`/`declarations`).
+#   3. type-merge          — the same option loc DECLARED (with a `type`) in more than one module.
+#                            nixpkgs combines the declarations through `type.typeMerge` (a functor over
+#                            two `optionType`s); gen-merge's `mergeOptionDecls` field-unions the
+#                            descriptors (later wins), never invoking a typeMerge functor.
+#   4. function-to         — an option `type` named `functionTo`, intentionally omitted from the type
+#                            surface (7-item primitive item 7 — guard functions are carried as data).
+#   +. unverifiable        — a `type` record too deeply nested to walk within the fixed fuel. A
+#                            portability lint must FAIL toward reject, never silently accept an
+#                            undecidable input, so exhaustion is surfaced (not swallowed).
 #
-# ── the honest detection boundary (a STATIC walk) ────────────────────────────────────────────────
-# The lint inspects module VALUES without evaluating them: it walks attrset modules' `options`/`config`
-# trees, reads option `type` records, and reads module-function FORMALS via `builtins.functionArgs`. It
-# does NOT apply module functions — a module function's body (its options/config/imports) is invisible
-# until applied against the `config` fixpoint, which the lint must not force (it may throw, and catching
-# throws is not permitted in pure eval; cf. the engine binding modules by static formals only, spec §1
-# item 4). Consequences, by construct:
-#   • a FUNCTION module is opaque except for its formals ⇒ only construct 2 (options-arg) is decidable
-#     on it; constructs 1/3/4 inside a function body are NOT seen.
-#   • constructs 1/3/4 are decided on ATTRSET modules (and `import`ed path leaves, and the attrset
-#     modules reached through `imports`).
-#   • a submodule's `getSubModules` is a SEPARATE nested eval — its inner modules are not walked here
-#     (lint them by passing them to `lint` directly). Option `type` records are treated as leaves whose
-#     `.name`/`nestedTypes`/`elemType` are read for the functionTo check, never applied/merged.
-#   • functionTo's value-side variant (a bare function supplied at a data leaf) needs the config→option
-#     matching the fixpoint provides, so it is detected via the type NAME only, not the def value.
-# A finding is a `{ kind; loc; detail }` attrset; `lint` returns the full list (empty ⇒ portable).
-{ prelude }:
+# ── the forcing contract (a static walk that inherits the ENGINE's forcing profile) ──────────────
+# The lint reuses the engine's own classification + property machinery (lib/modules.nix predicates +
+# lib/priority.nix `dischargeProperties`/`pushDownProperties`), so it forces EXACTLY what the engine
+# forces and no more — it is TOTAL on portable inputs. Concretely:
+#   • order-pass is decided by descending the merged option-decl tree like the realizer (`mergeTree`):
+#     properties are pushed down per level and defs are DISCHARGED at declared leaves, so an
+#     `mkIf false { … }` branch drops (its content is NEVER forced) and a data leaf's payload is only
+#     forced to WHNF (the `_type` probe), never deep-walked — the engine's exact profile. The walk
+#     STOPS at declared leaves: an order marker buried inside a structural-typed leaf value
+#     (attrsOf/listOf/submodule element defs) rides that strategy's own `mergeDefs` and is out of the
+#     static scope. Option DEFAULTS are NOT force-inspected (the engine realizes a default lazily, on
+#     access; a `default = throw "must set"` must stay portable) — order-pass is decided on config
+#     DEFS only.
+#   • the lint NEVER applies a module function (a body's options/config/imports need the `config`
+#     fixpoint, which it must not force — may throw, and catching throws is disallowed in pure eval;
+#     cf. the engine binding modules by static formals only, spec §1 item 4). So a FUNCTION module is
+#     opaque except for its formals ⇒ only construct 2 is decidable on it; 1/3/4 are decided on attrset
+#     modules, `import`ed path leaves, and the attrset modules reached through `imports`. Attrset
+#     modules cannot reference `config` (no formals), so their `mkIf` conditions are static — the lint
+#     discharging them is sound.
+#   • a submodule's `getSubModules` is a SEPARATE nested eval — its inner modules are not walked (lint
+#     them by passing them to `lint` directly). `type` records are read (`.name`/`nestedTypes`), never
+#     applied. functionTo's value-side variant (a bare function at a data leaf) needs the config→option
+#     matching the fixpoint provides, so it is detected via the type NAME only.
+# A finding is `{ kind; loc; file; detail }` (`file` = the def/decl provenance; a LIST of files for
+# `type-merge`); `lint` returns the full list (empty ⇒ portable).
+{
+  prelude,
+  priority,
+  core,
+}:
 let
   inherit (prelude)
     isAttrs
@@ -52,48 +65,58 @@ let
     filter
     attrNames
     attrValues
+    foldl'
     concatStringsSep
     optional
     length
     any
-    unique
+    ;
+  inherit (priority) dischargeProperties pushDownProperties;
+  inherit (core)
+    isOptLeaf
+    configOf
+    importsOf
+    mergeOptionDecls
     ;
 
   showLoc = concatStringsSep ".";
-  mkFinding = kind: loc: detail: { inherit kind loc detail; };
+  mkFinding = kind: loc: file: detail: {
+    inherit
+      kind
+      loc
+      file
+      detail
+      ;
+  };
+  isOrderMarker = v: isAttrs v && (v._type or null) == "order";
 
-  # ── module collection (import-expanding, function-OPAQUE) ──────────────────
-  # Flatten the module list the way the engine's `collectModules` sees it, but WITHOUT applying any
-  # module function (the static-walk boundary above). Path leaves are `import`ed (pure); an attrset
-  # module contributes its `imports` recursively; a function (or `__functor`) module is an OPAQUE leaf.
-  # Each entry is tagged `fn` so the analyzers know the detection boundary at that node.
-  importsOf =
-    m:
-    let
-      i = m.imports or [ ];
-    in
-    if isList i then i else [ i ];
+  # ── module collection (import-expanding, function-OPAQUE), _file tracked as core.collectModules ──
+  # Path leaves are `import`ed (pure); an attrset module contributes its `imports` recursively; a
+  # function (or `__functor`) module is an OPAQUE leaf. `file` mirrors modules.nix:321 exactly (a path's
+  # provenance IS its path string, else the module's `_file`, else the engine fallback).
   collect =
     mods:
     concatMap (
       m0:
       let
         m = if builtins.isPath m0 then import m0 else m0;
+        file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or "<gen-merge>"));
       in
       if isFunction m then
         [
           {
             fn = true;
             module = m;
+            inherit file;
           }
         ]
       else if isAttrs m then
-        # A `__functor` attrset is applied like a function ⇒ opaque leaf (formals unreadable cheaply).
         if m ? __functor then
           [
             {
               fn = true;
               module = m;
+              inherit file;
             }
           ]
         else
@@ -101,6 +124,7 @@ let
             {
               fn = false;
               module = m;
+              inherit file;
             }
           ]
           ++ collect (importsOf m)
@@ -108,10 +132,7 @@ let
         [ ]
     ) mods;
 
-  # ── option-decl tree walk ──────────────────────────────────────────────────
-  # An option-decl LEAF is a descriptor tagged `_type = "option"` (lib/types.nix `mkOption`); anything
-  # else inside the tree is a GROUP (a plain attrset of sub-declarations) — mirrors core's `isOptLeaf`.
-  isOptLeaf = v: isAttrs v && (v._type or null) == "option";
+  # ── option-decl leaves of one module (loc + descriptor), via the engine's `isOptLeaf` ──
   optionLeaves =
     tree:
     let
@@ -139,129 +160,177 @@ let
     go [ ] tree;
 
   # ── construct 4: a `type` record that (recursively) names `functionTo` ─────
-  # Reads only structural fields (`name`, and the `nestedTypes`/`elemType` introspection aliases the
-  # gen-merge strategies carry, lib/types.nix); never applies `.merge`/`.check`. Fuel-bounded against a
-  # pathologically self-referential type record.
-  subTypes = t: (attrValues (t.nestedTypes or { })) ++ optional (t ? elemType) t.elemType;
-  namesFunctionTo =
+  # Reads only structural fields (`name`, the `nestedTypes` introspection alias the strategies carry —
+  # lib/types.nix; the redundant bare `elemType` is a duplicate of `nestedTypes.elemType`, so it is not
+  # re-walked). Fuel-bounded; exhaustion (a type deeper than `typeWalkDepth`) is REPORTED, not swallowed
+  # (a portability lint must not silently accept an undecidable type). Returns `{ hit; exhausted }`.
+  typeWalkDepth = 32;
+  subTypes = t: attrValues (t.nestedTypes or { });
+  scanType =
     fuel: t:
-    fuel > 0
-    && isAttrs t
-    && ((t.name or null) == "functionTo" || any (namesFunctionTo (fuel - 1)) (subTypes t));
-
-  # ── construct 1: an `_type = "order"` marker anywhere in a def value ───────
-  # Walks a config (or option-default) def value for order markers. Descends the priority-property
-  # wrappers (`merge`/`if`/`override`) at the SAME loc (they do not change an option's location), and
-  # plain attrset config subtrees by key; any OTHER `_type` (e.g. an opaque den `__configThunk`, or an
-  # unexpected `option`) is treated as opaque and NOT descended (never forced further). NB this forces
-  # the def value to WHNF at each node — a deliberately poisoned lazy config is outside the lint's domain.
-  orderWalk =
-    loc: v:
-    if !(isAttrs v) then
-      [ ]
+    if !(isAttrs t) then
+      {
+        hit = false;
+        exhausted = false;
+      }
+    else if (t.name or null) == "functionTo" then
+      {
+        hit = true;
+        exhausted = false;
+      }
+    else if fuel <= 0 then
+      {
+        hit = false;
+        exhausted = true;
+      }
     else
       let
-        ty = v._type or null;
+        subs = map (scanType (fuel - 1)) (subTypes t);
       in
-      if ty == "order" then
-        [
-          (mkFinding "order-pass" loc
-            "def carries an order marker (`mkOrder`/`mkBefore`/`mkAfter`, `_type = \"order\"`); the order pass is outside the byte-mode surface"
-          )
-        ]
-      else if ty == "merge" then
-        concatMap (orderWalk loc) (v.contents or [ ])
-      else if ty == "if" then
-        orderWalk loc (v.content or { })
-      else if ty == "override" then
-        orderWalk loc (v.content or { })
-      else if ty != null then
-        [ ]
-      else
-        concatMap (k: orderWalk (loc ++ [ k ]) v.${k}) (attrNames v);
-
-  # config projection (mirrors core's `configOf`, sans nixpkgs): a structured module's `config`, else
-  # the whole shorthand attrset minus key/_file/_module metadata.
-  configMarkers = [
-    "imports"
-    "options"
-    "config"
-    "freeformType"
-    "disabledModules"
-  ];
-  isStructured = m: any (k: m ? ${k}) configMarkers;
-  configOf =
-    m:
-    if isStructured m then
-      (m.config or { })
-    else
-      builtins.removeAttrs m [
-        "key"
-        "_file"
-        "_module"
-      ];
-
-  # ── per-attrset-module findings (constructs 1 + 4) ─────────────────────────
-  moduleFindings =
-    m:
-    let
-      leaves = optionLeaves (m.options or { });
-      orderInConfig = orderWalk [ ] (configOf m);
-      orderInDefaults = concatMap (
-        l: if l.leaf ? default then orderWalk l.loc l.leaf.default else [ ]
-      ) leaves;
-      functionTo = concatMap (
-        l:
-        if (l.leaf ? type) && namesFunctionTo 32 l.leaf.type then
-          [
-            (mkFinding "function-to" l.loc
-              "option type names `functionTo`, which is intentionally omitted from the byte-mode type surface"
-            )
-          ]
-        else
-          [ ]
-      ) leaves;
-    in
-    orderInConfig ++ orderInDefaults ++ functionTo;
-
-  # ── construct 2: a function module whose formals include `options` ─────────
-  optionsArgFindings =
-    e:
-    if e.fn && isFunction e.module && (functionArgs e.module ? "options") then
-      [
-        (mkFinding "options-introspection" [ ]
-          "a module function takes an `options` formal; the byte-mode `.options` is a minimal descriptor map, not the reference-engine `options` structure"
-        )
-      ]
-    else
-      [ ];
-
-  # ── construct 3: an option loc declared with a `type` in more than one module ──
-  typedLocsOf =
-    module: map (l: l.loc) (filter (l: l.leaf ? type) (optionLeaves (module.options or { })));
+      {
+        hit = any (r: r.hit) subs;
+        exhausted = any (r: r.exhausted) subs;
+      };
 
   lint =
     { modules }:
     let
       modList = if isList modules then modules else [ modules ];
       collected = collect modList;
+      attrsetEntries = filter (e: !e.fn) collected;
+
+      # ── construct 2: a function module whose formals include `options` ──
+      optionsArgFindings =
+        e:
+        if e.fn && isFunction e.module && ((functionArgs e.module) ? options) then
+          [
+            (mkFinding "options-introspection" [ ] e.file
+              "a module function takes an `options` formal; the byte-mode `.options` is a minimal descriptor map, not the reference-engine `options` structure"
+            )
+          ]
+        else
+          [ ];
+
+      # ── construct 4 (+ unverifiable): per-module option-type findings ──
+      typeFindings =
+        e:
+        concatMap (
+          l:
+          if l.leaf ? type then
+            let
+              r = scanType typeWalkDepth l.leaf.type;
+            in
+            if r.hit then
+              [
+                (mkFinding "function-to" l.loc e.file
+                  "option type names `functionTo`, which is intentionally omitted from the byte-mode type surface"
+                )
+              ]
+            else if r.exhausted then
+              [
+                (mkFinding "unverifiable" l.loc e.file
+                  "option type nests deeper than the lint's type-walk fuel (${toString typeWalkDepth}); cannot decide `functionTo` — treated as non-portable rather than silently accepted"
+                )
+              ]
+            else
+              [ ]
+          else
+            [ ]
+        ) (optionLeaves (e.module.options or { }));
+
+      # ── construct 1: order markers in CONFIG defs, guided by the merged decl tree (mergeTree-style) ──
+      # The engine's own declaration merge (throws on a leaf/group collision, exactly as it would eval).
+      allOptions = foldl' (acc: e: mergeOptionDecls [ ] acc (e.module.options or { })) { } attrsetEntries;
+      # config defs, one per attrset module, pushed once at the root; `_module` is the engine's pseudo-
+      # tree (modules.nix:470 strips it from the realizer), never an order-bearing config path.
+      rootPushed = map (e: {
+        inherit (e) file;
+        attrs = builtins.removeAttrs (pushDownProperties (configOf e.module)) [ "_module" ];
+      }) attrsetEntries;
+      descend =
+        opts: loc: pushed:
+        let
+          keys = attrNames (foldl' (acc: p: acc // (if isAttrs p.attrs then p.attrs else { })) { } pushed);
+          childDefs =
+            k:
+            concatMap (
+              p:
+              optional (p.attrs ? ${k}) {
+                inherit (p) file;
+                value = p.attrs.${k};
+              }
+            ) pushed;
+        in
+        concatMap (
+          k:
+          let
+            lk = loc ++ [ k ];
+            defs = childDefs k;
+          in
+          if (opts ? ${k}) && !(isOptLeaf opts.${k}) then
+            # declared GROUP → push each child value down one level, recurse
+            descend opts.${k} lk (
+              map (d: {
+                inherit (d) file;
+                attrs = pushDownProperties d.value;
+              }) defs
+            )
+          else
+            # declared LEAF or UNDECLARED (freeform/orphan) → discharge each def (WHNF, condition-aware),
+            # flag a def whose discharged values include an order marker. Never descends past here.
+            concatMap (
+              d:
+              if any isOrderMarker (map (x: x.value) (dischargeProperties d.value)) then
+                [
+                  (mkFinding "order-pass" lk d.file
+                    "def carries an order marker (`mkOrder`/`mkBefore`/`mkAfter`, `_type = \"order\"`); the order pass is outside the byte-mode surface"
+                  )
+                ]
+              else
+                [ ]
+            ) defs
+        ) keys;
+      orderFindings = descend allOptions [ ] rootPushed;
+
+      # ── construct 3: an option loc declared with a `type` in >1 module — attrset-fold group, files kept ──
+      typedLeaves = concatMap (
+        e:
+        map (l: {
+          inherit (l) loc;
+          inherit (e) file;
+        }) (filter (l: l.leaf ? type) (optionLeaves (e.module.options or { })))
+      ) attrsetEntries;
+      byLoc = foldl' (
+        acc: x:
+        let
+          key = showLoc x.loc;
+          prev =
+            acc.${key} or {
+              inherit (x) loc;
+              files = [ ];
+            };
+        in
+        acc
+        // {
+          ${key} = {
+            inherit (prev) loc;
+            files = prev.files ++ [ x.file ];
+          };
+        }
+      ) { } typedLeaves;
+      typeMergeFindings = concatMap (
+        v:
+        optional (length v.files >= 2) (
+          mkFinding "type-merge" v.loc v.files
+            "option `${showLoc v.loc}' is declared with a type in more than one module; the reference engine combines the declarations through a `typeMerge` functor, gen-merge field-unions them (later type wins)"
+        )
+      ) (attrValues byLoc);
 
       perModule = concatMap (
-        e: (optionsArgFindings e) ++ (if e.fn then [ ] else moduleFindings e.module)
+        e: (optionsArgFindings e) ++ (if e.fn then [ ] else typeFindings e)
       ) collected;
-
-      # A loc typed in ≥2 attrset modules ⇒ a typeMerge reliance. List-value equality groups the locs
-      # (each module contributes a loc at most once — an attrset has no duplicate keys), so a count ≥2
-      # is exactly "declared in >1 module". O(n²) in the typed-loc count, which is small.
-      allTyped = concatMap (e: if e.fn then [ ] else typedLocsOf e.module) collected;
-      repeatedTyped = filter (loc: length (filter (x: x == loc) allTyped) >= 2) (unique allTyped);
-      typeMerge = map (
-        loc:
-        mkFinding "type-merge" loc
-          "option `${showLoc loc}' is declared with a type in more than one module; the reference engine combines the declarations through a `typeMerge` functor, gen-merge field-unions them (later type wins)"
-      ) repeatedTyped;
     in
-    perModule ++ typeMerge;
+    perModule ++ orderFindings ++ typeMergeFindings;
 in
 {
   inherit lint;

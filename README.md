@@ -173,33 +173,55 @@ These boundaries are mechanically checkable — see [Portable-subset lint](#port
 
 `genMerge.lint { modules } → [ findings ]` (empty list ⇒ portable) statically flags the modules that
 step outside the byte-mode surface, so the "runs on gen-merge and `lib.evalModules` byte-identically"
-claim is verifiable, not asserted. Four constructs are flagged:
+claim is verifiable, not asserted. The flagged kinds:
 
 | kind | what it catches | why it diverges |
 |------|-----------------|-----------------|
-| `order-pass` | a def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | gen-merge drops the whole order pass (see the priority subset) — the marker is carried as an ordinary value and mis-orders |
+| `order-pass` | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | gen-merge drops the whole order pass (see the priority subset) — the marker is carried as an ordinary value and mis-orders |
 | `options-introspection` | a module **function** whose formals include `options` | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure |
 | `type-merge` | the same option loc declared **with a `type`** in more than one module | nixpkgs combines the declarations through a `typeMerge` functor; gen-merge field-unions them (later type wins) |
 | `function-to` | an option type named `functionTo` | intentionally omitted from the type surface (wrap guard functions as data) |
+| `unverifiable` | an option type nested deeper than the type-walk fuel | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative) |
 
-Each finding is `{ kind; loc; detail }` — `loc` is the option/config path (`[]` for a whole-module
-finding like `options-introspection`).
+Each finding is `{ kind; loc; file; detail }` — `loc` is the option/config path (`[]` for a whole-module
+finding like `options-introspection`); `file` is the def/decl provenance (`_file`), a **list** of files
+for `type-merge`.
 
-**The detection is a STATIC walk** — an honest, bounded boundary. It reads attrset modules'
-`options` / `config` trees, option `type` records, and module-function formals (`builtins.functionArgs`),
-but never *applies* a module function: a function body's options/config/imports are invisible until it
-is applied against the `config` fixpoint, which a lint must not force (it may throw, and catching throws
-is disallowed in pure eval — the engine itself binds modules by static formals only). So a function
-module is opaque except for its formals (only `options-introspection` is decidable on it); the other
-three are decided on attrset modules, `import`ed path leaves, and the modules reached through `imports`.
-A submodule's `getSubModules` is a separate nested eval — lint those by passing them to `lint` directly.
+**The detection is a STATIC walk that inherits the engine's forcing profile** — it is *total* on
+portable inputs (it never forces what the engine wouldn't). It reuses the engine's own classification
+and property machinery (`dischargeProperties` / `pushDownProperties`), so order-pass is decided by
+descending the merged option-decl tree like the realizer: properties are pushed down per level and defs
+are discharged at declared leaves, so an `mkIf false { … }` branch drops (its throwing content is never
+forced) and a data leaf's payload is only probed to WHNF, never deep-walked. The walk **stops at
+declared leaves** — an order marker buried inside a structural-typed value (attrsOf/listOf/submodule
+element defs) rides that strategy's own merge and is out of scope; option **defaults** are not
+force-inspected (a `default = throw "must set"` stays portable), so order-pass is decided on config
+*defs* only. The lint never *applies* a module function (its body needs the `config` fixpoint, which a
+lint must not force — it may throw, and catching throws is disallowed in pure eval; the engine binds
+modules by static formals only). So a function module is opaque except for its formals (only
+`options-introspection` is decidable on it); the other kinds are decided on attrset modules, `import`ed
+path leaves, and the modules reached through `imports`. A submodule's `getSubModules` is a separate
+nested eval — lint those by passing them to `lint` directly.
 
 Run it over a module list (or wire it into CI as an accept-gate — `ci/tests/lint.nix` asserts it
 accepts the whole equivalence corpus and rejects one fixture per construct):
 
 ```nix
-genMerge.lint { modules = [ ./my-module.nix { services.x = genMerge.mkForce {}; } ]; }
-# ⇒ [ ]   (portable)   |   [ { kind = "order-pass"; loc = [ … ]; detail = "…"; } … ]
+genMerge.lint {
+  modules = [
+    { options.tags = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; default = [ ]; }; }
+    { tags = genMerge.mkForce [ "a" ]; }                       # portable — a plain override
+  ];
+}
+# ⇒ [ ]   (portable)
+
+genMerge.lint {
+  modules = [
+    { options.tags = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; default = [ ]; }; }
+    { tags = lib.mkAfter [ "z" ]; }                            # NON-portable — an order marker
+  ];
+}
+# ⇒ [ { kind = "order-pass"; loc = [ "tags" ]; file = "<gen-merge>"; detail = "…"; } ]
 ```
 
 ## Purity
