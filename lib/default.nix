@@ -21,8 +21,13 @@ let
   priority = import ./priority.nix { inherit prelude; };
   core = import ./modules.nix { inherit prelude priority; };
   strategies = import ./types.nix { inherit prelude core; };
+  lintLib = import ./lint.nix { inherit prelude; };
 in
 {
+  # Portable-subset lint (README "Portable-subset lint") — statically flag modules using constructs
+  # outside the byte-mode surface, so the byte-identity claim is mechanically verifiable.
+  inherit (lintLib) lint;
+
   # The engine + the shared fold (spec §2) + module-system helpers consumers need.
   inherit (core)
     evalModuleTree

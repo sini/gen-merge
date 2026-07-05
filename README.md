@@ -167,6 +167,41 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
 
+These boundaries are mechanically checkable — see [Portable-subset lint](#portable-subset-lint).
+
+## Portable-subset lint
+
+`genMerge.lint { modules } → [ findings ]` (empty list ⇒ portable) statically flags the modules that
+step outside the byte-mode surface, so the "runs on gen-merge and `lib.evalModules` byte-identically"
+claim is verifiable, not asserted. Four constructs are flagged:
+
+| kind | what it catches | why it diverges |
+|------|-----------------|-----------------|
+| `order-pass` | a def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | gen-merge drops the whole order pass (see the priority subset) — the marker is carried as an ordinary value and mis-orders |
+| `options-introspection` | a module **function** whose formals include `options` | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure |
+| `type-merge` | the same option loc declared **with a `type`** in more than one module | nixpkgs combines the declarations through a `typeMerge` functor; gen-merge field-unions them (later type wins) |
+| `function-to` | an option type named `functionTo` | intentionally omitted from the type surface (wrap guard functions as data) |
+
+Each finding is `{ kind; loc; detail }` — `loc` is the option/config path (`[]` for a whole-module
+finding like `options-introspection`).
+
+**The detection is a STATIC walk** — an honest, bounded boundary. It reads attrset modules'
+`options` / `config` trees, option `type` records, and module-function formals (`builtins.functionArgs`),
+but never *applies* a module function: a function body's options/config/imports are invisible until it
+is applied against the `config` fixpoint, which a lint must not force (it may throw, and catching throws
+is disallowed in pure eval — the engine itself binds modules by static formals only). So a function
+module is opaque except for its formals (only `options-introspection` is decidable on it); the other
+three are decided on attrset modules, `import`ed path leaves, and the modules reached through `imports`.
+A submodule's `getSubModules` is a separate nested eval — lint those by passing them to `lint` directly.
+
+Run it over a module list (or wire it into CI as an accept-gate — `ci/tests/lint.nix` asserts it
+accepts the whole equivalence corpus and rejects one fixture per construct):
+
+```nix
+genMerge.lint { modules = [ ./my-module.nix { services.x = genMerge.mkForce {}; } ]; }
+# ⇒ [ ]   (portable)   |   [ { kind = "order-pass"; loc = [ … ]; detail = "…"; } … ]
+```
+
 ## Purity
 
 The library (`lib/`) is `nixpkgs.lib`-free — it is the *replacement* for `lib.evalModules`, so it
@@ -177,7 +212,9 @@ harness + the equivalence oracle's reference side).
 
 `nix flake check ./ci` runs the nix-unit suites: `merge` (the 7-item primitive + priority subset),
 `deferred` / `checking` (non-forcing + leaf verification), `oracle` (byte-identity vs
-`lib.evalModules`, with mutation-teeth assertions), and `purity`.
+`lib.evalModules`, with mutation-teeth assertions), `compat` (nixpkgs `lib.types` on the engine),
+`core-kernel` (the fixed-input short-circuit), `lint` (the portable-subset checker — accepts the whole
+`oracle` corpus, rejects one fixture per unsupported construct), and `purity`.
 
 ## Theoretical foundations
 
