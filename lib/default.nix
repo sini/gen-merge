@@ -29,6 +29,8 @@ in
     mergeDefs
     mergeOneOption
     showOption
+    # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; }`.
+    mkCoreValue
     ;
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.

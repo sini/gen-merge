@@ -64,6 +64,25 @@ let
   # Anything else inside the `options` tree is an option-GROUP: a plain attrset of sub-declarations.
   isOptLeaf = v: isAttrs v && (v._type or null) == "option";
 
+  # ── fixed-input core marker (design spec §2.5) ────────────────────────────
+  # A def value that CARRIES an already-merged subtree: `mkCoreValue { digest; values; }` tags
+  # `values` (the by-contract full-merge output for a whole loc) so a consumer (gen-class tier-2)
+  # can hand the engine a pre-computed result and skip the discharge/fold/verify spine for that loc.
+  # This is a DIFFERENT insertion point from the README's per-option combine-kernel seam (that swaps
+  # byte-vs-confluent HOW defs join; this short-circuits WHETHER they are joined at all). Recognised
+  # ONLY when `evalModuleTree` runs with `coreShortCircuit = true` — default-off leaves the marker an
+  # ordinary attrset value, so the engine is byte-for-byte unchanged (spec §2.5 opt-in constraint).
+  mkCoreValue =
+    {
+      digest,
+      values,
+    }:
+    {
+      __coreValue = true;
+      inherit digest values;
+    };
+  isCoreValue = v: isAttrs v && (v.__coreValue or false) == true;
+
   # mergeOptionDecls — combine two option-decl TREES (nixpkgs mergeModules' descent, byte-mode).
   # This is what lets `options.a.b.c = mkOption {…}` build a NESTED tree rather than the old
   # single-level view:
@@ -151,16 +170,36 @@ let
   # its combine via `.merge`; a leaf (gen-types checker, no `.merge`) merges by mergeOneOption then
   # `verify`. This is the (loc,defs) contract the whole engine — and the escape-hatch consumers
   # (spec §1 item 6) — ride.
-  mergeDefs =
-    loc: type: rawDefs:
+  # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
+  # every existing consumer of the exported `mergeDefs` escape hatch (spec §1 item 6) is unchanged.
+  # The opt-in fixed-input path is `mergeDefsWith true`, reached ONLY through the evalModuleTree knob.
+  mergeDefs = mergeDefsWith false;
+
+  # mergeDefsWith coreShortCircuit :: the shared fold, optionally honouring the fixed-input core
+  # marker (spec §2.5), checked BEFORE discharge:
+  #   • SOLE core def at this loc  → return its `values` directly, skipping discharge/fold/verify —
+  #     by contract already the full-merge output, so the result is byte-identical where the core is
+  #     correct (a WRONG core surfaces here as a divergent value; the gate teeth catch it).
+  #   • core def + ANY other def   → conservative fall-through: unwrap each core marker to its
+  #     `values` as a plain def and run the normal spine (correctness over the skip). Byte-identical
+  #     to a config that had supplied `values` in place of the marker.
+  mergeDefsWith =
+    coreShortCircuit: loc: type: rawDefs:
     let
+      soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue (head rawDefs).value;
+      # Fall-through normalization: unwrap a core marker to its `values` (a plain def) before the fold.
+      normalized =
+        if coreShortCircuit then
+          map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
+        else
+          rawDefs;
       discharged = concatMap (
         d:
         map (x: {
           inherit (d) file;
           inherit (x) value priority;
         }) (dischargeProperties d.value)
-      ) rawDefs;
+      ) normalized;
       winners = filterOverrides discharged;
       typeDefs = map (w: { inherit (w) file value; }) winners;
       result =
@@ -170,19 +209,21 @@ let
           type.merge loc typeDefs
         else
           mergeLeaf loc winners;
-    in
-    if type != null && type ? verify then
-      (
-        let
-          e = type.verify result;
-        in
-        if e == null then
-          result
+      checked =
+        if type != null && type ? verify then
+          (
+            let
+              e = type.verify result;
+            in
+            if e == null then
+              result
+            else
+              throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+          )
         else
-          throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
-      )
-    else
-      result;
+          result;
+    in
+    if soleCore then (head rawDefs).value.values else checked;
 
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
   # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
@@ -212,9 +253,14 @@ let
     else
       (head defs).value;
 
-  # An option merge = mergeDefs + default (as a lowest-priority def) + readOnly + apply.
-  mergeOption =
-    loc: optDecl: rawDefs:
+  # An option merge = mergeDefs + default (as a lowest-priority def) + readOnly + apply. The public
+  # `mergeOption` is the non-short-circuiting form; `mergeOptionWith coreShortCircuit` threads the
+  # opt-in kernel into the realizer path (the flag reaches the fold via `mergeDefsWith`). NOTE: a
+  # present `default =` appends a second def, which demotes a lone core def to fall-through — still
+  # byte-identical (the plain `values` beats the mkOptionDefault), only without the spine skip.
+  mergeOption = mergeOptionWith false;
+  mergeOptionWith =
+    coreShortCircuit: loc: optDecl: rawDefs:
     let
       _ro =
         if (optDecl.readOnly or false) && length rawDefs > 1 then
@@ -231,7 +277,7 @@ let
         if rawDefs == [ ] && !(optDecl ? default) then
           throw "gen-merge: the option `${showOption loc}' is used but not defined"
         else
-          mergeDefs loc (optDecl.type or null) withDefault;
+          mergeDefsWith coreShortCircuit loc (optDecl.type or null) withDefault;
       applied = if optDecl ? apply then optDecl.apply merged else merged;
     in
     builtins.seq _ro applied;
@@ -243,9 +289,17 @@ let
       specialArgs ? { },
       check ? true,
       prefix ? [ ],
+      # Opt-in fixed-input kernel (spec §2.5). Default off ⇒ ZERO behaviour change — the core marker
+      # is treated as an ordinary attrset. Firing scope: the top-level REALIZER path (declared leaf
+      # options at any depth, via `mergeOptionWith`); structural-type element merges (attrsOf/listOf
+      # per element) do NOT short-circuit but stay byte-identical (they never see the flag — a
+      # user-supplied type closed over the plain `mergeDefs`). This matches the tier-2 firing contract
+      # (core projection locs are declared-option leaves supplied by the core module).
+      coreShortCircuit ? false,
     }:
     let
       modList = if isList modules then modules else [ modules ];
+      localMergeOption = mergeOptionWith coreShortCircuit;
 
       # Flatten a module (function / __functor / attrset), applying functions by their STATIC
       # formals only (spec §1 item 4 — never force the dynamic `_module.args` spine), and recurse
@@ -308,7 +362,7 @@ let
             if isOptLeaf opts.${k} then
               {
                 name = k;
-                value = mergeOption (prefix ++ lk) opts.${k} (subDefs k);
+                value = localMergeOption (prefix ++ lk) opts.${k} (subDefs k);
                 unmatched = [ ];
               }
             else
@@ -459,7 +513,7 @@ let
         merge =
           loc: defs:
           (evalModuleTree {
-            inherit specialArgs check;
+            inherit specialArgs check coreShortCircuit;
             prefix = loc;
             modules = modList ++ map (d: setDefaultModuleLocation (d.file or "<def>") d.value) defs;
           }).config;
@@ -474,5 +528,6 @@ in
     mergeOneOption
     showOption
     setDefaultModuleLocation
+    mkCoreValue
     ;
 }
