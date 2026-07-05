@@ -137,10 +137,13 @@ let
   # list-typed freeform values, order-independent for scalars/attrsets.
   #
   # Within a module the unmatched paths are DISJOINT, so its subtree is assembled in one pass: depth-1
-  # keys (the wide-freeform hot path) build via `listToAttrs` — O(width) — and the rare deeper keys
-  # (undeclared UNDER a declared group) fold via `recursiveUpdate`. A depth-1 head and a deeper head
-  # can never collide within one module (a key undeclared HERE is captured whole and never descended;
-  # a deeper key rode a DECLARED group), so the two partitions union cleanly.
+  # keys (the wide-freeform hot path) build via `listToAttrs` — O(width) — and the deeper keys
+  # (undeclared UNDER a declared group) fold via `recursiveUpdate`. That fold is O(deep-entries ×
+  # subtree-width) (each `recursiveUpdate` copies its LHS), fine only because deeper freeform is BOTH
+  # rare AND narrow on the den surface — a WIDE nested freeform group would want the same listToAttrs
+  # treatment, but no consumer needs it. A depth-1 head and a deeper head can never collide within one
+  # module (a key undeclared HERE is captured whole and never descended; a deeper key rode a DECLARED
+  # group), so the two partitions union cleanly.
   buildModuleUnmatched =
     entries:
     let
@@ -156,6 +159,16 @@ let
     in
     recursiveUpdate flatAttrs deepAttrs;
 
+  # Extract each module's entries in ASCENDING index order (= reverse-module order) with a one-shot
+  # `filter` per module, then build its subtree once. This is O(moduleCount × |unmatched|), but that
+  # factor is over the MODULE COUNT (a small, bounded axis — config layers), NOT the freeform width;
+  # `filter` + `listToAttrs` are single builtin passes, so the cost stays LINEAR in width (the axis
+  # this fix exists to keep linear). A single-pass `foldl'` group-by is NOT an improvement here: with
+  # no O(1) cons/insert, accumulating per-module entry lists (`++`) or subtrees (`//`) copies the
+  # growing value each step → O(width²) (measured: 27× CPU / 52× alloc at a 4× width step, the very
+  # blow-up this fix removes — hidden from a thunk-count metric because the copies are lazy); a
+  # sort-first group-by avoids that but adds an O(U log U) term that tips the linear thunk growth. So
+  # the per-module `filter` is deliberate, not a missed optimisation.
   coalesceUnmatched =
     moduleCount: unmatched:
     concatMap (

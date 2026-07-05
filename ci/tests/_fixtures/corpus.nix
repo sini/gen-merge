@@ -72,9 +72,11 @@
   ];
   # NESTED freeform depth — undeclared keys absorbed UNDER a declared group (`grp` is declared via a
   # leaf `grp.declared`, so `grp.free*` are unmatched at depth 2). Pins that the unmatched-path
-  # reshaping (`setAttrByPath` at depth > 1) survives per-module coalescing and that declared wins
+  # reshaping (`setAttrByPath` at depth > 1) survives per-module coalescing — each module's deep keys
+  # fold into one nested subtree via `recursiveUpdate` WITHIN that module — and that declared wins
   # over freeform at the shared `grp` node. Two modules contribute overlapping nested freeform keys
-  # to exercise the deep `recursiveUpdate` fold across module instances.
+  # (incl. an mkForce on `grp.freeA`), so per-key resolution ACROSS modules also rides the freeform
+  # path.
   freeform-nested-depth = P: [
     {
       freeformType = P.types.lazyAttrsOf (P.types.lazyAttrsOf P.types.str);
