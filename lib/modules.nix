@@ -886,6 +886,7 @@ let
         let
           baseArgs = specialArgs // {
             inherit (result) config options;
+            inherit prefix;
           };
 
           # Apply a module by its declared formals, sourcing each from baseArgs then the dynamic

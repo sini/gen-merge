@@ -98,6 +98,10 @@ in
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
 recursion); `.provenance` is a lazy per-loc record of WHERE each value came from (see below).
 
+Every function module receives `config`, `options`, and `prefix` (the module's option path, equal to
+the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]` inside an option
+named `sub`) in addition to any `specialArgs` and `_module.args` entries.
+
 ## Provenance
 
 `.provenance` is an always-on, lazy tree mirroring `.config`'s loc structure — one record per option
