@@ -885,7 +885,10 @@ let
         result:
         let
           baseArgs = specialArgs // {
-            inherit (result) config options;
+            inherit (result) options;
+            # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
+            # parity); the returned `result.config` stays `_module`-free.
+            config = result.moduleConfig;
             inherit prefix;
           };
 
@@ -1019,7 +1022,20 @@ let
 
           # Declared wins over freeform at shared paths (nixpkgs `recursiveUpdate freeform declared`);
           # for the common disjoint-key case this is just `//`.
+          #
+          # The RETURNED/embedded `config` stays `_module`-free, exactly like nixpkgs — its
+          # `(evalModules).config` strips `_module`, so the parity oracle and every consumer that reads
+          # the merged value never sees it.
           config = builtins.seq _orphanCheck (recursiveUpdate freeformConfig declaredConfig);
+
+          # The MODULE-VISIBLE config (`baseArgs.config`, ~:888) re-surfaces `_module.args` as a
+          # readable path, matching nixpkgs (inside a module `config._module.args` resolves; the
+          # returned config drops it). Consumers read the WHOLE map to enumerate args dynamically:
+          # gen-schema's `mkInstanceType` sets `config._module.args.${kind} = config` and den's
+          # `resolvedCtxModule` reads `config._module.args` to build the entity resolution context (it
+          # can't enumerate `...` function args). ONLY `.args` (not the `_module.freeformType` gen-merge
+          # consumes internally), and ONLY when a module set an arg — else `config` is used unchanged.
+          moduleConfig = if moduleArgs == { } then config else config // { _module.args = moduleArgs; };
 
           # ── provenance (A2 spec §1) ────────────────────────────────────────────────────────────
           # A lazy tree mirroring `config`'s loc structure. Per DECLARED-option loc the rich record
@@ -1105,6 +1121,7 @@ let
         {
           inherit
             config
+            moduleConfig
             moduleArgs
             provenance
             freeformConfig

@@ -408,6 +408,51 @@ in
     };
   };
 
+  # `config._module.args` is READABLE INSIDE a module (nixpkgs parity: `config._module.args` resolves
+  # in a module body; the returned `.config` stays `_module`-free). A module reads the WHOLE arg map —
+  # which gen-schema's `mkInstanceType` and den's `resolvedCtxModule` rely on to enumerate entity args
+  # dynamically (`config._module.args.${kind} = config` set on one side, read back on the other). The
+  # RETURNED config never surfaces `_module`, so `cfg` sees only the declared surface.
+  flake.tests.moduleArgs.test-module-args-readable-inside-module = {
+    expr =
+      (cfg {
+        modules = [
+          { config._module.args.host = "H"; }
+          { config._module.args.user = "U"; }
+          (
+            { config, ... }:
+            {
+              options.seen = mkOption {
+                type = t.attrsOf t.str;
+                default = config._module.args;
+              };
+            }
+          )
+        ];
+      }).seen;
+    expected = {
+      host = "H";
+      user = "U";
+    };
+  };
+
+  # The RETURNED config stays `_module`-free (nixpkgs strips it from `(evalModules).config`).
+  flake.tests.moduleArgs.test-returned-config-has-no-module = {
+    expr =
+      (cfg {
+        modules = [
+          { config._module.args.host = "H"; }
+          {
+            options.out = mkOption {
+              type = t.str;
+              default = "o";
+            };
+          }
+        ];
+      }) ? _module;
+    expected = false;
+  };
+
   # nullOr / either / oneOf — merge-aware type combinators (gen-schema ref/union fields).
   flake.tests.combinators = {
     test-nullOr-null = {
