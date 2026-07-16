@@ -61,10 +61,18 @@ let
       else if v._type == "if" then
         (if v.condition then dischargeProperties v.content else [ ])
       else if v._type == "override" then
-        map (d: {
-          inherit (v) priority;
-          inherit (d) value;
-        }) (dischargeProperties v.content)
+        # Stamp the override priority but keep `content` LAZY — do NOT recurse into it. nixpkgs
+        # `dischargeProperties` never descends into an mkOverride's content (its override case is the
+        # bare `[ def ]` fall-through); the priority is read off the wrapper and the value is forced
+        # only if this def wins `filterOverrides`. Recursing here forced every override-wrapped def —
+        # including a LOSING option default whose body throws (den's host `intoAttr` default
+        # `{…}.${config.class}` for `class == "droid"`), which must be dropped, not evaluated.
+        [
+          {
+            inherit (v) priority;
+            value = v.content;
+          }
+        ]
       else
         [
           {

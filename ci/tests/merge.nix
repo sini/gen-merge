@@ -111,6 +111,28 @@ in
       };
     };
 
+    # A LOSING option default must never be forced. nixpkgs `dischargeProperties` leaves an
+    # mkOverride's content lazy (priority resolved by `filterOverrides`, wrapper stripped only on
+    # winners) so a default that would throw when evaluated is dropped, not forced. Regression: den's
+    # host `intoAttr` default `{…}.${config.class}` throws for `class == "droid"`, but a real def
+    # overrides it — the losing default must not be evaluated. `listOf` exercises the concat path too.
+    test-throwing-optionDefault-not-forced-when-overridden = {
+      expr = cfg {
+        modules = [
+          {
+            options.x = mkOption {
+              type = t.listOf t.str;
+              default = throw "LOSING_DEFAULT_FORCED";
+            };
+          }
+          { x = [ "real" ]; }
+        ];
+      };
+      expected = {
+        x = [ "real" ];
+      };
+    };
+
     # combinators
     test-mkMerge = {
       expr = cfg {
