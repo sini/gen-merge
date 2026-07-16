@@ -14,6 +14,7 @@
 }:
 let
   gmT = genMerge.types;
+  prefixed = k: builtins.substring 0 1 k == "_";
 
   # Mount a gen-merge-typed option in a REAL nixpkgs `lib.evalModules` (the exact corpus path: a nixpkgs
   # option whose `type` is a gen-merge type), read back the resolved config value.
@@ -127,6 +128,44 @@ in
         cross = null;
       };
     };
+    # BOUNDARY REGRESSION (den's `den.schema._kindNames`): a gen-merge submodule whose base module sets a
+    # `readOnly` config value, mounted in a nixpkgs `evalModules`. nixpkgs `fixupOptionType`
+    # (modules.nix:1477) round-trips the type's OWN `getSubModules` (relocated) back through
+    # `substSubModules`. A CONCAT (`mods ++ m`) duplicates the base module → the readOnly config is emitted
+    # twice → "read-only … defined 2 times". `substSubModules` must REPLACE (nixpkgs `submoduleWith`), so
+    # the base runs exactly once and the readOnly value resolves.
+    test-readonly-base-single-eval = {
+      expr =
+        let
+          roMod =
+            { config, ... }:
+            {
+              freeformType = gmT.lazyAttrsOf gmT.str;
+              options._keys = genMerge.mkOption {
+                type = gmT.listOf gmT.str;
+                internal = true;
+                readOnly = true;
+              };
+              config._keys = builtins.filter (k: !prefixed k) (builtins.attrNames config);
+            };
+          sub = mount (gmT.submodule roMod) {
+            a = "x";
+            b = "y";
+          };
+        in
+        {
+          keys = sub._keys;
+          a = sub.a;
+        };
+      expected = {
+        keys = [
+          "a"
+          "b"
+        ];
+        a = "x";
+      };
+    };
+
     # SEMANTIC: `submodule.substSubModules` rebuilds a submodule type extended with the option's modules.
     test-substSubModules-rebuilds = {
       expr =

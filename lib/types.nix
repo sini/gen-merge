@@ -147,10 +147,14 @@ let
     mkOptionType {
       name = "submodule";
       getSubModules = mods;
-      # nixpkgs protocol: rebuild the submodule type extended with an option's own sub-modules (read at
-      # modules.nix:1477 for submodule-typed options). Additive to `mods`, so nested option declarations
-      # from the consuming option compose, exactly as nixpkgs `submoduleWith`.
-      substSubModules = m: submodule (mods ++ (if isList m then m else [ m ]));
+      # nixpkgs protocol: rebuild the submodule type with the module set nixpkgs supplies (read at
+      # modules.nix:1477 for submodule-typed options). REPLACES `mods` — it does NOT append: nixpkgs'
+      # `mergeOptionDecls` builds `m` as `map (setDefaultModuleLocation _file) type.getSubModules ++
+      # res.options`, i.e. this type's OWN modules (relocated) plus any sibling declarations. Concatenating
+      # would re-include `mods` a second time, double-evaluating the base module (a readOnly config value —
+      # e.g. gen-schema's `den.schema._kindNames` — then throws "defined 2 times"). This mirrors nixpkgs
+      # `submoduleWith.substSubModules = m: submoduleWith (attrs // { modules = m; })`.
+      substSubModules = m: submodule (if isList m then m else [ m ]);
       merge =
         loc: defs:
         (evalModuleTree {
