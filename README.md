@@ -321,6 +321,44 @@ no defs supplied, so the introspection and merge halves cannot disagree about wh
 declares, and nothing an instance authored is forced. A **leaf** type has no sub-options and returns
 `{ }` — the `completeType` default, which stays correct for every non-structural type.
 
+### `functor` / `typeMerge` — merging the TYPES, not the values
+
+`typeMerge` is the one protocol field that is about two **declarations** rather than about defs: when
+an option is declared with a type in more than one module, nixpkgs `mergeOptionDecls` asks the first
+type to merge with the second's `functor`, and refuses the declaration outright if the answer is
+`null`. gen-merge's own engine never reaches it — it field-unions declarations (later type wins), and
+the portable-subset lint reports that as `type-merge`. The field exists for the **forward boundary**:
+a gen-merge type mounted in a nixpkgs `lib.evalModules`.
+
+A type's `functor` carries the parameters it was built from, and two same-named types merge iff those
+parameters do:
+
+```nix
+# nullary — raw, anything, deferredModule, every gen-types leaf
+{ name; type; payload = null; binOp = _a: _b: null; }      # same name ⇒ the type itself
+# one-element containers — listOf, attrsOf, lazyAttrsOf, nullOr
+{ payload = { elemType; }; type = p: rebuild p.elemType;
+  binOp = a: b: <merge the elements, recursively>; }
+# submodule — the parameter is the MODULE LIST (nixpkgs `submoduleWith`)
+{ payload = { modules; }; binOp = l: r: { modules = l.modules ++ r.modules; }; }
+# either — the parameter is the member PAIR, positional
+{ payload.elemType = [ a b ]; }
+```
+
+So `attrsOf str` and `attrsOf int` are **not** mergeable, while two `attrsOf str` are, and two
+submodule declarations of one option merge to a submodule declaring the union of both. A
+parameterised type left on the nullary functor would answer "mergeable" for any same-named partner
+and silently keep one declaration — the type-level form of a dropped definition.
+
+Two guards nixpkgs has no need of, because every functor nixpkgs meets is its own. gen-merge meets
+**foreign** functors by construction, so a payload that is asymmetrically present, or present with a
+different **shape**, is answered "not mergeable" rather than aborting or rebuilding a gen container
+out of a payload it does not understand — nixpkgs `submoduleWith` carries `class`/`specialArgs`/… beside
+`modules`, and truncating that into a gen-merge `submodule` would drop them silently. For the same
+reason an element that is not protocol-complete (a gen-types **parametric** leaf — `enum`, `struct`,
+`union` — reaches the unified namespace as a bare constructor and is never completed) makes its
+container not mergeable instead of aborting on a missing attribute.
+
 ## Compat mode
 
 The `types` argument is an injection seam, so it can point at nixpkgs' own `lib.types` and run the

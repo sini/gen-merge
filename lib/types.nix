@@ -17,6 +17,7 @@ let
     concatLists
     map
     attrNames
+    elemAt
     listToAttrs
     foldl'
     optional
@@ -53,27 +54,71 @@ let
   # on the same defs (byte-identical fold). `.check` is read ONLY by the union `isValid`, which prefers
   # `.verify`; a leaf keeps its verify, a structural without a check gets `_: true` (preserving the
   # prior `isValid = true`). See ci/tests for the mount witness + the byte-identity gates.
+  # nixpkgs `defaultFunctor` — a NULLARY type's functor: no payload, so `pureTypeMerge` answers the type
+  # itself for a same-named partner. That is correct ONLY where the type takes no parameters (`raw`,
+  # `anything`, `deferredModule`, every gen-types leaf). A PARAMETERISED type left on this functor merges
+  # blind to its parameters — two `attrsOf` over different element types would report "mergeable" and
+  # silently keep the first, discarding the second declaration. So every parameterised constructor here
+  # supplies its own functor: `elemTypeFunctor` for the one-element containers, an explicit payload for
+  # `submodule` and `either`. README "The nixpkgs `optionType` protocol";
+  # gen-specs/gen-merge/REFERENCE.md.
   pureDefaultFunctor = name: {
     inherit name;
     type = null;
     payload = null;
     binOp = _a: _b: null;
   };
+  # Merge two ELEMENT types, guarded. nixpkgs assumes every type it meets carries the full protocol;
+  # gen-merge meets types that do not — a gen-types PARAMETRIC leaf (`enum`, `struct`, `union`) reaches
+  # the unified namespace as a bare constructor and is never protocol-completed, so it carries no
+  # `functor`. A missing half answers "not mergeable" rather than aborting on a missing attribute.
+  mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+  # nixpkgs `elemTypeFunctor`, replicated purely — the functor of a container parameterised by ONE
+  # element type. The payload IS the element type, so two containers merge iff their ELEMENTS merge
+  # (recursively, through the element's own `typeMerge`), and `rebuild` reconstructs the container from
+  # the merged element. The payload shape `{ elemType = …; }` is nixpkgs' own, so the two engines'
+  # `listOf`/`nullOr` functors stay mutually legible.
+  elemTypeFunctor = name: rebuild: elemType: {
+    inherit name;
+    payload = { inherit elemType; };
+    type = payload: rebuild payload.elemType;
+    binOp =
+      a: b:
+      let
+        merged = mergeElemTypes a.elemType b.elemType;
+      in
+      if merged == null then null else { elemType = merged; };
+  };
   # nixpkgs `defaultTypeMerge`, replicated purely: same-name types merge (via payload binOp when
   # present, else the type constructor); different names ⇒ null ("not mergeable").
+  #
+  # Two guards nixpkgs has no need of. nixpkgs ASSERTS payload-presence symmetry because every functor it
+  # meets is its own; gen-merge meets FOREIGN functors by construction — the one-way interop that IS the
+  # design mounts a gen type inside a nixpkgs `lib.evalModules`, where a same-named nixpkgs type may be
+  # declared for the same option. So a payload that is asymmetrically present, or present with a
+  # different SHAPE, is answered "not mergeable" instead of aborting — or, worse, rebuilding this
+  # container out of a payload it does not understand: nixpkgs `submoduleWith` carries
+  # `class`/`specialArgs`/`shorthandOnlyDefinesConfig`/`description` beside `modules`, and truncating
+  # that into a gen-merge `submodule` would drop them silently.
   pureTypeMerge =
     functor: f':
+    let
+      p = functor.payload;
+      p' = f'.payload or null;
+    in
     if functor.name != (f'.name or null) then
       null
-    else if functor.payload != null then
-      (
-        let
-          mp = functor.binOp functor.payload (f'.payload or null);
-        in
-        if mp == null then null else functor.type mp
-      )
+    else if (p == null) != (p' == null) then
+      null
+    else if p == null then
+      functor.type
+    else if attrNames p != attrNames p' then
+      null
     else
-      functor.type;
+      let
+        mp = functor.binOp p p';
+      in
+      if mp == null then null else functor.type mp;
   # Leaf merge = nixpkgs `mergeEqualOption` = gen-merge's `mergeLeaf` on {file,value} defs (one def, or
   # all-equal, else conflict) — so a leaf that gains this `.merge` folds byte-identically to before.
   protoLeafMerge =
@@ -146,6 +191,19 @@ let
     in
     mkOptionType {
       name = "submodule";
+      # The MERGE half of the protocol for the type ITSELF (`typeMerge`), as opposed to for its values.
+      # nixpkgs `submoduleWith`'s functor concatenates the two declarations' module lists, so an option
+      # declared as a submodule in two modules ends up declaring the union of what they declare. On the
+      # nullary default functor the second declaration is discarded silently.
+      functor = pureDefaultFunctor "submodule" // {
+        payload = {
+          modules = mods;
+        };
+        type = payload: submodule payload.modules;
+        binOp = lhs: rhs: {
+          modules = lhs.modules ++ rhs.modules;
+        };
+      };
       getSubModules = mods;
       # nixpkgs protocol: rebuild the submodule type with the module set nixpkgs supplies (read at
       # modules.nix:1477 for submodule-typed options). REPLACES `mods` — it does NOT append: nixpkgs'
@@ -197,6 +255,7 @@ let
       # nixpkgs-parity introspection alias — lets a consumer's type-tree walker (e.g. gen-schema's
       # `mkCoerceChain`, which reads `t.nestedTypes.elemType`) recurse unchanged.
       nestedTypes = { inherit elemType; };
+      functor = elemTypeFunctor "listOf" listOf elemType;
       # nixpkgs protocol: descend to the element type under the positional placeholder segment.
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "*" ]);
       merge =
@@ -223,6 +282,10 @@ let
       name = tyName;
       inherit elemType;
       nestedTypes = { inherit elemType; };
+      # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct functor NAMES where nixpkgs unifies both under
+      # `attrsWith` (discriminated by a `lazy` payload field). Distinct names are the conservative
+      # direction: the two never merge with each other, and neither merges with a nixpkgs `attrsWith`.
+      functor = elemTypeFunctor tyName (attrsOfWith tyName) elemType;
       # nixpkgs protocol: descend to the element type under the per-key placeholder segment, so an
       # `attrsOf (submodule …)` registry exposes its INSTANCE option surface to an introspecting consumer.
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
@@ -283,6 +346,7 @@ let
     mkOptionType {
       name = "nullOr";
       nestedTypes = { inherit elemType; };
+      functor = elemTypeFunctor "nullOr" nullOr elemType;
       check = v: v == null || isValid elemType v;
       merge =
         loc: defs:
@@ -302,6 +366,31 @@ let
       nestedTypes = {
         left = a;
         right = b;
+      };
+      # nixpkgs' `either` functor: the payload is the PAIR of member types, carried as a two-element
+      # `elemType` list (the same spelling nixpkgs uses), so two `either`s merge iff both members merge
+      # pairwise. Positionally, not as a set — `either str int` and `either int str` are distinct types.
+      functor = pureDefaultFunctor "either" // {
+        payload.elemType = [
+          a
+          b
+        ];
+        type = payload: either (head payload.elemType) (elemAt payload.elemType 1);
+        binOp =
+          lhs: rhs:
+          let
+            left = mergeElemTypes (head lhs.elemType) (head rhs.elemType);
+            right = mergeElemTypes (elemAt lhs.elemType 1) (elemAt rhs.elemType 1);
+          in
+          if left == null || right == null then
+            null
+          else
+            {
+              elemType = [
+                left
+                right
+              ];
+            };
       };
       check = v: isValid a v || isValid b v;
       # Dispatch on the first value's shape, then merge through the chosen type via mergeDefs so leaf
