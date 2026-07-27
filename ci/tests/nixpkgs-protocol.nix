@@ -190,6 +190,41 @@ in
       };
     };
 
+    # The two halves of the protocol must agree about what a `deferredModule` IS. `check` decides which
+    # DEFINITIONS are admissible (a path, a function, a `__functor` attrset, a plain attrset);
+    # `getSubOptions` reports what the TYPE declares with no value in hand. They agree by saying
+    # different things about different questions: accepting a module-shaped VALUE does not make the type
+    # DECLARE that module's options, because a definition is not a static module. gen-merge ships no
+    # `deferredModuleWith`/`staticModules`, so the declared set is empty however many modules are later
+    # defined into it.
+    #
+    # The control is the load-bearing row: a `submodule` over the SAME module DOES declare `y`, so the
+    # `{ }` above is `deferredModule`'s own answer rather than the walk returning something constant.
+    # Without it, an accidental `getSubOptions = _: { }` on every type would satisfy this test.
+    test-deferredModule-check-and-getSubOptions-agree = {
+      expr =
+        let
+          m = {
+            options.y = genMerge.mkOption { type = gmT.str; };
+          };
+        in
+        {
+          checkAcceptsModule = gmT.deferredModule.check m;
+          checkRejectsNonModule = gmT.deferredModule.check 3;
+          declaresNothing = gmT.deferredModule.getSubOptions [ ];
+          # the accepted module still rides through to the value, unexamined and unforced
+          mergedImportsCount = builtins.length (mount gmT.deferredModule m).imports;
+          submoduleOverSameModuleDeclares = builtins.attrNames ((gmT.submodule m).getSubOptions [ ]);
+        };
+      expected = {
+        checkAcceptsModule = true;
+        checkRejectsNonModule = false;
+        declaresNothing = { };
+        mergedImportsCount = 1;
+        submoduleOverSameModuleDeclares = [ "y" ];
+      };
+    };
+
     # `nullOr` was the last STRUCTURAL type left on the `_prefix: { }` default, so a `nullOr`-wrapped
     # registry reported "declares nothing" — indistinguishable from one that genuinely declares nothing,
     # the same fail-closed shape the containers had. It passes straight through to its element.
