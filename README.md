@@ -321,6 +321,30 @@ no defs supplied, so the introspection and merge halves cannot disagree about wh
 declares, and nothing an instance authored is forced. A **leaf** type has no sub-options and returns
 `{ }` — the `completeType` default, which stays correct for every non-structural type.
 
+### `emptyValue` — when "nothing was defined" is not an error
+
+With no surviving definition, nixpkgs lets the **type** supply a value before this is an error
+(`modules.nix`: `else if type.emptyValue ? value then type.emptyValue.value`). A container nobody
+added to is legitimately empty; a value nobody supplied is a mistake. `emptyValue` is what tells the
+two apart, and gen-merge stamped `{ }` — *no* `value` attr — on every type, so both landed on the same
+throw.
+
+| type | `emptyValue` |
+|---|---|
+| `attrsOf`, `lazyAttrsOf`, `submodule` | `{ value = { }; }` |
+| `listOf` | `{ value = [ ]; }` |
+| `nullOr` | `{ value = null; }` |
+| `raw`, `anything`, `deferredModule`, `either`, every leaf | *declares none* — still an error |
+
+The table matches nixpkgs entry for entry, and the second half is as load-bearing as the first: a type
+that declares no empty value must keep throwing.
+
+There are **two ways to arrive with nothing**, and both reach the same rule: an option that was never
+defined at all, and an option whose every definition was discharged away — `mkIf false` as the sole
+def. So `attrsOf` yields `{ }`, `listOf` yields `[ ]` and `nullOr` yields `null` in both situations,
+while a `str` still reports that it was used but not defined. An option `default` is a definition (at
+`mkOptionDefault` priority), so it always wins over the empty value.
+
 ### `check` — and the one type whose default was wrong
 
 `check` is nixpkgs' definition-level predicate. gen-merge's own engine never reads it — it validates

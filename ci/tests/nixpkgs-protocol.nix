@@ -201,6 +201,48 @@ in
       };
     };
 
+    # `emptyValue` — the field that decides whether "no surviving definition" is a legitimate empty
+    # container or an error. It was `{ }` (no `value` attr) on every type, which reads as "this type
+    # declares no empty value" and made every undefined option an error. Pinned as the full table
+    # against nixpkgs rather than for the four that changed: the types that must declare NONE are the
+    # other half of the contract, and a regression that hands every type an `emptyValue.value` would
+    # pass a four-row test.
+    test-emptyValue-matches-nixpkgs = {
+      expr =
+        let
+          e = t: if t.emptyValue ? value then t.emptyValue.value else "<declares none>";
+          row = T: {
+            attrsOf = e (T.attrsOf T.str);
+            lazyAttrsOf = e (T.lazyAttrsOf T.str);
+            listOf = e (T.listOf T.str);
+            nullOr = e (T.nullOr T.str);
+            submodule = e (T.submodule { });
+            deferredModule = e T.deferredModule;
+            either = e (T.either T.str T.int);
+            raw = e T.raw;
+            anything = e T.anything;
+          };
+        in
+        {
+          gen = row gmT;
+          matchesNixpkgs = row gmT == row nixpkgsLib.types;
+        };
+      expected = {
+        gen = {
+          attrsOf = { };
+          lazyAttrsOf = { };
+          listOf = [ ];
+          nullOr = null;
+          submodule = { };
+          deferredModule = "<declares none>";
+          either = "<declares none>";
+          raw = "<declares none>";
+          anything = "<declares none>";
+        };
+        matchesNixpkgs = true;
+      };
+    };
+
     # `deferredModule.check` — a check that CANNOT FAIL is not a check. `completeType` defaults a type
     # carrying neither `verify` nor `check` to `_: true`, which is right for a type whose merge accepts
     # any value; `deferredModule`'s does not. Its merge wraps each def into an `imports` list, and the

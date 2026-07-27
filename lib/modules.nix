@@ -502,6 +502,23 @@ let
       };
     };
 
+  # nixpkgs' EMPTY-DEFINITION rule (modules.nix `mergeDefinitions`: `else if type.emptyValue ? value
+  # then type.emptyValue.value`). With no surviving definition the type gets to supply a value before
+  # this is an error, and only a type declaring none is an error. A container is empty-able —
+  # `attrsOf`/`lazyAttrsOf`/`submodule` → `{ }`, `listOf` → `[ ]`, `nullOr` → `null` — while every leaf
+  # (and `raw`/`anything`/`deferredModule`/`either`) declares no `emptyValue.value` and still throws.
+  #
+  # Two distinct ways to arrive with nothing, both of which nixpkgs answers here: an option that was
+  # never defined at all, and an option every one of whose definitions was discharged away — `mkIf
+  # false` as the sole def. `emptyValue` is what separates "a container nobody added to", which is
+  # legitimately empty, from "a value nobody supplied", which is a mistake.
+  emptyValueOr =
+    type: err:
+    if type != null && (type.emptyValue or { }) ? value then type.emptyValue.value else throw err;
+  # Whether `emptyValueOr` would yield rather than throw — lets the realizer decline to short-circuit an
+  # undefined option so the ONE empty-value site stays inside the fold.
+  hasEmptyValue = type: type != null && (type.emptyValue or { }) ? value;
+
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
   # every existing consumer of the exported `mergeDefs` escape hatch (spec §1 item 6) is unchanged.
@@ -549,7 +566,7 @@ let
       typeDefs = map (w: { inherit (w) file value; }) winners;
       result =
         if winners == [ ] then
-          throw "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
+          emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if type != null && type ? merge then
           type.merge loc typeDefs
         else
@@ -616,7 +633,7 @@ let
       typeDefs = map (w: { inherit (w) file value; }) winners;
       result =
         if winners == [ ] then
-          throw "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
+          emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if type != null && type ? merge then
           type.merge loc typeDefs
         else
@@ -719,7 +736,10 @@ let
           value = mkOptionDefault optDecl.default;
         };
       merged =
-        if rawDefs == [ ] && !(optDecl ? default) then
+        # An empty-able type is NOT an error when undefined — fall through to the fold, whose
+        # `winners == [ ]` arm is the single place `emptyValue` is consulted (nixpkgs answers both
+        # arrivals at one site too). Only a type with no `emptyValue.value` short-circuits to the throw.
+        if rawDefs == [ ] && !(optDecl ? default) && !(hasEmptyValue (optDecl.type or null)) then
           throw "gen-merge: the option `${showOption loc}' is used but not defined"
         else
           mergeDefsRichWith coreShortCircuit loc (optDecl.type or null) withDefault;

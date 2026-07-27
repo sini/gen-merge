@@ -55,6 +55,7 @@ let
   # on the same defs (byte-identical fold). `.check` is read ONLY by the union `isValid`, which prefers
   # `.verify`; a leaf keeps its verify, a structural without a check gets `_: true` (preserving the
   # prior `isValid = true`). See ci/tests for the mount witness + the byte-identity gates.
+  #
   # nixpkgs `defaultFunctor` — a NULLARY type's functor: no payload, so `pureTypeMerge` answers the type
   # itself for a same-named partner. That is correct ONLY where the type takes no parameters (`raw`,
   # `anything`, `deferredModule`, every gen-types leaf). A PARAMETERISED type left on this functor merges
@@ -192,6 +193,11 @@ let
     in
     mkOptionType {
       name = "submodule";
+      # nixpkgs' empty-definition rule (see `emptyValueOr`, lib/modules.nix): a CONTAINER nobody added
+      # to is legitimately empty; only a type that declares no empty value is an error when undefined.
+      emptyValue = {
+        value = { };
+      };
       # The MERGE half of the protocol for the type ITSELF (`typeMerge`), as opposed to for its values.
       # nixpkgs `submoduleWith`'s functor concatenates the two declarations' module lists, so an option
       # declared as a submodule in two modules ends up declaring the union of what they declare. On the
@@ -253,6 +259,9 @@ let
     mkOptionType {
       name = "listOf";
       inherit elemType;
+      emptyValue = {
+        value = [ ];
+      };
       # nixpkgs-parity introspection alias — lets a consumer's type-tree walker (e.g. gen-schema's
       # `mkCoerceChain`, which reads `t.nestedTypes.elemType`) recurse unchanged.
       nestedTypes = { inherit elemType; };
@@ -282,6 +291,9 @@ let
     mkOptionType {
       name = tyName;
       inherit elemType;
+      emptyValue = {
+        value = { };
+      };
       nestedTypes = { inherit elemType; };
       # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct functor NAMES where nixpkgs unifies both under
       # `attrsWith` (discriminated by a `lazy` payload field). Distinct names are the conservative
@@ -360,6 +372,11 @@ let
     elemType:
     mkOptionType {
       name = "nullOr";
+      # nixpkgs `nullOr.emptyValue` is `null`, NOT the absent-value marker: a nullable option nobody
+      # defined IS null. Distinct from the containers only in which empty value it names.
+      emptyValue = {
+        value = null;
+      };
       nestedTypes = { inherit elemType; };
       functor = elemTypeFunctor "nullOr" nullOr elemType;
       check = v: v == null || isValid elemType v;

@@ -157,6 +157,158 @@ in
         x = "yes";
       };
     };
+    # nixpkgs' EMPTY-DEFINITION rule (modules.nix `mergeDefinitions`): with no surviving definition the
+    # TYPE gets to supply a value before this is an error. A container nobody added to is legitimately
+    # empty; a value nobody supplied is a mistake. `emptyValue` is what tells the two apart, and gen-merge
+    # had it stubbed `{ }` on every type, so both arrived at the same throw.
+    #
+    # Two ways to arrive with nothing, and both reach the ONE `emptyValue` site in the fold: an option
+    # never defined at all, and an option whose every definition was discharged away.
+    test-emptyValue-mkIf-false-sole-def = {
+      expr = cfg {
+        modules = [
+          {
+            options.a = mkOption { type = t.attrsOf t.str; };
+            options.l = mkOption { type = t.listOf t.str; };
+            options.n = mkOption { type = t.nullOr t.str; };
+            options.s = mkOption { type = t.submodule { }; };
+          }
+          {
+            a = mkIf false { k = "v"; };
+            l = mkIf false [ "x" ];
+            n = mkIf false "x";
+            s = mkIf false { };
+          }
+        ];
+      };
+      expected = {
+        a = { };
+        l = [ ];
+        n = null;
+        s = { };
+      };
+    };
+    test-emptyValue-undefined-option = {
+      expr = cfg {
+        modules = [
+          {
+            options.a = mkOption { type = t.attrsOf t.str; };
+            options.l = mkOption { type = t.listOf t.str; };
+            options.n = mkOption { type = t.nullOr t.str; };
+          }
+        ];
+      };
+      expected = {
+        a = { };
+        l = [ ];
+        n = null;
+      };
+    };
+    # THE ARMING CONTROLS. The empty value must not swallow a real definition, must not swallow a
+    # DEFAULT, and must not extend to a type that declares none — a leaf, `raw`, `anything`,
+    # `deferredModule` and `either` all still throw, exactly as nixpkgs does.
+    test-emptyValue-does-not-shadow-a-definition = {
+      expr = cfg {
+        modules = [
+          {
+            options.a = mkOption { type = t.attrsOf t.str; };
+            options.l = mkOption { type = t.listOf t.str; };
+            options.n = mkOption { type = t.nullOr t.str; };
+          }
+          {
+            a.k = "v";
+            l = [ "x" ];
+            n = "x";
+          }
+        ];
+      };
+      expected = {
+        a = {
+          k = "v";
+        };
+        l = [ "x" ];
+        n = "x";
+      };
+    };
+    test-emptyValue-does-not-shadow-a-default = {
+      expr = cfg {
+        modules = [
+          {
+            options.a = mkOption {
+              type = t.attrsOf t.str;
+              default = {
+                d = "fromDefault";
+              };
+            };
+          }
+        ];
+      };
+      expected = {
+        a = {
+          d = "fromDefault";
+        };
+      };
+    };
+    # Each type is probed on BOTH arrivals, because they are guarded by DIFFERENT code: an option never
+    # defined short-circuits in the realizer, while an option whose every definition was discharged away
+    # reaches the empty-value site inside the fold. Probing only the first leaves the second uncovered —
+    # measured, not assumed: an empty-value rule that hands EVERY type a value passes an undefined-only
+    # version of this test and still resolves a `mkIf false`-only `raw`/`anything`/`deferredModule`/
+    # `either` to `{ }`. A leaf is the wrong sentinel for that break, since its `verify` rejects the
+    # bogus value and hides it; `raw` and friends carry no verify and are what actually catch it.
+    test-emptyValue-absent-on-types-that-declare-none = {
+      expr =
+        let
+          resolves = e: (builtins.tryEval (builtins.deepSeq e null)).success;
+          probe = ty: {
+            undefined = resolves (cfg {
+              modules = [ { options.x = mkOption { type = ty; }; } ];
+            });
+            discharged = resolves (cfg {
+              modules = [
+                { options.x = mkOption { type = ty; }; }
+                { x = mkIf false "whatever"; }
+              ];
+            });
+          };
+        in
+        builtins.mapAttrs (_: probe) {
+          leaf = t.str;
+          raw = t.raw;
+          anything = t.anything;
+          deferredModule = t.deferredModule;
+          either = t.either t.str t.int;
+          # control on the same instrument: an empty-able type resolves on BOTH arrivals, so a
+          # uniformly-throwing engine cannot satisfy this row either.
+          attrsOf = t.attrsOf t.str;
+        };
+      expected = {
+        leaf = {
+          undefined = false;
+          discharged = false;
+        };
+        raw = {
+          undefined = false;
+          discharged = false;
+        };
+        anything = {
+          undefined = false;
+          discharged = false;
+        };
+        deferredModule = {
+          undefined = false;
+          discharged = false;
+        };
+        either = {
+          undefined = false;
+          discharged = false;
+        };
+        attrsOf = {
+          undefined = true;
+          discharged = true;
+        };
+      };
+    };
     test-mkIf-attrset-pushdown = {
       expr = cfg {
         modules = [
