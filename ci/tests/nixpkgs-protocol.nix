@@ -307,6 +307,108 @@ in
       };
     };
 
+    # gen-types exports NULLARY leaves as attrsets and PARAMETRIC ones as constructors. Only the first
+    # shape was protocol-completed, so `enum`/`struct`/`union`/`tuple`/`refined`/`optionalAttr` returned a
+    # bare gen-types record — no `deprecationMessage`, no `functor`, no `getSubOptions`. Mounting one in a
+    # nixpkgs `evalModules` reproduced the exact crash the protocol completion exists to prevent.
+    #
+    # Both halves are asserted: the completed set carries the full protocol AND the nullary leaves are
+    # unchanged, so a regression that completes nothing and one that over-completes both redden.
+    test-parametric-leaf-protocol-complete = {
+      expr = {
+        enum = builtins.filter (f: !((gmT.enum "e" [ "a" ]) ? ${f})) protocolFields;
+        struct = builtins.filter (f: !((gmT.struct "s" { a = gmT.str; }) ? ${f})) protocolFields;
+        refined = builtins.filter (f: !((gmT.refined gmT.str [ ]) ? ${f})) protocolFields;
+        optionalAttr = builtins.filter (f: !((gmT.optionalAttr gmT.str) ? ${f})) protocolFields;
+        nullaryStillComplete = builtins.filter (f: !(gmT.str ? ${f})) protocolFields;
+      };
+      expected = {
+        enum = [ ];
+        struct = [ ];
+        refined = [ ];
+        optionalAttr = [ ];
+        nullaryStillComplete = [ ];
+      };
+    };
+
+    # THE WITNESS: a parametric leaf mounts in a REAL nixpkgs `lib.evalModules` and still CHECKS. The
+    # rejecting row is the one that proves the mount did not simply stop validating on the way through.
+    test-parametric-leaf-mounts-in-nixpkgs = {
+      expr = {
+        accepts = mount (gmT.enum "e" [
+          "a"
+          "b"
+        ]) "a";
+        rejectsResolves = resolves (
+          mount (gmT.enum "e" [
+            "a"
+            "b"
+          ]) "zzz"
+        );
+        structAccepts = mount (gmT.struct "s" { a = gmT.str; }) { a = "v"; };
+      };
+      expected = {
+        accepts = "a";
+        rejectsResolves = false;
+        structAccepts = {
+          a = "v";
+        };
+      };
+    };
+
+    # A parametric leaf's `typeMerge` REFUSES, deliberately. Its parameters are not introspectable, and
+    # neither substitute works: gen-types' `__id` is NAME-only, so `enum "e" [ "a" ]` and
+    # `enum "e" [ "b" ]` share one; and value equality is pointer-based over the closures, so two
+    # IDENTICAL constructions compare unequal. Left on the nullary default, `pureTypeMerge` would answer
+    # "mergeable" for any same-named partner and silently discard one declaration's allowed values.
+    #
+    # The nullary rows are the control and they must NOT refuse: a type with no parameters has nothing to
+    # compare, so its self-merge is correct. A completion that stamped the refusal onto every leaf would
+    # redden here.
+    test-parametric-leaf-typeMerge-refuses = {
+      expr = {
+        enumSelf = (gmT.enum "e" [ "a" ]).typeMerge (gmT.enum "e" [ "a" ]).functor;
+        enumDiffering = (gmT.enum "e" [ "a" ]).typeMerge (gmT.enum "e" [ "b" ]).functor;
+        structSelf = (gmT.struct "s" { a = gmT.str; }).typeMerge (gmT.struct "s" { a = gmT.str; }).functor;
+        nullaryLeafStillSelfMerges = (gmT.str.typeMerge gmT.str.functor) != null;
+        nullaryLeafCrossName = gmT.str.typeMerge gmT.int.functor;
+      };
+      expected = {
+        enumSelf = null;
+        enumDiffering = null;
+        structSelf = null;
+        nullaryLeafStillSelfMerges = true;
+        nullaryLeafCrossName = null;
+      };
+    };
+
+    # gen-types HELPERS must pass through uncompleted. `mkValidator name pred message` returns
+    # `{ message; name; pred; }` — it carries `name` but NOT `verify`, so a completion keyed on the
+    # top-level rule (`? verify || ? name`) would stamp `_type = "option-type"` onto a validator and make
+    # `isOptionType` lie about it. The parametric arm keys on `verify` alone for exactly this reason.
+    test-parametric-completion-skips-helpers = {
+      expr = {
+        mkValidatorKeys = builtins.attrNames (gmT.mkValidator "n" (_: true) "msg");
+        mkValidatorIsNotAType = (gmT.mkValidator "n" (_: true) "msg") ? _type;
+        formatErrorsType = builtins.typeOf (gmT.formatErrors [ ]);
+        refinementsKeys = builtins.attrNames gmT.refinements;
+      };
+      expected = {
+        mkValidatorKeys = [
+          "message"
+          "name"
+          "pred"
+        ];
+        mkValidatorIsNotAType = false;
+        formatErrorsType = "string";
+        refinementsKeys = [
+          "nonEmpty"
+          "positive"
+          "tcpPort"
+        ];
+      };
+    };
+
     # `emptyValue` — the field that decides whether "no surviving definition" is a legitimate empty
     # container or an error. It was `{ }` (no `value` attr) on every type, which reads as "this type
     # declares no empty value" and made every undefined option an error. Pinned as the full table
@@ -534,8 +636,12 @@ in
     #   submodule— names agree, payload SHAPES do not (nixpkgs `submoduleWith` carries `class`/
     #              `specialArgs`/… beside `modules`); truncating that into a gen-merge submodule would
     #              drop them silently, so the answer is "not mergeable".
-    #   enumElem — a gen-types PARAMETRIC leaf reaches the namespace as a bare constructor and is never
-    #              protocol-completed, so it carries no `functor` to compare against.
+    #   enumElem — a gen-types PARAMETRIC leaf IS protocol-completed, so it has a `functor`; its
+    #              `typeMerge` REFUSES, because its parameters live behind the checker closures and are
+    #              not introspectable. The container inherits that refusal through `mergeElemTypes`.
+    #              This row is where the completion and the element guard are pinned to AGREE: the guard
+    #              handles a missing half, the completion removes the missing half, and the answer for
+    #              this element is "not mergeable" either way — for a stated reason, not by accident.
     test-typeMerge-foreign-functor = {
       expr = {
         listOf = describe (

@@ -333,6 +333,30 @@ protocol-complete — a gen-types **parametric** leaf (`enum`, `struct`, `union`
 namespace as a bare constructor and is never completed — declares no sub-options either, so a wrapper
 reports `{ }` rather than aborting on a missing attribute.
 
+### Two export shapes — completing only one leaves half the namespace unmountable
+
+gen-types exports its **nullary** leaves (`str`, `int`, `bool`, `path`, …) as attrsets and its
+**parametric** ones (`enum`, `struct`, `union`, `tuple`, `refined`, `optionalAttr`, …) as
+**constructors**. Completing the export only reaches the first shape — the type a constructor *returns*
+arrived bare, and mounting one in a nixpkgs `lib.evalModules` hit the very crash the protocol
+completion exists to prevent (nixpkgs reads `deprecationMessage` off every option type). The completion
+therefore descends *through* the application, at any arity, and completes the first result that is a
+gen-types type.
+
+Two rules that look like details and are not:
+
+- **The predicate is `? verify`, not `? verify || ? name`.** A gen-types *helper* can return a
+  `name`-bearing record that is not a type — `mkValidator name pred message` yields
+  `{ message; name; pred; }`. Completing that would stamp `_type = "option-type"` onto a validator.
+- **A completed parametric leaf REFUSES `typeMerge`.** Its parameters live behind the checker closures
+  and cannot be read, and neither substitute works: gen-types' `__id` is name-only (`enum "e" [ "a" ]`
+  and `enum "e" [ "b" ]` share one), and value equality is pointer-based over the closures (two
+  identical constructions compare unequal). On the nullary default it would report "mergeable" for any
+  same-named partner and silently drop one declaration's allowed values. "Not mergeable" gives the
+  consumer nixpkgs' `already declared` error instead of a wrong type. This diverges from nixpkgs'
+  `enum`, whose functor unions the value sets — gen-merge cannot reproduce that without reading
+  parameters it cannot see. A **nullary** leaf keeps its self-merge: it has no parameters to compare.
+
 ### `emptyValue` — when "nothing was defined" is not an error
 
 With no surviving definition, nixpkgs lets the **type** supply a value before this is an error

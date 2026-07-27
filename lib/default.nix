@@ -22,6 +22,36 @@ let
   core = import ./modules.nix { inherit prelude priority; };
   strategies = import ./types.nix { inherit prelude core; };
   lintLib = import ./lint.nix { inherit prelude priority core; };
+
+  completeParametric =
+    v:
+    if builtins.isFunction v then
+      (x: completeParametric (v x))
+    else if builtins.isAttrs v && v ? verify then
+      # `typeMerge` REFUSES for a parametric leaf. Its parameters live behind the `verify`/`check`
+      # closures and are not introspectable, so there is no payload to compare — and the two candidate
+      # substitutes both fail: gen-types' `__id` is NAME-only (`enum "e" [ "a" ]` and `enum "e" [ "b" ]`
+      # share an id, as do two `struct "s"` over different fields), and value equality is pointer-based
+      # over the closures (two identical constructions compare UNEQUAL). Left on the nullary default,
+      # `pureTypeMerge` would answer "mergeable" for any same-named partner and silently discard one
+      # declaration's allowed values — precisely the unsoundness the structural functors removed. So the
+      # honest answer is "not mergeable": a consumer declaring one option twice with a parametric leaf
+      # gets nixpkgs' `already declared` error rather than a wrong type. This diverges from nixpkgs'
+      # `enum`, whose functor UNIONS the value sets; gen-merge cannot reproduce that without reading
+      # parameters it cannot see.
+      strategies.mkOptionType (v // { typeMerge = _f': null; })
+    else
+      v;
+  # A NULLARY leaf keeps the plain completion: it has no parameters, so `pureTypeMerge`'s self-merge is
+  # correct for it and `str.typeMerge str.functor` must stay non-null.
+  completeExport =
+    v:
+    if builtins.isFunction v then
+      completeParametric v
+    else if builtins.isAttrs v && (v ? verify || v ? name) then
+      strategies.mkOptionType v
+    else
+      v;
 in
 {
   # Portable-subset lint (README "Portable-subset lint") — statically flag modules using constructs
@@ -75,10 +105,14 @@ in
   # The injected gen-types leaf checkers are PROTOCOL-COMPLETED (via `strategies.mkOptionType`) so they
   # too mount inside a real nixpkgs `lib.evalModules` — mkIdentityModule's `id_hash` uses `types.str`,
   # which the corpus's `mkInstanceRegistry` mounts in flake-parts. gen-merge's own strategies are already
-  # completed at their constructors (types.nix). A non-type entry (constructor fn / non-type) passes through.
-  types =
-    (builtins.mapAttrs (
-      _: v: if builtins.isAttrs v && (v ? verify || v ? name) then strategies.mkOptionType v else v
-    ) types)
-    // strategies;
+  # completed at their constructors (types.nix). A non-type entry (non-type value) passes through.
+  #
+  # gen-types exports two shapes, and completing only the first leaves half the namespace unmountable.
+  # The NULLARY leaves (`str`, `int`, `bool`, …) are attrsets and complete directly. The PARAMETRIC ones
+  # (`enum`, `struct`, `union`, `tuple`, `refined`, `optionalAttr`, …) are CONSTRUCTORS — functions — so
+  # completing the export is a no-op and the type the constructor RETURNS reaches a consumer bare. That is
+  # the same shape as the crash the protocol completion was introduced for: nixpkgs' module system reads
+  # `deprecationMessage` off every option type and aborts with `attribute 'deprecationMessage' missing`.
+  # So descend THROUGH the application, at any arity, and complete the first result that is a type.
+  types = (builtins.mapAttrs (_: completeExport) types) // strategies;
 }
