@@ -172,6 +172,40 @@
     }
   ];
   # merge-aware combinators — byte-identical to nixpkgs `lib.types.{nullOr,either,oneOf}`.
+  # emptyValue — the type supplies a value when NO definition survives, rather than the option being an
+  # error. Both ARRIVALS are here on purpose, because they are guarded by different code: an option
+  # never defined at all short-circuits in the realizer, while an option whose every definition was
+  # discharged away (`mkIf false` as the sole def) reaches the rule inside the fold. A fixture covering
+  # only the first leaves the second unexercised.
+  #
+  # The last two options are the controls, and they are what stops this fixture passing against an
+  # engine that simply hands every option an empty value: a real definition must still merge, and a
+  # `default` must still beat the empty value. Only empty-ABLE types appear — a leaf with no definition
+  # is an error on BOTH engines, and the oracle's `==` has no `tryEval`, so such a fixture could not be
+  # compared here at all.
+  emptyvalue-containers = P: [
+    {
+      options.undefinedAttrs = P.mkOption { type = P.types.attrsOf P.types.str; };
+      options.undefinedList = P.mkOption { type = P.types.listOf P.types.str; };
+      options.undefinedNullable = P.mkOption { type = P.types.nullOr P.types.str; };
+      options.undefinedSubmodule = P.mkOption { type = P.types.submodule { }; };
+      options.dischargedAttrs = P.mkOption { type = P.types.attrsOf P.types.str; };
+      options.dischargedList = P.mkOption { type = P.types.listOf P.types.str; };
+      options.definedAttrs = P.mkOption { type = P.types.attrsOf P.types.str; };
+      options.defaultedAttrs = P.mkOption {
+        type = P.types.attrsOf P.types.str;
+        default = {
+          d = "fromDefault";
+        };
+      };
+    }
+    {
+      dischargedAttrs = P.mkIf false { k = "v"; };
+      dischargedList = P.mkIf false [ "x" ];
+      definedAttrs.k = "v";
+    }
+  ];
+
   nullor-combinator = P: [
     {
       options.unset = P.mkOption {
