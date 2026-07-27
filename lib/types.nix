@@ -155,6 +155,26 @@ let
       # e.g. gen-schema's `den.schema._kindNames` — then throws "defined 2 times"). This mirrors nixpkgs
       # `submoduleWith.substSubModules = m: submoduleWith (attrs // { modules = m; })`.
       substSubModules = m: submodule (if isList m then m else [ m ]);
+      # The INTROSPECTION half of the nixpkgs `mkOptionType` protocol (README "The nixpkgs `optionType`
+      # protocol"; gen-specs/gen-merge/REFERENCE.md) — what a consumer learns from this type with NO
+      # value in hand, the twin of `merge`. nixpkgs' rule, reproduced:
+      #   getSubOptions = prefix: (evalModules { inherit modules prefix specialArgs; }).options;
+      # Reads `.options` off the same nested fixpoint `merge` builds, with no defs supplied, so the two
+      # halves cannot disagree about what a submodule declares and no instance-authored value is forced.
+      # `completeType` defaults this to `_prefix: { }`, which is correct for a LEAF (no sub-options);
+      # leaving a STRUCTURAL type on that default reports "declares nothing" indistinguishably from a
+      # type that genuinely declares nothing, and a consumer reflecting a declared surface off the type
+      # then fails CLOSED and silently.
+      getSubOptions =
+        prefix:
+        (evalModuleTree {
+          modules = mods;
+          inherit prefix;
+          specialArgs = {
+            name = if prefix == [ ] then "" else prelude.last prefix;
+          };
+          check = true;
+        }).options;
       merge =
         loc: defs:
         (evalModuleTree {
@@ -177,6 +197,8 @@ let
       # nixpkgs-parity introspection alias — lets a consumer's type-tree walker (e.g. gen-schema's
       # `mkCoerceChain`, which reads `t.nestedTypes.elemType`) recurse unchanged.
       nestedTypes = { inherit elemType; };
+      # nixpkgs protocol: descend to the element type under the positional placeholder segment.
+      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "*" ]);
       merge =
         loc: defs:
         concatMap (
@@ -201,6 +223,9 @@ let
       name = tyName;
       inherit elemType;
       nestedTypes = { inherit elemType; };
+      # nixpkgs protocol: descend to the element type under the per-key placeholder segment, so an
+      # `attrsOf (submodule …)` registry exposes its INSTANCE option surface to an introspecting consumer.
+      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
       merge =
         loc: defs:
         let

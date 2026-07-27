@@ -105,6 +105,42 @@ in
       };
     };
 
+    # `getSubOptions` — the INTROSPECTION half of the protocol, previously stubbed `_prefix: { }` on every
+    # type. A consumer that reads a registry's DECLARED instance surface off the option type (rather than
+    # off an instance VALUE) got an empty set and could conclude nothing about it. Now a submodule reports
+    # what it declares, and the containers descend to their element type.
+    #
+    # The key sets are pinned EXACTLY, not merely asserted non-empty: `builtins.attrNames { }` is `[ ]`,
+    # so a membership-only or all-of check would pass vacuously against the very regression this guards.
+    test-getSubOptions-submodule = {
+      expr = builtins.attrNames ((gmT.submodule strMod).getSubOptions [ ]);
+      expected = [ "y" ];
+    };
+    # attrsOf/listOf descend to the element type under the nixpkgs placeholder segments, so an
+    # `attrsOf (submodule …)` registry exposes its per-instance option surface.
+    test-getSubOptions-containers-descend = {
+      expr = {
+        attrs = builtins.attrNames ((gmT.attrsOf (gmT.submodule strMod)).getSubOptions [ ]);
+        list = builtins.attrNames ((gmT.listOf (gmT.submodule strMod)).getSubOptions [ ]);
+      };
+      expected = {
+        attrs = [ "y" ];
+        list = [ "y" ];
+      };
+    };
+    # The FAIL-FOR-ITS-OWN-REASON control: a container over a LEAF element still reports no sub-options,
+    # so a green result above is the submodule descent working, not the walk returning something constant.
+    test-getSubOptions-leaf-stays-empty = {
+      expr = {
+        leaf = (gmT.attrsOf gmT.str).getSubOptions [ ];
+        str = gmT.str.getSubOptions [ ];
+      };
+      expected = {
+        leaf = { };
+        str = { };
+      };
+    };
+
     # `_type` marks a nixpkgs option type; `deprecationMessage` is present-and-null (the field that threw).
     test-type-tag = {
       expr = {

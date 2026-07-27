@@ -289,6 +289,38 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
+## The nixpkgs `optionType` protocol
+
+Every gen-merge type is completed (`mkOptionType` → `completeType`) to the full **14-field nixpkgs
+`mkOptionType` shape** — `_type`, `name`, `description`, `descriptionClass`, `deprecationMessage`,
+`check`, `merge`, `emptyValue`, `getSubOptions`, `getSubModules`, `substSubModules`, `typeMerge`,
+`nestedTypes`, `functor` — so the SAME type value serves both engines. This is what lets gen-schema
+inject gen-merge-typed options into an instance submodule that a **nixpkgs** `lib.evalModules`
+evaluates (the corpus path: `mkInstanceRegistry` inside flake-parts). Pinned by
+`ci/tests/nixpkgs-protocol.nix`.
+
+The protocol has two halves. The **merge** half (`merge`, `emptyValue`, `typeMerge`) says how defs
+combine; the **introspection** half (`getSubOptions`, `getSubModules`, `substSubModules`,
+`nestedTypes`) says what a consumer can learn from a type *without any value* — how a documentation
+generator, an LSP, or a registry-reflecting consumer reads a DECLARED surface.
+
+`getSubOptions prefix` returns the option records one submodule level down. The nixpkgs rules, which
+gen-merge reproduces:
+
+```nix
+# submoduleWith
+getSubOptions = prefix: (evalModules { inherit modules prefix specialArgs; }).options;
+# attrsOf / lazyAttrsOf
+getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+# listOf
+getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "*" ]);
+```
+
+gen-merge's `submodule` reads `.options` off the same nested `evalModuleTree` its `merge` builds, with
+no defs supplied, so the introspection and merge halves cannot disagree about what a submodule
+declares, and nothing an instance authored is forced. A **leaf** type has no sub-options and returns
+`{ }` — the `completeType` default, which stays correct for every non-structural type.
+
 ## Compat mode
 
 The `types` argument is an injection seam, so it can point at nixpkgs' own `lib.types` and run the
