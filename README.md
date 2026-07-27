@@ -321,6 +321,28 @@ no defs supplied, so the introspection and merge halves cannot disagree about wh
 declares, and nothing an instance authored is forced. A **leaf** type has no sub-options and returns
 `{ }` — the `completeType` default, which stays correct for every non-structural type.
 
+### `check` — and the one type whose default was wrong
+
+`check` is nixpkgs' definition-level predicate. gen-merge's own engine never reads it — it validates
+through a gen-types leaf's `verify` — so `check` exists for the forward boundary and for the
+`nullOr`/`either` membership dispatch. `completeType` derives it in that order: a leaf's `verify`
+gives a real `v -> bool`; a structural type with its own `check` (`nullOr`, `either`) keeps it;
+anything else gets `_: true`, the nixpkgs `anything` posture.
+
+That default is correct for a type whose merge really does accept any value. **`deferredModule`'s does
+not.** Its merge wraps each def into an `imports` list, and the engine's `callM` can apply only a path,
+a function, a `__functor` attrset, or a plain attrset — so a wrong-shaped definition used to be
+accepted and then detonate at whoever imported it, with no option path and no definition file. It now
+tests the three shapes, as nixpkgs `deferredModuleWith` does, and is **stricter on one**: nixpkgs
+reuses `types.path.check`, which admits a string beginning with `/`, while `callM` dispatches on
+`builtins.isPath` and would carry such a string through as a module value. A check must never admit
+what the merge cannot consume.
+
+The remaining structural types (`submodule`, `attrsOf`, `lazyAttrsOf`, `listOf`, `raw`, `anything`)
+still carry `_: true`. For those a wrong-shaped definition **aborts on both engines** — no silent
+acceptance — but gen-merge aborts with a raw builtin error (`expected a set but found a list`) where
+nixpkgs names the option and the defining file. That is a diagnostic gap, not a soundness one.
+
 ### `functor` / `typeMerge` — merging the TYPES, not the values
 
 `typeMerge` is the one protocol field that is about two **declarations** rather than about defs: when

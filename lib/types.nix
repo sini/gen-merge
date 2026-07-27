@@ -13,6 +13,7 @@ let
   inherit (prelude)
     isList
     isAttrs
+    isFunction
     concatMap
     concatLists
     map
@@ -318,6 +319,20 @@ let
   # `types.deferredModule.merge` produces `{ imports = [ … ]; }`), handed opaque to the terminal.
   deferredModule = mkOptionType {
     name = "deferredModule";
+    # `completeType` defaults a type carrying neither `verify` nor `check` to `_: true` — the nixpkgs
+    # `anything` posture, correct only for a type whose merge really does accept any value. This one's
+    # does not: `merge` wraps each def into an `imports` list, and the engine's `callM`
+    # (lib/modules.nix) can apply only a path, a function, a `__functor` attrset, or a plain attrset.
+    # Any other value is carried into `imports` unexamined and handed to whoever imports it, so the
+    # definition is accepted HERE and fails somewhere else — with no option path and no definition
+    # file. A check that cannot fail is not a check. nixpkgs `deferredModuleWith` tests the same three
+    # shapes.
+    #
+    # STRICTER than nixpkgs on one shape, deliberately: nixpkgs reuses `types.path.check`, which also
+    # admits a STRING beginning with `/`. `callM` dispatches on `builtins.isPath`, so such a string
+    # would pass through as a module VALUE — admitting it here would re-create the exact silent
+    # acceptance this check exists to close. A check must never admit what the merge cannot consume.
+    check = v: isAttrs v || isFunction v || builtins.isPath v;
     merge = loc: defs: {
       imports = map (
         d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value

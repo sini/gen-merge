@@ -201,6 +201,79 @@ in
       };
     };
 
+    # `deferredModule.check` — a check that CANNOT FAIL is not a check. `completeType` defaults a type
+    # carrying neither `verify` nor `check` to `_: true`, which is right for a type whose merge accepts
+    # any value; `deferredModule`'s does not. Its merge wraps each def into an `imports` list, and the
+    # engine's `callM` applies only a path, a function, a `__functor` attrset or a plain attrset — so a
+    # wrong-shaped definition was accepted here and detonated later, at whoever imported it, carrying no
+    # option path and no definition file.
+    #
+    # BOTH halves of the table are populated on purpose: a regression to `_: true` reddens the rejected
+    # rows, an over-strict check reddens the accepted ones. No constant satisfies it.
+    test-deferredModule-check-shapes = {
+      expr = builtins.mapAttrs (_: gmT.deferredModule.check) {
+        attrs = { };
+        fn = _: { };
+        functorAttrs = {
+          __functor = _self: (_: { });
+        };
+        path = ./nixpkgs-protocol.nix;
+        int = 3;
+        str = "hi";
+        list = [ { } ];
+        isNull = null;
+        bool = true;
+        # DELIBERATE divergence from nixpkgs, pinned so it stays deliberate: nixpkgs reuses
+        # `types.path.check`, which admits a STRING beginning with `/` as a module. `callM` dispatches on
+        # `builtins.isPath`, so gen-merge would carry such a string through as a module VALUE — admitting
+        # it here would re-create the silent acceptance this check exists to close.
+        absolutePathString = "/abs/path.nix";
+      };
+      expected = {
+        attrs = true;
+        fn = true;
+        functorAttrs = true;
+        path = true;
+        int = false;
+        str = false;
+        list = false;
+        isNull = false;
+        bool = false;
+        absolutePathString = false;
+      };
+    };
+
+    # END TO END: a wrong-shaped definition is REFUSED through nixpkgs' own located path
+    # (`A definition for option 'x' is not of type 'deferredModule'. Definition values: - In '…': 3`)
+    # instead of resolving to a structurally invalid module value. The well-formed def is pinned by
+    # VALUE, and additionally shown byte-identical to nixpkgs', so neither row can go green by the
+    # option failing — or succeeding — for an unrelated reason.
+    test-deferredModule-rejects-in-nixpkgs = {
+      expr = {
+        wrongShapeResolves = resolves (mount gmT.deferredModule 3);
+        nixpkgsWrongShapeResolves = resolves (mount nixpkgsLib.types.deferredModule 3);
+        okResolves = resolves (mount gmT.deferredModule (_: { }));
+        ok = mount gmT.deferredModule { imports = [ ]; };
+        okMatchesNixpkgs =
+          (mount gmT.deferredModule { imports = [ ]; })
+          == (mount nixpkgsLib.types.deferredModule { imports = [ ]; });
+      };
+      expected = {
+        wrongShapeResolves = false;
+        nixpkgsWrongShapeResolves = false;
+        okResolves = true;
+        ok = {
+          imports = [
+            {
+              _file = "<unknown-file>, via option x";
+              imports = [ { imports = [ ]; } ];
+            }
+          ];
+        };
+        okMatchesNixpkgs = true;
+      };
+    };
+
     # `typeMerge` on a PARAMETERISED type must compare the PARAMETERS, not the container name alone. The
     # nullary default functor carries `payload = null`, which sends `pureTypeMerge` down its "no payload"
     # arm and answers the receiver's own type for ANY same-named partner — so an option declared in two
