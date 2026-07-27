@@ -379,6 +379,17 @@ let
       };
       nestedTypes = { inherit elemType; };
       functor = elemTypeFunctor "nullOr" nullOr elemType;
+      # nixpkgs protocol: pass straight through to the element, adding NO prefix segment. A nullable
+      # introduces no path level — `nullOr (submodule …)` declares exactly what the submodule declares,
+      # at the same location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`.
+      # Left on `completeType`'s `_prefix: { }` default, a `nullOr`-wrapped registry reported "declares
+      # nothing", indistinguishable from a type that genuinely declares nothing.
+      #
+      # Guarded, for the same reason `mergeElemTypes` is: a gen-types PARAMETRIC leaf (`enum`, `struct`,
+      # `union`) reaches the unified namespace as a bare constructor and is never protocol-completed, so
+      # it carries no `getSubOptions`. Falling back to the leaf answer is not merely defensive — a leaf
+      # genuinely declares no sub-options, so `{ }` is the correct report, not a swallowed error.
+      getSubOptions = elemType.getSubOptions or (_prefix: { });
       check = v: v == null || isValid elemType v;
       merge =
         loc: defs:

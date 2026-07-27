@@ -316,10 +316,22 @@ getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
 getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "*" ]);
 ```
 
+```nix
+# nullOr — pass straight through, adding NO segment: a nullable introduces no path level
+getSubOptions = elemType.getSubOptions;
+```
+
 gen-merge's `submodule` reads `.options` off the same nested `evalModuleTree` its `merge` builds, with
 no defs supplied, so the introspection and merge halves cannot disagree about what a submodule
 declares, and nothing an instance authored is forced. A **leaf** type has no sub-options and returns
 `{ }` — the `completeType` default, which stays correct for every non-structural type.
+
+Two types report `{ }` **correctly**, and should not be "fixed" into reporting something else.
+`deferredModule`'s sub-options in nixpkgs are its `staticModules`; gen-merge ships no
+`deferredModuleWith`, so that set is empty by construction. And an element that is not
+protocol-complete — a gen-types **parametric** leaf (`enum`, `struct`, `union`) reaches the unified
+namespace as a bare constructor and is never completed — declares no sub-options either, so a wrapper
+reports `{ }` rather than aborting on a missing attribute.
 
 ### `emptyValue` — when "nothing was defined" is not an error
 

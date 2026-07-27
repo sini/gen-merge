@@ -170,10 +170,81 @@ in
       expr = {
         leaf = (gmT.attrsOf gmT.str).getSubOptions [ ];
         str = gmT.str.getSubOptions [ ];
+        nullOrLeaf = (gmT.nullOr gmT.str).getSubOptions [ ];
+        # `deferredModule` reports nothing because it HAS nothing: nixpkgs' sub-options for this type are
+        # its `staticModules`, and gen-merge ships no `deferredModuleWith`/`staticModules` parameter, so
+        # the static module set is empty by construction. nixpkgs' plain `deferredModule` likewise
+        # declares only its synthesized `_module`. This is the correct answer, not the `_prefix: { }`
+        # stub — recorded here so it is not "fixed" into something wrong later.
+        deferredModule = gmT.deferredModule.getSubOptions [ ];
+        # a PARAMETRIC gen-types leaf is never protocol-completed and carries no `getSubOptions` of its
+        # own; wrapping one must report "declares nothing", not abort on a missing attribute.
+        nullOrParametricLeaf = (gmT.nullOr (gmT.enum "e" [ "a" ])).getSubOptions [ ];
       };
       expected = {
         leaf = { };
         str = { };
+        nullOrLeaf = { };
+        deferredModule = { };
+        nullOrParametricLeaf = { };
+      };
+    };
+
+    # `nullOr` was the last STRUCTURAL type left on the `_prefix: { }` default, so a `nullOr`-wrapped
+    # registry reported "declares nothing" — indistinguishable from one that genuinely declares nothing,
+    # the same fail-closed shape the containers had. It passes straight through to its element.
+    #
+    # Each read is guarded (`or "<no y>"`) rather than selected bare: a regression that stops descending
+    # yields a readable diff instead of `attribute 'y' missing`, which would take the whole asserter down
+    # instead of failing this one test.
+    test-getSubOptions-nullOr-descends = {
+      expr = {
+        submodule = builtins.attrNames ((gmT.nullOr (gmT.submodule strMod)).getSubOptions [ ]);
+        throughContainer = builtins.attrNames (
+          (gmT.nullOr (gmT.attrsOf (gmT.submodule strMod))).getSubOptions [ ]
+        );
+        nested = builtins.attrNames ((gmT.nullOr (gmT.nullOr (gmT.submodule strMod))).getSubOptions [ ]);
+      };
+      expected = {
+        submodule = [ "y" ];
+        throughContainer = [ "y" ];
+        nested = [ "y" ];
+      };
+    };
+
+    # WHICH prefix segment each constructor contributes, pinned by CONTENTS. A nullable introduces no
+    # path level, so it must pass the caller's prefix through UNCHANGED — the containers do not. gen-merge
+    # option records carry no `loc`, so the observable is the submodule's `name` special-arg, which
+    # `getSubOptions` binds from the last prefix segment: `attrsOf` contributes `<name>`, `listOf`
+    # contributes `*`, and `submodule`/`nullOr` contribute nothing and so both report the caller's own
+    # last segment. This discriminates all four from each other — a `nullOr` that wrongly added a segment
+    # reads differently from one that adds none, where a key-set check would call both green.
+    test-getSubOptions-prefix-segments = {
+      expr =
+        let
+          nameMod =
+            { name, ... }:
+            {
+              options.y = genMerge.mkOption {
+                type = gmT.str;
+                default = name;
+              };
+            };
+          seg = t: ((t.getSubOptions [ "root" ]).y.default or "<no y>");
+        in
+        {
+          submodule = seg (gmT.submodule nameMod);
+          nullOr = seg (gmT.nullOr (gmT.submodule nameMod));
+          attrsOf = seg (gmT.attrsOf (gmT.submodule nameMod));
+          listOf = seg (gmT.listOf (gmT.submodule nameMod));
+          nullOrAtRoot = ((gmT.nullOr (gmT.submodule nameMod)).getSubOptions [ ]).y.default or "<no y>";
+        };
+      expected = {
+        submodule = "root";
+        nullOr = "root";
+        attrsOf = "<name>";
+        listOf = "*";
+        nullOrAtRoot = "";
       };
     };
 
