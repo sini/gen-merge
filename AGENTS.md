@@ -178,7 +178,7 @@ Informed-by split), restated in code comments:
 - **byte-mode = the conformance oracle + terminal contract** (structural-dedup spike §3). It
   reproduces nixpkgs' order-sensitive merge; it does not implement the confluent semilattice merge,
   structural equivalence (`≈ₛ`), or pre-eval identity dedup. The per-option combine is a swappable
-  kernel (`README.md:486-494`).
+  kernel (`README.md` §Byte-mode scope).
 - **priority = one override rule**, the grepped subset (design spec §7) — lowest priority-number
   wins, ties merge, nixpkgs' order pass dropped (`lib/priority.nix:1-17`).
 - **`deferredModule` = a lazy constructor**, inspectable before forcing (Lorenzen 2025 §2.3).
@@ -191,7 +191,7 @@ Two further claims live in their own sections rather than that list:
   (`lib/types.nix:43-176`), so one type value serves both engines.
 - the warm path is described as "the reverse-cone reuse of adios's `mkOverride`, but sound under
   gen-merge's config *fixpoint* (adios has none)", with `warmDecision` delivering "what was reused
-  vs re-evaluated" as data (`README.md:195-281`).
+  vs re-evaluated" as data (`README.md` §Warm re-eval).
 
 Design spec (cross-repo citation):
 `den-architecture/gen-specs/gen-resolve/2026-07-02-evalmoduletree-byte-mode-design.md`.
