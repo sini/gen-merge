@@ -1,6 +1,6 @@
 {
   inputs = {
-    gen.url = "github:sini/gen";
+    gen-harness.url = "github:sini/gen-harness";
     gen-prelude.url = "github:sini/gen-prelude";
     gen-types.url = "github:sini/gen-types";
     # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
@@ -11,7 +11,7 @@
 
   outputs =
     inputs@{
-      gen,
+      gen-harness,
       gen-prelude,
       gen-types,
       ...
@@ -40,7 +40,7 @@
         priority = import ../lib/priority.nix { prelude = gen-prelude.lib; };
       };
     in
-    gen.lib.mkCi {
+    gen-harness.lib.mkCi {
       inherit inputs;
       name = "gen-merge";
       testModules = ./tests;
