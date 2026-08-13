@@ -33,6 +33,7 @@
   name,
   genMerge,
   genInputs,
+  nixpkgsLib,
   ...
 }:
 let
@@ -514,6 +515,116 @@ in
           name = "rackOf";
           subOptions = { };
           subModules = null;
+        };
+      };
+    };
+
+    # The tree-as-a-type is a NESTING SEAM, not an `optionType`, and it now says so instead of
+    # letting a foreign module system walk into a missing attribute. Before the mark, a real
+    # `lib.evalModules` mounting it died INSIDE nixpkgs on `attribute 'deprecationMessage' missing`
+    # — an interpreter error, and one `builtins.tryEval` could not catch, so there was nothing for
+    # any in-language cell to observe. These cells are the whole of what replaces it. The
+    # disposition (why completing the protocol is the wrong repair) is argued at the seam in
+    # lib/modules.nix; what is assertable is that the read now returns a NAMED refusal.
+    #
+    # ★ THE PATTERNS DIFFER IN ONE PLACE ON PURPOSE. The direct read below names the field it
+    # reached for and is pinned exactly. The MOUNT cannot be: which protocol field a foreign engine
+    # forces first is that engine's evaluation order, not this library's behaviour, so pinning it
+    # here would pin nixpkgs' internals and go red on a bump that changed nothing about the refusal.
+    # That one field name is the only part left open; every other byte of the message is anchored.
+    flake.testsError.tree-type = {
+      # THE BOUNDARY CELL: a real nixpkgs `lib.evalModules` mounting a tree-type is refused BY NAME,
+      # by gen-merge, before the consumer can trip over what the tree does not implement.
+      test-foreign-mount-refused-by-name = {
+        expr =
+          let
+            tree = gm.evalModuleTree {
+              modules = [
+                {
+                  options.a = gm.mkOption {
+                    type = t.str;
+                    default = "x";
+                  };
+                }
+              ];
+            };
+          in
+          builtins.deepSeq
+            (nixpkgsLib.evalModules {
+              modules = [
+                {
+                  options.x = nixpkgsLib.mkOption { type = tree.type; };
+                  config.x = { };
+                }
+              ];
+            }).config.x
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `moduleTree' is not an option type and does not answer `[a-zA-Z]+'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data\\)$";
+        };
+      };
+      # The refusal NAMES THE FIELD the caller reached for. An author told only "this is not a type"
+      # still has to work out which read they made; the per-field message tells them, and it is what
+      # makes the refusal usable from any consumer rather than only from a mount.
+      test-protocol-read-names-the-field = {
+        expr =
+          (gm.evalModuleTree {
+            modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
+          }).type.getSubOptions
+            [ ];
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `moduleTree' is not an option type and does not answer `getSubOptions'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data\\)$";
+        };
+      };
+      # LIVE CONTROLS, same run, and BOTH are needed — the cells above are equally consistent with a
+      # change that broke ALL mounting, and with one that broke the tree's own nesting.
+      #
+      # (1) A protocol-COMPLETED gen-merge type still mounts in a real `lib.evalModules` and its
+      # value comes back, so the refusal above is the tree-type's and not the boundary's.
+      test-completed-leaf-still-mounts-control = {
+        expr =
+          (nixpkgsLib.evalModules {
+            modules = [
+              {
+                options.x = nixpkgsLib.mkOption { type = t.str; };
+                config.x = "ok";
+              }
+            ];
+          }).config.x;
+        expected = "ok";
+      };
+      # (2) The seam itself still merges: a parent tree nests a child through the child's `.type`.
+      # Nothing was deleted to make the mark, and this is the row that says so.
+      test-tree-still-nests-in-gen-merge-control = {
+        expr =
+          let
+            child = gm.evalModuleTree {
+              modules = [
+                {
+                  options.a = gm.mkOption {
+                    type = t.str;
+                    default = "x";
+                  };
+                }
+              ];
+            };
+          in
+          cfg {
+            modules = [
+              { options.inner = gm.mkOption { type = child.type; }; }
+              {
+                config.inner = {
+                  a = "set";
+                };
+              }
+            ];
+          };
+        expected = {
+          inner = {
+            a = "set";
+          };
         };
       };
     };

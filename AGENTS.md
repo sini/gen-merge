@@ -49,7 +49,8 @@ Entry: `inputs.gen-merge.lib` (flake). Root `default.nix` is a **function** of
 `undeclared` the definitions not merged into `config` (`[ { path; file; } ]`, empty under a
 `freeformType`), `deprecations` the declared options whose TYPE carries a `deprecationMessage`
 (`[ { path; type; message; declarations; } ]`, `type` = the type's NAME), `type` the tree-as-a-type
-for nesting; `freeformConfig` / `freeformProv` / `warmDecision` are the warm-path memo layers and
+for nesting — marked NON-MOUNTABLE, and it refuses a foreign mount by name (see traps);
+`freeformConfig` / `freeformProv` / `warmDecision` are the warm-path memo layers and
 decision trace.
 
 **Priority / property algebra** — `lib/priority.nix`
@@ -122,13 +123,13 @@ decision trace.
 | Nest a keyed collection of sub-configs | `types.attrsOf (types.submodule …)`; the `name` formal is bound per key |
 | Carry a module value without forcing it | `types.deferredModule` |
 | Absorb undeclared keys | a top-level `freeformType = types.lazyAttrsOf types.raw`, or `_module.freeformType` (lower priority) |
-| Nest a whole tree inside a parent tree | `(evalModuleTree …).type` as an option's `type` |
+| Nest a whole tree inside a parent tree | `(evalModuleTree …).type` as an option's `type` — inside gen-merge's own eval; it is not mountable elsewhere (see traps) |
 | Ask where a value came from | `.provenance.<path>` → `{ defs; winners; priority; defaulted; }` |
 | Re-evaluate after an APPENDED edit | `evalModuleTree { modules = base ++ edited; warmFrom = prev; editedModules = edited; }` |
 | Assert a function module reads only specialArgs | `pureModule (args: …)` |
 | Hand the engine a pre-merged subtree | `mkCoreValue { digest; values; }` + `coreShortCircuit = true` |
 | Check a module set stays inside the byte-mode surface | `lint { modules = […]; }` |
-| Mount a gen type inside a real nixpkgs `lib.evalModules` | any `types.*` value — already protocol-completed (except the tree-as-type; see traps) |
+| Mount a gen type inside a real nixpkgs `lib.evalModules` | any `types.*` value — already protocol-completed. NOT the tree-as-type: it refuses by name (see traps) |
 
 ## Measured traps
 
@@ -142,7 +143,7 @@ Each row verified in this run against the flake's wired `.lib`. Preamble: `flk =
 | `types.mkOption` and `types.mkOptionType` are inside the `types` namespace (the whole strategies set is unioned in) | `l.types ? mkOption` ⇒ `true` |
 | `functionTo` is absent from the type surface | `t ? functionTo` ⇒ `false`. The lint kind `function-to` is the detector. Test: `test-reject-function-to` (`ci/tests/lint.nix`) |
 | gen-types' PARAMETRIC leaves reach `types` as bare constructors; the completion descends through the application, but the completed result **never merges with another of its own kind** | `lib/default.nix:26-53`; `builtins.isFunction t.enum` ⇒ `true`, `(t.enum "e" ["a"])._type` ⇒ `"option-type"`, `(t.enum "e" ["a"]).typeMerge (t.enum "e" ["a"]).functor` ⇒ `null`. Control, same run, nullary leaf: `(t.str.typeMerge t.str.functor) == null` ⇒ `false`. Diverges from nixpkgs `enum`, whose functor unions the value sets. Tests: `test-parametric-leaf-protocol-complete`, `test-parametric-leaf-typeMerge-refuses`, `test-typeMerge-nullary-self-merges` (`ci/tests/nixpkgs-protocol.nix`) |
-| The tree-as-a-type `(evalModuleTree …).type` is the ONE type on the surface that is NOT protocol-completed | `lib/modules.nix:1169-1178`; `builtins.attrNames inner.type` ⇒ `["merge","name"]` — no `check`, `functor`, `emptyValue`, `deprecationMessage`. Control, same run: `builtins.attrNames t.raw` ⇒ the 14 protocol fields; a completed gen-types leaf `t.str` ⇒ 17 (those 14 + `__id`, `__name`, `verify`) |
+| The tree-as-a-type `(evalModuleTree …).type` is the ONE type-shaped value on the surface that is deliberately NOT MOUNTABLE. It is a nesting seam: it answers what is true of a tree and REFUSES the rest of the protocol by name, so a foreign mount is refused by gen-merge instead of aborting inside the consumer | `lib/modules.nix:1430-1497`; `inner.type ? nonMountable` ⇒ `true` (the mark, and its value carries the reason). Refused, not missing: `try inner.type.check` ⇒ `false`, `try (inner.type.getSubOptions [ ])` ⇒ `false`. Answered, and true of a tree: `deprecationMessage` ⇒ `null`, `emptyValue` ⇒ `{ }`, `nestedTypes` ⇒ `{ }`. `_type` is the one field left ABSENT on purpose, so a consumer that ASKS still gets a correct negative: `(inner.type._type or null) == "option-type"` ⇒ `false`. Controls, same run: `try t.raw.check` ⇒ `true` (a completed type does not refuse); `builtins.attrNames t.raw` ⇒ the 14 protocol fields; a completed gen-types leaf `t.str` ⇒ 17 (those 14 + `__id`, `__name`, `verify`). Tests: `tree-type.*` (`ci/tests-error.nix`), `test-tree-type-is-marked-non-mountable` (`ci/tests/nixpkgs-protocol.nix`) |
 | A nested tree surfaces `.config` only — the inner tree's provenance is not threaded out | `lib/modules.nix:1171-1177`; nested merge ⇒ `{ i = "I"; }`, while the outer `provenance.nested` is the OUTER option's leaf record `["defaulted","defs","priority","winners"]` |
 | `attrsOf` and `lazyAttrsOf` never merge with each other, and same-name containers merge only if their ELEMENTS do | `lib/types.nix:298-301`; `(t.attrsOf t.str).typeMerge (t.lazyAttrsOf t.str).functor` ⇒ `null`; `(t.attrsOf t.str).typeMerge (t.attrsOf t.int).functor == null` ⇒ `true`. Control, same run: `(t.attrsOf t.str).typeMerge (t.attrsOf t.str).functor != null` ⇒ `true`. Test: `test-typeMerge-container-elements` |
 | DECLARATION merging does not use the functor at all: the same option declared with different types in two modules field-unions, **later type wins, silently** | `lib/modules.nix:100-122`; `str` then `int` ⇒ `.options.x.type.name` ⇒ `"int"`. `l.lint` on the identical pair ⇒ `["type-merge"]`. Tests: `test-reject-type-merge`, `test-accept-apply-redeclare-is-not-type-merge` (`ci/tests/lint.nix`) |

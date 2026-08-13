@@ -1055,5 +1055,158 @@ in
         isType = "option-type";
       };
     };
+
+    # ── THE ONE TYPE-SHAPED VALUE THAT MUST **NOT** MOUNT ──────────────────────────────────────────
+    # Every cell above is this file's forward claim: a gen-merge type serves a foreign engine. The
+    # tree-as-a-type (`(evalModuleTree …).type`) is the exception, and it is an exception on purpose
+    # — it is a NESTING SEAM, and a mount is a crossing (lib/modules.nix, where the disposition is
+    # argued). What this cell pins is that the exception is DECLARED rather than left to a missing
+    # attribute: the refusals themselves are asserted in `ci/tests-error.nix`, which is where a
+    # message can be read.
+    #
+    # `_type` is read the way a consumer reads it — through `or`, the `lib.isType` shape — because
+    # the point of leaving that one field absent is that ASKING still gets a correct `false`. Assert
+    # only presence and a boolean answer here: forcing the refusing fields is the error suite's job.
+    test-tree-type-is-marked-non-mountable = {
+      expr =
+        let
+          tree = genMerge.evalModuleTree {
+            modules = [ { options.a = genMerge.mkOption { type = gmT.str; }; } ];
+          };
+          ty = tree.type;
+        in
+        {
+          marked = ty ? nonMountable;
+          # A consumer that ASKS gets a correct negative rather than an abort.
+          answersIsTypeFalse = (ty._type or null) == "option-type";
+          # The nesting seam is intact — nothing was deleted to make the mark.
+          keepsTheSeam = (ty ? name) && (ty ? merge);
+          # The three answered truthfully. A tree is not deprecated, supplies no value for an
+          # undefined nesting option, and wraps no element TYPE.
+          #
+          # Read through `or` — the way every consumer of an optional protocol field reads it, this
+          # engine's own readers included — so an ANSWER of `null` stays distinguishable from a
+          # missing attribute. Reading them directly would make a regression that dropped the field
+          # crash the cell instead of failing it, and `null` is exactly the value that collapses
+          # against absence under a careless predicate.
+          answered = {
+            deprecationMessage = ty.deprecationMessage or "<absent>";
+            emptyValue = ty.emptyValue or "<absent>";
+            nestedTypes = ty.nestedTypes or "<absent>";
+          };
+          # The protocol is otherwise DISPOSED OF, not half-present: every field of the fourteen is
+          # either answered, refused (present, throwing — presence is what this row sees) or the one
+          # deliberate absence. `_type` is that absence and the only one.
+          unanswered = builtins.filter (f: !(ty ? ${f})) protocolFields;
+        };
+      expected = {
+        marked = true;
+        answersIsTypeFalse = false;
+        keepsTheSeam = true;
+        answered = {
+          deprecationMessage = null;
+          emptyValue = { };
+          nestedTypes = { };
+        };
+        unanswered = [ "_type" ];
+      };
+    };
+
+    # THE ONE INTERNAL BEHAVIOUR THE MARK CHANGES, PINNED AS DELIBERATE RATHER THAN LEFT TO BE
+    # REDISCOVERED. Deep-forcing a parent's whole `.options` tree now REFUSES: the nested tree-type
+    # lives in that tree, and a deep force reaches its refusing fields. Before the mark the same
+    # force succeeded, the fields being merely absent — so this is a real divergence and it is the
+    # one the marking causes.
+    #
+    # It is the mark working, not a casualty of it: a deep force of a declaration tree IS a protocol
+    # read of every type in it, and a tree-type that answered there would be a value that lied about
+    # what it is. The cell exists so that stays a decision on the record — a later change that makes
+    # this force succeed again has to come here and say why.
+    #
+    # THREE CONTROLS IN THE SAME CELL, and without them the row is consistent with a change that
+    # broke deep-forcing generally: an ordinary type's declaration tree still deep-forces, the VALUE
+    # side is untouched, and a shallow read of the tree-type still answers.
+    test-tree-type-refuses-a-deep-force-of-the-declaration-tree = {
+      expr =
+        let
+          child = genMerge.evalModuleTree {
+            modules = [
+              {
+                options.a = genMerge.mkOption {
+                  type = gmT.str;
+                  default = "x";
+                };
+              }
+            ];
+          };
+          parentTree = genMerge.evalModuleTree {
+            modules = [
+              { options.inner = genMerge.mkOption { type = child.type; }; }
+              {
+                config.inner = {
+                  a = "set";
+                };
+              }
+            ];
+          };
+          parentPlain = genMerge.evalModuleTree {
+            modules = [
+              {
+                options.inner = genMerge.mkOption {
+                  type = gmT.str;
+                  default = "p";
+                };
+              }
+            ];
+          };
+        in
+        {
+          deepForceOfDeclTree = resolves parentTree.options;
+          plainTypeDeclTreeControl = resolves parentPlain.options;
+          valueSideControl = resolves parentTree.config;
+          shallowReadControl = parentTree.options.inner.type.name;
+        };
+      expected = {
+        deepForceOfDeclTree = false;
+        plainTypeDeclTreeControl = true;
+        valueSideControl = true;
+        shallowReadControl = "moduleTree";
+      };
+    };
+
+    # LIVE CONTROL, same run: the seam the mark fences off still WORKS. A parent tree declares an
+    # option typed with a child tree's `.type` and the child merges the parent's definition — the
+    # capability the interim disposition keeps rather than deletes. Without this row the cell above
+    # is equally consistent with a tree-type that refuses everything, including its own engine.
+    test-tree-type-still-nests-in-gen-merge-control = {
+      expr =
+        let
+          child = genMerge.evalModuleTree {
+            modules = [
+              {
+                options.a = genMerge.mkOption {
+                  type = gmT.str;
+                  default = "x";
+                };
+              }
+            ];
+          };
+        in
+        (genMerge.evalModuleTree {
+          modules = [
+            { options.inner = genMerge.mkOption { type = child.type; }; }
+            {
+              config.inner = {
+                a = "set";
+              };
+            }
+          ];
+        }).config;
+      expected = {
+        inner = {
+          a = "set";
+        };
+      };
+    };
   };
 }

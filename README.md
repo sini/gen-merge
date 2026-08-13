@@ -96,7 +96,9 @@ in
 
 `evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance; undeclared; deprecations }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
-recursion); `.provenance` is a lazy per-loc record of WHERE each value came from (see below);
+recursion) — it is a nesting seam and NOT a mountable option type, so it carries a `nonMountable`
+mark and refuses the rest of the option-type protocol by name (see below);
+`.provenance` is a lazy per-loc record of WHERE each value came from (see below);
 `.undeclared` lists the definitions the eval did not merge into `.config` (see below);
 `.deprecations` lists the declared options whose TYPE carries a `deprecationMessage` (see below).
 
@@ -379,13 +381,17 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 
 ## The nixpkgs `optionType` protocol
 
-Every gen-merge type is completed (`mkOptionType` → `completeType`) to the full **14-field nixpkgs
-`mkOptionType` shape** — `_type`, `name`, `description`, `descriptionClass`, `deprecationMessage`,
-`check`, `merge`, `emptyValue`, `getSubOptions`, `getSubModules`, `substSubModules`, `typeMerge`,
-`nestedTypes`, `functor` — so the SAME type value serves both engines. This is what lets gen-schema
-inject gen-merge-typed options into an instance submodule that a **nixpkgs** `lib.evalModules`
-evaluates (the corpus path: `mkInstanceRegistry` inside flake-parts). Pinned by
-`ci/tests/nixpkgs-protocol.nix`.
+Every type in the `types` namespace is completed (`mkOptionType` → `completeType`) to the full
+**14-field nixpkgs `mkOptionType` shape** — `_type`, `name`, `description`, `descriptionClass`,
+`deprecationMessage`, `check`, `merge`, `emptyValue`, `getSubOptions`, `getSubModules`,
+`substSubModules`, `typeMerge`, `nestedTypes`, `functor` — so the SAME type value serves both
+engines. This is what lets gen-schema inject gen-merge-typed options into an instance submodule that
+a **nixpkgs** `lib.evalModules` evaluates (the corpus path: `mkInstanceRegistry` inside flake-parts).
+Pinned by `ci/tests/nixpkgs-protocol.nix`.
+
+The scope of that sentence is the `types` namespace, and there is exactly one type-shaped value
+outside it: an eval result's `.type`, which is a nesting seam and must NOT mount. It is covered
+below.
 
 The protocol has two halves. The **merge** half (`merge`, `emptyValue`, `typeMerge`) says how defs
 combine; the **introspection** half (`getSubOptions`, `getSubModules`, `substSubModules`,
@@ -646,6 +652,51 @@ separates them.
 `overridden` is oldest-first and appears **only** where a declaration really was shadowed — a module
 that merely adds fields (the `apply`-layering shape) leaves the record exactly what a plain field
 union produces. A third declaration appends to the chain rather than replacing it.
+
+### The tree-as-a-type is NOT mountable, and it says so
+
+`(evalModuleTree …).type` is the seam that lets a parent tree nest a child (submodule recursion,
+freeform). It is not an option type, and the rest of this section does not apply to it.
+
+It used to be indistinguishable from one at a glance. It answered `name` and `merge` and nothing else
+— the two fields that make a value **look** like an option type, which is not the same thing as the
+ones a foreign engine reads first. Measured, the first protocol field a real nixpkgs `lib.evalModules`
+forces is `getSubModules` (in `fixupOptionType`), and neither `name` nor `merge` is forced before the
+abort. So handing the tree-type to a real `lib.evalModules` produced an error raised **inside the
+consumer** (`attribute 'deprecationMessage' missing`, at a nixpkgs line), which the caller could not
+catch and which named nothing about gen-merge.
+
+Completing the protocol is the wrong repair, and this is a boundary question rather than a
+compatibility one: the boundary is the **eval**, not the repo, and what crosses a gen boundary is
+plain data — a mounted option type is neither, so completion would build the bridge the rule removes.
+Making a tree genuinely mountable is crossing work and belongs on that chain. What lands here instead
+is the mark plus the refusal, and nothing is deleted: the nesting seam is a shipped capability and
+still works.
+
+| field | disposition |
+|---|---|
+| `name`, `merge` | **implemented** — the nesting seam |
+| `nonMountable` | **the mark.** Presence is the predicate (testing it forces nothing); the value carries the reason |
+| `deprecationMessage` ⇒ `null`, `emptyValue` ⇒ `{ }`, `nestedTypes` ⇒ `{ }` | **answered, and true of a tree** — it is not deprecated, supplies no value for an undefined nesting option, and wraps no element type. These are the answers gen-merge's own readers already derived from absence, so nothing internal changed. `deprecationMessage` does one thing more: it closes the consumer's one remaining **direct** (non-`or`) read of this type, the read that would abort *uncatchably* rather than refuse. The refusal does not depend on it — with the field removed the mount still refuses catchably, because `getSubModules` is forced first and is read through `or` |
+| `check`, `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for |
+| `_type` | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort |
+
+`mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
+`typeMerge`/`functor` are read, because "do these two types merge?" has a true answer here — `null`,
+they do not — and returning it keeps the declaration stratum's own refusal, which names both types
+and every declaring file.
+
+**One thing inside gen-merge changes, and it is deliberate.** Forcing a parent's whole `.options` tree
+*deeply* now refuses, because the nested tree-type sits in that tree and a deep force reaches its
+refusing fields; before the mark the same force succeeded, the fields being merely absent. That is the
+mark working rather than a casualty of it — a deep force of a declaration tree **is** a protocol read
+of every type in it, and a value that answered would be a value that lied. The value side is
+unaffected (`.config` still forces), an ordinary type's declaration tree still deep-forces, and
+shallow reads of the tree-type still answer. Pinned by
+`test-tree-type-refuses-a-deep-force-of-the-declaration-tree`.
+
+Refusals are pinned in `ci/tests-error.nix` (`tree-type.*`), including a real nixpkgs mount and both
+live controls: a completed leaf still mounts, and a tree still nests.
 
 ## Compat mode
 

@@ -93,7 +93,21 @@ let
   # attribute. This is the ONE binding both strata that ask the question consult — the ELEMENT
   # stratum (a container's `binOp`, lib/types.nix `elemTypeFunctor`) and the DECLARATION stratum
   # (`redeclareDecl` below) — so the two cannot drift into answering it differently.
-  mergeTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+  #
+  # A NON-MOUNTABLE operand answers "not mergeable" BEFORE the protocol halves are read, and this
+  # ordering is load-bearing rather than defensive. The tree-as-a-type (`evalModuleTree`'s `.type`,
+  # below) now carries `typeMerge`/`functor` as NAMED REFUSALS — reading either says "this is not an
+  # option type" — but "do these two types merge?" is a question with a true answer here, and it is
+  # `null`: they do not. Returning the value keeps the declaration stratum's own refusal, which names
+  # BOTH types and every declaring file, in place of a refusal that would name only the tree.
+  mergeTypes =
+    a: b:
+    if (a ? nonMountable) || (b ? nonMountable) then
+      null
+    else if a ? typeMerge && b ? functor then
+      a.typeMerge b.functor
+    else
+      null;
 
   # The declaring SITES at one option loc, in authored module order — the entries whose own
   # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The
@@ -1415,16 +1429,79 @@ let
         ;
       # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform). Nested
       # evals are always COLD (no `warmFrom` threaded) — a documented boundary, like provenance's.
-      type = {
-        name = "moduleTree";
-        merge =
-          loc: defs:
-          (evalModuleTree {
-            inherit specialArgs check coreShortCircuit;
-            prefix = loc;
-            modules = modList ++ map (d: setDefaultModuleLocation (d.file or "<def>") d.value) defs;
-          }).config;
-      };
+      #
+      # ── NON-MOUNTABLE, AND IT SAYS SO ────────────────────────────────────────────────────────────
+      # This is a NESTING SEAM, not an `optionType`. It answers two of the fourteen protocol fields,
+      # and they are the two that make a value LOOK like an option type — a name and a merge is what
+      # a reader checks by eye. They are NOT the fields a foreign engine reads first: measured, the
+      # first protocol field a real `lib.evalModules` forces is `getSubModules` (`fixupOptionType`),
+      # and neither `name` nor `merge` is forced before the abort. So the shape invites a mount it
+      # cannot serve: handed to a real `lib.evalModules` it used to die inside the CONSUMER on a
+      # missing attribute — an interpreter error naming a nixpkgs line, uncatchable by the caller.
+      #
+      # Completing the protocol is the wrong repair. The boundary is the EVAL, not the repo
+      # (ADR-0014), and what crosses a gen boundary is plain data (ADR-0023) — a mounted option type
+      # is neither, so completion would build the bridge the law removes. Every unimplemented field
+      # therefore RETURNS A NAMED REFUSAL rather than an interpreter error, and the mount is refused
+      # at the consumer's first real read of the protocol instead of aborting inside it. Making the
+      # tree mountable for real is CROSSING work, and it belongs on that chain, not here; nothing is
+      # deleted meanwhile, because the nesting seam below is a shipped capability.
+      #
+      # Each of the twelve unanswered fields is DISPOSED OF EXPLICITLY — a missing attribute is a
+      # decision no one wrote down, and it is what made the abort unnamed:
+      #
+      #   * THREE ARE ANSWERED TRUTHFULLY, and their answers are the ones this engine's own readers
+      #     already derive from absence (`or null` / `or { }`), so nothing internal changes: a tree
+      #     is not deprecated, it supplies no value when a nesting option goes undefined, and it
+      #     wraps no element TYPE. Supplying them opens no mount: they are answers, not capabilities.
+      #     `deprecationMessage` additionally closes the consumer's one remaining DIRECT (non-`or`)
+      #     read of this type — the read that would abort UNCATCHABLY rather than refuse. The refusal
+      #     does not depend on it: with the field removed the mount still refuses catchably, because
+      #     the field forced first is `getSubModules`, which is read through `or`.
+      #   * EIGHT REFUSE BY NAME. None is read by this engine on a declared leaf's type, so the
+      #     refusals are reachable only from outside; `typeMerge`/`functor` are additionally fenced
+      #     at `mergeTypes` above, which owes a value.
+      #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
+      #     consumer that ASKS (`lib.isType "option-type"`) reads it through `or null` and gets a
+      #     correct `false` today; a throwing tombstone would turn the one working negative answer
+      #     into an abort. Absence is the answer here, and `nonMountable` is what states it.
+      type =
+        let
+          # The refusal names the field the caller reached for, so the message identifies WHICH
+          # protocol read was refused rather than only that something was.
+          refuse =
+            field:
+            throw "gen-merge: `moduleTree' is not an option type and does not answer `${field}'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data)";
+        in
+        {
+          name = "moduleTree";
+          merge =
+            loc: defs:
+            (evalModuleTree {
+              inherit specialArgs check coreShortCircuit;
+              prefix = loc;
+              modules = modList ++ map (d: setDefaultModuleLocation (d.file or "<def>") d.value) defs;
+            }).config;
+
+          # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
+          # the reason, so a consumer that finds it needs no other document to know what to do.
+          nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers `name' and `merge', and refuses the rest of the option-type protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
+
+          # Answered, and true of a tree.
+          deprecationMessage = null;
+          emptyValue = { };
+          nestedTypes = { };
+
+          # Refused, by name.
+          check = refuse "check";
+          description = refuse "description";
+          descriptionClass = refuse "descriptionClass";
+          functor = refuse "functor";
+          getSubModules = refuse "getSubModules";
+          getSubOptions = refuse "getSubOptions";
+          substSubModules = refuse "substSubModules";
+          typeMerge = refuse "typeMerge";
+        };
     };
 in
 {
