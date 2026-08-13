@@ -44,10 +44,11 @@ Entry: `inputs.gen-merge.lib` (flake). Root `default.nix` is a **function** of
 | `mergeOneOption` | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw) |
 | `showOption` | `[string] -> string` (dot-join) |
 
-`result` = `{ config; options; provenance; type; freeformConfig; freeformProv; warmDecision; }`.
+`result` = `{ config; options; provenance; undeclared; type; freeformConfig; freeformProv; warmDecision; }`.
 `config` is the merged output, `options` the merged decl tree, `provenance` a lazy per-loc record,
-`type` the tree-as-a-type for nesting; `freeformConfig` / `freeformProv` / `warmDecision` are the
-warm-path memo layers and decision trace.
+`undeclared` the definitions not merged into `config` (`[ { path; file; } ]`, empty under a
+`freeformType`), `type` the tree-as-a-type for nesting; `freeformConfig` / `freeformProv` /
+`warmDecision` are the warm-path memo layers and decision trace.
 
 **Priority / property algebra** — `lib/priority.nix`
 
@@ -102,11 +103,9 @@ warm-path memo layers and decision trace.
 `description`, `descriptionClass`, `deprecationMessage`, `check`, `merge`, `emptyValue`,
 `getSubOptions`, `getSubModules`, `substSubModules`, `typeMerge`, `nestedTypes`, `functor`.
 
-**Provenance record** (per declared loc): `{ defs = [{ file; priority; }]; winners = [{ file; }];
-priority = <int>; defaulted = <bool>; }`. Per freeform loc: `defs` only, the other three `null`.
+**Provenance record** (per declared loc): `{ defs = [{ file; priority; }]; winners = [{ file; }]; priority = <int>; defaulted = <bool>; }`. Per freeform loc: `defs` only, the other three `null`.
 
-**`warmDecision` record**: `{ mode = "warm"|"cold"; reason = <string|null>; reused = [<loc-string>];
-remerged = { <loc-string> = <reason>; }; modules = { clean; dirty; edited; }; }`.
+**`warmDecision` record**: `{ mode = "warm"|"cold"; reason = <string|null>; reused = [<loc-string>]; remerged = { <loc-string> = <reason>; }; modules = { clean; dirty; edited; }; }`.
 
 ## Entry points by task
 
@@ -131,10 +130,8 @@ remerged = { <loc-string> = <reason>; }; modules = { clean; dirty; edited; }; }`
 
 ## Measured traps
 
-Each row verified in this run against the flake's wired `.lib`. Preamble: `flk = builtins.getFlake
-"…/gen-merge"`; `l = flk.lib`; `t = l.types`; `gt = flk.inputs.gen-types.lib` (the injected leaves);
-`cfg = args: (l.evalModuleTree args).config`; `ev = l.evalModuleTree`; `try = e: (builtins.tryEval
-(builtins.deepSeq e e)).success`.
+Each row verified in this run against the flake's wired `.lib`. Preamble: `flk = builtins.getFlake "…/gen-merge"`; `l = flk.lib`; `t = l.types`; `gt = flk.inputs.gen-types.lib` (the injected leaves);
+`cfg = args: (l.evalModuleTree args).config`; `ev = l.evalModuleTree`; `try = e: (builtins.tryEval (builtins.deepSeq e e)).success`.
 
 | Trap | Evidence |
 |---|---|
@@ -151,7 +148,7 @@ Each row verified in this run against the flake's wired `.lib`. Preamble: `flk =
 | `anything` never reports a scalar conflict — it silently keeps the value from the EARLIEST module (the reversed def stream's last element) | `lib/types.nix:468-485`; modules `{ x = 1; }` then `{ x = 2; }` ⇒ `1`; `[1]` then `[2]` ⇒ `[2,1]` |
 | `raw` collapses multiple EQUAL defs instead of refusing (nixpkgs `raw` is `mergeOneOption`) | `lib/types.nix:459-463` + `:126-139`; two `x = 1` defs ⇒ `1`; `x = 1` / `x = 2` ⇒ threw. `mergeOneOption` is exported separately for the strict rule: one def ⇒ value, two ⇒ threw |
 | An order marker (`mkOrder`/`mkBefore`/`mkAfter`) is carried through as an ORDINARY VALUE — no throw, no ordering | `lib/priority.nix:56-89`; `{ _type = "order"; priority = 500; content = ["z"]; }` on a `t.raw` option ⇒ the marker attrset IS the merged value. `l.lint` on the same shape ⇒ `["order-pass"]`, the only detector. Test: `test-reject-order-pass-in-config` |
-| `check = false` does not merely relax the error — undeclared keys with no `freeformType` VANISH from `config` | `lib/modules.nix:1024-1030`; `check = false` with `{ nosuch = 1; }` ⇒ `builtins.attrNames config` ⇒ `[]`. Control, same run: `check = true` ⇒ threw |
+| `check = false` keeps undeclared keys OUT of `config` (that is the flag's purpose) but no longer drops them silently — they are listed on the result SIBLING `undeclared`, never inside `config` | `lib/modules.nix:1175-1182` (report), `:1149-1155` (the `check = true` throw); `check = false` with `{ nosuch = 1; }` ⇒ `builtins.attrNames config` ⇒ `[]` **and** `result.undeclared` ⇒ `[ { path = ["nosuch"]; file = …; } ]`. Controls, same run: `check = true` ⇒ threw; the same input under a `freeformType` ⇒ the key is absorbed into `config` and `undeclared` ⇒ `[]`. Tests: `ci/tests/undeclared.nix` |
 | `either` dispatches on the FIRST def's shape then merges ALL defs through that member; a mixed-shape pair fails with a raw Nix type error that `builtins.tryEval` CANNOT catch | `lib/types.nix:439-446`; `either str (listOf str)` with defs `"s"` and `["z"]` ⇒ `nix eval` exit **1**, `error: expected a list but found a string: "s"`, escaping a `tryEval (deepSeq …)` wrapper. Controls, same run: the `["z"]` def alone ⇒ `["z"]`; the `"s"` def alone ⇒ `"s"` |
 | `mkCoreValue` with the knob OFF is an ordinary attrset — its `__coreValue`/`digest`/`values` keys reach the merged value | `lib/modules.nix:69-86`, `:547`; `attrsOf raw` option, default off ⇒ `builtins.attrNames config.x` ⇒ `["__coreValue","digest","values"]`; `coreShortCircuit = true` ⇒ `{ a = "A"; }`. Tests: `test-default-off-marker-is-plain-value`, `test-sole-core-skips-throwing-spine` (`ci/tests/core-kernel.nix`) |
 | EVERY function module is classified DIRTY — including one that ignores its argument entirely | `lib/modules.nix:267-279`; `(_: { options.x = …; })` ⇒ `warmDecision.modules` = `{clean=[];dirty=["<gen-merge>"];edited=[]}`. Controls, same run: the SAME function under `l.pureModule` ⇒ `clean=["<gen-merge>"]`, `dirty=[]`; a plain attrset module ⇒ `clean=["<gen-merge>"]`. Tests: `test-bare-lambda-is-dirty`, `test-pure-module-is-marked-pure` (`ci/tests/classify.nix`) |

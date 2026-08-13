@@ -1153,6 +1153,42 @@ let
               }' does not exist (no freeformType to absorb it)"
             else
               null;
+          # An unmatched def has THREE dispositions and no fourth: a `freeformType` absorbs it (below),
+          # `check` refuses it (above), or — with neither — it is not merged into `config` at all. The
+          # third is the one that returns neither a value nor a named refusal, and it is why this channel
+          # exists — but the report is NOT scoped to it. Every unmatched def the freeform plane did not
+          # absorb is REPORTED here, the refused ones included: the report's extension is exactly
+          # `_orphanCheck`'s, so under `check = true` the same defs are listed while `config` throws.
+          # Always on a result sibling, never inside `config`: `check = false`'s whole purpose is that the
+          # merged value does NOT grow the key, and a report living there would change what the flag
+          # produces instead of describing it.
+          #
+          # `check` does not gate the report — whether the engine tells the truth about what it consumed
+          # is not a checking question — while the freeform plane does, because there the defs ARE
+          # merged and nothing was dropped.
+          #
+          # By construction, not a new tracking layer: this is `realized.unmatched` (the same records
+          # `coalesceUnmatched` and `freeformProvCold` read) minus its `value`s. Names and originating
+          # files are already carried; the VALUES are deliberately dropped, so reading the report forces
+          # no def. Inheriting that list inherits its reach: like `freeformProvCold`'s records the report
+          # may be OVER-INCLUSIVE — a false-`mkIf`-wrapped def still shows here, because properties are
+          # discharged per key only inside `freeform.merge`, which this pass does not enter. That is the
+          # report↔refusal correspondence holding rather than leaking: the same def under `check = true`
+          # is refused, and a discharge filter here would desynchronise the two.
+          #
+          # Paths are absolute against `prefix`, like the refusal message above, and are CAPTURE
+          # paths — the first undeclared name on each branch (`mergeTree`'s `ownUnmatched`). An
+          # undeclared key is captured with its whole subtree, since with no declaration nothing says
+          # where the option path ends and an attrset VALUE begins; a path here therefore means "this
+          # loc and everything beneath it was not merged".
+          undeclared =
+            if freeform == null then
+              map (u: {
+                path = prefix ++ u.path;
+                inherit (u) file;
+              }) realized.unmatched
+            else
+              [ ];
           # Coalesce the per-key unmatched defs into one wide def per originating module BEFORE
           # `freeform.merge` (see `coalesceUnmatched`) — restores nixpkgs' per-module freeform shape,
           # so `attrsOf`/`lazyAttrsOf` stays linear in sibling-key count (byte-identical output).
@@ -1269,6 +1305,7 @@ let
             moduleConfig
             moduleArgs
             provenance
+            undeclared
             freeformConfig
             freeformProv
             warmDecision
@@ -1282,7 +1319,11 @@ let
         config
         options
         provenance
-        # Freeform layers exposed as internal memo fields (public surface = config/options/provenance):
+        # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
+        # `check` does not gate it (see above) — empty whenever a freeformType absorbed them, and empty
+        # for a fully-declared config.
+        undeclared
+        # Freeform layers exposed as internal memo fields (public surface = the four above):
         # a CHAINED warm re-eval reuses `warmFrom.freeformConfig`/`freeformProv` directly (spec §2).
         freeformConfig
         freeformProv

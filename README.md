@@ -94,9 +94,10 @@ in
   result.config                     # ⇒ { name = "pinned"; }
 ```
 
-`evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
+`evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance; undeclared }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
-recursion); `.provenance` is a lazy per-loc record of WHERE each value came from (see below).
+recursion); `.provenance` is a lazy per-loc record of WHERE each value came from (see below);
+`.undeclared` lists the definitions the eval did not merge into `.config` (see below).
 
 Every function module receives `config`, `options`, and `prefix` (the module's option path, equal to
 the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]` inside an option
@@ -144,6 +145,43 @@ enter), with `winners` / `priority` / `defaulted` = `null`. `null` means "freefo
 Declared records win over freeform at shared paths (mirroring config's `recursiveUpdate freeform declared`). One boundary: a nested `moduleTree`-as-type merge (a tree nested inside a parent tree via
 `.type.merge`) surfaces its `.config` only — the inner tree's provenance is not threaded out through
 the nested merge.
+
+## Undeclared definitions
+
+An unmatched definition — a config key with no matching declaration — has three dispositions and no
+fourth. A `freeformType` **absorbs** it; `check = true` **refuses** it (the orphan throw, naming the
+option path); with neither, it is **not merged** at all. `.undeclared` exists for the third case — the
+only one that returns neither a value nor a named refusal — but is **not scoped to it**: the list
+carries every unmatched definition a `freeformType` did not absorb, **the refused ones included**, so
+under `check = true` the same definitions are listed while `.config` throws. It is an always-on lazy
+list, one record per DEF (two files defining the same undeclared name are both named), ordered per key
+by reverse module order like `provenance.defs`.
+
+```nix
+[ { path = [ "grp" "unknown" ]; file = "…/some-module.nix"; } … ]
+```
+
+It is a **sibling of `config`, never a key inside it**: `check = false` exists so that the merged value
+does *not* grow the undeclared key, so a report living in `config` would change what the flag produces
+instead of describing it. `check` does not gate the list — whether the engine tells the truth about
+what it consumed is a different question from whether it checks — while a `freeformType` does, since
+there the definitions are merged and nothing was dropped. A fully declared config reports `[ ]`.
+
+Reading it forces **no definition value**: the records carry names and originating files only (the
+same data the freeform provenance records read), so a def that is a bare `throw` does not fire.
+`path` is absolute against `prefix`, naming the same location the orphan throw would.
+
+It is **over-inclusive in the same way the freeform provenance records are**: a def wrapped in a false
+`mkIf` still appears, because properties are discharged per key only inside the freeform `.merge`,
+which this pass does not enter. This is the report↔refusal correspondence holding, not a leak —
+whatever `check = true` refuses, `check = false` reports, and that same `mkIf false` def does throw
+under `check = true`. Filtering it here would desynchronise the report from the refusal.
+
+**Capture granularity.** A path is the first undeclared name on its branch, and the record covers that
+loc *with everything beneath it*. Deeper rendering has no well-defined answer: with no declaration,
+`config.nested.deep.key = "X"` and `config.nested = { deep.key = "X"; }` are the same definition, so a
+descent could not tell a dropped option path from a dropped attrset value. The nested-tree boundary is
+provenance's: a tree merged as a type surfaces its `.config` only.
 
 ## Source classification & the `pureModule` marker
 
@@ -275,7 +313,7 @@ adversarial suite fixture (a marked module that `@`-captures config, asserted to
 pin it. The two internal memo fields `freeformConfig` / `freeformProv` on the result let a CHAINED warm
 (warmFrom = a warm result) reuse the freeform layer directly.
 
-**Result surface.** The public result is still `config` / `options` / `provenance` (+ `type`);
+**Result surface.** The public result is `config` / `options` / `provenance` / `undeclared` (+ `type`);
 `warmDecision` (the decision trace) and `freeformConfig` / `freeformProv` (the freeform memo layers)
 are internal fields — additive, threaded between chained evals, not part of the byte-identity contract.
 
