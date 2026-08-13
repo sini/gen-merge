@@ -155,12 +155,13 @@ let
   #
   # ── the sub-protocol is a REQUIRED FORMAL of a structural type, not a default ────────────────────
   # The three defaults below (`_prefix: { }`, `null`, `_m: null`) are a LEAF's answers, and they are
-  # RIGHT for a leaf: it declares nothing, carries no module set, and has nothing to rebuild. They are
-  # wrong for every type that wraps another, and a wrapping type left on them reports "declares
-  # nothing" indistinguishably from a type that genuinely declares nothing — a consumer reflecting a
-  # declared surface off it then fails CLOSED and silently. A default cannot be right for both, so a
-  # type that CARRIES something answers all three itself or is refused here, by name. The missing
-  # declaration is the design choice; making the field required makes it total.
+  # RIGHT for a leaf: it declares nothing, has NO SUB-MODULE CONCEPT (which is what `null` says, and
+  # the only thing it says — a module set that exists and is empty reports `[ ]`), and has nothing to
+  # rebuild. They are wrong for every type that wraps another, and a wrapping type left on them reports
+  # "declares nothing" indistinguishably from a type that genuinely declares nothing — a consumer
+  # reflecting a declared surface off it then fails CLOSED and silently. A default cannot be right for
+  # both, so a type that CARRIES something answers all three itself or is refused here, by name. The
+  # missing declaration is the design choice; making the field required makes it total.
   #
   # THE DOMAIN IS WHAT THE TYPE CARRIES — a property of the constructor, read off the descriptor, not
   # of any measurement. Two ways a descriptor says it carries something: an element type (`elemType`,
@@ -169,10 +170,13 @@ let
   #   · a leaf carries neither;
   #   · `either`/`oneOf` carry MEMBERS, not an element — they introduce no path level, so `{ }` is
   #     their correct answer (and their pair lives in the functor payload, which this does not read);
-  #   · `deferredModule` carries neither. gen-merge ships no `deferredModuleWith`/`staticModules`, so
-  #     its static module set is empty BY CONSTRUCTION and its `{ }`/`null` are correct answers, not
-  #     stubs. Requiring it to propagate would mean synthesising a parameter the constructor does not
-  #     have — a nixpkgs constructor this library does not ship is not a reason to change one it does.
+  #   · `deferredModule` carries a module set, and that set is EMPTY. gen-merge ships no
+  #     `deferredModuleWith`/`staticModules`, so it is empty BY CONSTRUCTION rather than by
+  #     omission — which is a fact to report (`[ ]`), not an absence (`null`). It is therefore IN
+  #     this domain by the module-set arm and answers all three itself, below. Requiring it to
+  #     PROPAGATE is a different demand and still refused: that would mean synthesising a parameter
+  #     the constructor does not have — a nixpkgs constructor this library does not ship is not a
+  #     reason to change one it does.
   #
   # `||` short-circuits, and the order is load-bearing: a container's `getSubModules` IS its element's,
   # so reading it to decide the domain would force the element type at construction. An element-type
@@ -183,8 +187,10 @@ let
       name = t.name or "raw";
       carriesElemType = t ? elemType || (t.nestedTypes or { }) ? elemType;
       carriesModuleSet = (t.getSubModules or null) != null;
-      # `?` tests presence without forcing: `getSubModules = null` is a supplied answer (an `attrsOf`
-      # over a leaf legitimately has no module set), and absence is what is refused.
+      # `!= null` IS the encoding's own question — a supplied list, empty or not, is a module set;
+      # `null` is the leaf's "no such concept". `?` below tests presence without forcing:
+      # `getSubModules = null` is a supplied answer (an `attrsOf` over a leaf legitimately has no
+      # module set), and absence is what is refused.
       missing = filter (f: !(t ? ${f})) subProtocol;
       functor = t.functor or (pureDefaultFunctor name // { type = result; });
       result = t // {
@@ -420,6 +426,38 @@ let
     # would pass through as a module VALUE — admitting it here would re-create the exact silent
     # acceptance this check exists to close. A check must never admit what the merge cannot consume.
     check = isModuleValue;
+    # ── the module set is EMPTY, and empty is not absent ──────────────────────────────────────────
+    # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
+    # "this type has no sub-module concept at all" (a leaf's answer), `[ ]` says "this type has a
+    # module set and there is nothing in it". Reported as `null`, this type's "has nothing to
+    # declare" was indistinguishable from a leaf's "declares nothing" — the missing distinction is
+    # the design choice, so the encoding states it. gen-merge ships no
+    # `deferredModuleWith`/`staticModules`, which is exactly WHY the set is empty by construction
+    # rather than by omission, and why reporting it is a statement of fact and not a stub.
+    #
+    # The three answers are stated together because the protocol's consumer reads them together:
+    # nixpkgs `fixupOptionType` branches on `getSubModules == null` and, on every other type,
+    # REPLACES the option's type with `substSubModules opt.options`. So a non-null module set with a
+    # leaf's `_m: null` rebuild would hand every mounted option a null type — the encoding and the
+    # rebuild are one decision, not two.
+    getSubOptions = _prefix: { };
+    getSubModules = [ ];
+    # Rebuilding over the empty set is this same type. Over a NON-EMPTY one there is nothing to
+    # build: without a static-module parameter the modules could only be dropped, and a rebuild that
+    # silently discards what it was handed is the wrong value with no diagnostic. Refuse by name
+    # instead. (Unreachable from nixpkgs, which admits raw nested options only into a type NAMED
+    # `submodule` and otherwise passes the option's own empty set straight back — a direct protocol
+    # caller is what this answers.)
+    substSubModules =
+      m:
+      if m == [ ] then
+        deferredModule
+      else
+        throw (
+          "gen-merge: `deferredModule' cannot be rebuilt over a module set of "
+          + toString (length m)
+          + "; it carries no static modules and dropping them would lose the declarations silently"
+        );
     merge = loc: defs: {
       imports = map (
         d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value

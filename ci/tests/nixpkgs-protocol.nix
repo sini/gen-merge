@@ -907,9 +907,10 @@ in
     # EVERY ROW BELOW THE FOUR IS AN ARMED CONTROL and the cell is invalid without them:
     #   · `submodule` — the row that already propagated, unchanged;
     #   · `strLeaf` — `NULL` is the correct answer FOR A LEAF, and it stays;
-    #   · `deferredModule` — carries no element type and no module set (gen-merge ships no
-    #     `deferredModuleWith`/`staticModules`), so it is outside the rule's domain and MUST NOT be
-    #     made to propagate; its `NULL` is a correct answer, not a stub;
+    #   · `deferredModule` — carries no ELEMENT type, so it MUST NOT be made to propagate one. Its
+    #     own module set is empty by construction (gen-merge ships no
+    #     `deferredModuleWith`/`staticModules`) and reads `LIST[0]`: having an empty module set is a
+    #     different question from propagating an element's, and it is pinned by its own cell below;
     #   · `either`/`oneOf` — they wrap MEMBERS, introduce no path level, and `{ }` is their answer on
     #     nixpkgs too, so they are outside the domain as well;
     #   · `…OverLeaf` — the four over a LEAF element report the LEAF's `NULL`. Without this row a green
@@ -966,13 +967,76 @@ in
           rebuilt = "submodule";
         };
         strLeaf = "NULL";
-        deferredModule = "NULL";
+        deferredModule = "LIST[0]";
         eitherSubOptions = "ATTRS{0}";
         oneOfSubOptions = "ATTRS{0}";
         attrsOfOverLeaf = "NULL";
         lazyAttrsOfOverLeaf = "NULL";
         listOfOverLeaf = "NULL";
         nullOrOverLeaf = "NULL";
+      };
+    };
+
+    # AN EMPTY MODULE SET REPORTS AS EMPTY; A LEAF REPORTS AS ABSENT. `null` was doing two jobs here —
+    # "this type has no sub-module concept" and "this type has a module set with nothing in it" — so a
+    # `deferredModule` and a `str` gave a consumer the same answer to two different questions. The
+    # missing distinction is the design choice, and the encoding now states it: `null` means the leaf's
+    # fact and only that, `LIST[0]` means a set that exists and is empty.
+    #
+    # ★ THE DISCRIMINATING CELL IS THE PAIR, NOT EITHER HALF. `deferredModule ⇒ LIST[0]` on its own is
+    # equally consistent with an implementation that answers `LIST[0]` for everything, so the leaf's
+    # `NULL` is asserted in the SAME cell — the two rows only both pass if the two facts are actually
+    # encoded apart. Shape-and-length throughout: `isNull` cannot see the difference this cell exists
+    # to pin, and reading it is what produced two withdrawn measurements of this surface.
+    #
+    # The nixpkgs rows are an INSTRUMENT control, not the justification: they show the same predicate
+    # separating the same two facts on an engine that already does, so a green pair here is the
+    # encoding and not `shape` collapsing. What grounds the change is the encoding decision above —
+    # gen-merge's empty set is empty because it ships no `staticModules` parameter, which is a fact
+    # about its own constructor.
+    test-empty-module-set-reports-empty-and-a-leaf-reports-absent = {
+      expr = {
+        deferredModule = shape gmT.deferredModule.getSubModules;
+        strLeaf = shape gmT.str.getSubModules;
+        nixpkgsDeferredModule = shape nixpkgsLib.types.deferredModule.getSubModules;
+        nixpkgsStrLeaf = shape nixpkgsLib.types.str.getSubModules;
+      };
+      expected = {
+        deferredModule = "LIST[0]";
+        strLeaf = "NULL";
+        nixpkgsDeferredModule = "LIST[0]";
+        nixpkgsStrLeaf = "NULL";
+      };
+    };
+
+    # The encoding and the REBUILD are one decision, not two: nixpkgs `fixupOptionType` branches on
+    # `getSubModules == null` and, for every other type, REPLACES the option's type with
+    # `substSubModules opt.options`. A non-null module set left on the leaf's `_m: null` rebuild would
+    # therefore hand every mounted option a null type. Measured, that is the plain-mount path: what
+    # nixpkgs passes back is the option's own set, `[ ]`.
+    #
+    # Control rows, same cell: the rebuilt type still MERGES (so it is a type, not a shape that merely
+    # looks like one), and the value it produces is the one the un-rebuilt type produces.
+    test-deferredModule-rebuilds-over-its-own-empty-set = {
+      expr =
+        let
+          m = {
+            options.y = genMerge.mkOption { type = gmT.str; };
+          };
+          rebuilt = gmT.deferredModule.substSubModules [ ];
+        in
+        {
+          name = rebuilt.name;
+          isType = rebuilt._type or "<none>";
+          subModules = shape rebuilt.getSubModules;
+          rebuiltMergesLikeTheOriginal =
+            builtins.length (mount rebuilt m).imports == builtins.length (mount gmT.deferredModule m).imports;
+        };
+      expected = {
+        name = "deferredModule";
+        isType = "option-type";
+        subModules = "LIST[0]";
+        rebuiltMergesLikeTheOriginal = true;
       };
     };
 

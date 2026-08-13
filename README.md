@@ -371,6 +371,30 @@ protocol-complete — a gen-types **parametric** leaf (`enum`, `struct`, `union`
 namespace as a bare constructor and is never completed — declares no sub-options either, so a wrapper
 reports `{ }` rather than aborting on a missing attribute.
 
+#### The module-set half: `null` and `[ ]` are two different answers
+
+`getSubModules` reports the module set a type carries, and it distinguishes **not having one** from
+**having an empty one**:
+
+| answer | means |
+|---|---|
+| `null` | this type has no sub-module concept at all — a **leaf**'s answer |
+| `[ ]` | this type has a module set and there is nothing in it — `deferredModule` |
+| `[ … ]` | the modules it carries — `submodule`, and the containers, which report their element's |
+
+One `null` cannot carry both facts. Reported as `null`, `deferredModule`'s *"has nothing to declare"*
+was indistinguishable from `str`'s *"declares nothing"*, so a consumer walking the protocol could not
+tell the two apart. `deferredModule`'s set is empty **by construction** — gen-merge ships no
+`deferredModuleWith`/`staticModules` parameter — and that is a fact to report, not an absence.
+
+The encoding and the **rebuild** are one decision rather than two, because the consumer reads them
+together: nixpkgs `fixupOptionType` branches on `getSubModules == null` and, for every other type,
+replaces the option's type with `substSubModules opt.options`. So a type reporting a module set owes a
+`substSubModules` that returns a type. `deferredModule` rebuilds over its own empty set — the argument
+a mount actually passes — and **refuses by name** over a non-empty one: with no static-module
+parameter it could only drop the modules, and a rebuild that silently discards what it was handed is a
+wrong answer with no diagnostic.
+
 ### Two export shapes — completing only one leaves half the namespace unmountable
 
 gen-types exports its **nullary** leaves (`str`, `int`, `bool`, `path`, …) as attrsets and its

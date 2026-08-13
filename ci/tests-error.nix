@@ -467,6 +467,36 @@ in
           msg = "^gen-merge: the structural type `slotOf' carries a module set but does not supply `getSubOptions', `substSubModules'; a structural type may not inherit a leaf's protocol answer$";
         };
       };
+      # `deferredModule` HAS a module set and it is empty, so it answers the sub-protocol itself —
+      # including the rebuild. Over a NON-EMPTY set there is nothing it could build: the type carries
+      # no static-module parameter, so the modules could only be dropped, and a rebuild that silently
+      # discards what it was handed is the wrong value with no diagnostic. It refuses, naming the type
+      # and what it cannot do with the set.
+      test-deferredModule-rebuild-over-non-empty-set-refused-by-name = {
+        expr = t.deferredModule.substSubModules [ skeleton ];
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `deferredModule' cannot be rebuilt over a module set of 1; it carries no static modules and dropping them would lose the declarations silently$";
+        };
+      };
+      # LIVE CONTROL, same run, same type: over its OWN empty set the rebuild returns the type. This
+      # is the argument nixpkgs `fixupOptionType` actually passes on a mount, so without this row the
+      # refusal above is equally consistent with a `substSubModules` that refuses everything — which
+      # would break every mounted `deferredModule` option rather than only the impossible rebuild.
+      test-deferredModule-rebuild-over-empty-set-returns-the-type-control = {
+        expr =
+          let
+            ty = t.deferredModule.substSubModules [ ];
+          in
+          {
+            inherit (ty) name;
+            subModules = ty.getSubModules;
+          };
+        expected = {
+          name = "deferredModule";
+          subModules = [ ];
+        };
+      };
       # LIVE CONTROL, same run, same skeleton: supply the third field and the SAME hand-built type
       # constructs and answers. Without it both cells above are consistent with a surface that
       # refuses every hand-built type carrying an element.
