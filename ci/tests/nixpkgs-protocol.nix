@@ -133,7 +133,7 @@ in
       expected = "hi";
     };
     # structural types mount + merge faithfully through nixpkgs (attrsOf per-key, listOf concat) — and a
-    # SUBMODULE mount exercises `getSubModules`/`substSubModules` (modules.nix:1477) end to end, with a
+    # SUBMODULE mount exercises `getSubModules`/`substSubModules` (nixpkgs' `fixupOptionType`) end to end, with a
     # gen-merge `str` nested inside it.
     test-attrsOf-mounts = {
       expr = mount (gmT.attrsOf gmT.str) { a = "x"; };
@@ -857,7 +857,7 @@ in
     };
     # BOUNDARY REGRESSION (den's `den.schema._kindNames`): a gen-merge submodule whose base module sets a
     # `readOnly` config value, mounted in a nixpkgs `evalModules`. nixpkgs `fixupOptionType`
-    # (modules.nix:1477) round-trips the type's OWN `getSubModules` (relocated) back through
+    # round-trips the type's OWN `getSubModules` (relocated) back through
     # `substSubModules`. A CONCAT (`mods ++ m`) duplicates the base module → the readOnly config is emitted
     # twice → "read-only … defined 2 times". `substSubModules` must REPLACE (nixpkgs `submoduleWith`), so
     # the base runs exactly once and the readOnly value resolves.

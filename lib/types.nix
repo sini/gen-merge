@@ -272,8 +272,8 @@ let
         };
       };
       getSubModules = mods;
-      # nixpkgs protocol: rebuild the submodule type with the module set nixpkgs supplies (read at
-      # modules.nix:1477 for submodule-typed options). REPLACES `mods` — it does NOT append: nixpkgs'
+      # nixpkgs protocol: rebuild the submodule type with the module set nixpkgs supplies (read by
+      # nixpkgs' `fixupOptionType` for submodule-typed options). REPLACES `mods` — it does NOT append: nixpkgs'
       # `mergeOptionDecls` builds `m` as `map (setDefaultModuleLocation _file) type.getSubModules ++
       # res.options`, i.e. this type's OWN modules (relocated) plus any sibling declarations. Concatenating
       # would re-include `mods` a second time, double-evaluating the base module (a readOnly config value —

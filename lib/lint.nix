@@ -104,8 +104,9 @@ let
 
   # ── module collection (import-expanding, function-OPAQUE), _file tracked as core.collectModules ──
   # Path leaves are `import`ed (pure); an attrset module contributes its `imports` recursively; a
-  # function (or `__functor`) module is an OPAQUE leaf. `file` mirrors modules.nix:321 exactly (a path's
-  # provenance IS its path string, else the module's `_file`, else the engine fallback).
+  # function (or `__functor`) module is an OPAQUE leaf. `file` mirrors `collectModules`' own `_file` rule
+  # exactly (a path's provenance IS its path string, else the module's `_file`, else the engine
+  # fallback).
   collect =
     mods:
     concatMap (
@@ -265,7 +266,7 @@ let
         ) [ ] acc (e.module.options or { })
       ) { } attrsetEntries;
       # config defs, one per attrset module, pushed once at the root; `_module` is the engine's pseudo-
-      # tree (modules.nix:470 strips it from the realizer), never an order-bearing config path.
+      # tree (`topDefs` strips it from the realizer), never an order-bearing config path.
       rootPushed = map (e: {
         inherit (e) file;
         attrs = builtins.removeAttrs (pushDownProperties (configOf e.module)) [ "_module" ];

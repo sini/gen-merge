@@ -62,7 +62,7 @@ let
       if (lhs ? ${n}) && isAttrs (lhs.${n} or null) && isAttrs v then recursiveUpdate lhs.${n} v else v
     ) rhs;
 
-  # An option-decl LEAF is a `mkOption` descriptor (tagged `_type = "option"` at lib/types.nix:39).
+  # An option-decl LEAF is a `mkOption` descriptor (tagged `_type = "option"` by `lib/types.nix` `mkOption`).
   # Anything else inside the `options` tree is an option-GROUP: a plain attrset of sub-declarations.
   isOptLeaf = v: isAttrs v && (v._type or null) == "option";
 
@@ -214,7 +214,7 @@ let
   # engine passes `redeclareDecl`; the portable-subset lint passes the plain field-union, because a
   # lint that ABORTED on the redeclaration it exists to report could never report it. Making the
   # caller state it keeps that divergence one legible argument rather than a fork of the descent.
-  # DELIBERATE divergence: nixpkgs' `optionTreeToOption` (modules.nix:895-913) has one sugar case —
+  # DELIBERATE divergence: nixpkgs' `optionTreeToOption` has one sugar case —
   # raw options merged INTO a `submodule`-typed leaf — that byte-mode does not reproduce (out of the
   # den surface; submodule nesting rides the separate `submodule`/`attrsOf` `.merge` path). Byte-mode
   # conservatively throws here rather than risk emitting wrong bytes.

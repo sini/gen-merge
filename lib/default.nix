@@ -109,6 +109,21 @@ in
   # which the corpus's `mkInstanceRegistry` mounts in flake-parts. gen-merge's own strategies are already
   # completed at their constructors (types.nix). A non-type entry (non-type value) passes through.
   #
+  # ★ AN OPEN TENSION, RECORDED HERE BECAUSE THIS IS WHERE A READER MEETS IT — NOT RESOLVED HERE. The
+  # paragraph above is a claim that a gen leaf type MOUNTS in a foreign (flake-parts) options tree, and
+  # that mount is the whole reason this completion exists. gen-schema's own demo states the opposite
+  # invariant about the same boundary: "No gen *type* ever enters the flake-parts options tree — the
+  # value-injection invariant that lets a gen schema coexist with flake-parts"
+  # (gen-schema `examples/demo/README.md`). Both cannot hold unqualified of the same ecosystem.
+  # ADR-0023 rules the unqualified form — what crosses is provably plain data — the TARGET, BY
+  # CONSTRUCTION, and today's unstated crossings a DECLARED INTERIM: "every currently-unstated crossing
+  # site becomes a declared opt-out or is fixed". The two readings may yet reconcile, since the demo
+  # composes purely through gen-flake while the corpus path named above may be a different crossing.
+  # But whether the site named above really mounts a gen TYPE, rather than composing through gen-flake
+  # like the demo, has never been measured — so this states the tension and picks no side.
+  # Deciding it belongs to the crossing chain ADR-0023 governs (with ADR-0014 — the boundary is the
+  # eval, not the repo — supplying why a foreign `evalModules` is a crossing at all), not to this file.
+  #
   # gen-types exports two shapes, and completing only the first leaves half the namespace unmountable.
   # The NULLARY leaves (`str`, `int`, `bool`, …) are attrsets and complete directly. The PARAMETRIC ones
   # (`enum`, `struct`, `union`, `tuple`, `refined`, `optionalAttr`, …) are CONSTRUCTORS — functions — so
