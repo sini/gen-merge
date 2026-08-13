@@ -242,6 +242,11 @@ let
     in
     mkOptionType {
       name = "submodule";
+      # A submodule's definitions ARE modules: `merge` hands each through `defToModule` to a nested
+      # `evalModuleTree`, so the domain is `isModuleValue`'s and not "any value". nixpkgs reaches the
+      # same three shapes through `types.path.check`, which additionally admits a string beginning
+      # with `/`; the same deliberate narrowing as `deferredModule` below, and for the same reason.
+      check = isModuleValue;
       # nixpkgs' empty-definition rule (see `emptyValueOr`, lib/modules.nix): a CONTAINER nobody added
       # to is legitimately empty; only a type that declares no empty value is an error when undefined.
       emptyValue = {
@@ -308,6 +313,10 @@ let
     mkOptionType {
       name = "listOf";
       inherit elemType;
+      # `merge` walks each definition with `imap0`, so a definition that is not a list is one this
+      # type cannot consume — the domain, stated where the type is built rather than left to
+      # `completeType`'s any-value default.
+      check = isList;
       emptyValue = {
         value = [ ];
       };
@@ -349,6 +358,9 @@ let
     mkOptionType {
       name = tyName;
       inherit elemType;
+      # `merge` takes the key union across the definitions with `//` and indexes each by key, so a
+      # definition that is not an attrset is one this type cannot consume.
+      check = isAttrs;
       emptyValue = {
         value = { };
       };
@@ -407,7 +419,7 @@ let
     # admits a STRING beginning with `/`. `callM` dispatches on `builtins.isPath`, so such a string
     # would pass through as a module VALUE — admitting it here would re-create the exact silent
     # acceptance this check exists to close. A check must never admit what the merge cannot consume.
-    check = v: isAttrs v || isFunction v || builtins.isPath v;
+    check = isModuleValue;
     merge = loc: defs: {
       imports = map (
         d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
@@ -415,9 +427,21 @@ let
     };
   };
 
+  # The module-value domain, shared by the two types whose definitions ARE modules (`submodule`,
+  # `deferredModule`) so the two cannot drift into answering it differently. The engine's `callM`
+  # applies a path, a function, a `__functor` attrset or a plain attrset, and nothing else.
+  isModuleValue = v: isAttrs v || isFunction v || builtins.isPath v;
+
   # Membership predicate for union dispatch. gen-types leaf checkers expose `verify` (v → null|err);
   # gen-merge structural types expose a 1-arg `check` (v → bool). Prefer `verify` FIRST — a gen-types
   # `check` is curried (not v → bool), so it must never be applied here.
+  #
+  # A STRUCTURAL TYPE OWES ITS OWN ANSWER HERE, and `completeType`'s `_: true` default is not one:
+  # it is right for a type whose merge really does accept any value (`raw`, `anything`), and a
+  # standing lie for one whose merge does not. Left on the default inside a union it is worse than
+  # imprecise — the union's `check` is a disjunction over its members, so ONE member answering "yes"
+  # to everything makes the whole union unable to refuse anything, and the definition the member
+  # cannot consume reaches the interpreter instead (`either`, below).
   isValid =
     t: v:
     if t ? verify then
@@ -468,8 +492,9 @@ let
     };
   option = nullOr;
 
-  # either A B — recursion-safe lazy union: dispatch on the shape of the first winner (byte-mode
-  # best-effort; the surface's only use is aspectOrFn where A's check is total).
+  # either A B — recursion-safe lazy union: merge through the member that accepts EVERY definition,
+  # or refuse by name (byte-mode best-effort; the surface's only use is aspectOrFn where A's check is
+  # total).
   either =
     a: b:
     mkOptionType {
@@ -504,14 +529,50 @@ let
             };
       };
       check = v: isValid a v || isValid b v;
-      # Dispatch on the first value's shape, then merge through the chosen type via mergeDefs so leaf
-      # members (str/int, no `.merge`) verify and merge-bearing members (ref/submodule) recurse.
+      # A UNION'S MERGE IS TOTAL: every definition is merged through a member that accepts it, or the
+      # merge refuses by name. Choosing the member from the FIRST definition's shape and then merging
+      # ALL of them through it hands a definition that member cannot consume straight to the
+      # interpreter, which answers with a raw type error naming neither the option nor the file that
+      # wrote the definition — and that abort escapes `tryEval`, so no caller can turn it into a
+      # diagnostic either. The predicate is the members' own, the same one `check` above is the
+      # disjunction of; what is resolved ONCE over the whole definition set, rather than per
+      # definition against a member already chosen, is WHICH member — and that leaves no branch that
+      # can hand on a definition its member rejects. Nothing is filtered: a set no member takes whole
+      # has no merge to perform, and the refusal is the answer. A homogeneous set is unchanged — the
+      # member selected from its first definition is the member that accepts them all. Merging then
+      # runs through mergeDefs as before, so leaf members (str/int, no `.merge`) verify and
+      # merge-bearing members (ref/submodule) recurse.
+      #
+      # THE MEMBERS' ANSWERS ARE THIS RULE'S PRECONDITION, which is why the structural types above
+      # now state their domains: a member left on `completeType`'s `_: true` accepts every definition
+      # by default, so the dispatch below would pick it for a set it cannot merge and the refusal
+      # could never fire. A member that genuinely accepts anything (`raw`, `anything`, and a consumer
+      # type declaring `check = _: true` on purpose) still does, and is still chosen first.
       merge =
         loc: defs:
         let
-          chosen = if defs != [ ] && isValid a (head defs).value then a else b;
+          accepts = t: all (d: isValid t d.value) defs;
+          # With no definitions there is nothing to place and nothing to refuse, and the member
+          # decides only which `emptyValue` the fold goes on to ask for — left as it answered before.
+          chosen =
+            if defs == [ ] then
+              b
+            else if accepts a then
+              a
+            else if accepts b then
+              b
+            else
+              null;
+          # Per member, the definitions IT could not take. Neither list is empty at the refusal — a
+          # member rejecting nothing would have been chosen — and between them they name every
+          # definition the author has to reconcile, which is more than the one pair the interpreter
+          # would have collided on.
+          rejects = t: map (d: toString (d.file or "<def>")) (filter (d: !(isValid t d.value)) defs);
         in
-        mergeDefs loc chosen defs;
+        if chosen == null then
+          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (`${a.name}' rejects ${concatStringsSep ", " (rejects a)}; `${b.name}' rejects ${concatStringsSep ", " (rejects b)})"
+        else
+          mergeDefs loc chosen defs;
     };
 
   # oneOf [t1 t2 …] — n-ary either (right-nested). One use on the surface (schema either-chains).

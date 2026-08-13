@@ -695,6 +695,60 @@ in
       expr = (genMerge.nullOr t.str).nestedTypes.elemType.name;
       expected = "string";
     };
+
+    # A UNION MERGES THROUGH THE MEMBER THAT ACCEPTS ITS DEFINITIONS, and the container members now
+    # answer whether they do. Both container rows below were an INTERPRETER ABORT before that — a
+    # LONE, unambiguously valid string definition, dispatched into the container member because the
+    # container's inherited `check` accepted it, then handed to a merge that walks lists (`expected a
+    # list but found a string: "b"`) or takes a key union (`expected a set but found a string: "b"`).
+    # The leaf-first row is the ARMED CONTROL: it selected the right member before this rule and
+    # still does, so a green table cannot come from the dispatch having stopped discriminating.
+    test-either-dispatches-to-the-member-that-accepts-the-definition = {
+      expr =
+        let
+          one =
+            ty: v:
+            cfg {
+              modules = [
+                { options.x = mkOption { type = ty; }; }
+                { x = v; }
+              ];
+            };
+        in
+        {
+          strIntoListFirst = (one (genMerge.either (genMerge.listOf t.str) t.str) "b").x;
+          strIntoAttrsFirst = (one (genMerge.either (genMerge.attrsOf t.str) t.str) "b").x;
+          listIntoListFirst = (one (genMerge.either (genMerge.listOf t.str) t.str) [ "a" ]).x;
+          strIntoLeafFirst = (one (genMerge.either t.str genTypes.int) "b").x;
+        };
+      expected = {
+        strIntoListFirst = "b";
+        strIntoAttrsFirst = "b";
+        listIntoListFirst = [ "a" ];
+        strIntoLeafFirst = "b";
+      };
+    };
+
+    # DEFINITIONS ONE MEMBER TAKES WHOLE MERGE THROUGH IT, unchanged — the compatibility obligation
+    # on the rule above, pinned by VALUE rather than by "it evaluates". Two list definitions still
+    # concatenate through the list member, in the same order and to the same bytes as before the
+    # dispatch consulted every definition. The refusal these share a construction with is asserted in
+    # ci/tests-error.nix `union-merge`, where a message is the only observable.
+    test-either-homogeneous-defs-merge-unchanged = {
+      expr = cfg {
+        modules = [
+          { options.x = mkOption { type = genMerge.either (genMerge.listOf t.str) t.str; }; }
+          { x = [ "a" ]; }
+          { x = [ "b" ]; }
+        ];
+      };
+      expected = {
+        x = [
+          "b"
+          "a"
+        ];
+      };
+    };
   };
 
   # (7) deferredModule is NEVER forced by composition — reading the merged value's structure must

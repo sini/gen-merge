@@ -121,6 +121,26 @@ let
     ];
   };
 
+  # ── the union refusal and its controls share one skeleton ───────────────────────────────────
+  # `x` is `either (listOf str) str`, whose two members accept exactly what the other rejects, and
+  # every fixture below declares it in `decl.nix` and defines it from named files. They differ in
+  # the DEFINITIONS and in nothing else, so what separates a refusal from a merge is the definition
+  # set — not the type, not the declaration, and not which file declared it.
+  unionOf =
+    loc: defs:
+    (gm.evalModuleTree {
+      modules = [
+        {
+          _file = "decl.nix";
+          options = lib.setAttrByPath loc (gm.mkOption { type = t.either (t.listOf t.str) t.str; });
+        }
+      ]
+      ++ map (d: {
+        _file = d.file;
+        config = lib.setAttrByPath loc d.value;
+      }) defs;
+    }).config;
+
   # Declaring `thing` as a leaf in one module and as an option-group in another: the decl merge
   # cannot `//` these together without emitting wrong bytes, so it refuses.
   collision = {
@@ -279,6 +299,139 @@ in
           host = {
             inner = "B";
           };
+        };
+      };
+    };
+
+    # A UNION merges every definition through a member that accepts it, or refuses by name. These
+    # cells are the only assertion available for that refusal: the shape it replaces was an
+    # INTERPRETER type error — `expected a list but found a string: "b"` — which escapes
+    # `builtins.tryEval`, so before the rule there was nothing for any in-language cell to observe
+    # and after it there is nothing but the message. The before/after exit-code pair those cells
+    # cannot carry is `ci/bench/either-totality.sh`.
+    #
+    # ★ EVERY PATTERN HERE IS ANCHORED `^…$`, for the reason stated below the sub-protocol cells.
+    # These messages DO carry ERE metacharacters — the parenthesised member clause and the `.` in
+    # every file name — so each is escaped and the anchors are left to carry only the ends.
+    flake.testsError.union-merge = {
+      # The definition set the interpreter used to be handed. The message names the option and, per
+      # member, the files whose definitions THAT member could not take: an author told only "the
+      # definitions do not agree" still has to work out which member was in play and which file
+      # broke it.
+      test-mixed-definitions-refused-by-name = {
+        expr = builtins.deepSeq (unionOf
+          [ "x" ]
+          [
+            {
+              file = "list.nix";
+              value = [ "a" ];
+            }
+            {
+              file = "str.nix";
+              value = "b";
+            }
+          ]
+        ) null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`listOf' rejects str\\.nix; `string' rejects list\\.nix\\)$";
+        };
+      };
+      # EVERY offending definition is named, not the pair a dispatch happened to be holding. Two
+      # list definitions and one string: the member that takes lists rejects one file, the member
+      # that takes strings rejects two, and an author reconciling only the first collision the
+      # interpreter would have reported would leave a definition set that still refuses.
+      #
+      # ★ THE FILE LIST IS IN DEFINITION ORDER — the order the merge is handed them, which is the
+      # reverse of the authored module order and is why `two.nix` precedes `one.nix` here. It is a
+      # set of files to go edit and no ordering is claimed for it; the cell pins the order anyway,
+      # so a fold that starts handing definitions over differently says so here rather than in a
+      # consumer's diagnostics. The declaration-merge messages above name files in AUTHORED order
+      # because they read a site list, which this path does not have.
+      test-refusal-names-every-definition-each-member-rejects = {
+        expr = builtins.deepSeq (unionOf
+          [ "x" ]
+          [
+            {
+              file = "one.nix";
+              value = [ "a" ];
+            }
+            {
+              file = "two.nix";
+              value = [ "b" ];
+            }
+            {
+              file = "three.nix";
+              value = "c";
+            }
+          ]
+        ) null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`listOf' rejects three\\.nix; `string' rejects two\\.nix, one\\.nix\\)$";
+        };
+      };
+      # The path is the FULL option path. A union sitting under a nested option is where a message
+      # can report the leaf name and read as correct, which sends the author looking for an option
+      # called `slot`.
+      test-refusal-names-the-full-option-path = {
+        expr = builtins.deepSeq (unionOf
+          [ "rack" "slot" ]
+          [
+            {
+              file = "list.nix";
+              value = [ "a" ];
+            }
+            {
+              file = "str.nix";
+              value = "b";
+            }
+          ]
+        ) null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `rack\\.slot' has definitions no single `either' member accepts \\(`listOf' rejects str\\.nix; `string' rejects list\\.nix\\)$";
+        };
+      };
+      # LIVE CONTROLS, same run, same skeleton — and a run in which these do not pass says nothing
+      # about the cells above, which are equally consistent with a union that refuses everything.
+      # Definitions one member takes WHOLE still merge through it, on both members: two lists merge
+      # into one list through the member that accepts lists, and a lone string merges through the
+      # member that accepts strings. The list value is pinned exactly, because the obligation on
+      # this rule is that a definition set which merged before merges to the same bytes.
+      test-homogeneous-list-definitions-still-merge-control = {
+        expr =
+          unionOf
+            [ "x" ]
+            [
+              {
+                file = "one.nix";
+                value = [ "a" ];
+              }
+              {
+                file = "two.nix";
+                value = [ "b" ];
+              }
+            ];
+        expected = {
+          x = [
+            "b"
+            "a"
+          ];
+        };
+      };
+      test-string-definition-merges-through-the-other-member-control = {
+        expr =
+          unionOf
+            [ "x" ]
+            [
+              {
+                file = "str.nix";
+                value = "b";
+              }
+            ];
+        expected = {
+          x = "b";
         };
       };
     };

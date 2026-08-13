@@ -420,13 +420,13 @@ def. So `attrsOf` yields `{ }`, `listOf` yields `[ ]` and `nullOr` yields `null`
 while a `str` still reports that it was used but not defined. An option `default` is a definition (at
 `mkOptionDefault` priority), so it always wins over the empty value.
 
-### `check` — and the one type whose default was wrong
+### `check` — and the types whose default was wrong
 
 `check` is nixpkgs' definition-level predicate. gen-merge's own engine never reads it — it validates
 through a gen-types leaf's `verify` — so `check` exists for the forward boundary and for the
 `nullOr`/`either` membership dispatch. `completeType` derives it in that order: a leaf's `verify`
-gives a real `v -> bool`; a structural type with its own `check` (`nullOr`, `either`) keeps it;
-anything else gets `_: true`, the nixpkgs `anything` posture.
+gives a real `v -> bool`; a structural type with its own `check` keeps it; anything else gets
+`_: true`, the nixpkgs `anything` posture.
 
 That default is correct for a type whose merge really does accept any value. **`deferredModule`'s does
 not.** Its merge wraps each def into an `imports` list, and the engine's `callM` can apply only a path,
@@ -437,10 +437,63 @@ reuses `types.path.check`, which admits a string beginning with `/`, while `call
 `builtins.isPath` and would carry such a string through as a module value. A check must never admit
 what the merge cannot consume.
 
-The remaining structural types (`submodule`, `attrsOf`, `lazyAttrsOf`, `listOf`, `raw`, `anything`)
-still carry `_: true`. For those a wrong-shaped definition **aborts on both engines** — no silent
-acceptance — but gen-merge aborts with a raw builtin error (`expected a set but found a list`) where
-nixpkgs names the option and the defining file. That is a diagnostic gap, not a soundness one.
+**Nor did the rest of the structural surface's.** `listOf` walks every definition with `imap0`,
+`attrsOf`/`lazyAttrsOf` take the key union with `//`, and a submodule's definitions *are* modules —
+so each states its domain too, matching nixpkgs on every shape except the submodule string-that-looks-
+like-a-path, where the `deferredModule` narrowing above applies for the same reason
+(`test-structural-check-shapes-match-nixpkgs`). Only `raw` and `anything` keep `_: true`, which is
+what their merges genuinely do.
+
+That was previously described here as a diagnostic gap rather than a soundness one, on the ground
+that a wrong-shaped definition aborts on both engines either way. **Inside a union it is a soundness
+gap**, and the correction is worth stating because the reasoning is general: a union's `check` is the
+**disjunction** over its members, so a single member answering "yes" to everything makes the union
+unable to refuse anything, and its merge then hands a definition to a member that cannot consume it.
+See "`either` — a union's merge is total" below.
+
+The remaining shape difference is a *diagnostic* one and stays: where a definition reaches a merge
+that cannot consume it without passing a union — through `mergeDefs`, which reads `verify` and never
+`check` — gen-merge still aborts with a raw builtin error (`expected a set but found a list`) where
+nixpkgs names the option and the defining file.
+
+### `either` — a union's merge is total
+
+**Every definition is merged through a member that accepts it, or the merge refuses by name.** The
+member is chosen by asking each one about the whole definition set, not about the first definition:
+a set the list member takes whole merges through the list member, a set the string member takes
+whole merges through the string member, and a set neither takes whole is a refusal naming the option
+path and, per member, the files whose definitions that member rejected.
+
+```
+gen-merge: option `x' has definitions no single `either' member accepts
+  (`listOf' rejects str.nix; `string' rejects list.nix)
+```
+
+Picking from the first definition instead handed the rest to a member that could not consume them.
+`oneOf` is right-nested `either` and inherits the rule, so an n-ary union refuses at whichever
+nesting level runs out of members.
+
+A definition set that merged before merges to the same value: the member selected from the first
+definition *is* the member that accepts them all whenever one does. **The refusal reaches every
+definition set no single member accepts — and what it replaces depends on which member the old
+dispatch happened to land on, so it is two different improvements rather than one.**
+
+- **Where the old dispatch picked a CONTAINER, the set reached the interpreter.** `either (listOf str) str` with `["a"]` and `"b"` produced `expected a list but found a string: "b"` — an error
+  naming neither the option nor the file and, being a builtin type error rather than a `throw`,
+  escaping `builtins.tryEval`, so no caller could turn it into a diagnostic either. Here the refusal
+  converts an **uncatchable abort** into a catchable one.
+- **Where it picked a LEAF, the set never reached the interpreter and the old error was already
+  catchable — it was simply wrong about the problem.** `either str (listOf str)` with the same two
+  definitions selected the string member and threw `` the option `x' has conflicting definitions ``,
+  the leaf conflict message: catchable, but the definitions do not conflict — they belong to
+  *different members*, and the merge had already discarded that fact by choosing one. Here the
+  refusal changes nothing about catchability and replaces a **misleading message with an accurate
+  one**.
+
+Cells: `ci/tests/merge.nix` (dispatch and the unchanged merges), `ci/tests-error.nix` `union-merge`
+(the messages). The before/after exit-code pair is `ci/bench/either-totality.sh` — the abort in the
+first case above cannot be observed by either nix-unit output, so the sweep keeps both constructions
+and reads their exit codes.
 
 ### `functor` / `typeMerge` — merging the TYPES, not the values
 

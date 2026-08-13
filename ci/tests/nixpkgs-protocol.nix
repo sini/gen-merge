@@ -541,6 +541,145 @@ in
       };
     };
 
+    # THE SAME RULE FOR THE REST OF THE STRUCTURAL SURFACE — `listOf`, `attrsOf`/`lazyAttrsOf` and
+    # `submodule` state the domain their merge can consume, where they used to inherit the leaf default
+    # `completeType` supplies. Each merge says what that domain is: `listOf` walks every definition with
+    # `imap0`, the attrs containers take a key union with `//`, and a submodule's definitions ARE modules.
+    # A container left on `_: true` claimed to accept values it then detonated on — and the cost is not
+    # only its own diagnostic, because a union's `check` is the DISJUNCTION over its members, so one member
+    # answering "yes" to everything made `either` unable to refuse anything (ci/tests-error.nix
+    # `union-merge`).
+    #
+    # THE WHOLE TABLE IS PINNED AGAINST NIXPKGS' OWN CHECKS rather than the rows that changed: a
+    # regression to `_: true` reddens the rejected rows, an over-strict check reddens the accepted ones,
+    # and the cross-engine comparison is the control that neither half is merely gen-merge agreeing with
+    # itself. `either` is in the table as the consumer of the other three, and `raw`/`anything` are the
+    # armed opposite control — types whose merge really does accept any value, which must still say so.
+    test-structural-check-shapes-match-nixpkgs = {
+      expr =
+        let
+          shapeNames = [
+            "attrs"
+            "fn"
+            "path"
+            "absolutePathString"
+            "list"
+            "str"
+            "int"
+            "isNull"
+          ];
+          shapes =
+            c:
+            builtins.mapAttrs (_: c) {
+              attrs = {
+                a = "x";
+              };
+              fn = _: { };
+              path = ./nixpkgs-protocol.nix;
+              absolutePathString = "/abs/path.nix";
+              list = [ "a" ];
+              str = "b";
+              int = 3;
+              isNull = null;
+            };
+          row = T: {
+            listOf = shapes (T.listOf T.str).check;
+            attrsOf = shapes (T.attrsOf T.str).check;
+            lazyAttrsOf = shapes (T.lazyAttrsOf T.str).check;
+            submodule = shapes (T.submodule { }).check;
+            either = shapes (T.either (T.listOf T.str) T.str).check;
+          };
+          gen = row gmT;
+          np = row nixpkgsLib.types;
+        in
+        {
+          inherit gen;
+          # `raw`/`anything` are the armed OPPOSITE control: types whose merge really does accept any
+          # value, which must still say so. Read on gen-merge alone — neither is a value predicate
+          # nixpkgs spells the same way — so they control the default's reachability, not parity.
+          anyValue = builtins.mapAttrs (_: t: shapes t.check) { inherit (gmT) raw anything; };
+          matchesNixpkgs = builtins.mapAttrs (n: v: v == np.${n}) gen;
+          # The ONE divergence, read as a divergence rather than eyeballed off two tables: the
+          # submodule rows differ on exactly one shape, and it is the named one.
+          submoduleDiffers = builtins.filter (n: gen.submodule.${n} != np.submodule.${n}) shapeNames;
+        };
+      expected =
+        let
+          accepts =
+            names:
+            builtins.listToAttrs (
+              map
+                (n: {
+                  name = n;
+                  value = builtins.elem n names;
+                })
+                [
+                  "attrs"
+                  "fn"
+                  "path"
+                  "absolutePathString"
+                  "list"
+                  "str"
+                  "int"
+                  "isNull"
+                ]
+            );
+        in
+        {
+          gen = {
+            listOf = accepts [ "list" ];
+            attrsOf = accepts [ "attrs" ];
+            lazyAttrsOf = accepts [ "attrs" ];
+            # A submodule definition is a module: an attrset, a function, or a path. The same three
+            # shapes as `deferredModule` above and, as there, WITHOUT nixpkgs' string-that-looks-like-
+            # a-path — nixpkgs reaches its check through `types.path.check`, gen-merge through
+            # `builtins.isPath`, and `callM` dispatches on the latter.
+            submodule = accepts [
+              "attrs"
+              "fn"
+              "path"
+            ];
+            # The union accepts exactly what one of its members accepts, which is the property its
+            # merge's dispatch rests on. `absolutePathString` is in because `str` takes it.
+            either = accepts [
+              "list"
+              "str"
+              "absolutePathString"
+            ];
+          };
+          anyValue = {
+            raw = accepts [
+              "attrs"
+              "fn"
+              "path"
+              "absolutePathString"
+              "list"
+              "str"
+              "int"
+              "isNull"
+            ];
+            anything = accepts [
+              "attrs"
+              "fn"
+              "path"
+              "absolutePathString"
+              "list"
+              "str"
+              "int"
+              "isNull"
+            ];
+          };
+          matchesNixpkgs = {
+            listOf = true;
+            attrsOf = true;
+            lazyAttrsOf = true;
+            submodule = false;
+            either = true;
+          };
+          submoduleDiffers = [ "absolutePathString" ];
+        };
+    };
+
     # `typeMerge` on a PARAMETERISED type must compare the PARAMETERS, not the container name alone. The
     # nullary default functor carries `payload = null`, which sends `pureTypeMerge` down its "no payload"
     # arm and answers the receiver's own type for ANY same-named partner — so an option declared in two
