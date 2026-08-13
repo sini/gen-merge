@@ -46,6 +46,267 @@ let
   ];
   hasAll = t: builtins.all (f: t ? ${f}) protocolFields;
 
+  # ── the completed record's EXACT key set ─────────────────────────────────────────────────────────
+  # `hasAll` is a PRESENCE predicate: it says the 14 protocol fields are there and says nothing about
+  # what else is. Under it a stray key lands green, so "the suite stayed green" is not evidence that the
+  # completion's surface is what it was intended to be. The cells below supply the missing half.
+  #
+  # The oracle is RELATIONAL and its base is PINNED: `completedKeysBefore` is the literal key set each
+  # class carried before the leaf-dispatch marker was introduced, and the assertion is that today's
+  # completion is that set plus `_protoLeafMerge` and nothing else, per class. Pinning the RELATION
+  # rather than the absolute set is what makes it useful in both directions — a 16th key fails as
+  # `extra`, a protocol field lost to a refactor fails as `missing`, and when the marker is eventually
+  # removed with the completion that forced it, one deletion here restates the expectation exactly.
+  without = xs: ys: builtins.filter (k: !(builtins.elem k ys)) xs;
+  keysOf = builtins.attrNames;
+
+  # a representative type of every constructor class the completion reaches, INCLUDING a consumer type
+  # built through the `mkOptionType` escape hatch — the shape with a custom `merge` of its own.
+  completedByClass = {
+    inherit (gmT)
+      str
+      int
+      bool
+      raw
+      anything
+      deferredModule
+      ;
+    submodule = gmT.submodule { options = { }; };
+    attrsOf = gmT.attrsOf gmT.str;
+    lazyAttrsOf = gmT.lazyAttrsOf gmT.str;
+    listOf = gmT.listOf gmT.str;
+    nullOr = gmT.nullOr gmT.str;
+    either = gmT.either gmT.str gmT.int;
+    custom = gmT.mkOptionType {
+      name = "ref";
+      check = v: builtins.isString v;
+      merge = _loc: defs: (builtins.head defs).value;
+    };
+  };
+
+  completedKeysBefore = {
+    anything = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    attrsOf = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "elemType"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    bool = [
+      "__id"
+      "__name"
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+      "verify"
+    ];
+    custom = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    deferredModule = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    either = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    int = [
+      "__id"
+      "__name"
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+      "verify"
+    ];
+    lazyAttrsOf = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "elemType"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    listOf = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "elemType"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    nullOr = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    raw = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+    str = [
+      "__id"
+      "__name"
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+      "verify"
+    ];
+    submodule = [
+      "_type"
+      "check"
+      "deprecationMessage"
+      "description"
+      "descriptionClass"
+      "emptyValue"
+      "functor"
+      "getSubModules"
+      "getSubOptions"
+      "merge"
+      "name"
+      "nestedTypes"
+      "substSubModules"
+      "typeMerge"
+    ];
+  };
+
   strMod = {
     options.y = nixpkgsLib.mkOption { type = gmT.str; };
   };
@@ -123,6 +384,67 @@ in
         attrsOf = true;
         raw = true;
         anything = true;
+      };
+    };
+
+    # The exact-key half of the completion's surface, stated as the DIFF against the pinned base so
+    # both directions are visible: `extra` is what the completion now stamps that it did not before,
+    # `missing` is any pinned key it stopped stamping. The marker is the whole of the former and the
+    # latter is empty, on every class.
+    test-completed-attrnames-exact = {
+      expr = builtins.mapAttrs (n: t: {
+        extra = without (keysOf t) completedKeysBefore.${n};
+        missing = without completedKeysBefore.${n} (keysOf t);
+      }) completedByClass;
+      expected = builtins.mapAttrs (_n: _t: {
+        extra = [ "_protoLeafMerge" ];
+        missing = [ ];
+      }) completedByClass;
+    };
+
+    # The class set the cell above quantifies over, pinned separately: a class that stops constructing
+    # (or is dropped from the table) removes cells from that oracle silently, and a shrinking universe
+    # reads exactly like a passing test.
+    test-completed-attrnames-classes = {
+      expr = keysOf completedByClass;
+      expected = [
+        "anything"
+        "attrsOf"
+        "bool"
+        "custom"
+        "deferredModule"
+        "either"
+        "int"
+        "lazyAttrsOf"
+        "listOf"
+        "nullOr"
+        "raw"
+        "str"
+        "submodule"
+      ];
+    };
+
+    # The marker is the type record's answer to "is my `.merge` the core's own default fold?", so it
+    # tracks whether the DESCRIPTOR brought a merge — not whether the type is a leaf by any other
+    # reading. `raw` is the cell that matters: a descriptor with neither its own `merge` nor a `verify`,
+    # which is what `mkOptionType { name = …; }` produces, and the shape a `verify`-based proxy for this
+    # question gets wrong.
+    test-leaf-merge-marker = {
+      expr = builtins.mapAttrs (_n: t: t._protoLeafMerge) completedByClass;
+      expected = {
+        str = true;
+        int = true;
+        bool = true;
+        raw = true;
+        anything = false;
+        deferredModule = false;
+        submodule = false;
+        attrsOf = false;
+        lazyAttrsOf = false;
+        listOf = false;
+        nullOr = false;
+        either = false;
+        custom = false;
       };
     };
 

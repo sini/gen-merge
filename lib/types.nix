@@ -51,11 +51,15 @@ let
   # PURELY (no nixpkgs import — same philosophy as gen-merge's byte-compat merge).
   #
   # ADDITIVE + behaviour-preserving to gen-merge's OWN core (verified against modules.nix `mergeDefs`):
-  # the fold dispatches on `.merge` (else `mergeLeaf`) and validates via `.verify` — never `.check`. So
-  # the only field the core newly-sees is `.merge` added to a leaf, and its default equals `mergeLeaf`
-  # on the same defs (byte-identical fold). `.check` is read ONLY by the union `isValid`, which prefers
-  # `.verify`; a leaf keeps its verify, a structural without a check gets `_: true` (preserving the
-  # prior `isValid = true`). See ci/tests for the mount witness + the byte-identity gates.
+  # the fold dispatches on a type's OWN `.merge` (else `mergeLeaf`) and validates via `.verify` — never
+  # `.check`. So the only field the core newly-sees is `.merge` added to a leaf, and its default equals
+  # `mergeLeaf` on the same defs (byte-identical fold). Because that default is the core's own fold,
+  # publishing it here would make a bare `? merge` test unable to tell a leaf from a type that brought a
+  # fold of its own — the completion therefore also stamps `_protoLeafMerge` and the core reads it, so
+  # a leaf keeps taking the core's fold directly instead of re-entering it through the type. `.check` is
+  # read ONLY by the union `isValid`, which prefers `.verify`; a leaf keeps its verify, a structural
+  # without a check gets `_: true` (preserving the prior `isValid = true`). See ci/tests for the mount
+  # witness + the byte-identity gates.
   #
   # nixpkgs `defaultFunctor` — a NULLARY type's functor: no payload, so `pureTypeMerge` answers the type
   # itself for a same-named partner. That is correct ONLY where the type takes no parameters (`raw`,
@@ -139,6 +143,27 @@ let
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
 
+  # protoBase — the protocol fields whose default answer is INVARIANT: it is the same value for every
+  # type, so it is the same record for every type. These eight are constants of the protocol, not
+  # functions of the descriptor, and hoisting them out of `completeType` builds them ONCE for the
+  # library rather than once per completion. The remaining protocol fields stay in the per-type block
+  # below because each is genuinely derived from `t` (its name, its functor, its check).
+  #
+  # It sits UNDER the descriptor (`protoBase // t // { … }`), which is what makes it a default: a
+  # descriptor carrying its own `merge`/`emptyValue`/sub-protocol answer overrides the constant, the
+  # same precedence the per-field `t.x or default` form expressed. `_type` is deliberately NOT here —
+  # it is asserted over the descriptor, not defaulted under it.
+  protoBase = {
+    descriptionClass = null;
+    deprecationMessage = null;
+    merge = protoLeafMerge;
+    emptyValue = { };
+    getSubOptions = _prefix: { };
+    getSubModules = null;
+    substSubModules = _m: null;
+    nestedTypes = { };
+  };
+
   # The three fields a type answers about WHAT IT WRAPS, as opposed to about its values: what it
   # declares (`getSubOptions`), the module set it carries (`getSubModules`), and how it rebuilds
   # itself over a replacement one (`substSubModules`).
@@ -193,31 +218,47 @@ let
       # module set), and absence is what is refused.
       missing = filter (f: !(t ? ${f})) subProtocol;
       functor = t.functor or (pureDefaultFunctor name // { type = result; });
-      result = t // {
-        _type = "option-type";
-        inherit name functor;
-        description = t.description or name;
-        descriptionClass = t.descriptionClass or null;
-        deprecationMessage = t.deprecationMessage or null;
-        # check (v -> bool): mirror the union `isValid` order — a gen-types leaf's `verify` (v -> null|err)
-        # gives a REAL derived check (its own `.check` is CURRIED, must not be used as v -> bool); a
-        # gen-merge structural keeps its own v -> bool `check` (nullOr/either); anything else defers to
-        # merge (`_: true`, the nixpkgs `anything` posture, preserving the prior `isValid = true`).
-        check =
-          if t ? verify then
-            (v: t.verify v == null)
-          else if t ? check then
-            t.check
-          else
-            (_: true);
-        merge = t.merge or protoLeafMerge;
-        emptyValue = t.emptyValue or { };
-        getSubOptions = t.getSubOptions or (_prefix: { });
-        getSubModules = t.getSubModules or null;
-        substSubModules = t.substSubModules or (_m: null);
-        typeMerge = t.typeMerge or (pureTypeMerge functor);
-        nestedTypes = t.nestedTypes or { };
-      };
+      result =
+        protoBase
+        // t
+        // {
+          _type = "option-type";
+          inherit name functor;
+          description = t.description or name;
+          # check (v -> bool): mirror the union `isValid` order — a gen-types leaf's `verify` (v -> null|err)
+          # gives a REAL derived check (its own `.check` is CURRIED, must not be used as v -> bool); a
+          # gen-merge structural keeps its own v -> bool `check` (nullOr/either); anything else defers to
+          # merge (`_: true`, the nixpkgs `anything` posture, preserving the prior `isValid = true`).
+          check =
+            if t ? verify then
+              (v: t.verify v == null)
+            else if t ? check then
+              t.check
+            else
+              (_: true);
+          # Did this type supply its OWN fold, or is it wearing the core's? Once the completion publishes
+          # `protoLeafMerge` as a leaf's `.merge`, the presence test `type ? merge` can no longer answer
+          # that question — it is true for every completed type — so the core stops recognising its own
+          # default leaf fold and re-enters a second copy of it through the type. The marker RECORDS the
+          # answer at the only point that knows it, rather than inferring it from a correlate: it is read
+          # off the same `t ? merge` test that chooses the field one line above, so descriptor and marker
+          # cannot disagree.
+          #
+          # ABSENT MUST READ AS `false`, and that direction is the decision. A type that never passed
+          # through here — a nixpkgs type, a hand-built record — carries no marker and takes its own
+          # `merge`, which is correct for a foreign type. A COMPLETED type whose marker is later stripped
+          # also reads `false` and takes the published `protoLeafMerge`; by the identity noted at
+          # `protoLeafMerge` that is extensionally the same answer as the core's `mergeLeaf` on every
+          # reachable input, so a lost marker is SLOW, never WRONG. A `true` marker that outlives the
+          # descriptor's own `merge` would be the other way round — it drops a real fold silently — which
+          # is why the field is derived here and never defaulted true.
+          #
+          # This marker exists because the completion exists. When a gen-built option type no longer
+          # crosses into a foreign module system, the completion loses its reason to publish a fold at
+          # all, and the ambiguity this field resolves dissolves with it; the field goes at the same time.
+          _protoLeafMerge = !(t ? merge);
+          typeMerge = t.typeMerge or (pureTypeMerge functor);
+        };
     in
     if (carriesElemType || carriesModuleSet) && missing != [ ] then
       throw (

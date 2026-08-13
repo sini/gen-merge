@@ -701,7 +701,15 @@ let
       result =
         if winners == [ ] then
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
-        else if type != null && type ? merge then
+        # The question this branch asks is "did the TYPE bring a fold of its own?", and `? merge` alone
+        # stopped answering it once the protocol completion began publishing `mergeLeaf`'s own twin as
+        # every completed type's `.merge`. Taking that branch for a leaf costs a fresh `typeDefs` list
+        # and a second entry into the same fold, for the same value. `_protoLeafMerge` is the type
+        # record's own statement that its `.merge` IS the core's default, so the core takes the short
+        # way here (see the marker's derivation in lib/types.nix `completeType`). Absent marker ⇒
+        # `false` ⇒ the type's own `merge`: right for a foreign type, and merely slow for a completed
+        # one that lost the marker, since the two folds agree on every reachable input.
+        else if type != null && type ? merge && !(type._protoLeafMerge or false) then
           type.merge loc typeDefs
         else
           mergeLeaf loc winners;
@@ -768,7 +776,8 @@ let
       result =
         if winners == [ ] then
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
-        else if type != null && type ? merge then
+        # The leaf-dispatch marker, exactly as the value path reads it above — the twin stays parallel.
+        else if type != null && type ? merge && !(type._protoLeafMerge or false) then
           type.merge loc typeDefs
         else
           mergeLeaf loc winners;
