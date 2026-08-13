@@ -97,7 +97,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = ".*option `rack\\.stray' does not exist \\(no freeformType to absorb it\\).*";
+          msg = "^gen-merge: option `rack\\.stray' does not exist \\(no freeformType to absorb it\\)$";
         };
       };
       # The collision refusal names the option that collided, which is the one piece of the
@@ -106,7 +106,7 @@ in
         expr = realize collision;
         expectedError = {
           type = "ThrownError";
-          msg = ".*option `thing' is declared both as an option and as an option-group \\(leaf/group collision\\).*";
+          msg = "^gen-merge: option `thing' is declared both as an option and as an option-group \\(leaf/group collision\\)$";
         };
       };
       # LIVE CONTROL, same run: the same skeleton and the same stray key, plus a `freeformType`
