@@ -36,7 +36,9 @@ let
       # `pureTypeMerge` would answer "mergeable" for any same-named partner and silently discard one
       # declaration's allowed values — precisely the unsoundness the structural functors removed. So the
       # honest answer is "not mergeable": a consumer declaring one option twice with a parametric leaf
-      # gets nixpkgs' `already declared` error rather than a wrong type. This diverges from nixpkgs'
+      # gets a NAMED REFUSAL rather than a wrong type — gen-merge's own on its declaration path
+      # (lib/modules.nix `redeclareDecl`), nixpkgs' `already declared` under a foreign mount, and this
+      # refusal is what routes to both. This diverges from nixpkgs'
       # `enum`, whose functor UNIONS the value sets; gen-merge cannot reproduce that without reading
       # parameters it cannot see.
       strategies.mkOptionType (v // { typeMerge = _f': null; })

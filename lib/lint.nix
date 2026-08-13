@@ -14,9 +14,14 @@
 #                            is a minimal descriptor map (the merged decl tree), not the reference
 #                            `options` structure (no per-node `_type`/`loc`/`declarations`).
 #   3. type-merge          — the same option loc DECLARED (with a `type`) in more than one module.
-#                            nixpkgs combines the declarations through `type.typeMerge` (a functor over
-#                            two `optionType`s); gen-merge's `mergeOptionDecls` field-unions the
-#                            descriptors (later wins), never invoking a typeMerge functor.
+#                            On the TYPE the two engines agree: both route the pair through
+#                            `type.typeMerge` (a functor over two `optionType`s) and refuse when it
+#                            answers null. They part on the OTHER fields — nixpkgs refuses the
+#                            redeclaration outright when both declarations carry any of
+#                            `default`/`example`/`description`/`apply` (its `bothHave` guard, which
+#                            fires ahead of the functor), where gen-merge right-biases them under a
+#                            stated rule. The flag is therefore an OVER-APPROXIMATION: it fires on
+#                            every typed redeclaration, and only the field-colliding ones diverge.
 #   4. function-to         — an option `type` named `functionTo`, intentionally omitted from the type
 #                            surface (7-item primitive item 7 — guard functions are carried as data).
 #   +. unverifiable        — a `type` record too deeply nested to walk within the fixed fuel. A
@@ -246,8 +251,19 @@ let
         ) (optionLeaves (e.module.options or { }));
 
       # ── construct 1: order markers in CONFIG defs, guided by the merged decl tree (mergeTree-style) ──
-      # The engine's own declaration merge (throws on a leaf/group collision, exactly as it would eval).
-      allOptions = foldl' (acc: e: mergeOptionDecls [ ] acc (e.module.options or { })) { } attrsetEntries;
+      # The engine's own declaration merge — the same descent, the same leaf/group collision throw —
+      # with the ONE argument the engine and the lint genuinely disagree on: what a REDECLARED leaf
+      # means. The engine consults the type algebra and refuses when it answers "not mergeable"; here
+      # it is the plain field-union, because a lint that ABORTED on the redeclaration it exists to
+      # report (`type-merge`, below) could never report it. The divergence is deliberate, it is this
+      # argument, and everything else about the two views stays shared.
+      allOptions = foldl' (
+        acc: e:
+        mergeOptionDecls (
+          _lk: av: bv:
+          av // bv
+        ) [ ] acc (e.module.options or { })
+      ) { } attrsetEntries;
       # config defs, one per attrset module, pushed once at the root; `_module` is the engine's pseudo-
       # tree (modules.nix:470 strips it from the realizer), never an order-bearing config path.
       rootPushed = map (e: {
@@ -329,7 +345,7 @@ let
         v:
         optional (length v.files >= 2) (
           mkFinding "type-merge" v.loc v.files
-            "option `${showLoc v.loc}' is declared with a type in more than one module; the reference engine combines the declarations through a `typeMerge` functor, gen-merge field-unions them (later type wins)"
+            "option `${showLoc v.loc}' is declared with a type in more than one module; on the TYPE the engines agree (both combine the declarations through a `typeMerge' functor and refuse when it answers null), but the reference engine ALSO refuses the redeclaration outright when both declarations carry any of `default'/`example'/`description'/`apply' (its `bothHave' guard, ahead of the functor), where gen-merge right-biases those fields — so a field-colliding pair is accepted here and rejected there"
         )
       ) (attrValues byLoc);
 

@@ -71,11 +71,11 @@ let
     payload = null;
     binOp = _a: _b: null;
   };
-  # Merge two ELEMENT types, guarded. nixpkgs assumes every type it meets carries the full protocol;
-  # gen-merge meets types that do not — a gen-types PARAMETRIC leaf (`enum`, `struct`, `union`) reaches
-  # the unified namespace as a bare constructor and is never protocol-completed, so it carries no
-  # `functor`. A missing half answers "not mergeable" rather than aborting on a missing attribute.
-  mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+  # Merge two ELEMENT types — the element stratum's name for `core.mergeTypes` (lib/modules.nix),
+  # which is guarded on both halves and stated there. It is the SAME binding the DECLARATION stratum
+  # consults when one option is declared twice, which is what makes "these two types do not merge"
+  # one answer in this library rather than two that can drift apart.
+  mergeElemTypes = core.mergeTypes;
   # nixpkgs `elemTypeFunctor`, replicated purely — the functor of a container parameterised by ONE
   # element type. The payload IS the element type, so two containers merge iff their ELEMENTS merge
   # (recursively, through the element's own `typeMerge`), and `rebuild` reconstructs the container from

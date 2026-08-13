@@ -352,8 +352,9 @@ Two rules that look like details and are not:
   and cannot be read, and neither substitute works: gen-types' `__id` is name-only (`enum "e" [ "a" ]`
   and `enum "e" [ "b" ]` share one), and value equality is pointer-based over the closures (two
   identical constructions compare unequal). On the nullary default it would report "mergeable" for any
-  same-named partner and silently drop one declaration's allowed values. "Not mergeable" gives the
-  consumer nixpkgs' `already declared` error instead of a wrong type. This diverges from nixpkgs'
+  same-named partner and silently drop one declaration's allowed values. "Not mergeable" gets the
+  consumer a named refusal — gen-merge's own on the declaration path, nixpkgs' `already declared`
+  under a foreign mount — instead of a wrong type. This diverges from nixpkgs'
   `enum`, whose functor unions the value sets — gen-merge cannot reproduce that without reading
   parameters it cannot see. A **nullary** leaf keeps its self-merge: it has no parameters to compare.
 
@@ -406,11 +407,12 @@ nixpkgs names the option and the defining file. That is a diagnostic gap, not a 
 ### `functor` / `typeMerge` — merging the TYPES, not the values
 
 `typeMerge` is the one protocol field that is about two **declarations** rather than about defs: when
-an option is declared with a type in more than one module, nixpkgs `mergeOptionDecls` asks the first
-type to merge with the second's `functor`, and refuses the declaration outright if the answer is
-`null`. gen-merge's own engine never reaches it — it field-unions declarations (later type wins), and
-the portable-subset lint reports that as `type-merge`. The field exists for the **forward boundary**:
-a gen-merge type mounted in a nixpkgs `lib.evalModules`.
+an option is declared with a type in more than one module, `mergeOptionDecls` asks the first type to
+merge with the second's `functor`, and refuses the declaration outright if the answer is `null`.
+gen-merge's own engine routes through it — a redeclared leaf's type is the algebra's answer about the
+pair, and `null` is a refusal naming the option path and every declaring file. The **non-type** fields
+keep their ordered bias (see "Redeclaring an option" below), and the field also serves the **forward
+boundary**: a gen-merge type mounted in a nixpkgs `lib.evalModules`.
 
 A type's `functor` carries the parameters it was built from, and two same-named types merge iff those
 parameters do:
@@ -440,6 +442,45 @@ out of a payload it does not understand — nixpkgs `submoduleWith` carries `cla
 reason an element that is not protocol-complete (a gen-types **parametric** leaf — `enum`, `struct`,
 `union` — reaches the unified namespace as a bare constructor and is never completed) makes its
 container not mergeable instead of aborting on a missing attribute.
+
+### Redeclaring an option
+
+Two modules may declare the same option loc. The merge splits the record in two:
+
+- **The `type` is the algebra's answer, or a refusal.** When both declarations carry a `type`, the
+  merged type is `typeMerge`'s (above). `null` — "not mergeable" — is a named refusal carrying the
+  option path and *every* declaring file. The outcome the routing removes is one declaration's field
+  surviving beside the *other's* type on a record that then disagrees with itself.
+- **The non-type fields are right-biased, and what they shadow stays reachable.** Later declarations
+  win field by field: this fold is an *ordered* fold over the authored module order, so a later
+  declaration is a later contribution rather than a stronger one, and a module layering `apply` onto
+  an earlier typed leaf composes exactly as it reads. An ordered bias is a rule only while the loser
+  is still reachable, so a merged record that actually shadowed a field carries what it shadowed:
+
+```nix
+(evalModuleTree { modules = [ a b ]; }).options.x
+# ⇒ { _type = "option"; type = <str>; default = "from-B";
+#     overridden = [ { file = "a.nix"; declaration = { type = <str>; default = "from-A"; }; } ]; }
+```
+
+Each entry's `file` names the module that most recently **contributed** to the record being
+shadowed, which is not always the module that first declared the option: a module adding a field
+shadows nothing and records no entry of its own, and when a later module restates that field the
+entry names the module that wrote it.
+
+**Against nixpkgs, measured on four shapes.** On the **type** the two engines agree: a type-only
+`str`/`str` redeclaration merges under both, and `str`/`int` is refused by both, in nixpkgs' case
+through the same functor. They part on the **other** fields — nixpkgs refuses a redeclaration
+outright when both declarations carry any of `default`/`example`/`description`/`apply` (its
+`bothHave` guard, which fires ahead of the functor), where gen-merge right-biases them under the
+stated rule above. So the divergence runs one way: gen-merge accepts field-colliding redeclarations
+that nixpkgs rejects. Note that nixpkgs prints the **same** `already declared` text on both of its
+paths, so the message does not tell you which one refused — the `str`/`str` case merging is what
+separates them.
+
+`overridden` is oldest-first and appears **only** where a declaration really was shadowed — a module
+that merely adds fields (the `apply`-layering shape) leaves the record exactly what a plain field
+union produces. A third declaration appends to the chain rather than replacing it.
 
 ## Compat mode
 
@@ -513,7 +554,7 @@ claim is verifiable, not asserted. The flagged kinds:
 |------|-----------------|-----------------|
 | `order-pass` | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | gen-merge drops the whole order pass (see the priority subset) — the marker is carried as an ordinary value and mis-orders |
 | `options-introspection` | a module **function** whose formals include `options` | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure |
-| `type-merge` | the same option loc declared **with a `type`** in more than one module | nixpkgs combines the declarations through a `typeMerge` functor; gen-merge field-unions them (later type wins) |
+| `type-merge` | the same option loc declared **with a `type`** in more than one module | on the type the engines agree (both route the pair through the `typeMerge` functor and refuse on `null`); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge |
 | `function-to` | an option type named `functionTo` | intentionally omitted from the type surface (wrap guard functions as data) |
 | `unverifiable` | an option type nested deeper than the type-walk fuel | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative) |
 

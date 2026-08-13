@@ -85,20 +85,127 @@ let
     };
   isCoreValue = v: isAttrs v && (v.__coreValue or false) == true;
 
+  # Merge two TYPES through the `functor`/`typeMerge` protocol the library already ships
+  # (lib/types.nix), guarded on both halves. nixpkgs assumes every type it meets carries the full
+  # protocol; gen-merge meets types that do not — a gen-types PARAMETRIC leaf (`enum`, `struct`,
+  # `union`) reaches the unified namespace as a bare constructor and is never protocol-completed, so
+  # it carries no `functor`. A missing half answers "not mergeable" rather than aborting on a missing
+  # attribute. This is the ONE binding both strata that ask the question consult — the ELEMENT
+  # stratum (a container's `binOp`, lib/types.nix `elemTypeFunctor`) and the DECLARATION stratum
+  # (`redeclareDecl` below) — so the two cannot drift into answering it differently.
+  mergeTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+
+  # The declaring SITES at one option loc, in authored module order — the entries whose own
+  # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The
+  # index is what lets a shadow record name the module that actually contributed the field being
+  # shadowed rather than the n-th declarer of the option. A direct path lookup per module —
+  # O(modules × depth), never a tree walk — which is what makes it affordable both on the refusal
+  # path and behind the shadow record, each of which reads it lazily.
+  declaringSitesAt =
+    entries: loc:
+    let
+      declaresLeaf =
+        opts: path:
+        if path == [ ] then
+          isOptLeaf opts
+        else
+          isAttrs opts
+          && !(isOptLeaf opts)
+          && opts ? ${head path}
+          && declaresLeaf opts.${head path} (tail path);
+    in
+    filter (e: declaresLeaf e.options loc) entries;
+
+  # redeclareDecl — the ENGINE's answer when one option loc is declared by two modules.
+  #
+  # A DECLARATION MERGE CONSULTS THE TYPE ALGEBRA THE LIBRARY ALREADY SHIPS. When both declarations
+  # carry a `type`, the merged declaration's type is `mergeTypes`' answer about the pair; `null` —
+  # "not mergeable" — is a NAMED REFUSAL carrying the option path and the declaring files. This is
+  # the one place on the declaration path that did not consult the protocol, and the measured cost
+  # was a record disagreeing with itself: one declaration's descriptor surviving beside the OTHER's
+  # type, no error and no warning. Routing here is why that is no longer expressible — the only way
+  # a merged declaration acquires a type is through a merge that must return one. The predicate is
+  # not invented here: it ships as the advisory lint kind `type-merge` (lib/lint.nix), whose own
+  # finding text is a standing admission that the library knew the answer and declined to give it.
+  #
+  # THE NON-TYPE FIELDS STAY RIGHT-BIASED, and the ground is ADR-0029: positional authority is the
+  # substrate's, and this fold is an ORDERED fold over the authored module order — a later
+  # declaration is a later contribution, not a stronger one. gen-schema's ref-binding modules are the
+  # deliberate consumer: a module layering `apply` onto an earlier typed leaf carries no `type` of
+  # its own, so it never reaches the algebra above.
+  #
+  # AN ORDERED BIAS IS A RULE ONLY WHILE THE LOSER STAYS REACHABLE. Bracha & Cook 1990 keep the
+  # overridden parent behind `super`; Leijen 2005's scoped labels retain a shadowed field "both in
+  # the value and in the type", against free extension where "the previous value is overwritten,
+  # after which it is no longer accessible". So a merge that actually shadows a field records what
+  # it shadowed, oldest first, under `overridden` — the declaration stratum's provenance, beside the
+  # definition stratum's on the result.
+  #
+  # BOUNDARY, stated because the rule does not reach it: a field whose value is REFLECTED INTO AN
+  # IDENTITY is not made safe here. Those sit under ADR-0016's option-set-closure precondition, and
+  # enforcing it belongs to the minting spec, not to this engine. What this guarantees is narrower:
+  # the merged record's TYPE is the algebra's answer about both declarations, never one of them
+  # picked in silence.
+  redeclareDecl =
+    sitesAt: modIndex: lk: av: bv:
+    let
+      merged = av // bv;
+      # PRESENCE, never value equality: deciding "did B restate this field" by comparison would
+      # force declaration values nothing has asked for. `_type` is the metadata every option record
+      # carries — identical by construction, so never a shadow.
+      shadowed = filter (k: k != "_type" && bv ? ${k}) (attrNames av);
+      sites = sitesAt lk;
+      # `av` is an ACCUMULATION of every earlier module that declared `lk`, and `file` names the one
+      # that most recently contributed to it — the last declaring site before this merge. It is NOT
+      # "the file that declared every field in the record": a module that only ADDS a field shadows
+      # nothing and records no entry, yet its contribution is what a later module goes on to shadow,
+      # and that entry must name IT rather than whoever declared the option first. Indexing the site
+      # list by how many entries have accumulated says otherwise and is wrong for exactly that shape
+      # — shadow events and declaring modules are different counts. `<unknown-file>` where there is
+      # no earlier site (a decl tree assembled outside the module fold): a sentinel in the shape of
+      # `<default>`/`<def>`, never a guess.
+      earlier = filter (s: s.idx < modIndex) sites;
+      overridden = (av.overridden or [ ]) ++ [
+        {
+          file = if earlier == [ ] then "<unknown-file>" else (prelude.last earlier).file;
+          declaration = builtins.removeAttrs av [ "overridden" ];
+        }
+      ];
+      # `overridden` appears ONLY where a declaration really was shadowed: a layering module that
+      # merely ADDS fields leaves the record exactly what the plain union produced.
+      kept = if shadowed == [ ] then merged else merged // { inherit overridden; };
+    in
+    if (av ? type) && (bv ? type) then
+      let
+        mergedType = mergeTypes av.type bv.type;
+      in
+      if mergedType == null then
+        throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (`${av.type.name}' and `${bv.type.name}'); declared in ${
+          concatStringsSep ", " (map (s: s.file) sites)
+        }"
+      else
+        kept // { type = mergedType; }
+    else
+      kept;
+
   # mergeOptionDecls — combine two option-decl TREES (nixpkgs mergeModules' descent, byte-mode).
   # This is what lets `options.a.b.c = mkOption {…}` build a NESTED tree rather than the old
   # single-level view:
-  #   leaf ∪ leaf  = field-union, later wins (as the flat fold always did — e.g. a ref-binding
-  #                  module layering `apply` onto an earlier `{ type; default; }`);
+  #   leaf ∪ leaf  = `onRedeclare` — see below;
   #   group ∪ group = RECURSE (a second module's `options.a.b.d` merges beside `options.a.b.c`);
   #   leaf ⁄ group at the same path = a hard collision (nixpkgs likewise refuses to make an option
   #                  the parent of sub-options) — must throw, never silently `//`-merge.
+  # `onRedeclare lk av bv` is a REQUIRED formal, not a defaulted hook: the tree walk knows the shape
+  # of a redeclaration and nothing about what it means, and the two callers genuinely disagree. The
+  # engine passes `redeclareDecl`; the portable-subset lint passes the plain field-union, because a
+  # lint that ABORTED on the redeclaration it exists to report could never report it. Making the
+  # caller state it keeps that divergence one legible argument rather than a fork of the descent.
   # DELIBERATE divergence: nixpkgs' `optionTreeToOption` (modules.nix:895-913) has one sugar case —
   # raw options merged INTO a `submodule`-typed leaf — that byte-mode does not reproduce (out of the
   # den surface; submodule nesting rides the separate `submodule`/`attrsOf` `.merge` path). Byte-mode
   # conservatively throws here rather than risk emitting wrong bytes.
   mergeOptionDecls =
-    loc: a: b:
+    onRedeclare: loc: a: b:
     a
     // mapAttrs (
       k: bv:
@@ -112,9 +219,9 @@ let
           bLeaf = isOptLeaf bv;
         in
         if aLeaf && bLeaf then
-          av // bv
+          onRedeclare lk av bv
         else if (!aLeaf) && (!bLeaf) then
-          mergeOptionDecls lk av bv
+          mergeOptionDecls onRedeclare lk av bv
         else
           throw "gen-merge: option `${showOption lk}' is declared both as an option and as an option-group (leaf/group collision)"
       else
@@ -941,10 +1048,28 @@ let
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
           # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
-          # `//`-clobbering the `a.b` group, and a re-declared leaf still field-unions (later wins —
-          # gen-schema's ref-binding `apply`-override modules rely on this). One-level before; a tree
-          # now, so `options.a.b.c = mkOption {…}` composes den-shaped configs (`options.den.*`).
-          allOptions = foldl' (acc: e: mergeOptionDecls prefix acc (optionsOf e.content)) { } flat;
+          # `//`-clobbering the `a.b` group. A RE-DECLARED leaf goes to `redeclareDecl` — the type
+          # algebra answers, the non-type fields keep their ordered bias, and what the bias shadowed
+          # stays reachable. gen-schema's ref-binding `apply`-override modules carry no `type` of
+          # their own, so the algebra never reaches them. One-level before; a tree now, so
+          # `options.a.b.c = mkOption {…}` composes den-shaped configs (`options.den.*`).
+          #
+          # `declEntries` carries the provenance the tree walk itself cannot see: each module's own
+          # options root beside the file that declared it and its POSITION in the fold. It is read
+          # only through `sitesAt` — on a refusal, or when a shadow record's `file` is read — so the
+          # happy path never touches it. The position is what a shadow record needs to name its
+          # contributor; the fold therefore hands each step its own index rather than one shared
+          # rule. The locs the walk hands over are PREFIXED (the fold's `loc` IS `prefix`) while
+          # these trees are not, hence the `drop`.
+          declEntries = prelude.imap0 (i: e: {
+            idx = i;
+            file = e._file;
+            options = optionsOf e.content;
+          }) flat;
+          sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
+          allOptions = foldl' (
+            acc: e: mergeOptionDecls (redeclareDecl sitesAt e.idx) prefix acc e.options
+          ) { } declEntries;
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────
           # EDITED tail-count from the engine's OWN flatten of `editedModules` (imports expansion is
@@ -1198,6 +1323,10 @@ in
     configOf
     importsOf
     mergeOptionDecls
+    # The guarded pair-merge of two TYPES. It lives here rather than in lib/types.nix because the
+    # DECLARATION stratum asks the same question as the ELEMENT stratum, and one binding is what
+    # keeps their answers identical; lib/types.nix consumes it back through this seam.
+    mergeTypes
     # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
     # entry as `srcClass`; shared with the warm re-eval path and the classify suite.
     classifyModule

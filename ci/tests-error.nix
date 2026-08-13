@@ -72,6 +72,55 @@ let
       // extra
     );
 
+  # ── the declaration-merge refusal and its control share one skeleton ────────────────────────
+  # One option, declared in two named files, each declaration carrying a type and nothing else.
+  # The three fixtures below differ in exactly which types those are, so what separates refusal
+  # from merge is the type algebra's answer about the pair and nothing else.
+  declaredTwice =
+    aType: bType:
+    (gm.evalModuleTree {
+      modules = [
+        {
+          _file = "a.nix";
+          options.x = gm.mkOption { type = aType; };
+        }
+        {
+          _file = "b.nix";
+          options.x = gm.mkOption { type = bType; };
+        }
+      ];
+    }).options.x.type.name;
+
+  # The same redeclaration one level down, inside a `submodule` — the nested eval carries a
+  # non-empty `prefix`. `sub-a.nix` always declares `str`; the second type and its default are the
+  # only things that vary between the refusal and its control.
+  subHost = bType: bDefault: {
+    modules = [
+      {
+        _file = "outer.nix";
+        options.host = gm.mkOption {
+          type = t.submodule [
+            {
+              _file = "sub-a.nix";
+              options.inner = gm.mkOption {
+                type = t.str;
+                default = "A";
+              };
+            }
+            {
+              _file = "sub-b.nix";
+              options.inner = gm.mkOption {
+                type = bType;
+                default = bDefault;
+              };
+            }
+          ];
+          default = { };
+        };
+      }
+    ];
+  };
+
   # Declaring `thing` as a leaf in one module and as an option-group in another: the decl merge
   # cannot `//` these together without emitting wrong bytes, so it refuses.
   collision = {
@@ -143,6 +192,92 @@ in
           rack = {
             slot = "s";
             stray = 1;
+          };
+        };
+      };
+    };
+
+    # A redeclared option whose two types do not merge is refused BY NAME. The message is the whole
+    # of what the author gets — there is no bad intermediate to inspect, because the point of the
+    # rule is that one is never built.
+    #
+    # ★ EVERY PATTERN HERE IS ANCHORED `^…$`, for the reason stated below the sub-protocol cells.
+    # These messages DO carry ERE metacharacters — the parenthesised type pair, and the `.` in every
+    # file name — so each is escaped and the anchors are left to carry only the ends.
+    flake.testsError.declaration-merge = {
+      # The message names the option, the two types that could not be combined, and the files that
+      # declared them: an author who is told only "types do not merge" still has to find both.
+      test-unmergeable-redeclaration-refused-by-name = {
+        expr = declaredTwice t.str t.int;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # THE PARAMETRIC ARM. A gen-types parametric leaf refuses `typeMerge` by construction — its
+      # parameters sit behind the checker closures, so there is no payload to compare and "same
+      # name" would be a wrong answer, not a cheap one. Two `enum "e"` declarations over DIFFERENT
+      # value sets therefore refuse, and the message shows the two names matching while the pair
+      # still does not merge — which is exactly what distinguishes this arm from the one above.
+      test-parametric-redeclaration-refused-though-names-match = {
+        expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "e" [ "b" ]);
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e'\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # The path is the FULL option path, and the file list is EVERY declaring file rather than the
+      # two the merge happened to be holding: `a.nix` and `b.nix` merge with each other before
+      # `c.nix` refuses, and a message naming only the pair at the point of refusal would send the
+      # author to two of the three modules they have to reconcile.
+      test-refusal-names-the-full-path-and-every-declaring-file = {
+        expr =
+          (gm.evalModuleTree {
+            modules = [
+              {
+                _file = "a.nix";
+                options.rack.slot = gm.mkOption { type = t.str; };
+              }
+              {
+                _file = "b.nix";
+                options.rack.slot = gm.mkOption { type = t.str; };
+              }
+              {
+                _file = "c.nix";
+                options.rack.slot = gm.mkOption { type = t.int; };
+              }
+            ];
+          }).options.rack.slot.type.name;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `rack\\.slot' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix, c\\.nix$";
+        };
+      };
+      # INSIDE A SUBMODULE the engine runs with a non-empty `prefix`, so the loc the merge reports
+      # is prefixed while the modules it is looking the declaration up in are not. The message has
+      # to name the OUTER path and the INNER files: `host.inner`, declared in the submodule's own
+      # two modules and not in the one that declared `host`. Mismatch the two and the path survives
+      # while the file list comes back empty, which is a refusal that names half of what it needs.
+      test-refusal-inside-a-submodule-names-outer-path-and-inner-files = {
+        expr = realize (subHost t.int 7);
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `host\\.inner' is declared with types that do not merge \\(`string' and `int'\\); declared in sub-a\\.nix, sub-b\\.nix$";
+        };
+      };
+      # LIVE CONTROLS, same run, same skeletons: a pair the algebra DOES merge is not refused — at
+      # the root, where the merged declaration answers with the algebra's type, and inside the
+      # submodule, where it evaluates to a value. Without them the cells above are consistent with a
+      # declaration path that refuses every redeclaration.
+      test-mergeable-redeclaration-is-not-refused-control = {
+        expr = declaredTwice t.str t.str;
+        expected = "string";
+      };
+      test-mergeable-redeclaration-in-a-submodule-control = {
+        expr = cfg (subHost t.str "B");
+        expected = {
+          host = {
+            inner = "B";
           };
         };
       };
