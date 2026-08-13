@@ -50,6 +50,23 @@ let
     options.y = nixpkgsLib.mkOption { type = gmT.str; };
   };
 
+  # Report a protocol answer's SHAPE and LENGTH. `isNull` cannot separate "propagates a module list"
+  # from "returns an empty list" — both are `false` under it — and reading that predicate is what
+  # produced two withdrawn measurements of this very surface. An answer that is empty is visible as
+  # such here.
+  shape =
+    v:
+    if v == null then
+      "NULL"
+    else if builtins.isList v then
+      "LIST[${toString (builtins.length v)}]"
+    else if builtins.isFunction v then
+      "FUNCTION"
+    else if builtins.isAttrs v then
+      "ATTRS{${toString (builtins.length (builtins.attrNames v))}}"
+    else
+      "OTHER";
+
   # Render a type as its NAME plus the names of the types it is parameterised BY, recursively. Pinning
   # this string pins the merged type's CONTENTS: a `typeMerge` that returns the right container over the
   # wrong element reads differently from one that returns the right container over the right element,
@@ -734,6 +751,89 @@ in
           "b"
         ];
         a = "x";
+      };
+    };
+
+    # The four ELEMENT-WRAPPING containers answer the sub-protocol from their ELEMENT, not from the
+    # leaf defaults: `getSubModules` is the element's module set and `substSubModules` rebuilds THIS
+    # container over the substituted element. A consumer walking a declared surface through an
+    # `attrsOf (submodule …)` registry — the shape gen-schema's `mkInstanceRegistry` mounts — reached
+    # `null` before this and could not tell "no module set" from "protocol unimplemented here".
+    #
+    # THE ORACLE IS SHAPE-AND-LENGTH, never `isNull`: `LIST[0]` and `LIST[1]` are the same answer to
+    # `isNull`, and collapsing them is what made two earlier readings of this surface wrong. The
+    # rebuilt side is pinned by `describe`, which renders the container AND its element, so rebuilding
+    # the right container over the wrong element reads differently from rebuilding it over the right one.
+    #
+    # EVERY ROW BELOW THE FOUR IS AN ARMED CONTROL and the cell is invalid without them:
+    #   · `submodule` — the row that already propagated, unchanged;
+    #   · `strLeaf` — `NULL` is the correct answer FOR A LEAF, and it stays;
+    #   · `deferredModule` — carries no element type and no module set (gen-merge ships no
+    #     `deferredModuleWith`/`staticModules`), so it is outside the rule's domain and MUST NOT be
+    #     made to propagate; its `NULL` is a correct answer, not a stub;
+    #   · `either`/`oneOf` — they wrap MEMBERS, introduce no path level, and `{ }` is their answer on
+    #     nixpkgs too, so they are outside the domain as well;
+    #   · `…OverLeaf` — the four over a LEAF element report the LEAF's `NULL`. Without this row a green
+    #     result above is equally consistent with a container that answers non-null unconditionally.
+    test-containers-propagate-their-element-sub-protocol = {
+      expr =
+        let
+          elem = gmT.submodule strMod;
+          row = ty: {
+            subModules = shape ty.getSubModules;
+            rebuilt = describe (ty.substSubModules [ strMod ]);
+          };
+        in
+        {
+          attrsOf = row (gmT.attrsOf elem);
+          lazyAttrsOf = row (gmT.lazyAttrsOf elem);
+          listOf = row (gmT.listOf elem);
+          nullOr = row (gmT.nullOr elem);
+          submodule = row elem;
+          strLeaf = shape gmT.str.getSubModules;
+          deferredModule = shape gmT.deferredModule.getSubModules;
+          eitherSubOptions = shape ((gmT.either elem gmT.str).getSubOptions [ ]);
+          oneOfSubOptions = shape (
+            (gmT.oneOf [
+              elem
+              gmT.str
+            ]).getSubOptions
+              [ ]
+          );
+          attrsOfOverLeaf = shape (gmT.attrsOf gmT.str).getSubModules;
+          lazyAttrsOfOverLeaf = shape (gmT.lazyAttrsOf gmT.str).getSubModules;
+          listOfOverLeaf = shape (gmT.listOf gmT.str).getSubModules;
+          nullOrOverLeaf = shape (gmT.nullOr gmT.str).getSubModules;
+        };
+      expected = {
+        attrsOf = {
+          subModules = "LIST[1]";
+          rebuilt = "attrsOf of submodule";
+        };
+        lazyAttrsOf = {
+          subModules = "LIST[1]";
+          rebuilt = "lazyAttrsOf of submodule";
+        };
+        listOf = {
+          subModules = "LIST[1]";
+          rebuilt = "listOf of submodule";
+        };
+        nullOr = {
+          subModules = "LIST[1]";
+          rebuilt = "nullOr of submodule";
+        };
+        submodule = {
+          subModules = "LIST[1]";
+          rebuilt = "submodule";
+        };
+        strLeaf = "NULL";
+        deferredModule = "NULL";
+        eitherSubOptions = "ATTRS{0}";
+        oneOfSubOptions = "ATTRS{0}";
+        attrsOfOverLeaf = "NULL";
+        lazyAttrsOfOverLeaf = "NULL";
+        listOfOverLeaf = "NULL";
+        nullOrOverLeaf = "NULL";
       };
     };
 

@@ -55,6 +55,23 @@ let
   stray = {
     rack.stray = 1;
   };
+  # ── the sub-protocol refusal and its control share one skeleton ─────────────────────────────
+  # A type carrying an ELEMENT TYPE owes the three sub-protocol answers. These three fixtures are
+  # the same hand-built type differing in exactly which of them it supplies, so what separates
+  # refusal from construction is that and nothing else — not the hand-building, which the control
+  # below does identically and which succeeds.
+  rackOf =
+    extra:
+    gm.mkOptionType (
+      {
+        name = "rackOf";
+        elemType = t.str;
+        getSubOptions = _prefix: { };
+        getSubModules = null;
+      }
+      // extra
+    );
+
   # Declaring `thing` as a leaf in one module and as an option-group in another: the decl merge
   # cannot `//` these together without emitting wrong bytes, so it refuses.
   collision = {
@@ -127,6 +144,58 @@ in
             slot = "s";
             stray = 1;
           };
+        };
+      };
+    };
+
+    # The sub-protocol refusal fires at CONSTRUCTION, so there is no bad intermediate to inspect and
+    # nothing to assert about a value — only the message. These cells are why the second output
+    # exists.
+    #
+    # ★ EVERY PATTERN HERE IS ANCHORED `^…$`. nix-unit SEARCHES `expectedError.msg` rather than
+    # matching it whole, so an unanchored pattern pins a SUBSTRING: it would keep passing if the
+    # message grew a wrong clause on either side, which is most of what a message assertion is for.
+    # Neither message below contains an ERE metacharacter, so nothing needs escaping and the anchors
+    # carry the whole of the exactness.
+    flake.testsError.structural-sub-protocol = {
+      # The refusal names the TYPE and the field it did not supply — the two things the author has
+      # to know. A refusal saying only "incomplete type" would leave both to be re-derived.
+      test-element-carrier-missing-one-field-refused-by-name = {
+        expr = rackOf { };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the structural type `rackOf' carries an element type but does not supply `substSubModules'; a structural type may not inherit a leaf's protocol answer$";
+        };
+      };
+      # A MODULE-SET carrier is in the domain by the other arm, and the message names EVERY missing
+      # field in protocol order rather than stopping at the first.
+      test-module-set-carrier-names-every-missing-field = {
+        expr = gm.mkOptionType {
+          name = "slotOf";
+          getSubModules = [ skeleton ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the structural type `slotOf' carries a module set but does not supply `getSubOptions', `substSubModules'; a structural type may not inherit a leaf's protocol answer$";
+        };
+      };
+      # LIVE CONTROL, same run, same skeleton: supply the third field and the SAME hand-built type
+      # constructs and answers. Without it both cells above are consistent with a surface that
+      # refuses every hand-built type carrying an element.
+      test-element-carrier-supplying-all-three-constructs-control = {
+        expr =
+          let
+            ty = rackOf { substSubModules = _m: null; };
+          in
+          {
+            inherit (ty) name;
+            subOptions = ty.getSubOptions [ ];
+            subModules = ty.getSubModules;
+          };
+        expected = {
+          name = "rackOf";
+          subOptions = { };
+          subModules = null;
         };
       };
     };

@@ -16,6 +16,7 @@ let
     isFunction
     concatMap
     concatLists
+    concatStringsSep
     map
     attrNames
     elemAt
@@ -138,14 +139,53 @@ let
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
 
+  # The three fields a type answers about WHAT IT WRAPS, as opposed to about its values: what it
+  # declares (`getSubOptions`), the module set it carries (`getSubModules`), and how it rebuilds
+  # itself over a replacement one (`substSubModules`).
+  subProtocol = [
+    "getSubOptions"
+    "getSubModules"
+    "substSubModules"
+  ];
+
   # completeType — stamp the full nixpkgs protocol onto a type, each field overridable by the
   # descriptor (a real `.merge`/`.check`/`.substSubModules`/`.functor` a type already carries wins).
   # Self-referential: the default functor's `type` points at the completed type, so `typeMerge` of two
   # same-named types returns the type (nixpkgs `defaultTypeMerge`'s self-merge), null across names.
+  #
+  # ── the sub-protocol is a REQUIRED FORMAL of a structural type, not a default ────────────────────
+  # The three defaults below (`_prefix: { }`, `null`, `_m: null`) are a LEAF's answers, and they are
+  # RIGHT for a leaf: it declares nothing, carries no module set, and has nothing to rebuild. They are
+  # wrong for every type that wraps another, and a wrapping type left on them reports "declares
+  # nothing" indistinguishably from a type that genuinely declares nothing — a consumer reflecting a
+  # declared surface off it then fails CLOSED and silently. A default cannot be right for both, so a
+  # type that CARRIES something answers all three itself or is refused here, by name. The missing
+  # declaration is the design choice; making the field required makes it total.
+  #
+  # THE DOMAIN IS WHAT THE TYPE CARRIES — a property of the constructor, read off the descriptor, not
+  # of any measurement. Two ways a descriptor says it carries something: an element type (`elemType`,
+  # or nixpkgs' `nestedTypes.elemType` spelling) or a module set (`getSubModules`, the protocol's own
+  # field for one). Everything else is outside BY THE DOMAIN rather than by a carve-out:
+  #   · a leaf carries neither;
+  #   · `either`/`oneOf` carry MEMBERS, not an element — they introduce no path level, so `{ }` is
+  #     their correct answer (and their pair lives in the functor payload, which this does not read);
+  #   · `deferredModule` carries neither. gen-merge ships no `deferredModuleWith`/`staticModules`, so
+  #     its static module set is empty BY CONSTRUCTION and its `{ }`/`null` are correct answers, not
+  #     stubs. Requiring it to propagate would mean synthesising a parameter the constructor does not
+  #     have — a nixpkgs constructor this library does not ship is not a reason to change one it does.
+  #
+  # `||` short-circuits, and the order is load-bearing: a container's `getSubModules` IS its element's,
+  # so reading it to decide the domain would force the element type at construction. An element-type
+  # carrier is settled before that read happens.
   completeType =
     t:
     let
       name = t.name or "raw";
+      carriesElemType = t ? elemType || (t.nestedTypes or { }) ? elemType;
+      carriesModuleSet = (t.getSubModules or null) != null;
+      # `?` tests presence without forcing: `getSubModules = null` is a supplied answer (an `attrsOf`
+      # over a leaf legitimately has no module set), and absence is what is refused.
+      missing = filter (f: !(t ? ${f})) subProtocol;
       functor = t.functor or (pureDefaultFunctor name // { type = result; });
       result = t // {
         _type = "option-type";
@@ -173,7 +213,16 @@ let
         nestedTypes = t.nestedTypes or { };
       };
     in
-    result;
+    if (carriesElemType || carriesModuleSet) && missing != [ ] then
+      throw (
+        "gen-merge: the structural type `${name}' carries "
+        + (if carriesElemType then "an element type" else "a module set")
+        + " but does not supply "
+        + concatStringsSep ", " (map (f: "`${f}'") missing)
+        + "; a structural type may not inherit a leaf's protocol answer"
+      )
+    else
+      result;
 
   # mkOptionType — the (loc,defs) custom-merge escape hatch (spec §1 item 6) AND the protocol
   # completion: a type IS its `{ name; check?; merge?; verify? }` record, completed to the full nixpkgs
@@ -268,6 +317,15 @@ let
       functor = elemTypeFunctor "listOf" listOf elemType;
       # nixpkgs protocol: descend to the element type under the positional placeholder segment.
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "*" ]);
+      # A container's module set IS its element's, and substituting one rebuilds the container over the
+      # substituted element (nixpkgs `listOf`). Guarded exactly as `getSubOptions` is on `nullOr`, and
+      # for the same measured reason: a gen-types PARAMETRIC leaf (`enum`, `struct`, `union`) reaches
+      # the unified namespace as a bare constructor and is never protocol-completed, so it carries
+      # neither field. `null` is then the correct report — a leaf has no module set — and an element
+      # with nothing to substitute into rebuilds unchanged rather than aborting on a missing attribute.
+      getSubModules = elemType.getSubModules or null;
+      substSubModules =
+        m: listOf (if elemType ? substSubModules then elemType.substSubModules m else elemType);
       merge =
         loc: defs:
         concatMap (
@@ -302,6 +360,11 @@ let
       # nixpkgs protocol: descend to the element type under the per-key placeholder segment, so an
       # `attrsOf (submodule …)` registry exposes its INSTANCE option surface to an introspecting consumer.
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+      # Element propagation, as on `listOf` — the rebuild keeps THIS container's name, so an
+      # `attrsOf`/`lazyAttrsOf` distinction survives the substitution.
+      getSubModules = elemType.getSubModules or null;
+      substSubModules =
+        m: attrsOfWith tyName (if elemType ? substSubModules then elemType.substSubModules m else elemType);
       merge =
         loc: defs:
         let
@@ -390,6 +453,11 @@ let
       # it carries no `getSubOptions`. Falling back to the leaf answer is not merely defensive — a leaf
       # genuinely declares no sub-options, so `{ }` is the correct report, not a swallowed error.
       getSubOptions = elemType.getSubOptions or (_prefix: { });
+      # Element propagation, as on the containers — a nullable declares exactly what its element
+      # declares, so it carries exactly its element's module set too.
+      getSubModules = elemType.getSubModules or null;
+      substSubModules =
+        m: nullOr (if elemType ? substSubModules then elemType.substSubModules m else elemType);
       check = v: v == null || isValid elemType v;
       merge =
         loc: defs:
