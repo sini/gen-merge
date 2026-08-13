@@ -94,10 +94,11 @@ in
   result.config                     # ⇒ { name = "pinned"; }
 ```
 
-`evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance; undeclared }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
+`evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance; undeclared; deprecations }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
 recursion); `.provenance` is a lazy per-loc record of WHERE each value came from (see below);
-`.undeclared` lists the definitions the eval did not merge into `.config` (see below).
+`.undeclared` lists the definitions the eval did not merge into `.config` (see below);
+`.deprecations` lists the declared options whose TYPE carries a `deprecationMessage` (see below).
 
 Every function module receives `config`, `options`, and `prefix` (the module's option path, equal to
 the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]` inside an option
@@ -182,6 +183,54 @@ loc *with everything beneath it*. Deeper rendering has no well-defined answer: w
 `config.nested.deep.key = "X"` and `config.nested = { deep.key = "X"; }` are the same definition, so a
 descent could not tell a dropped option path from a dropped attrset value. The nested-tree boundary is
 provenance's: a tree merged as a type surfaces its `.config` only.
+
+## Deprecated types
+
+`deprecationMessage` is one of the 14 fields of the nixpkgs `optionType` protocol this library stamps
+onto every completed type (below). It was, for a time, the one field the engine **stored and never
+read** — which is not a neutral placeholder: a conformance check asserting the field's *presence*
+passes while the *behaviour* the field exists for is absent, so a deprecated type was
+indistinguishable from an undeprecated one at the only place that could tell. `.deprecations` is that
+behaviour: an always-on lazy list, one record per declared option whose type carries a message.
+
+```nix
+[ { path = [ "grp" "d" ]; type = "depA"; message = "use `plainA' instead"; declarations = [ "…/a.nix" "…/b.nix" ]; } … ]
+```
+
+`path` is absolute against `prefix`; `type` is the type's **name**; `declarations` names every module
+that declared the option, in authored order — a deprecation is fixed at the declaration, and the file
+supplying the type need not be the only one declaring the option (a layering module adding an `apply`
+carries no type of its own). These are the data nixpkgs' own `warnDeprecation` reports, read off the
+same field.
+
+**On the result, not on stderr**, and that is a mechanism decision: Nix's eval cache swallows
+`trace`/`warn`, so a printed deprecation appears on the first eval and never again — a report that
+disappears when the answer is reused reports nothing. A field on the result needs no new vocabulary
+and cannot be silently dropped by a consumer. It is also **serialisable by construction** — carrying
+the type's name rather than the type value is what lets a consumer print, diff or hand on the report
+at all, since a type value carries functions.
+
+Reading it forces each declared leaf's **type** — that is where the field lives — and **no definition
+value**; leaving it unread costs nothing. An option declared with no type, and a type that never
+reached protocol completion, are both simply not deprecated: neither aborts the report.
+
+**Scope is one eval.** A `submodule`'s inner options are declared in a nested `evalModuleTree` that
+runs *inside* the type's `merge`, and `merge` returns the merged **value** — byte-compat pins that
+shape, so the nested eval has no way to hand its report back alongside the value it was called for.
+That is why one eval is the scope, and it is **not** that the nested view is out of reach: the
+declaration stratum is already exposed by the protocol, so a consumer that wants it re-derives it
+without touching `merge` —
+
+```nix
+(evalModuleTree { modules = ty.getSubModules; }).deprecations
+# ⇒ [ { path = [ "inner" ]; type = "depA"; message = "…"; declarations = [ "<gen-merge>" ]; } ]
+```
+
+`ty.getSubOptions` reaches the same declarations as a tree if that shape suits better. Note what the
+re-derived records say about provenance: `declarations` reads `[ "<gen-merge>" ]`, because sub-modules
+carry no `_file` — a reason for the parent not to fold this view into its own report, rather than a
+reason it could not. Stamping the field is this engine's job; composing the strata belongs to whoever
+composes the results. Same boundary as provenance's.
 
 ## Source classification & the `pureModule` marker
 
@@ -313,7 +362,8 @@ adversarial suite fixture (a marked module that `@`-captures config, asserted to
 pin it. The two internal memo fields `freeformConfig` / `freeformProv` on the result let a CHAINED warm
 (warmFrom = a warm result) reuse the freeform layer directly.
 
-**Result surface.** The public result is `config` / `options` / `provenance` / `undeclared` (+ `type`);
+**Result surface.** The public result is `config` / `options` / `provenance` / `undeclared` /
+`deprecations` (+ `type`);
 `warmDecision` (the decision trace) and `freeformConfig` / `freeformProv` (the freeform memo layers)
 are internal fields — additive, threaded between chained evals, not part of the byte-identity contract.
 

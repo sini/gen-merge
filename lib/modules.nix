@@ -434,9 +434,14 @@ let
   # can perturb), the coarse freeform-reuse flag, and the disabledModules refusal. `mergeTree` consumes
   # `footprintPaths` to gate per-leaf splicing (spec §2). Testable in isolation through the core seam.
 
-  # Declared-leaf locs of ONE option-decl tree — walk to `isOptLeaf` (typed registries / scalar leaves
-  # included; untyped groups recurse). The granularity of BOTH the footprint and the splice gate.
-  declLeafPaths =
+  # Declared LEAVES of ONE option-decl tree — walk to `isOptLeaf` (typed registries / scalar leaves
+  # included; untyped groups recurse), each loc beside the DESCRIPTOR declared there. One descent
+  # with two views: `declLeafPaths` below is its loc projection (the granularity of both the
+  # footprint and the splice gate), and the deprecation report reads the same entries' descriptors.
+  # Two descents would be two answers to "which locs are declared leaves" that can drift apart —
+  # the same reason the portable-subset lint consumes the engine's own predicates rather than its
+  # own copies. Only the SPINE is walked: an entry's `opt` is the descriptor thunk, unforced here.
+  declLeafEntries =
     tree:
     let
       go =
@@ -448,7 +453,12 @@ let
             lk = loc ++ [ k ];
           in
           if isOptLeaf v then
-            [ lk ]
+            [
+              {
+                path = lk;
+                opt = v;
+              }
+            ]
           else if isAttrs v then
             go lk v
           else
@@ -456,6 +466,9 @@ let
         ) (attrNames t);
     in
     go [ ] tree;
+
+  # Declared-leaf locs of ONE option-decl tree — the loc projection of the walk above.
+  declLeafPaths = tree: map (e: e.path) (declLeafEntries tree);
 
   # DEF footprint of one module's config, guided by the merged decl tree — the lint's discharge-based
   # descent (lib/lint.nix `descend`), but recording PATHS, not order-probes: it pushes config-node
@@ -1267,6 +1280,71 @@ let
           # is never also unmatched).
           provenance = recursiveUpdate freeformProv realized.prov;
 
+          # ── deprecated declared types ──────────────────────────────────────────────────────────
+          # `deprecationMessage` is one of the 14 protocol fields lib/types.nix stamps onto every
+          # completed type, and it was the one field this engine STORED and never read. A stored
+          # field nobody consults is not a neutral placeholder: it makes a protocol-conformance
+          # check that asserts PRESENCE pass while the BEHAVIOUR the field exists for is absent, so
+          # a deprecated type declared here was indistinguishable from an undeprecated one. The
+          # reference engine's answer is `warnDeprecation` (nixpkgs lib/modules.nix), which reports
+          # the type's NAME, the option LOC and the DECLARING FILES; those are the four data this
+          # record carries, from the same source field.
+          #
+          # ON THE RESULT, NOT ON STDERR, and that is a mechanism decision rather than a taste one:
+          # Nix's eval cache swallows `trace`/`warn` output, so a printed deprecation is present on
+          # the first eval and gone on every later one — a report that disappears when the answer is
+          # reused reports nothing. A field on the result is the shape that needs no new vocabulary
+          # and that a consumer cannot silently drop.
+          #
+          # THE GROUND IS PRESENCE-VS-BEHAVIOUR, DELIBERATELY NOT "a foreign mount needs it": whether
+          # a gen type ever enters a nixpkgs options tree is a separate, contested question (see
+          # lib/default.nix), and this report is legible either way — it is gen-merge telling the
+          # truth about gen-merge's OWN declarations.
+          #
+          # SERIALISABLE BY CONSTRUCTION — `type` is the type's NAME, never the type VALUE. A report
+          # is something a consumer prints, diffs or hands on; a type value carries functions, so a
+          # record holding one could not survive `toJSON` at all.
+          #
+          # SCOPE, one eval: the declared leaves of THIS tree. A `submodule`'s inner options are
+          # declared in a NESTED `evalModuleTree` that runs INSIDE the type's `merge`, and `merge`
+          # returns the merged VALUE — byte-compat pins that shape, so the nested eval has no way to
+          # hand its report back alongside the value it was called for. That is what makes one eval
+          # the scope here; it is NOT that the nested view is unreachable. A consumer that wants it
+          # re-derives it at the DECLARATION stratum, which the protocol already exposes: the type's
+          # `getSubModules` are the sub-modules and `getSubOptions` is the nested decl tree, so
+          # `evalModuleTree { modules = ty.getSubModules; }` yields the nested records without
+          # touching `merge` at all. Worth knowing before reaching for it: those re-derived records
+          # report `declarations = [ "<gen-merge>" ]`, because sub-modules carry no `_file` — which
+          # is a reason for the parent not to fold that view into its own report rather than a
+          # reason it cannot. Stamping the field is this engine's obligation; composing the strata
+          # belongs to whoever composes the results (the same boundary `provenance` and the warm
+          # path state for nested evals).
+          #
+          # LAZINESS: reading this forces each declared leaf's TYPE — that is where the field lives —
+          # and no DEFINITION value; leaving it unread costs nothing. `declarations` is a per-record
+          # thunk over the existing `sitesAt`, so the common case (no deprecated type) never looks a
+          # declaring site up.
+          deprecations =
+            let
+              record =
+                e:
+                let
+                  ty = e.opt.type or null;
+                  loc = prefix ++ e.path;
+                in
+                {
+                  path = loc;
+                  # `or null` on both: an option may carry no `type` at all (gen-schema's ref-binding
+                  # `apply`-override modules), and a type that never reached protocol completion (a
+                  # bare parametric gen-types constructor) carries no `deprecationMessage` — neither
+                  # is deprecated, and neither may abort the report.
+                  type = ty.name or null;
+                  message = ty.deprecationMessage or null;
+                  declarations = map (s: s.file) (sitesAt loc);
+                };
+            in
+            filter (d: d.message != null) (map record (declLeafEntries allOptions));
+
           # ── decision trace (design spec §4) — the memoization DECISION, always-on data on the warm
           # path (the eval computes the partition anyway). Consumed by gen-flake's `override` (formatted
           # into its `trace`). Laziness contract: `mode`/`modules` are cheap (classification only);
@@ -1306,6 +1384,7 @@ let
             moduleArgs
             provenance
             undeclared
+            deprecations
             freeformConfig
             freeformProv
             warmDecision
@@ -1323,7 +1402,11 @@ let
         # `check` does not gate it (see above) — empty whenever a freeformType absorbed them, and empty
         # for a fully-declared config.
         undeclared
-        # Freeform layers exposed as internal memo fields (public surface = the four above):
+        # The declared options of this eval whose TYPE carries a `deprecationMessage`, each with the
+        # message, the type's name and the files that declared the option — empty when no declared
+        # type is deprecated, which is the ordinary case.
+        deprecations
+        # Freeform layers exposed as internal memo fields (public surface = the five above):
         # a CHAINED warm re-eval reuses `warmFrom.freeformConfig`/`freeformProv` directly (spec §2).
         freeformConfig
         freeformProv
