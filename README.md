@@ -451,6 +451,72 @@ a mount actually passes — and **refuses by name** over a non-empty one: with n
 parameter it could only drop the modules, and a rebuild that silently discards what it was handed is a
 wrong answer with no diagnostic.
 
+### The sub-protocol is a REQUIRED FORMAL of a structural type
+
+The three introspection fields that say what a type **wraps** — `getSubOptions`, `getSubModules`,
+`substSubModules` — are one answer, and `completeType` defaults them to a **leaf's** answers
+(`_prefix: { }`, `null`, `_m: null`). Those defaults are right for a leaf and wrong for every type that
+wraps another: a wrapping type left on them reports *"declares nothing"* indistinguishably from a type
+that genuinely declares nothing, so a consumer reflecting a declared surface off it fails **closed and
+silently**. One default cannot be right for both, so a type that **carries** something answers all
+three itself or is **refused at construction**, by name, listing every field it did not supply:
+
+```nix
+gm.mkOptionType {
+  name = "rackOf";
+  elemType = t.str;
+  getSubOptions = _prefix: { };
+  getSubModules = null;
+}
+# ⇒ throws: gen-merge: the structural type `rackOf' carries an element type but does not supply
+#           `substSubModules'; a structural type may not inherit a leaf's protocol answer
+```
+
+The missing declaration is the design choice; making the field required makes it total.
+
+**The domain is what the type carries** — a property of the constructor, read off the descriptor rather
+than off any measurement. Two ways a descriptor says so:
+
+| the descriptor carries | the test | who is in |
+|---|---|---|
+| an element type — `elemType`, or nixpkgs' `nestedTypes.elemType` spelling | `carriesElemType` | `listOf`, `attrsOf`/`lazyAttrsOf`, `nullOr` |
+| a module set — `getSubModules`, the protocol's own field for one, supplied and non-`null` | `carriesModuleSet` | `submodule`, `deferredModule` |
+
+The `nestedTypes.elemType` arm is **load-bearing rather than defensive**: `nullOr` carries its element
+only there, so without it `nullOr` would escape its own rule. Disjunct **order** is load-bearing too —
+`||` short-circuits, and a container's `getSubModules` IS its element's, so reading it to decide the
+domain would force the element type at construction. An element-type carrier is settled first.
+
+**Presence is what is missing, not value.** The domain test reads `getSubModules != null` — a supplied
+list, empty or not, is a module set, and `null` is the leaf's *"no such concept"* — while the refusal
+tests `t ? f`. So `getSubModules = null` is a **supplied answer**, which an `attrsOf` over a leaf
+element legitimately gives, and only absence is refused.
+
+Everything else is outside **by the domain**, not by a carve-out:
+
+- a **leaf** carries neither;
+- `either`/`oneOf` carry **members**, not an element. They introduce no path level, `{ }` is their
+  answer on nixpkgs too, and their pair lives in the functor payload, which the domain check does not
+  read;
+- `deferredModule` is **inside** the domain by the module-set arm — its set is empty by construction
+  and it answers all three itself, including the rebuild (above). Requiring it to *propagate* an
+  element is a different demand and still refused: that would mean synthesising a parameter the
+  constructor does not have.
+
+`listOf`, `attrsOf`/`lazyAttrsOf` and `nullOr` then supply the triple from their element:
+`getSubModules` is the element's, and `substSubModules` rebuilds **this** container over the
+substituted element, keeping its own name so the `attrsOf`/`lazyAttrsOf` distinction survives a
+substitution. Both are guarded exactly as `getSubOptions` already was on `nullOr`, for the same reason:
+a gen-types **parametric** leaf reaches the unified namespace as a bare constructor, is never
+protocol-completed, and carries neither field.
+
+The oracle for the propagation is **shape-and-length, never `isNull`** — `LIST[0]` and `LIST[1]` are
+the same answer under `isNull`, and that collapse is what made two earlier readings of this surface
+wrong. Pinned by `test-containers-propagate-their-element-sub-protocol`
+(`ci/tests/nixpkgs-protocol.nix`), whose controls include the four containers over a **leaf** element
+still reporting `null`; the refusals by `structural-sub-protocol` (`ci/tests-error.nix`), where the
+control is the same hand-built skeleton with the third field supplied.
+
 ### Two export shapes — completing only one leaves half the namespace unmountable
 
 gen-types exports its **nullary** leaves (`str`, `int`, `bool`, `path`, …) as attrsets and its
