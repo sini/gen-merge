@@ -53,12 +53,12 @@ gen-prelude (pure utilities) and takes gen-types' leaf checkers as an **injected
 
 1. **typed options + defaults** — `mkOption { type; default?; apply?; readOnly? }`; a `default`
    desugars to a lowest-priority definition (no separate codepath).
-1. **freeformType** — `lazyAttrsOf` / `attrsOf` routing of undeclared keys.
-1. **per-key `name` + `_module.args`** binding under keyed collections.
-1. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
-1. **`imports` merging** — recursive collect/flatten, imports before own config.
-1. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`.
-1. **`deferredModule`** — a lazy, import-usable module value, **never forced** by composition (handed
+2. **freeformType** — `lazyAttrsOf` / `attrsOf` routing of undeclared keys.
+3. **per-key `name` + `_module.args`** binding under keyed collections.
+4. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
+5. **`imports` merging** — recursive collect/flatten, imports before own config.
+6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`.
+7. **`deferredModule`** — a lazy, import-usable module value, **never forced** by composition (handed
    opaque to the terminal). `functionTo` is intentionally omitted (consumers wrap guard functions as
    data).
 
@@ -266,7 +266,7 @@ genMerge.pureModule ({ genSchema, ... }: { options.x = genSchema.mkThing; })
 cleanliness is invisible once applied). The author asserts, and the engine **trusts**:
 
 1. `f` reads **only its declared formals** — no `config` / `options` capture.
-1. **every formal resolves from `specialArgs`** — not from `config`/`options`, and *not* from
+2. **every formal resolves from `specialArgs`** — not from `config`/`options`, and *not* from
    fixpoint-derived `_module.args`. Which side satisfies a formal is **non-local**: another module can
    define a `_module.args` entry of the same name, making an innocent-looking formal fixpoint-derived.
 
