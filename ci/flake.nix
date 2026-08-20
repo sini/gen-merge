@@ -35,6 +35,7 @@
       # are NOT on the public `lib/default.nix` surface (the lint-predicate export precedent: additive to
       # core, public surface unchanged). The classify suite unit-asserts `classifyModule` directly through
       # this test-only handle; the shipped API (`pureModule`, `evalModuleTree`) is exercised via `genMerge`.
+      genLinkset = import ../lib/linkset.nix { prelude = gen-prelude.lib; };
       genMergeCore = import ../lib/modules.nix {
         prelude = gen-prelude.lib;
         priority = import ../lib/priority.nix { prelude = gen-prelude.lib; };
@@ -56,6 +57,7 @@
           genMergeCompat
           nixpkgsLib
           genMergeCore
+          genLinkset
           ;
       };
       extraModules = [ ./tests-error.nix ];

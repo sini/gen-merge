@@ -22,6 +22,7 @@ let
   core = import ./modules.nix { inherit prelude priority; };
   strategies = import ./types.nix { inherit prelude core; };
   lintLib = import ./lint.nix { inherit prelude priority core; };
+  linkset = import ./linkset.nix { inherit prelude; };
 
   completeParametric =
     v:
@@ -131,5 +132,50 @@ in
   # the same shape as the crash the protocol completion was introduced for: nixpkgs' module system reads
   # `deprecationMessage` off every option type and aborts with `attribute 'deprecationMessage' missing`.
   # So descend THROUGH the application, at any arity, and complete the first result that is a type.
-  types = (builtins.mapAttrs (_: completeExport) types) // strategies;
+  # ★ THE EXPORT MERGE IS DECIDED, NOT DEFAULTED. This was `(mapAttrs completeExport types) //
+  # strategies` — two libraries' export environments joined by `//`, with a non-empty intersection,
+  # silently. Nix `//` is right-biased, so `strategies` won at every shared name and a consumer got
+  # gen-merge's `listOf` where it may have wanted gen-types'; nothing said so and nothing could.
+  #
+  # ★ AND THE GROUNDS BELOW UTTER NO HOST CONSTANT, WHICH IS NOT A STYLE CHOICE. A ground that
+  # named the foreign namespace would put a host constant in the type vocabulary — the exact thing
+  # the protocol boundary exists to confine to one unit. This library's own purity scan is what
+  # caught the first draft doing it, which is the scan working rather than the scan being in the way.
+  #
+  # Cardelli 1997 gates a linkset merge on `exp(L) ∩ exp(L') = ∅` (Definition 5-7's precondition).
+  # The overlap here is real and is not going away, so the rule is disjointness WITH A DECLARED
+  # ALLOWLIST: every collision is named, carries the ground for which side wins AT THAT NAME, and
+  # leaves the shadowed value reachable. An undeclared collision refuses.
+  types =
+    (linkset.mergeExports {
+      left = {
+        library = "gen-types";
+        exports = builtins.mapAttrs (_: completeExport) types;
+      };
+      right = {
+        library = "gen-merge";
+        exports = strategies;
+      };
+      allow = {
+        listOf.ground = ''
+          This namespace is the drop-in a foreign module system mounts, and at this name such a
+          consumer requires the CROSS-DEFINITION MERGE meaning: the strategy folds definitions
+          across modules, where gen-types' constructor is a structural PREDICATE over one value.
+          The cost is exactly the unqualified spelling inside this namespace — the gen-types
+          predicate stays reachable through the hub's flat roster and from gen-types directly.
+        '';
+        attrsOf.ground = ''
+          The same cross-definition merge meaning as `listOf`, over attribute sets rather than
+          lists: a mounting consumer declaring `attrsOf` in a foreign module system needs
+          definitions from several modules folded, not one value checked. Stated for THIS name
+          rather than carried from `listOf` because the two constructors differ in what they fold.
+        '';
+        option.ground = ''
+          ★ THE WEAKEST ENTRY, AND IT SAYS SO. This library's `option` is a bare alias for
+          `nullOr`, so what shadows gen-types' parametric `option` is an alias rather than a
+          distinct construct — the winning side wins by sitting in the drop-in namespace, not by
+          meaning more. This is the first entry to retire if the namespace is ever split.
+        '';
+      };
+    }).exports;
 }
