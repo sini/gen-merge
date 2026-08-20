@@ -51,11 +51,21 @@ let
   # what else is. Under it a stray key lands green, so "the suite stayed green" is not evidence that the
   # completion's surface is what it was intended to be. The cells below supply the missing half.
   #
-  # The oracle is RELATIONAL and both sides are PINNED: `completedKeysBefore` is the literal FOREIGN
-  # key set each class carries, and `substrateKeys` is the gen record it is derived from. The
-  # assertion is that today's exported type is exactly those two sets, per class. Pinning the RELATION
-  # rather than the absolute set is what makes it useful in both directions — a stray key fails as
-  # `extra`, a protocol field lost to a refactor fails as `missing`.
+  # The oracle is RELATIONAL and both sides are PINNED: `completedKeysBefore` is the base key set each
+  # class carries, and `substrateKeys` is what the export adds beside it. The assertion is that today's
+  # exported type is exactly those two sets, per class. Pinning the RELATION rather than the absolute
+  # set is what makes it useful in both directions — a stray key fails as `extra`, a protocol field
+  # lost to a refactor fails as `missing`.
+  #
+  # ★ THE BASE IS NOT PURELY FOREIGN, AND CALLING IT SO WOULD MISLEAD. For the three classes built
+  # from an INJECTED gen-types leaf it also carries that library's own fields — `__id`, `__mint`,
+  # `__name`, `verify` — which are not protocol names at all: they ride onto the gen record through
+  # the import environment's passthrough (`lib/interface.nix` `importType` removes the protocol names
+  # and the marker, and carries everything else across untouched) and out again on the export. So a
+  # gen-types field appearing here is the passthrough working, not a leak. The two halves are
+  # therefore split by WHERE A KEY WAS PINNED rather than by which vocabulary it belongs to; a
+  # partition on the second question would put those four in `substrateKeys` and leave this table
+  # equal to `exportFields` for every class.
   #
   # ★ THE BASE MOVED ONCE, AND IT MOVED BY SUBTRACTION: the containers used to carry a bare `elemType`
   # beside the introspection alias that states the same thing, and the export is now derived from the
@@ -201,6 +211,7 @@ let
     ];
     bool = [
       "__id"
+      "__mint"
       "__name"
       "_type"
       "check"
@@ -268,6 +279,7 @@ let
     ];
     int = [
       "__id"
+      "__mint"
       "__name"
       "_type"
       "check"
@@ -351,6 +363,7 @@ let
     ];
     str = [
       "__id"
+      "__mint"
       "__name"
       "_type"
       "check"
