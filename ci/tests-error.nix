@@ -36,6 +36,8 @@
   nixpkgsLib,
   interface,
   genMergeVocab,
+  genMergeWith,
+  genTypes,
   ...
 }:
 let
@@ -548,12 +550,34 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the structural type `crate' carries a parameter but does not supply `rebuild'; a structural type may not inherit a leaf's substructure answer$";
+          msg = "^gen-merge: the structural type `crate' carries a parameter but does not supply `rebuild'; a type that carries something answers for it rather than inheriting a leaf's answers$";
         };
       };
-      # LIVE CONTROL, same run, same record: supply the third formal and it constructs. Without it the
-      # cell above is equally consistent with a constructor that refuses every record carrying a role.
-      test-control-gen-record-supplying-all-three-constructs = {
+      # THE FOURTH CARRIED-ROLE FORMAL, and the last one that was left un-total. The boundary reads
+      # `recarry` UNCONDITIONALLY to rebuild a carrying type over another payload, so a record without
+      # it used to construct, export, and then detonate with a bare missing-attribute error the moment
+      # a foreign engine applied the functor — an interpreter abort naming neither the type nor the
+      # field. Every shipped carrying type supplies it, which is exactly why nothing caught this: the
+      # failure was reachable only by a future author, and by then the refusal would not exist.
+      test-gen-record-declaring-a-role-without-a-rebuild-is-refused = {
+        expr = genMergeVocab.mkType {
+          name = "crate";
+          carries.element = t.str;
+          substructure = {
+            declares = _prefix: { };
+            modules = null;
+            rebuild = _m: null;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the structural type `crate' carries a parameter but does not supply `recarry'; a type that carries something answers for it rather than inheriting a leaf's answers$";
+        };
+      };
+      # LIVE CONTROL, same run, same record: supply all four formals and it constructs. Without it the
+      # two cells above are equally consistent with a constructor that refuses every record carrying a
+      # role, which would fail them for a reason that has nothing to do with the missing formal.
+      test-control-gen-record-supplying-all-four-formals-constructs = {
         expr =
           (genMergeVocab.mkType {
             name = "crate";
@@ -566,6 +590,22 @@ in
             };
           }).name;
         expected = "crate";
+      };
+      # AND `deferredModule` IS THE SCOPE CONTROL: it carries a module set through its substructure
+      # WITHOUT declaring a role, so it has no payload to rebuild over and owes no `recarry` — it ships
+      # without one and constructs. A `recarry` requirement scoped to carrying-in-general rather than
+      # to the ROLE would have broken it, and this row is what says so.
+      test-control-deferredModule-carries-a-module-set-and-owes-no-recarry = {
+        expr = {
+          declaresNoRole = !(t.deferredModule ? carries);
+          hasNoRecarry = !(t.deferredModule ? recarry);
+          constructedAnyway = t.deferredModule.name;
+        };
+        expected = {
+          declaresNoRole = true;
+          hasNoRecarry = true;
+          constructedAnyway = "deferredModule";
+        };
       };
 
       # A RELATION IS REQUIRED TO CROSS, and the refusal says why rather than producing a type whose
@@ -613,6 +653,85 @@ in
             check = builtins.isString;
           }).name;
         expected = "tiny";
+      };
+
+      # ── the PUBLISH path, which is a different site from `mkOptionType` ──────────────────────────
+      # ★★★ THE REFUSAL HAS TO SURVIVE THE NAMESPACE ASSEMBLY, and it did not. `lib/default.nix`
+      # computed the import environment's refusal for every entry of the injected leaf vocabulary and
+      # then DISCARDED it, publishing the raw record into `lib.types` — where a mounting consumer dies
+      # inside the foreign engine on a missing attribute, uncatchably and naming nothing. Measured at
+      # the pre-boundary tree the same roster THREW, so it was a regression rather than a standing gap:
+      # a computed refusal thrown away is worse than one never computed.
+      #
+      # THE PATH IS REACHED ONLY THROUGH A SUPPLIED VOCABULARY. The shipped roster does not trip the
+      # rule — measured, empty — so a cell over `genMerge` could not exercise this at any strength;
+      # `genMergeWith` hands the assembly a roster it did not choose, which is the input class
+      # `lib/default.nix` names as supported ("in compat mode a foreign one") and the one the import
+      # environment exists to be total over. The two cells here are DIFFERENT from the `mkOptionType`
+      # cells above: same rule, same message, a site that had its own way of losing it.
+      test-publishing-a-protocol-incomplete-leaf-is-refused-by-name = {
+        expr =
+          (genMergeWith (
+            genTypes
+            // {
+              rogueOf = {
+                name = "rogueOf";
+                elemType = genTypes.str;
+              };
+            }
+          )).types.rogueOf;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the structural type `rogueOf' carries an element type but does not supply `getSubOptions', `getSubModules', `substSubModules'; a structural type may not inherit a leaf's protocol answer$";
+        };
+      };
+      # LIVE CONTROL, same roster shape, same run: the un-offending twin answers all three and
+      # publishes PROTOCOL-COMPLETE, and an ordinary shipped leaf beside it still does too. Without
+      # both halves the cell above is equally consistent with a namespace that refuses everything, or
+      # with one poisoned wholesale by a single bad entry — and per-name laziness is exactly what makes
+      # the refusal usable rather than fatal to the whole vocabulary.
+      test-control-the-un-offending-twin-publishes-protocol-complete = {
+        expr =
+          let
+            published =
+              (genMergeWith (
+                genTypes
+                // {
+                  politeOf = {
+                    name = "politeOf";
+                    elemType = genTypes.str;
+                    getSubOptions = _p: { };
+                    getSubModules = null;
+                    substSubModules = _m: null;
+                  };
+                }
+              )).types;
+            protocolFields = [
+              "_type"
+              "name"
+              "description"
+              "descriptionClass"
+              "deprecationMessage"
+              "check"
+              "merge"
+              "emptyValue"
+              "getSubOptions"
+              "getSubModules"
+              "substSubModules"
+              "typeMerge"
+              "nestedTypes"
+              "functor"
+            ];
+            missing = ty: builtins.filter (f: !(ty ? ${f})) protocolFields;
+          in
+          {
+            twinMissing = missing published.politeOf;
+            shippedLeafMissing = missing published.str;
+          };
+        expected = {
+          twinMissing = [ ];
+          shippedLeafMissing = [ ];
+        };
       };
     };
 

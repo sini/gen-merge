@@ -49,6 +49,17 @@
         prelude = gen-prelude.lib;
         core = genMergeCore;
       };
+      # A gen-merge instance over a CALLER-SUPPLIED leaf vocabulary. The `types` parameter is this
+      # library's UNCONTROLLED input — `lib/default.nix` names a foreign vocabulary as supported — and
+      # the namespace assembly has to be total over it. This is the only way a suite can reach the
+      # PUBLISH path's refusal at all: `genMerge` above is built over the shipped roster, and a roster
+      # that behaves cannot exercise a refusal.
+      genMergeWith =
+        types:
+        import ../lib {
+          prelude = gen-prelude.lib;
+          inherit types;
+        };
     in
     gen-harness.lib.mkCi {
       inherit inputs;
@@ -68,6 +79,7 @@
           genMergeCore
           genLinkset
           genMergeVocab
+          genMergeWith
           interface
           ;
       };

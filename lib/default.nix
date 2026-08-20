@@ -28,12 +28,31 @@ let
   # foreign one — so entering the published namespace is an inbound crossing followed by an outbound
   # one: the record is read through the boundary's import environment and rebuilt as a gen type, which
   # is then expressed in the foreign protocol like every other type this library publishes.
+  #
+  # ★★★ THE REFUSAL IS PROPAGATED, AND RETURNING IT AS AN ABSENCE WAS THE DEFECT. The import
+  # environment is PARTIAL: handed a record that carries an element type or a module set while
+  # answering only part of the sub-protocol, it computes W4a's refusal BY NAME. Swallowing that and
+  # publishing the record unchanged put a protocol-incomplete value into `lib.types`, where a mounting
+  # consumer dies INSIDE the foreign engine on a missing attribute — the uncatchable, unnamed abort
+  # that this boundary's own `refuseMount` exists to convert into a refusal. A computed refusal thrown
+  # away is worse than one never computed: the library knew and declined to say.
+  #
+  # ★ "NO SHIPPED ROSTER TRIPS IT" IS NOT A REASON TO SWALLOW, because the foreign vocabulary is the
+  # UNCONTROLLED input. The default roster does not trip it, measured; the `types` parameter names
+  # whatever vocabulary a consumer supplies, and being total over that is the entire reason the import
+  # environment answers with a refusal rather than best-effort.
+  #
+  # There is no absence arm because there is no reachable case for one: both callers below have
+  # already established `isAttrs` and `verify`-or-`name`, which excludes the import environment's
+  # other two refusals by construction, so the carrier refusal is the only one that reaches here — and
+  # a refusal is not an absence. A caller wanting the value back unrefused would be asking to publish
+  # a type the boundary has just said it cannot translate.
   importLeaf =
     v:
     let
       answer = core.interface.importType v;
     in
-    if answer ? refused then null else answer.imported;
+    if answer ? refused then throw answer.refused else answer.imported;
 
   # A PARAMETRIC leaf REFUSES to merge, and the refusal is an answer rather than a gap. Its parameters
   # live behind the `verify`/`check` closures and are not introspectable, so there is nothing to
@@ -57,15 +76,9 @@ let
     if builtins.isFunction v then
       (x: completeParametric (v x))
     else if builtins.isAttrs v && v ? verify then
-      let
-        imported = importLeaf v;
-      in
-      if imported == null then
-        v
-      else
-        strategies.defineType (
-          imported // { typeMergeRel = refuseParametricMerge (v.name or "<unnamed>"); }
-        )
+      strategies.defineType (
+        importLeaf v // { typeMergeRel = refuseParametricMerge (v.name or "<unnamed>"); }
+      )
     else
       v;
   # A NULLARY leaf keeps the default relation: it has no parameters, so a same-named partner really is
@@ -75,10 +88,7 @@ let
     if builtins.isFunction v then
       completeParametric v
     else if builtins.isAttrs v && (v ? verify || v ? name) then
-      let
-        imported = importLeaf v;
-      in
-      if imported == null then v else strategies.defineType imported
+      strategies.defineType (importLeaf v)
     else
       v;
 in

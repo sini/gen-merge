@@ -106,8 +106,21 @@ let
     self: t:
     let
       name = t.name or "raw";
-      carriesSomething = t ? carries || ((t.substructure or { }).modules or null) != null;
-      missing = filter (f: !((t.substructure or { }) ? ${f})) subFormals;
+      declaresRole = t ? carries;
+      carriesSomething = declaresRole || ((t.substructure or { }).modules or null) != null;
+      missingSub = filter (f: !((t.substructure or { }) ? ${f})) subFormals;
+      # ★ `recarry` IS OWED BY A TYPE THAT DECLARES A ROLE, and it is the last carried-role formal that
+      # was left un-total. The boundary reads it UNCONDITIONALLY to rebuild this type over another
+      # payload, so a carrying record without it constructs, exports, and then detonates with a bare
+      # missing-attribute error the moment a foreign engine applies the functor — an interpreter error
+      # naming neither the type nor the field, which is the exact shape making every other formal here
+      # required was meant to remove.
+      #
+      # SCOPED TO THE ROLE, not to carrying in general: `deferredModule` carries a module set through
+      # its substructure without declaring a role, so it has no payload to be rebuilt over and owes
+      # none. The domain is what the record SAYS it carries, as everywhere else in this check.
+      missingRecarry = if declaresRole && !(t ? recarry) then [ "recarry" ] else [ ];
+      missing = missingSub ++ missingRecarry;
       nullaryRel =
         other:
         if isAttrs other && (other.name or null) == name then
@@ -119,7 +132,7 @@ let
       throw (
         "gen-merge: the structural type `${name}' carries a parameter but does not supply "
         + concatStringsSep ", " (map (f: "`${f}'") missing)
-        + "; a structural type may not inherit a leaf's substructure answer"
+        + "; a type that carries something answers for it rather than inheriting a leaf's answers"
       )
     else
       t // { typeMergeRel = t.typeMergeRel or nullaryRel; };

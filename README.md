@@ -443,6 +443,23 @@ alone. `mkType` builds the gen record **without** its foreign expression: usable
 and it does not pay for the protocol (`ci/bench/interface-cost.sh` measures the difference in
 `nrThunks`).
 
+### The import environment is PARTIAL, and its refusal survives the namespace assembly
+
+`importType` answers `{ imported = …; }` or `{ refused = "<reason>"; }` — handed a record that carries
+an element type or a module set while answering only part of the sub-protocol, it computes W4a's
+refusal by name. **That refusal is propagated at every site that consumes it**, including the one
+where it is least visible: `lib/default.nix` assembling the published `types` namespace out of the
+injected leaf vocabulary. Swallowing it there published a protocol-incomplete record into
+`lib.types`, where a mounting consumer dies inside the foreign engine on a missing attribute — the
+uncatchable, unnamed abort that `refuseMount` exists to convert into a refusal. A computed refusal
+thrown away is worse than one never computed.
+
+The `types` parameter is this library's **uncontrolled input** — a consumer may inject any leaf
+vocabulary, and compat mode injects nixpkgs' — so "the shipped roster does not trip it" is not a
+reason to swallow. Being total over that input is the whole reason the import environment refuses
+rather than doing its best. Refusal is **per name**: the namespace is lazy, so a bad entry refuses
+when forced and every other name still publishes.
+
 ## The nixpkgs `optionType` protocol
 
 Every type in the `types` namespace carries the full **14-field nixpkgs `mkOptionType` shape** —
@@ -550,8 +567,17 @@ genMergeVocab.mkType {
   substructure = { declares = _prefix: { }; modules = null; };
 }
 # ⇒ throws: gen-merge: the structural type `crate' carries a parameter but does not supply
-#           `rebuild'; a structural type may not inherit a leaf's substructure answer
+#           `rebuild'; a type that carries something answers for it rather than inheriting a
+#           leaf's answers
 ```
+
+**A type that declares a ROLE owes a fourth formal, `recarry`,** required on the same terms. The
+boundary reads it unconditionally to rebuild the type over another payload, so a carrying record
+without one would construct, export, and then detonate with a bare missing-attribute error the moment
+a foreign engine applied the functor — an interpreter abort naming neither the type nor the field.
+The requirement is scoped to the **role**, not to carrying in general: `deferredModule` carries a
+module set through its `substructure` without declaring a role, so it has no payload to be rebuilt
+over and owes none.
 
 The missing declaration is the design choice; making the field required makes it total.
 
