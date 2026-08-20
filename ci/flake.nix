@@ -40,6 +40,15 @@
         prelude = gen-prelude.lib;
         priority = import ../lib/priority.nix { prelude = gen-prelude.lib; };
       };
+      # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
+      # boundary is reached through the core rather than re-imported, so the suite reads the same
+      # binding the library does; the vocabulary is imported directly for `mkType`, the gen record
+      # WITHOUT its foreign expression, which is the operand every C-2 reading is taken on.
+      inherit (genMergeCore) interface;
+      genMergeVocab = import ../lib/types.nix {
+        prelude = gen-prelude.lib;
+        core = genMergeCore;
+      };
     in
     gen-harness.lib.mkCi {
       inherit inputs;
@@ -58,6 +67,8 @@
           nixpkgsLib
           genMergeCore
           genLinkset
+          genMergeVocab
+          interface
           ;
       };
       extraModules = [ ./tests-error.nix ];

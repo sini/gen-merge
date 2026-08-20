@@ -6,6 +6,14 @@
 # (spec §1 priority subset, via ./priority.nix), dispatch structural types to their `.merge`
 # strategy, route unknown keys through the freeformType, and check leaves via the injected gen-types
 # `verify`. Class layering: gen-prelude → gen-types → gen-merge (this) → {gen-schema, gen-aspects}.
+#
+# ★★★ THE FOREIGN PROTOCOL IS REACHED THROUGH ONE UNIT AND NEVER SPELLED HERE. This engine runs types
+# it did not build — a consumer may inject a foreign leaf vocabulary wholesale, and a gen type mounted
+# in a foreign module system can face a foreign partner declared for the same option — so every
+# question it asks a type it asks GEN-FIRST, then, for a type that answers in the other vocabulary,
+# through `lib/interface.nix`'s import environment. The arm ORDER is the substance: the engine
+# dispatches on gen's own record, and the foreign protocol is the foreign arm rather than the basis.
+# A type carrying no foreign field is a first-class operand here, which is the whole point.
 { prelude, priority }:
 let
   inherit (prelude)
@@ -37,6 +45,13 @@ let
     ;
 
   showOption = loc: concatStringsSep "." loc;
+
+  # The protocol boundary (lib/interface.nix). Imported HERE, and re-exported on the core seam, so the
+  # dependency graph stays a chain — prelude → interface → this engine → the type vocabulary — rather
+  # than a knot: the boundary needs only the prelude and this file's one-line loc renderer, and both
+  # of its consumers reach it through the same binding, so their views of the foreign protocol cannot
+  # drift apart.
+  interface = import ./interface.nix { inherit prelude showOption; };
 
   reverse =
     xs:
@@ -120,11 +135,13 @@ let
   # binding still answers `null` for "not mergeable" because that is the contract its two callers
   # already read; the named reason is available to a caller that wants it.
   #
-  # ★ THE HOST ARM STAYS, AND IT IS NOT LEGACY. gen-merge meets FOREIGN functors by construction —
+  # ★ THE FOREIGN ARM STAYS, AND IT IS NOT LEGACY. gen-merge meets FOREIGN functors by construction —
   # a gen type mounted in a foreign module system can face a same-named foreign type declared for
   # the same option. That partner has no `typeMergeRel` and never will. Removing the arm would make
   # the boundary one-directional, which is exactly the ceremony predicate this work is measured
-  # against.
+  # against. The arm is the boundary's IMPORT ENVIRONMENT, reached here and spelled there: this is
+  # the engine's own read of a foreign type, and it is why the inbound half is load-bearing rather
+  # than decorative.
   mergeTypes =
     a: b:
     if (a ? nonMountable) || (b ? nonMountable) then
@@ -134,10 +151,8 @@ let
         answer = a.typeMergeRel b;
       in
       if answer ? merged then answer.merged else null
-    else if a ? typeMerge && b ? functor then
-      a.typeMerge b.functor
     else
-      null;
+      interface.importedMerge a b;
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -675,22 +690,54 @@ let
       };
     };
 
-  # nixpkgs' EMPTY-DEFINITION rule (modules.nix `mergeDefinitions`: `else if type.emptyValue ? value
-  # then type.emptyValue.value`). With no surviving definition the type gets to supply a value before
-  # this is an error, and only a type declaring none is an error. A container is empty-able —
-  # `attrsOf`/`lazyAttrsOf`/`submodule` → `{ }`, `listOf` → `[ ]`, `nullOr` → `null` — while every leaf
-  # (and `raw`/`anything`/`deferredModule`/`either`) declares no `emptyValue.value` and still throws.
+  # THE EMPTY-DEFINITION RULE, and it is gen's own. With no surviving definition the type gets to
+  # supply a value before this is an error, and only a type declaring none is an error. A container is
+  # empty-able — `attrsOf`/`lazyAttrsOf`/`submodule` → `{ }`, `listOf` → `[ ]`, `nullOr` → `null` —
+  # while every leaf (and `raw`/`anything`/`deferredModule`/`either`) declares no empty value and
+  # still throws.
   #
-  # Two distinct ways to arrive with nothing, both of which nixpkgs answers here: an option that was
-  # never defined at all, and an option every one of whose definitions was discharged away — `mkIf
-  # false` as the sole def. `emptyValue` is what separates "a container nobody added to", which is
-  # legitimately empty, from "a value nobody supplied", which is a mistake.
+  # Two distinct ways to arrive with nothing, and both land here: an option that was never defined at
+  # all, and an option every one of whose definitions was discharged away — `mkIf false` as the sole
+  # def. `whenEmpty` is what separates "a container nobody added to", which is legitimately empty,
+  # from "a value nobody supplied", which is a mistake. `{ }` is "declares none" and `{ value = null; }`
+  # is a declared null; one field cannot carry both, so the answer is a record and not a value.
+  #
+  # A FOREIGN type states the same fact in the foreign protocol's words and nowhere else, so the
+  # second arm asks the boundary. Gen-first, foreign second — the same order `mergeTypes` takes.
+  whenEmptyOf =
+    type:
+    if type == null then
+      { }
+    else if type ? whenEmpty then
+      type.whenEmpty
+    else
+      interface.importedEmpty type;
   emptyValueOr =
     type: err:
-    if type != null && (type.emptyValue or { }) ? value then type.emptyValue.value else throw err;
+    let
+      empty = whenEmptyOf type;
+    in
+    if empty ? value then empty.value else throw err;
   # Whether `emptyValueOr` would yield rather than throw — lets the realizer decline to short-circuit an
   # undefined option so the ONE empty-value site stays inside the fold.
-  hasEmptyValue = type: type != null && (type.emptyValue or { }) ? value;
+  hasEmptyValue = type: (whenEmptyOf type) ? value;
+
+  # DID THIS TYPE BRING A FOLD OF ITS OWN? On gen's record the presence test IS the question:
+  # `mergeDefs` is there exactly when the type folds its own definitions, and a leaf simply has none.
+  # On a FOREIGN record presence stopped answering it — the protocol boundary publishes a leaf fold
+  # for every type it exports, so past that point every completed type has one — which is why the
+  # boundary also derives a marker recording whose fold it is, and why that arm is read there rather
+  # than here. A type with no fold of its own falls through to this engine's own leaf fold, which is
+  # where a leaf belonged in the first place: taking the other branch for it would cost a fresh
+  # `typeDefs` list and a second entry into the same fold, for the same value.
+  ownFold =
+    type:
+    if type == null then
+      null
+    else if type ? mergeDefs then
+      type.mergeDefs
+    else
+      interface.importedFold type;
 
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
@@ -737,19 +784,12 @@ let
       ) normalized;
       winners = filterOverrides discharged;
       typeDefs = map (w: { inherit (w) file value; }) winners;
+      fold = ownFold type;
       result =
         if winners == [ ] then
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
-        # The question this branch asks is "did the TYPE bring a fold of its own?", and `? merge` alone
-        # stopped answering it once the protocol completion began publishing `mergeLeaf`'s own twin as
-        # every completed type's `.merge`. Taking that branch for a leaf costs a fresh `typeDefs` list
-        # and a second entry into the same fold, for the same value. `_protoLeafMerge` is the type
-        # record's own statement that its `.merge` IS the core's default, so the core takes the short
-        # way here (see the marker's derivation in lib/types.nix `completeType`). Absent marker ⇒
-        # `false` ⇒ the type's own `merge`: right for a foreign type, and merely slow for a completed
-        # one that lost the marker, since the two folds agree on every reachable input.
-        else if type != null && type ? merge && !(type._protoLeafMerge or false) then
-          type.merge loc typeDefs
+        else if fold != null then
+          fold loc typeDefs
         else
           mergeLeaf loc winners;
       checked =
@@ -812,12 +852,13 @@ let
       # when `.priority` is forced), so an unforced provenance channel never pays for the rich wrapper.
       winners = filterOverrides discharged;
       typeDefs = map (w: { inherit (w) file value; }) winners;
+      # The fold dispatch, exactly as the value path reads it above — the twin stays parallel.
+      fold = ownFold type;
       result =
         if winners == [ ] then
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
-        # The leaf-dispatch marker, exactly as the value path reads it above — the twin stays parallel.
-        else if type != null && type ? merge && !(type._protoLeafMerge or false) then
-          type.merge loc typeDefs
+        else if fold != null then
+          fold loc typeDefs
         else
           mergeLeaf loc winners;
       checked =
@@ -1264,16 +1305,19 @@ let
               }) realized.unmatched
             else
               [ ];
-          # Coalesce the per-key unmatched defs into one wide def per originating module BEFORE
-          # `freeform.merge` (see `coalesceUnmatched`) — restores nixpkgs' per-module freeform shape,
-          # so `attrsOf`/`lazyAttrsOf` stays linear in sibling-key count (byte-identical output).
+          # Coalesce the per-key unmatched defs into one wide def per originating module BEFORE the
+          # freeform type's fold (see `coalesceUnmatched`) — restores nixpkgs' per-module freeform
+          # shape, so `attrsOf`/`lazyAttrsOf` stays linear in sibling-key count (byte-identical
+          # output). The fold is reached through `ownFold`, the same gen-first dispatch every other
+          # merge in this engine takes: a freeformType is an ordinary option type and may equally be
+          # one this library did not build.
           freeformConfigCold =
             if freeform == null || realized.unmatched == [ ] then
               { }
             else
-              freeform.merge prefix (coalesceUnmatched (length topDefs) realized.unmatched);
+              (ownFold freeform) prefix (coalesceUnmatched (length topDefs) realized.unmatched);
           # Warm: reuse prev's whole freeform layer (byte-identical when `reuseFreeform`), skipping the
-          # `freeform.merge` re-run; else the cold layer. The cold thunk stays unforced under reuse.
+          # freeform fold's re-run; else the cold layer. The cold thunk stays unforced under reuse.
           freeformConfig = if reuseFreeform then warmFrom.freeformConfig else freeformConfigCold;
 
           # Declared wins over freeform at shared paths (nixpkgs `recursiveUpdate freeform declared`);
@@ -1396,12 +1440,14 @@ let
                 in
                 {
                   path = loc;
-                  # `or null` on both: an option may carry no `type` at all (gen-schema's ref-binding
-                  # `apply`-override modules), and a type that never reached protocol completion (a
-                  # bare parametric gen-types constructor) carries no `deprecationMessage` — neither
-                  # is deprecated, and neither may abort the report.
+                  # Total on both: an option may carry no `type` at all (gen-schema's ref-binding
+                  # `apply`-override modules), and a type may state no deprecation in either
+                  # vocabulary (a bare parametric gen-types constructor states nothing at all) —
+                  # neither is deprecated, and neither may abort the report. A gen type says it in
+                  # gen's word; a foreign one says it in the foreign protocol's, which is read where
+                  # that protocol is spelled.
                   type = ty.name or null;
-                  message = ty.deprecationMessage or null;
+                  message = if ty == null then null else ty.deprecated or (interface.importedDeprecation ty);
                   declarations = map (s: s.file) (sitesAt loc);
                 };
             in
@@ -1496,59 +1542,48 @@ let
       # deleted meanwhile, because the nesting seam below is a shipped capability.
       #
       # Each of the twelve unanswered fields is DISPOSED OF EXPLICITLY — a missing attribute is a
-      # decision no one wrote down, and it is what made the abort unnamed:
+      # decision no one wrote down, and it is what made the abort unnamed. The disposition itself is
+      # the BOUNDARY'S (`lib/interface.nix` `refuseMount`), because stating what a foreign protocol
+      # asks for, even in order to refuse it, is exactly the knowledge that unit exists to hold. What
+      # stays here is the gen half — a name, a fold, and the mark:
       #
       #   * THREE ARE ANSWERED TRUTHFULLY, and their answers are the ones this engine's own readers
-      #     already derive from absence (`or null` / `or { }`), so nothing internal changes: a tree
-      #     is not deprecated, it supplies no value when a nesting option goes undefined, and it
-      #     wraps no element TYPE. Supplying them opens no mount: they are answers, not capabilities.
-      #     `deprecationMessage` additionally closes the consumer's one remaining DIRECT (non-`or`)
-      #     read of this type — the read that would abort UNCATCHABLY rather than refuse. The refusal
-      #     does not depend on it: with the field removed the mount still refuses catchably, because
-      #     the field forced first is `getSubModules`, which is read through `or`.
+      #     already derive from absence, so nothing internal changes: a tree is not deprecated, it
+      #     supplies no value when a nesting option goes undefined, and it wraps no element TYPE.
+      #     Supplying them opens no mount: they are answers, not capabilities. The deprecation answer
+      #     additionally closes the consumer's one remaining DIRECT (non-`or`) read of this type — the
+      #     read that would abort UNCATCHABLY rather than refuse. The refusal does not depend on it:
+      #     with the field removed the mount still refuses catchably, because the field a foreign
+      #     engine forces first is the module-set read, which it takes through `or`.
       #   * EIGHT REFUSE BY NAME. None is read by this engine on a declared leaf's type, so the
-      #     refusals are reachable only from outside; `typeMerge`/`functor` are additionally fenced
-      #     at `mergeTypes` above, which owes a value.
+      #     refusals are reachable only from outside; the type-merge pair is additionally fenced at
+      #     `mergeTypes` above, which owes a value.
       #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
-      #     consumer that ASKS (`lib.isType "option-type"`) reads it through `or null` and gets a
+      #     consumer that ASKS whether this is an option type reads it through `or null` and gets a
       #     correct `false` today; a throwing tombstone would turn the one working negative answer
       #     into an abort. Absence is the answer here, and `nonMountable` is what states it.
       type =
         let
-          # The refusal names the field the caller reached for, so the message identifies WHICH
-          # protocol read was refused rather than only that something was.
-          refuse =
-            field:
-            throw "gen-merge: `moduleTree' is not an option type and does not answer `${field}'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data)";
-        in
-        {
-          name = "moduleTree";
-          merge =
+          nestingFold =
             loc: defs:
             (evalModuleTree {
               inherit specialArgs check coreShortCircuit;
               prefix = loc;
               modules = modList ++ map (d: setDefaultModuleLocation (d.file or "<def>") d.value) defs;
             }).config;
+        in
+        interface.refuseMount {
+          name = "moduleTree";
+          reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data)";
+          fold = nestingFold;
+        }
+        // {
+          name = "moduleTree";
+          mergeDefs = nestingFold;
 
           # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
           # the reason, so a consumer that finds it needs no other document to know what to do.
-          nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers `name' and `merge', and refuses the rest of the option-type protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
-
-          # Answered, and true of a tree.
-          deprecationMessage = null;
-          emptyValue = { };
-          nestedTypes = { };
-
-          # Refused, by name.
-          check = refuse "check";
-          description = refuse "description";
-          descriptionClass = refuse "descriptionClass";
-          functor = refuse "functor";
-          getSubModules = refuse "getSubModules";
-          getSubOptions = refuse "getSubOptions";
-          substSubModules = refuse "substSubModules";
-          typeMerge = refuse "typeMerge";
+          nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
         };
     };
 in
@@ -1578,6 +1613,11 @@ in
     mergeTypes
     # The same relation answering with its REASON — for a caller that reports rather than dispatches.
     mergeTypesReason
+    # The nixpkgs `optionType` PROTOCOL BOUNDARY (lib/interface.nix), reached through this seam by
+    # everything above it — the type vocabulary exports through it, this engine reads foreign types
+    # through it, and the public surface stamps through it. ONE binding, so the library cannot hold
+    # two views of what the foreign protocol says.
+    interface
     # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
     # entry as `srcClass`; shared with the warm re-eval path and the classify suite.
     classifyModule

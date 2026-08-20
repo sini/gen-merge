@@ -379,15 +379,79 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
+## The protocol boundary — `lib/interface.nix`
+
+**A type says what it is in gen's own words. The nixpkgs `optionType` protocol is spoken in exactly
+one unit, and a type acquires it by being EXPORTED through that unit.**
+
+Cardelli 1997 calls the object at a fragment collection's boundary its **interface** — "a linkset is
+a collection of named judgments plus an interface", and that interface is "the external interface of
+the entire linkset". Definition 5-1 names the two halves this unit holds: the **import environment**
+and the **export environment**. So do its functions.
+
+| | |
+|---|---|
+| `exportType` | a gen type expressed in the foreign protocol — "the type exported by the fragment" |
+| `importType` | a foreign record read back as a gen type, or a named refusal — "the type of the `f` import" |
+| `exportFields` | the fourteen names the foreign protocol reads, as this unit's private data |
+
+The two vocabularies, kept apart on purpose:
+
+| gen-native | what it is | the foreign field(s) it derives |
+|---|---|---|
+| `name` | the type's name | `name`, `description` |
+| `verify` / `admits` | value predicate (`v -> null \| err`) / domain predicate (`v -> bool`) | `check` |
+| `mergeDefs` | definition fold, `loc -> defs -> value` | `merge` |
+| `whenEmpty` | what it is worth when nobody defined it | `emptyValue` |
+| `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another | `nestedTypes`, the functor payload |
+| `substructure` | `{ declares; modules; rebuild; }` | `getSubOptions`, `getSubModules`, `substSubModules` |
+| `typeMergeRel` | the **row-free** type-merge relation | `typeMerge`, `functor` |
+| `deprecated` | the deprecation message, if any | `deprecationMessage` |
+
+`exportType` publishes a **partition of the fourteen** as data (`exportClasses`), so it can be read
+rather than argued: **10 DERIVED** (a real translation from a differently-named gen datum), **2 HOST
+CONSTANT** (`descriptionClass`, `_type` — no counterpart exists on this side, which is the point),
+**2 NAME-CARRIED** (`name`, `description` — carried from the name, translating nothing, which is why
+those two are allowed to be the same word on both sides and the ten are not).
+
+### What "ceremony" would look like
+
+The boundary was licensed conditionally: build it, and if it turns out to be ceremony, collapse it
+back into gen-merge. Four predicates make that condition readable — any one holding fires it — and
+each produces a value in `ci/tests/interface.nix` rather than an opinion:
+
+| | | |
+|---|---|---|
+| **C-1** | the unit only forwards | count the classes; a FORWARDED class appearing, or DERIVED falling to or below HOST CONSTANT |
+| **C-2** | a field set with no translation | a derived field satisfied by reading a gen field of the **same name** |
+| **C-3** | the boundary is crossed one direction only | `importType` absent, or present and unreachable from the engine's type merge |
+| **C-4** | the engine still speaks the foreign protocol | hand `mergeTypes` two gen-native types carrying no foreign field; it must return a merged type (`ci/tests/type-merge-relation.nix`) |
+
+What does **not** fire it: that the unit is small; that few types cross today; that two of the
+fourteen are constants. Ceremony is *translation that translates nothing*, never *a small
+translation*.
+
+### `defineType` — the crossing site, and there is one of it
+
+`lib/types.nix` builds every type through `defineType`, which is `exportType` over the gen record.
+The same value therefore carries both vocabularies, and that is **forced rather than convenient**:
+the published `types` namespace is the drop-in a foreign module system mounts, and the type a
+consumer writes there is handed to this library's own fold as readily as to a foreign one. What the
+boundary buys is not that the two vocabularies live in different values — it is that only one unit
+knows how to get from the first to the second, and that everything above states itself in the first
+alone. `mkType` builds the gen record **without** its foreign expression: usable by this engine,
+and it does not pay for the protocol (`ci/bench/interface-cost.sh` measures the difference in
+`nrThunks`).
+
 ## The nixpkgs `optionType` protocol
 
-Every type in the `types` namespace is completed (`mkOptionType` → `completeType`) to the full
-**14-field nixpkgs `mkOptionType` shape** — `_type`, `name`, `description`, `descriptionClass`,
-`deprecationMessage`, `check`, `merge`, `emptyValue`, `getSubOptions`, `getSubModules`,
-`substSubModules`, `typeMerge`, `nestedTypes`, `functor` — so the SAME type value serves both
-engines. This is what lets gen-schema inject gen-merge-typed options into an instance submodule that
-a **nixpkgs** `lib.evalModules` evaluates (the corpus path: `mkInstanceRegistry` inside flake-parts).
-Pinned by `ci/tests/nixpkgs-protocol.nix`.
+Every type in the `types` namespace carries the full **14-field nixpkgs `mkOptionType` shape** —
+`_type`, `name`, `description`, `descriptionClass`, `deprecationMessage`, `check`, `merge`,
+`emptyValue`, `getSubOptions`, `getSubModules`, `substSubModules`, `typeMerge`, `nestedTypes`,
+`functor` — derived at the boundary above, so the SAME type value serves both engines. This is what
+lets gen-schema inject gen-merge-typed options into an instance submodule that a **nixpkgs**
+`lib.evalModules` evaluates (the corpus path: `mkInstanceRegistry` inside flake-parts). Pinned by
+`ci/tests/nixpkgs-protocol.nix`.
 
 The scope of that sentence is the `types` namespace, and there is exactly one type-shaped value
 outside it: an eval result's `.type`, which is a nesting seam and must NOT mount. It is covered
@@ -398,27 +462,27 @@ combine; the **introspection** half (`getSubOptions`, `getSubModules`, `substSub
 `nestedTypes`) says what a consumer can learn from a type *without any value* — how a documentation
 generator, an LSP, or a registry-reflecting consumer reads a DECLARED surface.
 
-`getSubOptions prefix` returns the option records one submodule level down. The nixpkgs rules, which
-gen-merge reproduces:
+`getSubOptions prefix` returns the option records one submodule level down. gen-merge states this as
+its `substructure.declares`, and the boundary derives the foreign field from it — the rules are
+nixpkgs', the vocabulary is gen's:
 
 ```nix
-# submoduleWith
-getSubOptions = prefix: (evalModules { inherit modules prefix specialArgs; }).options;
+# submodule
+declares = prefix: (evalModuleTree { inherit modules prefix specialArgs; }).options;
 # attrsOf / lazyAttrsOf
-getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+declares = prefix: (subOf element).declares (prefix ++ [ "<name>" ]);
 # listOf
-getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "*" ]);
-```
-
-```nix
+declares = prefix: (subOf element).declares (prefix ++ [ "*" ]);
 # nullOr — pass straight through, adding NO segment: a nullable introduces no path level
-getSubOptions = elemType.getSubOptions;
+declares = (subOf element).declares;
 ```
 
-gen-merge's `submodule` reads `.options` off the same nested `evalModuleTree` its `merge` builds, with
-no defs supplied, so the introspection and merge halves cannot disagree about what a submodule
-declares, and nothing an instance authored is forced. A **leaf** type has no sub-options and returns
-`{ }` — the `completeType` default, which stays correct for every non-structural type.
+`subOf` asks the protocol boundary what an element's substructure is, so an element speaking either
+vocabulary answers the same question. gen-merge's `submodule` reads `.options` off the same nested
+`evalModuleTree` its fold builds, with no defs supplied, so the introspection and merge halves cannot
+disagree about what a submodule declares, and nothing an instance authored is forced. A **leaf** type
+has no sub-options and returns `{ }` — the leaf answer the boundary supplies for a type that states
+no substructure, which stays correct for every non-structural type.
 
 Two types report `{ }` **correctly**, and should not be "fixed" into reporting something else.
 `deferredModule`'s sub-options in nixpkgs are its `staticModules`; gen-merge ships no
@@ -453,13 +517,18 @@ wrong answer with no diagnostic.
 
 ### The sub-protocol is a REQUIRED FORMAL of a structural type
 
-The three introspection fields that say what a type **wraps** — `getSubOptions`, `getSubModules`,
-`substSubModules` — are one answer, and `completeType` defaults them to a **leaf's** answers
-(`_prefix: { }`, `null`, `_m: null`). Those defaults are right for a leaf and wrong for every type that
-wraps another: a wrapping type left on them reports *"declares nothing"* indistinguishably from a type
-that genuinely declares nothing, so a consumer reflecting a declared surface off it fails **closed and
+The three answers that say what a type **wraps** are one answer — `substructure`'s
+`declares`/`modules`/`rebuild` in gen's words, `getSubOptions`/`getSubModules`/`substSubModules` in
+the foreign protocol's — and a type that states none of them gets a **leaf's** answers
+(`_prefix: { }`, `null`, `_m: null`). Those are right for a leaf and wrong for every type that wraps
+another: a wrapping type left on them reports *"declares nothing"* indistinguishably from a type that
+genuinely declares nothing, so a consumer reflecting a declared surface off it fails **closed and
 silently**. One default cannot be right for both, so a type that **carries** something answers all
-three itself or is **refused at construction**, by name, listing every field it did not supply:
+three itself or is **refused at construction**, by name, listing every field it did not supply.
+
+The rule has **two arms, one per vocabulary**, and the refusal speaks the vocabulary its author wrote
+in — a `mkOptionType` caller wrote `substSubModules`, not `rebuild`, and a message naming the field
+they did not write would send them looking for the wrong thing:
 
 ```nix
 gm.mkOptionType {
@@ -470,6 +539,18 @@ gm.mkOptionType {
 }
 # ⇒ throws: gen-merge: the structural type `rackOf' carries an element type but does not supply
 #           `substSubModules'; a structural type may not inherit a leaf's protocol answer
+```
+
+```nix
+# the same rule at the gen-native constructor, in gen's own words
+genMergeVocab.mkType {
+  name = "crate";
+  carries.element = t.str;
+  recarry = c: c.element;
+  substructure = { declares = _prefix: { }; modules = null; };
+}
+# ⇒ throws: gen-merge: the structural type `crate' carries a parameter but does not supply
+#           `rebuild'; a structural type may not inherit a leaf's substructure answer
 ```
 
 The missing declaration is the design choice; making the field required makes it total.
@@ -568,11 +649,12 @@ while a `str` still reports that it was used but not defined. An option `default
 
 ### `check` — and the types whose default was wrong
 
-`check` is nixpkgs' definition-level predicate. gen-merge's own engine never reads it — it validates
-through a gen-types leaf's `verify` — so `check` exists for the forward boundary and for the
-`nullOr`/`either` membership dispatch. `completeType` derives it in that order: a leaf's `verify`
-gives a real `v -> bool`; a structural type with its own `check` keeps it; anything else gets
-`_: true`, the nixpkgs `anything` posture.
+`check` is nixpkgs' definition-level predicate, and gen-merge never states it directly: a leaf brings
+a `verify` (`v -> null | err`, gen-types' contract) and a structural type brings an `admits`
+(`v -> bool`, its own domain), and the boundary derives `check` from whichever it finds, in that
+order. A leaf's own `check` is CURRIED and must never be applied as `v -> bool`, which is why
+`verify` is preferred rather than merely tried first. A type stating neither gets `_: true`, the
+nixpkgs `anything` posture.
 
 That default is correct for a type whose merge really does accept any value. **`deferredModule`'s does
 not.** Its merge wraps each def into an `imports` list, and the engine's `callM` can apply only a path,
@@ -641,44 +723,62 @@ Cells: `ci/tests/merge.nix` (dispatch and the unchanged merges), `ci/tests-error
 first case above cannot be observed by either nix-unit output, so the sweep keeps both constructions
 and reads their exit codes.
 
-### `functor` / `typeMerge` — merging the TYPES, not the values
+### `typeMergeRel` — merging the TYPES, not the values
 
-`typeMerge` is the one protocol field that is about two **declarations** rather than about defs: when
-an option is declared with a type in more than one module, `mergeOptionDecls` asks the first type to
-merge with the second's `functor`, and refuses the declaration outright if the answer is `null`.
-gen-merge's own engine routes through it — a redeclared leaf's type is the algebra's answer about the
-pair, and `null` is a refusal naming the option path and every declaring file. The **non-type** fields
-keep their ordered bias (see "Redeclaring an option" below), and the field also serves the **forward
-boundary**: a gen-merge type mounted in a nixpkgs `lib.evalModules`.
+The question "do these two types merge?" is about two **declarations** rather than about defs: when
+an option is declared with a type in more than one module, `redeclareDecl` asks the algebra about the
+pair and refuses the declaration outright if the answer is nothing. `null` is a refusal naming the
+option path and *every* declaring file; the **non-type** fields keep their ordered bias (see
+"Redeclaring an option" below).
 
-A type's `functor` carries the parameters it was built from, and two same-named types merge iff those
-parameters do:
+**gen states this as `typeMergeRel`, and it is ROW-FREE — that is the whole difference.** nixpkgs
+asks `a.typeMerge b.functor`: the second operand is a functor **payload**, a row whose shape both
+sides must agree on before the question can even be posed. The relation takes **the other type**. It
+is PARTIAL and its refusal is NAMED — `{ merged = <type>; }` or `{ refused = <reason>; }` — so the
+declaration site reports what did not merge instead of a bare null:
+
+```nix
+typeMergeRel = other: if <compatible> then { merged = <type>; } else { refused = "<reason>"; };
+```
+
+The engine dispatches **gen-native first, foreign second**. The foreign arm stays and is not legacy:
+gen-merge meets foreign functors by construction — a gen type mounted in a foreign module system can
+face a same-named foreign type declared for the same option, and that partner has no relation and
+never will. Removing the arm would make the boundary one-directional, which is the C-3 ceremony
+predicate.
+
+The boundary derives **both** `typeMerge` and `functor` from the one relation. Outbound, it recovers
+the partner from that partner's OWN functor (`f.type` is by construction a function of `f`'s own
+payload, so the reconstruction is well-typed whatever shape the payload has) and hands a TYPE to the
+relation — no payload-shape agreement is needed on gen's side. Inbound, it publishes a functor a
+foreign engine can recover this type from, in the foreign spellings:
 
 ```nix
 # nullary — raw, anything, deferredModule, every gen-types leaf
 { name; type; payload = null; binOp = _a: _b: null; }      # same name ⇒ the type itself
-# one-element containers — listOf, attrsOf, lazyAttrsOf, nullOr
-{ payload = { elemType; }; type = p: rebuild p.elemType;
-  binOp = a: b: <merge the elements, recursively>; }
-# submodule — the parameter is the MODULE LIST (nixpkgs `submoduleWith`)
-{ payload = { modules; }; binOp = l: r: { modules = l.modules ++ r.modules; }; }
-# either — the parameter is the member PAIR, positional
+# one-element containers — listOf, attrsOf, lazyAttrsOf, nullOr  (gen role: `element`)
+{ payload = { elemType; }; type = p: rebuild p.elemType; }
+# submodule — the parameter is the MODULE LIST              (gen role: `moduleSet`)
+{ payload = { modules; }; }
+# either — the parameter is the member PAIR, positional     (gen role: `alternatives`)
 { payload.elemType = [ a b ]; }
 ```
 
 So `attrsOf str` and `attrsOf int` are **not** mergeable, while two `attrsOf str` are, and two
 submodule declarations of one option merge to a submodule declaring the union of both. A
-parameterised type left on the nullary functor would answer "mergeable" for any same-named partner
+parameterised type left on the nullary relation would answer "mergeable" for any same-named partner
 and silently keep one declaration — the type-level form of a dropped definition.
 
-Two guards nixpkgs has no need of, because every functor nixpkgs meets is its own. gen-merge meets
-**foreign** functors by construction, so a payload that is asymmetrically present, or present with a
-different **shape**, is answered "not mergeable" rather than aborting or rebuilding a gen container
-out of a payload it does not understand — nixpkgs `submoduleWith` carries `class`/`specialArgs`/… beside
-`modules`, and truncating that into a gen-merge `submodule` would drop them silently. For the same
-reason an element that is not protocol-complete (a gen-types **parametric** leaf — `enum`, `struct`,
-`union` — reaches the unified namespace as a bare constructor and is never completed) makes its
-container not mergeable instead of aborting on a missing attribute.
+**A foreign payload is read only where it is read WHOLE.** The host's payload is a row and may state
+more than the one parameter this side has a place for: nixpkgs' `submoduleWith` carries
+`class`/`specialArgs`/`shorthandOnlyDefinesConfig`/`description` beside `modules`, and its attribute
+container carries laziness and a placeholder beside its element. Lifting only the key this side knows
+would build a gen type out of a partner it did not understand and drop the rest with no diagnostic,
+so a payload naming anything beyond the role's own key answers "nothing to merge on". A foreign
+container whose payload IS just the element is unchanged, which is what keeps the two engines'
+one-parameter containers mutually legible. For the same reason an element that states no parameter at
+all — a gen-types **parametric** leaf (`enum`, `struct`, `union`) reaches the unified namespace as a
+bare constructor — makes its container not mergeable instead of aborting on a missing attribute.
 
 ### Redeclaring an option
 
@@ -739,18 +839,22 @@ Making a tree genuinely mountable is crossing work and belongs on that chain. Wh
 is the mark plus the refusal, and nothing is deleted: the nesting seam is a shipped capability and
 still works.
 
+The disposition is built by the protocol boundary (`interface.refuseMount`), because stating what a
+foreign protocol asks for — even in order to refuse it — is exactly the knowledge that unit exists to
+hold. What stays with the engine is the gen half: a name, a fold, and the mark.
+
 | field | disposition |
 |---|---|
-| `name`, `merge` | **implemented** — the nesting seam |
+| `name`, `mergeDefs`/`merge` | **implemented** — the nesting seam. The fold is answered rather than refused because such a value really does combine definitions that way; it opens no mount, since the field a foreign engine forces first refuses before any fold is reached |
 | `nonMountable` | **the mark.** Presence is the predicate (testing it forces nothing); the value carries the reason |
 | `deprecationMessage` ⇒ `null`, `emptyValue` ⇒ `{ }`, `nestedTypes` ⇒ `{ }` | **answered, and true of a tree** — it is not deprecated, supplies no value for an undefined nesting option, and wraps no element type. These are the answers gen-merge's own readers already derived from absence, so nothing internal changed. `deprecationMessage` does one thing more: it closes the consumer's one remaining **direct** (non-`or`) read of this type, the read that would abort *uncatchably* rather than refuse. The refusal does not depend on it — with the field removed the mount still refuses catchably, because `getSubModules` is forced first and is read through `or` |
 | `check`, `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for |
 | `_type` | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort |
 
 `mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
-`typeMerge`/`functor` are read, because "do these two types merge?" has a true answer here — `null`,
-they do not — and returning it keeps the declaration stratum's own refusal, which names both types
-and every declaring file.
+either vocabulary's type-merge half is read, because "do these two types merge?" has a true answer
+here — `null`, they do not — and returning it keeps the declaration stratum's own refusal, which names
+both types and every declaring file.
 
 **One thing inside gen-merge changes, and it is deliberate.** Forcing a parent's whole `.options` tree
 *deeply* now refuses, because the nested tree-type sits in that tree and a deep force reaches its
@@ -894,6 +998,15 @@ The library (`lib/`) is `nixpkgs.lib`-free — it is the *replacement* for `lib.
 never calls it (enforced by `ci/tests/purity.nix`). nixpkgs enters only in `ci/` (the nix-unit
 harness + the equivalence oracle's reference side).
 
+A second, sharper purity holds inside the library: **the foreign `optionType` protocol is uttered in
+exactly one unit.** Not "never imported" — never *spoken*. `ci/tests/interface.nix` reads it two ways,
+because neither alone is enough: a token scan over the comment-stripped library source (which cannot
+speak about `name`/`description`/`check`/`merge`/`_type`, since those are ordinary words this library
+uses for its own things), and a name-blind arm asking who **mints** each of the fourteen — the gen
+record carries none of them but `name`, and the export carries every one. Both arms carry a live
+control in the same run, because a scan that cannot find anything reports exactly what a clean scan
+reports.
+
 ## Testing
 
 `nix flake check ./ci` runs the nix-unit suites: `merge` (the 7-item primitive + priority subset),
@@ -901,7 +1014,16 @@ harness + the equivalence oracle's reference side).
 `lib.evalModules`, with mutation-teeth assertions), `compat` (nixpkgs `lib.types` on the engine),
 `core-kernel` (the fixed-input short-circuit), `provenance` (the `.provenance` record shapes + forcing
 contract), `lint` (the portable-subset checker — accepts the whole `oracle` corpus, rejects one fixture
-per unsupported construct), and `purity`.
+per unsupported construct), `interface` (the protocol boundary: T3, the C-1/C-2/C-3 ceremony
+predicates, and a mounted-in-real-`lib.evalModules` arm with its mutants), `type-merge-relation`
+(C-4 — the engine's dispatch basis), `linkset` (the declared-disjointness export merge), and `purity`.
+
+Two instruments sit outside the suites, because what they read is not an in-language assertion:
+
+```bash
+./ci/bench/either-totality.sh    # an EXIT CODE: an abort that escapes `tryEval` and kills a runner
+./ci/bench/interface-cost.sh     # `nrThunks`: what the foreign protocol costs per type instance
+```
 
 Running the suites directly through the nix-unit CLI (`nix-unit --flake ./ci#tests`, or the devshell
 `ci` command) needs a raised stack — `ulimit -s unlimited` — at the default 8 MB: nix-unit's own

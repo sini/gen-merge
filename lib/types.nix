@@ -1,10 +1,18 @@
 # Structural merge-strategy types (spec §2 + §4).
 #
-# These are the MERGE half — the types that own how their defs combine. Each carries a `.merge loc
-# defs`. Leaf CHECKING types (str/int/bool/enum/path/…) come from gen-types (injected), NOT here —
-# gen-merge answers "how do defs combine?", gen-types answers "is v well-typed?" (spec §4). `raw`
+# These are the MERGE half — the types that own how their defs combine. Each carries a `.mergeDefs
+# loc defs`. Leaf CHECKING types (str/int/bool/enum/path/…) come from gen-types (injected), NOT here
+# — gen-merge answers "how do defs combine?", gen-types answers "is v well-typed?" (spec §4). `raw`
 # and `anything` live here because they are defined by their MERGE behavior (one-def / recursive),
 # not by a value predicate.
+#
+# ★★★ THE VOCABULARY UTTERS NO FOREIGN CONSTANT. What a type says about itself it says in gen's own
+# words — `verify`/`admits` for its domain, `mergeDefs` for its fold, `typeMergeRel` for whether two
+# of them merge, `carries`/`recarry` for what it wraps, `substructure` for what it declares,
+# `whenEmpty` for what it is worth when nobody defined it. The nixpkgs `optionType` protocol — its
+# fourteen field names, its payload spellings, its `option-type` tag — lives in ONE unit,
+# `lib/interface.nix`, and a type acquires it only by being exported through that boundary. A foreign
+# name appearing in this file is the boundary leaking, and `ci/tests/interface.nix` is what says so.
 {
   prelude,
   core,
@@ -35,247 +43,169 @@ let
     mergeDefs
     showOption
     setDefaultModuleLocation
+    interface
     ;
 
   # mkOption — a plain descriptor; evalModuleTree reads .type/.default/.apply/.readOnly. Identity
   # (tagged) so the gen-aspects/gen-schema re-host is a `lib.mkOption` → `mkOption` rename.
   mkOption = descriptor: descriptor // { _type = "option"; };
 
-  # ── nixpkgs optionType PROTOCOL completion ──────────────────────────────────────────────────────
-  # A gen-merge type must mount inside a REAL nixpkgs `lib.evalModules` (nix-config's
-  # `mkInstanceRegistry`-in-flake-parts is the proven consumer: gen-schema injects gen-merge-typed
-  # options — mkIdentityModule's `id_hash`, mkStrictModule's freeform — into a submodule the corpus
-  # evaluates with nixpkgs). nixpkgs' module system reads a FIXED field-set off every option type
-  # (`deprecationMessage`/`check`/`merge`/`emptyValue`/`getSubModules`/`substSubModules`/`nestedTypes`/
-  # `functor`/`typeMerge`/…). The pure re-host carried only the MERGE half; this completes the shape
-  # PURELY (no nixpkgs import — same philosophy as gen-merge's byte-compat merge).
+  # ── the gen-native type constructor ─────────────────────────────────────────────────────────────
+  # A gen type IS its record. `mkType` adds the one thing every type owes and most do not state — a
+  # TYPE-MERGE RELATION — and enforces the one thing a wrapping type may not inherit.
   #
-  # ADDITIVE + behaviour-preserving to gen-merge's OWN core (verified against modules.nix `mergeDefs`):
-  # the fold dispatches on a type's OWN `.merge` (else `mergeLeaf`) and validates via `.verify` — never
-  # `.check`. So the only field the core newly-sees is `.merge` added to a leaf, and its default equals
-  # `mergeLeaf` on the same defs (byte-identical fold). Because that default is the core's own fold,
-  # publishing it here would make a bare `? merge` test unable to tell a leaf from a type that brought a
-  # fold of its own — the completion therefore also stamps `_protoLeafMerge` and the core reads it, so
-  # a leaf keeps taking the core's fold directly instead of re-entering it through the type. `.check` is
-  # read ONLY by the union `isValid`, which prefers `.verify`; a leaf keeps its verify, a structural
-  # without a check gets `_: true` (preserving the prior `isValid = true`). See ci/tests for the mount
-  # witness + the byte-identity gates.
+  # THE DEFAULT RELATION IS THE NULLARY ONE: a type with no parameters merges with a same-named
+  # partner and refuses everything else. That is right for a type that takes no parameters and WRONG
+  # for one that does — two `attrsOf` over different element types would report "mergeable" and
+  # silently keep the first — so every parameterised constructor below states its own.
   #
-  # nixpkgs `defaultFunctor` — a NULLARY type's functor: no payload, so `pureTypeMerge` answers the type
-  # itself for a same-named partner. That is correct ONLY where the type takes no parameters (`raw`,
-  # `anything`, `deferredModule`, every gen-types leaf). A PARAMETERISED type left on this functor merges
-  # blind to its parameters — two `attrsOf` over different element types would report "mergeable" and
-  # silently keep the first, discarding the second declaration. So every parameterised constructor here
-  # supplies its own functor: `elemTypeFunctor` for the one-element containers, an explicit payload for
-  # `submodule` and `either`. README "The nixpkgs `optionType` protocol";
-  # gen-specs/gen-merge/REFERENCE.md.
-  pureDefaultFunctor = name: {
-    inherit name;
-    type = null;
-    payload = null;
-    binOp = _a: _b: null;
-  };
+  # ── the sub-protocol is a REQUIRED FORMAL of a wrapping type, not a default ─────────────────────
+  # A leaf's answers are that it declares nothing, has NO module-set concept (which is what `null`
+  # says, and the only thing it says — a module set that exists and is empty reports `[ ]`), and has
+  # nothing to rebuild. They are wrong for every type that wraps another, and a wrapping type left on
+  # them reports "declares nothing" indistinguishably from a type that genuinely declares nothing — a
+  # consumer reflecting a declared surface off it then fails CLOSED and silently. A default cannot be
+  # right for both, so a type that CARRIES something answers all three itself or is refused here, by
+  # name. The missing declaration is the design choice; making the field required makes it total.
+  #
+  # THE DOMAIN IS WHAT THE TYPE CARRIES — a property of the constructor, read off the record, not of
+  # any measurement. Two ways a record says it carries something: a `carries` role (an element type,
+  # a union's members, a module set) or a substructure that names a module set. Everything else is
+  # outside BY THE DOMAIN rather than by a carve-out:
+  #   · a leaf carries neither;
+  #   · `either`/`oneOf` carry MEMBERS, and they introduce no path level, so `{ }` is their correct
+  #     `declares` answer — which they state, rather than inherit;
+  #   · `deferredModule` carries a module set, and that set is EMPTY. gen-merge ships no
+  #     `deferredModuleWith`/`staticModules`, so it is empty BY CONSTRUCTION rather than by
+  #     omission — a fact to report (`[ ]`), not an absence (`null`). It is therefore IN this domain
+  #     by the module-set arm and answers all three itself, below.
+  #
+  # `||` short-circuits, and the order is load-bearing: a container's module set IS its element's, so
+  # reading it to decide the domain would force the element type at construction. A `carries` role is
+  # settled before that read happens.
+  subFormals = [
+    "declares"
+    "modules"
+    "rebuild"
+  ];
+
+  # A partner's name, for a refusal — total over anything that can arrive as a merge operand.
+  #
+  # ★ A REFUSAL'S REASON IS A NOUN PHRASE NAMING THE PAIR, never a sentence repeating the verdict.
+  # The relation's reason is read back at the declaration site, which has already said "declared with
+  # types that do not merge" before it opens the parenthesis; a reason that says so again produces
+  # `types that do not merge (types do not merge: …)`. So every refusal below names the two operands
+  # and, where there is one, the DISCRIMINATING FACT — which is the part the reader does not already
+  # have from the sentence around it.
+  nameOf = other: if isAttrs other then other.name or "<unnamed>" else "<not a type>";
+  # `self` is what this type's own default relation answers WITH — the value a caller actually holds.
+  # It is threaded rather than closed over locally because a type built through `defineType` is used
+  # in its EXPORTED form, and a relation answering with the un-exported twin would hand a consumer a
+  # merged type its foreign engine cannot read. One knot, tied where the two forms are made.
+  mkTypeWith =
+    self: t:
+    let
+      name = t.name or "raw";
+      carriesSomething = t ? carries || ((t.substructure or { }).modules or null) != null;
+      missing = filter (f: !((t.substructure or { }) ? ${f})) subFormals;
+      nullaryRel =
+        other:
+        if isAttrs other && (other.name or null) == name then
+          { merged = self; }
+        else
+          { refused = "`${name}' and `${nameOf other}'"; };
+    in
+    if carriesSomething && missing != [ ] then
+      throw (
+        "gen-merge: the structural type `${name}' carries a parameter but does not supply "
+        + concatStringsSep ", " (map (f: "`${f}'") missing)
+        + "; a structural type may not inherit a leaf's substructure answer"
+      )
+    else
+      t // { typeMergeRel = t.typeMergeRel or nullaryRel; };
+
+  # The gen record alone, answering with itself. This is the substrate vocabulary with nothing of the
+  # foreign protocol on it, and it is what the boundary is handed.
+  mkType =
+    t:
+    let
+      self = mkTypeWith self t;
+    in
+    self;
+
+  # defineType — the gen record AND its expression in the foreign protocol, as one value.
+  #
+  # ★ THIS IS THE CROSSING SITE, AND THERE IS ONE OF IT. Every type this library constructs is built
+  # here, so "which values carry the foreign protocol, and where did they acquire it" has a
+  # one-line answer instead of a survey. THAT THE SAME VALUE CARRIES BOTH IS FORCED, not convenient:
+  # the published `types` namespace is the drop-in a foreign module system mounts, and the type a
+  # consumer writes there is handed to this library's own fold as readily as to a foreign one. What
+  # the boundary buys is not that the two vocabularies live in different values — it is that only ONE
+  # unit knows how to get from the first to the second, and that everything above states itself in
+  # the first alone.
+  defineType =
+    t:
+    let
+      exported = interface.exportType (mkTypeWith exported t);
+    in
+    exported;
+
+  # mkOptionType — the (loc,defs) custom-merge escape hatch (spec §1 item 6). Its descriptor is
+  # written in the FOREIGN protocol's words (`check`, `merge`, `emptyValue`, …) because that is what
+  # a nixpkgs `mkOptionType` drop-in means, so it is exactly a round trip through the boundary: the
+  # descriptor comes IN through the import environment, acquires the relation every gen type owes,
+  # and goes back OUT through the export environment. Consumers write
+  # `mkOptionType { name = "aspect"; merge = loc: defs: …; }` and get a type that both gen-merge
+  # (dispatches on `.mergeDefs`) and nixpkgs (reads the full protocol) accept.
+  mkOptionType =
+    descriptor:
+    let
+      answer = interface.importType descriptor;
+    in
+    if answer ? refused then throw answer.refused else defineType answer.imported;
+
   # Merge two ELEMENT types — the element stratum's name for `core.mergeTypes` (lib/modules.nix),
   # which is guarded on both halves and stated there. It is the SAME binding the DECLARATION stratum
   # consults when one option is declared twice, which is what makes "these two types do not merge"
   # one answer in this library rather than two that can drift apart.
   mergeElemTypes = core.mergeTypes;
-  # nixpkgs `elemTypeFunctor`, replicated purely — the functor of a container parameterised by ONE
-  # element type. The payload IS the element type, so two containers merge iff their ELEMENTS merge
-  # (recursively, through the element's own `typeMerge`), and `rebuild` reconstructs the container from
-  # the merged element. The payload shape `{ elemType = …; }` is nixpkgs' own, so the two engines'
-  # `listOf`/`nullOr` functors stay mutually legible.
-  elemTypeFunctor = name: rebuild: elemType: {
-    inherit name;
-    payload = { inherit elemType; };
-    type = payload: rebuild payload.elemType;
-    binOp =
-      a: b:
-      let
-        merged = mergeElemTypes a.elemType b.elemType;
-      in
-      if merged == null then null else { elemType = merged; };
-  };
-  # nixpkgs `defaultTypeMerge`, replicated purely: same-name types merge (via payload binOp when
-  # present, else the type constructor); different names ⇒ null ("not mergeable").
+
+  # A CONTAINER'S RELATION, shared by every type parameterised by one element. Two containers merge
+  # iff their elements merge, and the result is this container rebuilt over the merged element.
   #
-  # Two guards nixpkgs has no need of. nixpkgs ASSERTS payload-presence symmetry because every functor it
-  # meets is its own; gen-merge meets FOREIGN functors by construction — the one-way interop that IS the
-  # design mounts a gen type inside a nixpkgs `lib.evalModules`, where a same-named nixpkgs type may be
-  # declared for the same option. So a payload that is asymmetrically present, or present with a
-  # different SHAPE, is answered "not mergeable" instead of aborting — or, worse, rebuilding this
-  # container out of a payload it does not understand: nixpkgs `submoduleWith` carries
-  # `class`/`specialArgs`/`shorthandOnlyDefinesConfig`/`description` beside `modules`, and truncating
-  # that into a gen-merge `submodule` would drop them silently.
-  pureTypeMerge =
-    functor: f':
-    let
-      p = functor.payload;
-      p' = f'.payload or null;
-    in
-    if functor.name != (f'.name or null) then
-      null
-    else if (p == null) != (p' == null) then
-      null
-    else if p == null then
-      functor.type
-    else if attrNames p != attrNames p' then
-      null
+  # ★ ROW-FREE, AND THAT IS WHAT MAKES IT GEN'S OWN. The partner arrives as a TYPE, not as a functor
+  # payload both sides must agree on the shape of, so a partner that spells its parameter some other
+  # way is still a legible operand — its element is read through the boundary's import environment,
+  # which is the one place that knows any spelling but this one.
+  elementRel =
+    name: rebuild: element: other:
+    if !(isAttrs other) || (other.name or null) != name then
+      { refused = "`${name}' and `${nameOf other}'"; }
     else
       let
-        mp = functor.binOp p p';
+        partnerElem = interface.importedCarried "element" other;
       in
-      if mp == null then null else functor.type mp;
-  # Leaf merge = nixpkgs `mergeEqualOption` = gen-merge's `mergeLeaf` on {file,value} defs (one def, or
-  # all-equal, else conflict) — so a leaf that gains this `.merge` folds byte-identically to before.
-  protoLeafMerge =
-    loc: defs:
-    if defs == [ ] then
-      throw "gen-merge: the option `${showOption loc}' has no definitions"
-    else if length defs == 1 then
-      (head defs).value
-    else
-      let
-        first = (head defs).value;
-      in
-      if all (d: d.value == first) defs then
-        first
+      if partnerElem == null then
+        { refused = "`${name}' and a partner that states no element type of its own"; }
       else
-        throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
+        let
+          merged = mergeElemTypes element partnerElem;
+        in
+        if merged == null then
+          {
+            refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partnerElem}', whose element types do not merge";
+          }
+        else
+          { merged = rebuild merged; };
 
-  # protoBase — the protocol fields whose default answer is INVARIANT: it is the same value for every
-  # type, so it is the same record for every type. These eight are constants of the protocol, not
-  # functions of the descriptor, and hoisting them out of `completeType` builds them ONCE for the
-  # library rather than once per completion. The remaining protocol fields stay in the per-type block
-  # below because each is genuinely derived from `t` (its name, its functor, its check).
-  #
-  # It sits UNDER the descriptor (`protoBase // t // { … }`), which is what makes it a default: a
-  # descriptor carrying its own `merge`/`emptyValue`/sub-protocol answer overrides the constant, the
-  # same precedence the per-field `t.x or default` form expressed. `_type` is deliberately NOT here —
-  # it is asserted over the descriptor, not defaulted under it.
-  protoBase = {
-    descriptionClass = null;
-    deprecationMessage = null;
-    merge = protoLeafMerge;
-    emptyValue = { };
-    getSubOptions = _prefix: { };
-    getSubModules = null;
-    substSubModules = _m: null;
-    nestedTypes = { };
-  };
-
-  # The three fields a type answers about WHAT IT WRAPS, as opposed to about its values: what it
-  # declares (`getSubOptions`), the module set it carries (`getSubModules`), and how it rebuilds
-  # itself over a replacement one (`substSubModules`).
-  subProtocol = [
-    "getSubOptions"
-    "getSubModules"
-    "substSubModules"
-  ];
-
-  # completeType — stamp the full nixpkgs protocol onto a type, each field overridable by the
-  # descriptor (a real `.merge`/`.check`/`.substSubModules`/`.functor` a type already carries wins).
-  # Self-referential: the default functor's `type` points at the completed type, so `typeMerge` of two
-  # same-named types returns the type (nixpkgs `defaultTypeMerge`'s self-merge), null across names.
-  #
-  # ── the sub-protocol is a REQUIRED FORMAL of a structural type, not a default ────────────────────
-  # The three defaults below (`_prefix: { }`, `null`, `_m: null`) are a LEAF's answers, and they are
-  # RIGHT for a leaf: it declares nothing, has NO SUB-MODULE CONCEPT (which is what `null` says, and
-  # the only thing it says — a module set that exists and is empty reports `[ ]`), and has nothing to
-  # rebuild. They are wrong for every type that wraps another, and a wrapping type left on them reports
-  # "declares nothing" indistinguishably from a type that genuinely declares nothing — a consumer
-  # reflecting a declared surface off it then fails CLOSED and silently. A default cannot be right for
-  # both, so a type that CARRIES something answers all three itself or is refused here, by name. The
-  # missing declaration is the design choice; making the field required makes it total.
-  #
-  # THE DOMAIN IS WHAT THE TYPE CARRIES — a property of the constructor, read off the descriptor, not
-  # of any measurement. Two ways a descriptor says it carries something: an element type (`elemType`,
-  # or nixpkgs' `nestedTypes.elemType` spelling) or a module set (`getSubModules`, the protocol's own
-  # field for one). Everything else is outside BY THE DOMAIN rather than by a carve-out:
-  #   · a leaf carries neither;
-  #   · `either`/`oneOf` carry MEMBERS, not an element — they introduce no path level, so `{ }` is
-  #     their correct answer (and their pair lives in the functor payload, which this does not read);
-  #   · `deferredModule` carries a module set, and that set is EMPTY. gen-merge ships no
-  #     `deferredModuleWith`/`staticModules`, so it is empty BY CONSTRUCTION rather than by
-  #     omission — which is a fact to report (`[ ]`), not an absence (`null`). It is therefore IN
-  #     this domain by the module-set arm and answers all three itself, below. Requiring it to
-  #     PROPAGATE is a different demand and still refused: that would mean synthesising a parameter
-  #     the constructor does not have — a nixpkgs constructor this library does not ship is not a
-  #     reason to change one it does.
-  #
-  # `||` short-circuits, and the order is load-bearing: a container's `getSubModules` IS its element's,
-  # so reading it to decide the domain would force the element type at construction. An element-type
-  # carrier is settled before that read happens.
-  completeType =
-    t:
-    let
-      name = t.name or "raw";
-      carriesElemType = t ? elemType || (t.nestedTypes or { }) ? elemType;
-      carriesModuleSet = (t.getSubModules or null) != null;
-      # `!= null` IS the encoding's own question — a supplied list, empty or not, is a module set;
-      # `null` is the leaf's "no such concept". `?` below tests presence without forcing:
-      # `getSubModules = null` is a supplied answer (an `attrsOf` over a leaf legitimately has no
-      # module set), and absence is what is refused.
-      missing = filter (f: !(t ? ${f})) subProtocol;
-      functor = t.functor or (pureDefaultFunctor name // { type = result; });
-      result =
-        protoBase
-        // t
-        // {
-          _type = "option-type";
-          inherit name functor;
-          description = t.description or name;
-          # check (v -> bool): mirror the union `isValid` order — a gen-types leaf's `verify` (v -> null|err)
-          # gives a REAL derived check (its own `.check` is CURRIED, must not be used as v -> bool); a
-          # gen-merge structural keeps its own v -> bool `check` (nullOr/either); anything else defers to
-          # merge (`_: true`, the nixpkgs `anything` posture, preserving the prior `isValid = true`).
-          check =
-            if t ? verify then
-              (v: t.verify v == null)
-            else if t ? check then
-              t.check
-            else
-              (_: true);
-          # Did this type supply its OWN fold, or is it wearing the core's? Once the completion publishes
-          # `protoLeafMerge` as a leaf's `.merge`, the presence test `type ? merge` can no longer answer
-          # that question — it is true for every completed type — so the core stops recognising its own
-          # default leaf fold and re-enters a second copy of it through the type. The marker RECORDS the
-          # answer at the only point that knows it, rather than inferring it from a correlate: it is read
-          # off the same `t ? merge` test that chooses the field one line above, so descriptor and marker
-          # cannot disagree.
-          #
-          # ABSENT MUST READ AS `false`, and that direction is the decision. A type that never passed
-          # through here — a nixpkgs type, a hand-built record — carries no marker and takes its own
-          # `merge`, which is correct for a foreign type. A COMPLETED type whose marker is later stripped
-          # also reads `false` and takes the published `protoLeafMerge`; by the identity noted at
-          # `protoLeafMerge` that is extensionally the same answer as the core's `mergeLeaf` on every
-          # reachable input, so a lost marker is SLOW, never WRONG. A `true` marker that outlives the
-          # descriptor's own `merge` would be the other way round — it drops a real fold silently — which
-          # is why the field is derived here and never defaulted true.
-          #
-          # This marker exists because the completion exists. When a gen-built option type no longer
-          # crosses into a foreign module system, the completion loses its reason to publish a fold at
-          # all, and the ambiguity this field resolves dissolves with it; the field goes at the same time.
-          _protoLeafMerge = !(t ? merge);
-          typeMerge = t.typeMerge or (pureTypeMerge functor);
-        };
-    in
-    if (carriesElemType || carriesModuleSet) && missing != [ ] then
-      throw (
-        "gen-merge: the structural type `${name}' carries "
-        + (if carriesElemType then "an element type" else "a module set")
-        + " but does not supply "
-        + concatStringsSep ", " (map (f: "`${f}'") missing)
-        + "; a structural type may not inherit a leaf's protocol answer"
-      )
-    else
-      result;
-
-  # mkOptionType — the (loc,defs) custom-merge escape hatch (spec §1 item 6) AND the protocol
-  # completion: a type IS its `{ name; check?; merge?; verify? }` record, completed to the full nixpkgs
-  # optionType shape. Consumers write `mkOptionType { name = "aspect"; merge = loc: defs: …; }` and get
-  # a type that both gen-merge (dispatches on `.merge`) and nixpkgs (reads the full protocol) accept.
-  mkOptionType = completeType;
+  # An element's substructure, whichever vocabulary it speaks. A gen type answers from its own
+  # record; a foreign one is read through the import environment; a bare parametric constructor (a
+  # gen-types `enum`/`struct`/`union` reaching the namespace unapplied) is not a record at all and
+  # gets a leaf's answers, which are the true ones for it.
+  subOf = element: interface.importedSubstructure element;
+  # Whether an element has a substructure of its own to substitute into — asked at the boundary,
+  # because the answer depends on which vocabulary the element states it in.
+  carriesSub = interface.importedRebuilds;
 
   # Turn a def value into a module (located) for a nested evalModuleTree.
   defToModule = d: setDefaultModuleLocation (toString (d.file or "<def>")) d.value;
@@ -287,61 +217,62 @@ let
     let
       mods = if isList modOrMods then modOrMods else [ modOrMods ];
     in
-    mkOptionType {
+    defineType {
       name = "submodule";
-      # A submodule's definitions ARE modules: `merge` hands each through `defToModule` to a nested
-      # `evalModuleTree`, so the domain is `isModuleValue`'s and not "any value". nixpkgs reaches the
-      # same three shapes through `types.path.check`, which additionally admits a string beginning
-      # with `/`; the same deliberate narrowing as `deferredModule` below, and for the same reason.
-      check = isModuleValue;
-      # nixpkgs' empty-definition rule (see `emptyValueOr`, lib/modules.nix): a CONTAINER nobody added
-      # to is legitimately empty; only a type that declares no empty value is an error when undefined.
-      emptyValue = {
-        value = { };
+      # A submodule's definitions ARE modules: `mergeDefs` hands each through `defToModule` to a
+      # nested `evalModuleTree`, so the domain is `isModuleValue`'s and not "any value". nixpkgs
+      # reaches the same three shapes through its `path` check, which additionally admits a string
+      # beginning with `/`; the same deliberate narrowing as `deferredModule` below, and for the same
+      # reason.
+      admits = isModuleValue;
+      # A CONTAINER nobody added to is legitimately empty; only a type that declares no empty value
+      # is an error when undefined.
+      whenEmpty.value = { };
+      # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
+      # relation unions rather than merges: an option declared as a submodule in two modules ends up
+      # declaring the union of what they declare. On a nullary relation the second declaration would
+      # be discarded silently.
+      carries.moduleSet = mods;
+      recarry = c: submodule c.moduleSet;
+      typeMergeRel =
+        other:
+        if !(isAttrs other) || (other.name or null) != "submodule" then
+          { refused = "`submodule' and `${nameOf other}'"; }
+        else
+          let
+            partnerMods = interface.importedCarried "moduleSet" other;
+          in
+          if partnerMods == null then
+            {
+              refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry";
+            }
+          else
+            { merged = submodule (mods ++ partnerMods); };
+      substructure = {
+        # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
+        #   declares = prefix: (evalModuleTree { inherit modules prefix; }).options
+        # Reads `.options` off the same nested fixpoint the fold builds, with no defs supplied, so
+        # the two halves cannot disagree about what a submodule declares and no instance-authored
+        # value is forced.
+        declares =
+          prefix:
+          (evalModuleTree {
+            modules = mods;
+            inherit prefix;
+            specialArgs = {
+              name = if prefix == [ ] then "" else prelude.last prefix;
+            };
+            check = true;
+          }).options;
+        modules = mods;
+        # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT
+        # append: a foreign module system builds the replacement as this type's OWN modules
+        # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
+        # second time, double-evaluating the base module (a readOnly config value — e.g.
+        # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
+        rebuild = m: submodule (if isList m then m else [ m ]);
       };
-      # The MERGE half of the protocol for the type ITSELF (`typeMerge`), as opposed to for its values.
-      # nixpkgs `submoduleWith`'s functor concatenates the two declarations' module lists, so an option
-      # declared as a submodule in two modules ends up declaring the union of what they declare. On the
-      # nullary default functor the second declaration is discarded silently.
-      functor = pureDefaultFunctor "submodule" // {
-        payload = {
-          modules = mods;
-        };
-        type = payload: submodule payload.modules;
-        binOp = lhs: rhs: {
-          modules = lhs.modules ++ rhs.modules;
-        };
-      };
-      getSubModules = mods;
-      # nixpkgs protocol: rebuild the submodule type with the module set nixpkgs supplies (read by
-      # nixpkgs' `fixupOptionType` for submodule-typed options). REPLACES `mods` — it does NOT append: nixpkgs'
-      # `mergeOptionDecls` builds `m` as `map (setDefaultModuleLocation _file) type.getSubModules ++
-      # res.options`, i.e. this type's OWN modules (relocated) plus any sibling declarations. Concatenating
-      # would re-include `mods` a second time, double-evaluating the base module (a readOnly config value —
-      # e.g. gen-schema's `den.schema._kindNames` — then throws "defined 2 times"). This mirrors nixpkgs
-      # `submoduleWith.substSubModules = m: submoduleWith (attrs // { modules = m; })`.
-      substSubModules = m: submodule (if isList m then m else [ m ]);
-      # The INTROSPECTION half of the nixpkgs `mkOptionType` protocol (README "The nixpkgs `optionType`
-      # protocol"; gen-specs/gen-merge/REFERENCE.md) — what a consumer learns from this type with NO
-      # value in hand, the twin of `merge`. nixpkgs' rule, reproduced:
-      #   getSubOptions = prefix: (evalModules { inherit modules prefix specialArgs; }).options;
-      # Reads `.options` off the same nested fixpoint `merge` builds, with no defs supplied, so the two
-      # halves cannot disagree about what a submodule declares and no instance-authored value is forced.
-      # `completeType` defaults this to `_prefix: { }`, which is correct for a LEAF (no sub-options);
-      # leaving a STRUCTURAL type on that default reports "declares nothing" indistinguishably from a
-      # type that genuinely declares nothing, and a consumer reflecting a declared surface off the type
-      # then fails CLOSED and silently.
-      getSubOptions =
-        prefix:
-        (evalModuleTree {
-          modules = mods;
-          inherit prefix;
-          specialArgs = {
-            name = if prefix == [ ] then "" else prelude.last prefix;
-          };
-          check = true;
-        }).options;
-      merge =
+      mergeDefs =
         loc: defs:
         (evalModuleTree {
           modules = mods ++ map defToModule defs;
@@ -356,39 +287,31 @@ let
   # listOf — concat all list defs in order (byte-mode drops the order pass; spec §7), each element
   # merged through the element type (a submodule element becomes an instance; a leaf is verified).
   listOf =
-    elemType:
-    mkOptionType {
+    element:
+    defineType {
       name = "listOf";
-      inherit elemType;
-      # `merge` walks each definition with `imap0`, so a definition that is not a list is one this
-      # type cannot consume — the domain, stated where the type is built rather than left to
-      # `completeType`'s any-value default.
-      check = isList;
-      emptyValue = {
-        value = [ ];
+      # `mergeDefs` walks each definition with `imap0`, so a definition that is not a list is one
+      # this type cannot consume — the domain, stated where the type is built.
+      admits = isList;
+      whenEmpty.value = [ ];
+      carries.element = element;
+      recarry = c: listOf c.element;
+      typeMergeRel = elementRel "listOf" listOf element;
+      substructure = {
+        # Descend to the element type under the positional placeholder segment.
+        declares = prefix: (subOf element).declares (prefix ++ [ "*" ]);
+        # A container's module set IS its element's, and substituting one rebuilds the container over
+        # the substituted element.
+        modules = (subOf element).modules;
+        rebuild = m: listOf (if carriesSub element then (subOf element).rebuild m else element);
       };
-      # nixpkgs-parity introspection alias — lets a consumer's type-tree walker (e.g. gen-schema's
-      # `mkCoerceChain`, which reads `t.nestedTypes.elemType`) recurse unchanged.
-      nestedTypes = { inherit elemType; };
-      functor = elemTypeFunctor "listOf" listOf elemType;
-      # nixpkgs protocol: descend to the element type under the positional placeholder segment.
-      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "*" ]);
-      # A container's module set IS its element's, and substituting one rebuilds the container over the
-      # substituted element (nixpkgs `listOf`). Guarded exactly as `getSubOptions` is on `nullOr`, and
-      # for the same measured reason: a gen-types PARAMETRIC leaf (`enum`, `struct`, `union`) reaches
-      # the unified namespace as a bare constructor and is never protocol-completed, so it carries
-      # neither field. `null` is then the correct report — a leaf has no module set — and an element
-      # with nothing to substitute into rebuilds unchanged rather than aborting on a missing attribute.
-      getSubModules = elemType.getSubModules or null;
-      substSubModules =
-        m: listOf (if elemType ? substSubModules then elemType.substSubModules m else elemType);
-      merge =
+      mergeDefs =
         loc: defs:
         concatMap (
           d:
           imap0 (
             i: v:
-            mergeDefs (loc ++ [ (toString i) ]) elemType [
+            mergeDefs (loc ++ [ (toString i) ]) element [
               {
                 inherit (d) file;
                 value = v;
@@ -401,30 +324,28 @@ let
   # attrsOf / lazyAttrsOf — per-key merge through the element type. Byte-mode output is identical
   # for both (Nix values are already lazy — spec §1 item 2); kept as distinct names for the surface.
   attrsOfWith =
-    tyName: elemType:
-    mkOptionType {
+    tyName: element:
+    defineType {
       name = tyName;
-      inherit elemType;
-      # `merge` takes the key union across the definitions with `//` and indexes each by key, so a
+      # `mergeDefs` takes the key union across the definitions and indexes each by key, so a
       # definition that is not an attrset is one this type cannot consume.
-      check = isAttrs;
-      emptyValue = {
-        value = { };
+      admits = isAttrs;
+      whenEmpty.value = { };
+      carries.element = element;
+      recarry = c: attrsOfWith tyName c.element;
+      # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct type NAMES where nixpkgs unifies both
+      # under one constructor discriminated by a payload field. Distinct names are the conservative
+      # direction: the two never merge with each other, and neither merges with the unified foreign
+      # one. The rebuild keeps THIS container's name, so the distinction survives substitution.
+      typeMergeRel = elementRel tyName (attrsOfWith tyName) element;
+      substructure = {
+        # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
+        # registry exposes its INSTANCE option surface to an introspecting consumer.
+        declares = prefix: (subOf element).declares (prefix ++ [ "<name>" ]);
+        modules = (subOf element).modules;
+        rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
       };
-      nestedTypes = { inherit elemType; };
-      # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct functor NAMES where nixpkgs unifies both under
-      # `attrsWith` (discriminated by a `lazy` payload field). Distinct names are the conservative
-      # direction: the two never merge with each other, and neither merges with a nixpkgs `attrsWith`.
-      functor = elemTypeFunctor tyName (attrsOfWith tyName) elemType;
-      # nixpkgs protocol: descend to the element type under the per-key placeholder segment, so an
-      # `attrsOf (submodule …)` registry exposes its INSTANCE option surface to an introspecting consumer.
-      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
-      # Element propagation, as on `listOf` — the rebuild keeps THIS container's name, so an
-      # `attrsOf`/`lazyAttrsOf` distinction survives the substitution.
-      getSubModules = elemType.getSubModules or null;
-      substSubModules =
-        m: attrsOfWith tyName (if elemType ? substSubModules then elemType.substSubModules m else elemType);
-      merge =
+      mergeDefs =
         loc: defs:
         let
           # key union via attrset fold — a list `unique` is O(k²) in key count
@@ -433,7 +354,7 @@ let
         listToAttrs (
           map (k: {
             name = k;
-            value = mergeDefs (loc ++ [ k ]) elemType (
+            value = mergeDefs (loc ++ [ k ]) element (
               concatMap (
                 d:
                 optional (d.value ? ${k}) {
@@ -450,24 +371,22 @@ let
 
   # deferredModule (spec §1 item 7) — collect defs into ONE module (via imports), located; NEVER
   # forced by the composition plane. Output is a plain, import-usable module value (nixpkgs-faithful:
-  # `types.deferredModule.merge` produces `{ imports = [ … ]; }`), handed opaque to the terminal.
-  deferredModule = mkOptionType {
+  # a deferred module's fold produces `{ imports = [ … ]; }`), handed opaque to the terminal.
+  deferredModule = defineType {
     name = "deferredModule";
-    # `completeType` defaults a type carrying neither `verify` nor `check` to `_: true` — the nixpkgs
-    # `anything` posture, correct only for a type whose merge really does accept any value. This one's
-    # does not: `merge` wraps each def into an `imports` list, and the engine's `callM`
-    # (lib/modules.nix) can apply only a path, a function, a `__functor` attrset, or a plain attrset.
-    # Any other value is carried into `imports` unexamined and handed to whoever imports it, so the
-    # definition is accepted HERE and fails somewhere else — with no option path and no definition
-    # file. A check that cannot fail is not a check. nixpkgs `deferredModuleWith` tests the same three
-    # shapes.
+    # A type carrying no domain at all accepts every definition, which is right only for a type whose
+    # fold really does accept any value. This one's does not: `mergeDefs` wraps each def into an
+    # `imports` list, and the engine's `callM` (lib/modules.nix) can apply only a path, a function, a
+    # `__functor` attrset, or a plain attrset. Any other value is carried into `imports` unexamined
+    # and handed to whoever imports it, so the definition is accepted HERE and fails somewhere else —
+    # with no option path and no definition file. A check that cannot fail is not a check.
     #
-    # STRICTER than nixpkgs on one shape, deliberately: nixpkgs reuses `types.path.check`, which also
-    # admits a STRING beginning with `/`. `callM` dispatches on `builtins.isPath`, so such a string
-    # would pass through as a module VALUE — admitting it here would re-create the exact silent
-    # acceptance this check exists to close. A check must never admit what the merge cannot consume.
-    check = isModuleValue;
-    # ── the module set is EMPTY, and empty is not absent ──────────────────────────────────────────
+    # STRICTER than nixpkgs on one shape, deliberately: nixpkgs reuses its `path` predicate, which
+    # also admits a STRING beginning with `/`. `callM` dispatches on `builtins.isPath`, so such a
+    # string would pass through as a module VALUE — admitting it here would re-create the exact
+    # silent acceptance this domain exists to close.
+    admits = isModuleValue;
+    # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
     # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
     # "this type has no sub-module concept at all" (a leaf's answer), `[ ]` says "this type has a
     # module set and there is nothing in it". Reported as `null`, this type's "has nothing to
@@ -476,30 +395,29 @@ let
     # `deferredModuleWith`/`staticModules`, which is exactly WHY the set is empty by construction
     # rather than by omission, and why reporting it is a statement of fact and not a stub.
     #
-    # The three answers are stated together because the protocol's consumer reads them together:
-    # nixpkgs `fixupOptionType` branches on `getSubModules == null` and, on every other type,
-    # REPLACES the option's type with `substSubModules opt.options`. So a non-null module set with a
-    # leaf's `_m: null` rebuild would hand every mounted option a null type — the encoding and the
-    # rebuild are one decision, not two.
-    getSubOptions = _prefix: { };
-    getSubModules = [ ];
-    # Rebuilding over the empty set is this same type. Over a NON-EMPTY one there is nothing to
-    # build: without a static-module parameter the modules could only be dropped, and a rebuild that
-    # silently discards what it was handed is the wrong value with no diagnostic. Refuse by name
-    # instead. (Unreachable from nixpkgs, which admits raw nested options only into a type NAMED
-    # `submodule` and otherwise passes the option's own empty set straight back — a direct protocol
-    # caller is what this answers.)
-    substSubModules =
-      m:
-      if m == [ ] then
-        deferredModule
-      else
-        throw (
-          "gen-merge: `deferredModule' cannot be rebuilt over a module set of "
-          + toString (length m)
-          + "; it carries no static modules and dropping them would lose the declarations silently"
-        );
-    merge = loc: defs: {
+    # The three answers are stated together because a consumer reads them together: a foreign module
+    # system branches on whether the module set is null and, on every other type, REPLACES the
+    # option's type with the rebuild. So a non-null module set with a leaf's null rebuild would hand
+    # every mounted option a null type — the encoding and the rebuild are one decision, not two.
+    substructure = {
+      declares = _prefix: { };
+      modules = [ ];
+      # Rebuilding over the empty set is this same type. Over a NON-EMPTY one there is nothing to
+      # build: without a static-module parameter the modules could only be dropped, and a rebuild
+      # that silently discards what it was handed is the wrong value with no diagnostic. Refuse by
+      # name instead.
+      rebuild =
+        m:
+        if m == [ ] then
+          deferredModule
+        else
+          throw (
+            "gen-merge: `deferredModule' cannot be rebuilt over a module set of "
+            + toString (length m)
+            + "; it carries no static modules and dropping them would lose the declarations silently"
+          );
+    };
+    mergeDefs = loc: defs: {
       imports = map (
         d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
       ) defs;
@@ -512,127 +430,126 @@ let
   isModuleValue = v: isAttrs v || isFunction v || builtins.isPath v;
 
   # Membership predicate for union dispatch. gen-types leaf checkers expose `verify` (v → null|err);
-  # gen-merge structural types expose a 1-arg `check` (v → bool). Prefer `verify` FIRST — a gen-types
-  # `check` is curried (not v → bool), so it must never be applied here.
+  # gen-merge structural types expose `admits` (v → bool). Prefer `verify` FIRST — a gen-types
+  # `check` is curried (not v → bool), so it must never be applied here — and fall through to the
+  # import environment for a FOREIGN element, which states its domain in the foreign protocol's
+  # words and nowhere else.
   #
-  # A STRUCTURAL TYPE OWES ITS OWN ANSWER HERE, and `completeType`'s `_: true` default is not one:
-  # it is right for a type whose merge really does accept any value (`raw`, `anything`), and a
-  # standing lie for one whose merge does not. Left on the default inside a union it is worse than
-  # imprecise — the union's `check` is a disjunction over its members, so ONE member answering "yes"
-  # to everything makes the whole union unable to refuse anything, and the definition the member
-  # cannot consume reaches the interpreter instead (`either`, below).
+  # A STRUCTURAL TYPE OWES ITS OWN ANSWER HERE, and "accepts anything" is not one: it is right for a
+  # type whose fold really does accept any value (`raw`, `anything`), and a standing lie for one
+  # whose fold does not. Left on it inside a union it is worse than imprecise — the union's domain is
+  # a disjunction over its members, so ONE member answering "yes" to everything makes the whole union
+  # unable to refuse anything, and the definition the member cannot consume reaches the interpreter
+  # instead (`either`, below).
   isValid =
     t: v:
     if t ? verify then
       t.verify v == null
-    else if t ? check then
-      t.check v
+    else if t ? admits then
+      t.admits v
     else
-      true;
+      let
+        foreign = interface.importedAdmits t;
+      in
+      if foreign == null then true else foreign v;
 
   # nullOr / option — a MERGE-aware nullable (NOT a gen-types verify-only `option`, which would drop
   # a wrapped merge-type's behaviour, e.g. a ref field's coercion). null defs drop; non-null defs
-  # merge through the element type (leaf verify or ref/submodule merge, via mergeDefs). Carries
-  # `name = "nullOr"` + `nestedTypes.elemType` so gen-schema's coercion walker treats it like nixpkgs.
+  # merge through the element type (leaf verify or ref/submodule merge, via mergeDefs).
   nullOr =
-    elemType:
-    mkOptionType {
+    element:
+    defineType {
       name = "nullOr";
-      # nixpkgs `nullOr.emptyValue` is `null`, NOT the absent-value marker: a nullable option nobody
-      # defined IS null. Distinct from the containers only in which empty value it names.
-      emptyValue = {
-        value = null;
+      # A nullable option nobody defined IS null. Distinct from the containers only in which empty
+      # value it names.
+      whenEmpty.value = null;
+      carries.element = element;
+      recarry = c: nullOr c.element;
+      typeMergeRel = elementRel "nullOr" nullOr element;
+      substructure = {
+        # Pass straight through to the element, adding NO path segment. A nullable introduces no path
+        # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
+        # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`.
+        declares = (subOf element).declares;
+        # A nullable declares exactly what its element declares, so it carries exactly its element's
+        # module set too.
+        modules = (subOf element).modules;
+        rebuild = m: nullOr (if carriesSub element then (subOf element).rebuild m else element);
       };
-      nestedTypes = { inherit elemType; };
-      functor = elemTypeFunctor "nullOr" nullOr elemType;
-      # nixpkgs protocol: pass straight through to the element, adding NO prefix segment. A nullable
-      # introduces no path level — `nullOr (submodule …)` declares exactly what the submodule declares,
-      # at the same location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`.
-      # Left on `completeType`'s `_prefix: { }` default, a `nullOr`-wrapped registry reported "declares
-      # nothing", indistinguishable from a type that genuinely declares nothing.
-      #
-      # Guarded, for the same reason `mergeElemTypes` is: a gen-types PARAMETRIC leaf (`enum`, `struct`,
-      # `union`) reaches the unified namespace as a bare constructor and is never protocol-completed, so
-      # it carries no `getSubOptions`. Falling back to the leaf answer is not merely defensive — a leaf
-      # genuinely declares no sub-options, so `{ }` is the correct report, not a swallowed error.
-      getSubOptions = elemType.getSubOptions or (_prefix: { });
-      # Element propagation, as on the containers — a nullable declares exactly what its element
-      # declares, so it carries exactly its element's module set too.
-      getSubModules = elemType.getSubModules or null;
-      substSubModules =
-        m: nullOr (if elemType ? substSubModules then elemType.substSubModules m else elemType);
-      check = v: v == null || isValid elemType v;
-      merge =
+      admits = v: v == null || isValid element v;
+      mergeDefs =
         loc: defs:
         let
           nonNull = filter (d: d.value != null) defs;
         in
-        if nonNull == [ ] then null else mergeDefs loc elemType nonNull;
+        if nonNull == [ ] then null else mergeDefs loc element nonNull;
     };
   option = nullOr;
 
   # either A B — recursion-safe lazy union: merge through the member that accepts EVERY definition,
-  # or refuse by name (byte-mode best-effort; the surface's only use is aspectOrFn where A's check is
-  # total).
+  # or refuse by name (byte-mode best-effort; the surface's only use is aspectOrFn where A's domain
+  # is total).
   either =
     a: b:
-    mkOptionType {
+    defineType {
       name = "either";
-      nestedTypes = {
-        left = a;
-        right = b;
-      };
-      # nixpkgs' `either` functor: the payload is the PAIR of member types, carried as a two-element
-      # `elemType` list (the same spelling nixpkgs uses), so two `either`s merge iff both members merge
-      # pairwise. Positionally, not as a set — `either str int` and `either int str` are distinct types.
-      functor = pureDefaultFunctor "either" // {
-        payload.elemType = [
-          a
-          b
-        ];
-        type = payload: either (head payload.elemType) (elemAt payload.elemType 1);
-        binOp =
-          lhs: rhs:
+      # The members are carried POSITIONALLY, not as a set — `either str int` and `either int str`
+      # are distinct types, and two `either`s merge iff both members merge pairwise.
+      carries.alternatives = [
+        a
+        b
+      ];
+      recarry = c: either (head c.alternatives) (elemAt c.alternatives 1);
+      typeMergeRel =
+        other:
+        if !(isAttrs other) || (other.name or null) != "either" then
+          { refused = "`either' and `${nameOf other}'"; }
+        else
           let
-            left = mergeElemTypes (head lhs.elemType) (head rhs.elemType);
-            right = mergeElemTypes (elemAt lhs.elemType 1) (elemAt rhs.elemType 1);
+            alts = interface.importedCarried "alternatives" other;
           in
-          if left == null || right == null then
-            null
+          if alts == null || !(isList alts) || length alts != 2 then
+            { refused = "`either' and a partner that states no member pair"; }
           else
-            {
-              elemType = [
-                left
-                right
-              ];
-            };
+            let
+              left = mergeElemTypes a (head alts);
+              right = mergeElemTypes b (elemAt alts 1);
+            in
+            if left == null || right == null then
+              { refused = "`either' and `either', whose members do not merge pairwise"; }
+            else
+              { merged = either left right; };
+      substructure = {
+        # A union's members introduce no path level, so it declares nothing of its own — stated
+        # rather than inherited, because the pair lives in `carries` and this does not read it.
+        declares = _prefix: { };
+        modules = null;
+        rebuild = _m: null;
       };
-      check = v: isValid a v || isValid b v;
-      # A UNION'S MERGE IS TOTAL: every definition is merged through a member that accepts it, or the
+      admits = v: isValid a v || isValid b v;
+      # A UNION'S FOLD IS TOTAL: every definition is merged through a member that accepts it, or the
       # merge refuses by name. Choosing the member from the FIRST definition's shape and then merging
       # ALL of them through it hands a definition that member cannot consume straight to the
       # interpreter, which answers with a raw type error naming neither the option nor the file that
       # wrote the definition — and that abort escapes `tryEval`, so no caller can turn it into a
-      # diagnostic either. The predicate is the members' own, the same one `check` above is the
+      # diagnostic either. The predicate is the members' own, the same one `admits` above is the
       # disjunction of; what is resolved ONCE over the whole definition set, rather than per
       # definition against a member already chosen, is WHICH member — and that leaves no branch that
       # can hand on a definition its member rejects. Nothing is filtered: a set no member takes whole
       # has no merge to perform, and the refusal is the answer. A homogeneous set is unchanged — the
-      # member selected from its first definition is the member that accepts them all. Merging then
-      # runs through mergeDefs as before, so leaf members (str/int, no `.merge`) verify and
-      # merge-bearing members (ref/submodule) recurse.
+      # member selected from its first definition is the member that accepts them all.
       #
       # THE MEMBERS' ANSWERS ARE THIS RULE'S PRECONDITION, which is why the structural types above
-      # now state their domains: a member left on `completeType`'s `_: true` accepts every definition
-      # by default, so the dispatch below would pick it for a set it cannot merge and the refusal
-      # could never fire. A member that genuinely accepts anything (`raw`, `anything`, and a consumer
-      # type declaring `check = _: true` on purpose) still does, and is still chosen first.
-      merge =
+      # state their domains: a member that accepts every definition by default would be picked for a
+      # set it cannot merge and the refusal could never fire. A member that genuinely accepts
+      # anything (`raw`, `anything`, and a consumer type declaring so on purpose) still does, and is
+      # still chosen first.
+      mergeDefs =
         loc: defs:
         let
           accepts = t: all (d: isValid t d.value) defs;
           # With no definitions there is nothing to place and nothing to refuse, and the member
-          # decides only which `emptyValue` the fold goes on to ask for — left as it answered before.
+          # decides only which empty value the fold goes on to ask for.
           chosen =
             if defs == [ ] then
               b
@@ -664,9 +581,9 @@ let
     else
       either (head ts) (oneOf (tail ts));
 
-  # raw — opaque single value; the protocol completion supplies `merge = protoLeafMerge`, byte-identical
-  # to the core `mergeLeaf` fallback this type relied on (one winner, or equal winners).
-  raw = mkOptionType {
+  # raw — opaque single value; it brings no fold of its own, so the engine's leaf fold (one winner,
+  # or equal winners) is what folds it, and the boundary publishes that same fold outward.
+  raw = defineType {
     name = "raw";
   };
 
@@ -691,15 +608,21 @@ let
       )
     else
       prelude.last vals;
-  anything = mkOptionType {
+  anything = defineType {
     name = "anything";
-    merge = _loc: defs: mergeAnythingVals (map (d: d.value) defs);
+    mergeDefs = _loc: defs: mergeAnythingVals (map (d: d.value) defs);
   };
 in
 {
   inherit
     mkOption
     mkOptionType
+    # The two halves of a type's construction, on the internal seam rather than the public surface:
+    # `mkType` is the gen record alone (what the boundary is handed, and what a C-2 reading is taken
+    # on), `defineType` is that record expressed in the foreign protocol as well (what every
+    # constructor above builds, and the library's single crossing site).
+    mkType
+    defineType
     submodule
     listOf
     attrsOf

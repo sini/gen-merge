@@ -24,35 +24,61 @@ let
   lintLib = import ./lint.nix { inherit prelude priority core; };
   linkset = import ./linkset.nix { inherit prelude; };
 
+  # A leaf vocabulary arrives from OUTSIDE this library — gen-types by default, and in compat mode a
+  # foreign one — so entering the published namespace is an inbound crossing followed by an outbound
+  # one: the record is read through the boundary's import environment and rebuilt as a gen type, which
+  # is then expressed in the foreign protocol like every other type this library publishes.
+  importLeaf =
+    v:
+    let
+      answer = core.interface.importType v;
+    in
+    if answer ? refused then null else answer.imported;
+
+  # A PARAMETRIC leaf REFUSES to merge, and the refusal is an answer rather than a gap. Its parameters
+  # live behind the `verify`/`check` closures and are not introspectable, so there is nothing to
+  # compare — and the two candidate substitutes both fail: gen-types' `__id` is NAME-only
+  # (`enum "e" [ "a" ]` and `enum "e" [ "b" ]` share an id, as do two `struct "s"` over different
+  # fields), and value equality is pointer-based over the closures (two identical constructions
+  # compare UNEQUAL). Left on the nullary default relation, a same-named partner would report
+  # "mergeable" and one declaration's allowed values would be discarded silently — precisely the
+  # unsoundness the containers' own relations removed. So a consumer declaring one option twice with a
+  # parametric leaf gets a NAMED REFUSAL rather than a wrong type: gen-merge's own on its declaration
+  # path (lib/modules.nix `redeclareDecl`), and the foreign engine's `already declared` under a
+  # mount. This diverges from nixpkgs' `enum`, whose functor UNIONS the value sets; gen-merge cannot
+  # reproduce that without reading parameters it cannot see.
+  refuseParametricMerge = name: other: {
+    refused = "`${name}' and `${
+      if builtins.isAttrs other then other.name or "<unnamed>" else "<not a type>"
+    }', whose parameters live behind their own predicate and cannot be compared";
+  };
   completeParametric =
     v:
     if builtins.isFunction v then
       (x: completeParametric (v x))
     else if builtins.isAttrs v && v ? verify then
-      # `typeMerge` REFUSES for a parametric leaf. Its parameters live behind the `verify`/`check`
-      # closures and are not introspectable, so there is no payload to compare — and the two candidate
-      # substitutes both fail: gen-types' `__id` is NAME-only (`enum "e" [ "a" ]` and `enum "e" [ "b" ]`
-      # share an id, as do two `struct "s"` over different fields), and value equality is pointer-based
-      # over the closures (two identical constructions compare UNEQUAL). Left on the nullary default,
-      # `pureTypeMerge` would answer "mergeable" for any same-named partner and silently discard one
-      # declaration's allowed values — precisely the unsoundness the structural functors removed. So the
-      # honest answer is "not mergeable": a consumer declaring one option twice with a parametric leaf
-      # gets a NAMED REFUSAL rather than a wrong type — gen-merge's own on its declaration path
-      # (lib/modules.nix `redeclareDecl`), nixpkgs' `already declared` under a foreign mount, and this
-      # refusal is what routes to both. This diverges from nixpkgs'
-      # `enum`, whose functor UNIONS the value sets; gen-merge cannot reproduce that without reading
-      # parameters it cannot see.
-      strategies.mkOptionType (v // { typeMerge = _f': null; })
+      let
+        imported = importLeaf v;
+      in
+      if imported == null then
+        v
+      else
+        strategies.defineType (
+          imported // { typeMergeRel = refuseParametricMerge (v.name or "<unnamed>"); }
+        )
     else
       v;
-  # A NULLARY leaf keeps the plain completion: it has no parameters, so `pureTypeMerge`'s self-merge is
-  # correct for it and `str.typeMerge str.functor` must stay non-null.
+  # A NULLARY leaf keeps the default relation: it has no parameters, so a same-named partner really is
+  # the same type, and `str` merged with `str` must stay non-null.
   completeExport =
     v:
     if builtins.isFunction v then
       completeParametric v
     else if builtins.isAttrs v && (v ? verify || v ? name) then
-      strategies.mkOptionType v
+      let
+        imported = importLeaf v;
+      in
+      if imported == null then v else strategies.defineType imported
     else
       v;
 in

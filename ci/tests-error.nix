@@ -34,6 +34,8 @@
   genMerge,
   genInputs,
   nixpkgsLib,
+  interface,
+  genMergeVocab,
   ...
 }:
 let
@@ -235,16 +237,24 @@ in
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
         };
       };
-      # THE PARAMETRIC ARM. A gen-types parametric leaf refuses `typeMerge` by construction — its
-      # parameters sit behind the checker closures, so there is no payload to compare and "same
-      # name" would be a wrong answer, not a cheap one. Two `enum "e"` declarations over DIFFERENT
-      # value sets therefore refuse, and the message shows the two names matching while the pair
-      # still does not merge — which is exactly what distinguishes this arm from the one above.
+      # THE PARAMETRIC ARM. A gen-types parametric leaf refuses to merge by construction — its
+      # parameters sit behind the checker closures, so there is nothing to compare and "same name"
+      # would be a wrong answer, not a cheap one. Two `enum "e"` declarations over DIFFERENT value
+      # sets therefore refuse, and the message shows the two names matching while the pair still does
+      # not merge — which is exactly what distinguishes this arm from the one above.
+      #
+      # ★ AND IT NOW SAYS WHY, WHICH IS THE HALF THAT WAS MISSING. The pinned message used to be the
+      # bare pair, so this cell read as "`e' and `e' do not merge" and left the reader to work out
+      # that a parametric leaf is a different case from a name mismatch — the two arms of this suite
+      # were indistinguishable from their messages alone. The type-merge relation carries a REASON and
+      # the declaration site reports it where one is supplied, so the arm now names itself. That
+      # channel existed before and had no live producer: every type carried the foreign protocol and
+      # no relation, so the site always fell back to reconstructing the pair from two names.
       test-parametric-redeclaration-refused-though-names-match = {
         expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "e" [ "b" ]);
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e'\\); declared in a\\.nix, b\\.nix$";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e', whose parameters live behind their own predicate and cannot be compared\\); declared in a\\.nix, b\\.nix$";
         };
       };
       # The path is the FULL option path, and the file list is EVERY declaring file rather than the
@@ -516,6 +526,93 @@ in
           subOptions = { };
           subModules = null;
         };
+      };
+    };
+
+    # ── the boundary's own refusals ───────────────────────────────────────────────────────────────
+    # The rule above has TWO arms, and until now only one of them was armed. A descriptor written in
+    # the foreign protocol's words is refused at the IMPORT environment and the message names the
+    # foreign fields, because that is the vocabulary its author wrote in. A record built in gen's own
+    # words is refused at gen's own constructor and the message names the gen formals. Both are the
+    # same rule; a suite that exercised only one of them would leave the other free to rot.
+    flake.testsError.interface = {
+      test-gen-record-carrying-a-parameter-without-a-substructure-is-refused = {
+        expr = genMergeVocab.mkType {
+          name = "crate";
+          carries.element = t.str;
+          recarry = c: c.element;
+          substructure = {
+            declares = _prefix: { };
+            modules = null;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the structural type `crate' carries a parameter but does not supply `rebuild'; a structural type may not inherit a leaf's substructure answer$";
+        };
+      };
+      # LIVE CONTROL, same run, same record: supply the third formal and it constructs. Without it the
+      # cell above is equally consistent with a constructor that refuses every record carrying a role.
+      test-control-gen-record-supplying-all-three-constructs = {
+        expr =
+          (genMergeVocab.mkType {
+            name = "crate";
+            carries.element = t.str;
+            recarry = c: c.element;
+            substructure = {
+              declares = _prefix: { };
+              modules = null;
+              rebuild = _m: null;
+            };
+          }).name;
+        expected = "crate";
+      };
+
+      # A RELATION IS REQUIRED TO CROSS, and the refusal says why rather than producing a type whose
+      # foreign type-merge pair was invented at the boundary. A default chosen here would be a merge
+      # rule nobody in the vocabulary picked, answering for types whose author never said whether they
+      # merge — which is the silent-decision shape this library refuses everywhere else.
+      test-exporting-a-record-with-no-relation-is-refused = {
+        expr = interface.exportType { name = "unrelated"; };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the type `unrelated' cannot be exported: it declares no type-merge relation, so the foreign protocol's `typeMerge'/`functor' pair has no gen datum to be derived from\\. Build it through the vocabulary's own constructor, which states the relation$";
+        };
+      };
+      # LIVE CONTROL: the same record through the vocabulary's constructor, which states the relation,
+      # exports and answers. The refusal is about the missing relation, not about hand-built records.
+      test-control-the-same-record-through-the-constructor-exports = {
+        expr = (interface.exportType (genMergeVocab.mkType { name = "unrelated"; })).name;
+        expected = "unrelated";
+      };
+
+      # THE IMPORT ENVIRONMENT IS PARTIAL AND ITS REFUSAL IS NAMED. A value that is not a record, and
+      # a record that answers neither vocabulary, are both things the boundary cannot translate — and
+      # saying so is what keeps `mkOptionType` from silently constructing a type out of an attrset
+      # that was never one.
+      test-importing-a-non-record-is-refused = {
+        expr = gm.mkOptionType [ "not a type" ];
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: cannot import an option type from a list; the boundary translates records, not values$";
+        };
+      };
+      test-importing-a-record-that-answers-neither-vocabulary-is-refused = {
+        expr = gm.mkOptionType { colour = "red"; };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: cannot import `colour' as an option type; it answers neither this library's vocabulary nor any field of the foreign protocol$";
+        };
+      };
+      # LIVE CONTROL: a record answering ONE field of the foreign protocol is imported, so the refusal
+      # above is about answering nothing rather than about being small.
+      test-control-a-record-answering-one-protocol-field-imports = {
+        expr =
+          (gm.mkOptionType {
+            name = "tiny";
+            check = builtins.isString;
+          }).name;
+        expected = "tiny";
       };
     };
 

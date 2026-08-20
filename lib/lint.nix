@@ -173,12 +173,15 @@ let
     go [ ] tree;
 
   # ── construct 4: a `type` record that (recursively) names `functionTo` ─────
-  # Reads only structural fields (`name`, the `nestedTypes` introspection alias the strategies carry —
-  # lib/types.nix; the redundant bare `elemType` is a duplicate of `nestedTypes.elemType`, so it is not
-  # re-walked). Fuel-bounded; exhaustion (a type deeper than `typeWalkDepth`) is REPORTED, not swallowed
-  # (a portability lint must not silently accept an undecidable type). Returns `{ hit; exhausted }`.
+  # Reads only a type's NAME and the types it WRAPS — never a definition value, never a fold.
+  # "What does this type wrap" is asked through the protocol boundary (`core.interface`), which
+  # answers it for a gen record and for a foreign one alike; a lint that spelled the foreign
+  # introspection alias itself would be a second place in this library that knows the foreign
+  # protocol, and would go stale the day either side spelled it differently. Fuel-bounded; exhaustion
+  # (a type deeper than `typeWalkDepth`) is REPORTED, not swallowed (a portability lint must not
+  # silently accept an undecidable type). Returns `{ hit; exhausted }`.
   typeWalkDepth = 32;
-  subTypes = t: attrValues (t.nestedTypes or { });
+  subTypes = core.interface.importedWrapped;
   scanType =
     fuel: t:
     if !(isAttrs t) then
@@ -346,7 +349,7 @@ let
         v:
         optional (length v.files >= 2) (
           mkFinding "type-merge" v.loc v.files
-            "option `${showLoc v.loc}' is declared with a type in more than one module; on the TYPE the engines agree (both combine the declarations through a `typeMerge' functor and refuse when it answers null), but the reference engine ALSO refuses the redeclaration outright when both declarations carry any of `default'/`example'/`description'/`apply' (its `bothHave' guard, ahead of the functor), where gen-merge right-biases those fields — so a field-colliding pair is accepted here and rejected there"
+            "option `${showLoc v.loc}' is declared with a type in more than one module; on the TYPE the engines agree (both combine the two declared types through the type's own merge relation and refuse when it answers nothing), but the reference engine ALSO refuses the redeclaration outright when both declarations carry any of `default'/`example'/`description'/`apply' (its `bothHave' guard, which runs BEFORE the types are combined at all), where gen-merge right-biases those fields — so a field-colliding pair is accepted here and rejected there"
         )
       ) (attrValues byLoc);
 

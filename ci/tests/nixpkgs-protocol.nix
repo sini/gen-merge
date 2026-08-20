@@ -51,14 +51,91 @@ let
   # what else is. Under it a stray key lands green, so "the suite stayed green" is not evidence that the
   # completion's surface is what it was intended to be. The cells below supply the missing half.
   #
-  # The oracle is RELATIONAL and its base is PINNED: `completedKeysBefore` is the literal key set each
-  # class carried before the leaf-dispatch marker was introduced, and the assertion is that today's
-  # completion is that set plus `_protoLeafMerge` and nothing else, per class. Pinning the RELATION
-  # rather than the absolute set is what makes it useful in both directions — a 16th key fails as
-  # `extra`, a protocol field lost to a refactor fails as `missing`, and when the marker is eventually
-  # removed with the completion that forced it, one deletion here restates the expectation exactly.
+  # The oracle is RELATIONAL and both sides are PINNED: `completedKeysBefore` is the literal FOREIGN
+  # key set each class carries, and `substrateKeys` is the gen record it is derived from. The
+  # assertion is that today's exported type is exactly those two sets, per class. Pinning the RELATION
+  # rather than the absolute set is what makes it useful in both directions — a stray key fails as
+  # `extra`, a protocol field lost to a refactor fails as `missing`.
+  #
+  # ★ THE BASE MOVED ONCE, AND IT MOVED BY SUBTRACTION: the containers used to carry a bare `elemType`
+  # beside the introspection alias that states the same thing, and the export is now derived from the
+  # gen record's own `carries` instead. One key, in one direction, restated here rather than absorbed
+  # by loosening the predicate.
   without = xs: ys: builtins.filter (k: !(builtins.elem k ys)) xs;
   keysOf = builtins.attrNames;
+
+  # THE SUBSTRATE HALF — gen's own type record, which is what the protocol boundary
+  # (`lib/interface.nix`) is handed and what it derives every foreign field FROM. Pinned per class for
+  # the same reason the foreign half is: a substrate field silently gained or lost changes what the
+  # boundary has to work with, and a translation whose SOURCE moved unnoticed is the shape this whole
+  # seam exists to make visible.
+  substrateKeys =
+    let
+      # A leaf brings a domain predicate and nothing else; its substructure and empty answer are the
+      # leaf ones, stated rather than inherited.
+      leaf = [
+        "_protoLeafMerge"
+        "substructure"
+        "typeMergeRel"
+        "whenEmpty"
+      ];
+      # A type parameterised by one thing: what it carries, how to rebuild it over another, its own
+      # domain, its own fold, its own relation.
+      wrapper = [
+        "_protoLeafMerge"
+        "admits"
+        "carries"
+        "mergeDefs"
+        "recarry"
+        "substructure"
+        "typeMergeRel"
+        "whenEmpty"
+      ];
+    in
+    {
+      str = leaf;
+      int = leaf;
+      bool = leaf;
+      raw = [
+        "_protoLeafMerge"
+        "typeMergeRel"
+      ];
+      anything = [
+        "_protoLeafMerge"
+        "mergeDefs"
+        "typeMergeRel"
+      ];
+      custom = [
+        "_protoLeafMerge"
+        "admits"
+        "mergeDefs"
+        "substructure"
+        "typeMergeRel"
+        "whenEmpty"
+      ];
+      # No empty value: an undefined option of this type is a mistake, not an empty container.
+      deferredModule = [
+        "_protoLeafMerge"
+        "admits"
+        "mergeDefs"
+        "substructure"
+        "typeMergeRel"
+      ];
+      either = [
+        "_protoLeafMerge"
+        "admits"
+        "carries"
+        "mergeDefs"
+        "recarry"
+        "substructure"
+        "typeMergeRel"
+      ];
+      attrsOf = wrapper;
+      lazyAttrsOf = wrapper;
+      listOf = wrapper;
+      nullOr = wrapper;
+      submodule = wrapper;
+    };
 
   # a representative type of every constructor class the completion reaches, INCLUDING a consumer type
   # built through the `mkOptionType` escape hatch — the shape with a custom `merge` of its own.
@@ -107,7 +184,6 @@ let
       "deprecationMessage"
       "description"
       "descriptionClass"
-      "elemType"
       "emptyValue"
       "functor"
       "getSubModules"
@@ -210,7 +286,6 @@ let
       "deprecationMessage"
       "description"
       "descriptionClass"
-      "elemType"
       "emptyValue"
       "functor"
       "getSubModules"
@@ -227,7 +302,6 @@ let
       "deprecationMessage"
       "description"
       "descriptionClass"
-      "elemType"
       "emptyValue"
       "functor"
       "getSubModules"
@@ -396,8 +470,8 @@ in
         extra = without (keysOf t) completedKeysBefore.${n};
         missing = without completedKeysBefore.${n} (keysOf t);
       }) completedByClass;
-      expected = builtins.mapAttrs (_n: _t: {
-        extra = [ "_protoLeafMerge" ];
+      expected = builtins.mapAttrs (n: _t: {
+        extra = substrateKeys.${n};
         missing = [ ];
       }) completedByClass;
     };
