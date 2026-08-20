@@ -59,10 +59,14 @@ let
           [ ]
       ) (builtins.readDir dir)
     );
-  libSources = map (p: {
-    name = builtins.baseNameOf (toString p);
-    ids = identifiersOf (builtins.readFile p);
-  }) (walk ../../lib);
+  sourceOf = name: text: {
+    inherit name;
+    ids = identifiersOf text;
+    code = stripComments text;
+  };
+  libSources = map (p: sourceOf (builtins.baseNameOf (toString p)) (builtins.readFile p)) (
+    walk ../../lib
+  );
 
   # WHICH OF THE FOURTEEN ARE LEXICALLY SCANNABLE, stated rather than glossed. Five of them —
   # `name`, `description`, `check`, `merge`, `_type` — are ordinary words this library uses for its
@@ -87,16 +91,23 @@ let
   ];
   filesNaming = tok: map (s: s.name) (builtins.filter (s: builtins.elem tok s.ids) libSources);
 
-  # THE SEEDED CONTROL, same predicate, same run. A synthetic source that DOES name a protocol field
-  # must come back naming it; if this row ever reports `[ ]` the scan above has stopped being able to
-  # find anything and its silence means nothing.
-  seededSource = {
-    name = "seeded-control.nix";
-    ids = identifiersOf ''
-      # a comment naming emptyValue, which must NOT be seen
-      leak = t: t.getSubModules or null;
-    '';
-  };
+  # ★ THE TAG IS A STRING LITERAL, NOT AN IDENTIFIER, so the token scan above is STRUCTURALLY BLIND TO
+  # IT: splitting on non-identifier characters turns `"option-type"` into `option` and `type`, two
+  # ordinary words. It is host data on exactly the terms the fourteen are — a value uttered outside
+  # the boundary leaks the protocol just as surely as a field name — so it gets a SUBSTRING row of its
+  # own rather than riding an arm that cannot see it. The quotes are part of the needle: they are what
+  # separate the tag from prose about option types.
+  literalTag = ''"option-type"'';
+  filesContaining = s: map (x: x.name) (builtins.filter (x: lib.hasInfix s x.code) libSources);
+
+  # THE SEEDED CONTROLS, same predicates, same run. A synthetic source that DOES carry each needle
+  # must come back carrying it, and one that carries it only in a COMMENT must not; if either row
+  # stops discriminating, the scans above have gone quiet for a reason that is not cleanliness.
+  seededSource = sourceOf "seeded-control.nix" ''
+    # a comment naming emptyValue and "option-type", neither of which must be seen
+    leak = t: t.getSubModules or null;
+    tag = { _type = "option-type"; };
+  '';
 
   # ── T3, arm two: WHO MINTS THE FIELD ────────────────────────────────────────────────────────────
   # Name-blind and total over all fourteen. A gen record built to the substrate vocabulary carries
@@ -230,6 +241,12 @@ in
       );
     };
 
+    # THE TAG, as a substring rather than a token, because the scan above cannot see a string literal.
+    test-the-option-type-tag-is-uttered-in-exactly-one-unit = {
+      expr = filesContaining literalTag;
+      expected = [ "interface.nix" ];
+    };
+
     # THE SCAN CAN FIND THINGS, and it ignores comments. Both halves matter: the first says the cell
     # above is a measurement rather than a broken predicate, the second says a protocol field
     # DISCUSSED in a comment is not a leak — which is the distinction the whole scan turns on.
@@ -237,20 +254,30 @@ in
       expr = {
         seenInCode = builtins.elem "getSubModules" seededSource.ids;
         seenInComment = builtins.elem "emptyValue" seededSource.ids;
+        # The SAME two halves for the substring row, whose needle the token scan cannot represent at
+        # all — so without these the tag cell above would be an unarmed assertion sitting beside an
+        # armed one and reading exactly like it.
+        tagSeenInCode = lib.hasInfix literalTag seededSource.code;
+        tagSeenInComment = lib.hasInfix "neither of which" seededSource.code;
         wholeWordsOnly = {
           # `typeMergeRel` must not read as `typeMerge`, and `__functor` must not read as `functor`.
           relationIsNotTheProtocolField =
             builtins.elem "typeMergeRel" (identifiersOf "typeMergeRel = x;")
             && !(builtins.elem "typeMerge" (identifiersOf "typeMergeRel = x;"));
           functorAttrIsNotTheProtocolField = !(builtins.elem "functor" (identifiersOf "m ? __functor"));
+          # And the tag really is invisible to the token arm, which is WHY it needs its own row.
+          tagIsNotAToken = !(builtins.elem "option-type" (identifiersOf ''x = "option-type";''));
         };
       };
       expected = {
         seenInCode = true;
         seenInComment = false;
+        tagSeenInCode = true;
+        tagSeenInComment = false;
         wholeWordsOnly = {
           relationIsNotTheProtocolField = true;
           functorAttrIsNotTheProtocolField = true;
+          tagIsNotAToken = true;
         };
       };
     };

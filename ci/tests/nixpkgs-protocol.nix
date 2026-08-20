@@ -64,11 +64,16 @@ let
   without = xs: ys: builtins.filter (k: !(builtins.elem k ys)) xs;
   keysOf = builtins.attrNames;
 
-  # THE SUBSTRATE HALF — gen's own type record, which is what the protocol boundary
-  # (`lib/interface.nix`) is handed and what it derives every foreign field FROM. Pinned per class for
-  # the same reason the foreign half is: a substrate field silently gained or lost changes what the
-  # boundary has to work with, and a translation whose SOURCE moved unnoticed is the shape this whole
-  # seam exists to make visible.
+  # EVERYTHING ON AN EXPORTED TYPE THAT IS NOT ONE OF THE FOURTEEN. Pinned per class for the same
+  # reason the foreign half is: a field silently gained or lost changes what the translation is made
+  # of, and a source that moved unnoticed is the shape this whole seam exists to make visible.
+  #
+  # ★ IT IS NOT ALL SUBSTRATE, AND SAYING SO WOULD BE WRONG IN THE DIRECTION THAT MISLEADS. Every
+  # class below includes `_protoLeafMerge`, which the boundary MINTS (`interface.nix`,
+  # `_protoLeafMerge = !(t ? mergeDefs)`) and is never handed — a reader told this set is "what the
+  # boundary is handed" would conclude `mkType` stamps the marker, which it does not. The rest of each
+  # list IS gen's own record, and `test-the-fourteen-are-minted-at-the-boundary-and-nowhere-else`
+  # (ci/tests/interface.nix) is where the handed-versus-minted split is asserted rather than described.
   substrateKeys =
     let
       # A leaf brings a domain predicate and nothing else; its substructure and empty answer are the
