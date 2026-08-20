@@ -100,14 +100,50 @@ let
   # option type" — but "do these two types merge?" is a question with a true answer here, and it is
   # `null`: they do not. Returning the value keeps the declaration stratum's own refusal, which names
   # BOTH types and every declaring file, in place of a refusal that would name only the tree.
+  # ★★★ THE DISPATCH BASIS IS THE GEN-NATIVE RELATION, AND THE HOST PROTOCOL IS THE FOREIGN ARM.
+  #
+  # This read `a.typeMerge b.functor` and nothing else — so the engine spoke the host protocol on
+  # types that NEVER CROSS. That is not incidental coupling: `redeclareDecl` below calls this on the
+  # pure-gen declaration path and throws on a `null` answer, and `mergeElemTypes` in `lib/types.nix`
+  # is the element functor's `binOp`, so every container merge recursed back through the same
+  # host-shaped relation. Strip the host fields from gen types under that arrangement and every
+  # option declared twice throws.
+  #
+  # ★★ `typeMergeRel` IS ROW-FREE, WHICH IS THE WHOLE DIFFERENCE. nixpkgs asks
+  # `a.typeMerge b.functor`: the second operand is a FUNCTOR PAYLOAD — a row whose shape both sides
+  # must agree on, which is why `pureTypeMerge` needs two guards for asymmetric and
+  # differently-shaped payloads. The relation takes THE OTHER TYPE. No payload spelling crosses, so
+  # it is gen's own relation rather than the host protocol under a new name.
+  #
+  # It is PARTIAL and its refusal is NAMED: `{ merged = <type>; }` or `{ refused = <reason>; }`, so
+  # a caller that must throw can say what did not merge instead of reporting a bare null. This
+  # binding still answers `null` for "not mergeable" because that is the contract its two callers
+  # already read; the named reason is available to a caller that wants it.
+  #
+  # ★ THE HOST ARM STAYS, AND IT IS NOT LEGACY. gen-merge meets FOREIGN functors by construction —
+  # a gen type mounted in a foreign module system can face a same-named foreign type declared for
+  # the same option. That partner has no `typeMergeRel` and never will. Removing the arm would make
+  # the boundary one-directional, which is exactly the ceremony predicate this work is measured
+  # against.
   mergeTypes =
     a: b:
     if (a ? nonMountable) || (b ? nonMountable) then
       null
+    else if a ? typeMergeRel then
+      let
+        answer = a.typeMergeRel b;
+      in
+      if answer ? merged then answer.merged else null
     else if a ? typeMerge && b ? functor then
       a.typeMerge b.functor
     else
       null;
+
+  # The same relation, answering with its REASON rather than with `null` — for a caller that reports
+  # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
+  # the relation supplied a reason, that reason is better than a name comparison reconstructed at
+  # the throw site.
+  mergeTypesReason = a: b: if a ? typeMergeRel then (a.typeMergeRel b).refused or null else null;
 
   # The declaring SITES at one option loc, in authored module order — the entries whose own
   # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The
@@ -194,9 +230,12 @@ let
         mergedType = mergeTypes av.type bv.type;
       in
       if mergedType == null then
-        throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (`${av.type.name}' and `${bv.type.name}'); declared in ${
-          concatStringsSep ", " (map (s: s.file) sites)
-        }"
+        throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${
+          let
+            reason = mergeTypesReason av.type bv.type;
+          in
+          if reason != null then reason else "`${av.type.name}' and `${bv.type.name}'"
+        }); declared in ${concatStringsSep ", " (map (s: s.file) sites)}"
       else
         kept // { type = mergedType; }
     else
@@ -1537,6 +1576,8 @@ in
     # DECLARATION stratum asks the same question as the ELEMENT stratum, and one binding is what
     # keeps their answers identical; lib/types.nix consumes it back through this seam.
     mergeTypes
+    # The same relation answering with its REASON — for a caller that reports rather than dispatches.
+    mergeTypesReason
     # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
     # entry as `srcClass`; shared with the warm re-eval path and the classify suite.
     classifyModule
