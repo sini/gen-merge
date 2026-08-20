@@ -5,20 +5,20 @@
 # fields, five counting `name` — and no read-versus-comment rule. A trigger whose value depends on
 # which reading you take is not readable. This asks the engine a question instead:
 #
-#   Hand `mergeTypes` two GEN-NATIVE types carrying NO host-protocol field. Does it merge them?
+#   Hand `mergeTypes` two GEN-NATIVE types carrying NO foreign-protocol field. Does it merge them?
 #
 # ★★★ THE CELL WAS RED BEFORE THE REWIRE, MEASURED, AND THAT IS THE HALF THAT MAKES IT AN ORACLE.
 # Against the pre-rewire tree the gen-native pair answered `null` — `mergeTypes` read
-# `a.typeMerge b.functor` and nothing else — while the control pair WITH host fields merged. A cell
+# `a.typeMerge b.functor` and nothing else — while the control pair WITH foreign fields merged. A cell
 # that was never red measures nothing.
 #
 # ★ ITS CONTROL READS THE DISPATCH BASIS RATHER THAN DETECTING BREAKAGE: the identical pair WITH
-# host fields must STILL merge. If it stopped, the cell above would be reporting that the engine
+# foreign fields must STILL merge. If it stopped, the cell above would be reporting that the engine
 # broke, not that its basis moved.
 { genMergeCore, ... }:
 let
   # Two gen-native types. `name` and `verify` are gen's own vocabulary; nothing here is a
-  # host-protocol field, and that is the point of the fixture.
+  # foreign-protocol field, and that is the point of the fixture.
   genNative = {
     name = "port";
     verify = v: if builtins.isInt v then null else "not an int";
@@ -39,7 +39,7 @@ let
         { refused = "types do not merge: 'hostname' and '${other.name or "<unnamed>"}'"; };
   };
 
-  # The same SHAPE wearing the host protocol and NOT the relation — the control's subject. The
+  # The same SHAPE wearing the foreign protocol and NOT the relation — the control's subject. The
   # relation is removed deliberately: a fixture built as `genNative // { typeMerge; functor; }`
   # carries BOTH, and would take the relation arm, so it would exercise the arm it is meant to be
   # the control for. (That precedence is correct and is pinned on its own below.)
@@ -67,8 +67,8 @@ in
     expected = true;
   };
 
-  # THE CONTROL: the host arm is untouched, so a pair carrying host fields still merges. This is
-  # what makes the cell above a reading of the DISPATCH BASIS rather than of breakage.
+  # THE CONTROL: the foreign arm is untouched, so a pair carrying foreign fields still merges. This
+  # is what makes the cell above a reading of the DISPATCH BASIS rather than of breakage.
   flake.tests.type-merge-relation.test-control-host-protocol-pair-still-merges = {
     expr = (genMergeCore.mergeTypes withHost withHost) != null;
     expected = true;
@@ -91,11 +91,11 @@ in
   # ★ THE RELATION IS ROW-FREE, and this is the cell that says so. nixpkgs asks
   # `a.typeMerge b.functor` — the second operand is a functor PAYLOAD, a row both sides must agree
   # on the shape of. The relation is handed THE OTHER TYPE, so a partner carrying no functor at all
-  # is still a legible operand. Under the host arm that same partner is not.
+  # is still a legible operand. Under the foreign arm that same partner is not.
   # ★ PRECEDENCE, PINNED RATHER THAN LEFT AS AN ACCIDENT. A type carrying BOTH a relation and the
-  # host protocol takes the RELATION — gen-native first, host as the foreign arm. The fixture's
-  # `typeMerge` throws, so a run that reached the host arm would abort rather than quietly answer;
-  # the cell therefore fails loudly if the precedence is ever inverted.
+  # foreign protocol takes the RELATION — gen-native first, foreign second. The fixture's
+  # `typeMerge` throws, so a run that reached the foreign arm would abort rather than quietly
+  # answer; the cell therefore fails loudly if the precedence is ever inverted.
   flake.tests.type-merge-relation.test-relation-takes-precedence-over-the-host-arm = {
     expr = (genMergeCore.mergeTypes withBoth withBoth) != null;
     expected = true;
@@ -105,7 +105,7 @@ in
     expr = {
       # the partner has no `functor` whatsoever, and the merge still answers
       partnerWithoutFunctor = (genMergeCore.mergeTypes genNative { name = "port"; }) != null;
-      # CONTROL: the host arm cannot read that partner — it needs `b.functor`
+      # CONTROL: the foreign arm cannot read that partner — it needs `b.functor`
       hostArmCannot = genMergeCore.mergeTypes withHost { name = "port"; } == null;
     };
     expected = {

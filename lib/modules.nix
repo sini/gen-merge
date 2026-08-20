@@ -116,20 +116,20 @@ let
   # option type" — but "do these two types merge?" is a question with a true answer here, and it is
   # `null`: they do not. Returning the value keeps the declaration stratum's own refusal, which names
   # BOTH types and every declaring file, in place of a refusal that would name only the tree.
-  # ★★★ THE DISPATCH BASIS IS THE GEN-NATIVE RELATION, AND THE HOST PROTOCOL IS THE FOREIGN ARM.
+  # ★★★ THE DISPATCH BASIS IS THE GEN-NATIVE RELATION, AND THE FOREIGN PROTOCOL IS THE SECOND ARM.
   #
-  # This read `a.typeMerge b.functor` and nothing else — so the engine spoke the host protocol on
+  # This read `a.typeMerge b.functor` and nothing else — so the engine spoke the foreign protocol on
   # types that NEVER CROSS. That was not incidental coupling: `redeclareDecl` below calls this on the
   # pure-gen declaration path and throws on a `null` answer, and the containers reached it through
   # the element functor's `binOp`, so every container merge recursed back through the same
-  # host-shaped relation. Strip the host fields from gen types under that arrangement and every
-  # option declared twice throws.
+  # protocol-shaped relation. Strip the protocol fields from gen types under that arrangement and
+  # every option declared twice throws.
   #
   # ★★ `typeMergeRel` IS ROW-FREE, WHICH IS THE WHOLE DIFFERENCE. nixpkgs asks
   # `a.typeMerge b.functor`: the second operand is a FUNCTOR PAYLOAD — a row whose shape both sides
   # must agree on, which is why the boundary needs a guard for a payload naming anything beyond the
   # role it understands (`lib/interface.nix` `importedCarried`). The relation takes THE OTHER TYPE.
-  # No payload spelling crosses, so it is gen's own relation rather than the host protocol renamed.
+  # No payload spelling crosses, so it is gen's own relation rather than the foreign protocol renamed.
   #
   # It is PARTIAL and its refusal is NAMED: `{ merged = <type>; }` or `{ refused = <reason>; }`, so
   # a caller that must throw can say what did not merge instead of reporting a bare null. This

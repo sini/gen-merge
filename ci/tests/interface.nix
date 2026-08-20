@@ -7,10 +7,10 @@
 # lives in `type-merge-relation.nix`, where it was red before the rewire and green after.
 #
 #   T3   the foreign protocol is uttered in EXACTLY ONE unit — the claim the boundary is FOR
-#   C-1  the unit only forwards          → count the classes; DERIVED must exceed HOST CONSTANT
+#   C-1  the unit only forwards          → count the classes; DERIVED must exceed FOREIGN CONSTANT
 #   C-2  a field set with no translation → no derived field is read off a gen field of the same name
 #   C-3  the boundary is crossed one direction only → the inbound arm is present AND reached
-#   O2   the host's behaviour survives the translation, asserted against a REAL `lib.evalModules`
+#   O2   the foreign engine's behaviour survives the translation, against a REAL `lib.evalModules`
 #
 # ★★ EVERY ABSENCE CLAIM HERE CARRIES A LIVE CONTROL IN THE SAME RUN, because every one of them is a
 # claim that a scan found nothing — and a scan that cannot find anything reports exactly that. The
@@ -84,7 +84,7 @@ let
     "typeMerge"
     "nestedTypes"
     "functor"
-    # Not one of the fourteen, but the payload spelling and the marker are host data on the same
+    # Not one of the fourteen, but the payload spelling and the marker are foreign data on the same
     # terms, and leaking either leaks the protocol just as surely.
     "elemType"
     "_protoLeafMerge"
@@ -93,7 +93,7 @@ let
 
   # ★ THE TAG IS A STRING LITERAL, NOT AN IDENTIFIER, so the token scan above is STRUCTURALLY BLIND TO
   # IT: splitting on non-identifier characters turns `"option-type"` into `option` and `type`, two
-  # ordinary words. It is host data on exactly the terms the fourteen are — a value uttered outside
+  # ordinary words. It is foreign data on exactly the terms the fourteen are — a value uttered outside
   # the boundary leaks the protocol just as surely as a field name — so it gets a SUBSTRING row of its
   # own rather than riding an arm that cannot see it. The quotes are part of the needle: they are what
   # separate the tag from prose about option types.
@@ -299,30 +299,32 @@ in
 
     # ── C-1: the unit only forwards ───────────────────────────────────────────────────────────────
     # The partition must be TOTAL and DISJOINT over the fourteen — a field in two classes or in none
-    # makes the count below unreadable — and DERIVED must exceed HOST CONSTANT. There is no FORWARDED
-    # class and a field fitting none of the three is a finding, which is what `unclassified` reports.
+    # makes the count below unreadable — and DERIVED must exceed FOREIGN CONSTANT. There is no
+    # FORWARDED class and a field fitting none of the three is a finding, which is what
+    # `unclassified` reports.
     test-c1-the-class-partition-is-total-and-derived-dominates = {
       expr =
         let
-          all = derivedFields ++ classes.hostConstant ++ classes.nameCarried;
+          all = derivedFields ++ classes.foreignConstant ++ classes.nameCarried;
         in
         {
           unclassified = builtins.filter (f: !(builtins.elem f all)) fourteen;
           notAProtocolField = builtins.filter (f: !(builtins.elem f fourteen)) all;
           doubleClassified = builtins.length all != builtins.length fourteen;
           derived = builtins.length derivedFields;
-          hostConstant = builtins.length classes.hostConstant;
+          foreignConstant = builtins.length classes.foreignConstant;
           nameCarried = builtins.length classes.nameCarried;
-          derivedExceedsHostConstant = builtins.length derivedFields > builtins.length classes.hostConstant;
+          derivedExceedsForeignConstant =
+            builtins.length derivedFields > builtins.length classes.foreignConstant;
         };
       expected = {
         unclassified = [ ];
         notAProtocolField = [ ];
         doubleClassified = false;
         derived = 10;
-        hostConstant = 2;
+        foreignConstant = 2;
         nameCarried = 2;
-        derivedExceedsHostConstant = true;
+        derivedExceedsForeignConstant = true;
       };
     };
 
@@ -431,7 +433,7 @@ in
       };
     };
 
-    # ── O2: the host's behaviour survives the translation ─────────────────────────────────────────
+    # ── O2: the foreign engine's behaviour survives the translation ───────────────────────────────
     # Asserted on the RESOLVED CONFIG VALUE out of a real `lib.evalModules`, never on evaluation
     # alone: a type that merely evaluates has been mounted, not exercised.
     test-o2-an-exported-type-resolves-inside-a-real-evalModules = {

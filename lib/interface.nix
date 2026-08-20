@@ -36,19 +36,19 @@
 #
 #   C-1  THE UNIT ONLY FORWARDS. A field would be FORWARDED if it were copied across under the same
 #        meaning and the same name — no translation, just relocation. Count the classes below: if a
-#        FORWARDED class ever appears, or if DERIVED falls to or below HOST CONSTANT, the unit has
-#        stopped translating and is a second name for the same record.
-#   C-2  A FIELD SET WITH NO TRANSLATION. A derived host field satisfied by reading a gen field OF
+#        FORWARDED class ever appears, or if DERIVED falls to or below FOREIGN CONSTANT, the unit
+#        has stopped translating and is a second name for the same record.
+#   C-2  A FIELD SET WITH NO TRANSLATION. A derived foreign field satisfied by reading a gen field OF
 #        THE SAME NAME is a rename wearing a function call. The predicate is mechanical because the
-#        gen record is deliberately named apart: does anything below read `t.<a host field name>`?
+#        gen record is deliberately named apart: does anything below read `t.<a foreign field name>`?
 #        Under a gen record built to the substrate vocabulary no such field exists — and if one does,
 #        the substrate vocabulary was not built, which is the finding.
 #   C-3  THE BOUNDARY IS CROSSED ONE DIRECTION ONLY. `importType` absent, or present and unreachable
 #        from the engine's own type merge. A translation that only ever runs outward is a stamping
 #        pass, and a stamping pass belongs where the stamp is applied.
-#   C-4  THE ENGINE STILL SPEAKS THE HOST — it reads host-protocol fields off types that never cross.
-#        Behavioural, not a count: hand the engine's `mergeTypes` two gen-native types carrying no
-#        host-protocol field and it must return a merged type.
+#   C-4  THE ENGINE STILL SPEAKS THE FOREIGN PROTOCOL — it reads foreign-protocol fields off types
+#        that never cross. Behavioural, not a count: hand the engine's `mergeTypes` two gen-native
+#        types carrying no foreign-protocol field and it must return a merged type.
 #
 # ★ WHAT DOES NOT FIRE IT, because a small translation and a translation that translates nothing are
 # different things: that this unit is small; that few types cross today; that two of the fourteen
@@ -104,7 +104,7 @@ let
   #
   # DERIVED means a real translation FROM A DIFFERENTLY-NAMED gen datum; the name on the right is
   # that datum, and `check` has two sources because a value predicate and a domain predicate are two
-  # different gen facts that answer the same foreign question. HOST CONSTANT means no counterpart
+  # different gen facts that answer the same foreign question. FOREIGN CONSTANT means no counterpart
   # exists on this side — not "forwarded", which is the thing C-1 fires on: a constant is the part of
   # a foreign interface that has no source here, and naming it is how the boundary stays total.
   # NAME-CARRIED means carried or defaulted from the name, translating nothing — which is why those
@@ -122,7 +122,7 @@ let
       typeMerge = "typeMergeRel";
       functor = "typeMergeRel";
     };
-    hostConstant = [
+    foreignConstant = [
       "descriptionClass"
       "_type"
     ];
@@ -132,12 +132,12 @@ let
     ];
   };
 
-  # ── THE HOST'S SPELLING OF WHAT A TYPE CARRIES ──────────────────────────────────────────────────
+  # ── THE FOREIGN PROTOCOL'S SPELLING OF WHAT A TYPE CARRIES ──────────────────────────────────────
   # A gen type says what it wraps in ROLES: `element` for the one-parameter containers, `alternatives`
-  # for a union's members, `moduleSet` for a submodule's modules. The host says the same thing TWICE
-  # and not always the same way — once in a functor payload (the row two types must agree on before
-  # they may merge) and once in the `nestedTypes` introspection alias — and for a union the two
-  # disagree with each other: the payload carries a positional list under the container's own key
+  # for a union's members, `moduleSet` for a submodule's modules. The foreign protocol says the same
+  # thing TWICE and not always the same way — once in a functor payload (the row two types must agree
+  # on before they may merge) and once in the `nestedTypes` introspection alias — and for a union the
+  # two disagree with each other: the payload carries a positional list under the container's own key
   # while the alias names the members. Holding both spellings here is the reason this table exists;
   # a role with no entry is a finding rather than a default, so the map is total by refusal.
   roleSpelling = {
@@ -210,10 +210,10 @@ let
 
   # What this type wraps AT A GIVEN ROLE, whichever spelling it uses to say so. A gen type answers
   # from its own `carries`; a foreign one answers from its functor payload, which is the only place
-  # the host states a parameter it is willing to merge on.
+  # the foreign protocol states a parameter it is willing to merge on.
   #
   # ★★ A FOREIGN PAYLOAD IS READ ONLY WHERE IT IS READ WHOLE, and this is the guard that keeps a
-  # merge from truncating one. The host's payload is a ROW, and a row may state MORE than the one
+  # merge from truncating one. That payload is a ROW, and a row may state MORE than the one
   # parameter this side has a place for: nixpkgs' submodule carries `class`, `specialArgs`,
   # `shorthandOnlyDefinesConfig` and a description beside its modules, and its attribute container
   # carries laziness and a placeholder beside its element. Lifting just the key this side knows would
@@ -270,9 +270,9 @@ let
         rebuild = t.substSubModules or (_m: null);
       };
 
-  # THE HOST-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner has
-  # no gen relation and never will, so the question "do these two merge?" is asked in the host's own
-  # terms: the first type's `typeMerge` applied to the second's functor.
+  # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner
+  # has no gen relation and never will, so the question "do these two merge?" is asked in the
+  # protocol's own terms: the first type's `typeMerge` applied to the second's functor.
   importedMerge = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
 
   # A partner type RECOVERED from its own functor. This is the whole reason gen's relation can stay
@@ -300,9 +300,10 @@ let
   # PARTIAL, and its refusal is NAMED rather than `null`, the same shape the type-merge relation
   # uses: a caller that must report says what it could not import.
   #
-  # ★ NO `typeMergeRel` IS SYNTHESISED, deliberately. A record arriving from the host carries the
-  # host's answer to "do these merge?" and the engine keeps a host arm for exactly that partner. A
-  # relation invented here would answer the question twice, and the two answers could disagree.
+  # ★ NO `typeMergeRel` IS SYNTHESISED, deliberately. A record arriving from the foreign side
+  # carries the foreign answer to "do these merge?" and the engine keeps a foreign arm for exactly
+  # that partner. A relation invented here would answer the question twice, and the two answers
+  # could disagree.
   # ★★ THE SUB-PROTOCOL IS A REQUIRED FORMAL OF A WRAPPING TYPE, AND THE REFUSAL BELONGS HERE BECAUSE
   # THE RECORD IS WRITTEN IN THE FOREIGN PROTOCOL'S WORDS. A leaf's three answers — declares nothing,
   # no module-set concept, nothing to rebuild — are wrong for every type that wraps another, and a
@@ -361,9 +362,10 @@ let
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
             payload = (t.functor or { }).payload or null;
-            # The role a foreign payload is stating. `elemType` is the host's key for BOTH a single
-            # wrapped type and a union's positional member list, and the two are told apart by the
-            # only thing that distinguishes them: a member list is a LIST, a wrapped type is a record.
+            # The role a foreign payload is stating. `elemType` is the protocol's key for BOTH a
+            # single wrapped type and a union's positional member list, and the two are told apart
+            # by the only thing that distinguishes them: a member list is a LIST, a wrapped type is
+            # a record.
             role =
               if payload == null then
                 null
@@ -374,9 +376,9 @@ let
               else
                 null;
           in
-          # WHAT THE HOST DID NOT SAY SURVIVES UNTOUCHED. Only the protocol's own names are consumed
-          # here; a descriptor's other fields are the author's and are none of this boundary's
-          # business, so they cross unread rather than being enumerated and lost.
+          # WHAT THE FOREIGN PROTOCOL DID NOT SAY SURVIVES UNTOUCHED. Only the protocol's own names
+          # are consumed here; a descriptor's other fields are the author's and are none of this
+          # boundary's business, so they cross unread rather than being enumerated and lost.
           builtins.removeAttrs t (exportFields ++ [ "_protoLeafMerge" ])
           // {
             inherit name;
@@ -396,9 +398,9 @@ let
   # ── THE EXPORT ENVIRONMENT ──────────────────────────────────────────────────────────────────────
 
   # The fold a type with none of its own publishes outward: one definition wins, or all definitions
-  # agree, or the conflict is named. It is the host's `mergeEqualOption` and it is byte-identical to
-  # the engine's own leaf fold on the same definitions, which is what lets a type carrying no fold
-  # cross without acquiring behaviour it did not have.
+  # agree, or the conflict is named. It is the foreign protocol's `mergeEqualOption` and it is
+  # byte-identical to the engine's own leaf fold on the same definitions, which is what lets a type
+  # carrying no fold cross without acquiring behaviour it did not have.
   leafFold =
     loc: defs:
     if defs == [ ] then
@@ -422,7 +424,7 @@ let
   #   nestedTypes <- carries · deprecationMessage <- deprecated ·
   #   getSubOptions / getSubModules / substSubModules <- substructure ·
   #   typeMerge + functor <- typeMergeRel
-  # HOST CONSTANT (2) — no counterpart exists on this side, and that is the point:
+  # FOREIGN CONSTANT (2) — no counterpart exists on this side, and that is the point:
   #   descriptionClass = null · _type = "option-type"
   # NAME-CARRIED (2) — carried or defaulted from the name, translating nothing:
   #   name · description
@@ -431,7 +433,7 @@ let
   # ★ THE RESULT EXTENDS THE GEN RECORD RATHER THAN REPLACING IT, and that is forced rather than
   # convenient: the SAME value has to serve both engines — a consumer writes `types.listOf types.str`
   # from the published namespace and hands it to this library's own fold as readily as to a foreign
-  # one. So what crosses is the gen record PLUS its foreign expression, and every host field is
+  # one. So what crosses is the gen record PLUS its foreign expression, and every protocol field is
   # derived here even where the record it extends happens to have crossed before.
   #
   # ★ A RELATION IS REQUIRED, not defaulted. A default invented at the boundary would be a merge rule
@@ -448,8 +450,8 @@ let
       carried = if role == null then null else t.carries.${role};
 
       payload = if role == null then null else { ${spelling.payloadKey} = carried; };
-      # Rebuild this type over a payload in the host's spelling — the inverse of the line above, and
-      # the only inversion needed, because the role is fixed by the type rather than guessed.
+      # Rebuild this type over a payload in the protocol's spelling — the inverse of the line above,
+      # and the only inversion needed, because the role is fixed by the type rather than guessed.
       recarried = p: t.recarry { ${role} = p.${spelling.payloadKey}; };
 
       # `typeMerge` and `functor` are ONE derivation from ONE gen datum. The relation is row-free —

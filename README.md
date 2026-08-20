@@ -411,10 +411,8 @@ The two vocabularies, kept apart on purpose:
 `exportType` publishes a **partition of the fourteen** as data (`exportClasses`), so it can be read
 rather than argued: **10 DERIVED** (a real translation from a differently-named gen datum), **2
 FOREIGN CONSTANT** (`descriptionClass`, `_type` — no counterpart exists on this side, which is the
-point), **2 NAME-CARRIED** (`name`, `description` — carried from the name, translating nothing, which
-is why those two are allowed to be the same word on both sides and the ten are not). ★ The attribute
-is still spelled `exportClasses.hostConstant` in tree: `host` was ruled the wrong word for the foreign
-side and this prose is corrected, while renaming a read identifier is a code change of its own.
+point), **2 NAME-CARRIED** (`name`, `description` — carried from the name, translating nothing,
+which is why those two are allowed to be the same word on both sides and the ten are not).
 
 ### What "ceremony" would look like
 

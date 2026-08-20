@@ -173,8 +173,8 @@ in
   # silently. Nix `//` is right-biased, so `strategies` won at every shared name and a consumer got
   # gen-merge's `listOf` where it may have wanted gen-types'; nothing said so and nothing could.
   #
-  # ★ AND THE GROUNDS BELOW UTTER NO HOST CONSTANT, WHICH IS NOT A STYLE CHOICE. A ground that
-  # named the foreign namespace would put a host constant in the type vocabulary — the exact thing
+  # ★ AND THE GROUNDS BELOW UTTER NO FOREIGN CONSTANT, WHICH IS NOT A STYLE CHOICE. A ground that
+  # named the foreign namespace would put a foreign constant in the type vocabulary — the exact thing
   # the protocol boundary exists to confine to one unit. This library's own purity scan is what
   # caught the first draft doing it, which is the scan working rather than the scan being in the way.
   #
