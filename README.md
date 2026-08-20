@@ -409,10 +409,12 @@ The two vocabularies, kept apart on purpose:
 | `deprecated` | the deprecation message, if any | `deprecationMessage` |
 
 `exportType` publishes a **partition of the fourteen** as data (`exportClasses`), so it can be read
-rather than argued: **10 DERIVED** (a real translation from a differently-named gen datum), **2 HOST
-CONSTANT** (`descriptionClass`, `_type` — no counterpart exists on this side, which is the point),
-**2 NAME-CARRIED** (`name`, `description` — carried from the name, translating nothing, which is why
-those two are allowed to be the same word on both sides and the ten are not).
+rather than argued: **10 DERIVED** (a real translation from a differently-named gen datum), **2
+FOREIGN CONSTANT** (`descriptionClass`, `_type` — no counterpart exists on this side, which is the
+point), **2 NAME-CARRIED** (`name`, `description` — carried from the name, translating nothing, which
+is why those two are allowed to be the same word on both sides and the ten are not). ★ The attribute
+is still spelled `exportClasses.hostConstant` in tree: `host` was ruled the wrong word for the foreign
+side and this prose is corrected, while renaming a read identifier is a code change of its own.
 
 ### What "ceremony" would look like
 
@@ -422,7 +424,7 @@ each produces a value in `ci/tests/interface.nix` rather than an opinion:
 
 | | | |
 |---|---|---|
-| **C-1** | the unit only forwards | count the classes; a FORWARDED class appearing, or DERIVED falling to or below HOST CONSTANT |
+| **C-1** | the unit only forwards | count the classes; a FORWARDED class appearing, or DERIVED falling to or below FOREIGN CONSTANT |
 | **C-2** | a field set with no translation | a derived field satisfied by reading a gen field of the **same name** |
 | **C-3** | the boundary is crossed one direction only | `importType` absent, or present and unreachable from the engine's type merge |
 | **C-4** | the engine still speaks the foreign protocol | hand `mergeTypes` two gen-native types carrying no foreign field; it must return a merged type (`ci/tests/type-merge-relation.nix`) |
@@ -795,7 +797,7 @@ submodule declarations of one option merge to a submodule declaring the union of
 parameterised type left on the nullary relation would answer "mergeable" for any same-named partner
 and silently keep one declaration — the type-level form of a dropped definition.
 
-**A foreign payload is read only where it is read WHOLE.** The host's payload is a row and may state
+**A foreign payload is read only where it is read WHOLE.** That payload is a row and may state
 more than the one parameter this side has a place for: nixpkgs' `submoduleWith` carries
 `class`/`specialArgs`/`shorthandOnlyDefinesConfig`/`description` beside `modules`, and its attribute
 container carries laziness and a placeholder beside its element. Lifting only the key this side knows
