@@ -106,8 +106,9 @@ let
   # `union`) reaches the unified namespace as a bare constructor and is never protocol-completed, so
   # it carries no `functor`. A missing half answers "not mergeable" rather than aborting on a missing
   # attribute. This is the ONE binding both strata that ask the question consult — the ELEMENT
-  # stratum (a container's `binOp`, lib/types.nix `elemTypeFunctor`) and the DECLARATION stratum
-  # (`redeclareDecl` below) — so the two cannot drift into answering it differently.
+  # stratum (a container's own relation, `lib/types.nix` `elementRel`, which asks this about the two
+  # ELEMENTS) and the DECLARATION stratum (`redeclareDecl` below) — so the two cannot drift into
+  # answering it differently.
   #
   # A NON-MOUNTABLE operand answers "not mergeable" BEFORE the protocol halves are read, and this
   # ordering is load-bearing rather than defensive. The tree-as-a-type (`evalModuleTree`'s `.type`,
@@ -118,17 +119,17 @@ let
   # ★★★ THE DISPATCH BASIS IS THE GEN-NATIVE RELATION, AND THE HOST PROTOCOL IS THE FOREIGN ARM.
   #
   # This read `a.typeMerge b.functor` and nothing else — so the engine spoke the host protocol on
-  # types that NEVER CROSS. That is not incidental coupling: `redeclareDecl` below calls this on the
-  # pure-gen declaration path and throws on a `null` answer, and `mergeElemTypes` in `lib/types.nix`
-  # is the element functor's `binOp`, so every container merge recursed back through the same
+  # types that NEVER CROSS. That was not incidental coupling: `redeclareDecl` below calls this on the
+  # pure-gen declaration path and throws on a `null` answer, and the containers reached it through
+  # the element functor's `binOp`, so every container merge recursed back through the same
   # host-shaped relation. Strip the host fields from gen types under that arrangement and every
   # option declared twice throws.
   #
   # ★★ `typeMergeRel` IS ROW-FREE, WHICH IS THE WHOLE DIFFERENCE. nixpkgs asks
   # `a.typeMerge b.functor`: the second operand is a FUNCTOR PAYLOAD — a row whose shape both sides
-  # must agree on, which is why `pureTypeMerge` needs two guards for asymmetric and
-  # differently-shaped payloads. The relation takes THE OTHER TYPE. No payload spelling crosses, so
-  # it is gen's own relation rather than the host protocol under a new name.
+  # must agree on, which is why the boundary needs a guard for a payload naming anything beyond the
+  # role it understands (`lib/interface.nix` `importedCarried`). The relation takes THE OTHER TYPE.
+  # No payload spelling crosses, so it is gen's own relation rather than the host protocol renamed.
   #
   # It is PARTIAL and its refusal is NAMED: `{ merged = <type>; }` or `{ refused = <reason>; }`, so
   # a caller that must throw can say what did not merge instead of reporting a bare null. This

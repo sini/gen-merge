@@ -777,8 +777,9 @@ in
     # A parametric leaf's `typeMerge` REFUSES, deliberately. Its parameters are not introspectable, and
     # neither substitute works: gen-types' `__id` is NAME-only, so `enum "e" [ "a" ]` and
     # `enum "e" [ "b" ]` share one; and value equality is pointer-based over the closures, so two
-    # IDENTICAL constructions compare unequal. Left on the nullary default, `pureTypeMerge` would answer
-    # "mergeable" for any same-named partner and silently discard one declaration's allowed values.
+    # IDENTICAL constructions compare unequal. Left on the nullary default relation, it would answer
+    # "mergeable" for any same-named partner and silently discard one declaration's allowed values —
+    # which is why `lib/default.nix` `refuseParametricMerge` states the refusal instead.
     #
     # The nullary rows are the control and they must NOT refuse: a type with no parameters has nothing to
     # compare, so its self-merge is correct. A completion that stamped the refusal onto every leaf would
@@ -869,9 +870,9 @@ in
       };
     };
 
-    # `deferredModule.check` — a check that CANNOT FAIL is not a check. `completeType` defaults a type
-    # carrying neither `verify` nor `check` to `_: true`, which is right for a type whose merge accepts
-    # any value; `deferredModule`'s does not. Its merge wraps each def into an `imports` list, and the
+    # `deferredModule.check` — a check that CANNOT FAIL is not a check. `lib/interface.nix`
+    # `exportType` derives the foreign `check` from a gen type's `verify`, else its `admits`, else
+    # `_: true` — right for a type whose merge accepts any value; `deferredModule`'s does not. Its merge wraps each def into an `imports` list, and the
     # engine's `callM` applies only a path, a function, a `__functor` attrset or a plain attrset — so a
     # wrong-shaped definition was accepted here and detonated later, at whoever imported it, carrying no
     # option path and no definition file.
@@ -943,8 +944,9 @@ in
     };
 
     # THE SAME RULE FOR THE REST OF THE STRUCTURAL SURFACE — `listOf`, `attrsOf`/`lazyAttrsOf` and
-    # `submodule` state the domain their merge can consume, where they used to inherit the leaf default
-    # `completeType` supplies. Each merge says what that domain is: `listOf` walks every definition with
+    # `submodule` state the domain their merge can consume (in gen's words, `admits`), where they used
+    # to inherit the leaf default the boundary supplies for a type stating neither `verify` nor
+    # `admits` (`lib/interface.nix` `exportType`). Each merge says what that domain is: `listOf` walks every definition with
     # `imap0`, the attrs containers take a key union with `//`, and a submodule's definitions ARE modules.
     # A container left on `_: true` claimed to accept values it then detonated on — and the cost is not
     # only its own diagnostic, because a union's `check` is the DISJUNCTION over its members, so one member
@@ -1081,12 +1083,13 @@ in
         };
     };
 
-    # `typeMerge` on a PARAMETERISED type must compare the PARAMETERS, not the container name alone. The
-    # nullary default functor carries `payload = null`, which sends `pureTypeMerge` down its "no payload"
-    # arm and answers the receiver's own type for ANY same-named partner — so an option declared in two
-    # modules as `attrsOf` over DIFFERENT element types reported "mergeable", one declaration was dropped,
-    # and nothing was raised. Each container now carries an `elemTypeFunctor`, so the two merge iff their
-    # elements do, recursively.
+    # A type merge on a PARAMETERISED type must compare the PARAMETERS, not the container name alone. The
+    # nullary default answers the receiver's own type for ANY same-named partner — so an option declared
+    # in two modules as `attrsOf` over DIFFERENT element types reported "mergeable", one declaration was
+    # dropped, and nothing was raised. Each container now states its own relation (`lib/types.nix`
+    # `elementRel`), so the two merge iff their elements do, recursively — and the foreign `typeMerge`
+    # exercised below is DERIVED from that relation at the boundary, so this cell reads the same rule
+    # through the foreign protocol that the engine reads directly.
     #
     # Every divergent case is paired with its own same-shape agreeing case: a regression that returned
     # `<not-mergeable>` for everything would redden the `*Same` half, and one that merged everything would

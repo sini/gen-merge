@@ -69,9 +69,12 @@ let
       true;
 
   # THE MEMBERS' ANSWERS AS THEY WERE, and this is exact for this pair rather than a general
-  # restatement: `str` answered through `verify` then as now, and `listOf` carried no `check` of its
-  # own, so `completeType` handed it `_: true` and the union's dispatch was told it accepted the
-  # string too.
+  # restatement: `str` answered through `verify` then as now, and `listOf` carried no domain of its
+  # own, so the completion THEN IN `lib/types.nix` handed it `_: true` and the union's dispatch was
+  # told it accepted the string too. That construct no longer exists — the completion is now
+  # `lib/interface.nix` `exportType`, and a container states its domain as `admits` — but this arm
+  # reproduces the answers of the revision the defect was measured at, so it is stated as history
+  # rather than repointed at a construct that would answer differently.
   preIsValid = ty: v: if ty ? verify then ty.verify v == null else true;
 
   # THE PRE-REMEDIATION MERGE, carried here rather than remembered: the member comes from the FIRST
