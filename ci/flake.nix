@@ -17,9 +17,19 @@
       ...
     }:
     let
+      # ★ ONE BINDING FOR THE SUBSTRATE, and here that is load-bearing rather than tidy. The standalone
+      # -entry cell compares the ROOT `default.nix`'s applied surface against the flake's `lib` output,
+      # and that comparison is only a reading of the SHIM if both sides are built over the same
+      # substrate. Two separate `gen-prelude.lib` expressions would let the cell pass while comparing
+      # two different builds, which is the shape of a tautology rather than a test.
+      #
+      # It also cannot come from the harness: `genPrelude` there is a VENDORED single function
+      # (`hasInfix`), deliberately not the library, and a suite needing more supplies its own from
+      # gen-prelude at its own root — which this is.
+      prelude = gen-prelude.lib;
       genTypes = gen-types.lib;
       genMerge = import ../lib {
-        prelude = gen-prelude.lib;
+        inherit prelude;
         types = genTypes;
       };
       # Compat mode (ci/tests/compat-nixpkgs-types.nix): the SAME byte-mode engine with nixpkgs
@@ -28,17 +38,17 @@
       # hatch for migration / a custom nixpkgs `mkOptionType`.
       nixpkgsLib = import "${inputs.nixpkgs}/lib";
       genMergeCompat = import ../lib {
-        prelude = gen-prelude.lib;
+        inherit prelude;
         types = nixpkgsLib.types;
       };
       # Internal core seam (lib/modules.nix) — exposes `classifyModule` + the collection predicates that
       # are NOT on the public `lib/default.nix` surface (the lint-predicate export precedent: additive to
       # core, public surface unchanged). The classify suite unit-asserts `classifyModule` directly through
       # this test-only handle; the shipped API (`pureModule`, `evalModuleTree`) is exercised via `genMerge`.
-      genLinkset = import ../lib/linkset.nix { prelude = gen-prelude.lib; };
+      genLinkset = import ../lib/linkset.nix { inherit prelude; };
       genMergeCore = import ../lib/modules.nix {
-        prelude = gen-prelude.lib;
-        priority = import ../lib/priority.nix { prelude = gen-prelude.lib; };
+        inherit prelude;
+        priority = import ../lib/priority.nix { inherit prelude; };
       };
       # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
       # boundary is reached through the core rather than re-imported, so the suite reads the same
@@ -46,7 +56,7 @@
       # WITHOUT its foreign expression, which is the operand every C-2 reading is taken on.
       inherit (genMergeCore) interface;
       genMergeVocab = import ../lib/types.nix {
-        prelude = gen-prelude.lib;
+        inherit prelude;
         core = genMergeCore;
       };
       # A gen-merge instance over a CALLER-SUPPLIED leaf vocabulary. The `types` parameter is this
@@ -54,12 +64,7 @@
       # the namespace assembly has to be total over it. This is the only way a suite can reach the
       # PUBLISH path's refusal at all: `genMerge` above is built over the shipped roster, and a roster
       # that behaves cannot exercise a refusal.
-      genMergeWith =
-        types:
-        import ../lib {
-          prelude = gen-prelude.lib;
-          inherit types;
-        };
+      genMergeWith = types: import ../lib { inherit prelude types; };
     in
     gen-harness.lib.mkCi {
       inherit inputs;
@@ -74,6 +79,7 @@
         inherit
           genMerge
           genTypes
+          prelude
           genMergeCompat
           nixpkgsLib
           genMergeCore
