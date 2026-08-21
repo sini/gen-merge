@@ -70,6 +70,21 @@
         "type": "github"
       }
     },
+    "gen-differential": {
+      "locked": {
+        "lastModified": 1787344073,
+        "narHash": "sha256-9/flJiZbFlRPXevkW/XdO4KXFspRSrsHkOY2R1eULbs=",
+        "owner": "sini",
+        "repo": "gen-differential",
+        "rev": "b10e69f9dcbfff654ad1a931005e5199c0d6cc36",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen-differential",
+        "type": "github"
+      }
+    },
     "gen-harness": {
       "inputs": {
         "devshell": "devshell",
@@ -284,6 +299,7 @@
     },
     "root": {
       "inputs": {
+        "gen-differential": "gen-differential",
         "gen-harness": "gen-harness",
         "gen-prelude": "gen-prelude",
         "gen-types": "gen-types",

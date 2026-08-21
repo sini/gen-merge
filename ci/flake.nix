@@ -3,6 +3,12 @@
     gen-harness.url = "github:sini/gen-harness";
     gen-prelude.url = "github:sini/gen-prelude";
     gen-types.url = "github:sini/gen-types";
+    # The comparison MACHINERY (ci/tests/differential.nix). It enters on the TEST plane and not on
+    # the library's, which is the same placement `nixpkgs` gets below and for the same reason: an
+    # instrument the engine is measured by must not become a node in the engine's own lock. It is
+    # dependency-free — its whole surface is written in `builtins` — so pinning it adds exactly one
+    # node here and nothing to `../flake.nix`.
+    gen-differential.url = "github:sini/gen-differential";
     # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
     # test modules use — including the evalModules-equivalence ORACLE's reference side (spec §3).
     # The library itself (../lib) is nixpkgs-lib-free (ci/tests/purity.nix enforces this).
@@ -14,6 +20,7 @@
       gen-harness,
       gen-prelude,
       gen-types,
+      gen-differential,
       ...
     }:
     let
@@ -65,6 +72,11 @@
       # PUBLISH path's refusal at all: `genMerge` above is built over the shipped roster, and a roster
       # that behaves cannot exercise a refusal.
       genMergeWith = types: import ../lib { inherit prelude types; };
+      # The comparison machinery, bound once so the differential suite and any later consumer read
+      # the same instrument. `lib` (nixpkgs, harness-supplied) is the REFERENCE side there, exactly
+      # as it is for the equivalence oracle — the two instruments assert over one reference by
+      # construction rather than by two files agreeing about which nixpkgs they meant.
+      differential = gen-differential.lib;
     in
     gen-harness.lib.mkCi {
       inherit inputs;
@@ -87,6 +99,7 @@
           genMergeVocab
           genMergeWith
           interface
+          differential
           ;
       };
       extraModules = [ ./tests-error.nix ];
