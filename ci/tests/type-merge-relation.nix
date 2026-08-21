@@ -43,8 +43,8 @@ let
   # relation is removed deliberately: a fixture built as `genNative // { typeMerge; functor; }`
   # carries BOTH, and would take the relation arm, so it would exercise the arm it is meant to be
   # the control for. (That precedence is correct and is pinned on its own below.)
-  withHost = removeAttrs genNative [ "typeMergeRel" ] // {
-    typeMerge = _f: withHost;
+  withForeign = removeAttrs genNative [ "typeMergeRel" ] // {
+    typeMerge = _f: withForeign;
     functor = {
       name = "port";
       payload = { };
@@ -53,7 +53,7 @@ let
 
   # A type carrying BOTH, for the precedence cell.
   withBoth = genNative // {
-    typeMerge = _f: throw "the host arm must not be reached when a relation is present";
+    typeMerge = _f: throw "the foreign arm must not be reached when a relation is present";
     functor = {
       name = "port";
       payload = { };
@@ -69,8 +69,8 @@ in
 
   # THE CONTROL: the foreign arm is untouched, so a pair carrying foreign fields still merges. This
   # is what makes the cell above a reading of the DISPATCH BASIS rather than of breakage.
-  flake.tests.type-merge-relation.test-control-host-protocol-pair-still-merges = {
-    expr = (genMergeCore.mergeTypes withHost withHost) != null;
+  flake.tests.type-merge-relation.test-control-foreign-protocol-pair-still-merges = {
+    expr = (genMergeCore.mergeTypes withForeign withForeign) != null;
     expected = true;
   };
 
@@ -96,7 +96,7 @@ in
   # foreign protocol takes the RELATION — gen-native first, foreign second. The fixture's
   # `typeMerge` throws, so a run that reached the foreign arm would abort rather than quietly
   # answer; the cell therefore fails loudly if the precedence is ever inverted.
-  flake.tests.type-merge-relation.test-relation-takes-precedence-over-the-host-arm = {
+  flake.tests.type-merge-relation.test-relation-takes-precedence-over-the-foreign-arm = {
     expr = (genMergeCore.mergeTypes withBoth withBoth) != null;
     expected = true;
   };
@@ -106,11 +106,11 @@ in
       # the partner has no `functor` whatsoever, and the merge still answers
       partnerWithoutFunctor = (genMergeCore.mergeTypes genNative { name = "port"; }) != null;
       # CONTROL: the foreign arm cannot read that partner — it needs `b.functor`
-      hostArmCannot = genMergeCore.mergeTypes withHost { name = "port"; } == null;
+      foreignArmCannot = genMergeCore.mergeTypes withForeign { name = "port"; } == null;
     };
     expected = {
       partnerWithoutFunctor = true;
-      hostArmCannot = true;
+      foreignArmCannot = true;
     };
   };
 }

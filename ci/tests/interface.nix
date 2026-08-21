@@ -178,17 +178,17 @@ let
   # A type carrying ONLY the foreign protocol — no gen relation, no gen fold. Nothing in the engine
   # can answer a question about it except through the import environment, so if the engine answers at
   # all, the inbound arm ran.
-  hostOnlyType = name: {
+  foreignOnlyType = name: {
     inherit name;
-    typeMerge = f: if (f.name or null) == name then hostOnlyType name else null;
+    typeMerge = f: if (f.name or null) == name then foreignOnlyType name else null;
     functor = {
       inherit name;
-      type = hostOnlyType name;
+      type = foreignOnlyType name;
       payload = null;
       binOp = _a: _b: null;
     };
   };
-  hostOnlyFold = {
+  foreignOnlyFold = {
     name = "foreignFold";
     merge = _loc: defs: "folded ${toString (builtins.length defs)}";
   };
@@ -388,11 +388,11 @@ in
     test-c3-the-inbound-arm-is-reachable-from-the-engine = {
       expr = {
         present = ifc ? importType;
-        foreignPairMerges = genMergeCore.mergeTypes (hostOnlyType "fx") (hostOnlyType "fx") != null;
+        foreignPairMerges = genMergeCore.mergeTypes (foreignOnlyType "fx") (foreignOnlyType "fx") != null;
         foreignPairAcrossNamesRefuses =
-          genMergeCore.mergeTypes (hostOnlyType "fx") (hostOnlyType "fy") == null;
+          genMergeCore.mergeTypes (foreignOnlyType "fx") (foreignOnlyType "fy") == null;
         # The VALUE path reaches it too: a type whose only fold is the foreign one still folds.
-        foreignFoldRuns = genMerge.mergeDefs [ "o" ] hostOnlyFold [
+        foreignFoldRuns = genMerge.mergeDefs [ "o" ] foreignOnlyFold [
           {
             file = "a";
             value = 1;
@@ -413,13 +413,13 @@ in
     test-control-c3-without-the-foreign-protocol-the-same-fixtures-do-not-answer = {
       expr = {
         strippedPairDoesNotMerge =
-          genMergeCore.mergeTypes (builtins.removeAttrs (hostOnlyType "fx") [
+          genMergeCore.mergeTypes (builtins.removeAttrs (foreignOnlyType "fx") [
             "typeMerge"
             "functor"
-          ]) (hostOnlyType "fx") == null;
+          ]) (foreignOnlyType "fx") == null;
         # With no fold of its own in EITHER vocabulary the engine's own leaf fold takes the value.
         strippedFoldFallsToTheLeafFold =
-          genMerge.mergeDefs [ "o" ] (builtins.removeAttrs hostOnlyFold [ "merge" ])
+          genMerge.mergeDefs [ "o" ] (builtins.removeAttrs foreignOnlyFold [ "merge" ])
             [
               {
                 file = "a";
