@@ -77,6 +77,33 @@ let
       // extra
     );
 
+  # ── the functor refusal's subject: a BYTE-IDENTICAL RECONSTRUCTION of a real consumer ───────
+  # This is gen-aspects' `aspectsRootWith` (its `lib/types.nix`), rebuilt here field for field: a
+  # container written in the nixpkgs convention, whose `functor.payload` is the element type BARE
+  # rather than a `{ elemType = …; }` row, and whose `binOp` defers to the two elements' own
+  # relation. The reconstruction is the subject rather than a minimal fixture because the defect
+  # this refusal converts was MEASURED on it — a minimal one would leave open whether the shape a
+  # consumer actually ships is the shape that fires.
+  mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+  aspectsRootWith =
+    elemType:
+    gm.mkOptionType {
+      name = "aspectsRoot";
+      inherit elemType;
+      nestedTypes = { inherit elemType; };
+      functor = {
+        name = "aspectsRoot";
+        payload = elemType;
+        binOp = a: b: if b == null then null else mergeElemTypes a b;
+        type = aspectsRootWith;
+      };
+      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+      getSubModules = elemType.getSubModules or null;
+      substSubModules =
+        m: aspectsRootWith (if elemType ? substSubModules then elemType.substSubModules m else elemType);
+      merge = _loc: defs: (builtins.head defs).value;
+    };
+
   # ── the declaration-merge refusal and its control share one skeleton ────────────────────────
   # One option, declared in two named files, each declaration carrying a type and nothing else.
   # The three fixtures below differ in exactly which types those are, so what separates refusal
@@ -658,6 +685,78 @@ in
           }).name;
         expected = "tiny";
       };
+
+      # ── A STATED RELATION THIS BOUNDARY CANNOT READ ──────────────────────────────────────────────
+      # ★★★ THE SILENT ARM OF THE SAME RULE, AND IT WAS REACHED THROUGH THE PUBLIC DOOR. `functor` is
+      # an export field, so it comes off with the rest of the protocol's names, and only the PAYLOAD
+      # crosses back — in two spellings. A consumer stating its parameter the nixpkgs way, BARE, hit
+      # neither spelling: payload and `binOp` were both discarded and the type fell back to merging on
+      # its NAME ALONE, unconditionally accepting two operands its own `binOp` refuses. Measured on the
+      # reconstruction below, differing elements merged where they had refused one revision earlier,
+      # and nothing threw, no cell reddened and no warning was emitted. ADR-0025 §1 rules that every
+      # operation returns a value or a NAMED refusal and that exceptions are enumerated, never silent;
+      # this cell is that rule reaching the one arm of the import environment that was still silent.
+      #
+      # WHAT IT DOES NOT DO is decide how such a consumer should OBTAIN the parameterised relation —
+      # that is a live question about the public protocol. The refusal converts a silent downgrade
+      # into a loud one without answering it, which is why the message ends by naming both honest
+      # exits rather than a single blessed one.
+      test-importing-a-functor-stating-an-unreadable-parameter-is-refused = {
+        expr = aspectsRootWith t.str;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option type `aspectsRoot' supplies a `functor' this boundary cannot read: its parameter is stated as neither `payload\\.elemType' nor `payload\\.modules', so the parameter and the `binOp' that discriminates on it are discarded and `aspectsRoot' merges on its NAME ALONE — accepting two operands its own `binOp' refuses\\. State the parameter as `functor\\.payload\\.elemType' \\(or `\\.modules'\\), or drop the `functor' if merging on the name alone is what this type means$";
+        };
+      };
+      # ★★ LIVE CONTROL, AND IT IS THE ONE THAT KEEPS THE REFUSAL PRECISE RATHER THAN MERELY LOUD. A
+      # functor carrying a `binOp` but stating NO parameter — no payload, no `wrapped` — is what a
+      # metadata decoration supplies, and gen-schema's `refined` (its `lib/refined.nix`) is exactly
+      # this shape and is CORRECT as it stands: with nothing to discriminate on, the foreign
+      # `defaultTypeMerge` IS name equality and so is the nullary relation, so no information is lost
+      # and there is nothing to refuse. Every nullary foreign leaf arrives this way too. A predicate
+      # keyed on "supplies a functor" instead of "states a parameter it then loses" would refuse all
+      # of them, which is why this row is not optional.
+      test-control-a-functor-with-no-parameter-to-discriminate-on-imports = {
+        expr =
+          (gm.mkOptionType {
+            name = "plain";
+            check = builtins.isString;
+            functor = {
+              name = "plain";
+              payload = null;
+              wrapped = null;
+              binOp = _a: _b: null;
+              type = null;
+            };
+          }).name;
+        expected = "plain";
+      };
+      # ★ AND THE SECOND CONTROL SEPARATES "was not read" FROM "was not read YET". A payload stated in
+      # a spelling this boundary DOES read is consumed into `carries` and the functor refusal stays
+      # silent — what fires instead is the carried-role requirement above, a DIFFERENT refusal with a
+      # different message, which is only reachable because the payload crossed. Asserting that message
+      # here is what proves the two refusals are not one loud predicate wearing two names.
+      test-control-a-payload-the-boundary-reads-reaches-the-carried-role-refusal-instead = {
+        expr = gm.mkOptionType {
+          name = "boxOf";
+          functor = {
+            name = "boxOf";
+            payload.elemType = t.str;
+            binOp = _a: _b: null;
+          };
+          getSubOptions = _p: { };
+          getSubModules = null;
+          substSubModules = _m: null;
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the structural type `boxOf' carries a parameter but does not supply `recarry'; a type that carries something answers for it rather than inheriting a leaf's answers$";
+        };
+      };
+      # ★ THE THIRD CONTROL IS ALREADY ABOVE AND IS NOT REPEATED HERE:
+      # `test-control-a-record-answering-one-protocol-field-imports` is a descriptor with NO functor
+      # at all, in this same run, and it imports. Together the three say the refusal's domain is
+      # exactly "stated a parameter, and lost it".
 
       # ── the PUBLISH path, which is a different site from `mkOptionType` ──────────────────────────
       # ★★★ THE REFUSAL HAS TO SURVIVE THE NAMESPACE ASSEMBLY, and it did not. `lib/default.nix`

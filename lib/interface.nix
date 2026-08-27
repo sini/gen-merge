@@ -341,6 +341,67 @@ let
       + concatStringsSep ", " (map (f: "`${f}'") missing)
       + "; a structural type may not inherit a leaf's protocol answer";
 
+  # The role a foreign payload is stating, or null when it states none. `elemType` is the protocol's
+  # key for BOTH a single wrapped type and a union's positional member list, and the two are told
+  # apart by the only thing that distinguishes them: a member list is a LIST, a wrapped type is a
+  # record.
+  #
+  # ★ ONE DEFINITION, read twice — by the import below to populate `carries`, and by the refusal
+  # above it to decide whether the payload was read AT ALL. A second copy of this decision would let
+  # the boundary learn a spelling and go on refusing it, which is the drift the refusal exists to
+  # prevent.
+  payloadRole =
+    payload:
+    if payload == null then
+      null
+    else if payload ? modules then
+      "moduleSet"
+    else if payload ? elemType then
+      (if isList payload.elemType then "alternatives" else "element")
+    else
+      null;
+
+  # functorRefusal — a merge relation the author STATED and this boundary cannot read.
+  #
+  # A `functor` is the foreign protocol's way of saying what two types must agree on before they
+  # merge: a parameter, and a `binOp` that decides whether two of them reconcile. `functor` is an
+  # export field, so it comes off with the rest of the protocol's names — and only the PAYLOAD is
+  # translated, only in the spellings above. A parameter this side cannot read is therefore dropped
+  # together with the `binOp` that judged it, and the type falls back to the vocabulary's nullary
+  # relation: merge any two of this NAME, blind to the parameter. That is STRICTLY MORE PERMISSIVE
+  # than what the author wrote, it is reached without a throw, a red cell or a warning, and it is
+  # exactly the unenumerated silent exception ADR-0025 §1 forbids — every operation returns a value
+  # or a NAMED refusal. So it is named.
+  #
+  # ★★ THE PREDICATE IS THE INFORMATION-LOSING CASE, NOT THE BARE PAYLOAD, and both conjuncts are
+  # load-bearing. The foreign relation and the nullary one COINCIDE when there is nothing to
+  # discriminate on: `defaultTypeMerge` over a functor stating neither `payload` nor `wrapped` is
+  # name equality, and so is `nullaryRel`. A caller supplying a functor for protocol completeness
+  # alone — the shape a metadata decoration wants, and the shape every nullary foreign leaf already
+  # arrives in — therefore loses NOTHING and is not refused. Drop the parameter conjunct and every
+  # nixpkgs-shaped descriptor in the ecosystem is refused for nothing; drop the `binOp` conjunct and
+  # the refusal fires where no relation was ever stated to be lost.
+  functorRefusal =
+    t:
+    let
+      name = t.name or "raw";
+      f = t.functor or null;
+      payload = if f == null then null else f.payload or null;
+      # BOTH slots the foreign protocol states a parameter in. `wrapped` is the older spelling and
+      # this side reads neither it nor an unrecognised payload, so a functor using it loses its
+      # parameter the same way — the refusal is over what was STATED, not over which slot said it.
+      statesParameter = payload != null || (f != null && (f.wrapped or null) != null);
+    in
+    if f == null || !(f ? binOp) || !statesParameter || payloadRole payload != null then
+      null
+    else
+      "gen-merge: the option type `${name}' supplies a `functor' this boundary cannot read: its "
+      + "parameter is stated as neither `payload.elemType' nor `payload.modules', so the parameter "
+      + "and the `binOp' that discriminates on it are discarded and `${name}' merges on its NAME "
+      + "ALONE — accepting two operands its own `binOp' refuses. State the parameter as "
+      + "`functor.payload.elemType' (or `.modules'), or drop the `functor' if merging on the name "
+      + "alone is what this type means";
+
   importType =
     t:
     if !(isAttrs t) then
@@ -353,6 +414,8 @@ let
       }
     else if carrierRefusal t != null then
       { refused = carrierRefusal t; }
+    else if functorRefusal t != null then
+      { refused = functorRefusal t; }
     else
       {
         imported =
@@ -362,19 +425,7 @@ let
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
             payload = (t.functor or { }).payload or null;
-            # The role a foreign payload is stating. `elemType` is the protocol's key for BOTH a
-            # single wrapped type and a union's positional member list, and the two are told apart
-            # by the only thing that distinguishes them: a member list is a LIST, a wrapped type is
-            # a record.
-            role =
-              if payload == null then
-                null
-              else if payload ? modules then
-                "moduleSet"
-              else if payload ? elemType then
-                (if isList payload.elemType then "alternatives" else "element")
-              else
-                null;
+            role = payloadRole payload;
           in
           # WHAT THE FOREIGN PROTOCOL DID NOT SAY SURVIVES UNTOUCHED. Only the protocol's own names
           # are consumed here; a descriptor's other fields are the author's and are none of this
