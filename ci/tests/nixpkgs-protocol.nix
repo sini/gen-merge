@@ -10,6 +10,7 @@
 {
   genMerge,
   nixpkgsLib,
+  interface,
   ...
 }:
 let
@@ -57,20 +58,32 @@ let
   # set is what makes it useful in both directions — a stray key fails as `extra`, a protocol field
   # lost to a refactor fails as `missing`.
   #
-  # ★ THE BASE IS NOT PURELY FOREIGN, AND CALLING IT SO WOULD MISLEAD. For the three classes built
-  # from an INJECTED gen-types leaf it also carries that library's own fields — `__id`, `__mint`,
-  # `__name`, `verify` — which are not protocol names at all: they ride onto the gen record through
-  # the import environment's passthrough (`lib/interface.nix` `importType` removes the protocol names
-  # and the marker, and carries everything else across untouched) and out again on the export. So a
-  # gen-types field appearing here is the passthrough working, not a leak. The two halves are
-  # therefore split by WHERE A KEY WAS PINNED rather than by which vocabulary it belongs to; a
-  # partition on the second question would put those four in `substrateKeys` and leave this table
-  # equal to `exportFields` for every class.
+  # ★ THE BASE IS EXACTLY THE FOREIGN PROTOCOL, PARTITIONED BY VOCABULARY RATHER THAN BY WHERE A KEY
+  # WAS FIRST PINNED. For the three classes built from an INJECTED gen-types leaf, the completed
+  # record ALSO carries that library's own fields — `__id`, `__mint`, `__name`, `verify` — which are
+  # not protocol names at all: they ride onto the gen record through the import environment's
+  # passthrough (`lib/interface.nix` `importType` removes the protocol names and the marker, and
+  # carries everything else across untouched) and out again on the export. A gen-types field appearing
+  # here is the passthrough working, not a leak — so it belongs beside the other substrate fields in
+  # `substrateKeys.leaf`, not folded into the foreign base. With the four moved, `completedKeysBefore`
+  # is `interface.exportFields` UNCHANGED, per class, and is derived as exactly that below rather than
+  # restated as a ~250-line table: the base was never fourteen-per-class BY COINCIDENCE, it is
+  # fourteen BY DEFINITION, and a table that duplicated the same fourteen names thirteen times could
+  # drift from `exportFields` without either side noticing.
   #
-  # ★ THE BASE MOVED ONCE, AND IT MOVED BY SUBTRACTION: the containers used to carry a bare `elemType`
-  # beside the introspection alias that states the same thing, and the export is now derived from the
-  # gen record's own `carries` instead. One key, in one direction, restated here rather than absorbed
-  # by loosening the predicate.
+  # ★ THE HAZARD THIS PARTITION CARRIES: `completedKeysBefore` and `substrateKeys` are complementary in
+  # `test-completed-attrnames-exact` below — a key wrongly left on one side and also claimed on the
+  # other cancels out arithmetically (18 = 14+4 partitions the same 18 keys as 18 = 18+0 would), which
+  # is exactly how the pre-repartition table stayed green while mis-describing where the four gen-types
+  # fields belonged. `test-control-mispartitioned-substrate-key-reddens` arms the discrimination: it
+  # rebuilds the wrong (pre-repartition-shaped) base for one class and asserts it no longer agrees with
+  # `substrateKeys`, so a future silent re-introduction of the same mistake fails a cell instead of
+  # passing one.
+  #
+  # ★ THE BASE MOVED ONCE BEFORE, AND IT MOVED BY SUBTRACTION: the containers used to carry a bare
+  # `elemType` beside the introspection alias that states the same thing, and the export is now derived
+  # from the gen record's own `carries` instead. One key, in one direction, restated here rather than
+  # absorbed by loosening the predicate.
   without = xs: ys: builtins.filter (k: !(builtins.elem k ys)) xs;
   keysOf = builtins.attrNames;
 
@@ -87,11 +100,17 @@ let
   substrateKeys =
     let
       # A leaf brings a domain predicate and nothing else; its substructure and empty answer are the
-      # leaf ones, stated rather than inherited.
+      # leaf ones, stated rather than inherited. `__id`/`__mint`/`__name`/`verify` are gen-types' own
+      # fields riding the import-environment passthrough (see the header comment above) — substrate,
+      # not foreign protocol, so they belong here rather than in `completedKeysBefore`.
       leaf = [
+        "__id"
+        "__mint"
+        "__name"
         "_protoLeafMerge"
         "substructure"
         "typeMergeRel"
+        "verify"
         "whenEmpty"
       ];
       # A type parameterised by one thing: what it carries, how to rebuild it over another, its own
@@ -176,228 +195,12 @@ let
     };
   };
 
-  completedKeysBefore = {
-    anything = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    attrsOf = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    bool = [
-      "__id"
-      "__mint"
-      "__name"
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-      "verify"
-    ];
-    custom = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    deferredModule = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    either = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    int = [
-      "__id"
-      "__mint"
-      "__name"
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-      "verify"
-    ];
-    lazyAttrsOf = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    listOf = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    nullOr = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    raw = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-    str = [
-      "__id"
-      "__mint"
-      "__name"
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-      "verify"
-    ];
-    submodule = [
-      "_type"
-      "check"
-      "deprecationMessage"
-      "description"
-      "descriptionClass"
-      "emptyValue"
-      "functor"
-      "getSubModules"
-      "getSubOptions"
-      "merge"
-      "name"
-      "nestedTypes"
-      "substSubModules"
-      "typeMerge"
-    ];
-  };
+  # THE COLLAPSED TABLE: `completedKeysBefore` is `interface.exportFields` — the boundary's own
+  # fourteen-name list, not a copy of it — for every class `completedByClass` names. Anchoring both the
+  # VALUE (`exportFields`) and the CLASS SET (`completedByClass`'s own keys) to landed data means a
+  # class silently added, dropped, or a foreign field silently added or renamed at the boundary shows
+  # up here without this table being touched — there is no per-class copy left to drift.
+  completedKeysBefore = builtins.mapAttrs (_class: _t: interface.exportFields) completedByClass;
 
   strMod = {
     options.y = nixpkgsLib.mkOption { type = gmT.str; };
@@ -514,6 +317,31 @@ in
         "str"
         "submodule"
       ];
+    };
+
+    # THE ARMED DISCRIMINATION for the cell above: `completedKeysBefore` and `substrateKeys` are
+    # COMPLEMENTARY there, so a key wrongly counted on both sides (or on neither) can cancel out
+    # arithmetically — eighteen keys split 14+4 reads the same as eighteen split 18+0. That is exactly
+    # the shape of the mistake this file's collapse fixes: `verify` (and its three siblings) used to sit
+    # in `completedKeysBefore` for the gen-types-injected leaves, which passed only because
+    # `substrateKeys` was built to agree with the wrong split, not because the partition was correct.
+    #
+    # This cell rebuilds that PRE-REPARTITION base for `str` — the fourteen protocol fields plus
+    # `verify` left in the foreign half — and asserts the diff it produces no longer agrees with the
+    # corrected `substrateKeys.str`. A future silent re-introduction of the same mis-partition (moving
+    # `verify` back into `completedKeysBefore`, say, without also removing it from `leaf`) reddens this
+    # cell instead of passing `test-completed-attrnames-exact` unnoticed, the way it did before this
+    # landing.
+    test-control-mispartitioned-substrate-key-reddens = {
+      expr =
+        (without (keysOf completedByClass.str) (interface.exportFields ++ [ "verify" ]))
+        == substrateKeys.str;
+      expected = false;
+      # `expected = false` is the assertion that the WRONG partition (built inline, above) and the
+      # CORRECT one (`substrateKeys.str`) disagree. A change that made them agree — `verify` dropped
+      # from `substrateKeys.leaf` while staying out of `completedKeysBefore`, say, which is exactly
+      # what a value-collapsing mistake looks like — would flip `expr` to `true` and redden this cell,
+      # rather than the discrimination silently stopping and nothing noticing.
     };
 
     # The marker is the type record's answer to "is my `.merge` the core's own default fold?", so it
