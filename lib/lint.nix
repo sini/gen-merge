@@ -83,7 +83,7 @@ let
     length
     any
     ;
-  inherit (priority) dischargeProperties pushDownProperties;
+  inherit (priority) dischargeProperties pushDownProperties isOrderMarker;
   inherit (core)
     isOptLeaf
     configOf
@@ -100,8 +100,6 @@ let
       detail
       ;
   };
-  isOrderMarker = v: isAttrs v && (v._type or null) == "order";
-
   # ── module collection (import-expanding, function-OPAQUE), _file tracked as core.collectModules ──
   # Path leaves are `import`ed (pure); an attrset module contributes its `imports` recursively; a
   # function (or `__functor`) module is an OPAQUE leaf. `file` mirrors `collectModules`' own `_file` rule

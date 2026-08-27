@@ -22,6 +22,7 @@ let
     isFunction
     functionArgs
     concatMap
+    concatLists
     foldl'
     filter
     map
@@ -34,11 +35,14 @@ let
     head
     tail
     all
+    any
     ;
   inherit (priority)
     dischargeProperties
     filterOverrides
     filterOverridesRich
+    sortProperties
+    isOrderMarker
     pushDownProperties
     mkOptionDefault
     defaultPriority
@@ -754,9 +758,14 @@ let
   # against drift), because routing the structural hot path through the rich `{ value; prov }` record
   # measurably regresses the collection workloads (a per-element record thrown away unread).
   #
-  #   rawDefs :: [{ file; value }]   (value may carry mkMerge/mkIf/mkOverride)
-  # Discharge properties → filterOverrides (min-priority wins) → dispatch: a structural type owns its
-  # combine via `.merge`; a leaf (gen-types checker, no `.merge`) merges by mergeLeaf then `verify`.
+  #   rawDefs :: [{ file; value }]   (value may carry mkMerge/mkIf/mkOverride/mkOrder)
+  # Discharge properties → filterOverrides (min-priority wins) → sortProperties (order pass) →
+  # dispatch: a structural type owns its combine via `.merge`; a leaf (gen-types checker, no
+  # `.merge`) merges by mergeLeaf then `verify`.
+  # ★ THE THREE PASSES RUN IN THAT ORDER AND MAY NOT BE REORDERED — `sortProperties` overwrites the
+  # ORDER axis onto defs whose OVERRIDE priority `filterOverrides` has already consumed (the full
+  # argument is at lib/priority.nix `sortProperties`). Everything downstream of the sort reads
+  # `file`/`value` and never `priority`.
   # With `coreShortCircuit` it additionally honours the fixed-input core marker (spec §2.5), checked
   # BEFORE discharge:
   #   • SOLE core def at this loc  → return its `values` directly, skipping discharge/fold/verify —
@@ -784,7 +793,11 @@ let
         }) (dischargeProperties d.value)
       ) normalized;
       winners = filterOverrides discharged;
-      typeDefs = map (w: { inherit (w) file value; }) winners;
+      # The order pass, gated exactly as nixpkgs gates it: the overwhelming majority of locs carry no
+      # order marker, and for them the sort is the identity permutation, so the scan buys the fast
+      # path its skip. Everything after this point consumes `sorted`, never `winners`.
+      sorted = if any (w: isOrderMarker w.value) winners then sortProperties winners else winners;
+      typeDefs = map (w: { inherit (w) file value; }) sorted;
       fold = ownFold type;
       result =
         if winners == [ ] then
@@ -792,7 +805,7 @@ let
         else if fold != null then
           fold loc typeDefs
         else
-          mergeLeaf loc winners;
+          mergeLeaf loc sorted;
       checked =
         if type != null && type ? verify then
           (
@@ -852,7 +865,12 @@ let
       # `winners`. The prov record's `priority` reads `filterOverridesRich`'s `highestPrio` LAZILY (only
       # when `.priority` is forced), so an unforced provenance channel never pays for the rich wrapper.
       winners = filterOverrides discharged;
-      typeDefs = map (w: { inherit (w) file value; }) winners;
+      # The order pass, same gate and same position as the value path's — the twin stays parallel.
+      # `prov.priority` below deliberately keeps reading `discharged`/`filterOverridesRich`, i.e. the
+      # OVERRIDE axis upstream of this sort: the record's `priority` field means the override number
+      # the filter selected, and the order axis must not be allowed to answer that question.
+      sorted = if any (w: isOrderMarker w.value) winners then sortProperties winners else winners;
+      typeDefs = map (w: { inherit (w) file value; }) sorted;
       # The fold dispatch, exactly as the value path reads it above — the twin stays parallel.
       fold = ownFold type;
       result =
@@ -861,7 +879,7 @@ let
         else if fold != null then
           fold loc typeDefs
         else
-          mergeLeaf loc winners;
+          mergeLeaf loc sorted;
       checked =
         if type != null && type ? verify then
           (
@@ -891,7 +909,9 @@ let
         else
           {
             defs = map (d: { inherit (d) file priority; }) discharged;
-            winners = map (w: { inherit (w) file; }) winners;
+            # `sorted`, not `winners`: this field means THE MERGE'S ACTUAL INPUTS, and after the
+            # order pass those are the sorted ones. Identical list on every marker-free loc.
+            winners = map (w: { inherit (w) file; }) sorted;
             priority = (filterOverridesRich discharged).highestPrio;
             # The `<default>` sentinel is engine-synthesized (never a real `_file`), so it is a safe
             # marker for "the option default supplied the value".
@@ -918,6 +938,69 @@ let
         first
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
+
+  # ── mergeDefaultOption — the nixpkgs SHAPE-DIRECTED default-merge law ─────────────────────────
+  # The nixpkgs `lib.mergeDefaultOption` analogue: the combination law nixpkgs applies at a position
+  # where no PER-KEY type was authored. It combines by the definitions' RUNTIME SHAPE rather than by
+  # requiring them to agree.
+  #
+  # ★★★ IT SITS BESIDE `mergeLeaf`, NOT IN PLACE OF IT, AND IT IS AN INTERIM SURFACE. `mergeLeaf`
+  # above remains this engine's no-`.merge` default and keeps its agree-or-refuse posture — nothing
+  # in this library routes through the law below, and no existing consumer's merge semantics move.
+  # The full statement of what the marker means and does not claim is at the public export
+  # (lib/default.nix), which is where a caller meets it.
+  #
+  # THE ARMS, in nixpkgs' own order (`lib/options.nix` `mergeDefaultOption`), because for a
+  # HOMOGENEOUS definition list the shape predicates are mutually exclusive and the order is
+  # observable only at the singleton fast path and the terminal refusal:
+  #   one definition ......................... that definition's value
+  #   all functions .......................... applied POINTWISE, results merged by this same law
+  #   all lists .............................. concatenated
+  #   all attrsets ........................... `//`-folded (SHALLOW, last definition wins per key)
+  #   all bools .............................. OR-folded — differing bools do NOT refuse
+  #   all strings ............................ concatenated — differing strings do NOT refuse
+  #   all ints AND all equal ................. that value
+  #   anything else .......................... a named refusal
+  # ⇒ ONLY differing ints and type-heterogeneous definition lists reach the refusal.
+  #
+  # ★★ ONE MEASURED DIVERGENCE FROM nixpkgs, DECLARED RATHER THAN INHERITED — the MULTI-FUNCTION
+  # arm, and it is the only arm that diverges. nixpkgs writes it
+  # `x: mergeDefaultOption loc (map (f: f x) list)`, passing RAW VALUES into a parameter whose first
+  # act is `getValues` (`map (x: x.value)`). That mismatch has two faces, both measured at the
+  # pinned rev:
+  #   · functions returning anything but an attrset carrying a `value` attribute make nixpkgs die on
+  #     `expected a set but found a list` — and die UNCATCHABLY, with a live control in the same run
+  #     showing an ordinary refusal on the same instrument IS catchable;
+  #   · functions that DO return `{ value = …; }` have that field silently unwrapped by the stray
+  #     `getValues`, so nixpkgs merges the payloads where this law merges the records.
+  # Reproducing either would be bug-compatibility rather than parity, and the first would put an
+  # uncatchable abort inside a law whose whole contract is a value or a named refusal (ADR-0025 §1).
+  # So the recursion here runs over the VALUE list, which is what the arm plainly means:
+  # `[ (x: [x]) (x: [x+1]) ]` applied to `1` gives `[ 1 2 ]` — pointwise then merged, observably NOT
+  # composition, which would give `[ [ 2 ] ]`. Every OTHER arm is byte-equal to nixpkgs' on the same
+  # input, and the parity suite asserts that against the live nixpkgs rather than a transcription.
+  mergeDefaultOption = loc: defs: mergeDefaultValues loc (map (d: d.value) defs);
+
+  # The law over VALUES — the recursion the function arm re-enters. `mergeDefaultOption` is this
+  # composed with `getValues`; keeping them separate is what makes the function arm total.
+  mergeDefaultValues =
+    loc: list:
+    if length list == 1 then
+      head list
+    else if all isFunction list then
+      (x: mergeDefaultValues loc (map (f: f x) list))
+    else if all isList list then
+      concatLists list
+    else if all isAttrs list then
+      foldl' (a: b: a // b) { } list
+    else if all builtins.isBool list then
+      foldl' (a: b: a || b) false list
+    else if all builtins.isString list then
+      concatStringsSep "" list
+    else if all builtins.isInt list && all (x: x == head list) list then
+      head list
+    else
+      throw "gen-merge: cannot merge definitions of option `${showOption loc}'";
 
   # mergeOneOption — the nixpkgs `lib.mergeOneOption` helper: exactly one definition permitted
   # (else throw). Exported for consumers whose custom `(loc, defs)` merges want unique-def semantics
@@ -1594,6 +1677,10 @@ in
     mergeDefs
     mergeOption
     mergeOneOption
+    # The shape-directed default-merge law (nixpkgs `lib.mergeDefaultOption` parity) — an INTERIM
+    # surface BESIDE `mergeLeaf`, which stays this engine's own no-`.merge` default. See the public
+    # export in lib/default.nix for the marker.
+    mergeDefaultOption
     showOption
     setDefaultModuleLocation
     mkCoreValue

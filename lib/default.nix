@@ -164,6 +164,49 @@ in
     mkIf
     ;
 
+  # ── THE nixpkgs-PARITY SURFACE — COMPAT VOCABULARY, AND AN INTERIM ───────────────────────────
+  #
+  # Two things land here together, and the marker below governs both.
+  #
+  # ★★★ MARKER — INTERIM (ADR-0031 F1's marker discipline). `mergeDefaultOption` is a NEW EXPORTED
+  # SURFACE BESIDE `mergeLeaf`, NOT a replacement for it. `mergeLeaf` (lib/modules.nix) REMAINS this
+  # engine's no-`.merge` default and keeps its agree-or-refuse posture, so no existing consumer's
+  # merge semantics move on that axis. Nothing inside this library routes through the law; the one
+  # caller it exists for is gen-aspects' freeform primitive arm.
+  # **What it explicitly does NOT claim: whole-pipeline nixpkgs parity.** It is ONE law at ONE arm.
+  # Replacing `mergeLeaf` with it would not have bought parity either — nixpkgs' own
+  # `attrsOf`/`listOf` merge each key THROUGH the element type, where this law's attrset arm is a
+  # shallow `//` chain that never consults it, so two definitions of `attrsOf (listOf str)` sharing
+  # a key CONCATENATE under nixpkgs and DROP THE FIRST under this law. The interim is therefore not
+  # a compromise against a better-but-larger option. Real parity at the leaf is a per-type merge
+  # question, and it is the merge design review's subject rather than this export's.
+  #
+  # ★★ AND THE ORDER VOCABULARY IS COMPAT SURFACE, NOT gen's AUTHORITY MODEL. gen expresses
+  # precedence by GRAPH POSITION AND PROVENANCE, deliberately not by an integer priority lattice.
+  # `mkOrder`/`mkBefore`/`mkAfter` and the pass behind them exist because gen accepts nixpkgs module
+  # vocabulary and a definition written in it must not leak its wrapper into the value domain — they
+  # are the compatibility promise being kept, and they carry no architectural claim about how gen
+  # itself decides which contribution wins.
+  #
+  # ★ PARITY IS VERIFIED AGAINST A PINNED nixpkgs, AND THE PIN IS STAMPED HERE SO IT CANNOT AGE
+  # SILENTLY. This library's `lib/` is nixpkgs-free (ci/tests/purity.nix), so the law and the pass
+  # are an INDEPENDENT REIMPLEMENTATION rather than a wrapper: when the module system upstream
+  # moves, nothing here notices. The rev below is read back out of this file by
+  # ci/tests/parity-surface.nix and compared, both directions, against the rev `ci/flake.lock`
+  # actually resolves for the root's own `nixpkgs` input. A routine bump reds that cell with both
+  # laws byte-unchanged — which is intended: it is a prompt to re-verify parity and re-stamp, never
+  # an assertion that the law broke.
+  #
+  # nixpkgs-parity-rev:begin
+  #   b5aa0fbd538984f6e3d201be0005b4463d8b09f8
+  # nixpkgs-parity-rev:end
+  inherit (core) mergeDefaultOption;
+  inherit (priority)
+    mkOrder
+    mkBefore
+    mkAfter
+    ;
+
   # Structural strategies (spec §2/§4) also surfaced at the top level.
   inherit (strategies)
     mkOption

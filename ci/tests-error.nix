@@ -849,6 +849,80 @@ in
       };
     };
 
+    # The shape-directed default-merge law's terminal arm. ci/tests/parity-surface.nix asserts THAT
+    # it refuses and that the refusal is catchable; only this output can assert WHAT IT SAYS, and a
+    # law whose whole contract is "a value or a NAMED refusal" (ADR-0025 §1) owes the name.
+    # ★ Both patterns are anchored `^…$` — nix-unit SEARCHES `expectedError.msg`, so an unanchored
+    # one pins a substring and would keep passing if the message grew a wrong clause on either side.
+    # Neither message carries an ERE metacharacter, so the anchors carry the whole of the exactness.
+    flake.testsError.default-merge-law = {
+      # DIFFERING INTS are one of exactly two inputs that reach this arm — differing bools are OR'd
+      # and differing strings are concatenated, so "scalars refuse" would be the wrong reading and
+      # this cell is half of what fences it.
+      test-differing-ints-refuse-by-name = {
+        expr =
+          gm.mergeDefaultOption
+            [ "svc" "port" ]
+            [
+              {
+                file = "<a>";
+                value = 1;
+              }
+              {
+                file = "<b>";
+                value = 2;
+              }
+            ];
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: cannot merge definitions of option `svc\\.port'$";
+        };
+      };
+      # A TYPE-HETEROGENEOUS definition list is the other one, and it reaches the same refusal by a
+      # different route — no shape predicate holds of the list at all.
+      test-heterogeneous-defs-refuse-by-name = {
+        expr =
+          gm.mergeDefaultOption
+            [ "svc" "port" ]
+            [
+              {
+                file = "<a>";
+                value = 1;
+              }
+              {
+                file = "<b>";
+                value = "two";
+              }
+            ];
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: cannot merge definitions of option `svc\\.port'$";
+        };
+      };
+      # LIVE CONTROL, same run: the same law on the same option path with definitions that DO
+      # combine. Without it both cells above are consistent with a law that refuses everything —
+      # and the whole point of the ruled arm is that most shapes do not refuse.
+      test-control-the-same-law-combines-rather-than-refusing = {
+        expr =
+          gm.mergeDefaultOption
+            [ "svc" "port" ]
+            [
+              {
+                file = "<a>";
+                value = [ 1 ];
+              }
+              {
+                file = "<b>";
+                value = [ 2 ];
+              }
+            ];
+        expected = [
+          1
+          2
+        ];
+      };
+    };
+
     # THE SECOND HOOK. A second output that nothing runs is a second output that rots.
     perSystem =
       { pkgs, system, ... }:

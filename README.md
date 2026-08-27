@@ -67,11 +67,68 @@ gen-prelude (pure utilities) and takes gen-types' leaf checkers as an **injected
 den + the gen corpus use only `mkDefault` / `mkForce` / `mkMerge` / `mkIf` (plus the implicit
 `mkOptionDefault` behind a plain `default =`). gen-merge therefore implements **one** override rule —
 lowest priority-number wins, ties merge — over the four anchor constructors (all instances of the
-general `mkOverride N`) plus the two combinators `mkMerge` / `mkIf`. The entire nixpkgs **order pass**
-(`mkOrder` / `mkBefore` / `mkAfter`) and the exotic named overrides are deliberately absent — zero
-uses across the surface. Equal-priority definitions merge in **reverse module order**, byte-identical
+general `mkOverride N`) plus the two combinators `mkMerge` / `mkIf`. The exotic named overrides are
+deliberately absent — zero uses across the surface. Equal-priority definitions merge in
+**reverse module order**, byte-identical
 to nixpkgs (observable in list-typed options: three modules contributing `[a]` `[b]` `[c]` merge to
 `[c b a]`; a single module's `[a b]` beside another's `[c]` merges to `[c a b]`).
+
+### The order pass
+
+The nixpkgs **order pass** (`mkOrder` / `mkBefore` / `mkAfter`, plus `sortProperties` behind them) is
+implemented, and it runs **last** of the three: discharge → `filterOverrides` → `sortProperties`. It
+strips the order wrapper and then stable-sorts the surviving definitions by their order priority
+(`mkBefore` 500, unmarked 1000, `mkAfter` 1500), so `mkBefore [ "a" ]` · `[ "b" ]` · `mkAfter [ "c" ]`
+merges to `[ "a" "b" "c" ]` whatever order the modules were authored in.
+
+It closes a **leak** as much as it adds a feature. An order marker is an attrset carrying `_type`, and
+`dischargeProperties` — faithfully to nixpkgs, which has no `"order"` branch there either — matches
+none of its three cases and passes the whole marker on as the value. With no pass to unwrap it, a
+single `mkBefore "x"` reached a permissively-typed option as the literal
+`{ _type = "order"; priority = 500; content = "x"; }`. The missing pass was the missing unwrap.
+
+> ⚠ `priority` names **two different number lines**. `dischargeProperties` stamps the *override*
+> priority (100 default, `mkForce` 50); the order axis is `defaultOrderPriority` 1000. nixpkgs'
+> `sortProperties` overwrites the one field with the other and is safe only because the override pass
+> has already run. gen-merge's plain defs arrive at the pass **already stamped**, so a verbatim port of
+> nixpkgs' `strip`/`compare` reads the stamped 100 as an order key and sorts every plain def first
+> (`[ "b" "a" "c" ]`). This implementation therefore sorts on its own `orderPriority` field and leaves
+> `priority` meaning the override axis on both sides of the pass.
+
+**The order vocabulary is compat surface, not gen's authority model.** gen expresses precedence by
+graph position and provenance rather than by an integer priority lattice; these constructors exist
+because gen accepts nixpkgs module vocabulary and a definition written in it must not leak its wrapper
+into the value domain.
+
+### `mergeDefaultOption` — the shape-directed law (INTERIM, exported beside `mergeLeaf`)
+
+`genMerge.mergeDefaultOption loc defs` is the nixpkgs `lib.mergeDefaultOption` analogue: the law
+nixpkgs applies where no *per-key* type was authored. It combines by the definitions' **runtime
+shape** — one def ⇒ its value · all functions ⇒ applied **pointwise**, results merged by the same law
+(this is not composition) · all lists ⇒ concatenated · all attrsets ⇒ `//`-folded, **shallow,
+last-wins** · all bools ⇒ OR-folded · all strings ⇒ concatenated · all ints **and all equal** ⇒ that
+value · anything else ⇒ a named refusal. **Only differing ints and type-heterogeneous definition lists
+refuse**; differing bools and strings combine.
+
+★ **It is an INTERIM surface and it does NOT replace `mergeLeaf`.** `mergeLeaf` remains the engine's
+no-`.merge` default with its agree-or-refuse posture, nothing inside this library routes through the
+new law, and no existing consumer's merge semantics move. It claims one law at one arm, never
+whole-pipeline parity: nixpkgs' own `attrsOf`/`listOf` merge each key *through* the element type where
+this law's attrset arm never consults it, so two definitions of `attrsOf (listOf str)` sharing a key
+concatenate under nixpkgs and drop the first here.
+
+★ **One declared divergence, in the multi-function arm.** nixpkgs writes that arm
+`x: mergeDefaultOption loc (map (f: f x) list)` — passing raw values into a parameter whose first act
+is `getValues`. For functions returning anything but an attrset carrying a `value` attribute it
+therefore dies *uncatchably*; for functions that do, the stray `getValues` unwraps that field. Neither
+is reproduced: the recursion here runs over the value list, which is what the arm plainly means, and
+`[ (x: [x]) (x: [x+1]) ]` applied to `1` gives `[ 1 2 ]`. Every other arm is byte-equal to nixpkgs' on
+the same input, asserted against the live nixpkgs in `ci/tests/parity-surface.nix`.
+
+**The parity rev is stamped at the export** (`lib/default.nix`, between `nixpkgs-parity-rev` markers)
+and bound to `ci/flake.lock` by a drift cell that compares both directions. `lib/` is nixpkgs-free, so
+the law and the pass are an independent reimplementation with nothing watching upstream; a nixpkgs bump
+reds that cell with both laws byte-unchanged, which is the point — re-verify parity, re-stamp the rev.
 
 ## Usage
 
@@ -950,7 +1007,6 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict
   `raw` only if a consumer hits it.
-- the order pass (`mkOrder` / `mkBefore` / `mkAfter`) is unsupported (0 uses on the surface).
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
 
@@ -964,7 +1020,7 @@ claim is verifiable, not asserted. The flagged kinds:
 
 | kind | what it catches | why it diverges |
 |------|-----------------|-----------------|
-| `order-pass` | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | gen-merge drops the whole order pass (see the priority subset) — the marker is carried as an ordinary value and mis-orders |
+| `order-pass` | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale |
 | `options-introspection` | a module **function** whose formals include `options` | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure |
 | `type-merge` | the same option loc declared **with a `type`** in more than one module | on the type the engines agree (both route the pair through the `typeMerge` functor and refuse on `null`); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge |
 | `function-to` | an option type named `functionTo` | intentionally omitted from the type surface (wrap guard functions as data) |
@@ -1012,7 +1068,7 @@ genMerge.lint {
 genMerge.lint {
   modules = [
     { options.tags = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; default = [ ]; }; }
-    { tags = lib.mkAfter [ "z" ]; }                            # NON-portable — an order marker
+    { tags = lib.mkAfter [ "z" ]; }                            # flagged — an order marker (see the ⚠ above)
   ];
 }
 # ⇒ [ { kind = "order-pass"; loc = [ "tags" ]; file = "<gen-merge>"; detail = "…"; } ]
@@ -1059,6 +1115,8 @@ raise it automatically; `nix flake check ./ci` is a plain eval and does not need
 ## Theoretical foundations
 
 - **byte-mode = the conformance oracle + terminal contract** (structural-dedup spike §3).
-- **priority = one override rule**, the grepped subset (design spec §7); nixpkgs order pass dropped.
+- **priority = one override rule**, the grepped subset (design spec §7), plus the nixpkgs **order
+  pass** as compat vocabulary — precedence itself is gen's graph-position-and-provenance question, not
+  the integer lattice's.
 - **deferredModule = a lazy constructor**, inspectable before forcing (Lorenzen 2025 §2.3).
 - **the `(loc, defs)` hook = the escape the engine rides** (nixpkgs `mkOptionType.merge`).
