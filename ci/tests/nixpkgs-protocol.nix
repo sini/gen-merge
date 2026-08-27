@@ -787,30 +787,53 @@ in
       };
     };
 
-    # A parametric leaf's `typeMerge` REFUSES, deliberately. Its parameters are not introspectable, and
-    # neither substitute works: gen-types' `__id` is NAME-only, so `enum "e" [ "a" ]` and
-    # `enum "e" [ "b" ]` share one; and value equality is pointer-based over the closures, so two
-    # IDENTICAL constructions compare unequal. Left on the nullary default relation, it would answer
-    # "mergeable" for any same-named partner and silently discard one declaration's allowed values —
-    # which is why `lib/default.nix` `refuseParametricMerge` states the refusal instead.
+    # A parametric leaf's `typeMerge`, revisited at gen-types' k1uv mint (43adfdc / a1a5de3): a
+    # checker's identity is minted over its CONSTRUCTION, and `typeEq`/`conservativeEq` separates and
+    # equates constructions rather than names — so a MINTED leaf (`enum`, `struct` without a caller
+    # `verify`, …) now merges when the two operands are the SAME construction (`enumSelf`/`structSelf`
+    # below, each built from two textually-identical but SEPARATELY EVALUATED calls). A DIFFERING
+    # minted construction (`enumDiffering`) still refuses — not because it "cannot be compared" (the
+    # mint compares it fine, and says unequal) but because the checker record carries no readable
+    # payload (`elems`/`members`/… are hashed into the digest, never retained) to attempt a
+    # value-level reconciliation the way nixpkgs' own `enum` functor unions two differing value sets.
+    # Reading those values back would need a channel gen-types deliberately does not publish; picking
+    # one is an owner-level design fork, banked on den-hoag-parametric-merge-unlock-6wb87, not settled
+    # by this landing.
+    #
+    # A SEALED leaf (`refined`, a `struct` carrying a caller `verify`, `typedef`/`typedef'`) keeps
+    # refusing UNCHANGED and unconditionally (`sealedSelfStillRefuses`, built the same
+    # separately-evaluated way as the minted self-merge rows) — its `check` is a bare lambda rebuilt
+    # per call, so nothing published distinguishes two such constructions at all, identical-looking or
+    # not.
     #
     # The nullary rows are the control and they must NOT refuse: a type with no parameters has nothing to
     # compare, so its self-merge is correct. A completion that stamped the refusal onto every leaf would
     # redden here.
     test-parametric-leaf-typeMerge-refuses = {
       expr = {
-        enumSelf = (gmT.enum "e" [ "a" ]).typeMerge (gmT.enum "e" [ "a" ]).functor;
+        enumSelf = ((gmT.enum "e" [ "a" ]).typeMerge (gmT.enum "e" [ "a" ]).functor) != null;
         enumDiffering = (gmT.enum "e" [ "a" ]).typeMerge (gmT.enum "e" [ "b" ]).functor;
-        structSelf = (gmT.struct "s" { a = gmT.str; }).typeMerge (gmT.struct "s" { a = gmT.str; }).functor;
+        structSelf =
+          ((gmT.struct "s" { a = gmT.str; }).typeMerge (gmT.struct "s" { a = gmT.str; }).functor) != null;
         nullaryLeafStillSelfMerges = (gmT.str.typeMerge gmT.str.functor) != null;
         nullaryLeafCrossName = gmT.str.typeMerge gmT.int.functor;
+        sealedSelfStillRefuses =
+          (gmT.refined gmT.str {
+            check = v: true;
+            message = "always true";
+          }).typeMerge
+            (gmT.refined gmT.str {
+              check = v: true;
+              message = "always true";
+            }).functor;
       };
       expected = {
-        enumSelf = null;
+        enumSelf = true;
         enumDiffering = null;
-        structSelf = null;
+        structSelf = true;
         nullaryLeafStillSelfMerges = true;
         nullaryLeafCrossName = null;
+        sealedSelfStillRefuses = null;
       };
     };
 
@@ -1209,12 +1232,16 @@ in
     #   submodule— names agree, payload SHAPES do not (nixpkgs `submoduleWith` carries `class`/
     #              `specialArgs`/… beside `modules`); truncating that into a gen-merge submodule would
     #              drop them silently, so the answer is "not mergeable".
-    #   enumElem — a gen-types PARAMETRIC leaf IS protocol-completed, so it has a `functor`; its
-    #              `typeMerge` REFUSES, because its parameters live behind the checker closures and are
-    #              not introspectable. The container inherits that refusal through `mergeElemTypes`.
-    #              This row is where the completion and the element guard are pinned to AGREE: the guard
-    #              handles a missing half, the completion removes the missing half, and the answer for
-    #              this element is "not mergeable" either way — for a stated reason, not by accident.
+    #   enumElem — a gen-types PARAMETRIC leaf IS protocol-completed, so it has a `functor`. Post-k1uv
+    #              (43adfdc), its `typeMerge` decides by MINTED CONSTRUCTION: the two element enums here
+    #              are separately-built but IDENTICAL, so they mint the same digest and merge — and the
+    #              container inherits that success through `mergeElemTypes`, exactly as it inherits a
+    #              refusal for a DIFFERING pair (pinned at `test-parametric-leaf-typeMerge-refuses`'
+    #              `enumDiffering`). This particular pair is gen-native on both sides, not a foreign one
+    #              — it rides this suite because it is the same element-guard path the row above pins,
+    #              and it is where the completion and the element guard are pinned to AGREE: the guard
+    #              handles a missing half, the completion removes the missing half, and a construction
+    #              match now merges through the container rather than the leaf's own answer being lost.
     test-typeMerge-foreign-functor = {
       expr = {
         listOf = describe (
@@ -1230,7 +1257,7 @@ in
       expected = {
         listOf = "<not-mergeable>";
         submodule = "<not-mergeable>";
-        enumElem = "<not-mergeable>";
+        enumElem = "attrsOf of e";
         completeElem = "attrsOf of string";
       };
     };

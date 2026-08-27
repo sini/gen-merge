@@ -54,31 +54,73 @@ let
     in
     if answer ? refused then throw answer.refused else answer.imported;
 
-  # A PARAMETRIC leaf REFUSES to merge, and the refusal is an answer rather than a gap. Its parameters
-  # live behind the `verify`/`check` closures and are not introspectable, so there is nothing to
-  # compare — and the two candidate substitutes both fail: gen-types' `__id` is NAME-only
-  # (`enum "e" [ "a" ]` and `enum "e" [ "b" ]` share an id, as do two `struct "s"` over different
-  # fields), and value equality is pointer-based over the closures (two identical constructions
-  # compare UNEQUAL). Left on the nullary default relation, a same-named partner would report
-  # "mergeable" and one declaration's allowed values would be discarded silently — precisely the
-  # unsoundness the containers' own relations removed. So a consumer declaring one option twice with a
-  # parametric leaf gets a NAMED REFUSAL rather than a wrong type: gen-merge's own on its declaration
-  # path (lib/modules.nix `redeclareDecl`), and the foreign engine's `already declared` under a
-  # mount. This diverges from nixpkgs' `enum`, whose functor UNIONS the value sets; gen-merge cannot
-  # reproduce that without reading parameters it cannot see.
+  # A PARAMETRIC leaf's merge relation, revisited at gen-types' k1uv mint (43adfdc, pushed
+  # a1a5de3): a checker's identity is now minted over its CONSTRUCTION — constructor plus inert
+  # arguments — rather than its name, and `typeEq`/`conservativeEq` (gen-types `lib/default.nix`)
+  # dispatches on that mint via the tagged `__mint` sum. Two claims this relation used to make are
+  # retired by it, and one is not:
+  #   · "gen-types' `__id` is NAME-only" — false: `enum "e" [ "a" ]` and `enum "e" [ "b" ]` now mint
+  #     apart, and `struct "s"` over different fields does too.
+  #   · "value equality is pointer-based over the closures (two identical constructions compare
+  #     UNEQUAL)" — false for a MINTED family: two separately-built `enum "e" [ "a" "b" ]`s mint the
+  #     SAME digest and compare equal. It is STILL TRUE for a SEALED one (`refined`, a `struct`
+  #     carrying a caller `verify`, `typedef`/`typedef'`): their `check` is a bare lambda rebuilt on
+  #     every call, and gen-types' own README says `typeEq` still separates two identical sealed
+  #     constructions ("What a checker's identity is minted over"). Sealed and foreign leaves (no
+  #     `__mint.minted` at all) therefore keep the ORIGINAL refusal below, unchanged.
+  #
+  # What the MINTED half buys is real but narrower than nixpkgs' own `enum`, whose functor UNIONS two
+  # DIFFERING value sets on merge (`binOp = a: b: unique (a ++ b)`) — that half is NOT reproduced
+  # here. `__mint.minted` is a one-way `"type:<sha256>"` digest (gen-identity `hashIdentity`), and the
+  # checker record `mkChecker` returns carries neither a constructor's arguments (an enum's `elems`,
+  # a struct's `members`, …) nor any accessor for them — deliberately, per gen-types' own README
+  # ("publishing a caller-facing construction form would decide that open vocabulary by accretion").
+  # So a differing-construction pair is not "cannot be compared" — the mint compares it fine, and
+  # says unequal — it is "cannot read component values" to reconcile the difference. Reading them
+  # back would need a NEW channel, on gen-types or on this boundary, and picking one is a design fork
+  # of its own: banked on den-hoag-parametric-merge-unlock-6wb87 for an owner ruling rather than
+  # settled here.
+  #
+  # So: two checkers that mint to the SAME construction merge — trivially, to either operand, since a
+  # digest match means they denote one type — and every other pair still refuses by name. A consumer
+  # declaring one option twice with an unreconciled parametric leaf still gets a NAMED REFUSAL rather
+  # than a wrong type: gen-merge's own on its declaration path (lib/modules.nix `redeclareDecl`), and
+  # the foreign engine's `already declared` under a mount.
   refuseParametricMerge = name: other: {
     refused = "`${name}' and `${
       if builtins.isAttrs other then other.name or "<unnamed>" else "<not a type>"
     }', whose parameters live behind their own predicate and cannot be compared";
+  };
+  # The MINTED-but-differing refusal — same shape as `refuseParametricMerge`, a different reason,
+  # because the two are no longer the same failure. This one fires only when a digest was minted and
+  # the two did not match, so "cannot be compared" would be a lie: the mint compared them and they
+  # are not the same construction. What is missing is a channel back to their arguments.
+  refuseUnreconciledMint = name: other: {
+    refused = "`${name}' and `${
+      if builtins.isAttrs other then other.name or "<unnamed>" else "<not a type>"
+    }', which mint to different constructions and carry no readable component values to reconcile";
   };
   completeParametric =
     v:
     if builtins.isFunction v then
       (x: completeParametric (v x))
     else if builtins.isAttrs v && v ? verify then
-      strategies.defineType (
-        importLeaf v // { typeMergeRel = refuseParametricMerge (v.name or "<unnamed>"); }
-      )
+      let
+        base = importLeaf v;
+        digest = base.__mint.minted or null;
+        # `self` is threaded exactly as `mkTypeWith` threads its own — the value a caller holds is
+        # the EXPORTED type, so a match answers with that rather than with the pre-export record.
+        rel =
+          self: other:
+          if digest == null then
+            refuseParametricMerge (base.name or "<unnamed>") other
+          else if builtins.isAttrs other && (other.__mint.minted or null) == digest then
+            { merged = self; }
+          else
+            refuseUnreconciledMint (base.name or "<unnamed>") other;
+        exported = strategies.defineType (base // { typeMergeRel = rel exported; });
+      in
+      exported
     else
       v;
   # A NULLARY leaf keeps the default relation: it has no parameters, so a same-named partner really is

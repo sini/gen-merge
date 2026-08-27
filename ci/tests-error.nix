@@ -239,11 +239,15 @@ in
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
         };
       };
-      # THE PARAMETRIC ARM. A gen-types parametric leaf refuses to merge by construction — its
-      # parameters sit behind the checker closures, so there is nothing to compare and "same name"
-      # would be a wrong answer, not a cheap one. Two `enum "e"` declarations over DIFFERENT value
-      # sets therefore refuse, and the message shows the two names matching while the pair still does
-      # not merge — which is exactly what distinguishes this arm from the one above.
+      # THE PARAMETRIC ARM, post-k1uv (43adfdc). A gen-types parametric leaf's `typeMergeRel` decides
+      # by MINTED CONSTRUCTION, not by name — so "same name" would still be a wrong answer for two
+      # `enum "e"` declarations over DIFFERENT value sets, but the reason is no longer "there is
+      # nothing to compare": the mint compares them fine, and says unequal. What is actually missing is
+      # a channel back to their component values (an enum's `elems`, …) to attempt a value-level
+      # reconciliation the way nixpkgs' own `enum` unions two differing sets — that channel does not
+      # exist (den-hoag-parametric-merge-unlock-6wb87). So the pair still refuses, and the message shows
+      # the two names matching while the pair still does not merge — which is exactly what distinguishes
+      # this arm from the one above.
       #
       # ★ AND IT NOW SAYS WHY, WHICH IS THE HALF THAT WAS MISSING. The pinned message used to be the
       # bare pair, so this cell read as "`e' and `e' do not merge" and left the reader to work out
@@ -256,7 +260,7 @@ in
         expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "e" [ "b" ]);
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e', whose parameters live behind their own predicate and cannot be compared\\); declared in a\\.nix, b\\.nix$";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e', which mint to different constructions and carry no readable component values to reconcile\\); declared in a\\.nix, b\\.nix$";
         };
       };
       # The path is the FULL option path, and the file list is EVERY declaring file rather than the
