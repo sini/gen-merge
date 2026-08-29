@@ -34,6 +34,8 @@ let
     length
     head
     tail
+    setAttrByPath
+    getAttrByPath
     all
     any
     ;
@@ -301,10 +303,6 @@ let
         bv
     ) b;
 
-  # setAttrByPath [ a b c ] v = { a.b.c = v; } — reshape a freeform def to its full nested path.
-  setAttrByPath =
-    path: value: if path == [ ] then value else { ${head path} = setAttrByPath (tail path) value; };
-
   # ── list/path helpers for the warm re-eval path (design spec §§1-3) ─────────
   # `drop n` / `take n` (gen-prelude ships neither) — index-based, no `++` accumulation.
   drop =
@@ -320,9 +318,6 @@ let
       m = if n < l then n else l;
     in
     prelude.genList (i: prelude.elemAt xs i) (if m > 0 then m else 0);
-  # getAttrByPath [ a b c ] s = s.a.b.c — LAZY attrpath selection (never forces the selected value;
-  # the warm splice reuses prev's memoized leaf thunk, forced only on demand — spec §2).
-  getAttrByPath = path: attrs: foldl' (acc: k: acc.${k}) attrs path;
 
   # ── freeform def coalescing (per originating module instance) ──────────────────────────────────
   # nixpkgs' freeformType option receives a FEW WIDE defs — one per module, each carrying that
