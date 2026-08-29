@@ -15,6 +15,13 @@
       node
     ),
   prelude ? import "${fetch "gen-prelude"}/lib",
-  types ? import "${fetch "gen-types"}/lib" { inherit prelude; },
+  # Through gen-types' OWN standalone entry rather than its `./lib`, so gen-types' own dependencies
+  # are satisfied from gen-types' lock. Reaching for `./lib` obliged this file to name that
+  # library's whole formal list by hand — and a hand-picked list is a SECOND SIGNATURE that
+  # nothing compares against the first: gen-types gained `identity` and this site, still passing
+  # `prelude` alone, threw on every forced standalone import while the flake path stayed green.
+  # Through the entry, a formal gained downstream is defaulted downstream and the divergence
+  # cannot form.
+  types ? import "${fetch "gen-types"}" { inherit prelude; },
 }:
 import ./lib { inherit prelude types; }
