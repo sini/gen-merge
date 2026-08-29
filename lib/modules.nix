@@ -1298,23 +1298,83 @@ let
             attrs = pushDownProperties (configOf e.content);
           }) flat;
 
-          # The `_module` pseudo-tree: deep-merge every module's `_module`, extract args/freeform.
+          # The `_module` pseudo-tree: deep-merge every module's `_module`, extract args.
+          #
+          # IT IS NOT THE FREEFORM FEEDER, and that is the point of the split. `recursiveUpdate`
+          # is a last-wins collapse: two modules each setting `_module.freeformType` arrive here as
+          # ONE value before the priority pass could see two defs, so the second half of the
+          # discard below had a second feeder and fixing only the selection would leave it live.
+          # `freeformType` is therefore collected PER MODULE (`moduleFreeforms`), and N
+          # contributions reach `filterOverrides` as N defs. `args` keeps the deep merge: two
+          # modules contributing different arg names is a union, not a competition.
           moduleTree = foldl' (
             acc: p: if p.attrs ? _module then recursiveUpdate acc p.attrs._module else acc
           ) { } pushed;
           moduleArgs = moduleTree.args or { };
+          moduleFreeforms = concatMap (
+            p:
+            optional (p.attrs ? _module && p.attrs._module ? freeformType) {
+              inherit (p) _file;
+              type = p.attrs._module.freeformType;
+            }
+          ) pushed;
 
           # freeformType is priority-resolved (nixpkgs treats it as an option): a top-level
           # `freeformType` (bare, prio 100) beats a `_module.freeformType = mkDefault …` (prio 1000)
           # — this is how strict.nix's throw-on-unknown default yields to a kind's own freeform.
+          #
+          # ★ THE WINNERS ARE MERGED THROUGH THE TYPE ALGEBRA, NEVER SELECTED. `filterOverrides`
+          # keeps every def of minimum priority-number and its contract says they are "all kept and
+          # merged downstream"; taking `last` of them was the whole of the downstream, so two
+          # equal-priority contributions destroyed one declaration with no diagnostic on any channel
+          # — not `config`, not `provenance`, not `freeformProv`, not `undeclared`. This is the
+          # DEFINITION-side twin of `redeclareDecl`, which routes the declaration plane's two-type
+          # question through `mergeTypes` and turns a `null` answer into a named refusal; the two
+          # planes now give one relation one answer. A merge that succeeds displaces nothing, so
+          # there is no `overridden` analogue here and none is wanted.
+          #
+          # The refusal names EVERY contributing file in fold order, undeduplicated — the same
+          # convention `declaringSitesAt` gives the declaration plane, and for the same reason: the
+          # pair holding the refusal is not the set of modules the author has to reconcile.
+          # `mergeTypesReason` is order-sensitive in its TEXT, so two presentation orders carry two
+          # different messages; that matches `redeclareDecl` reporting in authored order and is
+          # deliberate, not a canonicalisation this site declined to do by oversight.
+          #
+          # The one-winner path attempts no merge: it keeps its current cost and its current type
+          # IDENTITY, which is what `strict.nix`'s throw-on-unknown default depends on.
           freeform =
             let
               candidates =
-                filter (f: f != null) (map (e: topFreeformOf e.content) flat)
-                ++ optional (moduleTree ? freeformType) moduleTree.freeformType;
-              winners = filterOverrides (concatMap dischargeProperties candidates);
+                filter (c: c.type != null) (
+                  map (e: {
+                    inherit (e) _file;
+                    type = topFreeformOf e.content;
+                  }) flat
+                )
+                ++ moduleFreeforms;
+              # `dischargeProperties` is shared with the value-path def folds (`mergeDefsWith`,
+              # `mergeDefsRichWith`) and emits `{ priority; value; }`, so the originating file is
+              # paired back on HERE rather than grown as a field there.
+              winners = filterOverrides (
+                concatMap (c: map (d: d // { inherit (c) _file; }) (dischargeProperties c.type)) candidates
+              );
+              files = concatStringsSep ", " (map (w: w._file) winners);
+              step =
+                acc: w:
+                let
+                  merged = mergeTypes acc w.value;
+                in
+                if merged != null then
+                  merged
+                else
+                  throw "gen-merge: the freeform type is defined with types that do not merge (${
+                    let
+                      reason = mergeTypesReason acc w.value;
+                    in
+                    if reason != null then reason else "`${acc.name}' and `${w.value.name}'"
+                  }); defined in ${files}";
             in
-            if winners == [ ] then null else (prelude.last winners).value;
+            if winners == [ ] then null else foldl' step (head winners).value (tail winners);
 
           # Definition order is REVERSE flattened-module order — byte-identical to nixpkgs, which
           # collects defs last-module-first (observable in list-typed options: `[a] [b] [c]` merges

@@ -458,10 +458,17 @@ in
             extra = "ev";
           }
         ];
+        # `mkForce`, matching the `_module`-side twin below. The subject here is warm re-merge BYTE
+        # IDENTITY, so the edit has to REPLACE the base freeformType rather than compete with it:
+        # `lazyAttrsOf anything` and `lazyAttrsOf str` do not merge, and at equal priority the pair
+        # is a conflict, not an edit. It used to be written bare and leaned on the freeform plane's
+        # last-wins selection to do the replacing — which is the defect `den-hoag-5r1a7` removed, so
+        # the intent is now stated in the fixture instead of being supplied by the engine. The old
+        # shape is still asserted, as a refusal, by the cell below.
         edited = [
           {
             _file = "edit-fft";
-            freeformType = t.lazyAttrsOf t.anything;
+            freeformType = mkForce (t.lazyAttrsOf t.anything);
           }
         ];
       in
@@ -749,6 +756,56 @@ in
           config = {
             a = "av";
           };
+        };
+      };
+  };
+
+  # THE OTHER HALF OF `test-freeform-edited-toplevel-freeformtype-remerges-byte`, AND THE ONLY WARM
+  # CELL THAT STATES THIS. Both freeformType-edit cells above now `mkForce` their edit, so nothing on
+  # the warm path would otherwise say what happens when a warm edit contributes a freeformType at the
+  # SAME priority as the base's: the contributions compete, `lazyAttrsOf anything` and `lazyAttrsOf
+  # str` do not merge, and the eval refuses by name. That is the shape the top-level cell used to
+  # carry, where the freeform plane's last-wins selection silently discarded one of the two and the
+  # byte oracle read `true` over a destroyed declaration (den-hoag-5r1a7). It was found by that cell
+  # FLIPPING rather than by any oracle, which is why it is written down instead of left for the next
+  # person to rediscover.
+  #
+  # The MESSAGE is asserted, not a bare throw: the reason names both element types, the file list
+  # names both contributors, and `<gen-merge>` is the base module's `_file` fallback — it declares
+  # none, which is exactly what an author hitting this needs told.
+  #
+  # ★ IT IS ON THE `testsError` PLANE THOUGH IT LIVES IN THIS FILE, and that is forced rather than
+  # stylistic. `mkCi`'s `checks.default` asserter quantifies over `flake.tests` and evaluates every
+  # cell's `expr` UNCONDITIONALLY, so a throwing `expr` CRASHES that gate instead of failing it —
+  # measured here, not assumed: with this cell on `flake.tests.warm`, `nix flake check ./ci` died
+  # carrying this refusal (exit 1), against exit 0 and "all checks passed!" on the same tree without
+  # it. `ci/tests-error.nix`'s header states the same rule; the plane is the fix, the file is not.
+  flake.testsError.warm = {
+    test-freeform-edited-toplevel-freeformtype-at-equal-priority-refuses =
+      let
+        base = [
+          {
+            _module.freeformType = t.lazyAttrsOf t.str;
+            options.a = mkOption { type = t.str; };
+          }
+          {
+            _file = "ca";
+            a = "av";
+            extra = "ev";
+          }
+        ];
+        edited = [
+          {
+            _file = "edit-fft";
+            freeformType = t.lazyAttrsOf t.anything;
+          }
+        ];
+      in
+      {
+        expr = byteOracle base edited;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`lazyAttrsOf' over `anything' and `lazyAttrsOf' over `string', whose element types do not merge\\); defined in edit-fft, <gen-merge>$";
         };
       };
   };

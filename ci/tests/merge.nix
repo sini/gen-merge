@@ -16,6 +16,56 @@ let
     ;
   t = genMerge.types;
   cfg = args: (evalModuleTree args).config;
+
+  # ── freeform-selection fixtures (den-hoag-5r1a7) ───────────────────────────────────────────────
+  # Shared by the cells near `test-freeformType-priority`. Each carries its own `_file` because the
+  # refusal arm names every contributing file, and the value arm's cells read better against the
+  # same vocabulary the refusal cells in ci/tests-error.nix use.
+  ffSubA = {
+    _file = "A";
+    freeformType = t.attrsOf (
+      t.submodule {
+        options.a = mkOption {
+          type = t.str;
+          default = "a";
+        };
+      }
+    );
+  };
+  ffSubB = {
+    _file = "B";
+    freeformType = t.attrsOf (
+      t.submodule {
+        options.b = mkOption {
+          type = t.str;
+          default = "b";
+        };
+      }
+    );
+  };
+  ffSubC = {
+    _file = "C";
+    freeformType = t.attrsOf (
+      t.submodule {
+        options.c = mkOption {
+          type = t.str;
+          default = "c";
+        };
+      }
+    );
+  };
+  ffStrA = {
+    _file = "A";
+    freeformType = t.attrsOf t.str;
+  };
+  ffUseK = {
+    _file = "Z";
+    config.k = { };
+  };
+  ffUseX = {
+    _file = "Z";
+    config.x = "s";
+  };
 in
 {
   flake.tests.merge = {
@@ -534,6 +584,137 @@ in
       anything = "goes";
     };
   };
+  # ── freeform selection consults the type algebra (spec §2, den-hoag-5r1a7) ────────────────────
+  # Two equal-priority `freeformType` contributions used to be resolved by `prelude.last`: one
+  # declaration was destroyed, in every order, with `undeclared` still reading `[ ]`. They now fold
+  # through `mergeTypes` — the same relation `redeclareDecl` runs one plane over.
+  #
+  # THE CELLS ASSERT THE WHOLE VALUE, NOT THAT THE EVAL SUCCEEDED. The old site succeeded and was
+  # wrong, so a success-only cell passes the defect. Both orders are asserted because the old site
+  # gave two DIFFERENT wrong answers (`{ k.b }` for `[A B]`, `{ k.a }` for `[B A]`), so a one-order
+  # cell would only ever catch half of it.
+  flake.tests.freeform.test-freeform-mergeable-pair-merges-in-both-orders = {
+    expr = {
+      ab = cfg {
+        modules = [
+          ffSubA
+          ffSubB
+          ffUseK
+        ];
+      };
+      ba = cfg {
+        modules = [
+          ffSubB
+          ffSubA
+          ffUseK
+        ];
+      };
+      # The loss report is now TRUTHFUL rather than merely quiet. It read `[ ]` while option `a` was
+      # being destroyed, so on its own this literal discriminates nothing — it is asserted HERE,
+      # beside the value it is a claim about, and not as a cell of its own.
+      undeclared =
+        (evalModuleTree {
+          modules = [
+            ffSubA
+            ffSubB
+            ffUseK
+          ];
+        }).undeclared;
+    };
+    expected = {
+      ab = {
+        k = {
+          a = "a";
+          b = "b";
+        };
+      };
+      ba = {
+        k = {
+          a = "a";
+          b = "b";
+        };
+      };
+      undeclared = [ ];
+    };
+  };
+
+  # A fold, not a pair: three contributions all survive. The old site kept only the last.
+  flake.tests.freeform.test-freeform-mergeable-triple-folds = {
+    expr = cfg {
+      modules = [
+        ffSubA
+        ffSubB
+        ffSubC
+        ffUseK
+      ];
+    };
+    expected = {
+      k = {
+        a = "a";
+        b = "b";
+        c = "c";
+      };
+    };
+  };
+
+  # ── controls for the above, live in the same run ──────────────────────────────────────────────
+  # A SINGLE contribution attempts no merge and keeps its current identity — what catches a fold
+  # that mishandles the singleton.
+  flake.tests.freeform.test-control-freeform-single-contribution = {
+    expr = cfg {
+      modules = [
+        ffStrA
+        ffUseX
+      ];
+    };
+    expected = {
+      x = "s";
+    };
+  };
+
+  # Two contributions at DISTINCT priorities still resolve BY PRIORITY. `filterOverrides` drops the
+  # `mkDefault` before the fold sees it, so this is what fails if the fold is given `candidates`
+  # instead of `winners` — a slip that would turn every priority-shadowed freeform type into a merge
+  # partner and make `strict.nix`'s throw-on-unknown default refuse against a kind's own freeform.
+  # It restates `test-freeformType-priority` above on this vocabulary; both must stay green.
+  flake.tests.freeform.test-control-freeform-distinct-priorities-resolve-by-priority = {
+    expr = cfg {
+      modules = [
+        ffStrA
+        {
+          _file = "B";
+          config._module.freeformType = mkDefault (t.attrsOf t.int);
+        }
+        ffUseX
+      ];
+    };
+    expected = {
+      x = "s";
+    };
+  };
+
+  # The `_module` feeder is collected PER MODULE, so the weaker contribution arriving LAST no longer
+  # collapses over the stronger one before the priority pass runs. Under the old `recursiveUpdate`
+  # feeder this fixture threw: `mkDefault (attrsOf int)` won the collapse and then rejected `"s"`.
+  flake.tests.freeform.test-module-freeform-collected-per-module-not-collapsed = {
+    expr = cfg {
+      modules = [
+        {
+          _file = "A";
+          config._module.freeformType = t.attrsOf t.str;
+        }
+        {
+          _file = "B";
+          config._module.freeformType = mkDefault (t.attrsOf t.int);
+        }
+        ffUseX
+      ];
+    };
+    expected = {
+      x = "s";
+    };
+  };
+
   flake.tests.freeform.test-mergeOneOption = {
     expr = genMerge.mergeOneOption [ "x" ] [ { value = "solo"; } ];
     expected = "solo";

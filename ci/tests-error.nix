@@ -191,6 +191,48 @@ let
       }
     ];
   };
+
+  # ── the freeform refusal's fixtures (den-hoag-5r1a7) ────────────────────────────────────────
+  # Two contributions of the SAME container over element types that do not merge, plus a mergeable
+  # third for the N > 2 cell. `_file` is what the refusal names, so it is the only field that
+  # distinguishes `ffStrA` from `ffIntB` beyond the element type. The `_module`-routed twins are
+  # the second feeder: identical contributions arriving as `config._module.freeformType` rather
+  # than top-level, which the engine collects per module so N of them stay N defs.
+  ffSubA = {
+    _file = "A";
+    freeformType = t.attrsOf (
+      t.submodule {
+        options.a = gm.mkOption {
+          type = t.str;
+          default = "a";
+        };
+      }
+    );
+  };
+  ffStrA = {
+    _file = "A";
+    freeformType = t.attrsOf t.str;
+  };
+  ffIntB = {
+    _file = "B";
+    freeformType = t.attrsOf t.int;
+  };
+  ffModStrA = {
+    _file = "A";
+    config._module.freeformType = t.attrsOf t.str;
+  };
+  ffModIntB = {
+    _file = "B";
+    config._module.freeformType = t.attrsOf t.int;
+  };
+  ffUseK = {
+    _file = "Z";
+    config.k = { };
+  };
+  ffUseX = {
+    _file = "Z";
+    config.x = "s";
+  };
 in
 {
   # Same type as `flake.tests` (`gen-harness/flakeModule.nix`), because it is the same kind of
@@ -342,6 +384,117 @@ in
         expected = {
           host = {
             inner = "B";
+          };
+        };
+      };
+    };
+
+    # The DEFINITION-side twin of `declaration-merge` above. Two equal-priority `freeformType`
+    # contributions used to be resolved by taking the last: the loser was destroyed and no channel
+    # said so, and where the pair was UNMERGEABLE the engine threw about the AUTHOR'S KEY — in one
+    # presentation order only — for a fault living in the freeform declarations. The selection now
+    # folds through `mergeTypes` and a `null` answer is a named refusal, exactly as one plane over.
+    #
+    # ★ TWO ORDERS, TWO REGEXES, DELIBERATELY. `mergeTypesReason` reports the pair in the order it
+    # was asked, and the file list is in fold order for the same reason `declaringSitesAt` reports
+    # in authored order. A cell asserting ONE message for both orders would go red against a correct
+    # build, so the per-order patterns ARE the discrimination rather than a duplication of it.
+    #
+    # ★ EVERY PATTERN HERE IS ANCHORED `^…$`. These messages carry ERE metacharacters — the
+    # parenthesised reason clause and the backquoted type names' surrounding punctuation — so each
+    # is escaped and the anchors carry only the ends.
+    flake.testsError.freeform-selection = {
+      # Asserting the MESSAGE, not that it threw: the old site threw here too, in this order, about
+      # `x'. A bare throw assertion cannot separate the two.
+      test-unmergeable-freeform-pair-refused-by-name = {
+        expr = realize {
+          modules = [
+            ffStrA
+            ffIntB
+            ffUseX
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge\\); defined in A, B$";
+        };
+      };
+      # The reverse order. This is the one that did not throw at all — it returned `{ x = "s"; }` by
+      # discarding `attrsOf str` — so it is what fails if the refusal is order-dependent.
+      test-unmergeable-freeform-pair-refused-in-the-reverse-order = {
+        expr = realize {
+          modules = [
+            ffIntB
+            ffStrA
+            ffUseX
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge\\); defined in B, A$";
+        };
+      };
+      # The SECOND feeder, same pair. `_module.freeformType` reaches the selection as N definitions
+      # rather than as one `recursiveUpdate` result, so these two cells are what fail if the
+      # selection is fixed and the collapse above it is not.
+      test-unmergeable-module-freeform-pair-refused-by-name = {
+        expr = realize {
+          modules = [
+            ffModStrA
+            ffModIntB
+            ffUseX
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge\\); defined in A, B$";
+        };
+      };
+      test-unmergeable-module-freeform-pair-refused-in-the-reverse-order = {
+        expr = realize {
+          modules = [
+            ffModIntB
+            ffModStrA
+            ffUseX
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge\\); defined in B, A$";
+        };
+      };
+      # THE FILE LIST IS EVERY CONTRIBUTOR, NOT THE PAIR HOLDING THE REFUSAL. The fold refuses at its
+      # FIRST step — `attrsOf (submodule)` against `attrsOf str`, both from `A` — and `B` is named
+      # anyway, undeduplicated and in fold order, because it is a third module the author still has
+      # to reconcile. Same convention, and same reason, as
+      # `test-refusal-names-the-full-path-and-every-declaring-file` above.
+      test-freeform-refusal-names-every-contributing-file = {
+        expr = realize {
+          modules = [
+            ffSubA
+            ffStrA
+            ffIntB
+            ffUseK
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `submodule' and `attrsOf' over `string', whose element types do not merge\\); defined in A, A, B$";
+        };
+      };
+      # The runner is not uniformly throwing: the same fixture vocabulary, one contribution, returns
+      # a value. The mergeable-pair and priority arms live in `ci/tests/merge.nix`, which is where a
+      # cell asserting a VALUE belongs.
+      test-control-a-single-freeform-contribution-returns-a-value = {
+        expr = cfg {
+          modules = [
+            ffSubA
+            ffUseK
+          ];
+        };
+        expected = {
+          k = {
+            a = "a";
           };
         };
       };
