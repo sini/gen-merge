@@ -683,6 +683,65 @@ in
       };
     };
 
+    # ── the leaf fold's REFUSAL half, met DIRECTLY rather than through a type's arm (den-hoag-txdgz)
+    # `mergeLeaf` is agree-or-refuse, and every cell above reaches it through `anything`'s
+    # non-structural arm, which is one member of the class that rides it. These are the same fold on
+    # the class's own members: `raw` is the only strategy in lib/types.nix bringing no `mergeDefs`,
+    # and no gen-types checker brings one at all, so both arrive at the engine's own leaf fold. The
+    # VALUE half — equal winners collapsing — is `ci/tests/merge.nix`'s `leafFold` group, which is
+    # where a cell asserting a value belongs.
+    #
+    # ★ WHAT TURNS THESE RED IS THE COLLAPSE BEING WIDENED, NOT REMOVED — the opposite direction
+    # from the value cells, which is why the surface needs both. A fold that SELECTED a winner
+    # instead of demanding agreement (`prelude.last vals`, the shape den-hoag-1fu0a removed one
+    # vocabulary over) answers both of these with a value and destroys the other definition with no
+    # diagnostic on any channel.
+    #
+    # ★ ANCHORED `^…$`; the option path here is a bare `o` and carries no ERE metacharacter, so the
+    # anchors carry the ends and nothing else needs escaping.
+    flake.testsError.leaf-fold-tie = {
+      test-raw-unequal-winners-refused-by-name = {
+        expr = realize {
+          modules = [
+            { options.o = gm.mkOption { type = t.raw; }; }
+            {
+              _file = "A";
+              o = "x";
+            }
+            {
+              _file = "B";
+              o = "y";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions$";
+        };
+      };
+      # A gen-types `list` CHECKER, not gen-merge's `listOf` strategy: the definitions disagree and
+      # the leaf fold refuses, where a concatenating fold would answer `[ 1 2 ]` and pass.
+      test-leaf-list-unequal-winners-refused-rather-than-concatenated = {
+        expr = realize {
+          modules = [
+            { options.o = gm.mkOption { type = t.list; }; }
+            {
+              _file = "A";
+              o = [ 1 ];
+            }
+            {
+              _file = "B";
+              o = [ 2 ];
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions$";
+        };
+      };
+    };
+
     # A UNION merges every definition through a member that accepts it, or refuses by name. These
     # cells are the only assertion available for that refusal: the shape it replaces was an
     # INTERPRETER type error — `expected a list but found a string: "b"` — which escapes

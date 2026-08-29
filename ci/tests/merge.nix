@@ -850,6 +850,165 @@ in
     };
   };
 
+  # ── the engine's own leaf fold: the equal-winner collapse (den-hoag-txdgz) ────────────────────
+  # `mergeLeaf` (lib/modules.nix) is the fold every type with NO `.merge` of its own rides, and that
+  # is a CLASS rather than one type's arm: `raw` — the only strategy in lib/types.nix that brings no
+  # `mergeDefs` — plus the WHOLE gen-types checker vocabulary, which carries no merge notion at all.
+  # A completed gen-types export does publish a leaf `merge` so it can mount in a foreign module
+  # system, but it is marked `_protoLeafMerge`, so `ownFold` reads null through it and the
+  # definitions arrive back at this fold.
+  #
+  # Until 2026-08-29 NOTHING in this suite exercised the collapse: disabling it turned exactly two
+  # cells red and both were `anything`'s, incidental to another landing and deletable with it. These
+  # are cells written FOR the surface, so the guard does not ride another arc's fixtures.
+  #
+  # ★ THEY ASSERT VALUES, AND THAT IS THE WHOLE POINT. The collapse is a SILENT SUCCESS PATH: when
+  # it works the definitions merge, when it breaks they still merge — DIFFERENTLY. `str` and `list`
+  # carry the discrimination. Two EQUAL definitions collapse to that one value, where the
+  # shape-directed law sitting BESIDE `mergeLeaf` (`mergeDefaultOption`, which nothing routes a leaf
+  # through) concatenates and would answer `"aa"` and `[ 1 2 1 2 ]`, and a fold that returned its
+  # winners would answer the pair. All three COMPLETE, so a success-only cell separates none of them
+  # — which is how the rest of this suite passed over the path.
+  #
+  # The refusal half of the same fold — UNEQUAL winners — can state no value and lives on the other
+  # plane, in `ci/tests-error.nix`'s `leaf-fold-tie` group.
+  flake.tests.leafFold.test-raw-equal-winners-collapse-to-that-value = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.raw; }; }
+        {
+          _file = "A";
+          o = "x";
+        }
+        {
+          _file = "B";
+          o = "x";
+        }
+      ];
+    };
+    expected = {
+      o = "x";
+    };
+  };
+
+  # A gen-types NULLARY leaf, and the most common one there is.
+  flake.tests.leafFold.test-leaf-str-equal-winners-collapse-rather-than-concatenate = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.str; }; }
+        {
+          _file = "A";
+          o = "a";
+        }
+        {
+          _file = "B";
+          o = "a";
+        }
+      ];
+    };
+    expected = {
+      o = "a";
+    };
+  };
+
+  # The same leaf class over a LIST value, which is where the discrimination is widest: this is a
+  # gen-types `list` CHECKER and not gen-merge's `listOf` strategy, so the fold that reaches it is
+  # the engine's own and the answer is the definition, not the concatenation.
+  flake.tests.leafFold.test-leaf-list-equal-winners-collapse-rather-than-concatenate = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.list; }; }
+        {
+          _file = "A";
+          o = [
+            1
+            2
+          ];
+        }
+        {
+          _file = "B";
+          o = [
+            1
+            2
+          ];
+        }
+      ];
+    };
+    expected = {
+      o = [
+        1
+        2
+      ];
+    };
+  };
+
+  # A PARAMETRIC gen-types checker — a different sub-population from the nullary leaves above,
+  # because the export completion has to descend THROUGH the application to reach a type at all
+  # (lib/default.nix `completeExport`), and a constructor whose result reached a consumer bare is
+  # the crash that completion exists for. Its result rides the same fold.
+  flake.tests.leafFold.test-parametric-leaf-enum-equal-winners-collapse = {
+    expr = cfg {
+      modules = [
+        {
+          options.o = mkOption {
+            type = t.enum "colour" [
+              "red"
+              "green"
+            ];
+          };
+        }
+        {
+          _file = "A";
+          o = "red";
+        }
+        {
+          _file = "B";
+          o = "red";
+        }
+      ];
+    };
+    expected = {
+      o = "red";
+    };
+  };
+
+  # ★ THE UNSEEDED CONTROLS FOR THIS GROUP'S ORACLE. Both resolve to a SINGLE winner, so they take
+  # the fast path ABOVE the collapse and stay green in the run where the collapse is disabled —
+  # which is what makes that run a reading rather than a uniformly red suite.
+  flake.tests.leafFold.test-control-raw-sole-definition-passes-through = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.raw; }; }
+        {
+          _file = "A";
+          o = "x";
+        }
+      ];
+    };
+    expected = {
+      o = "x";
+    };
+  };
+
+  flake.tests.leafFold.test-control-leaf-distinct-priorities-resolve-without-agreement = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.str; }; }
+        {
+          _file = "A";
+          o = "a";
+        }
+        {
+          _file = "B";
+          o = mkForce "b";
+        }
+      ];
+    };
+    expected = {
+      o = "b";
+    };
+  };
+
   # `_module` is a CONFIG path, not a structural marker: a top-level `{ _module.args.x = y; }` in a
   # config-shorthand module must still be collected, and a downstream module reads the injected arg.
   # (Regression guard — gen-schema strict/instance emit top-level `_module.freeformType`.)
