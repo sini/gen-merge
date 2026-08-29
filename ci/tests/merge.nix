@@ -772,6 +772,41 @@ in
     };
   };
 
+  # ★★ A STATED DIVERGENCE FROM THE FOREIGN PROTOCOL, ASSERTED RATHER THAN INHERITED
+  # (den-hoag-1fu0a). nixpkgs' `anything` has NO list arm: `commonType` agrees on `"list"`, the
+  # `mergeFunction` table has no entry for it, and it falls to `mergeEqualOption` — so `[ 1 ]` and
+  # `[ 2 ]` are a REFUSAL there (measured at the pinned rev) and a CONCATENATION here. gen-merge's
+  # divergence is declared in the type's own header ("lists concat") and is deliberate, but a
+  # divergence with no cell is one nobody can find; this is the cell. It records WHAT IS and changes
+  # nothing — the arm was left exactly as it was.
+  #
+  # ★ ITS RED IS ANY CHANGE TO THE LIST ARM, in either direction: adopting nixpkgs' refusal, or
+  # folding lists some other way. A characterisation cell passes today by construction, so what
+  # earns it its lines is that it is what goes red — deliberately — the day someone closes the
+  # divergence, rather than the divergence closing unremarked.
+  flake.tests.anything.test-list-definitions-concatenate-where-nixpkgs-refuses = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.anything; }; }
+        {
+          _file = "A";
+          o = [ 1 ];
+        }
+        {
+          _file = "B";
+          o = [ 2 ];
+        }
+      ];
+    };
+    # Reverse module order, as everywhere else on the def path.
+    expected = {
+      o = [
+        2
+        1
+      ];
+    };
+  };
+
   # The structural arms: all-list definitions concatenate, all-attrset definitions recurse per key,
   # and a key only one definition supplies passes through as the sole winner. The nested `same` key
   # is defined twice and EQUALLY — the descent's own agree-or-refuse, one level down, answering with

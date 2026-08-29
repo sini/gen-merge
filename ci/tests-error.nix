@@ -250,6 +250,21 @@ let
     _file = "B";
     o = "y";
   };
+  # Two functions that AGREE pointwise, and a third that does not. Nix's `==` answers `false` for
+  # any two lambdas — even for the same one — so the agreement is unobservable to the fold and the
+  # pair is here to say exactly that.
+  anyFnA = {
+    _file = "A";
+    o = _: "v";
+  };
+  anyFnAgreeB = {
+    _file = "B";
+    o = _: "v";
+  };
+  anyFnDisagreeB = {
+    _file = "B";
+    o = _: "w";
+  };
 in
 {
   # Same type as `flake.tests` (`gen-harness/flakeModule.nix`), because it is the same kind of
@@ -606,6 +621,45 @@ in
               _file = "B";
               o = "one";
             }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions$";
+        };
+      };
+      # ★★ A STATED DIVERGENCE FROM THE FOREIGN PROTOCOL, ASSERTED RATHER THAN INHERITED
+      # (den-hoag-1fu0a). FUNCTIONS reach this arm, because gen-merge ships no `lambda` arm for
+      # `anything` — the type's own header declares that absence. nixpkgs has one: it applies the
+      # definitions POINTWISE and merges the results, so two functions AGREEING at every argument
+      # give it a value (measured at the pinned rev: `"v"`). Here the arm is agree-or-refuse and
+      # Nix's `==` answers `false` for any two lambdas — even for the same lambda — so agreement is
+      # not observable and this refuses. It is stricter than nixpkgs, and strictly better than the
+      # `prelude.last` selection it replaced, which returned one function and destroyed the other
+      # in silence. These two cells record WHAT IS; whether `anything` should compose functions is
+      # a design question filed on its own, and closing it is what turns them red.
+      test-pointwise-agreeing-function-definitions-refused-though-nixpkgs-composes = {
+        expr = realize {
+          modules = [
+            anyDecl
+            anyFnA
+            anyFnAgreeB
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions$";
+        };
+      };
+      # The control that keeps the cell above honest about its subject. Both arms refuse, and with
+      # the SAME message — which is the finding, not a duplication of it: agreement changes nothing
+      # here, where in nixpkgs it is the whole difference between a value and a refusal.
+      test-disagreeing-function-definitions-refused-with-the-same-message = {
+        expr = realize {
+          modules = [
+            anyDecl
+            anyFnA
+            anyFnDisagreeB
           ];
         };
         expectedError = {
