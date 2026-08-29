@@ -720,6 +720,101 @@ in
     expected = "solo";
   };
 
+  # ── `anything`'s non-structural arm consults the leaf fold (den-hoag-1fu0a) ────────────────────
+  # The arm ended `prelude.last vals` and now ends `mergeLeaf`. These are the VALUE half of that
+  # oracle — the arms that must still produce a value — and they are the live controls for the
+  # refusal cells in `ci/tests-error.nix`, which cannot state a value at all. Every one of them
+  # passed against the OLD fold too, which is exactly what makes them controls rather than the test:
+  # they are what fails if the refusal was bought by making the arm refuse too much.
+  #
+  # ★ THE STRUCTURAL ARMS ARE HERE BECAUSE THE REWRITE TOUCHED THEM. `loc` and `file` are now
+  # threaded through the list and per-key recursion that used to run over bare values, so the arms
+  # that were never the defect are the ones with a fresh way to break, and nothing else in the suite
+  # exercises them.
+  flake.tests.anything.test-control-anything-equal-definitions-merge = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.anything; }; }
+        {
+          _file = "A";
+          o = "x";
+        }
+        {
+          _file = "B";
+          o = "x";
+        }
+      ];
+    };
+    expected = {
+      o = "x";
+    };
+  };
+
+  # Definitions at DISTINCT priorities still resolve BY PRIORITY: `filterOverrides` drops the loser
+  # before the arm sees it, so exactly one winner reaches the fold and no agreement is demanded.
+  # This is what fails if the refusal were placed above the priority pass instead of inside the fold.
+  flake.tests.anything.test-control-anything-distinct-priorities-resolve-by-priority = {
+    expr = cfg {
+      modules = [
+        { options.o = mkOption { type = t.anything; }; }
+        {
+          _file = "A";
+          o = "x";
+        }
+        {
+          _file = "B";
+          o = mkForce "y";
+        }
+      ];
+    };
+    expected = {
+      o = "y";
+    };
+  };
+
+  # The structural arms: all-list definitions concatenate, all-attrset definitions recurse per key,
+  # and a key only one definition supplies passes through as the sole winner. The nested `same` key
+  # is defined twice and EQUALLY — the descent's own agree-or-refuse, one level down, answering with
+  # a value.
+  flake.tests.anything.test-control-anything-structural-arms-fold = {
+    expr = cfg {
+      modules = [
+        {
+          options.l = mkOption { type = t.anything; };
+          options.a = mkOption { type = t.anything; };
+        }
+        {
+          _file = "A";
+          l = [ 1 ];
+          a = {
+            onlyA = "a";
+            deep.same = "s";
+          };
+        }
+        {
+          _file = "B";
+          l = [ 2 ];
+          a = {
+            onlyB = "b";
+            deep.same = "s";
+          };
+        }
+      ];
+    };
+    expected = {
+      # Reverse module order, as everywhere else on the def path.
+      l = [
+        2
+        1
+      ];
+      a = {
+        onlyA = "a";
+        onlyB = "b";
+        deep.same = "s";
+      };
+    };
+  };
+
   # `_module` is a CONFIG path, not a structural marker: a top-level `{ _module.args.x = y; }` in a
   # config-shorthand module must still be collected, and a downstream module reads the injected arg.
   # (Regression guard — gen-schema strict/instance emit top-level `_module.freeformType`.)

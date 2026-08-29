@@ -41,6 +41,7 @@ let
   inherit (core)
     evalModuleTree
     mergeDefs
+    mergeLeaf
     showOption
     setDefaultModuleLocation
     interface
@@ -600,30 +601,54 @@ let
     name = "raw";
   };
 
-  # anything — recursive value merge (lists concat, attrsets per-key recurse, else last-wins). Used
-  # by non-strict instance freeform + niche raw-ish spots; byte-mode-adequate, not the full nixpkgs
-  # `types.anything` module-composition of function values.
-  mergeAnythingVals =
-    vals:
-    if vals == [ ] then
+  # anything — recursive value merge (lists concat, attrsets per-key recurse, else the ENGINE'S LEAF
+  # FOLD). Used by non-strict instance freeform + niche raw-ish spots; byte-mode-adequate, not the
+  # full nixpkgs `types.anything` module-composition of function values.
+  #
+  # ★★★ THE NON-STRUCTURAL ARM IS `mergeLeaf`, NOT A SELECTION. It used to be `prelude.last vals`:
+  # two UNEQUAL equal-priority definitions returned one of them and destroyed the other with no
+  # diagnostic on any channel, where nixpkgs' `anything.merge` reaches `mergeEqualOption` and THROWS
+  # (measured at the pinned rev: `"x"`/`"y"` returns a value here and refuses there). This is the
+  # value-plane twin of the freeform selection `den-hoag-5r1a7` removed one file over, and the same
+  # argument settles it — except that "merge" DEGENERATES on two scalars: equal ones merge to that
+  # value, unequal ones have nothing to merge, so the arm collapses exactly onto `mergeEqualOption`'s
+  # own semantics. That relation already lives in this engine as `mergeLeaf` — it is what `raw` folds
+  # by, and what every no-`.merge` leaf folds by — so the arm CONSULTS it rather than restating it,
+  # and the two neighbouring answers to one question cannot drift apart.
+  #
+  # `loc` and `file` are therefore threaded through the recursion where the old fold dropped both at
+  # the door. A refusal names the FULL path — `mergeLeaf` reports through `showOption loc` — so a
+  # conflict under a nested key names that key rather than the option root, which is the same
+  # `loc ++ [ k ]` descent nixpkgs' `(attrsOf anything).merge` makes.
+  mergeAnythingDefs =
+    loc: defs:
+    if defs == [ ] then
       throw "gen-merge: anything: no definitions"
-    else if all isList vals then
-      concatLists vals
-    else if all isAttrs vals then
+    else if all (d: isList d.value) defs then
+      concatLists (map (d: d.value) defs)
+    else if all (d: isAttrs d.value) defs then
       let
-        keys = attrNames (foldl' (acc: v: acc // v) { } vals);
+        keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
       in
       listToAttrs (
         map (k: {
           name = k;
-          value = mergeAnythingVals (concatMap (v: optional (v ? ${k}) v.${k}) vals);
+          value = mergeAnythingDefs (loc ++ [ k ]) (
+            concatMap (
+              d:
+              optional (d.value ? ${k}) {
+                inherit (d) file;
+                value = d.value.${k};
+              }
+            ) defs
+          );
         }) keys
       )
     else
-      prelude.last vals;
+      mergeLeaf loc defs;
   anything = defineType {
     name = "anything";
-    mergeDefs = _loc: defs: mergeAnythingVals (map (d: d.value) defs);
+    mergeDefs = mergeAnythingDefs;
   };
 in
 {

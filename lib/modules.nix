@@ -1732,6 +1732,13 @@ in
     mergeDefs
     mergeOption
     mergeOneOption
+    # This engine's own no-`.merge` default — one winner passes, equal winners collapse, unequal
+    # winners are refused by option path. Exported for the same reason `mergeTypes` is: a type in
+    # lib/types.nix asks the identical question at the identical stratum (`anything`'s
+    # non-structural arm, where a "merge" of two scalars degenerates to agree-or-refuse), and one
+    # binding is what keeps the vocabulary's answer and the engine's from drifting apart. Internal
+    # seam only — the public `lib/default.nix` surface is unchanged.
+    mergeLeaf
     # The shape-directed default-merge law (nixpkgs `lib.mergeDefaultOption` parity) — an INTERIM
     # surface BESIDE `mergeLeaf`, which stays this engine's own no-`.merge` default. See the public
     # export in lib/default.nix for the marker.

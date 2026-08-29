@@ -233,6 +233,23 @@ let
     _file = "Z";
     config.x = "s";
   };
+
+  # ── the `anything` scalar tie's fixtures (den-hoag-1fu0a) ───────────────────────────────────
+  # One declaration and two definitions of it differing in exactly the value, so what separates
+  # refusal from a merge is the pair and nothing else. `_file` distinguishes them for a reader;
+  # `mergeLeaf` reports through the option path rather than the files, so it does not appear in
+  # any message here.
+  anyDecl = {
+    options.o = gm.mkOption { type = t.anything; };
+  };
+  anyStrA = {
+    _file = "A";
+    o = "x";
+  };
+  anyStrB = {
+    _file = "B";
+    o = "y";
+  };
 in
 {
   # Same type as `flake.tests` (`gen-harness/flakeModule.nix`), because it is the same kind of
@@ -496,6 +513,118 @@ in
           k = {
             a = "a";
           };
+        };
+      };
+    };
+
+    # The VALUE-plane twin of `freeform-selection` above, one file over in the vocabulary
+    # (den-hoag-1fu0a). `anything`'s non-structural arm ended `prelude.last vals`: two UNEQUAL
+    # equal-priority definitions returned ONE of them and destroyed the other in silence, where
+    # nixpkgs' `anything.merge` reaches `mergeEqualOption` and THROWS. Reproduced against the pinned
+    # nixpkgs before the edit: `"x"` vs `"y"` returned a value here and refused there. The arm now
+    # consults `mergeLeaf`, this engine's own agree-or-refuse leaf fold — the same relation `raw`
+    # and every no-`.merge` leaf already fold by.
+    #
+    # ★ ASSERTING THE MESSAGE, NOT THAT IT THREW. The old site did not throw AT ALL on any of these,
+    # so a bare `tryEval` cell would be satisfied by the defect's own successful answer; and the
+    # nested cell's whole subject is WHICH path the refusal names, which `tryEval` discards.
+    #
+    # ★ EVERY PATTERN IS ANCHORED `^…$` and the option paths carry `.`, an ERE metacharacter, so the
+    # separators are escaped and the anchors carry only the ends.
+    flake.testsError.anything-scalar-tie = {
+      test-unequal-scalar-pair-refused-by-name = {
+        expr = realize {
+          modules = [
+            anyDecl
+            anyStrA
+            anyStrB
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions$";
+        };
+      };
+      # The reverse order. Both orders SUCCEEDED before, with two DIFFERENT wrong answers — defs
+      # reach the fold in reverse module order, so `last` returned `"x"` for `[A B]` and `"y"` for
+      # `[B A]`. A one-order cell would only ever have caught half of it.
+      test-unequal-scalar-pair-refused-in-the-reverse-order = {
+        expr = realize {
+          modules = [
+            anyDecl
+            anyStrB
+            anyStrA
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions$";
+        };
+      };
+      # THE DESCENT NAMES THE FULL PATH. The tie is under two attrset levels, reached through the
+      # arm's own per-key recursion, and the refusal names `o.svc.k` rather than the option root.
+      # This is the cell that fails if the arm refuses but the recursion drops `loc` — which the old
+      # fold did, taking neither `loc` nor `file` past its own door.
+      test-nested-scalar-tie-names-the-full-path = {
+        expr = realize {
+          modules = [
+            anyDecl
+            {
+              _file = "A";
+              o.svc = {
+                k = "x";
+                keep = "same";
+              };
+            }
+            {
+              _file = "B";
+              o.svc = {
+                k = "y";
+                keep = "same";
+              };
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o\\.svc\\.k' has conflicting definitions$";
+        };
+      };
+      # A HETEROGENEOUS pair. nixpkgs refuses this through a different arm — `commonType` fails
+      # before any merge function is chosen, with "conflicting option types" — so this cell records
+      # that gen-merge refuses the same shape and says which words it uses, rather than leaving a
+      # reader to assume the two libraries' messages coincide. It used to return `1`.
+      test-heterogeneous-scalar-pair-refused-by-name = {
+        expr = realize {
+          modules = [
+            anyDecl
+            {
+              _file = "A";
+              o = 1;
+            }
+            {
+              _file = "B";
+              o = "one";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions$";
+        };
+      };
+      # The runner is not uniformly throwing on this vocabulary: one definition attempts no merge
+      # and returns a value. The equal-pair and priority arms are VALUE assertions and live in
+      # `ci/tests/merge.nix`, which is where a cell asserting a value belongs.
+      test-control-a-single-anything-definition-returns-a-value = {
+        expr = cfg {
+          modules = [
+            anyDecl
+            anyStrA
+          ];
+        };
+        expected = {
+          o = "x";
         };
       };
     };
