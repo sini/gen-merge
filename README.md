@@ -28,24 +28,24 @@ gen-prelude (pure utilities) and takes gen-types' leaf checkers as an **injected
 
 ## Gen Ecosystem
 
-| Library | Role |
-|---------|------|
-| [gen-prelude](https://github.com/sini/gen-prelude) | Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils) |
-| [gen-algebra](https://github.com/sini/gen-algebra) | Pure primitives (record, search monad, either, intensional identity) |
-| [gen-types](https://github.com/sini/gen-types) | Clean-room MIT structural type checker (leaf/poly checkers; `verify: v → null\|err`) |
-| [gen-merge](https://github.com/sini/gen-merge) | **This lib** — Byte-mode module merge engine (`evalModuleTree`, byte-identical to nixpkgs `lib.evalModules` over the priority subset) |
-| [gen-schema](https://github.com/sini/gen-schema) | Typed registries (kinds, instances, collections, refs); re-hosted on gen-merge |
-| [gen-aspects](https://github.com/sini/gen-aspects) | Aspect type system (traits, classification, dispatch); re-hosted on gen-merge |
-| [gen-scope](https://github.com/sini/gen-scope) | HOAG scope-graph evaluator (demand-driven, \_eval memoization, circular attributes) |
-| [gen-graph](https://github.com/sini/gen-graph) | Accessor-based graph query combinators (traversal, condensation, phaseOrder) |
-| [gen-select](https://github.com/sini/gen-select) | Selector algebra (pattern matching over graph positions) |
-| [gen-bind](https://github.com/sini/gen-bind) | Module binding (inject external args into NixOS modules) |
-| [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution) |
-| [gen-resolve](https://github.com/sini/gen-resolve) | Demand-driven RAG evaluator over scope graphs (attribute schedule + convergence loop) |
-| [gen-class](https://github.com/sini/gen-class) | Class-share mechanism (partition / contract / apply / gate), byte-gated; its tier-2 fixed-input path rides this engine's `coreShortCircuit` kernel |
-| [gen-memo](https://github.com/sini/gen-memo) | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set) |
-| [gen-vars](https://github.com/sini/gen-vars) | Pure-Nix vars/secrets (den-agnostic) |
-| [gen-flake](https://github.com/sini/gen-flake) | The nixpkgs boundary — compose purely, inject resolved values, build NixOS systems (value-injection) |
+| Library                                              | Role                                                                                                                                               |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [gen-prelude](https://github.com/sini/gen-prelude)   | Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils)                                                                      |
+| [gen-algebra](https://github.com/sini/gen-algebra)   | Pure primitives (record, search monad, either, intensional identity)                                                                               |
+| [gen-types](https://github.com/sini/gen-types)       | Clean-room MIT structural type checker (leaf/poly checkers; `verify: v → null\|err`)                                                               |
+| [gen-merge](https://github.com/sini/gen-merge)       | **This lib** — Byte-mode module merge engine (`evalModuleTree`, byte-identical to nixpkgs `lib.evalModules` over the priority subset)              |
+| [gen-schema](https://github.com/sini/gen-schema)     | Typed registries (kinds, instances, collections, refs); re-hosted on gen-merge                                                                     |
+| [gen-aspects](https://github.com/sini/gen-aspects)   | Aspect type system (traits, classification, dispatch); re-hosted on gen-merge                                                                      |
+| [gen-scope](https://github.com/sini/gen-scope)       | HOAG scope-graph evaluator (demand-driven, \_eval memoization, circular attributes)                                                                |
+| [gen-graph](https://github.com/sini/gen-graph)       | Accessor-based graph query combinators (traversal, condensation, phaseOrder)                                                                       |
+| [gen-select](https://github.com/sini/gen-select)     | Selector algebra (pattern matching over graph positions)                                                                                           |
+| [gen-bind](https://github.com/sini/gen-bind)         | Module binding (inject external args into NixOS modules)                                                                                           |
+| [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution)                                                                             |
+| [gen-resolve](https://github.com/sini/gen-resolve)   | Demand-driven RAG evaluator over scope graphs (attribute schedule + convergence loop)                                                              |
+| [gen-class](https://github.com/sini/gen-class)       | Class-share mechanism (partition / contract / apply / gate), byte-gated; its tier-2 fixed-input path rides this engine's `coreShortCircuit` kernel |
+| [gen-memo](https://github.com/sini/gen-memo)         | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set)                                                          |
+| [gen-vars](https://github.com/sini/gen-vars)         | Pure-Nix vars/secrets (den-agnostic)                                                                                                               |
+| [gen-flake](https://github.com/sini/gen-flake)       | The nixpkgs boundary — compose purely, inject resolved values, build NixOS systems (value-injection)                                               |
 
 ## The 7-item merge primitive
 
@@ -446,24 +446,24 @@ a collection of named judgments plus an interface", and that interface is "the e
 the entire linkset". Definition 5-1 names the two halves this unit holds: the **import environment**
 and the **export environment**. So do its functions.
 
-| | |
-|---|---|
-| `exportType` | a gen type expressed in the foreign protocol — "the type exported by the fragment" |
-| `importType` | a foreign record read back as a gen type, or a named refusal — "the type of the `f` import" |
-| `exportFields` | the fourteen names the foreign protocol reads, as this unit's private data |
+|                |                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `exportType`   | a gen type expressed in the foreign protocol — "the type exported by the fragment"          |
+| `importType`   | a foreign record read back as a gen type, or a named refusal — "the type of the `f` import" |
+| `exportFields` | the fourteen names the foreign protocol reads, as this unit's private data                  |
 
 The two vocabularies, kept apart on purpose:
 
-| gen-native | what it is | the foreign field(s) it derives |
-|---|---|---|
-| `name` | the type's name | `name`, `description` |
-| `verify` / `admits` | value predicate (`v -> null \| err`) / domain predicate (`v -> bool`) | `check` |
-| `mergeDefs` | definition fold, `loc -> defs -> value` | `merge` |
-| `whenEmpty` | what it is worth when nobody defined it | `emptyValue` |
-| `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another | `nestedTypes`, the functor payload |
-| `substructure` | `{ declares; modules; rebuild; }` | `getSubOptions`, `getSubModules`, `substSubModules` |
-| `typeMergeRel` | the **row-free** type-merge relation | `typeMerge`, `functor` |
-| `deprecated` | the deprecation message, if any | `deprecationMessage` |
+| gen-native            | what it is                                                            | the foreign field(s) it derives                     |
+| --------------------- | --------------------------------------------------------------------- | --------------------------------------------------- |
+| `name`                | the type's name                                                       | `name`, `description`                               |
+| `verify` / `admits`   | value predicate (`v -> null \| err`) / domain predicate (`v -> bool`) | `check`                                             |
+| `mergeDefs`           | definition fold, `loc -> defs -> value`                               | `merge`                                             |
+| `whenEmpty`           | what it is worth when nobody defined it                               | `emptyValue`                                        |
+| `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another               | `nestedTypes`, the functor payload                  |
+| `substructure`        | `{ declares; modules; rebuild; }`                                     | `getSubOptions`, `getSubModules`, `substSubModules` |
+| `typeMergeRel`        | the **row-free** type-merge relation                                  | `typeMerge`, `functor`                              |
+| `deprecated`          | the deprecation message, if any                                       | `deprecationMessage`                                |
 
 `exportType` publishes a **partition of the fourteen** as data (`exportClasses`), so it can be read
 rather than argued: **10 DERIVED** (a real translation from a differently-named gen datum), **2
@@ -477,11 +477,11 @@ The boundary was licensed conditionally: build it, and if it turns out to be cer
 back into gen-merge. Four predicates make that condition readable — any one holding fires it — and
 each produces a value in `ci/tests/interface.nix` rather than an opinion:
 
-| | | |
-|---|---|---|
-| **C-1** | the unit only forwards | count the classes; a FORWARDED class appearing, or DERIVED falling to or below FOREIGN CONSTANT |
-| **C-2** | a field set with no translation | a derived field satisfied by reading a gen field of the **same name** |
-| **C-3** | the boundary is crossed one direction only | `importType` absent, or present and unreachable from the engine's type merge |
+|         |                                              |                                                                                                                                     |
+| ------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **C-1** | the unit only forwards                       | count the classes; a FORWARDED class appearing, or DERIVED falling to or below FOREIGN CONSTANT                                     |
+| **C-2** | a field set with no translation              | a derived field satisfied by reading a gen field of the **same name**                                                               |
+| **C-3** | the boundary is crossed one direction only   | `importType` absent, or present and unreachable from the engine's type merge                                                        |
 | **C-4** | the engine still speaks the foreign protocol | hand `mergeTypes` two gen-native types carrying no foreign field; it must return a merged type (`ci/tests/type-merge-relation.nix`) |
 
 What does **not** fire it: that the unit is small; that few types cross today; that two of the
@@ -570,10 +570,10 @@ reports `{ }` rather than aborting on a missing attribute.
 `getSubModules` reports the module set a type carries, and it distinguishes **not having one** from
 **having an empty one**:
 
-| answer | means |
-|---|---|
-| `null` | this type has no sub-module concept at all — a **leaf**'s answer |
-| `[ ]` | this type has a module set and there is nothing in it — `deferredModule` |
+| answer  | means                                                                                  |
+| ------- | -------------------------------------------------------------------------------------- |
+| `null`  | this type has no sub-module concept at all — a **leaf**'s answer                       |
+| `[ ]`   | this type has a module set and there is nothing in it — `deferredModule`               |
 | `[ … ]` | the modules it carries — `submodule`, and the containers, which report their element's |
 
 One `null` cannot carry both facts. Reported as `null`, `deferredModule`'s *"has nothing to declare"*
@@ -641,10 +641,10 @@ The missing declaration is the design choice; making the field required makes it
 **The domain is what the type carries** — a property of the constructor, read off the descriptor rather
 than off any measurement. Two ways a descriptor says so:
 
-| the descriptor carries | the test | who is in |
-|---|---|---|
-| an element type — `elemType`, or nixpkgs' `nestedTypes.elemType` spelling | `carriesElemType` | `listOf`, `attrsOf`/`lazyAttrsOf`, `nullOr` |
-| a module set — `getSubModules`, the protocol's own field for one, supplied and non-`null` | `carriesModuleSet` | `submodule`, `deferredModule` |
+| the descriptor carries                                                                    | the test           | who is in                                   |
+| ----------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------- |
+| an element type — `elemType`, or nixpkgs' `nestedTypes.elemType` spelling                 | `carriesElemType`  | `listOf`, `attrsOf`/`lazyAttrsOf`, `nullOr` |
+| a module set — `getSubModules`, the protocol's own field for one, supplied and non-`null` | `carriesModuleSet` | `submodule`, `deferredModule`               |
 
 The `nestedTypes.elemType` arm is **load-bearing rather than defensive**: `nullOr` carries its element
 only there, so without it `nullOr` would escape its own rule. Disjunct **order** is load-bearing too —
@@ -714,11 +714,11 @@ added to is legitimately empty; a value nobody supplied is a mistake. `emptyValu
 two apart, and gen-merge stamped `{ }` — *no* `value` attr — on every type, so both landed on the same
 throw.
 
-| type | `emptyValue` |
-|---|---|
-| `attrsOf`, `lazyAttrsOf`, `submodule` | `{ value = { }; }` |
-| `listOf` | `{ value = [ ]; }` |
-| `nullOr` | `{ value = null; }` |
+| type                                                      | `emptyValue`                     |
+| --------------------------------------------------------- | -------------------------------- |
+| `attrsOf`, `lazyAttrsOf`, `submodule`                     | `{ value = { }; }`               |
+| `listOf`                                                  | `{ value = [ ]; }`               |
+| `nullOr`                                                  | `{ value = null; }`              |
 | `raw`, `anything`, `deferredModule`, `either`, every leaf | *declares none* — still an error |
 
 The table matches nixpkgs entry for entry, and the second half is as load-bearing as the first: a type
@@ -926,13 +926,13 @@ The disposition is built by the protocol boundary (`interface.refuseMount`), bec
 foreign protocol asks for — even in order to refuse it — is exactly the knowledge that unit exists to
 hold. What stays with the engine is the gen half: a name, a fold, and the mark.
 
-| field | disposition |
-|---|---|
-| `name`, `mergeDefs`/`merge` | **implemented** — the nesting seam. The fold is answered rather than refused because such a value really does combine definitions that way; it opens no mount, since the field a foreign engine forces first refuses before any fold is reached |
-| `nonMountable` | **the mark.** Presence is the predicate (testing it forces nothing); the value carries the reason |
-| `deprecationMessage` ⇒ `null`, `emptyValue` ⇒ `{ }`, `nestedTypes` ⇒ `{ }` | **answered, and true of a tree** — it is not deprecated, supplies no value for an undefined nesting option, and wraps no element type. These are the answers gen-merge's own readers already derived from absence, so nothing internal changed. `deprecationMessage` does one thing more: it closes the consumer's one remaining **direct** (non-`or`) read of this type, the read that would abort *uncatchably* rather than refuse. The refusal does not depend on it — with the field removed the mount still refuses catchably, because `getSubModules` is forced first and is read through `or` |
-| `check`, `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for |
-| `_type` | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort |
+| field                                                                                                                   | disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`, `mergeDefs`/`merge`                                                                                             | **implemented** — the nesting seam. The fold is answered rather than refused because such a value really does combine definitions that way; it opens no mount, since the field a foreign engine forces first refuses before any fold is reached                                                                                                                                                                                                                                                                                                                                                      |
+| `nonMountable`                                                                                                          | **the mark.** Presence is the predicate (testing it forces nothing); the value carries the reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `deprecationMessage` ⇒ `null`, `emptyValue` ⇒ `{ }`, `nestedTypes` ⇒ `{ }`                                              | **answered, and true of a tree** — it is not deprecated, supplies no value for an undefined nesting option, and wraps no element type. These are the answers gen-merge's own readers already derived from absence, so nothing internal changed. `deprecationMessage` does one thing more: it closes the consumer's one remaining **direct** (non-`or`) read of this type, the read that would abort *uncatchably* rather than refuse. The refusal does not depend on it — with the field removed the mount still refuses catchably, because `getSubModules` is forced first and is read through `or` |
+| `check`, `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `_type`                                                                                                                 | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort                                                                                                                                                                                                                                                                                                                                     |
 
 `mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
 either vocabulary's type-merge half is read, because "do these two types merge?" has a true answer
@@ -1018,13 +1018,13 @@ These boundaries are mechanically checkable — see [Portable-subset lint](#port
 step outside the byte-mode surface, so the "runs on gen-merge and `lib.evalModules` byte-identically"
 claim is verifiable, not asserted. The flagged kinds:
 
-| kind | what it catches | why it diverges |
-|------|-----------------|-----------------|
-| `order-pass` | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale |
-| `options-introspection` | a module **function** whose formals include `options` | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure |
-| `type-merge` | the same option loc declared **with a `type`** in more than one module | on the type the engines agree (both route the pair through the `typeMerge` functor and refuse on `null`); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge |
-| `function-to` | an option type named `functionTo` | intentionally omitted from the type surface (wrap guard functions as data) |
-| `unverifiable` | an option type nested deeper than the type-walk fuel | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative) |
+| kind                    | what it catches                                                                        | why it diverges                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `order-pass`            | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale |
+| `options-introspection` | a module **function** whose formals include `options`                                  | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure                                                                                                                                                                                                                                                                                                                                                                  |
+| `type-merge`            | the same option loc declared **with a `type`** in more than one module                 | on the type the engines agree (both route the pair through the `typeMerge` functor and refuse on `null`); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge                                                                               |
+| `function-to`           | an option type named `functionTo`                                                      | intentionally omitted from the type surface (wrap guard functions as data)                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `unverifiable`          | an option type nested deeper than the type-walk fuel                                   | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative)                                                                                                                                                                                                                                                                                                                                                        |
 
 Each finding is `{ kind; loc; file; detail }` — `loc` is the option/config path (`[]` for a whole-module
 finding like `options-introspection`); `file` is the def/decl provenance (`_file`), a **list** of files

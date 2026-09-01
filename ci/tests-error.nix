@@ -21,18 +21,16 @@
 # no ignore convention that a dependency bump could redefine. It reaches the flake through
 # `mkCi`'s `extraModules`.
 #
-# BOTH OUTPUTS NEED RUNNING, so both get a hook. The wrapper `gen-harness`'s `ci` hook builds
-# bakes `./ci#tests` into its own text and cannot be pointed at this one; the `ci-error` hook
-# below is its counterpart, declared through the same `pre-commit.settings.hooks` surface under a
-# distinct id so the two merge rather than collide.
+# BOTH OUTPUTS NEED RUNNING, so both get a hook — and `gen-harness`'s shared flake module wires
+# both, beside each other, off the same read-roots guard. The wrapper its `ci` hook builds bakes
+# `./ci#tests` into its own text and cannot be pointed at this one; `ci-error` is its counterpart,
+# under a distinct id so the two merge rather than collide, and this file supplies only its cells.
 #
 #   nix-unit --flake ./ci#tests        # the suites
 #   nix-unit --flake ./ci#testsError   # these cells
 {
   lib,
-  name,
   genMerge,
-  genInputs,
   nixpkgsLib,
   interface,
   genMergeVocab,
@@ -267,14 +265,6 @@ let
   };
 in
 {
-  # Same type as `flake.tests` (`gen-harness/flakeModule.nix`), because it is the same kind of
-  # thing read by the same runner — only the assertion the cells carry differs.
-  options.flake.testsError = lib.mkOption {
-    type = lib.types.lazyAttrsOf (lib.types.lazyAttrsOf lib.types.raw);
-    default = { };
-    description = "Test suites whose cells assert an ERROR: { suite.test = { expr; expectedError; }; }. Read by `nix-unit --flake ./ci#testsError`; deliberately outside `flake.tests`, which the batch asserter quantifies over.";
-  };
-
   config = {
     flake.testsError.refusal-messages = {
       # The message NAMES THE FULL PATH of the key it could not place — `rack.stray`, not `rack`
@@ -1416,27 +1406,5 @@ in
         ];
       };
     };
-
-    # THE SECOND HOOK. A second output that nothing runs is a second output that rots.
-    perSystem =
-      { pkgs, system, ... }:
-      {
-        pre-commit.settings.hooks.ci-error = {
-          enable = true;
-          name = "ci-error";
-          description = "Run nix-unit error-assertion tests";
-          entry = "${
-            pkgs.writeShellApplication {
-              name = "${name}-ci-nix-unit-error";
-              runtimeInputs = [ genInputs.nix-unit.packages.${system}.default ];
-              text = ''
-                exec nix-unit --flake ./ci#testsError "$@"
-              '';
-            }
-          }/bin/${name}-ci-nix-unit-error";
-          files = "\\.nix$";
-          pass_filenames = false;
-        };
-      };
   };
 }
