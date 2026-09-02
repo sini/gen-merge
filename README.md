@@ -44,7 +44,6 @@ gen-prelude (pure utilities) and takes gen-types' leaf checkers as an **injected
 | [gen-class](https://github.com/sini/gen-class)       | Class-share mechanism (partition / contract / apply / gate), byte-gated; its tier-2 fixed-input path rides this engine's `coreShortCircuit` kernel |
 | [gen-memo](https://github.com/sini/gen-memo)         | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set)                                                          |
 | [gen-vars](https://github.com/sini/gen-vars)         | Pure-Nix vars/secrets (den-agnostic)                                                                                                               |
-| [gen-flake](https://github.com/sini/gen-flake)       | The nixpkgs boundary — compose purely, inject resolved values, build NixOS systems (value-injection)                                               |
 
 ## The 7-item merge primitive
 
@@ -361,7 +360,7 @@ the tail-k of the full flatten (k = `length (collectModules callM editedModules)
 count, since `imports` expansion is config-dependent). Warm is REFUSED (cold fallback, stated in the
 trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
 to the footprint). Whether an override *reduces* to a modules-append at all is the caller's call
-(gen-flake's `override`); the engine just splices when handed a `warmFrom`.
+(the caller's `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
 
 **The dirty footprint (the reusability predicate).** A module entry is CLEAN (`srcClass` attrset /
 marked-pure — config-independent), DIRTY (function, `srcClass` dirty), or EDITED (in the appended
