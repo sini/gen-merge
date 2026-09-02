@@ -41,7 +41,6 @@ gen-prelude (pure utilities) and takes gen-types' leaf checkers as an **injected
 | [gen-select](https://github.com/sini/gen-select)     | Selector algebra (pattern matching over graph positions)                                                                                           |
 | [gen-bind](https://github.com/sini/gen-bind)         | Module binding (inject external args into NixOS modules)                                                                                           |
 | [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution)                                                                             |
-| [gen-resolve](https://github.com/sini/gen-resolve)   | Demand-driven RAG evaluator over scope graphs (attribute schedule + convergence loop)                                                              |
 | [gen-class](https://github.com/sini/gen-class)       | Class-share mechanism (partition / contract / apply / gate), byte-gated; its tier-2 fixed-input path rides this engine's `coreShortCircuit` kernel |
 | [gen-memo](https://github.com/sini/gen-memo)         | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set)                                                          |
 | [gen-vars](https://github.com/sini/gen-vars)         | Pure-Nix vars/secrets (den-agnostic)                                                                                                               |
