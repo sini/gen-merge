@@ -360,7 +360,7 @@ the tail-k of the full flatten (k = `length (collectModules callM editedModules)
 count, since `imports` expansion is config-dependent). Warm is REFUSED (cold fallback, stated in the
 trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
 to the footprint). Whether an override *reduces* to a modules-append at all is the caller's call
-(the caller's `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
+(the `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
 
 **The dirty footprint (the reusability predicate).** A module entry is CLEAN (`srcClass` attrset /
 marked-pure — config-independent), DIRTY (function, `srcClass` dirty), or EDITED (in the appended
