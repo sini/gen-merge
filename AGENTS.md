@@ -137,6 +137,8 @@ acquires these only by being exported.
 
 ## Measured traps
 
+<!-- gen-citations:begin -->
+
 Each row verified in this run against the flake's wired `.lib`. Preamble: `flk = builtins.getFlake "…/gen-merge"`; `l = flk.lib`; `t = l.types`; `gt = flk.inputs.gen-types.lib` (the injected leaves);
 `cfg = args: (l.evalModuleTree args).config`; `ev = l.evalModuleTree`; `try = e: (builtins.tryEval (builtins.deepSeq e e)).success`.
 
@@ -194,6 +196,8 @@ Read, **not exercised** in this run: `substSubModules` replacement semantics (`l
 substructure; covered by `test-substSubModules-rebuilds`), `coalesceUnmatched`'s per-module freeform regrouping
 (`lib/modules.nix` `coalesceUnmatched`), and the compat path that injects nixpkgs `lib.types` as the leaf
 `types` (`ci/flake.nix`, suite `compat`).
+
+<!-- gen-citations:end -->
 
 ## Theory
 
