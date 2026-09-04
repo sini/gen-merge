@@ -44,7 +44,10 @@ let
   # Each library's own flake wires these; the bench reads the same locked revisions and applies the
   # same arguments, so it binds what `./ci` binds without going through a flake.
   prelude = import "${fromLock "gen-prelude"}/lib";
-  genTypes = import "${fromLock "gen-types"}/lib" { inherit prelude; };
+  # Through gen-types' own standalone entry, never its bare `./lib` — the root shim's rule: a
+  # hand-named formal list is a SECOND SIGNATURE nothing compares against the first, and this is
+  # the site where gen-types' added `identity` went untracked.
+  genTypes = import "${fromLock "gen-types"}" { inherit prelude; };
   gm = import ../../lib {
     inherit prelude;
     types = genTypes;

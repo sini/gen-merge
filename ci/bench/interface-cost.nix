@@ -51,7 +51,11 @@ let
         ;
     };
   prelude = import "${fromLock "gen-prelude"}/lib";
-  genTypes = import "${fromLock "gen-types"}/lib" { inherit prelude; };
+  # Through gen-types' own standalone entry, never its bare `./lib` — the root shim's rule: a
+  # hand-named formal list is a SECOND SIGNATURE nothing compares against the first, and this
+  # site carried the same untracked `identity` as either-totality.nix, latent because no arm
+  # here forces the leaf checkers.
+  genTypes = import "${fromLock "gen-types"}" { inherit prelude; };
   gm = import ../../lib {
     inherit prelude;
     types = genTypes;
