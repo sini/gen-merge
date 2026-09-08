@@ -111,16 +111,24 @@ let
       carriesSomething = declaresRole || ((t.substructure or { }).modules or null) != null;
       missingSub = filter (f: !((t.substructure or { }) ? ${f})) subFormals;
       # ★ `recarry` IS OWED BY A TYPE THAT DECLARES A ROLE, and it is the last carried-role formal that
-      # was left un-total. The boundary reads it UNCONDITIONALLY to rebuild this type over another
-      # payload, so a carrying record without it constructs, exports, and then detonates with a bare
-      # missing-attribute error the moment a foreign engine applies the functor — an interpreter error
-      # naming neither the type nor the field, which is the exact shape making every other formal here
-      # required was meant to remove.
+      # was left un-total. The boundary reads it to rebuild this type over another payload wherever it
+      # DERIVES the relation, so a carrying record without one that is not answered for otherwise
+      # constructs, exports, and then detonates with a bare missing-attribute error the moment a
+      # foreign engine applies the functor — an interpreter error naming neither the type nor the
+      # field, which is the exact shape making every other formal here required was meant to remove.
       #
       # SCOPED TO THE ROLE, not to carrying in general: `deferredModule` carries a module set through
       # its substructure without declaring a role, so it has no payload to be rebuilt over and owes
       # none. The domain is what the record SAYS it carries, as everywhere else in this check.
-      missingRecarry = if declaresRole && !(t ? recarry) then [ "recarry" ] else [ ];
+      #
+      # AND SCOPED TO A REBUILD THIS BOUNDARY ACTUALLY PERFORMS. `recarry' is owed because the export
+      # half rebuilds the type over another payload to derive a relation for it. A record that came
+      # in STATING its own relation is answered by that instead and is never rebuilt that way, so it
+      # owes nothing. `retainedRelation' is gen's own word for that fact and its PRESENCE is the
+      # whole question — this file asks what the record says about itself in this library's
+      # vocabulary, and the shape of what was retained stays behind the boundary, where it belongs.
+      missingRecarry =
+        if declaresRole && !(t ? recarry) && !(t ? retainedRelation) then [ "recarry" ] else [ ];
       missing = missingSub ++ missingRecarry;
       nullaryRel =
         other:

@@ -520,7 +520,8 @@ when forced and every other name still publishes.
 Every type in the `types` namespace carries the full **14-field nixpkgs `mkOptionType` shape** —
 `_type`, `name`, `description`, `descriptionClass`, `deprecationMessage`, `check`, `merge`,
 `emptyValue`, `getSubOptions`, `getSubModules`, `substSubModules`, `typeMerge`, `nestedTypes`,
-`functor` — derived at the boundary above, so the SAME type value serves both engines. This is what
+`functor` — derived at the boundary above, except where the record stated its own relation and that
+pair is retained and republished, so the SAME type value serves both engines. This is what
 lets gen-schema inject gen-merge-typed options into an instance submodule that a **nixpkgs**
 `lib.evalModules` evaluates (the corpus path: `mkInstanceRegistry` inside flake-parts). Pinned by
 `ci/tests/nixpkgs-protocol.nix`.
@@ -627,9 +628,11 @@ genMergeVocab.mkType {
 ```
 
 **A type that declares a ROLE owes a fourth formal, `recarry`,** required on the same terms. The
-boundary reads it unconditionally to rebuild the type over another payload, so a carrying record
-without one would construct, export, and then detonate with a bare missing-attribute error the moment
-a foreign engine applied the functor — an interpreter abort naming neither the type nor the field.
+boundary reads it to rebuild the type over another payload wherever it **derives** the relation —
+except where the record stated its own, which is answered by that instead and is never rebuilt this
+way — so a carrying record without one that is not answered for otherwise would construct, export,
+and then detonate with a bare missing-attribute error the moment a foreign engine applied the
+functor — an interpreter abort naming neither the type nor the field.
 The requirement is scoped to the **role**, not to carrying in general: `deferredModule` carries a
 module set through its `substructure` without declaring a role, so it has no payload to be rebuilt
 over and owes none.
@@ -828,7 +831,9 @@ face a same-named foreign type declared for the same option, and that partner ha
 never will. Removing the arm would make the boundary one-directional, which is the C-3 ceremony
 predicate.
 
-The boundary derives **both** `typeMerge` and `functor` from the one relation. Outbound, it recovers
+The boundary derives **both** `typeMerge` and `functor` from the one relation, except where the
+record stated its own relation — that pair is retained under a gen name at import and republished
+verbatim, the author's functor name governing. Outbound, it recovers
 the partner from that partner's OWN functor (`f.type` is by construction a function of `f`'s own
 payload, so the reconstruction is well-typed whatever shape the payload has) and hands a TYPE to the
 relation — no payload-shape agreement is needed on gen's side. Inbound, it publishes a functor a

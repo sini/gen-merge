@@ -970,8 +970,9 @@ in
         };
       };
       # THE FOURTH CARRIED-ROLE FORMAL, and the last one that was left un-total. The boundary reads
-      # `recarry` UNCONDITIONALLY to rebuild a carrying type over another payload, so a record without
-      # it used to construct, export, and then detonate with a bare missing-attribute error the moment
+      # `recarry` to rebuild a carrying type over another payload wherever it DERIVES the relation —
+      # except where the record stated its own, which is answered by that instead — so a record
+      # without it used to construct, export, and then detonate with a bare missing-attribute error the moment
       # a foreign engine applied the functor — an interpreter abort naming neither the type nor the
       # field. Every shipped carrying type supplies it, which is exactly why nothing caught this: the
       # failure was reachable only by a future author, and by then the refusal would not exist.
@@ -1071,26 +1072,43 @@ in
         expected = "tiny";
       };
 
-      # ── A STATED RELATION THIS BOUNDARY CANNOT READ ──────────────────────────────────────────────
-      # ★★★ THE SILENT ARM OF THE SAME RULE, AND IT WAS REACHED THROUGH THE PUBLIC DOOR. `functor` is
-      # an export field, so it comes off with the rest of the protocol's names, and only the PAYLOAD
-      # crosses back — in two spellings. A consumer stating its parameter the nixpkgs way, BARE, hit
-      # neither spelling: payload and `binOp` were both discarded and the type fell back to merging on
-      # its NAME ALONE, unconditionally accepting two operands its own `binOp` refuses. Measured on the
-      # reconstruction below, differing elements merged where they had refused one revision earlier,
-      # and nothing threw, no cell reddened and no warning was emitted. ADR-0025 §1 rules that every
-      # operation returns a value or a NAMED refusal and that exceptions are enumerated, never silent;
-      # this cell is that rule reaching the one arm of the import environment that was still silent.
+      # ── A STATED RELATION, AND THE TWO WAYS IT CAN FAIL TO CROSS ─────────────────────────────────
+      # ★★★ THE RELATION IS NO LONGER LOST, WHICH IS WHY THESE CELLS NO LONGER SAY IT IS. `functor` is
+      # an export field, so it comes off with the rest of the protocol's names — and `importType` now
+      # RETAINS the author's own pair under a gen name, installs their relation, and republishes their
+      # functor with its name intact. A consumer stating its parameter the nixpkgs way, BARE, is
+      # therefore ADMITTED: the parameter is still in a spelling this boundary does not read, and that
+      # has not changed — what changed is the CONSEQUENCE, because the relation that discriminates on
+      # it is the author's own and is applied unread rather than discarded. The last cell in this
+      # group is what says so, and it is the same reconstruction that used to be refused here.
+      # ADR-0025 §1's rule — a value or a NAMED refusal, never a silent downgrade — is met by
+      # construction on this arm instead of by refusal.
       #
-      # WHAT IT DOES NOT DO is decide how such a consumer should OBTAIN the parameterised relation —
-      # that is a live question about the public protocol. The refusal converts a silent downgrade
-      # into a loud one without answering it, which is why the message ends by naming both honest
-      # exits rather than a single blessed one.
-      test-importing-a-functor-stating-an-unreadable-parameter-is-refused = {
-        expr = aspectsRootWith t.str;
+      # WHAT SURVIVES AS A REFUSAL is the pair of shapes where a retained relation could not answer,
+      # and the two PARTITION "supplies a functor" on `binOp`, so neither can fire for one record:
+      #   · `binOp` stated and left EMPTY beside a parameter this boundary cannot read — something to
+      #     discriminate on, nothing stated to discriminate with, and the type would fall back to
+      #     merging on its NAME ALONE;
+      #   · `binOp` stated with a functor that cannot ANSWER for it — no `name`, or no `type` to
+      #     rebuild the merged parameter with. The protocol's own default reads both off the functor
+      #     directly, so a gap there is an interpreter abort at a merge site far from the record that
+      #     caused it — which is the refusal-shaped hole this group exists to keep closed.
+      # The three controls below say the domain is exactly those two and not "supplies a functor".
+      test-importing-a-functor-whose-relation-slot-is-empty-is-refused = {
+        expr = gm.mkOptionType {
+          name = "emptyRel";
+          functor = {
+            name = "emptyRel";
+            # BARE, the nixpkgs convention this boundary does not read — so there IS a parameter,
+            # and the `binOp` beside it that would have discriminated on it is empty.
+            payload = t.str;
+            binOp = null;
+            type = _p: null;
+          };
+        };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option type `aspectsRoot' supplies a `functor' this boundary cannot read: its parameter is stated as neither `payload\\.elemType' nor `payload\\.modules', so the parameter and the `binOp' that discriminates on it are discarded and `aspectsRoot' merges on its NAME ALONE — accepting two operands its own `binOp' refuses\\. State the parameter as `functor\\.payload\\.elemType' \\(or `\\.modules'\\), or drop the `functor' if merging on the name alone is what this type means$";
+          msg = "^gen-merge: the option type `emptyRel' supplies a `functor' this boundary cannot read: its parameter is stated as neither `payload\\.elemType' nor `payload\\.modules', so the parameter and the `binOp' that discriminates on it are discarded and `emptyRel' merges on its NAME ALONE — accepting two operands its own `binOp' refuses\\. State the parameter as `functor\\.payload\\.elemType' \\(or `\\.modules'\\), or drop the `functor' if merging on the name alone is what this type means$";
         };
       };
       # ★★ LIVE CONTROL, AND IT IS THE ONE THAT KEEPS THE REFUSAL PRECISE RATHER THAN MERELY LOUD. A
@@ -1120,14 +1138,17 @@ in
       # a spelling this boundary DOES read is consumed into `carries` and the functor refusal stays
       # silent — what fires instead is the carried-role requirement above, a DIFFERENT refusal with a
       # different message, which is only reachable because the payload crossed. Asserting that message
-      # here is what proves the two refusals are not one loud predicate wearing two names.
+      # here is what proves the two refusals are not one loud predicate wearing two names. It differs
+      # from the refusal above in the PAYLOAD SPELLING and in nothing else, `binOp` empty in both:
+      # a record that stated its relation is answered by that relation and owes no `recarry`, so this
+      # control has to leave the slot empty to reach the requirement at all.
       test-control-a-payload-the-boundary-reads-reaches-the-carried-role-refusal-instead = {
         expr = gm.mkOptionType {
           name = "boxOf";
           functor = {
             name = "boxOf";
             payload.elemType = t.str;
-            binOp = _a: _b: null;
+            binOp = null;
           };
           getSubOptions = _p: { };
           getSubModules = null;
@@ -1138,10 +1159,78 @@ in
           msg = "^gen-merge: the structural type `boxOf' carries a parameter but does not supply `recarry'; a type that carries something answers for it rather than inheriting a leaf's answers$";
         };
       };
+      # ★★★ THE OTHER HALF OF THE PARTITION, AND IT IS A HAZARD THE RETENTION ITSELF CREATED. A
+      # retained relation is applied through the protocol's own default, which reads `name' and `type'
+      # off the author's functor and APPLIES `type' to the merged parameter. Nothing in the foreign
+      # protocol makes an author write either, so a functor stating `binOp' and omitting `type'
+      # constructs, exports, and then dies inside the boundary with `attribute 'type' missing' —
+      # naming neither the type nor the field, at a merge site the author never wrote. Refusing at
+      # import is what makes the retention total: the record that cannot be answered for never enters
+      # the library, so the state the abort needs cannot form. The refusal names the FIELD, because
+      # the author's remedy is to write it.
+      test-importing-a-stated-relation-its-functor-cannot-answer-is-refused = {
+        expr = gm.mkOptionType {
+          name = "gapBox";
+          functor = {
+            name = "gapBox";
+            payload.elemType = t.str;
+            binOp = a: _b: a;
+          };
+          getSubOptions = _p: { };
+          getSubModules = null;
+          substSubModules = _m: null;
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option type `gapBox' states a merge relation in `functor\\.binOp' but its `functor' does not answer `type'; the relation is retained verbatim and applied by the protocol's own default, which reads them off it\\. Supply them, or drop `functor\\.binOp' if merging on the name alone is what this type means$";
+        };
+      };
+      # ★★ LIVE CONTROL FOR THAT REFUSAL, AND IT IS THE ROW THAT PROVES THE RELAXATION IT GUARDS. The
+      # same record with `type' supplied and STILL no `recarry': it imports, and it merges with a
+      # partner its own `binOp` accepts. Without this row the refusal above is equally consistent with
+      # a boundary that refuses every carrying record stating a relation — which is the pre-relaxation
+      # behaviour, and would silently undo the thing the retention exists to do.
+      test-control-a-complete-stated-relation-imports-and-merges-without-recarry = {
+        expr =
+          let
+            box =
+              elem:
+              gm.mkOptionType {
+                name = "okBox";
+                functor = {
+                  name = "okBox";
+                  payload.elemType = elem;
+                  binOp = a: _b: a;
+                  type = pl: box pl.elemType;
+                };
+                getSubOptions = _p: { };
+                getSubModules = null;
+                substSubModules = _m: null;
+              };
+          in
+          ((box t.str).typeMerge (box t.str).functor).name;
+        expected = "okBox";
+      };
+      # ★★ AND THE ADMITTED SUBJECT ANSWERS FOR ITSELF. `aspectsRootWith` — the byte-identical
+      # reconstruction of gen-aspects' real container, above — is the shape this group used to refuse.
+      # It now crosses, and these two rows are what says the admission is not a silent downgrade: its
+      # own `binOp` refuses two containers over DIFFERENT elements and reconciles two over the same
+      # one. That is the property the old refusal existed to protect, now held by construction. Both
+      # rows in one cell because either alone is consistent with a relation that answers constantly.
+      test-control-the-admitted-subject-merges-by-its-own-relation = {
+        expr = {
+          differingParameters = (aspectsRootWith t.str).typeMerge (aspectsRootWith t.int).functor;
+          equalParameters = ((aspectsRootWith t.str).typeMerge (aspectsRootWith t.str).functor).name;
+        };
+        expected = {
+          differingParameters = null;
+          equalParameters = "aspectsRoot";
+        };
+      };
       # ★ THE THIRD CONTROL IS ALREADY ABOVE AND IS NOT REPEATED HERE:
       # `test-control-a-record-answering-one-protocol-field-imports` is a descriptor with NO functor
-      # at all, in this same run, and it imports. Together the three say the refusal's domain is
-      # exactly "stated a parameter, and lost it".
+      # at all, in this same run, and it imports. Together the four say the refusals' domain is
+      # exactly "stated a parameter and lost it" and "stated a relation that cannot answer".
 
       # ── the PUBLISH path, which is a different site from `mkOptionType` ──────────────────────────
       # ★★★ THE REFUSAL HAS TO SURVIVE THE NAMESPACE ASSEMBLY, and it did not. `lib/default.nix`

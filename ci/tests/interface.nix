@@ -220,6 +220,32 @@ let
     mergeDefs = _loc: defs: (builtins.head defs).value + 1;
   };
   caught = v: !(builtins.tryEval (builtins.deepSeq v v)).success;
+  # A FOREIGN descriptor that STATES its own relation (a `functor` with a real `binOp`) and carries an
+  # element payload, and supplies NO `recarry`. This is exactly the record the escape exists for.
+  probeStates = V.mkOptionType {
+    name = "probeStates";
+    check = builtins.isInt;
+    merge = _loc: defs: (builtins.head defs).value;
+    functor = {
+      name = "probeStates";
+      payload.elemType = genMerge.types.str;
+      type = _p: null;
+      binOp = a: _b: a;
+    };
+  };
+  # THE CONTROL, same shape, relation REMOVED: a carrying record with no recarry and nothing that
+  # answers for it must still be refused. Without this the arm above is consistent with a check that
+  # never fires at all.
+  probeSilent = V.mkOptionType {
+    name = "probeSilent";
+    check = builtins.isInt;
+    merge = _loc: defs: (builtins.head defs).value;
+    functor = {
+      name = "probeSilent";
+      payload.elemType = genMerge.types.str;
+      type = _p: null;
+    };
+  };
 in
 {
   flake.tests.interface = {
@@ -466,6 +492,23 @@ in
         rejectsAllIsRefused = true;
         foldsWrongDisagreesWithTheNativeArm = true;
         unmutatedIsAccepted = true;
+      };
+    };
+
+    # ── O6 ────────────────────────────────────────────────────────────────────────────────────────
+    # THE `recarry` ESCAPE, which had no oracle in this suite at all. A record that STATES its own
+    # relation is answered by that relation and is never rebuilt over another payload, so it owes no
+    # `recarry` — the escape `missingRecarry` opens on `retainedRelation`. The control row is the same
+    # shape with the relation removed: it must still be refused, or the arm above is consistent with a
+    # check that never fires.
+    test-probe-recarry-escape = {
+      expr = {
+        statingTheRelationConstructs = !(caught probeStates.name);
+        statingNothingIsRefused = caught probeSilent.name;
+      };
+      expected = {
+        statingTheRelationConstructs = true;
+        statingNothingIsRefused = true;
       };
     };
   };

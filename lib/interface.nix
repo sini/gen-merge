@@ -119,8 +119,8 @@ let
       getSubOptions = "substructure";
       getSubModules = "substructure";
       substSubModules = "substructure";
-      typeMerge = "typeMergeRel";
-      functor = "typeMergeRel";
+      typeMerge = "typeMergeRel | retainedRelation";
+      functor = "typeMergeRel | retainedRelation";
     };
     foreignConstant = [
       "descriptionClass"
@@ -300,10 +300,12 @@ let
   # PARTIAL, and its refusal is NAMED rather than `null`, the same shape the type-merge relation
   # uses: a caller that must report says what it could not import.
   #
-  # ★ NO `typeMergeRel` IS SYNTHESISED, deliberately. A record arriving from the foreign side
-  # carries the foreign answer to "do these merge?" and the engine keeps a foreign arm for exactly
-  # that partner. A relation invented here would answer the question twice, and the two answers
-  # could disagree.
+  # ★ A `typeMergeRel' IS SYNTHESISED FOR A RECORD THAT STATED ONE, AND ONLY FOR THOSE. `foreignRel'
+  # expresses the AUTHOR's own relation in gen's named-refusal shape; nothing is invented, which is
+  # the whole difference from the nullary default. A record stating none still gets none — it carries
+  # the foreign answer to "do these merge?" and the engine keeps a foreign arm for exactly that
+  # partner, and a relation invented for it here would answer the question twice, with two answers
+  # that could disagree.
   # ★★ THE SUB-PROTOCOL IS A REQUIRED FORMAL OF A WRAPPING TYPE, AND THE REFUSAL BELONGS HERE BECAUSE
   # THE RECORD IS WRITTEN IN THE FOREIGN PROTOCOL'S WORDS. A leaf's three answers — declares nothing,
   # no module-set concept, nothing to rebuild — are wrong for every type that wraps another, and a
@@ -392,7 +394,19 @@ let
       # parameter the same way — the refusal is over what was STATED, not over which slot said it.
       statesParameter = payload != null || (f != null && (f.wrapped or null) != null);
     in
-    if f == null || !(f ? binOp) || !statesParameter || payloadRole payload != null then
+    # ★★ A STATED `binOp' IS NO LONGER LOST, SO THE REFUSAL NO LONGER FIRES FOR IT. The paragraph
+    # above is the reason this check existed: the relation came off with the protocol's names and the
+    # type fell back to the nullary one. `importType' now RETAINS the pair and installs the author's
+    # own relation, so there is nothing to lose and nothing to name. What survives is the case the
+    # refusal is still true of — a functor that states the relation SLOT and leaves it empty, where
+    # there is a parameter to discriminate on and nothing stated to discriminate with.
+    if
+      f == null
+      || !(f ? binOp)
+      || !statesParameter
+      || payloadRole payload != null
+      || (f.binOp or null) != null
+    then
       null
     else
       "gen-merge: the option type `${name}' supplies a `functor' this boundary cannot read: its "
@@ -401,6 +415,102 @@ let
       + "ALONE — accepting two operands its own `binOp' refuses. State the parameter as "
       + "`functor.payload.elemType' (or `.modules'), or drop the `functor' if merging on the name "
       + "alone is what this type means";
+
+  # protoTypeMerge — the foreign protocol's OWN generic type-merge combinator, transcribed.
+  #
+  # A caller states its merge relation as a `functor': a parameter, and a `binOp' that decides
+  # whether two of them reconcile. The `typeMerge' ACCESSOR is not a second statement of that
+  # relation — it is DERIVED from it, and the foreign `mkOptionType' is what derives it. A descriptor
+  # written against this boundary directly therefore arrives with the relation and without the
+  # accessor, and supplying the derivation here is what makes the two spellings mean the same thing
+  # instead of one of them silently meaning less.
+  #
+  # ★★ IT IS NOT A PER-NAME TABLE, and that is what makes transcribing it closed rather than a
+  # standing debt. Read at the primary — nixpkgs `lib/types.nix', `defaultTypeMerge' — it dispatches
+  # on functor NAME EQUALITY, then calls the caller's own `binOp' and `type'. It carries no knowledge
+  # of any particular type, so this boundary can supply the protocol's default without learning the
+  # vocabulary it is defaulting for.
+  #
+  # ★ ONE DELIBERATE DIVERGENCE, stated rather than transcribed silently: where the two functors
+  # disagree on whether there is a payload at all, nixpkgs `assert's the symmetry and this returns
+  # `null'. An abort a consumer survives only by having wrapped the force in `tryEval (deepSeq …)' is
+  # exactly the shape `refuseMount' below exists to convert into a value the algebra can act on.
+  protoTypeMerge =
+    f: f':
+    if f.name != (f'.name or null) then
+      null
+    else if (f.payload or null) == null then
+      (if (f'.payload or null) == null then f.type else null)
+    else if (f'.payload or null) == null then
+      null
+    else
+      let
+        mergedPayload = f.binOp f.payload f'.payload;
+      in
+      if mergedPayload == null then null else f.type mergedPayload;
+
+  # The caller's stated relation, however they stated it: their derived accessor where they had one,
+  # the protocol's own default over their `functor' where they did not.
+  callerTypeMerge = t: t.typeMerge or (protoTypeMerge t.functor);
+
+  # ★★ THE PREDICATE IS THE RELATION THE CALLER STATED, NEVER THE ACCESSOR DERIVED FROM IT. Keying on
+  # `typeMerge' asks "did some other library's `mkOptionType' build this record", which is a fact
+  # about the descriptor's provenance and not about what its author said. Keying on `functor.binOp'
+  # asks the question this boundary is actually deciding.
+  statesRelation = t: ((t.functor or { }).binOp or null) != null;
+
+  # ★★ WHAT THE PROTOCOL'S OWN DEFAULT READS OFF A FUNCTOR, AS ONE DEFINITION READ TWICE — by the
+  # retention in `importType' to decide what may be retained, and by the refusal beside it to name
+  # what may not. `protoTypeMerge' reads `name' and `type' off the caller's functor directly and
+  # APPLIES `type' to a merged payload; a functor retained without them is one this boundary
+  # republishes and then cannot apply, and the gap surfaces as a bare interpreter abort at a merge
+  # site far from the record that caused it. A second copy of this decision would let the two arms
+  # drift and re-open exactly that gap, which is why `payloadRole' above is written the same way.
+  relationGaps =
+    f:
+    if f == null || (f.binOp or null) == null then
+      [ ]
+    else
+      (if f ? name then [ ] else [ "name" ])
+      ++ (if f ? type && ((f.payload or null) == null || isFunction f.type) then [ ] else [ "type" ]);
+
+  # relationRefusal — a relation STATED and unusable. It is the COMPLEMENT of `functorRefusal' over
+  # the same records: the two partition "supplies a functor" on `binOp', the other answering for a
+  # relation slot left empty beside a parameter this boundary cannot read, this one for a relation
+  # stated with a functor that cannot answer for it. Neither can fire for the same record.
+  relationRefusal =
+    t:
+    let
+      gaps = relationGaps (t.functor or null);
+    in
+    if gaps == [ ] then
+      null
+    else
+      "gen-merge: the option type `${t.name or "raw"}' states a merge relation in `functor.binOp' "
+      + "but its `functor' does not answer "
+      + concatStringsSep ", " (map (g: "`${g}'") gaps)
+      + "; the relation is retained verbatim and applied by the protocol's own default, which reads "
+      + "them off it. Supply them, or drop `functor.binOp' if merging on the name alone is what this "
+      + "type means";
+
+  # foreignRel — the caller's stated relation, expressed as gen's own row-free relation so the engine
+  # reads the AUTHOR's answer rather than the vocabulary's nullary one. The refusal names the
+  # discriminating fact: it is the author's own `functor' that declined to reconcile the pair, not
+  # this boundary's inability to read it.
+  foreignRel =
+    t: other:
+    let
+      f = if isAttrs other then other.functor or null else null;
+      answer = if f == null then null else callerTypeMerge t f;
+    in
+    if answer == null then
+      {
+        refused = "`${t.name or "raw"}' and `${
+          if isAttrs other then other.name or "<unnamed>" else "<not a type>"
+        }', which the first type's own `functor' does not reconcile";
+      }
+    else
+      { merged = answer; };
 
   importType =
     t:
@@ -416,6 +526,8 @@ let
       { refused = carrierRefusal t; }
     else if functorRefusal t != null then
       { refused = functorRefusal t; }
+    else if relationRefusal t != null then
+      { refused = relationRefusal t; }
     else
       {
         imported =
@@ -441,8 +553,33 @@ let
           // (if fold == null then { } else { mergeDefs = fold; })
           // (if deprecated == null then { } else { inherit deprecated; })
           // (if t ? description then { inherit (t) description; } else { })
+          // (if role == null then { } else { carries.${role} = payload.${roleSpelling.${role}.payloadKey}; })
+          # ★★ THE AUTHOR'S RELATION IS RETAINED UNDER A GEN NAME, NOT UNDER THE PROTOCOL'S. What the
+          # author stated about how this type merges is not the protocol's to take back — stripped
+          # with the rest, the record has no relation and the vocabulary supplies its nullary one,
+          # which is strictly more permissive than what was written. But retaining it under
+          # `functor'/`typeMerge' would leave the export half reading a gen field of a DERIVED
+          # FIELD'S OWN NAME, which is the one thing C-2 says the boundary never does. Retained under
+          # a gen name, the export derives from a differently-named datum like every other field, and
+          # PRESENCE OF THIS FIELD is what says the relation came from an author across the boundary —
+          # structural provenance rather than a naming coincidence (ADR-0034's shape, at the boundary
+          # instead of the mint). The two members travel as ONE datum because a record carrying one
+          # without the other is a state that cannot occur.
           // (
-            if role == null then { } else { carries.${role} = payload.${roleSpelling.${role}.payloadKey}; }
+            if statesRelation t then
+              {
+                typeMergeRel = foreignRel t;
+                retainedRelation = {
+                  # Verbatim, and its NAME governs: what the author called this type is the merge
+                  # identity the foreign engine keys on.
+                  inherit (t) functor;
+                  # Theirs where they derived one, the protocol's own default over their `functor'
+                  # where they did not — resolved HERE, so nothing downstream re-asks the question.
+                  typeMerge = callerTypeMerge t;
+                };
+              }
+            else
+              { }
           );
       };
 
@@ -474,7 +611,7 @@ let
   #   check <- verify | admits · merge <- mergeDefs · emptyValue <- whenEmpty ·
   #   nestedTypes <- carries · deprecationMessage <- deprecated ·
   #   getSubOptions / getSubModules / substSubModules <- substructure ·
-  #   typeMerge + functor <- typeMergeRel
+  #   typeMerge + functor <- typeMergeRel | retainedRelation
   # FOREIGN CONSTANT (2) — no counterpart exists on this side, and that is the point:
   #   descriptionClass = null · _type = "option-type"
   # NAME-CARRIED (2) — carried or defaulted from the name, translating nothing:
@@ -485,7 +622,9 @@ let
   # convenient: the SAME value has to serve both engines — a consumer writes `types.listOf types.str`
   # from the published namespace and hands it to this library's own fold as readily as to a foreign
   # one. So what crosses is the gen record PLUS its foreign expression, and every protocol field is
-  # derived here even where the record it extends happens to have crossed before.
+  # derived here — EXCEPT the relation pair of a record that crossed STATING one, which is retained
+  # under a gen name and republished. This sentence's own clause about a record that "happens to have
+  # crossed before" was written when there was no such case; now there is exactly one.
   #
   # ★ A RELATION IS REQUIRED, not defaulted. A default invented at the boundary would be a merge rule
   # nobody in the vocabulary chose, answering for types whose author never said whether they merge.
@@ -530,7 +669,15 @@ let
       exported = t // {
         _type = "option-type";
         descriptionClass = null;
-        inherit name functor;
+        inherit name;
+        # ★★ THE CALLER'S FUNCTOR IS REPUBLISHED WITH ITS NAME INTACT, AND THAT NAME GOVERNS. The
+        # derivation above is what a type with no stated relation is published as; overwriting a
+        # stated one with it is name-only identity re-imposed at a KEYING site with the
+        # distinguishing content available (ADR-0034), and it is what makes a refinement merge with
+        # the base it exists to be distinguished FROM. Preserving it fails closed instead.
+        # It is read off `retainedRelation', a differently-named gen datum, exactly as every other
+        # derived field is read off one — see the retention site in `importType' for why.
+        functor = t.retainedRelation.functor or functor;
         description = t.description or name;
         deprecationMessage = t.deprecated or null;
         check =
@@ -546,12 +693,17 @@ let
         getSubOptions = if sub == null then (_prefix: { }) else sub.declares;
         getSubModules = if sub == null then null else sub.modules;
         substSubModules = if sub == null then (_m: null) else sub.rebuild;
+        # Derived from the gen datum only where there is no stated relation to derive it FROM.
+        # Where the caller stated one, theirs is what the foreign engine must see — deriving over it
+        # would shadow the relation the two clauses above went to the trouble of retaining.
         typeMerge =
-          f:
-          let
-            partner = importedPartner f;
-          in
-          if partner == null then null else (t.typeMergeRel partner).merged or null;
+          t.retainedRelation.typeMerge or (
+            f:
+            let
+              partner = importedPartner f;
+            in
+            if partner == null then null else (t.typeMergeRel partner).merged or null
+          );
 
         # Not a fifteenth protocol field: gen's own record of whether the fold published above is
         # the type's or this boundary's. It exists BECAUSE the boundary exists — the export half
