@@ -9,6 +9,10 @@
     # dependency-free — its whole surface is written in `builtins` — so pinning it adds exactly one
     # node here and nothing to `../flake.nix`.
     gen-differential.url = "github:sini/gen-differential";
+    # The incremental plane (ADR-0008 item 2) — see `../flake.nix`'s own comment. Pinned again here
+    # because the CI flake does not follow the library flake's inputs (same precedent as
+    # gen-prelude/gen-types above, each pinned independently at both layers).
+    gen-memo.url = "github:sini/gen-memo";
     # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
     # test modules use — including the evalModules-equivalence ORACLE's reference side (spec §3).
     # The library itself (../lib) is nixpkgs-lib-free (ci/tests/purity.nix enforces this).
@@ -21,6 +25,7 @@
       gen-prelude,
       gen-types,
       gen-differential,
+      gen-memo,
       ...
     }:
     let
@@ -35,9 +40,13 @@
       # gen-prelude at its own root — which this is.
       prelude = gen-prelude.lib;
       genTypes = gen-types.lib;
+      # ADR-0008 item 2 — the ONE incremental plane. Bound once, same substrate precedent as
+      # `prelude` above: every `../lib` instance this file builds shares this one `genMemo`.
+      genMemo = gen-memo.lib;
       genMerge = import ../lib {
         inherit prelude;
         types = genTypes;
+        memo = genMemo;
       };
       # Compat mode (ci/tests/compat-nixpkgs-types.nix): the SAME byte-mode engine with nixpkgs
       # `lib.types` injected as the leaf `types` instead of gen-types. nixpkgs enters as a VALUE here
@@ -47,6 +56,7 @@
       genMergeCompat = import ../lib {
         inherit prelude;
         types = nixpkgsLib.types;
+        memo = genMemo;
       };
       # Internal core seam (lib/modules.nix) — exposes `classifyModule` + the collection predicates that
       # are NOT on the public `lib/default.nix` surface (the lint-predicate export precedent: additive to
@@ -56,6 +66,7 @@
       genMergeCore = import ../lib/modules.nix {
         inherit prelude;
         priority = import ../lib/priority.nix { inherit prelude; };
+        memo = genMemo;
       };
       # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
       # boundary is reached through the core rather than re-imported, so the suite reads the same
@@ -71,7 +82,23 @@
       # the namespace assembly has to be total over it. This is the only way a suite can reach the
       # PUBLISH path's refusal at all: `genMerge` above is built over the shipped roster, and a roster
       # that behaves cannot exercise a refusal.
-      genMergeWith = types: import ../lib { inherit prelude types; };
+      genMergeWith =
+        types:
+        import ../lib {
+          inherit prelude types;
+          memo = genMemo;
+        };
+      # A gen-merge instance over a CALLER-SUPPLIED incremental plane (spec §3 O1 — the seam test):
+      # `memo` is the other uncontrolled input `lib/default.nix` names, so a suite substituting an
+      # adversarial `warmDecision` (always-dirty / always-clean) reaches gen-merge's SPLICE gate
+      # through the same `../lib` entry point every other instance here uses, rather than a private
+      # bypass that only exercises the substitution and not the seam.
+      genMergeWithMemo =
+        memo:
+        import ../lib {
+          inherit prelude memo;
+          types = genTypes;
+        };
       # The comparison machinery, bound once so the differential suite and any later consumer read
       # the same instrument. `lib` (nixpkgs, harness-supplied) is the REFERENCE side there, exactly
       # as it is for the equivalence oracle — the two instruments assert over one reference by
@@ -98,6 +125,8 @@
           genLinkset
           genMergeVocab
           genMergeWith
+          genMergeWithMemo
+          genMemo
           interface
           differential
           ;

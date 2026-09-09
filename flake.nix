@@ -11,18 +11,24 @@
   inputs = {
     gen-prelude.url = "github:sini/gen-prelude";
     gen-types.url = "github:sini/gen-types";
+    # The incremental plane (ADR-0008 item 2): gen-merge computes the FACT (the bipartite
+    # contribution relation between module entries and declared-leaf locations), gen-memo DECIDES
+    # reuse over it via `warmDecision`. One incremental plane, not a second one grown in this repo.
+    gen-memo.url = "github:sini/gen-memo";
   };
 
   outputs =
     {
       gen-prelude,
       gen-types,
+      gen-memo,
       ...
     }:
     {
       lib = import ./lib {
         prelude = gen-prelude.lib;
         types = gen-types.lib;
+        memo = gen-memo.lib;
       };
     };
 }

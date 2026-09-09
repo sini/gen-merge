@@ -24,7 +24,8 @@ gen-prelude → gen-types → gen-merge → { gen-schema, gen-aspects }      (BE
 
 gen-merge is the *within-node* definition merge; [gen-resolve](https://github.com/sini/gen-resolve)
 is the *cross-node* D>I>P schedule conductor — a distinct, higher layer. gen-merge depends only on
-gen-prelude (pure utilities) and takes gen-types' leaf checkers as an **injected** value.
+gen-prelude (pure utilities), and takes gen-types' leaf checkers and gen-memo's reuse plane as
+**injected** values (ADR-0008 item 2 — one incremental plane for the whole gen ecosystem).
 
 ## Gen Ecosystem
 
@@ -362,9 +363,10 @@ trace) when any edited entry carries `disabledModules` (it would disable a clean
 to the footprint). Whether an override *reduces* to a modules-append at all is the caller's call
 (the `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
 
-**The dirty footprint (the reusability predicate).** A module entry is CLEAN (`srcClass` attrset /
-marked-pure — config-independent), DIRTY (function, `srcClass` dirty), or EDITED (in the appended
-tail). The **dirty footprint** is the union, over DIRTY ∪ EDITED entries, of
+**The contribution relation (the FACT) and gen-memo's decision (ADR-0008 item 2).** A module entry is
+CLEAN (`srcClass` attrset / marked-pure — config-independent), DIRTY (function, `srcClass` dirty), or
+EDITED (in the appended tail). gen-merge computes only the FACT: a bipartite contribution relation
+between DIRTY ∪ EDITED entries and the declared-leaf locations they touch, built from
 
 - their **decl paths** (`declLeafPaths` of the entry's own `options`), and
 - their **def paths** landing on a declared leaf (`moduleDefFootprint` — the portable-lint's
@@ -373,10 +375,14 @@ tail). The **dirty footprint** is the union, over DIRTY ∪ EDITED entries, of
   value** — only the config spine, bounded by the module's structural size, which a dirty/edited module
   re-merges anyway).
 
-A declared leaf is **REUSABLE iff it is outside this footprint** — then both its decl set and its def
-set come only from CLEAN modules (constant attrsets, or marked-pure modules applied with unchanged
-`specialArgs`), so its inputs to the merge are identical to the previous eval and the value/provenance
-are byte-identical.
+Each declared-leaf location is keyed by the injective `builtins.toJSON path` id (a dot-join display
+name collides — `["a.b"]."c"` and `["a"]."b.c"` both read `"a.b.c"`). gen-merge hands this relation to
+**gen-memo** (`memo.warmDecision`, the incremental plane's one reuse DECISION for the whole gen
+ecosystem — gen-merge never decides reuse itself, only reports what an entry can perturb). A declared
+leaf is **REUSABLE iff gen-memo's `isClean` admits its location** — sound whenever the relation is
+complete, since an admitted location's decl set and def set come only from CLEAN modules (constant
+attrsets, or marked-pure modules applied with unchanged `specialArgs`), so its inputs to the merge are
+identical to the previous eval and the value/provenance are byte-identical.
 
 **Splice at leaves only.** `prev.config` is `recursiveUpdate freeform declared`, so a whole *untyped
 group* splice would capture stale freeform descendants whenever the freeform plane re-merges. At an

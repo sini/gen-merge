@@ -14,7 +14,16 @@
 # through `lib/interface.nix`'s import environment. The arm ORDER is the substance: the engine
 # dispatches on gen's own record, and the foreign protocol is the foreign arm rather than the basis.
 # A type carrying no foreign field is a first-class operand here, which is the whole point.
-{ prelude, priority }:
+#
+# `memo` (gen-memo.lib, REQUIRED — ADR-0008 item 2): the incremental plane's reuse DECISION.
+# `warmDecide` below builds the bipartite contribution-relation FACT (module entries ↔
+# declared-leaf locations) and hands it to `memo.warmDecision`, which answers `isClean`. This
+# engine no longer decides reuse from its own footprint SET — it computes the relation and asks.
+{
+  prelude,
+  priority,
+  memo,
+}:
 let
   inherit (prelude)
     isAttrs
@@ -498,9 +507,11 @@ let
   # The opt-in warm path reuses the previous eval's declared-leaf values/provenance for locs PROVABLY
   # untouched by an edit (an appended module list) and re-merges the rest inside the normal fixpoint.
   # `warmDecide` is the PURE decision half (no splicing): given the flattened module list + the EDITED
-  # tail-count + the merged decl tree, it computes the dirty footprint (which declared leaves an edit
-  # can perturb), the coarse freeform-reuse flag, and the disabledModules refusal. `mergeTree` consumes
-  # `footprintPaths` to gate per-leaf splicing (spec §2). Testable in isolation through the core seam.
+  # tail-count + the merged decl tree, it builds the bipartite contribution relation (which declared
+  # leaves an edit can perturb), the coarse freeform-reuse flag, and the disabledModules refusal, then
+  # hands the relation to gen-memo (`memo.warmDecision`, ADR-0008 item 2) for the reuse DECISION.
+  # `mergeTree` consumes the resulting `isClean` to gate per-leaf splicing (spec §2). Testable in
+  # isolation through the core seam.
 
   # Declared LEAVES of ONE option-decl tree — walk to `isOptLeaf` (typed registries / scalar leaves
   # included; untyped groups recurse), each loc beside the DESCRIPTOR declared there. One descent
@@ -611,6 +622,10 @@ let
       flat,
       editedCount,
       allOptions,
+      # Same default as `evalModuleTree`'s own `warmFrom ? null` (spec §§1-2): a core-seam caller
+      # testing the partition/footprint/freeform halves in isolation (`ci/tests/warm.nix`) need not
+      # supply a prior — `verdict`/`isClean` stays an unforced thunk unless read.
+      warmFrom ? null,
     }:
     let
       n = length flat;
@@ -666,7 +681,6 @@ let
       editedF = map (e: footOf (_kind: "edited-def") e) editedEntries;
       allF = dirtyF ++ editedF;
       footprint = concatMap (x: x.footprint) allF;
-      footprintPaths = map (r: r.path) footprint;
       freeContribs = concatMap (x: x.free) allF;
 
       editedFreeformType = prelude.any (
@@ -674,15 +688,49 @@ let
       ) editedEntries;
       reuseAllFreeform = freeContribs == [ ] && !editedFreeformType;
       disabledRefusal = prelude.any (e: e.content ? disabledModules) editedEntries;
+
+      # ── bipartite contribution relation (design spec §2.1) — the FACT gen-memo decides over ──────
+      # Nodes: one per dirty/edited ENTRY (`"entry:<n>"` — cannot collide with a JSON array string,
+      # which always starts with `[`), and one per declared-leaf LOCATION it touches (the injective
+      # `builtins.toJSON path` id — a dot-join collides `["a.b"]."c"` with `["a"]."b.c"`, spec §2.1
+      # OQ-4). Edge: `dependencies(locationId) = [contributing entry ids]`, `dependencies(entryId) =
+      # []` — the CALLER-BUILT MODE contract (gen-memo `lib/graph-view.nix`): a location's
+      # dependency lists the entries that CONTRIBUTE a decl/def there (`footprint`, above), so
+      # gen-graph's reverse index/`dependentsOf` walked from a dirty/edited entry lands exactly on
+      # the locations it can perturb — the same set `footprintPaths` used to name directly.
+      entryNodes = prelude.imap0 (i: e: {
+        id = "entry:${toString i}";
+        locs = prelude.unique (map (r: builtins.toJSON r.path) e.footprint);
+      }) allF;
+      depMap = foldl' (
+        acc: en: foldl' (acc2: loc: acc2 // { ${loc} = (acc2.${loc} or [ ]) ++ [ en.id ]; }) acc en.locs
+      ) { } entryNodes;
+      # `nodes` carries BOTH id families: gen-graph's `_reverseIndex` iterates `nodes` as the "from"
+      # side of `edges`, so a location absent from `nodes` never contributes a reverse edge and its
+      # dirtiness would go unindexed. `dependencies` answers both families from the ONE map — an
+      # entry id is never a `depMap` key, so `or [ ]` correctly answers `[]` for it too.
+      accessor = {
+        nodes = (map (e: e.id) entryNodes) ++ (attrNames depMap);
+        dependencies = nid: depMap.${nid} or [ ];
+      };
+      seeds = map (e: e.id) entryNodes;
+      # gen-memo DECIDES reuse over the FACT above (ADR-0008 item 2 — one incremental plane).
+      # `prior = warmFrom` is never forced on the cold path: this whole `verdict` binding stays an
+      # unforced thunk chain unless `.isClean` is read, and the cold path never reads it
+      # (`warmActive`'s `&&` short-circuits on `warmFrom == null` before `decision` is touched).
+      verdict = memo.warmDecision {
+        inherit accessor;
+        prior = warmFrom;
+      } seeds;
     in
     {
       inherit
         footprint
-        footprintPaths
         freeContribs
         reuseAllFreeform
         disabledRefusal
         ;
+      inherit (verdict) isClean;
       modules = {
         clean = map (e: e._file) cleanEntries;
         dirty = map (e: e._file) dirtyEntries;
@@ -1107,10 +1155,12 @@ let
       #   rawDefs :: [ { file; value } ]   (value: property-wrapped or a plain sub-attrset)
       # Signature is `warm: loc: opts: rawDefs` — `warm` is the FIRST positional (threaded unchanged
       # through the descent), described last here only because it is the warm-path add-on.
-      # `warm` = the warm-splice context `{ active; footprintPaths; prevConfig; prevProv }` (or
-      # `{ active = false; }`), threaded through the descent. At a declared LEAF whose ABSOLUTE loc is
-      # OUTSIDE `footprintPaths`, warm SPLICES `getAttrByPath` of prev's `config`/`provenance` — lazy
-      # attrpath selection, never forcing the reused thunk (spec §2). SPLICE AT LEAVES ONLY: `prev.config`
+      # `warm` = the warm-splice context `{ active; isClean; prevConfig; prevProv }` (or
+      # `{ active = false; }`), threaded through the descent. At a declared LEAF whose ABSOLUTE loc
+      # gen-memo's `isClean` ADMITS (ADR-0008 item 2 — the incremental plane's DECISION over the
+      # contribution-relation FACT `warmDecide` computes), warm SPLICES `getAttrByPath` of prev's
+      # `config`/`provenance` — lazy attrpath selection, never forcing the reused thunk (spec §2).
+      # SPLICE AT LEAVES ONLY: `prev.config`
       # is `recursiveUpdate freeform declared`, so a whole untyped-GROUP splice would capture stale
       # freeform descendants when the freeform plane re-merges; at an `isOptLeaf` loc the prev value is
       # declared-only (freeform never wins a declared leaf), so leaf-granularity splicing is sound —
@@ -1151,8 +1201,8 @@ let
               abs = prefix ++ lk;
             in
             if isOptLeaf opts.${k} then
-              if warm.active && !(prelude.elem abs warm.footprintPaths) then
-                # REUSABLE — outside the dirty footprint: splice prev's leaf value + provenance record
+              if warm.active && warm.isClean (builtins.toJSON abs) then
+                # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
                 # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
                 # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
                 # (both the decl set and the def set at this loc come only from CLEAN modules).
@@ -1275,13 +1325,20 @@ let
           # trace is data on demand, consistent with the `reused`/`remerged` cost note below.) Warm is
           # REFUSED (cold fallback) when an edited entry carries `disabledModules` (§2 guard).
           editedCount = if editedModules == [ ] then 0 else length (collectModules callM editedModules);
-          decision = warmDecide { inherit flat editedCount allOptions; };
+          decision = warmDecide {
+            inherit
+              flat
+              editedCount
+              allOptions
+              warmFrom
+              ;
+          };
           warmActive = warmFrom != null && !decision.disabledRefusal;
           warmCtx =
             if warmActive then
               {
                 active = true;
-                inherit (decision) footprintPaths;
+                inherit (decision) isClean;
                 prevConfig = warmFrom.config;
                 prevProv = warmFrom.provenance;
               }
@@ -1600,7 +1657,7 @@ let
           # nothing spliced ⇒ `reused = [ ]`, `remerged = { }`, with the cold `reason` stated.
           warmDecision =
             let
-              reusableLeaves = filter (l: !(prelude.elem l decision.footprintPaths)) (declLeafPaths allOptions);
+              reusableLeaves = filter (l: decision.isClean (builtins.toJSON l)) (declLeafPaths allOptions);
               remergedList = decision.footprint ++ (if reuseFreeform then [ ] else decision.freeContribs);
               remerged = foldl' (
                 acc: r:

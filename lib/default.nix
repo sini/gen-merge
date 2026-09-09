@@ -13,13 +13,18 @@
 #   types   : gen-types.lib (the injected leaf CHECKERS — { <name> = { verify; check; } }).
 #             OPTIONAL for byte-mode bring-up: defaults to {}; tests inject a minimal stub. Wiring the
 #             real gen-types later is a one-line input swap — the checker contract is `verify:v->null|err`.
+#   memo    : gen-memo.lib (ADR-0008 item 2 — the ONE incremental plane's reuse DECISION,
+#             `warmDecision`). REQUIRED, no default: gen-merge computes the bipartite
+#             contribution-relation FACT (design spec §2.1) and hands it to gen-memo, which decides
+#             `isClean` over it — this library no longer decides reuse on its own footprint set.
 {
   prelude,
   types ? { },
+  memo,
 }:
 let
   priority = import ./priority.nix { inherit prelude; };
-  core = import ./modules.nix { inherit prelude priority; };
+  core = import ./modules.nix { inherit prelude priority memo; };
   strategies = import ./types.nix { inherit prelude core; };
   lintLib = import ./lint.nix { inherit prelude priority core; };
   linkset = import ./linkset.nix { inherit prelude; };
