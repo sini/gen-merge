@@ -378,7 +378,10 @@ between DIRTY ∪ EDITED entries and the declared-leaf locations they touch, bui
 Each declared-leaf location is keyed by the injective `builtins.toJSON path` id (a dot-join display
 name collides — `["a.b"]."c"` and `["a"]."b.c"` both read `"a.b.c"`). gen-merge hands this relation to
 **gen-memo** (`memo.warmDecision`, the incremental plane's one reuse DECISION for the whole gen
-ecosystem — gen-merge never decides reuse itself, only reports what an entry can perturb). A declared
+ecosystem — gen-merge decides only ADMISSION (whether warm participates at all: the
+`disabledModules` refusal above, the freeform reuse gate below), never the per-location REUSE
+verdict, which is gen-memo's `isClean` alone; otherwise gen-merge only reports what an entry can
+perturb). A declared
 leaf is **REUSABLE iff gen-memo's `isClean` admits its location** — sound whenever the relation is
 complete, since an admitted location's decl set and def set come only from CLEAN modules (constant
 attrsets, or marked-pure modules applied with unchanged `specialArgs`), so its inputs to the merge are

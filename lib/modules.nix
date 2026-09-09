@@ -705,10 +705,13 @@ let
       depMap = foldl' (
         acc: en: foldl' (acc2: loc: acc2 // { ${loc} = (acc2.${loc} or [ ]) ++ [ en.id ]; }) acc en.locs
       ) { } entryNodes;
-      # `nodes` carries BOTH id families: gen-graph's `_reverseIndex` iterates `nodes` as the "from"
-      # side of `edges`, so a location absent from `nodes` never contributes a reverse edge and its
-      # dirtiness would go unindexed. `dependencies` answers both families from the ONE map — an
-      # entry id is never a `depMap` key, so `or [ ]` correctly answers `[]` for it too.
+      # `nodes` carries BOTH id families, but this justification binds only the LOCATION family:
+      # gen-graph's `_reverseIndex` iterates `nodes` as the "from" side of `edges`, so a location
+      # absent from `nodes` never contributes a reverse edge and its dirtiness would go unindexed.
+      # Entry ids are carried for the plane's contract (the CALLER-BUILT MODE contract above), not
+      # for discrimination: dropping them left all 507 gate cells inert, while dropping location
+      # ids reds 17/22 warm cells. `dependencies` answers both families from the ONE map — an entry
+      # id is never a `depMap` key, so `or [ ]` correctly answers `[]` for it too.
       accessor = {
         nodes = (map (e: e.id) entryNodes) ++ (attrNames depMap);
         dependencies = nid: depMap.${nid} or [ ];
