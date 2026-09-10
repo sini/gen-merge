@@ -7,9 +7,12 @@
 # the outcome under that regression, which is exactly what these two cells are built to catch.
 #
 # `genMergeWithMemo`'s substitute matches `gen-memo`'s own `warmDecision` SIGNATURE
-# (`{ accessor; prior }: seeds: { isClean; reusable; }` — `lib/warm.nix`) so the seam is exercised
-# at the real call shape gen-merge uses, not a private bypass. `reusable` is never read by
-# gen-merge's own consumption (only `.isClean` is), so a constant stub is sound here.
+# (`{ accessor; prior }: seeds: { isClean; reusable; identitiesHeld; }` — `lib/warm.nix`) so the seam
+# is exercised at the real call shape gen-merge uses, not a private bypass. `reusable` is never read
+# by gen-merge's own consumption, so a constant stub is sound there. `identitiesHeld` IS read on every
+# warm re-compose, and it is stubbed permissively here on purpose: this file's subject is the splice
+# gate, these fixtures mint no instances, and a real plane would answer the same empty moved set over
+# them. The refusal's own arms are in `warm.nix`, over the shipped plane.
 { genMergeWithMemo, ... }:
 let
   # Arm 1 — a plane that answers "everything is dirty", unconditionally. If the splice gate really
@@ -22,6 +25,7 @@ let
       seeds: {
         isClean = _nid: false;
         reusable = null;
+        identitiesHeld = _: [ ];
       };
   };
   # Arm 2 — a plane that answers "everything is clean", unconditionally, even a location an edit
@@ -35,6 +39,7 @@ let
       seeds: {
         isClean = _nid: true;
         reusable = null;
+        identitiesHeld = _: [ ];
       };
   };
 

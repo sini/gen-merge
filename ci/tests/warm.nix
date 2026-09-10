@@ -74,6 +74,122 @@ let
       c = coldOf (base ++ edited);
     in
     jsonEq w.config c.config && jsonEq w.provenance c.provenance;
+
+  # ══ region 2 fixtures — a warm re-compose that MOVES a minted identity ═════════════════════════
+  #
+  # gen-schema is not an input here and cannot be: it depends on this library. So the identity SHAPE
+  # is reproduced rather than imported — `id_hash` is `"<kind>:<digest>"` over the declared,
+  # non-internal `str` options, reflected from inside the fixpoint exactly the way the real stamp did
+  # before its key set closed. The shape is all this engine ever sees of an identity, and it is the
+  # whole of what the predicate reads.
+  idOf =
+    kind:
+    (
+      { config, options, ... }:
+      {
+        options.id_hash = mkOption { type = t.str; };
+        config.id_hash =
+          let
+            # BOTH spellings, for the reason the real predicate carries both: gen-types names a
+            # string "string" and nixpkgs `lib.types` names the same primitive "str". A fixture
+            # matching only one of them selects NOTHING here, and an identity over no keys is a
+            # CONSTANT — every arm agrees, the refusal correctly finds nothing moved, and the cell
+            # reads green while measuring an engine that was never exercised.
+            keys = builtins.filter (
+              k:
+              k != "id_hash"
+              && builtins.elem (options.${k}.type.name or "") [
+                "str"
+                "string"
+              ]
+              && !(options.${k}.internal or false)
+            ) (builtins.attrNames options);
+          in
+          "${kind}:" + builtins.hashString "sha256" (builtins.toJSON (map (k: config.${k}) keys));
+      }
+    );
+
+  # FLAT — the instance IS the config root, so its `id_hash` is a declared leaf of this very tree and
+  # a declaration-path predicate could in principle see it. This is the arm that shape reaches.
+  flatBase = [
+    (idOf "host")
+    {
+      options.name = mkOption { type = t.str; };
+      options.role = mkOption { type = t.str; };
+    }
+    {
+      _file = "flat-base";
+      config.name = "igloo";
+      config.role = "web";
+    }
+  ];
+  # The two arms differ in ONE token. Both are decl-side contributions and both make the base module
+  # dirty; only the first is an identity key, which is the whole discrimination.
+  plantLive = [
+    {
+      _file = "plant";
+      options.grommet = mkOption {
+        type = t.str;
+        default = "plain";
+      };
+    }
+  ];
+  plantInert = [
+    {
+      _file = "plant";
+      options.grommet = mkOption {
+        type = t.str;
+        default = "plain";
+        internal = true;
+      };
+    }
+  ];
+
+  # REGISTRY — the instances live BELOW a declared leaf. `declLeafEntries` stops at `isOptLeaf`, so
+  # `options.hosts` is the leaf and no instance's `id_hash` is a path in `allOptions` at all. This is
+  # the arm a declaration-path predicate cannot serve, and the reason the fact is a per-instance map.
+  hostSub = t.submodule {
+    imports = [
+      (idOf "thimble")
+      {
+        options.spool = mkOption {
+          type = t.str;
+          default = "";
+        };
+        # NOT an identity key — an `int`, so it is a field an edit can move without moving anything
+        # minted. It is what the arming arm edits.
+        options.tally = mkOption {
+          type = t.int;
+          default = 0;
+        };
+      }
+    ];
+  };
+  regBase = [
+    {
+      options.hosts = mkOption {
+        type = t.attrsOf hostSub;
+        default = { };
+      };
+    }
+    {
+      _file = "reg-base";
+      config.hosts.pewter.spool = "silk";
+      config.hosts.damask.spool = "linen";
+    }
+  ];
+  regMoves = [
+    {
+      _file = "reg-edit";
+      config.hosts.pewter.spool = mkForce "satin";
+    }
+  ];
+  regHolds = [
+    {
+      _file = "reg-edit";
+      config.hosts.pewter.tally = mkForce 7;
+    }
+  ];
 in
 {
   flake.tests.warm = {
@@ -758,6 +874,66 @@ in
           };
         };
       };
+
+    # ══ region 2 — THE ARMING ARMS ════════════════════════════════════════════════════════════════
+    #
+    # These are the cells that make the two refusals below mean something. A construction that
+    # refused every decl-side contribution, or every warm re-compose at all, would satisfy both
+    # refusals and fail here — and it would destroy reuse for every consumer of this engine while
+    # doing it. The predicate has to see an identity MOVE, not an edit.
+
+    # The same option as the live plant, carrying `internal = true`. It is still a decl-side
+    # contribution and still makes the base module dirty, so `id_hash` is re-merged for a
+    # declaration-side reason and comes back with the SAME value. Warm, no reason, no refusal.
+    test-identity-inert-option-still-recomposes-warm =
+      let
+        w = warmOf flatBase plantInert;
+      in
+      {
+        expr = {
+          mode = w.warmDecision.mode;
+          reason = w.warmDecision.reason;
+          idHashHeld = w.config.id_hash == (coldOf flatBase).config.id_hash;
+          remergedForADeclSideReason = w.warmDecision.remerged ? id_hash;
+        };
+        expected = {
+          mode = "warm";
+          reason = null;
+          idHashHeld = true;
+          remergedForADeclSideReason = true;
+        };
+      };
+
+    # The registry arming arm, and the GRANULARITY FACT in the same cell. The edit moves a declared
+    # field of `hosts.pewter` that is not an identity key: `hosts` is re-merged, nothing minted
+    # moves, and warm serves the result. `remerged` names the declared LEAF and carries no `id_hash`
+    # key on this shape at all — which is why the fact this engine hands the plane is a per-instance
+    # identity map and not a set of declaration paths.
+    test-registry-non-identity-edit-recomposes-warm =
+      let
+        w = warmOf regBase regHolds;
+        c = coldOf regBase;
+      in
+      {
+        expr = {
+          mode = w.warmDecision.mode;
+          reason = w.warmDecision.reason;
+          remergedKeys = builtins.attrNames w.warmDecision.remerged;
+          remergedNamesNoIdentity = w.warmDecision.remerged ? id_hash;
+          pewterHeld = w.config.hosts.pewter.id_hash == c.config.hosts.pewter.id_hash;
+          damaskHeld = w.config.hosts.damask.id_hash == c.config.hosts.damask.id_hash;
+          editLanded = w.config.hosts.pewter.tally;
+        };
+        expected = {
+          mode = "warm";
+          reason = null;
+          remergedKeys = [ "hosts" ];
+          remergedNamesNoIdentity = false;
+          pewterHeld = true;
+          damaskHeld = true;
+          editLanded = 7;
+        };
+      };
   };
 
   # THE OTHER HALF OF `test-freeform-edited-toplevel-freeformtype-remerges-byte`, AND THE ONLY WARM
@@ -808,5 +984,37 @@ in
           msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`lazyAttrsOf' over `anything' and `lazyAttrsOf' over `string', whose element types do not merge\\); defined in edit-fft, <gen-merge>$";
         };
       };
+
+    # ══ region 2 — THE REFUSAL, on both module shapes ═════════════════════════════════════════════
+    #
+    # A warm re-compose whose minted identity moved does not fall back to cold and does not populate
+    # `reason`. Cold emits the SAME moved identity — the move is a property of the module set, not of
+    # the reuse path — so there is no degraded arm that is correct and the plane throws instead.
+    #
+    # The MESSAGE is asserted rather than a bare throw, and each thing it names is load-bearing: the
+    # COORDINATE is what the caller has to go look at, the KIND says which registry moved under it,
+    # BOTH identities let a caller diff against whatever it pinned, and the re-merged declarations
+    # are the contributing side in this engine's own vocabulary. A refusal that said only "an
+    # identity moved" would send its reader back to a full diff of two configs.
+
+    # FLAT — the moved instance is the config root, so its coordinate is the empty path.
+    test-identity-move-on-a-flat-warm-recompose-refuses-by-name = {
+      expr = (warmOf flatBase plantLive).config.id_hash;
+      expectedError = {
+        type = "ThrownError";
+        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at '' \\(kind 'host', was 'host:[0-9a-f]{64}', now 'host:[0-9a-f]{64}', re-merged declarations: .*, 1 instance\\(s\\) moved\\)$";
+      };
+    };
+
+    # REGISTRY — the moved instance is below a declared leaf, which is the shape `remerged` cannot
+    # name. The coordinate is the instance's, and it is the one the arming arm above proves this
+    # predicate does NOT produce for an edit that moves nothing minted.
+    test-identity-move-on-a-registry-warm-recompose-refuses-by-name = {
+      expr = (warmOf regBase regMoves).config.hosts.pewter.id_hash;
+      expectedError = {
+        type = "ThrownError";
+        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'hosts\\.pewter' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: hosts, 1 instance\\(s\\) moved\\)$";
+      };
+    };
   };
 }

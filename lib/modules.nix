@@ -733,7 +733,11 @@ let
         reuseAllFreeform
         disabledRefusal
         ;
-      inherit (verdict) isClean;
+      # `identitiesHeld` is the plane's THIRD decision (see gen-memo `lib/warm.nix`): given the two
+      # per-instance identity maps this engine builds from `warmFrom.config` and the new `config`, it
+      # admits with an empty moved set or refuses by name. It is carried through here rather than
+      # reached for separately so gen-memo is asked once, on one record, for one warm evaluation.
+      inherit (verdict) isClean identitiesHeld;
       modules = {
         clean = map (e: e._file) cleanEntries;
         dirty = map (e: e._file) dirtyEntries;
@@ -1683,10 +1687,64 @@ let
               remerged = if warmActive then remerged else { };
               inherit (decision) modules;
             };
+
+          # ── the identity FACT (option-set closure, region 2) ───────────────────────────────────
+          # This eval is the ONLY binding in the substrate that holds two evaluations of the same
+          # module set at once — `warmFrom.config` and the `config` above — so the fact that an
+          # instance's minted identity MOVED between them is nameable here and nowhere else. The
+          # DECISION over the fact is gen-memo's (`decision.identitiesHeld`), like every other reuse
+          # decision this engine takes; what is computed here is the two maps it decides over.
+          #
+          # WHY AN IDENTITY AND NOT A DECLARATION PATH. `declLeafEntries` stops at `isOptLeaf`, so on
+          # the registry shape `options.hosts` IS the declared leaf and an instance's `id_hash` is
+          # never a path in `allOptions` at all — `remerged` reads `{aspects, bobbins, hosts, …}` with
+          # no `id_hash` key while two hosts' identities move underneath it. Deepening the leaf walk
+          # would change the decision fact for every consumer of this engine to serve one predicate
+          # that does not need it; the per-instance map reaches the registry shape with that
+          # granularity untouched.
+          #
+          # THE COST, STATED. This traverses the `id_hash`-bearing values of two configs once per
+          # warm re-compose, and it FORCES — which the splice deliberately does not (a spliced leaf
+          # stays prev's thunk). That forcing is what makes the refusal total: an identity nobody
+          # demanded is an identity that can move unobserved, and a refusal reaching only the
+          # demanded ones is one a caller evades by not looking. The bound is the number of minted
+          # instances, not the option tree. The COLD path is untouched — `warmActive` is false, the
+          # walk never runs, and `identityHeld` is `[ ]` for the same zero-behaviour-change reason
+          # `warmFrom`/`coreShortCircuit` default off.
+          #
+          # `id_hash` is the ecosystem's own membership test for an instance value (gen-scope's
+          # `hasId`, the shape gen-select's registry adapter and gen-product's `factor` already use),
+          # read here as `isAttrs v && v ? id_hash`. Testing the key forces no identity that is not
+          # on an instance; a node that IS one is forced, which is the traversal above.
+          identityMapOf =
+            cfg:
+            let
+              go =
+                loc: v:
+                if !(isAttrs v) then
+                  { }
+                else if v ? id_hash then
+                  { ${showOption loc} = v.id_hash; }
+                else
+                  foldl' (acc: k: acc // go (loc ++ [ k ]) v.${k}) { } (attrNames v);
+            in
+            go [ ] cfg;
+
+          identityHeld =
+            if !warmActive then
+              [ ]
+            else
+              decision.identitiesHeld {
+                priorIdentities = identityMapOf warmFrom.config;
+                nextIdentities = identityMapOf config;
+                # Lazy, and read only inside the refusal — see gen-memo's note on the same argument.
+                remerged = attrNames warmDecision.remerged;
+              };
         in
         {
           inherit
             config
+            identityHeld
             moduleConfig
             moduleArgs
             provenance
@@ -1701,8 +1759,17 @@ let
       );
     in
     {
+      # ── the refusal's ONE forcing site ────────────────────────────────────────────────────────
+      # Interposed on the EXPORTED config, never on `result.config`. The two are the same value, and
+      # the difference is who reads which: modules inside the fixpoint see `result.moduleConfig`,
+      # which is built FROM `result.config`, so seq-ing the identity verdict onto the inner binding
+      # would make a module's ordinary `config.x` read force a walk over the config that read is
+      # helping to produce — infinite recursion, not a refusal. Out here nothing in the fixpoint can
+      # reach it, and every consumer of a warm re-compose goes through this attribute.
+      #
+      # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
+      config = builtins.seq result.identityHeld result.config;
       inherit (result)
-        config
         options
         provenance
         # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
