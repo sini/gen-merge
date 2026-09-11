@@ -25,7 +25,7 @@ gen-prelude → gen-types → gen-merge → { gen-schema, gen-aspects }      (BE
 gen-merge is the *within-node* definition merge; [gen-resolve](https://github.com/sini/gen-resolve)
 is the *cross-node* D>I>P schedule conductor — a distinct, higher layer. gen-merge depends only on
 gen-prelude (pure utilities), and takes gen-types' leaf checkers and gen-memo's reuse plane as
-**injected** values (ADR-0008 item 2 — one incremental plane for the whole gen ecosystem).
+**injected** values — one incremental plane for the whole gen ecosystem.
 
 ## Gen Ecosystem
 
@@ -363,7 +363,7 @@ trace) when any edited entry carries `disabledModules` (it would disable a clean
 to the footprint). Whether an override *reduces* to a modules-append at all is the caller's call
 (the `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
 
-**The contribution relation (the FACT) and gen-memo's decision (ADR-0008 item 2).** A module entry is
+**The contribution relation (the FACT) and gen-memo's decision.** A module entry is
 CLEAN (`srcClass` attrset / marked-pure — config-independent), DIRTY (function, `srcClass` dirty), or
 EDITED (in the appended tail). gen-merge computes only the FACT: a bipartite contribution relation
 between DIRTY ∪ EDITED entries and the declared-leaf locations they touch, built from
