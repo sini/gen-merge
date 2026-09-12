@@ -1,5 +1,7 @@
 # gen-merge — agent capability sheet
 
+> **Library class: reference-grade.** Deletion requires a domain argument — wrong abstraction, subsumption by another construct, or theory-unsoundness; a usage count is inadmissible as a deletion ground (P7, 2026-08-17).
+
 ## Scope
 
 Byte-mode module **merge** engine: `evalModuleTree` collects a module tree, ties one local `config`
