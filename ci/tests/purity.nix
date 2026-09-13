@@ -1,7 +1,9 @@
 # Purity invariant (design spec §5): the gen-merge library (./lib) is nixpkgs-lib-free — it is the
-# REPLACEMENT for `lib.evalModules` + `lib.types`-merge, so it must never CALL them. It depends only
-# on gen-prelude (+ the injected gen-types leaf checkers). A stray `lib.`/`lib.types`/`evalModules`/
-# `nixpkgs` in the library source fails CI.
+# REPLACEMENT for `lib.evalModules` + `lib.types`-merge, so it must never CALL them. The property
+# checked is the absence of a nixpkgs tether token over the domain stated under Scope below. What
+# this library's inputs are is `flake.nix`'s to declare — this suite reads that file only as source
+# text to scan, enumerates no inputs, and asserts nothing about their purity. A stray
+# `lib.`/`lib.types`/`evalModules`/`nixpkgs` in the library source fails CI.
 #
 # NB gen-merge legitimately DEFINES `mkOption`/`mkOptionType`/`mkMerge` (its own API — the nixpkgs
 # replacements), so those bare tokens are NOT forbidden; only the nixpkgs TETHER is. `evalModules`
