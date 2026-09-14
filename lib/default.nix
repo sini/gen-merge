@@ -11,15 +11,25 @@
 #
 #   prelude : gen-prelude.lib (the pure builtins/utility base)
 #   types   : gen-types.lib (the injected leaf CHECKERS — { <name> = { verify; check; } }).
-#             OPTIONAL for byte-mode bring-up: defaults to {}; tests inject a minimal stub. Wiring the
-#             real gen-types later is a one-line input swap — the checker contract is `verify:v->null|err`.
+#             REQUIRED, no default — the `memo` precedent below, and here the reason is measured
+#             rather than chosen. This formal read `types ? { }` and the prose above it called the
+#             argument optional for byte-mode bring-up; that default DID NOT EVALUATE. The published
+#             `types` namespace is a linkset merge whose allowlist names three collisions AGAINST THE
+#             LEAF VOCABULARY, so an empty vocabulary makes every entry stale and `merge.types`
+#             throws from inside: `linkset: allowlist entry 'attrsOf' names no actual collision
+#             between 'gen-types' and 'gen-merge'`. A default that throws is strictly worse than no
+#             default at all — a caller reading this header cannot tell "I called it wrong" from
+#             "the library is broken", whereas a missing required formal aborts AT THE CALL SITE
+#             naming `types`. Nothing loses a default it was using: every construction in this repo
+#             and every by-path consumer in the ecosystem already passes it explicitly, swept
+#             (den-hoag-qsrcp). The checker contract is `verify : v -> null|err`.
 #   memo    : gen-memo.lib (ADR-0008 item 2 — the ONE incremental plane's reuse DECISION,
 #             `warmDecision`). REQUIRED, no default: gen-merge computes the bipartite
 #             contribution-relation FACT (design spec §2.1) and hands it to gen-memo, which decides
 #             `isClean` over it — this library no longer decides reuse on its own footprint set.
 {
   prelude,
-  types ? { },
+  types,
   memo,
 }:
 let
