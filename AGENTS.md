@@ -41,8 +41,7 @@ outward channel: a formal is an INPUT channel and cannot carry a value out, so t
 formal-to-path map AND its own resolver, with nothing fetched, no path restated and no fold
 transcribed — which is why the `follows` rule is declared exactly once in this repository, in
 `default.nix`. `lib/default.nix` takes `{ prelude, types, memo }` — **all three REQUIRED, none
-defaulted**. Omitting one aborts at the call site naming it (`called without required argument
-'types'`). The root shim's defaults above are working values read from the lock; `lib/default.nix`
+defaulted**. Omitting one aborts at the call site naming it (`called without required argument 'types'`). The root shim's defaults above are working values read from the lock; `lib/default.nix`
 synthesizes nothing.
 
 **Engine + the shared fold**
