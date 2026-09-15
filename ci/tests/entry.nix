@@ -59,11 +59,98 @@ let
     # detected — but it is NOT the guard: four of the fourteen shims in this domain declare no
     # `fetch` formal at all and all four carry `...`, so they would swallow this key unread and
     # unreported. The guard is the pair of cells below.
-    fetch = name: throw "the entry cell must not fetch: ${name}";
-    lock = { };
+    #
+    # ★ THE SEAM IS `src`, AND IT IS PATH-SHAPED. The shim reads its own `ci/flake.lock` as local
+    # DATA, so there is no `lock` formal left to neutralise and a cell passing one neither needed to
+    # nor could; what remains injectable is the single expression that fetches. `dep` is the
+    # arity-dispatching resolver built over it and is closed for the same reason — a formal left at
+    # its default is a channel this application did not choose.
+    #
+    # ★ `wire` IS THE THIRD SEAM AND IT IS CHOSEN, NOT CLOSED. It is the shim's own wiring of
+    # `../../lib`, restated here because the totality rule below admits no formal left at its
+    # default — closing it with a `throw` would leave this application with nothing to exercise.
+    # The hermetic cells at the foot of this file are where it is INJECTED rather than reproduced.
+    inputs = { };
+    src = segs: throw "the entry cell must not fetch: ${builtins.concatStringsSep "." segs}";
+    dep = segs: throw "the entry cell must not build: ${builtins.concatStringsSep "." segs}";
+    wire = { deps, resolve }: import ../../lib deps;
   };
 
   standalone = import ../.. entryArgs;
+
+  # ★★ THE SEAM-CLOSING ARGUMENT SET FOR THE HERMETIC PAIR AT THE FOOT OF THIS FILE, BOUND RATHER
+  # THAN WRITTEN AT THE APPLICATION — `entryArgs`' own rule, for `entryNeedle`'s reason. `dep` stops
+  # the resolver at the PATH instead of fetching it, and replacing `wire` publishes the whole record
+  # the shim's body hands TO `wire` — its `deps` half is the attrset `./lib` receives only while
+  # `wire`'s own default is `{ deps, resolve }: import ./lib deps`, which the cell at the foot of
+  # this file is what holds, and its `resolve` half is the shim's own `follows` rule, which is why
+  # nothing below transcribes that rule. So this application is hermetic by CONSTRUCTION. Nothing
+  # else is supplied: every dependency formal is left at its default, which is the point — the
+  # defaults are the subject.
+  pathArgs = {
+    dep = segs: segs;
+    wire = args: args;
+  };
+  seam = import ../.. pathArgs;
+  paths = seam.deps;
+
+  # ★★★ THE SHIM'S OWN RESOLVER, READ RATHER THAN RETRANSCRIBED. `default.nix` holds the ONE
+  # declaration of the `follows` rule in this library and publishes it in the record its body hands
+  # to `wire`; this is that binding and not a copy of it. So the fixture control below drives the
+  # expression the shim itself resolves with, and `…-defaults-to-its-own-node` resolves the shim's
+  # declared paths by the shim's own rule rather than by a second copy that can agree with its own
+  # expectation while both are wrong.
+  shimResolve = seam.resolve;
+
+  # ★ THE ci LOCK, READ AS PURE DATA — and the rule that walks it is NO LONGER TRANSCRIBED HERE:
+  # `shimResolve` above IS `default.nix`'s binding. A direct edge IS the node key; a `follows` value
+  # is a PATH resolved segment by segment from this lock's own root. Never `lock.nodes.<label>` — a
+  # last-segment shortcut reads a DIFFERENT node, and a ci lock routinely carries several same-named
+  # ones. Reading the lock is pure data; nothing here fetches.
+  lock = builtins.fromJSON (builtins.readFile ../flake.lock);
+
+  # ★★ THE RESOLVER IS BOUND OVER ITS LOCK, AND THAT IS WHAT MAKES ITS CONTROL EXPRESSIBLE AT ALL. A
+  # `repoOf` closed over THIS lock has no free parameter, so a control could only re-assert the main
+  # arm's own value; taking the lock as an argument is what puts the control AT AN INPUT THE MAIN ARM
+  # DOES NOT USE. `shimResolve` takes its lock the same way and for the same reason — which is why
+  # `default.nix` publishes the LOCK-PARAMETERISED rule rather than its own applied `fetch`. The
+  # `lock` formal here deliberately shadows the binding above.
+  repoOf = lock: segs: lock.nodes.${shimResolve lock segs}.locked.repo;
+
+  # ★ THE FIXTURE LOCK, AND IT IS TWO CLAIMS IN ONE SHAPE. `root → a` is a DIRECT edge, where the
+  # value IS the node key; `a-node → b` is a `follows` PATH resolved from the lock's own root — so
+  # both branches of `following` are exercised. Walking `[ "a" "b" ]` lands on `the-walked-node`;
+  # indexing the last segment lands on the unrelated node keyed `b`. The two rules disagree BY
+  # CONSTRUCTION, which is what makes the control total over every library rather than over the ones
+  # whose own lock happens to disagree. It is a literal: nothing here reads a file or fetches.
+  followsFixture = {
+    root = "root";
+    nodes = {
+      root.inputs = {
+        a = "a-node";
+        elsewhere = "the-walked-node";
+      };
+      a-node.inputs.b = [ "elsewhere" ];
+      the-walked-node.locked.repo = "gen-walked";
+      b.locked.repo = "gen-indexed";
+    };
+  };
+
+  # ★★ THE SHIM'S `wire` DEFAULT, COUNTED AS TEXT. `[[:space:]]` spans the newline a formatter may
+  # put anywhere inside the default, and COMMENTS ARE STRIPPED FIRST — load-bearing here rather than
+  # prophylactic, because the shim's own prose quotes this default, so an unstripped scan keeps
+  # reading 1 on a file whose CODE has been rewired. Bound once and read by BOTH cells below: two
+  # literals spelled the same are two predicates, and the control would then guard only its own copy.
+  wireNeedle = ''wire[[:space:]]*\?[[:space:]]*[{][[:space:]]*deps[[:space:]]*,[[:space:]]*resolve[[:space:]]*[}][[:space:]]*:[[:space:]]*import[[:space:]]+\./lib[[:space:]]+deps[[:space:]]*,'';
+  countWire =
+    text:
+    builtins.length (
+      builtins.filter builtins.isList (
+        builtins.split wireNeedle (
+          builtins.concatStringsSep "" (builtins.filter builtins.isString (builtins.split "#[^\n]*" text))
+        )
+      )
+    );
 
   # ★★ THE READER IS BOUND, NOT ITS READING, AND THAT IS THE FIRST CONJUNCT OF THE ARMING RULE
   # RATHER THAN THE WHOLE OF IT. A bound READING (`shimFormals = builtins.attrNames
@@ -283,4 +370,149 @@ in
     expr = countEntry ("  standalone = import ../" + ".. { };");
     expected = 1;
   };
+
+  # ★★ EVERY WIRED DEPENDENCY RESOLVES, AND RESOLVES TO A NODE OF ITS OWN REPOSITORY. The shim states
+  # its intent as a PATH; this resolves that path through the same lock by the same rule and asks
+  # which repository the node it lands on belongs to. A path repointed at a live-but-wrong dependency
+  # — the failure the surface comparison above and a whole-seam seal both pass — reds here, naming
+  # the formal and the repository it reached. It is HERMETIC: `pathArgs` closes `dep`, so the map is
+  # read and resolved without a fetch.
+  #
+  # ★★ THE DOMAIN IS THE WIRED SET, NOT THE DECLARED SET — AND IT IS THE `deps` HALF OF THE RECORD
+  # THE SHIM'S BODY HANDS TO `wire`, NOT THE ATTRSET `./lib` RECEIVES. The two coincide only while
+  # `wire`'s own default is `{ deps, resolve }: import ./lib deps`, which is held by
+  # `test-the-wire-default-is-the-librarys-own-application` below and by nothing else. A formal
+  # declared and never threaded into that attrset is invisible here — a domain statement rather than
+  # a gap, and `test-the-entry-application-is-total` above is where a stray DECLARED formal surfaces.
+  #
+  # ★ STATED CEILING: `locked.repo` is neither `owner` nor node identity. A same-named repository
+  # under another owner passes, and so does a path repointed at a DIFFERENT NODE of the right
+  # repository — the shim's declared path is the only statement of intent, so there is no independent
+  # `expected` to compare a resolved node against. Recorded open rather than repaired.
+  flake.tests.entry.test-every-wired-dependency-defaults-to-its-own-node = {
+    expr = builtins.mapAttrs (_: repoOf lock) paths;
+    expected = builtins.mapAttrs (formal: _: "gen-" + formal) paths;
+  };
+
+  # ★★★ THE DISCRIMINATING HALF OF THE CELL ABOVE — and for the `follows` rule it is the whole
+  # oracle, not a supplement to one, because the rule has ONE declaration and `repoOf` is built over
+  # it. The two arms SHARE `repoOf`, hence share `shimResolve`, hence share `default.nix`'s own
+  # fold; this one exercises it AT AN INPUT THE MAIN ARM DOES NOT USE, a hand-written lock whose
+  # path walk and whose last-segment shortcut land on different nodes by construction. Replace the
+  # fold in `default.nix` with the shortcut and this reds at every library carrying this file —
+  # measured rc 1 with exactly one failing cell at all four tranche-1 libraries, where the same plant
+  # read fully green while
+  # this file still transcribed the rule a second time. The cell above cannot be relied on to: it
+  # reads `locked.repo`, and at tranche 1 the two rules agreed on `locked.repo` at all 13 wired
+  # paths while disagreeing on the NODE at 3 of them — so it red at none of the four.
+  flake.tests.entry.test-control-the-follows-resolver-discriminates = {
+    expr = repoOf followsFixture [
+      "a"
+      "b"
+    ];
+    expected = "gen-walked";
+  };
+
+  # ★★ THE DENOMINATOR, TAKEN INDEPENDENTLY — without it the cell above is vacuous over an empty map.
+  # `paths` is what the root WIRES; `functionArgs (import ../../lib)` is what the library REQUIRES,
+  # read from a different file by a different builtin. A dependency dropped from the shim's body reds
+  # here even though every surviving path still resolves.
+  flake.tests.entry.test-the-wired-dependency-set-is-the-libs-own-formals = {
+    expr = builtins.attrNames paths;
+    expected = builtins.attrNames (builtins.functionArgs (import ../../lib));
+  };
+
+  # ★★★ THE DEFAULTS FORCED — the one cell in this file that is NOT hermetic. Forcing them IS
+  # `builtins.fetchTree`: the accepted price of measuring the non-flake contract at all, and it
+  # remains PURE, because `fetchTree` on a locked node is narHash-addressed with no channel and no
+  # `<…>`. `builtins.seq` of the dispatched root runs the shim's eager body, which forces every wired
+  # dependency to WHNF before `./lib` sees it, so a nonexistent node, an unresolvable follows path or
+  # a throwing root is loud at the BOUNDARY on every path rather than wherever a consumer first
+  # happens to reach one.
+  #
+  # ★ THE FORCE STOPS AT WHNF, DELIBERATELY: `seq` of an attrset does not force its members, so this
+  # never reaches into a dependency's own surface and a member a dependency deliberately refuses to
+  # build is not an exception to it.
+  flake.tests.entry.test-the-defaulted-entry-forces-every-dependency =
+    let
+      root = import ../..;
+      dispatched = if builtins.isFunction root then root { } else root;
+    in
+    {
+      expr = builtins.seq dispatched "forced";
+      expected = "forced";
+    };
+
+  # ★★★ THE SHIM'S OWN `wire` DEFAULT, AND IT IS WHAT EVERY HERMETIC CELL ABOVE RESTS ON. `paths` is
+  # the `deps` half of the record the shim's body hands to `wire` — it is the attrset `./lib`
+  # RECEIVES only while `wire`'s own default is `{ deps, resolve }: import ./lib deps`, and no cell
+  # above reads that default: the two hermetic cells REPLACE `wire` with `args: args`, the forcing
+  # cell stops at WHNF of whatever `wire` returned, and the surface cell compares `attrNames`, which
+  # `./lib`'s structure fixes independently of its arguments. MEASURED, both arms in one run: with
+  # the default replaced by `args: import ./lib (args // { <a wired formal> = throw "…"; })` this
+  # suite read FULLY GREEN at all four tranche-1 libraries, while `deepSeq (import ./. { }) "ok"`
+  # read rc 1 at two of them against a clean rc 0 — a demonstrably broken library under a green
+  # suite.
+  #
+  # ★★ THE READING IS IRREDUCIBLY TEXTUAL, AND THAT IS THE SEAM'S OWN REASON FOR EXISTING: Nix
+  # publishes WHETHER a formal has a default and never WHAT it is, so there is no semantic
+  # construction to compare against. It is the same argument
+  # `test-the-entry-is-never-applied-to-a-literal` carries in this domain — the edit that
+  # reintroduces the defect is the same edit that would remove any semantic instrument for it.
+  flake.tests.entry.test-the-wire-default-is-the-librarys-own-application = {
+    expr = countWire (builtins.readFile ../../default.nix);
+    expected = 1;
+  };
+
+  # ★★★ THE DISCRIMINATING HALF, IN THREE ARMS BECAUSE THE PREDICATE HAS THREE WAYS TO BE DEAD. Both
+  # cells read the one `countWire` binding, and this one exercises it AT AN INPUT THE MAIN ARM DOES
+  # NOT USE — assembled fixtures, never `../../default.nix`. `exact` proves it can count the real
+  # default at all; `rewired` proves it refuses the one-token corruption the main arm exists to
+  # catch; `commented` proves the comment strip is LIVE, and that arm is the sharp one — the same
+  # text unstripped reads 1, which is precisely the false green a scan of a self-documenting shim
+  # would otherwise return.
+  flake.tests.entry.test-control-the-wire-default-check-discriminates = {
+    expr = {
+      exact = countWire "wire ? { deps, resolve }: import ./lib deps,";
+      rewired = countWire ''wire ? { deps, resolve }: import ./lib (deps // { x = throw "no"; }),'';
+      commented = countWire ''
+        # wire ? { deps, resolve }: import ./lib deps,
+        wire ? { deps, resolve }: import ./lib (deps // { }),
+      '';
+    };
+    expected = {
+      exact = 1;
+      rewired = 0;
+      commented = 0;
+    };
+  };
+
+  # ★★★ CHANNEL 2 — THE `inputs` OVERRIDE BAG. The shim declares three channels and one precedence:
+  # a named formal wins, the bag is next, tested by attrset membership, and the ci lock is the
+  # default. Every cell above exercises the LOCK, so a formal transcribed as `x ? dep [ … ]` instead
+  # of `x ? inputs.gen-x or (dep [ … ])` leaves its override silently ignored — MEASURED, both arms
+  # in one run: on that one edit the supplied override is dropped and the whole entry suite reads
+  # green. ★ It matters most where the flake arm is UNAPPLIED — the root published as `import ./.`
+  # rather than applied — because there the bag is the ONLY override path a consumer has. At tranche
+  # 1 that was three of the four.
+  #
+  # ★★ TOTAL OVER THE WIRED SET BY CONSTRUCTION. `expr` and `expected` are both derived from
+  # `paths`, so the domain is whatever the root wires and never a hand-written list, and the
+  # denominator is taken independently by `…-is-the-libs-own-formals`, so an empty map cannot read as
+  # a pass. The sentinels are DISTINCT per formal, so a bag key wired to the wrong formal reds too.
+  # It is hermetic: `pathArgs` closes `dep`, and with every formal overridden no default is reached.
+  flake.tests.entry.test-the-inputs-bag-overrides-every-wired-default =
+    let
+      overrides = builtins.mapAttrs (formal: _: "the ${formal} override, from the inputs bag") paths;
+      bag = builtins.listToAttrs (
+        map (formal: {
+          name = "gen-" + formal;
+          value = overrides.${formal};
+        }) (builtins.attrNames paths)
+      );
+    in
+    {
+      expr = (import ../.. (pathArgs // { inputs = bag; })).deps;
+      expected = overrides;
+    };
 }

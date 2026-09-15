@@ -2,30 +2,98 @@
 #
 # gen-merge is a function of three named values — gen-prelude (the pure utility base), gen-types
 # (the leaf checkers) and gen-memo (the incremental plane's reuse DECISION — ADR-0008 item 2).
-# Defaults fetch the flake-locked revs (content-addressed via narHash, so the plain-import path
-# stays pure and in lockstep with the flake output; per the gen root-file convention). Pass any
-# explicitly to override (e.g. a local gen-types checkout).
+#
+# THREE CHANNELS, ONE PRECEDENCE, AND NONE OF THEM IS A PROBE. A named formal per dependency wins;
+# the `inputs` bag is next, tested by attrset membership so a supplied-but-throwing value throws as
+# ITSELF rather than falling back; the default is resolved from `./ci/flake.lock`, read as local
+# data. There is NO `...`: an argument this root does not declare is a loud error, not a silent drop.
+#
+# THE PIN SOURCE IS `ci/flake.lock`, NOT THE ROOT `flake.lock`. The root lock stays the flake path's
+# lock and is no longer read by Nix code, which is what lets one rule hold across the roster: a root
+# lock exists only where the root flake declares inputs, while `ci/flake.lock` exists everywhere —
+# including at the libraries that declare no inputs at all and so could hold no shim under the old
+# rule. All three dependencies are root inputs of the ci lock, so every path below is one segment.
+#
+# `src` AND `dep` ARE FORMALS, NOT `let` BINDINGS, AND THAT IS THE INJECTABLE RESOLVER SEAM — the
+# one channel a cell can close. `src` is the only expression here that fetches; everything else
+# reads the lock as data. A caller supplying `src = segs: throw "…"` therefore makes fetching
+# IMPOSSIBLE for that application rather than merely absent, which is what `ci/tests/entry.nix`
+# rests on. A `dep` bound in the `let` below would close over the `let`'s `src`, so the override
+# would silently do nothing and the shim would fetch anyway, at rc 0.
+#
+# THE HAND-WRITTEN THREADING IS GONE, AND WHAT REPLACES IT IS PIN COHERENCE RATHER THAN DATAFLOW.
+# This shim used to pass its own `prelude` down into gen-types and gen-memo's own standalone
+# entries by hand so that one evaluator over one authority served all three — two instances being
+# two content-address formulas for one node. Coherent `ci/flake.lock` pins resolve to one store
+# path and `import` memoises, so there is no second instance for a threading to collapse. What
+# makes the count one is now the PINS, and the roster-wide coherence check that keeps them coherent
+# is the hub's rather than this file's.
+#
+# The `let` is OUTSIDE the lambda because a formal's default is evaluated in the FORMAL scope, which
+# does not see a `let` in the body.
+let
+  lock = builtins.fromJSON (builtins.readFile ./ci/flake.lock);
+  # A direct edge IS the node key; a `follows` value is a PATH resolved segment by segment from this
+  # lock's own root. Never by indexing `lock.nodes.<label>` — a last-segment shortcut reads a
+  # different node. IT TAKES ITS LOCK AS AN ARGUMENT SO THAT THE ENTRY CELL CAN DRIVE THIS EXACT
+  # BINDING ON A FIXTURE WHERE THE TWO RULES DISAGREE BY CONSTRUCTION; a resolver closed over this
+  # library's own lock could only ever be compared against a second copy of itself. This is the ONE
+  # declaration of the rule in this library — `ci/tests/entry.nix` reads this binding through the
+  # record the body hands `wire`, instead of transcribing the fold a second time.
+  resolve =
+    lock:
+    let
+      following =
+        node: inp:
+        let
+          v = (lock.nodes.${node}.inputs or { }).${inp};
+        in
+        if builtins.isString v then v else builtins.foldl' following lock.root v;
+    in
+    segs: builtins.foldl' following lock.root segs;
+  fetch = resolve lock;
+in
 {
-  lock ? builtins.fromJSON (builtins.readFile ./flake.lock),
-  fetch ?
-    name:
-    builtins.fetchTree (
-      let
-        node = lock.nodes.${lock.nodes.root.inputs.${name}}.locked;
-      in
-      node
-    ),
-  prelude ? import "${fetch "gen-prelude"}/lib",
-  # Through gen-types' OWN standalone entry rather than its `./lib`, so gen-types' own dependencies
-  # are satisfied from gen-types' lock. Reaching for `./lib` obliged this file to name that
-  # library's whole formal list by hand — and a hand-picked list is a SECOND SIGNATURE that
-  # nothing compares against the first: gen-types gained `identity` and this site, still passing
-  # `prelude` alone, threw on every forced standalone import while the flake path stayed green.
-  # Through the entry, a formal gained downstream is defaulted downstream and the divergence
-  # cannot form.
-  types ? import "${fetch "gen-types"}" { inherit prelude; },
-  # Same precedent as `types` above — gen-memo's own standalone entry, so its `graph` dep is
-  # satisfied from gen-memo's lock rather than hand-named here.
-  memo ? import "${fetch "gen-memo"}" { inherit prelude; },
+  inputs ? { },
+  src ? segs: "${builtins.fetchTree lock.nodes.${fetch segs}.locked}",
+  # Arity dispatch, because a dependency's root is a function at a shim'd library and a bare value
+  # at a leaf, and neither `import p` nor `import p { }` is total over both.
+  dep ?
+    segs:
+    let
+      v = import (src segs);
+    in
+    if builtins.isFunction v then v { } else v,
+  # `wire` IS THE THIRD SEAM, AND IT IS THE ONLY WAY ANYTHING LEAVES THIS FILE. Nix publishes
+  # WHETHER a formal has a default and never WHAT it is, and a formal is an INPUT channel that
+  # cannot carry a value outward at all — so the only place a formal NAME and its resolved PATH are
+  # both in scope is this file's argument TO `wire`, and `resolve` leaves by that same argument
+  # rather than by a fourth formal. What `./lib` actually receives is a different question: `wire`
+  # RECEIVES `{ deps, resolve }`, and passes on whatever it chooses to — here `deps` and nothing
+  # else, but only because the default below reads `{ deps, resolve }: import ./lib deps,`. A cell
+  # injecting `dep = segs: segs` alongside `wire = args: args` reads this shim's own formal-to-path
+  # map AND its own resolver directly, with nothing fetched, no path restated and no fold
+  # transcribed. The record destructures with no `...`, so a drifted body shape is loud at the
+  # default; adding `wire` was a widening and breaks no caller for the same reason — there is no
+  # `...` here, and no caller passes a name this root does not declare.
+  wire ? { deps, resolve }: import ./lib deps,
+  prelude ? inputs.gen-prelude or (dep [ "gen-prelude" ]),
+  types ? inputs.gen-types or (dep [ "gen-types" ]),
+  memo ? inputs.gen-memo or (dep [ "gen-memo" ]),
 }:
-import ./lib { inherit prelude types memo; }
+# THE BODY IS EAGER, AND THAT IS WHAT MAKES THE ENTRY CELL TOTAL RATHER THAN PARTIAL. `forced` forces
+# every wired dependency to WHNF before `./lib` sees it, so a default that cannot resolve is loud AT
+# THE BOUNDARY rather than wherever a consumer first reaches an attribute. Without it a force of this
+# root reaches only the dependencies the published surface happens to be derived from — and
+# `builtins.deepSeq` cannot make up the difference, because it does not enter a lambda.
+#
+# THE FORCE STOPS AT WHNF DELIBERATELY: `builtins.seq` of an attrset does not force its members, so
+# this reaches each dependency's root VALUE and never a member of it. A library that deliberately
+# refuses to build some member is therefore not an exception to it.
+let
+  deps = { inherit prelude types memo; };
+  forced = builtins.deepSeq (builtins.mapAttrs (_: builtins.typeOf) deps) null;
+in
+builtins.seq forced (wire {
+  inherit deps resolve;
+})

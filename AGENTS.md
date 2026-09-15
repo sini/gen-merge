@@ -32,12 +32,18 @@ Quoted text is the owner's own `flake.nix` `description` field, verbatim.
 
 ## Exports
 
-Entry: `inputs.gen-merge.lib` (flake). Root `default.nix` is a **function** of
-`{ lock ? …, fetch ? …, prelude ? …, types ? …, memo ? … }` — every argument defaulted from
-`flake.lock` via `builtins.fetchTree`, so `import ./default.nix { }` works standalone.
-`lib/default.nix` takes `{ prelude, types, memo }` — **all three REQUIRED, none defaulted**. Omitting
-one aborts at the call site naming it (`called without required argument 'types'`). The root shim's
-defaults above are working values read from the lock; `lib/default.nix` synthesizes nothing.
+Entry: `inputs.gen-merge.lib` (flake). Root `default.nix` is a **function** — `import ./gen-merge { }`
+— whose named parameters (`prelude`, `types`, `memo`) default to the `ci/flake.lock` pins and may
+each be overridden. A fourth formal on that same root, `wire ? { deps, resolve }: import ./lib deps`,
+is the seam that hands this exact parameter set to `./lib` as `deps`, and it is also the shim's only
+outward channel: a formal is an INPUT channel and cannot carry a value out, so the lock-parameterised
+`follows` resolver rides out on the same record. Overriding `wire` is how a cell reads the shim's own
+formal-to-path map AND its own resolver, with nothing fetched, no path restated and no fold
+transcribed — which is why the `follows` rule is declared exactly once in this repository, in
+`default.nix`. `lib/default.nix` takes `{ prelude, types, memo }` — **all three REQUIRED, none
+defaulted**. Omitting one aborts at the call site naming it (`called without required argument
+'types'`). The root shim's defaults above are working values read from the lock; `lib/default.nix`
+synthesizes nothing.
 
 **Engine + the shared fold**
 
