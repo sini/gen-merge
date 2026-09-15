@@ -258,7 +258,9 @@ in
         count = builtins.length (builtins.filter builtins.isList parts);
         reaches = map builtins.head (
           builtins.filter (m: m != null) (
-            map (p: builtins.match ''.*fetch "(gen-[a-z-]+)"$'' p) (builtins.filter builtins.isString parts)
+            map (p: builtins.match ''.*"(gen-[a-z-]+)"[[:space:]]*]$'' p) (
+              builtins.filter builtins.isString parts
+            )
           )
         );
       };
