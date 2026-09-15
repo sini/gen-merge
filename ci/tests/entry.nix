@@ -19,7 +19,7 @@
 #     (`called with unexpected argument 'types'`);
 #   · a shim that forwards fewer than `lib` requires refuses inside it
 #     (`called without required argument 'prelude'`).
-# Both are uncatchable evaluator refusals, so either turns these cells ☢️ rather than ❌ — a crash is
+# Both are uncatchable evaluator refusals, so either turns these cells radioactive rather than failing — a crash is
 # the loudest reading available and the right one for an entry point that does not exist.
 #
 # ★ `prelude` AND `genTypes` ARE THE SAME BINDINGS THE FLAKE'S `lib` OUTPUT IS BUILT FROM (ci/flake.nix
@@ -324,7 +324,7 @@ in
   # and both halves were driven one variable at a time by neutering the shared operand — operand
   # spelled twice, control at a different input: `10/10`, exit 0, UNDETECTED; operand shared, control
   # moved to the main arm's own input (`formalsOf (import ../..)`): `10/10`, exit 0, UNDETECTED;
-  # operand shared AND control at a different input: `9/10`, exit 1, THIS cell ❌. Known-answer versus
+  # operand shared AND control at a different input: `9/10`, exit 1, rc 1 with one failing cell. Known-answer versus
   # relative is not the axis — a relative control at a different input catches the same tamper.
   #
   # ★ THE FIXTURE NAMES `a` AND `b`, which are the formals of a lambda THIS CELL WRITES and no shim
