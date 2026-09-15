@@ -263,6 +263,47 @@ let
     _file = "B";
     o = _: "w";
   };
+
+  # ── declaration-plane misuse: one fixture skeleton, one message per DIAGNOSIS ───────────────
+  # Every cell in the group below declares the SAME option path `a` and differs in exactly the tag
+  # it misplaces there, so what separates the cells is the tag and nothing else.
+  misdeclare = v: realize { modules = [ { options.a = v; } ]; };
+  declLeaf = gm.mkOption {
+    type = t.str;
+    default = "x";
+  };
+  # The four combinators share ONE message shape parameterized by their path and tag — which is the
+  # claim being asserted (same remedy, different tag), not a shortcut. The `option-type` cell below
+  # spells its own regex out in full precisely because it must NOT match this one.
+  combinatorRefusal =
+    loc: tag:
+    "^gen-merge: option `${loc}' is declared as the `${tag}' combinator "
+    + "\\(mkMerge/mkIf/mkOrder/mkBefore/mkAfter/mkForce/mkOverride build DEFINITIONS, not "
+    + "DECLARATIONS\\); move it under `config'/`imports', or write one plain attrset here$";
+
+  # ── the SECOND call site's fixture: a DECLARED-ONLY misuse on the warm path ─────────────────
+  # `footOf`'s `declPaths` reads a module's own raw `options`, not `allOptions`, so the fold's guard
+  # never reaches it. `moduleDefFootprint` is DEFINITION-driven, so a key that is declared and never
+  # defined is not visited by it either — which is why this fixture defines nothing for `misuse`.
+  # Read through `.warmDecision.remerged` ONLY: never `.config`, never `.reused`, never `.options`,
+  # each of which is already reached by the fold's guard and would make the cell pass for the wrong
+  # reason.
+  coldOf = mods: gm.evalModuleTree { modules = mods; };
+  warmOf =
+    base: edited:
+    gm.evalModuleTree {
+      modules = base ++ edited;
+      warmFrom = coldOf base;
+      editedModules = edited;
+    };
+  warmBase = [
+    {
+      _file = "base";
+      options.clean = declLeaf;
+      config.clean = "c";
+    }
+  ];
+  remergedKeys = edited: builtins.attrNames (warmOf warmBase edited).warmDecision.remerged;
 in
 {
   config = {
@@ -1493,6 +1534,109 @@ in
           1
           2
         ];
+      };
+    };
+
+    # A DEFINITION-plane value standing in a DECLARATION position used to abort with a raw, pathless,
+    # `tryEval`-UNCATCHABLE Nix type error (`expected a set but found a string: "merge"`) — fired
+    # frames below the mistake, naming neither the option nor the tag. `isOptLeaf`'s disjunction is
+    # binary, so the misplaced value was recursed into as though its own internals were
+    # sub-declarations. ADR-0025 item 1: every operation returns a value or a NAMED refusal.
+    #
+    # ★ THE MISPLACEABLE TAG SET IS CLOSED AT FIVE and enumerable from the library's own source
+    # (`grep -rhoP '_type\s*=\s*"\K[a-zA-Z-]+' lib/` ⇒ merge · if · order · override · option-type,
+    # plus `option`, the legitimate leaf), so this group quantifies over the whole class rather than
+    # over the one tag that was reported.
+    #
+    # ★★ AND THE FIVE CARRY **TWO** DIAGNOSES, WHICH IS WHAT THE LAST TWO CELLS FENCE. An
+    # implementation emitting ONE shared message for all five would satisfy the enumeration while
+    # giving `option-type` the wrong remedy — telling an author to move a TYPE under `imports`. The
+    # `option-type` cell asserts the `mkOption` wrap SPECIFICALLY, and its regex matches none of the
+    # four above it, so a shared-string implementation fails here while passing the combinator cells.
+    flake.testsError.decl-plane-misuse = {
+      test-merge-combinator-refusal-names-the-option = {
+        expr = misdeclare (gm.mkMerge [ { b = declLeaf; } ]);
+        expectedError = {
+          type = "ThrownError";
+          msg = combinatorRefusal "a" "merge";
+        };
+      };
+      test-if-combinator-refusal-names-the-option = {
+        expr = misdeclare (gm.mkIf true { b = declLeaf; });
+        expectedError = {
+          type = "ThrownError";
+          msg = combinatorRefusal "a" "if";
+        };
+      };
+      test-order-combinator-refusal-names-the-option = {
+        expr = misdeclare (gm.mkOrder 100 { b = declLeaf; });
+        expectedError = {
+          type = "ThrownError";
+          msg = combinatorRefusal "a" "order";
+        };
+      };
+      test-override-combinator-refusal-names-the-option = {
+        expr = misdeclare (gm.mkForce { b = declLeaf; });
+        expectedError = {
+          type = "ThrownError";
+          msg = combinatorRefusal "a" "override";
+        };
+      };
+      # THE DISCRIMINATING CELL. Same boundary, same class, DIFFERENT mistake: a bare type where a
+      # declaration belongs. The remedy is `mkOption`, never `imports` — and this regex is spelled
+      # out rather than derived from `combinatorRefusal` so the two diagnoses cannot silently become
+      # one string.
+      test-option-type-refusal-names-the-mkoption-remedy = {
+        expr = misdeclare t.str;
+        expectedError = {
+          type = "ThrownError";
+          msg =
+            "^gen-merge: option `a' is declared as a bare type \\(`string'\\), not a declaration; "
+            + "wrap it: `mkOption \\{ type = <that type>; \\}'$";
+        };
+      };
+      # LIVE CONTROL, same run: the same option path, declared correctly, still realizes. Without it
+      # the five cells above are consistent with a door that refuses every declaration.
+      test-legitimate-mkoption-leaf-control = {
+        expr = cfg { modules = [ { options.a = declLeaf; } ]; };
+        expected = {
+          a = "x";
+        };
+      };
+
+      # ★★ THE SECOND CALL SITE. Every cell above forces `.config`, which is built from the GUARDED
+      # `allOptions`; this one reads `.warmDecision.remerged` and nothing else, which is built from
+      # `footOf`'s RAW per-module `options`. A misuse that is DECLARED and never DEFINED is invisible
+      # to every other reader — `moduleDefFootprint` is definition-driven and never visits it — so
+      # without a guard at that second site this fixture returns `{ }` at exit 0, silently, both at
+      # HEAD and with the fold's guard alone. ★ That is the discrimination this cell exists for, and
+      # it is why it must be driven red against a FOLD-GUARD-ONLY tree and not merely against HEAD:
+      # a cell that already passes with one guard is measuring the other cells' door, not this one.
+      test-warm-remerged-declared-only-misuse-refuses-by-name = {
+        expr = remergedKeys [
+          {
+            _file = "edit";
+            options.misuse = gm.mkMerge [ { b = declLeaf; } ];
+          }
+        ];
+        expectedError = {
+          type = "ThrownError";
+          msg = combinatorRefusal "misuse" "merge";
+        };
+      };
+      # LIVE CONTROL for the cell above, same run, SAME READ PATH — `.warmDecision.remerged`, not
+      # `.config`. The control the group already has runs through a different reader entirely, so it
+      # cannot say whether this one is reachable: without this cell, a guard that made `footOf` throw
+      # unconditionally would pass the cell above and look like a working door.
+      test-warm-remerged-clean-edit-control = {
+        expr = remergedKeys [
+          {
+            _file = "edit";
+            options.other = declLeaf;
+            config.other = "o";
+          }
+        ];
+        expected = [ "other" ];
       };
     };
   };

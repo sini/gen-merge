@@ -96,6 +96,65 @@ let
   # Anything else inside the `options` tree is an option-GROUP: a plain attrset of sub-declarations.
   isOptLeaf = v: isAttrs v && (v._type or null) == "option";
 
+  # ── isOptLeaf's missing THIRD arm: a declaration-plane misuse ─────────────
+  # The disjunction above is binary, so a value that is neither a leaf nor a group is recursed into
+  # as though its own internals were sub-declarations — and the abort fires frames below the mistake
+  # as a raw, pathless, `tryEval`-UNCATCHABLE Nix type error (`expected a set but found a string:
+  # "merge"`). ADR-0025 item 1 rules that every operation returns a value or a NAMED refusal.
+  #
+  # The misplaceable tag set is CLOSED at five, enumerable from this library's own source
+  # (`grep -rhoP '_type\s*=\s*"\K[a-zA-Z-]+' lib/`): `merge`, `if`, `order`, `override` are
+  # DEFINITION-plane combinators (`lib/priority.nix`), and the type tag belongs to a TYPE object
+  # (`lib/interface.nix`, asked through `interface.isOptionType` because that literal is private to
+  # that unit); `option` is the legitimate leaf. They carry TWO diagnoses, not one message repeated —
+  # a combinator on the wrong plane and a type where a declaration belongs have different remedies,
+  # and one shared string would misdiagnose a member while satisfying the enumeration.
+  declPlaneMisuseTag =
+    v:
+    if !(isAttrs v) then
+      null
+    else if interface.isOptionType v then
+      "bare-type"
+    else
+      let
+        tag = v._type or null;
+      in
+      if tag == "merge" || tag == "if" || tag == "order" || tag == "override" then "combinator" else null;
+
+  declPlaneMisuseMessage =
+    loc: v: tag:
+    let
+      # A misuse AT the root of a module's own `options` has no option path to name — the offending
+      # value IS the tree. Every other depth names the path, like the collision throw below.
+      at = if loc == [ ] then "the `options' attrset itself" else "option `${showOption loc}'";
+    in
+    if tag == "bare-type" then
+      "gen-merge: ${at} is declared as a bare type (`${v.name or "?"}'), not a declaration; "
+      + "wrap it: `mkOption { type = <that type>; }'"
+    else
+      "gen-merge: ${at} is declared as the `${v._type}' combinator "
+      + "(mkMerge/mkIf/mkOrder/mkBefore/mkAfter/mkForce/mkOverride build DEFINITIONS, not "
+      + "DECLARATIONS); move it under `config'/`imports', or write one plain attrset here";
+
+  # Walks a module's declaration subtree, refusing BY NAME the instant it meets a misplaced tag at
+  # ANY depth. Stops at a genuine leaf — an option descriptor's own internals (`type`, `default`, …)
+  # are not a declaration tree — and otherwise recurses exactly where `isOptLeaf`'s group arm would,
+  # so the per-key `mapAttrs` thunks keep today's laziness.
+  validateDeclSubtree =
+    loc: v:
+    if isOptLeaf v then
+      v
+    else
+      let
+        tag = declPlaneMisuseTag v;
+      in
+      if tag != null then
+        throw (declPlaneMisuseMessage loc v tag)
+      else if isAttrs v then
+        mapAttrs (k: validateDeclSubtree (loc ++ [ k ])) v
+      else
+        v;
+
   # ── fixed-input core marker (design spec §2.5) ────────────────────────────
   # A def value that CARRIES an already-merged subtree: `mkCoreValue { digest; values; }` tags
   # `values` (the by-contract full-merge output for a whole loc) so a consumer (gen-class tier-2)
@@ -640,10 +699,18 @@ let
       footOf =
         reasonOf: e:
         let
+          # ★ THE SECOND DOOR, and it is a SECOND CALL SITE rather than a second copy of the guard.
+          # This walk reads a module's OWN raw `options`, never `allOptions`, so the guard at the
+          # `allOptions` fold does not reach it: a declared-but-never-defined misuse is invisible
+          # here, because `moduleDefFootprint` below is DEFINITION-driven and never visits a
+          # declared-only key. Measured, one fixture, three arms: reading `.warmDecision.remerged`
+          # for such a module returns `{ }` silently both at HEAD and with the fold's guard alone,
+          # and refuses by name only once this call site is guarded too (ci/tests-error.nix,
+          # `test-warm-remerged-declared-only-misuse-refuses-by-name`).
           declPaths = map (p: {
             path = p;
             reason = reasonOf "decl";
-          }) (declLeafPaths (optionsOf e.content));
+          }) (declLeafPaths (validateDeclSubtree [ ] (optionsOf e.content)));
           df = moduleDefFootprint allOptions e.content;
           defPaths = concatMap (
             r:
@@ -1320,7 +1387,12 @@ let
           }) flat;
           sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
           allOptions = foldl' (
-            acc: e: mergeOptionDecls (redeclareDecl sitesAt e.idx) prefix acc e.options
+            # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
+            # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes `allOptions` or a
+            # value traced back to it, so guarding the producer here covers all five tags at any
+            # nesting depth on both the `.options` and `.config` planes.
+            acc: e:
+            mergeOptionDecls (redeclareDecl sitesAt e.idx) prefix acc (validateDeclSubtree prefix e.options)
           ) { } declEntries;
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────

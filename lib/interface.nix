@@ -604,6 +604,15 @@ let
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
 
+  # isOptionType — the DUAL of the `_type = "option-type"` stamp `exportType` applies below, asked
+  # here rather than spelled at the asking site. The engine needs it at the declaration boundary,
+  # where a bare type standing in an option-DECLARATION position is a caller mistake to be refused by
+  # name rather than recursed into (`declPlaneMisuseTag`, ./modules.nix). The tag is a FOREIGN
+  # CONSTANT with no counterpart on gen's side, so it is uttered in this unit and nowhere else —
+  # `ci/tests/interface.nix`'s `test-the-option-type-tag-is-uttered-in-exactly-one-unit` asserts the
+  # exact file list, and a second file naming the literal fails it by name.
+  isOptionType = v: isAttrs v && (v._type or null) == "option-type";
+
   # exportType — a gen type EXPRESSED in the foreign protocol.
   #
   # ── THE PARTITION, AND IT IS TOTAL OVER THE FOURTEEN ────────────────────────────────────────────
@@ -786,6 +795,7 @@ in
     importedRebuilds
     importedSubstructure
     importedWrapped
+    isOptionType
     refuseMount
     ;
 }
