@@ -1729,8 +1729,10 @@ let
             filter (d: d.message != null) (map record (declLeafEntries allOptions));
 
           # ── decision trace (design spec §4) — the memoization DECISION, always-on data on the warm
-          # path (the eval computes the partition anyway). Consumed by gen-flake's `override` (formatted
-          # into its `trace`). Laziness contract: `mode`/`modules` are cheap (classification only);
+          # path (the eval computes the partition anyway). Consumed by gen-memo's
+          # `warmTrace`/`warmAdmits` (ADR-0031: the warm/override/trace arm moved here from
+          # gen-flake's dissolved `override`). Laziness contract: `mode`/`modules` are cheap
+          # (classification only);
           # `reused`/`remerged` are O(declared-locs) SPINE-forcing when read (they enumerate the loc
           # partition — never leaf values). Cold (`warmFrom == null` or a disabledModules refusal) ⇒
           # nothing spliced ⇒ `reused = [ ]`, `remerged = { }`, with the cold `reason` stated.
