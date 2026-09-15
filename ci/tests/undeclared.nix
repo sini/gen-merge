@@ -61,8 +61,8 @@ in
     };
 
     # 2 — the report does not change what `check = false` produces: `config` carries the declared key
-    # and nothing else, exactly as before the channel existed. The consumer contract (gen-flake reads
-    # the merged config and asserts it empty for an all-undeclared input) rests on this.
+    # and nothing else, exactly as before the channel existed. The consumer contract (a downstream
+    # caller reads the merged config and asserts it empty for an all-undeclared input) rests on this.
     test-report-stays-out-of-config = {
       expr =
         builtins.attrNames

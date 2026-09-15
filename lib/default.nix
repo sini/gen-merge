@@ -255,9 +255,14 @@ in
   # ADR-0023 rules the unqualified form — what crosses is provably plain data — the TARGET, BY
   # CONSTRUCTION, and today's unstated crossings a DECLARED INTERIM: "every currently-unstated crossing
   # site becomes a declared opt-out or is fixed". The two readings may yet reconcile, since the demo
-  # composes purely through gen-flake while the corpus path named above may be a different crossing.
-  # But whether the site named above really mounts a gen TYPE, rather than composing through gen-flake
-  # like the demo, has never been measured — so this states the tension and picks no side.
+  # composes through the hub's rehomed `flakeModules.default` (ADR-0031 F1, INTERIM — gen-flake
+  # dissolved) while the corpus path named above may be a different crossing. Whether a gen leaf type
+  # mounting in a *foreign*, non-gen-authored `lib.evalModules` can work at all is no longer an open
+  # empirical question in the ecosystem — a real external consumer does exactly this and it discharges
+  # once identity keys are declared at the kind boundary (`den-hoag-i546n`) — but that is evidence
+  # about the general phenomenon, not a re-examination of this file's own `nixpkgs-protocol.nix` site,
+  # and it settles nothing about which reading ADR-0023 ultimately rules. So this still states the
+  # tension and picks no side.
   # Deciding it belongs to the crossing chain ADR-0023 governs (with ADR-0014 — the boundary is the
   # eval, not the repo — supplying why a foreign `evalModules` is a crossing at all), not to this file.
   #
