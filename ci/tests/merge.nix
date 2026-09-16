@@ -331,6 +331,13 @@ in
           # control on the same instrument: an empty-able type resolves on BOTH arrivals, so a
           # uniformly-throwing engine cannot satisfy this row either.
           attrsOf = t.attrsOf t.str;
+          # ★★ `attrs` IS EMPTY-ABLE AND `leaf` ABOVE IS NOT, ASSERTED IN ONE CELL — which is the
+          # whole of why `attrs` is a per-type construction rather than a widening of what a leaf may
+          # answer. A protocol handing every leaf an empty value greens this row and flips `leaf`,
+          # `raw`, `anything`, `deferredModule` and `either` in the same breath, replacing a
+          # divergence with a wrong semantics. Here that failure cannot be silent: the two readings
+          # are conjuncts of one expected value, so the arm is visible in the cell that motivates it.
+          attrs = t.attrs;
         };
       expected = {
         leaf = {
@@ -356,6 +363,69 @@ in
         attrsOf = {
           undefined = true;
           discharged = true;
+        };
+        attrs = {
+          undefined = true;
+          discharged = true;
+        };
+      };
+    };
+    # THE FOLD HALF of the same classification. An empty value without a fold is an incoherent type
+    # — empty-able but not addable — so the two are asserted together: two definitions over DISJOINT
+    # keys is not a conflict under any reading of `attrs`, and the engine refused it only because a
+    # type with no fold of its own takes one definition and cannot combine two. The one-def and
+    # defaulted arms sit here rather than in their own cells because they are what a fold that
+    # over-reaches breaks first.
+    test-attrs-folds-across-definitions = {
+      expr = {
+        disjoint = cfg {
+          modules = [
+            { options.x = mkOption { type = t.attrs; }; }
+            {
+              _file = "a.nix";
+              x.a = 1;
+            }
+            {
+              _file = "b.nix";
+              x.b = 2;
+            }
+          ];
+        };
+        oneDef = cfg {
+          modules = [
+            { options.x = mkOption { type = t.attrs; }; }
+            { x.a = 1; }
+          ];
+        };
+        defaulted = cfg {
+          modules = [
+            {
+              options.x = mkOption {
+                type = t.attrs;
+                default = {
+                  d = 1;
+                };
+              };
+            }
+          ];
+        };
+      };
+      expected = {
+        disjoint = {
+          x = {
+            a = 1;
+            b = 2;
+          };
+        };
+        oneDef = {
+          x = {
+            a = 1;
+          };
+        };
+        defaulted = {
+          x = {
+            d = 1;
+          };
         };
       };
     };

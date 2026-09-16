@@ -121,6 +121,12 @@ let
       ];
     }).options.x.type.name;
 
+  # gen-types' `attrs`, PROTOCOL-COMPLETED by the library's own export path rather than hand-built,
+  # and reached under a non-colliding key so the linkset does not shadow it with the strategy that
+  # now wins at `attrs`. Its `.name` is still `attrs`, which is exactly the hazard the relation this
+  # file's `attrs-container` group reads was stated for.
+  attrsCompletedLeaf = (genMergeWith (genTypes // { attrsLeaf = genTypes.attrs; })).types.attrsLeaf;
+
   # The same redeclaration one level down, inside a `submodule` — the nested eval carries a
   # non-empty `prefix`. `sub-a.nix` always declares `str`; the second type and its default are the
   # only things that vary between the refusal and its control.
@@ -449,6 +455,114 @@ in
             inner = "B";
           };
         };
+      };
+    };
+
+    # `attrs` — THE NULLARY CONTAINER'S TWO REFUSALS AND ITS NAME COLLISION.
+    #
+    # ★★ EVERY CELL HERE READS THE MESSAGE BECAUSE THE BIT DOES NOT DISCRIMINATE. Before the type
+    # was constructed the engine refused all three of these inputs too — a rejected definition, a
+    # same-key collision and a redeclaration against the other spelling — and two of the three threw
+    # `has conflicting definitions`, which a `tryEval` failure bit cannot tell from the refusals
+    # below. A cell asserting only that it threw passes on the unrepaired tree.
+    flake.testsError.attrs-container = {
+      # A DEFINITION THE TYPE CANNOT CONSUME IS REFUSED BEFORE THE FOLD, and the refusal names the
+      # FILE. That last conjunct is the whole cell: the pre-construction refusal was catchable and
+      # named both the option and `attrs`, and named no file, so every other conjunct here was
+      # already satisfied by the state this cell exists to exclude.
+      test-attrs-rejected-definition-refuses-naming-the-file = {
+        expr = realize {
+          modules = [
+            { options.x = gm.mkOption { type = t.attrs; }; }
+            {
+              _file = "a.nix";
+              x = "not-an-attrset";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions `attrs' cannot consume \\(a\\.nix\\)$";
+        };
+      };
+      # ★ THE LIVE CONTROL FOR THE PARTITION, same input one type over. `attrsOf` indexes the
+      # definition by key without asking its domain first, so the interpreter answers instead — a
+      # raw type error naming neither the option nor the file, and a `TypeError` rather than a
+      # `ThrownError`, which is what "escapes `tryEval`" looks like from outside. That is the
+      # partition the cell above exists to keep `attrs` OUT of, and without this arm "refuses
+      # catchably by name" reads as a property every container already has.
+      #
+      # The pattern is UNANCHORED here alone: the interpreter's message carries the offending value,
+      # and pinning that would assert the interpreter's formatting rather than this engine's.
+      test-control-attrsOf-on-the-same-input-aborts-in-the-interpreter = {
+        expr = realize {
+          modules = [
+            { options.x = gm.mkOption { type = t.attrsOf t.int; }; }
+            {
+              _file = "a.nix";
+              x = "not-an-attrset";
+            }
+          ];
+        };
+        expectedError = {
+          type = "TypeError";
+          msg = "expected a set but found a string";
+        };
+      };
+      # A SURVIVING SAME-KEY COLLISION IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029): the
+      # priority pass has already resolved every intended override by the time this fold runs. The
+      # message names the KEY, which is the part the author has to go and reconcile and the part the
+      # engine's own `has conflicting definitions` never carried.
+      test-attrs-same-key-collision-refuses-naming-the-key = {
+        expr = realize {
+          modules = [
+            { options.x = gm.mkOption { type = t.attrs; }; }
+            {
+              _file = "a.nix";
+              x.a = 1;
+            }
+            {
+              _file = "b.nix";
+              x.a = 2;
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has `attrs' definitions that collide at `a' \\(b\\.nix, a\\.nix\\)$";
+        };
+      };
+      # THE NAME COLLISION, END TO END AND IN THE ORDER THE ENGINE CAN SEE IT. `mergeTypes` consults
+      # the FIRST operand's relation and never the second, so this is a refusal with gen's `attrs`
+      # declared first; declared second its relation is never asked and the first operand's fold
+      # runs. That order-dependence is `den-hoag-efepm`'s open question and is NOT claimed here —
+      # it is also not introduced here, the same pairing behaving identically before this type
+      # existed.
+      #
+      # The reason names the DISCRIMINATING FACT rather than the pair, because the pair is the same
+      # name twice and would tell the reader nothing: both partners below really are called `attrs`.
+      test-attrs-redeclared-against-the-shadowed-predicate-refuses = {
+        expr = declaredTwice t.attrs attrsCompletedLeaf;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      test-attrs-redeclared-against-the-foreign-spelling-refuses = {
+        expr = declaredTwice t.attrs nixpkgsLib.types.attrs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # LIVE CONTROL, same run and same helper — an `expected` cell in an `expectedError` output on
+      # purpose, exactly as the `declaration-merge` group's controls are. `attrs` against ITSELF
+      # merges, so the two cells above read the partner's foldlessness rather than the shared name.
+      # A relation refusing every same-named partner passes both of them and breaks the ordinary
+      # redeclaration every consumer hits.
+      test-attrs-redeclared-against-itself-merges-control = {
+        expr = declaredTwice t.attrs t.attrs;
+        expected = "attrs";
       };
     };
 

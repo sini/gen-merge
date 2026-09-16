@@ -391,6 +391,76 @@ let
   attrsOf = attrsOfWith "attrsOf";
   lazyAttrsOf = attrsOfWith "lazyAttrsOf";
 
+  # attrs — the NULLARY container: an attribute set whose KEYS are its whole content, with no element
+  # type to descend into. The injected leaf library answers "is this value an attribute set", which is
+  # a predicate over ONE value; a module system asks two further questions a predicate cannot state —
+  # what zero definitions are worth, and how several of them combine. Those are properties of a merge
+  # STRATEGY, and every other container in this file already answers them here.
+  #
+  # ★ THE NAME COLLIDES, AND THE COLLISION IS DECLARED IN TWO PLACES BECAUSE IT IS TWO COLLISIONS.
+  # The EXPORT collision — this name is already in the leaf library's export environment — is admitted
+  # by the `attrs` allowlist entry at `lib/default.nix`, which keeps the shadowed predicate reachable.
+  # The TYPE-MERGE collision is new at this name and is not the same fact: unlike `listOf`/`attrsOf`,
+  # whose two spellings disagree in their NAMES and so never meet as merge operands, both spellings
+  # here are literally `attrs`. That is what the stated relation below answers.
+  attrs = defineType {
+    name = "attrs";
+    # The domain stays the predicate's. What this type does with a definition OUTSIDE that domain is
+    # stated here because the engine does not state it: the post-fold check reads `verify`, and a
+    # structural type carries `admits`, so `admits` is never consulted on the option-fold path.
+    admits = isAttrs;
+    whenEmpty.value = { };
+    # STATED, NOT INHERITED, AND TWO-LEVEL. The default nullary relation matches on `.name` alone,
+    # which is right for a name this library alone mints. This is not one of those, so a name-only
+    # relation would answer `merged` to any same-named partner and silently adopt a fold that is not
+    # this one's. The second level asks the DISCRIMINATING FACT — did the partner bring a fold of its
+    # own? — through `mergeDefs`, the same presence test the engine's own dispatch asks.
+    #
+    # ★ THREE ANSWERS, AND THE THIRD IS WHY THERE ARE NOT TWO. Collapsing the name mismatch and the
+    # foldless same-name case into one `else` reports "a partner named `attrs'" about a partner named
+    # `string', and reaches the refusal shape this file's discipline forbids — the same name on both
+    # sides of the pair, which tells the reader nothing they did not already have.
+    typeMergeRel =
+      other:
+      if !(isAttrs other) || (other.name or null) != "attrs" then
+        { refused = "`attrs' and `${nameOf other}'"; }
+      else if other ? mergeDefs then
+        { merged = attrs; }
+      else
+        { refused = "`attrs' and a partner named `attrs' that states no fold of its own"; };
+    # THE FOLD IS TOTAL OVER ITS INPUT IN BOTH DIRECTIONS, and each refusal is a catchable throw
+    # naming the option, this type, and the files that wrote the definitions at fault.
+    #
+    # ★ THE DOMAIN CHECK RUNS BEFORE THE FOLD, matching `either`'s fold below — and it has to run
+    # there rather than after. The engine's `verify` dispatch reads the FOLDED result, so a definition
+    # this type cannot consume reaches `//` first and the interpreter answers with a raw type error
+    # naming neither the option nor the file, an abort no caller can turn into a diagnostic.
+    #
+    # ★ A SURVIVING SAME-KEY COLLISION IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029). By the
+    # time this fold runs the priority pass has already resolved every INTENDED override, so a key two
+    # definitions still both set is a disagreement nobody expressed, and letting fold order drop one
+    # side is the silent-loss shape this project refuses. Disjoint keys union; a collision refuses by
+    # name, and names the key — which is the part the author has to go and reconcile.
+    mergeDefs =
+      loc: defs:
+      let
+        rejects = map (d: toString (d.file or "<def>")) (filter (d: !(isAttrs d.value)) defs);
+        keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
+        collided = filter (k: length (filter (d: d.value ? ${k}) defs) > 1) keys;
+        collidingFiles = map (d: toString (d.file or "<def>")) (
+          filter (d: filter (k: d.value ? ${k}) collided != [ ]) defs
+        );
+      in
+      if rejects != [ ] then
+        throw "gen-merge: option `${showOption loc}' has definitions `attrs' cannot consume (${concatStringsSep ", " rejects})"
+      else if collided != [ ] then
+        throw "gen-merge: option `${showOption loc}' has `attrs' definitions that collide at ${
+          concatStringsSep ", " (map (k: "`${k}'") collided)
+        } (${concatStringsSep ", " collidingFiles})"
+      else
+        foldl' (res: d: res // d.value) { } defs;
+  };
+
   # deferredModule (spec §1 item 7) — collect defs into ONE module (via imports), located; NEVER
   # forced by the composition plane. Output is a plain, import-usable module value (nixpkgs-faithful:
   # a deferred module's fold produces `{ imports = [ … ]; }`), handed opaque to the terminal.
@@ -671,6 +741,7 @@ in
     defineType
     submodule
     listOf
+    attrs
     attrsOf
     lazyAttrsOf
     deferredModule

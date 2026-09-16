@@ -15,7 +15,14 @@
 # ★ ITS CONTROL READS THE DISPATCH BASIS RATHER THAN DETECTING BREAKAGE: the identical pair WITH
 # foreign fields must STILL merge. If it stopped, the cell above would be reporting that the engine
 # broke, not that its basis moved.
-{ genMergeCore, ... }:
+{
+  genMergeCore,
+  genMerge,
+  genMergeWith,
+  genTypes,
+  nixpkgsLib,
+  ...
+}:
 let
   # Two gen-native types. `name` and `verify` are gen's own vocabulary; nothing here is a
   # foreign-protocol field, and that is the point of the fixture.
@@ -50,6 +57,23 @@ let
       payload = { };
     };
   };
+
+  # ── `attrs`: the one name at which two libraries' spellings MEET as merge operands ─────────────
+  # `listOf`/`attrsOf` also collide in the published namespace, but their two spellings disagree in
+  # their NAMES (`attrsOf` against `attrsOf<str>`), so the shadowed value can never be the partner of
+  # the winning one. Here both sides are literally `attrs`, and so is the foreign module system's
+  # own — which is why this type states its relation instead of taking the name-only default.
+  gmAttrs = genMerge.types.attrs;
+  # gen-types' `attrs`, PROTOCOL-COMPLETED by the library's own export path rather than hand-built,
+  # and reached under a non-colliding key so the linkset does not shadow it with the strategy. Its
+  # `.name` is still `attrs` — that is the whole hazard — and it carries no fold of its own.
+  completedLeaf = (genMergeWith (genTypes // { attrsLeaf = genTypes.attrs; })).types.attrsLeaf;
+  attrsAnswer =
+    other:
+    let
+      a = gmAttrs.typeMergeRel other;
+    in
+    if a ? merged then "merged" else a.refused;
 
   # A type carrying BOTH, for the precedence cell.
   withBoth = genNative // {
@@ -99,6 +123,40 @@ in
   flake.tests.type-merge-relation.test-relation-takes-precedence-over-the-foreign-arm = {
     expr = (genMergeCore.mergeTypes withBoth withBoth) != null;
     expected = true;
+  };
+
+  # ★★ THE TWO-LEVEL RELATION, AND ITS FOUR FAILURES ARE CONJUNCTS OF ONE EXPECTED VALUE — two of
+  # them read as success on their own. A relation matching on `.name` alone answers `merged` to both
+  # foreign pairings, silently adopting a partner whose fold is not this one's. A relation refusing
+  # every same-named partner refuses `attrs` against ITSELF, which breaks the ordinary case every
+  # consumer hits and which no other cell in this suite would see. And collapsing the name mismatch
+  # into the foldless branch reports "a partner named `attrs'" about a partner named `string' — which
+  # is what the two controls read, on the same predicate in the same run.
+  flake.tests.type-merge-relation.test-attrs-relation-discriminates-the-foldless-partner = {
+    expr = {
+      vsCompletedLeaf = attrsAnswer completedLeaf;
+      vsForeign = attrsAnswer nixpkgsLib.types.attrs;
+      vsSelf = attrsAnswer gmAttrs;
+      controlStr = attrsAnswer genMerge.types.str;
+      controlInt = attrsAnswer genMerge.types.int;
+      # The two partners really are named `attrs`, so the pairings above are the collision this
+      # relation exists for and not a name mismatch wearing its clothes.
+      partnersAreBothNamedAttrs = [
+        completedLeaf.name
+        nixpkgsLib.types.attrs.name
+      ];
+    };
+    expected = {
+      vsCompletedLeaf = "`attrs' and a partner named `attrs' that states no fold of its own";
+      vsForeign = "`attrs' and a partner named `attrs' that states no fold of its own";
+      vsSelf = "merged";
+      controlStr = "`attrs' and `string'";
+      controlInt = "`attrs' and `int'";
+      partnersAreBothNamedAttrs = [
+        "attrs"
+        "attrs"
+      ];
+    };
   };
 
   flake.tests.type-merge-relation.test-relation-takes-a-type-not-a-payload = {
