@@ -1790,27 +1790,109 @@ let
           # `hasId`, the shape gen-select's registry adapter and gen-product's `factor` already use),
           # read here as `isAttrs v && v ? id_hash`. Testing the key forces no identity that is not
           # on an instance; a node that IS one is forced, which is the traversal above.
+          #
+          # ── THE BOUND IS THE DECLARATION STRATUM, AND THE CONFIG IS NEVER EXPLORED ──────────────
+          # The map is read at positions DERIVED from the declaration side, and the config is read
+          # only AT those positions. That is what makes the walk terminate by construction rather
+          # than by a cycle guard: a value cycle lives at or below a position whose declared type
+          # carries nothing (a derivation is `package`/`raw`/`anything` — and `drv.out == drv`, so
+          # every ordinary derivation is self-referential; a completed option type reaches its own
+          # cycle at `ty.carries.element.functor.type`, i.e. inside a value sitting at `attrsOf
+          # raw`), and a terminal type is where the descent STOPS. An unguarded value walk diverges
+          # on both, and `builtins.tryEval` does not contain the abort.
+          #
+          # Every recursive step consumes either a declaration key (a finite tree), a value key below
+          # a container (a finite attrset), or one type constructor (`carries.element` of
+          # `carries.element` of … — a finite term). None of them can be renewed by the value.
+          #
+          # THE POSITIONS ARE NOT `declLeafPaths`, and the paragraph above says why: `declLeafEntries`
+          # stops at `isOptLeaf`. The stratum that holds an instance's coordinate is the option tree
+          # EXPANDED THROUGH THE TYPE VOCABULARY — a declared leaf is asked what it carries, in the
+          # vocabulary `lib/types.nix` already uses to decide the same question at type-construction
+          # time (`mkTypeWith`'s `declaresRole`/`carriesSomething`), read through `lib/interface.nix`
+          # so a FOREIGN type answers in its own spelling with no second copy of the question — the
+          # same boundary call shape `deprecations` above takes for `importedDeprecation`.
+          #
+          # THE REACH, STATED RATHER THAN LEFT TO BE DISCOVERED. A position whose declared type
+          # carries nothing is not in the map even when the value sitting there IS an instance on the
+          # ecosystem's own `hasId` test — `raw`/`anything`/`package`, and the whole freeform layer,
+          # which has no declaration at all. The refusal domain is therefore the MINTED instances of
+          # this option tree, which is what the bound above names; an instance carried to a `raw`
+          # position as a value is compared by the byte oracle and not by this fact. A
+          # self-referential value at a typed STRUCTURAL position is still reachable in principle,
+          # since the value's own keys guide that arm — it is a strictly smaller residual than a
+          # cycle guard's, and neither a derivation nor a completed type can occupy one.
           identityMapOf =
-            cfg:
+            declTree: cfg:
             let
+              # The lockstep descent: declaration `d` and value `v` at loc `l`, one step each.
               go =
-                loc: v:
-                if !(isAttrs v) then
-                  { }
-                else if v ? id_hash then
+                loc: d: v:
+                if isAttrs v && v ? id_hash then
                   { ${showOption loc} = v.id_hash; }
+                else if isOptLeaf d then
+                  below loc (d.type or null) v
+                else if isAttrs d && isAttrs v then
+                  foldl' (acc: k: acc // go (loc ++ [ k ]) d.${k} (v.${k} or null)) { } (attrNames d)
                 else
-                  foldl' (acc: k: acc // go (loc ++ [ k ]) v.${k}) { } (attrNames v);
+                  { };
+
+              # An ELEMENT position IS a declared leaf whose type is the element type — which is what
+              # `attrsOf`/`listOf` say themselves, descending to the element under their placeholder
+              # segment in `substructure.declares`. Spelling it as a descriptor keeps ONE entry point
+              # into the descent, so the `id_hash` test is not written twice.
+              elemDecl = ty: {
+                _type = "option";
+                type = ty;
+              };
+
+              # Below a declared leaf, by the TYPE'S OWN ANSWER.
+              below =
+                loc: ty: v:
+                if !(isAttrs ty) then
+                  { }
+                else
+                  let
+                    element = interface.importedCarried "element" ty;
+                  in
+                  if element != null then
+                    # A container: one level into the VALUE's keys or indices, each with the element
+                    # type. Asked FIRST, because a container's module set IS its element's — a
+                    # registry would otherwise answer the module-set arm below and skip the key level
+                    # its instances live at.
+                    let
+                      ed = elemDecl element;
+                    in
+                    if isAttrs v then
+                      foldl' (acc: k: acc // go (loc ++ [ k ]) ed v.${k}) { } (attrNames v)
+                    else if isList v then
+                      foldl' (acc: m: acc // m) { } (prelude.imap0 (i: x: go (loc ++ [ (toString i) ]) ed x) v)
+                    else
+                      { }
+                  else
+                    let
+                      sub = interface.importedSubstructure ty;
+                    in
+                    # A type naming a module set: expand what it DECLARES and re-enter the lockstep
+                    # descent at the same loc. `substructure.declares` runs a nested `evalModuleTree`
+                    # with no defs supplied, so the expansion is a declaration-side spine eval and no
+                    # instance-authored value is forced.
+                    if sub.modules == null then { } else go loc (sub.declares loc) v;
             in
-            go [ ] cfg;
+            go [ ] declTree cfg;
 
           identityHeld =
             if !warmActive then
               [ ]
             else
               decision.identitiesHeld {
-                priorIdentities = identityMapOf warmFrom.config;
-                nextIdentities = identityMapOf config;
+                # EACH CONFIG IS WALKED WITH ITS OWN TREE. `warmFrom` is a prior result record and
+                # this one exports `options = allOptions`, so the prior tree is already in hand.
+                # Using `allOptions` for both would be wrong and silently so: a decl-side edit that
+                # ADDS an option is the discrimination the warm path exists to make, and one that
+                # REMOVES an option leaves the next tree under-describing the prior config.
+                priorIdentities = identityMapOf warmFrom.options warmFrom.config;
+                nextIdentities = identityMapOf allOptions config;
                 # Lazy, and read only inside the refusal — see gen-memo's note on the same argument.
                 remerged = attrNames warmDecision.remerged;
               };

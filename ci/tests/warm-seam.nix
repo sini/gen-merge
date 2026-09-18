@@ -13,8 +13,21 @@
 # warm re-compose, and it is stubbed permissively here on purpose: this file's subject is the splice
 # gate, these fixtures mint no instances, and a real plane would answer the same empty moved set over
 # them. The refusal's own arms are in `warm.nix`, over the shipped plane.
+#
+# ★ THE PERMISSIVE STUB STILL FORCES BOTH MAPS, and that is not decoration. A plane's answer is
+# adversarial about the DECISION (`alwaysDirty`/`alwaysClean` are statements about `isClean`), never
+# about whether the engine's identity FACT is computed at all — and a constant of the shape `_: [ ]`
+# never forces its argument, so laziness elides the engine's whole identity walk behind an
+# adversarial plane and this file stops being able to see it. `toJSON` is total over the map's domain
+# (string → string) and forces it whole; `deepSeq` would do the same and says less about why.
 { genMergeWithMemo, ... }:
 let
+  forcesBothMaps =
+    a:
+    builtins.seq (builtins.toJSON a.priorIdentities) (
+      builtins.seq (builtins.toJSON a.nextIdentities) [ ]
+    );
+
   # Arm 1 — a plane that answers "everything is dirty", unconditionally. If the splice gate really
   # asks this plane, NOTHING is reusable and the whole tree remerges — byte-equal to cold by
   # construction (the merge is deterministic), but with an EMPTY `reused` set rather than whatever
@@ -25,7 +38,7 @@ let
       seeds: {
         isClean = _nid: false;
         reusable = null;
-        identitiesHeld = _: [ ];
+        identitiesHeld = forcesBothMaps;
       };
   };
   # Arm 2 — a plane that answers "everything is clean", unconditionally, even a location an edit
@@ -39,7 +52,7 @@ let
       seeds: {
         isClean = _nid: true;
         reusable = null;
-        identitiesHeld = _: [ ];
+        identitiesHeld = forcesBothMaps;
       };
   };
 

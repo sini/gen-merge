@@ -165,17 +165,36 @@ let
       }
     ];
   };
+  # ★ THE SELF-REFERENTIAL VALUE, AND IT IS AN ORDINARY ONE. `drv.out == drv` holds for a
+  # single-output derivation, so EVERY derivation is a cyclic attrset — which makes a real
+  # `derivation { … }` the honest fixture for the class and a hand-built cycle the dishonest one (a
+  # hand-built cycle is passed by a construction that only handles hand-built cycles). It sits at a
+  # `raw` leaf, which is where the type vocabulary says the descent STOPS, and every region-2 cell
+  # below forces the warm `config` it is part of — so a construction that explores the CONFIG instead
+  # of the declaration stratum diverges here (`stack overflow; max-call-depth exceeded`, uncontained
+  # by `tryEval`) rather than passing unobserved.
+  #
+  # `system` IS A LITERAL, and that is forced rather than stylistic: nix-unit evaluates purely, so
+  # `builtins.currentSystem` gives `attribute 'currentSystem' missing` — a plausible-looking red that
+  # measures a broken fixture instead of the engine.
+  stash = derivation {
+    name = "warm-stash";
+    system = "x86_64-linux";
+    builder = "/bin/sh";
+  };
   regBase = [
     {
       options.hosts = mkOption {
         type = t.attrsOf hostSub;
         default = { };
       };
+      options.stash = mkOption { type = t.raw; };
     }
     {
       _file = "reg-base";
       config.hosts.pewter.spool = "silk";
       config.hosts.damask.spool = "linen";
+      config.stash = stash;
     }
   ];
   regMoves = [
@@ -188,6 +207,78 @@ let
     {
       _file = "reg-edit";
       config.hosts.pewter.tally = mkForce 7;
+    }
+  ];
+
+  # ══ region 2 fixtures — WHERE THE FACT'S DOMAIN ENDS ══════════════════════════════════════════
+  #
+  # The bound reads the map at positions the DECLARATION stratum names, so the boundary of what the
+  # engine calls a minted identity is the boundary of that stratum — and these three fixtures put the
+  # same identity SHAPE on either side of it. `crateOf` is `idOf`'s digest as a VALUE rather than a
+  # module: reflected off the tree's declared `str` options, so `plantLive` moves it exactly the way
+  # it moves the flat arm's — a new declared `str` joins the reflected key set and the digest changes.
+  crateOf =
+    config: options:
+    let
+      keys = builtins.filter (
+        k:
+        builtins.elem (options.${k}.type.name or "") [
+          "str"
+          "string"
+        ]
+        && !(options.${k}.internal or false)
+      ) (builtins.attrNames options);
+    in
+    "crate:" + builtins.hashString "sha256" (builtins.toJSON (map (k: config.${k}) keys));
+
+  # IN — a declared position is a position, whatever its type carries. `raw` carries nothing, so the
+  # descent stops HERE; stopping at a position is not the same as not reaching it, and the value
+  # sitting at one is read before its type is ever asked what is underneath.
+  rawAtBase = [
+    (
+      { config, options, ... }:
+      {
+        options.name = mkOption { type = t.str; };
+        options.stow = mkOption { type = t.raw; };
+        config.stow.id_hash = crateOf config options;
+      }
+    )
+    {
+      _file = "raw-base";
+      config.name = "igloo";
+    }
+  ];
+  # OUT — one level further down, and that level has no declaration. `raw` names nothing below
+  # itself, so `stow.inner` is not a coordinate this option tree can produce.
+  rawBelowBase = [
+    (
+      { config, options, ... }:
+      {
+        options.name = mkOption { type = t.str; };
+        options.stow = mkOption { type = t.raw; };
+        config.stow.inner.id_hash = crateOf config options;
+      }
+    )
+    {
+      _file = "raw-base";
+      config.name = "igloo";
+    }
+  ];
+  # OUT — the freeform layer has no declaration AT ALL (`config` is the freeform config updated by
+  # the declared one), and the ecosystem's `freeformType` is `lazyAttrsOf anything`, whose element is
+  # terminal. Nothing in the stratum names a freeform key, at any depth.
+  freeformIdBase = [
+    (
+      { config, options, ... }:
+      {
+        _module.freeformType = t.lazyAttrsOf t.anything;
+        options.name = mkOption { type = t.str; };
+        config.stow.id_hash = crateOf config options;
+      }
+    )
+    {
+      _file = "ff-base";
+      config.name = "igloo";
     }
   ];
 in
@@ -934,6 +1025,56 @@ in
           editLanded = 7;
         };
       };
+
+    # ══ region 2 — WHAT THE FACT DOES *NOT* HOLD, stated rather than left to be inferred ══════════
+    #
+    # The other side of the two refusals on `flake.testsError.warm`. Those say what a moved identity
+    # costs; this says where the engine stops calling one a minted identity at all — and the two
+    # classes here are the WHOLE of the difference, which is why they are asserted together rather
+    # than one per cell. An `id_hash` BELOW a terminal-typed leaf, and an `id_hash` anywhere in the
+    # freeform layer, are values carried to a coordinate this option tree does not name. The byte
+    # oracle still compares them; the identity fact does not.
+    #
+    # ★ `moved` IS THE ARMING HALF AND IT IS WHAT MAKES THE CELL DISCRIMINATE. Without it, a
+    # construction that found no identity anywhere — or one that never computed the fact at all —
+    # would read green on a fixture where nothing had moved. It asserts the digest genuinely changed
+    # across the re-compose, so the only thing left for `mode`/`reason` to say is that the change was
+    # not refused. The refusal cells are the instrument's other arm: they fail by NOT throwing, so no
+    # construction answering empty everywhere can pass both.
+    #
+    # ★ AND THE REDUCTION IS NOT SOFTENED. On the ecosystem's own `hasId` membership test, both
+    # values below ARE instances; a warm re-compose that moves one is no longer refused. What they
+    # are not is instances THIS option tree minted, which is the domain `identityMapOf`'s own bound
+    # names — and a cell is what keeps the difference legible instead of silent.
+    test-identity-outside-the-declaration-stratum-is-not-a-minted-identity =
+      let
+        below = warmOf rawBelowBase plantLive;
+        free = warmOf freeformIdBase plantLive;
+      in
+      {
+        expr = {
+          belowMode = below.warmDecision.mode;
+          belowReason = below.warmDecision.reason;
+          belowMoved = below.config.stow.inner.id_hash != (coldOf rawBelowBase).config.stow.inner.id_hash;
+          belowByte = jsonEq below.config (coldOf (rawBelowBase ++ plantLive)).config;
+
+          freeMode = free.warmDecision.mode;
+          freeReason = free.warmDecision.reason;
+          freeMoved = free.config.stow.id_hash != (coldOf freeformIdBase).config.stow.id_hash;
+          freeByte = jsonEq free.config (coldOf (freeformIdBase ++ plantLive)).config;
+        };
+        expected = {
+          belowMode = "warm";
+          belowReason = null;
+          belowMoved = true;
+          belowByte = true;
+
+          freeMode = "warm";
+          freeReason = null;
+          freeMoved = true;
+          freeByte = true;
+        };
+      };
   };
 
   # THE OTHER HALF OF `test-freeform-edited-toplevel-freeformtype-remerges-byte`, AND THE ONLY WARM
@@ -1014,6 +1155,20 @@ in
       expectedError = {
         type = "ThrownError";
         msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'hosts\\.pewter' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: hosts, 1 instance\\(s\\) moved\\)$";
+      };
+    };
+
+    # A TERMINAL TYPE IS WHERE THE DESCENT STOPS, NOT A POSITION IT SKIPS — and the difference is a
+    # refusal, so it is asserted rather than reasoned about. `stow` is declared `raw`, which carries
+    # nothing and names nothing below itself; the value sitting AT it is still read, because a
+    # declared position is reached before its type is asked what is underneath it. The companion on
+    # `flake.tests.warm` puts the same identity ONE LEVEL further down and gets no refusal, which is
+    # the whole of the boundary in two cells: at the stop, in; below it, out.
+    test-identity-move-at-a-terminal-typed-position-refuses-by-name = {
+      expr = (warmOf rawAtBase plantLive).config.stow.id_hash;
+      expectedError = {
+        type = "ThrownError";
+        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'stow' \\(kind 'crate', was 'crate:[0-9a-f]{64}', now 'crate:[0-9a-f]{64}', re-merged declarations: .*, 1 instance\\(s\\) moved\\)$";
       };
     };
   };
