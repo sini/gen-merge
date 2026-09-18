@@ -115,12 +115,35 @@ let
 
   # ★ THE NODE SELECTION IS THE WHOLE CORRECTNESS OF THIS CELL, AND THE LOCK CARRIES A DECOY.
   # `ci/flake.lock` holds more than one nixpkgs-bearing node, and the one literally NAMED `nixpkgs`
-  # is NOT this flake's: it is a transitive node, and reading it would give a plausible rev rather
-  # than an error. The right node is whatever the ROOT's own `nixpkgs` input resolves to — which the
-  # lock happens to name `nixpkgs_2` — so it is reached by INDIRECTION through `root.inputs`, never
-  # by spelling a node name.
+  # is NOT this flake's: it is a transitive node (gen-harness's), and reading it would give a
+  # plausible rev rather than an error. The right node is whatever the ROOT's own `nixpkgs` input
+  # resolves to — which this lock happens to name `nixpkgs_2` — so it is reached by INDIRECTION
+  # through `root.inputs`, never by spelling a node name.
+  #
+  # ONE reader, TWO callers: the live lock here and the fixture the control drives it on. That is
+  # what makes the control a control — a reader rewritten to spell `nodes.nixpkgs` still satisfies
+  # the live lock whenever the two nodes happen to agree, and reds the fixture always.
+  revOfRootNixpkgs = l: l.nodes.${l.nodes.root.inputs.nixpkgs}.locked.rev;
   lock = builtins.fromJSON (builtins.readFile ../flake.lock);
-  lockedRev = lock.nodes.${lock.nodes.root.inputs.nixpkgs}.locked.rev;
+  lockedRev = revOfRootNixpkgs lock;
+
+  # ★★ THE DECOY IS BUILT HERE, NOT BORROWED FROM THE LIVE LOCK, AND THAT IS THE REPAIR.
+  # The control used to assert that the live `nodes.nixpkgs` sat at a DIFFERENT rev from the root's
+  # — true only because the two had drifted apart. A relock bumps both to the same channel tip and
+  # the two revs AGREE, so the live lock stops carrying a decoy and the control can no longer tell a
+  # correct reader from a name-spelling one. Measured 2026-09-18 at the converged pins: both nodes
+  # at `e554fab72f81915600f3f449b786fd9af40439a5`, and convergence is the expected steady state, so
+  # the instrument would have gone blunt on every future relock. A fixture cannot converge.
+  # ★ The LIVE half is not dropped: `lockedRev` below is read from the real file, and the oracle
+  # cell asserts its literal value — so the reader is proven WIRED there and proven DISCRIMINATING
+  # here, which is the pair the control owes.
+  decoyLock = {
+    nodes = {
+      root.inputs.nixpkgs = "nixpkgs_2";
+      nixpkgs.locked.rev = "decoydecoydecoydecoydecoydecoydecoydecoy";
+      nixpkgs_2.locked.rev = "r00tr00tr00tr00tr00tr00tr00tr00tr00tr00t";
+    };
+  };
 in
 {
   flake.tests.parity-surface = {
@@ -451,18 +474,25 @@ in
     # CONTROL for the oracle, same run: without it the comparison may not be wired to anything, and
     # a drift oracle that cannot fail is the defect it exists to prevent. It asserts that BOTH
     # readers actually read — that the stated rev came out of the file rather than out of a
-    # default, and that the lock reader followed `root.inputs.nixpkgs` to a node that is NOT the
-    # decoy literally named `nixpkgs`.
+    # default, and that the lock reader follows `root.inputs.nixpkgs` rather than spelling the node
+    # name, which on this lock would land on the decoy literally named `nixpkgs`.
+    #
+    # ★ THE INDIRECTION ARM RUNS ON `decoyLock`, NOT ON THE LIVE LOCK, and the comment there says
+    # why: the live lock's decoy is an artefact of drift and a relock removes it. The two live arms
+    # are the ones a fixture cannot give — a stated rev of full length, and a lock reader that
+    # produced one from the real file — and they hold at any pins.
     test-control-both-drift-readers-are-live = {
       expr = {
         stated-is-a-full-rev = prelude.stringLength statedRev == 40;
-        node-reached-by-indirection = lock.nodes.root.inputs.nixpkgs;
-        decoy-node-is-a-different-rev = lock.nodes.nixpkgs.locked.rev != lockedRev;
+        live-lock-reader-produced-a-rev = prelude.stringLength lockedRev == 40;
+        node-reached-by-indirection = decoyLock.nodes.root.inputs.nixpkgs;
+        reader-walks-past-the-decoy = revOfRootNixpkgs decoyLock;
       };
       expected = {
         stated-is-a-full-rev = true;
+        live-lock-reader-produced-a-rev = true;
         node-reached-by-indirection = "nixpkgs_2";
-        decoy-node-is-a-different-rev = true;
+        reader-walks-past-the-decoy = "r00tr00tr00tr00tr00tr00tr00tr00tr00tr00t";
       };
     };
   };
