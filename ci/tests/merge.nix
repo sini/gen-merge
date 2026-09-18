@@ -1141,7 +1141,8 @@ in
             };
           }
         ];
-      }) ? _module;
+      })
+        ? _module;
     expected = false;
   };
 

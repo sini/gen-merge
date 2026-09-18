@@ -339,7 +339,8 @@ in
                 };
               }
             ];
-          }).options.x ? overridden;
+          }).options.x
+            ? overridden;
       };
       expected = {
         layered = false;
