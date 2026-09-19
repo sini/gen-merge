@@ -705,13 +705,34 @@ let
         # Derived from the gen datum only where there is no stated relation to derive it FROM.
         # Where the caller stated one, theirs is what the foreign engine must see — deriving over it
         # would shadow the relation the two clauses above went to the trouble of retaining.
+        #
+        # ★★ THE FUNCTOR NAMES MUST AGREE FIRST, AND THAT CLAUSE CANNOT MOVE INTO THE RELATION. The
+        # relation is row-free — `importedPartner' consumes the row and a TYPE is what leaves — so by
+        # construction the relation never sees the arriving functor's NAME, and the vocabulary's
+        # nullary default falls back to comparing the partner TYPE's name instead. The two coincide
+        # for every type this library builds (the functor above is minted from `name'), which is why
+        # substituting one for the other is invisible from inside. They DIVERGE for the case this
+        # protocol exists to serve: a consumer that DERIVES a type from one of ours keeps the base's
+        # `name' — the value vocabulary its error messages still speak — and distinguishes only the
+        # FUNCTOR, which is the axis a redeclaration is keyed on. Compared on the type name, such a
+        # type merges with its own base and the derivation is silently dropped; a refined `int'
+        # redeclared as a bare `int' answers `int' with the refinement gone, which is the fail-OPEN
+        # answer every named refusal in this file exists to prevent.
+        # This is the SAME first clause `protoTypeMerge' already states for the retained arm, and the
+        # retention site above says it in words: what the author called this type is the merge
+        # identity the foreign engine keys on. One law, now read on both arms.
         typeMerge =
           t.retainedRelation.typeMerge or (
             f:
             let
               partner = importedPartner f;
             in
-            if partner == null then null else (t.typeMergeRel partner).merged or null
+            if (f.name or null) != functor.name then
+              null
+            else if partner == null then
+              null
+            else
+              (t.typeMergeRel partner).merged or null
           );
 
         # Not a fifteenth protocol field: gen's own record of whether the fold published above is

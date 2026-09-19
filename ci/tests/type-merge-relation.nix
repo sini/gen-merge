@@ -83,6 +83,28 @@ let
       payload = { };
     };
   };
+
+  # ── A DERIVATION OF AN EXPORTED TYPE, as the OTHER OPERAND of a redeclaration ──────────────────
+  # The two identity axes come apart HERE and nowhere in this library's own vocabulary: `name' is
+  # the value vocabulary a derived `int' still speaks in its error messages, and the FUNCTOR name is
+  # what a redeclaration is keyed on. Every type this library constructs mints its functor from its
+  # own name, so the two coincide for all of them and no fixture built from them can tell which axis
+  # the boundary reads. This one states them apart, which is the whole reason it is hand-built.
+  derivedInt = genMerge.types.int // {
+    __derived = true;
+    functor = {
+      name = "derived<int>";
+      type = derivedInt;
+      payload = null;
+      binOp = _a: _b: null;
+    };
+  };
+  # The SAME partner type under a functor that does NOT distinguish itself. It is the discriminating
+  # control: the only difference from the row above is the functor's name, so a cell that refused
+  # this one too would be reading "unfamiliar partner" rather than the name axis.
+  undistinguishedFunctor = derivedInt.functor // {
+    name = "int";
+  };
 in
 {
   # C-4 ITSELF. Red before the rewire, green after; nothing else about the engine changed.
@@ -169,6 +191,42 @@ in
     expected = {
       partnerWithoutFunctor = true;
       foreignArmCannot = true;
+    };
+  };
+
+  # ★★ THE ROW IS CONSUMED, BUT THE ARRIVING FUNCTOR'S NAME IS NOT — and that is the ONE datum the
+  # row-free relation can never recover for itself. `importedPartner' turns the functor into a TYPE,
+  # so the vocabulary's nullary default compares the partner TYPE's name; for a derivation of an
+  # exported type that name is the BASE's, and the pair merges to the base with the derivation
+  # silently gone. Fail-open, at the one boundary whose every other answer is a named refusal.
+  # The export half therefore reads the functor names FIRST, which is the same first clause
+  # `protoTypeMerge' has always stated for the retained arm.
+  #
+  # ★ FOUR CONJUNCTS, AND THE LAST THREE ARE WHY THE FIRST ONE MEANS ANYTHING. A boundary that
+  # refused every functor would satisfy `derivedRefused' and break every ordinary redeclaration,
+  # which no other cell in this suite would see. `undistinguishedMerges' is the discriminating half:
+  # the SAME partner type under a functor named `int' still reaches the relation and still merges,
+  # so what this cell reads is the functor-name axis and not "unfamiliar partner". And a fixture
+  # whose TYPE name already differed would be an ordinary name mismatch wearing this cell's clothes,
+  # so the two names are read back here rather than asserted in a comment.
+  flake.tests.type-merge-relation.test-a-derived-functor-name-refuses-against-its-base = {
+    expr = {
+      derivedRefused = genMerge.types.int.typeMerge derivedInt.functor;
+      baseStillMergesWithItself = (genMerge.types.int.typeMerge genMerge.types.int.functor) != null;
+      undistinguishedMerges = (genMerge.types.int.typeMerge undistinguishedFunctor) != null;
+      theTwoAxes = {
+        typeName = derivedInt.name;
+        functorName = derivedInt.functor.name;
+      };
+    };
+    expected = {
+      derivedRefused = null;
+      baseStillMergesWithItself = true;
+      undistinguishedMerges = true;
+      theTwoAxes = {
+        typeName = "int";
+        functorName = "derived<int>";
+      };
     };
   };
 }
