@@ -1860,12 +1860,47 @@ let
                     # type. Asked FIRST, because a container's module set IS its element's — a
                     # registry would otherwise answer the module-set arm below and skip the key level
                     # its instances live at.
+                    #
+                    # ── ONE EXPANSION FOR THE WHOLE CONTAINER, AT THE PLACEHOLDER ────────────────
+                    # Handing every key the element DESCRIPTOR re-enters the module-set arm below at
+                    # that key's own loc, and `substructure.declares` is a nested `evalModuleTree`
+                    # TAKING THE PREFIX — so the element's entire declaration eval re-runs once per
+                    # ENTRY and Nix shares nothing between the applications. On a registry that is
+                    # the dominant cost of this whole walk, and it buys nothing: what a container's
+                    # element declares does not vary with the key, and every vocabulary that answers
+                    # this question says so itself. `attrsOf`/`listOf` expose the element's surface
+                    # under a LITERAL PLACEHOLDER segment (`lib/types.nix:366` and `:324`), and
+                    # nixpkgs' `getSubOptions` appends the same two placeholders — which is what
+                    # makes the hoist legible across `interface` rather than a gen-side shortcut.
+                    # Expanding at `loc ++ [ placeholder ]` is therefore the DECLARATION STRATUM's
+                    # own coordinate for this position, bound once here and shared by every entry;
+                    # the per-key coordinate stays on `loc`, which is what the map is keyed by.
+                    #
+                    # The element's own answer is asked, not the container's, and only when the
+                    # element is not ITSELF a container: a nested container's expansion would append
+                    # a second placeholder and answer for the element's element, one level below the
+                    # keys this arm is walking. That case keeps the descriptor and re-hoists at its
+                    # own level.
                     let
-                      ed = elemDecl element;
+                      edAt =
+                        ph:
+                        let
+                          elemSub = interface.importedSubstructure element;
+                        in
+                        if interface.importedCarried "element" element != null || elemSub.modules == null then
+                          elemDecl element
+                        else
+                          elemSub.declares (loc ++ [ ph ]);
                     in
                     if isAttrs v then
+                      let
+                        ed = edAt "<name>";
+                      in
                       foldl' (acc: k: acc // go (loc ++ [ k ]) ed v.${k}) { } (attrNames v)
                     else if isList v then
+                      let
+                        ed = edAt "*";
+                      in
                       foldl' (acc: m: acc // m) { } (prelude.imap0 (i: x: go (loc ++ [ (toString i) ]) ed x) v)
                     else
                       { }
