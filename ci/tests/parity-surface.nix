@@ -149,7 +149,7 @@ in
   flake.tests.parity-surface = {
     # ── O11: the default-merge law, one cell per arm, both engines, ordered payloads ────────────
     # RED for every cell below: `mergeDefaultOption` did not exist in this library (measured absent
-    # at the pin, whole repo). GREEN: the nixpkgs value measured on the same input at `e554fab7`.
+    # at the pin, whole repo). GREEN: the nixpkgs value measured on the same input at `20b1ddd1`.
     test-law-singleton = {
       expr = bothLaws [ 42 ];
       expected = {
@@ -465,8 +465,8 @@ in
         agree = statedRev == lockedRev;
       };
       expected = {
-        stated = "e554fab72f81915600f3f449b786fd9af40439a5";
-        locked = "e554fab72f81915600f3f449b786fd9af40439a5";
+        stated = "20b1ddd1aa5ace70c9468305030aa4f9ef79671b";
+        locked = "20b1ddd1aa5ace70c9468305030aa4f9ef79671b";
         agree = true;
       };
     };
