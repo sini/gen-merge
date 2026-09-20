@@ -27,14 +27,82 @@
 #             `warmDecision`). REQUIRED, no default: gen-merge computes the bipartite
 #             contribution-relation FACT (design spec §2.1) and hands it to gen-memo, which decides
 #             `isClean` over it — this library no longer decides reuse on its own footprint set.
+#   scope   : gen-scope.lib (ADR-0006, ADR-0008 §1 — the ONE universal graph evaluator). REQUIRED,
+#             no default, and bound HERE rather than at `evalModuleTree` because that is the only
+#             channel reaching `lib/types.nix`'s structural folds: `submodule`'s `mergeDefs` is a
+#             2-arity protocol field (`loc: defs`) the engine invokes through `ownFold` from the
+#             top-level binding `mergeDefsWith`, over a type value `strategies` constructs before
+#             any per-call argument exists. `core` closes over it once, `types.nix` inherits
+#             `evalModuleTree` from `core`, and every nested invocation acquires the evaluator
+#             without naming it — so NO call site anywhere changes. Measured both ways
+#             (den-hoag-0pk67): a per-call formal reddens `types.submodule` with
+#             `called without required argument 'scope'` through `lib/types.nix:298`.
+#             The foreclosed arm is a DEFAULT: a defaulted formal cannot refuse, and the door below
+#             is the component. The convention `types`/`memo` state above governs here too.
 {
   prelude,
   types,
   memo,
+  scope,
 }:
 let
+  # ── THE EVALUATOR DOOR, TOTAL, ONCE PER CONSTRUCTION ──────────────────────────────────────────
+  # A published door that ADMITS a value outside its contract and then diverges inside the fixpoint
+  # is `den-hoag-qy84y`'s defect. This one refuses a non-evaluator BY NAME, at the first demand of
+  # `core`, `tryEval`-catchably — never as an `attribute '…' missing` raised from inside the knot,
+  # which is what the absence of a door reads as (measured: `scope = { }` ⇒ an uncontained abort at
+  # the driver site). The shape is gen-scope's own `carrierDefect`: a total arm per term, each arm
+  # establishing what the next one reads, returning the REASON rather than throwing it, so the
+  # message is a value a cell can assert instead of text `tryEval` discards.
+  #
+  # The terms are the names this library actually uses and no others — `eval`, `buildRoots`,
+  # `vertex`, `empty`. A door quantifying over gen-scope's whole surface would refuse a conformant
+  # partner for a name nothing here demands; a door naming fewer would let one through to abort
+  # inside the knot, which is the state it exists to end.
+  scopeDefect =
+    s:
+    if s == null then
+      "declares no `scope' — the module tree is evaluated on the one universal graph evaluator (ADR-0006), and there is no second driver to fall back to"
+    else if !builtins.isAttrs s then
+      "declares a `scope' that is a ${builtins.typeOf s} rather than the gen-scope library record"
+    else
+      let
+        # `empty` is a graph VALUE; the other three are applied. Both lists are ordered so the
+        # message is stable across evaluations rather than in whatever order the record was built.
+        applied = [
+          "buildRoots"
+          "eval"
+          "vertex"
+        ];
+        missing = builtins.filter (n: !(s ? ${n})) (applied ++ [ "empty" ]);
+        unapplicable = builtins.filter (n: !builtins.isFunction s.${n}) applied;
+      in
+      if missing != [ ] then
+        "declares a `scope' with no ${builtins.concatStringsSep ", " missing} — the evaluator terms this engine drives the module-tree knot through"
+      else if unapplicable != [ ] then
+        "declares a `scope' whose ${builtins.concatStringsSep ", " unapplicable} cannot be applied"
+      else
+        null;
+
+  checkedScope =
+    let
+      defect = scopeDefect scope;
+    in
+    if defect == null then scope else throw "gen-merge: ${defect}";
+
   priority = import ./priority.nix { inherit prelude; };
-  core = import ./modules.nix { inherit prelude priority memo; };
+  # ★ THE DOOR IS FORCED BY `core` ITSELF, NOT BY THE FIRST USE OF THE EVALUATOR. `scope` is read
+  # only where the knot is driven, so without this `seq` a defective evaluator would sit unexamined
+  # until some consumer happened to evaluate a module tree — a refusal raised inside the fixpoint,
+  # which is the shape the door exists to replace. Hung here, every member derived from `core`
+  # raises it at the construction instead, and `flake.nix`'s surface force reaches all of them: there
+  # is no state in which `gen-merge.lib` exists and its evaluator has not been checked.
+  core = builtins.seq checkedScope (
+    import ./modules.nix {
+      inherit prelude priority memo;
+      scope = checkedScope;
+    }
+  );
   strategies = import ./types.nix { inherit prelude core; };
   lintLib = import ./lint.nix { inherit prelude priority core; };
   linkset = import ./linkset.nix { inherit prelude; };
@@ -157,6 +225,13 @@ in
   # The engine + the shared fold (spec §2) + module-system helpers consumers need.
   inherit (core)
     evalModuleTree
+    # STRATUM 1 ON ITS OWN — the declared option records, from the same fold the full result's
+    # `options` field is merged by, and with no fixpoint driven at all (ADR-0033: a two-level type
+    # system's declaration stratum is a fold, not an ascent). A consumer wanting declarations
+    # WITHOUT values — an introspection pass, an identity key set — asks for them here instead of
+    # evaluating a whole tree and projecting `.options` off it, and gets a named refusal rather
+    # than a divergence if the declarations it is asking about turn out to need the value stratum.
+    declaredOptions
     mergeDefs
     mergeOneOption
     showOption

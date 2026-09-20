@@ -31,6 +31,7 @@
   prelude,
   genTypes,
   genMemo,
+  genScope,
   lib,
   ...
 }:
@@ -54,6 +55,7 @@ let
     inherit prelude;
     types = genTypes;
     memo = genMemo;
+    scope = genScope;
     # The shim's own plumbing, which this cell is now obliged to CHOOSE rather than inherit. The
     # `throw` is what makes non-hermeticity IMPOSSIBLE for this application rather than merely
     # detected — but it is NOT the guard: four of the fourteen shims in this domain declare no

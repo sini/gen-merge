@@ -13,6 +13,11 @@
     # because the CI flake does not follow the library flake's inputs (same precedent as
     # gen-prelude/gen-types above, each pinned independently at both layers).
     gen-memo.url = "github:sini/gen-memo";
+    # The ONE universal graph evaluator (ADR-0006) — see `../flake.nix`'s own comment. Pinned again
+    # here for the reason gen-prelude/gen-types/gen-memo are: the CI flake does not follow the
+    # library flake's inputs, and a `../lib` constructed BY PATH reaches no flake output, so every
+    # construction below has to supply `scope` itself.
+    gen-scope.url = "github:sini/gen-scope";
     # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
     # test modules use — including the evalModules-equivalence ORACLE's reference side (spec §3).
     # The library itself (../lib) is nixpkgs-lib-free (ci/tests/purity.nix enforces this).
@@ -26,6 +31,7 @@
       gen-types,
       gen-differential,
       gen-memo,
+      gen-scope,
       ...
     }:
     let
@@ -43,10 +49,15 @@
       # ADR-0008 item 2 — the ONE incremental plane. Bound once, same substrate precedent as
       # `prelude` above: every `../lib` instance this file builds shares this one `genMemo`.
       genMemo = gen-memo.lib;
+      # ADR-0006 — the ONE universal graph evaluator, bound once for the same reason as `prelude`
+      # and `genMemo`: every `../lib` instance this file builds drives its module-tree knot on THIS
+      # value, so "one instance" is a property of this binding rather than of a convention.
+      genScope = gen-scope.lib;
       genMerge = import ../lib {
         inherit prelude;
         types = genTypes;
         memo = genMemo;
+        scope = genScope;
       };
       # Compat mode (ci/tests/compat-nixpkgs-types.nix): the SAME byte-mode engine with nixpkgs
       # `lib.types` injected as the leaf `types` instead of gen-types. nixpkgs enters as a VALUE here
@@ -57,6 +68,7 @@
         inherit prelude;
         types = nixpkgsLib.types;
         memo = genMemo;
+        scope = genScope;
       };
       # Internal core seam (lib/modules.nix) — exposes `classifyModule` + the collection predicates that
       # are NOT on the public `lib/default.nix` surface (the lint-predicate export precedent: additive to
@@ -67,6 +79,7 @@
         inherit prelude;
         priority = import ../lib/priority.nix { inherit prelude; };
         memo = genMemo;
+        scope = genScope;
       };
       # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
       # boundary is reached through the core rather than re-imported, so the suite reads the same
@@ -87,6 +100,7 @@
         import ../lib {
           inherit prelude types;
           memo = genMemo;
+          scope = genScope;
         };
       # A gen-merge instance over a CALLER-SUPPLIED incremental plane (spec §3 O1 — the seam test):
       # `memo` is the other uncontrolled input `lib/default.nix` names, so a suite substituting an
@@ -98,6 +112,19 @@
         import ../lib {
           inherit prelude memo;
           types = genTypes;
+          scope = genScope;
+        };
+      # A gen-merge instance over a CALLER-SUPPLIED evaluator. `scope` is the third uncontrolled
+      # input `lib/default.nix` names, and this is the only way a suite can reach its DOOR at all:
+      # `genMerge` above is built over the real gen-scope, and an evaluator that answers cannot
+      # exercise a refusal. Same `../lib` entry point as every other instance here, never a private
+      # bypass that would exercise the door's reason function without exercising the door.
+      genMergeWithScope =
+        scope:
+        import ../lib {
+          inherit prelude scope;
+          types = genTypes;
+          memo = genMemo;
         };
       # The comparison machinery, bound once so the differential suite and any later consumer read
       # the same instrument. `lib` (nixpkgs, harness-supplied) is the REFERENCE side there, exactly
@@ -126,7 +153,9 @@
           genMergeVocab
           genMergeWith
           genMergeWithMemo
+          genMergeWithScope
           genMemo
+          genScope
           interface
           differential
           ;

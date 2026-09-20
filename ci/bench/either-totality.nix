@@ -48,9 +48,15 @@ let
   # hand-named formal list is a SECOND SIGNATURE nothing compares against the first, and this is
   # the site where gen-types' added `identity` went untracked.
   genTypes = import "${fromLock "gen-types"}" { inherit prelude; };
+  # `memo` and `scope` are required formals of `../../lib` with no defaults, so a by-path
+  # construction has to name them — there is no flake output here to inherit them from.
+  genMemo = import "${fromLock "gen-memo"}" { inherit prelude; };
+  genScope = import "${fromLock "gen-scope"}" { inherit prelude; };
   gm = import ../../lib {
     inherit prelude;
     types = genTypes;
+    memo = genMemo;
+    scope = genScope;
   };
   t = gm.types;
 

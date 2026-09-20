@@ -35,6 +35,7 @@
   interface,
   genMergeVocab,
   genMergeWith,
+  genMergeWithScope,
   genTypes,
   ...
 }:
@@ -1751,6 +1752,79 @@ in
           }
         ];
         expected = [ "other" ];
+      };
+    };
+
+    # ── THE EVALUATOR DOOR AND THE DECLARATION FOLD, by their MESSAGES ────────────────────────
+    # `tryEval` discards message text, so the containment readings in `ci/tests/one-evaluator.nix`
+    # say THAT these refuse and never WHICH refusal was raised — and "it threw" passes on any
+    # combinator carrying one refusal anywhere in it. These cells read the text.
+    flake.testsError.one-evaluator = {
+      # ★ THE DOOR NAMES THE TERMS IT DID NOT FIND, at the CONSTRUCTION call, instead of letting a
+      # non-evaluator through to die as `attribute 'buildRoots' missing` somewhere inside the knot —
+      # an interpreter error naming a gen-merge line, uncatchable by the caller and silent about
+      # which of its dependencies was wrong. The refusal is a value the door RETURNS and the
+      # construction raises, which is what makes the text assertable at all.
+      test-a-scope-missing-its-evaluator-terms-refuses-naming-them = {
+        expr = builtins.deepSeq (genMergeWithScope { eval = x: x; }).evalModuleTree null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: declares a `scope' with no buildRoots, vertex, empty — the evaluator terms this engine drives the module-tree knot through$";
+        };
+      };
+      # The `null` arm is separate because it is the one a caller reaches by wiring a dependency
+      # that did not resolve, and the reason it deserves is about the consolidation rather than
+      # about a field list: there is no second driver left to fall back to.
+      test-a-null-scope-refuses-saying-there-is-no-second-driver = {
+        expr = builtins.deepSeq (genMergeWithScope null).evalModuleTree null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: declares no `scope' — the module tree is evaluated on the one universal graph evaluator \\(ADR-0006\\), and there is no second driver to fall back to$";
+        };
+      };
+      # ★ THE FOLD NAMES WHAT WAS DEMANDED AND WHERE THE REPAIR IS. A refusal saying only "this
+      # module is inadmissible" would leave the author to re-derive which of the two planes they
+      # crossed, over a module set the engine has already walked. At `3aa6dac` this shape read
+      # `infinite recursion encountered`, which names neither the module, the plane, nor a repair.
+      test-a-config-dependent-option-key-set-refuses-at-the-fold = {
+        expr = realize {
+          modules = [
+            (
+              { config, ... }:
+              {
+                options = {
+                  flag = gm.mkOption {
+                    type = t.bool;
+                    default = true;
+                  };
+                }
+                // (if config.flag then { extra = gm.mkOption { type = t.int; }; } else { });
+              }
+            )
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read `config' while its own declarations were being folded, .*Declare the option unconditionally and gate its `config' instead, or compose the modules before evaluation rather than through `imports = \\[ config\\.… \\]'$";
+        };
+      };
+      # LIVE CONTROL, same run: the same reader over a module set that crosses no plane evaluates.
+      # Without it the three cells above are consistent with a door and a fold that refuse
+      # everything, which is a broken library passing its own oracle.
+      test-the-door-and-the-fold-admit-an-ordinary-module-control = {
+        expr = cfg {
+          modules = [
+            {
+              options.ordinary = gm.mkOption {
+                type = t.str;
+                default = "d";
+              };
+            }
+          ];
+        };
+        expected = {
+          ordinary = "d";
+        };
       };
     };
   };

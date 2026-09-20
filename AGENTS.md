@@ -33,25 +33,34 @@ Quoted text is the owner's own `flake.nix` `description` field, verbatim.
 ## Exports
 
 Entry: `inputs.gen-merge.lib` (flake). Root `default.nix` is a **function** — `import ./gen-merge { }`
-— whose named parameters (`prelude`, `types`, `memo`) default to the `ci/flake.lock` pins and may
-each be overridden. A fourth formal on that same root, `wire ? { deps, resolve }: import ./lib deps`,
+— whose named parameters (`prelude`, `types`, `memo`, `scope`) default to the `ci/flake.lock` pins and
+may each be overridden. A further formal on that same root, `wire ? { deps, resolve }: import ./lib deps`,
 is the seam that hands this exact parameter set to `./lib` as `deps`, and it is also the shim's only
 outward channel: a formal is an INPUT channel and cannot carry a value out, so the lock-parameterised
 `follows` resolver rides out on the same record. Overriding `wire` is how a cell reads the shim's own
 formal-to-path map AND its own resolver, with nothing fetched, no path restated and no fold
 transcribed — which is why the `follows` rule is declared exactly once in this repository, in
-`default.nix`. `lib/default.nix` takes `{ prelude, types, memo }` — **all three REQUIRED, none
+`default.nix`. `lib/default.nix` takes `{ prelude, types, memo, scope }` — **all four REQUIRED, none
 defaulted**. Omitting one aborts at the call site naming it (`called without required argument 'types'`). The root shim's defaults above are working values read from the lock; `lib/default.nix`
 synthesizes nothing.
 
+`scope` is gen-scope's library — the ONE universal graph evaluator (ADR-0006). gen-merge declares no
+fixpoint driver of its own: the module tree is a single node on that evaluator and the
+self-referential `config` knot is an ordinary attribute on it. It is bound at the LIBRARY's
+construction rather than per call because that is the only channel reaching `lib/types.nix`'s nested
+structural folds, so **no call site takes it** — every consumer reads `evalModuleTree` off a library
+value that is already scope-bound. It is required for the same reason `types` and `memo` are: a
+defaulted evaluator could not refuse, and the door that names a non-evaluator is the point.
+
 **Engine + the shared fold**
 
-| Export           | Signature                                                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `evalModuleTree` | `{ modules; specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; } -> result` |
-| `mergeDefs`      | `loc -> type\|null -> [{ file; value; }] -> value` (the `(loc, defs)` escape hatch; never short-circuits)                            |
-| `mergeOneOption` | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw)                                                         |
-| `showOption`     | `[string] -> string` (dot-join)                                                                                                      |
+| Export            | Signature                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `evalModuleTree`  | `{ modules; specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; } -> result` |
+| `declaredOptions` | `{ modules; specialArgs ? {}; prefix ? []; } -> options` (stratum 1 alone — the declaration fold, no fixpoint driven)                |
+| `mergeDefs`       | `loc -> type\|null -> [{ file; value; }] -> value` (the `(loc, defs)` escape hatch; never short-circuits)                            |
+| `mergeOneOption`  | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw)                                                         |
+| `showOption`      | `[string] -> string` (dot-join)                                                                                                      |
 
 `result` = `{ config; options; provenance; undeclared; deprecations; type; freeformConfig; freeformProv; warmDecision; }`.
 `config` is the merged output, `options` the merged decl tree, `provenance` a lazy per-loc record,

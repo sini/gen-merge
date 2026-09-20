@@ -15,6 +15,17 @@
     # contribution relation between module entries and declared-leaf locations), gen-memo DECIDES
     # reuse over it via `warmDecision`. One incremental plane, not a second one grown in this repo.
     gen-memo.url = "github:sini/gen-memo";
+    # The ONE universal graph evaluator (ADR-0006, ADR-0008 §1). gen-merge's module-tree fixpoint is
+    # an ordinary attribute on it, not a second driver — this library declares no `fix` of its own.
+    #
+    # ★ THIS EDGE CLOSES NO CYCLE, and gen-scope's own header states why the absence on the other
+    # side is a dependency fact rather than an omission: it declares {gen-prelude, gen-graph,
+    # gen-identity} and nothing else, gen-graph declares {gen-prelude}, and the other two declare
+    # none — so nothing reachable from here declares gen-merge. The back-edge that WOULD close one
+    # is gen-scope declaring gen-schema, which this adds nothing to. What the edge does cost is a
+    # pin that a consumer declaring both must `follows`; that is ergonomics rather than correctness
+    # (ADR-0014's corollary) and it is one line at the one tree declaring both.
+    gen-scope.url = "github:sini/gen-scope";
   };
 
   outputs =
@@ -22,6 +33,7 @@
       gen-prelude,
       gen-types,
       gen-memo,
+      gen-scope,
       ...
     }:
     {
@@ -37,6 +49,7 @@
             prelude = gen-prelude.lib;
             types = gen-types.lib;
             memo = gen-memo.lib;
+            scope = gen-scope.lib;
           };
         in
         builtins.deepSeq (builtins.mapAttrs (_: builtins.typeOf) surface) surface;

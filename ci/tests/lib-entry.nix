@@ -20,17 +20,23 @@
 # `builtins.functionArgs ({ a ? throw "FORCED", b }: null)` is `{ a = true; b = false; }` with no
 # throw (ci/tests/entry.nix measures the same property for the root shim). `true` at a name means
 # THAT NAME CARRIES A DEFAULT, so the expectation below is the claim "this entry synthesizes none
-# of its three inputs" stated as data. Re-introducing `types ? { }` flips exactly one field and
+# of its four inputs" stated as data. Re-introducing `types ? { }` flips exactly one field and
 # reds this cell by name.
 #
-# ★ THE EXPECTATION IS THE WHOLE RECORD, NOT `types` ALONE. `prelude`, `types` and `memo` are three
-# foreign VALUES this library cannot construct — it is nixpkgs-lib-free and has no fetcher — so
-# "defaults nothing" is the property, and a record equality states it without a name list that a
-# fourth formal could slip past.
+# ★ THE EXPECTATION IS THE WHOLE RECORD, NOT `types` ALONE. `prelude`, `types`, `memo` and `scope`
+# are four foreign VALUES this library cannot construct — it is nixpkgs-lib-free and has no fetcher
+# — so "defaults nothing" is the property, and a record equality states it without a name list that
+# a fifth formal could slip past.
+#
+# ★★ `scope` (gen-scope.lib, ADR-0006) IS THE FOURTH, AND IT IS THE ONE THE CONVENTION WAS TESTED
+# ON. It is required for the same measured reason `types` and `memo` are: a defaulted evaluator
+# cannot refuse, so the library's door would admit a non-evaluator and diverge inside the knot
+# instead of naming what is missing at the construction call (den-hoag-0pk67).
 {
   prelude,
   genTypes,
   genMemo,
+  genScope,
   ...
 }:
 let
@@ -38,6 +44,7 @@ let
     inherit prelude;
     types = genTypes;
     memo = genMemo;
+    scope = genScope;
   };
 in
 {
@@ -49,6 +56,7 @@ in
       prelude = false;
       types = false;
       memo = false;
+      scope = false;
     };
   };
 

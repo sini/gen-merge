@@ -23,9 +23,11 @@ gen-prelude → gen-types → gen-merge → { gen-schema, gen-aspects }      (BE
 ```
 
 gen-merge is the *within-node* definition merge; [gen-resolve](https://github.com/sini/gen-resolve)
-is the *cross-node* D>I>P schedule conductor — a distinct, higher layer. gen-merge depends only on
-gen-prelude (pure utilities), and takes gen-types' leaf checkers and gen-memo's reuse plane as
-**injected** values — one incremental plane for the whole gen ecosystem.
+is the *cross-node* D>I>P schedule conductor — a distinct, higher layer. gen-merge builds on
+gen-prelude (pure utilities), and takes gen-types' leaf checkers, gen-memo's reuse plane and
+gen-scope's graph evaluator as **injected** values — one incremental plane, and one evaluator, for
+the whole gen ecosystem. It drives no fixpoint of its own: the module tree is a single node on
+gen-scope's evaluator and the self-referential `config` knot is an ordinary attribute there.
 
 ## Gen Ecosystem
 
@@ -133,9 +135,12 @@ reds that cell with both laws byte-unchanged, which is the point — re-verify p
 
 ```nix
 let
+  # All four are REQUIRED and none is defaulted — omitting one aborts at this call site naming it.
   genMerge = import (fetchGit "https://github.com/sini/gen-merge").outPath {
     prelude = genPrelude;
     types = genTypes;               # the leaf checkers
+    memo = genMemo;                 # the one incremental plane's reuse DECISION
+    scope = genScope;               # the one graph evaluator; this library drives no fixpoint
   };
   inherit (genMerge) evalModuleTree mkOption mkForce;
   t = genMerge.types;               # gen-types leaves ⊎ gen-merge structural strategies

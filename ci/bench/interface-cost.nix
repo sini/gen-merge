@@ -56,13 +56,21 @@ let
   # site carried the same untracked `identity` as either-totality.nix, latent because no arm
   # here forces the leaf checkers.
   genTypes = import "${fromLock "gen-types"}" { inherit prelude; };
+  # `memo` and `scope` are required formals with no defaults, so a by-path construction has to name
+  # them — there is no flake output here to inherit them from.
+  genMemo = import "${fromLock "gen-memo"}" { inherit prelude; };
+  genScope = import "${fromLock "gen-scope"}" { inherit prelude; };
   gm = import ../../lib {
     inherit prelude;
     types = genTypes;
+    memo = genMemo;
+    scope = genScope;
   };
   core = import ../../lib/modules.nix {
     inherit prelude;
     priority = import ../../lib/priority.nix { inherit prelude; };
+    memo = genMemo;
+    scope = genScope;
   };
   vocab = import ../../lib/types.nix { inherit prelude core; };
 

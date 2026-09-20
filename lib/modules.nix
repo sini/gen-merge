@@ -2,7 +2,7 @@
 #
 # Design spec §1 (the 7-item primitive) + §2 (API). Reproduces `lib.evalModules` merge OUTPUT for
 # den's surface with none of `lib.types`: collect+flatten imports, tie the self-referential `config`
-# fixpoint (one local `fix` per call — spec §1 item 4), collect per-option defs, priority-resolve
+# fixpoint (spec §1 item 4 — on the INJECTED evaluator, see `driveKnot`), collect per-option defs, priority-resolve
 # (spec §1 priority subset, via ./priority.nix), dispatch structural types to their `.merge`
 # strategy, route unknown keys through the freeformType, and check leaves via the injected gen-types
 # `verify`. Class layering: gen-prelude → gen-types → gen-merge (this) → {gen-schema, gen-aspects}.
@@ -19,10 +19,17 @@
 # `warmDecide` below builds the bipartite contribution-relation FACT (module entries ↔
 # declared-leaf locations) and hands it to `memo.warmDecision`, which answers `isClean`. This
 # engine no longer decides reuse from its own footprint SET — it computes the relation and asks.
+#
+# `scope` (gen-scope.lib, REQUIRED — ADR-0006, ADR-0008 §1): the ONE universal graph evaluator.
+# This engine declares no fixpoint driver of its own; the module tree is one node on that evaluator
+# and `driveKnot` below is the whole of the seam. It is bound at the LIBRARY's construction
+# (`lib/default.nix`), which is what puts it in lexical scope for `lib/types.nix`'s nested
+# structural folds — see that file's header for why a per-call formal cannot reach them.
 {
   prelude,
   priority,
   memo,
+  scope,
 }:
 let
   inherit (prelude)
@@ -1184,7 +1191,178 @@ let
         prov = builtins.seq _ro merged.prov;
       };
 
-  # ── evalModuleTree — one call = one `evalModules`, one local fixpoint ──────
+  # ── STRATUM 1 — THE DECLARATION FOLD. NOT A FIXPOINT ──────────────────────────────────────────
+  # ADR-0033, whose operative clause is `NOTHING CONSUMES ITS OWN STRATUM'S IN-FLIGHT OUTPUT`, and
+  # whose closing word names the count: `two-level types`. This engine is a two-level type system,
+  # so it has exactly two strata:
+  #
+  #   1 · DECLARATION — `options`: a FOLD over the flattened module list. Reads nothing from 2.
+  #   2 · VALUE       — `config` and the seven fields beside it: the injected evaluator's ordinary
+  #                     demand-driven path over stratum 1's SETTLED output.
+  #
+  # Stratum 2 consuming stratum 1's settled output is exactly what the clause licenses; there is no
+  # cycle here, so — in the clause's own words — there is no cycle check to run.
+  #
+  # ★★ WHAT A MODULE FUNCTION IS APPLIED TO HERE, AND WHY IT IS A POISON RATHER THAN `{ }`. A fold
+  # over the module list must still APPLY each module, and a module's formals are `config`,
+  # `options` and its own `_module.args`. None of the three is available at this stratum: `config`
+  # and the module args are stratum 2's output, and `options` is THIS stratum's own in-flight
+  # output. Binding any of them to `{ }` would answer SILENTLY AND WRONGLY — a declaration gated on
+  # `config.flag` would quietly take the false arm — so each is bound to a thrown, `tryEval`-
+  # catchable refusal naming what was demanded. What ADR-0033 forbids becomes inexpressible with a
+  # reason attached, instead of `infinite recursion encountered` with none.
+  #
+  # ★ THE REFUSAL IS TOTAL OVER THE THREE SHAPES AND IT IS ONE MECHANISM, not three checks:
+  #   · a module whose option KEY SET is a function of `config` — ADR-0033's own example of a gate
+  #     conditionally declaring an option;
+  #   · a module whose `imports` TARGETS are read from `config` — stratum 1 consuming stratum 2,
+  #     the residue ADR-0033 leaves open and the owner ruled refused (arm A, 2026-09-14). The
+  #     composition it made expressible belongs at the composing library's own stratum, which is
+  #     where it has since been relocated;
+  #   · a module reading `options` while declaring options — the in-flight clause read literally.
+  # Forcing the declaration side is what raises them, so none is a predicate that can drift from
+  # the property it tests.
+  #
+  # ★ WHAT IS ADMITTED, MEASURED AND NOT ASSUMED: an option's VALUE reading `config`, an option's
+  # TYPE ARGUMENT reading `config` (the registry idiom `mkInstanceRegistry config.<kind>`), two
+  # such declarations merging, and a module arg read in a `config` section. All four are stratum-2
+  # reads and none forces the poison. What refuses is the option's own IDENTITY or PRESENCE moving
+  # with `config` — the class ADR-0033 rules inadmissible.
+  #
+  # ★★★ WHAT THIS FOLD IS NOT, MEASURED IN SITU AND NOT ASSUMED. It is the published
+  # DECLARATION-ONLY entry and the engine's GUARD — it is NOT the producer of the full result's
+  # `options` field. An option DESCRIPTOR carries stratum-2 values in its own fields (`default`,
+  # `apply`), and those are value-plane reads ADR-0033 does not forbid:
+  # `mkOption { default = config.n; }` is supported, idiomatic, and pinned by this suite. Producing
+  # the result's `options` from this fold would capture the poison in every such thunk and refuse
+  # them — measured, 10 cells across `merge`, `moduleArgs`, `oracle` and `differential`, every one
+  # of them an option default reading `config` or a config-derived module arg.
+  #
+  # So the stratification is held BY THE REFUSAL rather than by the binding: the guard forces this
+  # fold's declaration SPINE — the key set and the imports expansion, never a descriptor field — so
+  # any module whose DECLARATION plane genuinely reads stratum 2 is refused before the real fold
+  # runs. On every admitted tree, stratum 1 provably reads nothing from stratum 2, which is the
+  # property ADR-0033 asserts; what would otherwise diverge as `infinite recursion encountered`
+  # now refuses by name, catchably, at the fold.
+  #
+  # `declEntries`, `sitesAt` and `options` are published together because every refusal on this
+  # plane names the files that declared the option, and a second walk to recover them would be a
+  # second answer to `which module declared this` that can drift from the first.
+  declarationStratum =
+    {
+      modules,
+      specialArgs ? { },
+      prefix ? [ ],
+    }:
+    let
+      inadmissible =
+        subject: demand:
+        throw "gen-merge: a module ${demand} while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output (ADR-0033: nothing consumes its own stratum's in-flight output; the option key set is unconditional). Declare the option unconditionally and gate its `config' instead${
+          if subject == "options" then
+            ""
+          else
+            ", or compose the modules before evaluation rather than through `imports = [ config.… ]'"
+        }";
+
+      declArgs = specialArgs // {
+        config = inadmissible "config" "read `config'";
+        options = inadmissible "options" "read `options'";
+        inherit prefix;
+      };
+
+      # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
+      # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
+      # it refuses with the same reason rather than resolving to a different one.
+      callD =
+        m:
+        if builtins.isPath m then
+          callD (import m)
+        else if isFunction m then
+          let
+            formals = functionArgs m;
+            extra = mapAttrs (
+              name: _: declArgs.${name} or (inadmissible "config" "read the module argument `${name}'")
+            ) formals;
+          in
+          m (declArgs // extra)
+        else if isAttrs m && m ? __functor then
+          callD (m.__functor m)
+        else
+          m;
+
+      flat = collectModules callD modules;
+      declEntries = prelude.imap0 (i: e: {
+        idx = i;
+        file = e._file;
+        options = optionsOf e.content;
+      }) flat;
+      sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
+    in
+    {
+      inherit declEntries sitesAt;
+      options = foldl' (
+        # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
+        # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
+        # traced back to it, so guarding the producer here covers all five tags at any nesting depth
+        # on both the `.options` and `.config` planes.
+        acc: e:
+        mergeOptionDecls (redeclareDecl sitesAt e.idx) prefix acc (validateDeclSubtree prefix e.options)
+      ) { } declEntries;
+    };
+
+  # THE STRATUM-1 ENTRY, published beside `evalModuleTree`. A consumer wanting DECLARATIONS without
+  # values gets a door that drives no fixpoint at all — the two `.options`-only readers in this
+  # ecosystem (gen-schema's `entry-type.nix` introspection and its `id-hash.nix` identity key set)
+  # are asking exactly this question, and they already keep the discipline by hand, each with its
+  # own comment saying it uses the locally-built merged module to avoid circularity.
+  #
+  # It is the SAME fold the full result's `options` field is, published twice rather than computed
+  # twice: a second definition of "which options are declared" is a second answer, free to disagree.
+  declaredOptions = args: (declarationStratum args).options;
+
+  # ── THE ONE DRIVER — this library declares no fixpoint of its own ─────────────────────────────
+  # ADR-0006 / ADR-0008 §1. What was `prelude.fix (result: …)` is the SAME knot, driven by the
+  # injected evaluator: the module tree is ONE node, and the self-referential `result` is an
+  # ORDINARY attribute on it whose body reads itself back through `self.get`. `children` and
+  # `imports` are the evaluator's required attributes and this node has neither — it is a leaf, and
+  # the spawn channel is deliberately not used here (a submodule stays a nested invocation of this
+  # same constructed library, which is many invocations of one instance, not many instances).
+  #
+  # NO CARRIER IS DECLARED AND NO CIRCULAR ATTRIBUTE IS USED, and that is what makes an ordinary
+  # attribute sufficient: the returned attrset's KEY SET does not depend on the self-read, so the
+  # read lands on an already-demanded position rather than re-entering the body. Measured: three
+  # self-read sites enter the body ONCE, and the value is byte-equal to the same record computed by
+  # Nix's own `let` self-reference — the sharing `prelude.fix` owned is now the evaluator's `_eval`
+  # memo. Without that property the re-encoding would be exponential at this engine's three sites
+  # (`result.options`, `result.moduleConfig`, `result.moduleArgs`, all in `baseArgs`/`extra`).
+  #
+  # WHAT THIS DOES NOT BUY, stated because the shape invites the over-read: containment comes only
+  # from a DECLARED carrier, so an ordinary value-plane self-reference (`config.x = config.x`)
+  # still aborts uncatchably, exactly as it did under `fix`. What refuses by name is the
+  # DECLARATION plane, at the fold, and that is a different mechanism (`declaredOptions`).
+  #
+  # The roots are built once for the library rather than per call: the node set is a constant.
+  knotId = "module-tree";
+  knotAttr = "result";
+  knotScope = scope.buildRoots {
+    parentGraph = scope.vertex knotId;
+    importGraph = scope.empty;
+    decls.${knotId} = { };
+  };
+  driveKnot =
+    f:
+    (scope.eval {
+      scope = knotScope;
+      attributes = {
+        children = _: _: { };
+        imports = _: _: [ ];
+        ${knotAttr} = self: id: f (self.get id knotAttr);
+      };
+    }).get
+      knotId
+      knotAttr;
+
+  # ── evalModuleTree — one call = one `evalModules`, one knot on the one evaluator ──────
   evalModuleTree =
     {
       modules,
@@ -1327,7 +1505,25 @@ let
           unmatched = ownUnmatched ++ concatMap (x: x.unmatched) declaredPairs;
         };
 
-      result = prelude.fix (
+      # ── THE DECLARATION GUARD ─────────────────────────────────────────────────────────────────
+      # ADR-0033's stratification, enforced rather than arranged. `declarationStratum` applies this
+      # module set with `config`, `options` and the module args bound to named refusals, and this
+      # forces its declaration SPINE — every merged option path and every `imports` expansion, and
+      # no descriptor field. A module whose option KEY SET or whose `imports` TARGETS are a function
+      # of `config` therefore refuses by name, `tryEval`-catchably, BEFORE the real fold below can
+      # reach it; today the same module reads `infinite recursion encountered` with no name and no
+      # containment. A descriptor's own `default` is a stratum-2 value and is never forced here.
+      #
+      # It costs one declaration-side application of the module set. The value side — the merge, the
+      # priority pass, the type folds — is untouched, and the guard forces no definition.
+      declarationGuard = builtins.deepSeq (declLeafPaths
+        (declarationStratum {
+          inherit specialArgs prefix;
+          modules = modList;
+        }).options
+      ) null;
+
+      result = driveKnot (
         result:
         let
           baseArgs = specialArgs // {
@@ -1363,7 +1559,13 @@ let
             else
               m;
 
-          flat = collectModules callM modList;
+          # THE GUARD IS INTERPOSED HERE, and the position is the whole of its reach: every field
+          # this engine publishes is derived from `flat`, so no path into the result can get past
+          # the declaration guard. Hanging it on `allOptions` alone is NOT enough and that is
+          # measured rather than reasoned — the VALUE path reaches `flat`'s own `imports` expansion
+          # before it reaches `allOptions`, so an `imports` reading `config` recursed uncatchably
+          # while the guard sat unforced one binding away.
+          flat = builtins.seq declarationGuard (collectModules callM modList);
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
           # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
@@ -1380,6 +1582,11 @@ let
           # contributor; the fold therefore hands each step its own index rather than one shared
           # rule. The locs the walk hands over are PREFIXED (the fold's `loc` IS `prefix`) while
           # these trees are not, hence the `drop`.
+          #
+          # ★ THE SHAPE HERE IS `declarationStratum`'s, over the VALUE stratum's arguments, and the
+          # guard above is what makes the two agree on everything a declaration is: the key set and
+          # the imports expansion. Where they could differ is the one place a descriptor is allowed
+          # to hold a stratum-2 value — its `default` — and that difference is the point.
           declEntries = prelude.imap0 (i: e: {
             idx = i;
             file = e._file;
@@ -1387,10 +1594,10 @@ let
           }) flat;
           sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
           allOptions = foldl' (
-            # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
-            # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes `allOptions` or a
-            # value traced back to it, so guarding the producer here covers all five tags at any
-            # nesting depth on both the `.options` and `.config` planes.
+            # ONE door for the whole engine: every downstream reader (`mergeTree`'s
+            # `declaredPairs`, `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes
+            # `allOptions` or a value traced back to it, so guarding the producer here covers all
+            # five tags at any nesting depth on both the `.options` and `.config` planes.
             acc: e:
             mergeOptionDecls (redeclareDecl sitesAt e.idx) prefix acc (validateDeclSubtree prefix e.options)
           ) { } declEntries;
@@ -2047,6 +2254,11 @@ in
 {
   inherit
     evalModuleTree
+    # Stratum 1 on its own — the declaration fold, published so a consumer wanting declarations
+    # without values drives no fixpoint at all. Public (see lib/default.nix); it is also the fold
+    # `evalModuleTree`'s declaration GUARD runs, so the two can never answer differently about
+    # which options a module set declares.
+    declaredOptions
     mergeDefs
     mergeOption
     mergeOneOption
