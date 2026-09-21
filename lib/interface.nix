@@ -270,10 +270,56 @@ let
         rebuild = t.substSubModules or (_m: null);
       };
 
+  # ── THE DECIDABILITY PRE-CHECK THE FOREIGN MERGE IS GUARDED BY ──────────────────────────────────
+  # A foreign `typeMerge` recurses through its own structure and bounds nothing: `types.json` is
+  # self-referential, so `json.typeMerge json.functor` unfolds forever and dies with
+  # `stack overflow; max-call-depth exceeded` — an interpreter error, NOT a `throw`, which escapes
+  # `builtins.tryEval` and kills the evaluation rather than refusing. gen cannot bound a call once it
+  # is inside foreign code, so the only available construction is to decline to make it: ask whether
+  # the structure bottoms out BEFORE handing it over, and answer `null` — this binding's documented
+  # "not mergeable" — when it does not.
+  #
+  # The walk is `lib/lint.nix`'s shipped `scanType` over the same accessor, deliberately: same
+  # `importedWrapped`, same fuel shape, same named refusal at exhaustion. `importedWrapped` is the
+  # boundary's own question ("what types does this one wrap"), answering `carries` for a gen record
+  # and `nestedTypes` for a foreign one, so the walk asks in gen's vocabulary and not in nixpkgs'
+  # spelling. It terminates by construction at `fuel` — a visited-set cycle guard is not available
+  # here, because Nix has no reference equality and `==` on two distinct self-referential values
+  # diverges the same way.
+  #
+  # ★ THE PRICE, STATED: a FINITE type nested `importedTypeWalkFuel` or more containers deep is
+  # refused where an unguarded merge would have answered. The deepest real family measured in
+  # nixpkgs' own vocabulary is 2, so the constant carries 16x headroom; raising it is a one-constant
+  # change and this is the only site that states it.
+  importedTypeWalkFuel = 32;
+
+  importedDecidable =
+    let
+      go =
+        fuel: t:
+        if !(isAttrs t) then
+          true
+        else if fuel <= 0 then
+          false
+        else
+          all (go (fuel - 1)) (importedWrapped t);
+    in
+    go importedTypeWalkFuel;
+
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner
   # has no gen relation and never will, so the question "do these two merge?" is asked in the
   # protocol's own terms: the first type's `typeMerge` applied to the second's functor.
-  importedMerge = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+  #
+  # BOTH operands are scanned, though only `a.typeMerge` drives the recursion and scanning `a` alone
+  # is sufficient on every pair measured. It is one more bounded walk on a path that is already
+  # deciding a merge, and it closes the second-operand question BY CONSTRUCTION rather than by a
+  # census that would need re-running on every nixpkgs bump.
+  importedMerge =
+    a: b:
+    if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
+      a.typeMerge b.functor
+    else
+      null;
 
   # A partner type RECOVERED from its own functor. This is the whole reason gen's relation can stay
   # row-free: nixpkgs hands the second operand as a functor — a payload row both sides must agree on
@@ -808,6 +854,7 @@ in
     importType
     importedAdmits
     importedCarried
+    importedDecidable
     importedDeprecation
     importedEmpty
     importedFold
@@ -815,6 +862,7 @@ in
     importedPartner
     importedRebuilds
     importedSubstructure
+    importedTypeWalkFuel
     importedWrapped
     isOptionType
     refuseMount

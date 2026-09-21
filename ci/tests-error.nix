@@ -1893,5 +1893,52 @@ in
         };
       };
     };
+
+    # ── WHICH REFUSAL FIRED WHEN A FOREIGN SELF-MERGE IS DECLINED ───────────────────────────────
+    # The containment itself is a boolean and is asserted on the value plane
+    # (`tests/nixpkgs-protocol.nix`). WHICH refusal fired is a claim about the message, which
+    # `tryEval` discards — so it belongs here, the same split `union-merge` above makes.
+    #
+    # At HEAD these cells did not fail, they killed the runner: nixpkgs' `either.typeMerge` unfolds
+    # `types.json` forever and dies with an interpreter error rather than a `throw`. The message
+    # below only exists because the boundary declines to make the call at all.
+    flake.testsError.foreign-selfmerge = {
+      # The pair the message names is `nullOr'/`nullOr' because that is `types.json`'s own `.name` —
+      # the pre-existing spelling the throw site interpolates, not something the guard introduces.
+      # Without the reason clause the message would read as an ordinary name mismatch between two
+      # identically-named types, which is a different defect with a different fix.
+      test-undecidable-foreign-selfmerge-refused-by-name = {
+        expr = declaredTwice nixpkgsLib.types.json nixpkgsLib.types.json;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`nullOr' and `nullOr', whose structure does not bottom out within the boundary's type-walk fuel \\(32\\)\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # The CLASS, not the two names. `serializableValueWith` is a public constructor and every
+      # container over an undecidable type is undecidable too, so a guard keyed on `json`/`toml` by
+      # name would let both through to the same abort. `listOf json` is the nesting; the message is
+      # the container's, and the reason still names the ceiling that was reached.
+      test-a-container-over-an-undecidable-type-is-refused-too = {
+        expr = declaredTwice (nixpkgsLib.types.listOf nixpkgsLib.types.json) (
+          nixpkgsLib.types.listOf nixpkgsLib.types.json
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`listOf' and `listOf', whose structure does not bottom out within the boundary's type-walk fuel \\(32\\)\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # LIVE CONTROL, same run, and it is wrapped in `tryEval` ON PURPOSE: an `expectedError` cell
+      # whose control is left to throw would throw the very message the cells above pin, and a
+      # boundary that refused EVERY foreign pair would score green on all three. Reading the control
+      # as a VALUE is what makes that impossible — a decidable foreign pair still reaches nixpkgs'
+      # own `typeMerge` and comes back with a real merged type.
+      test-a-decidable-foreign-pair-still-merges-control = {
+        expr = (builtins.tryEval (declaredTwice nixpkgsLib.types.number nixpkgsLib.types.number));
+        expected = {
+          success = true;
+          value = "either";
+        };
+      };
+    };
   };
 }

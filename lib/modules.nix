@@ -240,7 +240,25 @@ let
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
   # the relation supplied a reason, that reason is better than a name comparison reconstructed at
   # the throw site.
-  mergeTypesReason = a: b: if a ? typeMergeRel then (a.typeMergeRel b).refused or null else null;
+  # ★ THE FOREIGN ARM NAMES THE ONE REFUSAL THE BOUNDARY MAKES ON ITS OWN. `importedMerge` answers
+  # `null` for a pair whose structure does not bottom out within its type-walk fuel — the foreign
+  # `typeMerge` would abort uncatchably on it — and that `null` is indistinguishable at the throw
+  # site from an ordinary "these two names do not merge". Reading the predicate back here is what
+  # turns it into a reason an author can act on; the fuel is interpolated from the one binding that
+  # states it, so the number lives at a single site.
+  #
+  # ★ BOTH THROW SITES INHERIT THIS, and neither is touched: `redeclareDecl` (the declaration plane)
+  # and the freeform `step` fold below both read `mergeTypesReason` and prefer it to a bare name
+  # pair. A gen type is unaffected — `mergeTypes` short-circuits on `typeMergeRel` before the
+  # boundary is reached, so the first arm still answers for every pair that has a relation.
+  mergeTypesReason =
+    a: b:
+    if a ? typeMergeRel then
+      (a.typeMergeRel b).refused or null
+    else if !(interface.importedDecidable a) || !(interface.importedDecidable b) then
+      "`${a.name}' and `${b.name}', whose structure does not bottom out within the boundary's type-walk fuel (${toString interface.importedTypeWalkFuel})"
+    else
+      null;
 
   # The declaring SITES at one option loc, in authored module order — the entries whose own
   # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The

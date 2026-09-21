@@ -11,6 +11,7 @@
   genMerge,
   nixpkgsLib,
   interface,
+  genMergeCore,
   ...
 }:
 let
@@ -1496,6 +1497,42 @@ in
         inner = {
           a = "set";
         };
+      };
+    };
+
+    # ── THE FOREIGN SELF-MERGE IS CONTAINED ─────────────────────────────────────────────────────
+    # `types.json` is self-referential, so nixpkgs' own `either.typeMerge` unfolds forever on it and
+    # dies `stack overflow; max-call-depth exceeded` — an interpreter error rather than a `throw`,
+    # which ESCAPES `builtins.tryEval` and kills the runner instead of failing a cell. At HEAD this
+    # very cell took the batch asserter down; under the boundary's decidability pre-check the merge
+    # answers `null` and the `tryEval` returns.
+    #
+    # ★ WHAT THIS CELL DISCRIMINATES, AND IT IS THE HALF THE REST OF THE SUITE IS BLIND TO. Seeding
+    # the predicate to refuse EVERYTHING (over-refusal) already reds elsewhere in this suite; seeding
+    # it to refuse NOTHING is exactly HEAD, and nothing in the suite noticed. This is that direction.
+    test-foreign-selfmerge-is-contained = {
+      expr =
+        (builtins.tryEval (
+          builtins.deepSeq (genMergeCore.mergeTypes nixpkgsLib.types.json nixpkgsLib.types.json) true
+        )).success;
+      expected = true;
+    };
+    # LIVE CONTROL, same run — and it carries the whole discrimination, because with the guard
+    # working BOTH cells read `success = true` and `.success` alone cannot separate a contained
+    # merge from a surface that refuses everything. The merged type's NAME is what does: an ordinary
+    # foreign pair still reaches nixpkgs' `typeMerge` and comes back with a real type.
+    test-foreign-selfmerge-containment-control = {
+      expr =
+        let
+          merged = genMergeCore.mergeTypes nixpkgsLib.types.number nixpkgsLib.types.number;
+        in
+        {
+          contained = (builtins.tryEval (builtins.deepSeq merged true)).success;
+          name = merged.name;
+        };
+      expected = {
+        contained = true;
+        name = "either";
       };
     };
   };
