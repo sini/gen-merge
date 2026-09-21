@@ -288,7 +288,7 @@ in
   # an assertion that the law broke.
   #
   # nixpkgs-parity-rev:begin
-  #   20b1ddd1aa5ace70c9468305030aa4f9ef79671b
+  #   44a91898084f46797b5fac650c7e8c9ac38c43d4
   # nixpkgs-parity-rev:end
   inherit (core) mergeDefaultOption;
   inherit (priority)
