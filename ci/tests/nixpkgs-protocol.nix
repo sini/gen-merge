@@ -168,7 +168,25 @@ let
       lazyAttrsOf = wrapper;
       listOf = wrapper;
       nullOr = wrapper;
-      submodule = wrapper;
+      # A wrapper PLUS the base-module-arg inlet, and the two keys are stated here rather than
+      # appended to `wrapper` because they are NOT a wrapper's fields — only `submodule` has an
+      # inlet. `specialArgs` is the plain descriptor attribute a caller's args ride on: a second
+      # CARRIED ROLE is refused by construction (`roleOf` throws when `carries` names more than one),
+      # while the export is a pass-through, so an ordinary attribute is how the args cross and how a
+      # partner's become readable from the relation. `withArgs` is the method that states them.
+      # Both are gen's own words; neither is a protocol field, which is why they land in this half.
+      submodule = [
+        "_protoLeafMerge"
+        "admits"
+        "carries"
+        "mergeDefs"
+        "recarry"
+        "specialArgs"
+        "substructure"
+        "typeMergeRel"
+        "whenEmpty"
+        "withArgs"
+      ];
     };
 
   # a representative type of every constructor class the completion reaches, INCLUDING a consumer type

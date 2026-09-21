@@ -232,15 +232,72 @@ let
   # Turn a def value into a module (located) for a nested evalModuleTree.
   defToModule = d: setDefaultModuleLocation (toString (d.file or "<def>")) d.value;
 
+  # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
+  # `name` is injected by the two `evalModuleTree` calls below; `config`, `options` and `prefix` are
+  # injected by the engine itself at BOTH strata — `lib/modules.nix:1267` (declaration) and `:1529`
+  # (value) — and in both the caller's set is on the LEFT of `//`, so the engine's key wins. A caller
+  # stating one of these would have it silently discarded, which is exactly the loss the inlet exists
+  # to prevent, so `withArgs` refuses it by name at the moment the caller states it.
+  submoduleReservedArgs = {
+    name = null;
+    config = null;
+    options = null;
+    prefix = null;
+  };
+
   # submodule — recurse into a nested evalModuleTree over the submodule module + all defs; binds the
   # per-key `name` (spec §1 item 3). One nested fixpoint per merge (spec §1 item 4).
-  submodule =
-    modOrMods:
+  #
+  # ★ THE CALLER'S BASE MODULE ARGS RIDE ON THE TYPE, NOT ON THE CONSTRUCTOR. `isModuleValue` admits
+  # any attrset, so a constructor form — `submodule { modules = …; specialArgs = …; }` — is
+  # indistinguishable from a config-shorthand module that happens to set `modules`, and the misread
+  # is SILENT. The inlet is therefore a method on the built type, `(submodule mods).withArgs { … }`,
+  # which no module value can be mistaken for. `evalModuleTree` already takes `specialArgs ? { }`, so
+  # this EXPOSES a channel one level down rather than adding one.
+  #
+  # ★ THE ARGS ARE A PLAIN DESCRIPTOR ATTRIBUTE AND NOT A SECOND CARRIED ROLE, and that is forced:
+  # `interface.roleOf` throws when `carries` names more than one role, because the foreign protocol
+  # has exactly one payload slot. `exportType` ends `t // { … }` — a pass-through — so an ordinary
+  # attribute crosses the boundary untouched and a gen partner's is readable from the relation.
+  #
+  # ★★ EVERY REBUILD RE-ENTERS `mkSubmodule`, WHICH IS WHY THERE IS ONE. Three expressions in this
+  # record rebuild the type — `recarry`, `substructure.rebuild`, and the relation's union — and one
+  # that re-entered the args-less published constructor would drop the caller's args silently.
+  # `substructure.rebuild` is the one that looks like an edge case and is not: a foreign engine calls
+  # `substSubModules` on EVERY option whose type has a module set (nixpkgs `fixupOptionType`),
+  # including a single declaration, and gen's own containers delegate their rebuild to their
+  # element's — so `attrsOf ((submodule mods).withArgs { … })` would lose the args without ever
+  # crossing the boundary.
+  mkSubmodule =
+    args: modOrMods:
     let
       mods = if isList modOrMods then modOrMods else [ modOrMods ];
+      # The args a nested evaluation runs with. The substrate's `name` is injected LAST, so its key
+      # wins by construction rather than by the caller having behaved.
+      argsAt = loc: args // { name = if loc == [ ] then "" else prelude.last loc; };
     in
     defineType {
       name = "submodule";
+      # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
+      # nobody added to, which is what makes the union below total.
+      specialArgs = args;
+      # THE INLET. Refusal lives HERE — one place, where the caller states the key — rather than at
+      # the eval sites, where the loss would already have happened and the name would be gone.
+      withArgs =
+        a:
+        let
+          reserved = filter (k: submoduleReservedArgs ? ${k}) (attrNames a);
+        in
+        if reserved != [ ] then
+          throw (
+            "gen-merge: `withArgs' cannot supply the base module argument"
+            + (if length reserved == 1 then " " else "s ")
+            + concatStringsSep ", " (map (k: "`${k}'") reserved)
+            + "; a submodule's own evaluation injects over whatever a caller supplies there, so the "
+            + "value would be discarded rather than used"
+          )
+        else
+          mkSubmodule (args // a) mods;
       # A submodule's definitions ARE modules: `mergeDefs` hands each through `defToModule` to a
       # nested `evalModuleTree`, so the domain is `isModuleValue`'s and not "any value". nixpkgs
       # reaches the same three shapes through its `path` check, which additionally admits a string
@@ -255,7 +312,7 @@ let
       # declaring the union of what they declare. On a nullary relation the second declaration would
       # be discarded silently.
       carries.moduleSet = mods;
-      recarry = c: submodule c.moduleSet;
+      recarry = c: mkSubmodule args c.moduleSet;
       typeMergeRel =
         other:
         if !(isAttrs other) || (other.name or null) != "submodule" then
@@ -263,13 +320,36 @@ let
         else
           let
             partnerMods = interface.importedCarried "moduleSet" other;
+            # A partner's base module args are read off the descriptor attribute directly, for the
+            # reason stated above: it is an ordinary attribute and survives export.
+            #
+            # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
+            # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
+            # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
+            # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
+            # with themselves: no conflict can be seen there and the left declaration's args win
+            # silently. That path is not reachable with a gen partner anyway — `importedCarried`
+            # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
+            # its own parameters beside it, which the arm above already refuses by name.
+            partnerArgs = other.specialArgs or { };
+            conflicting = filter (k: (partnerArgs ? ${k}) && partnerArgs.${k} != args.${k}) (attrNames args);
           in
           if partnerMods == null then
             {
               refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry";
             }
+          # The module sets UNION, so the args must too — and two declarations that disagree about
+          # what a base module argument IS are a conflict this library names rather than resolves by
+          # declaration order.
+          else if conflicting != [ ] then
+            {
+              refused =
+                "two `submodule' declarations stating different values for the base module argument"
+                + (if length conflicting == 1 then " " else "s ")
+                + concatStringsSep ", " (map (k: "`${k}'") conflicting);
+            }
           else
-            { merged = submodule (mods ++ partnerMods); };
+            { merged = mkSubmodule (args // partnerArgs) (mods ++ partnerMods); };
       substructure = {
         # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
         #   declares = prefix: (evalModuleTree { inherit modules prefix; }).options
@@ -281,9 +361,7 @@ let
           (evalModuleTree {
             modules = mods;
             inherit prefix;
-            specialArgs = {
-              name = if prefix == [ ] then "" else prelude.last prefix;
-            };
+            specialArgs = argsAt prefix;
             check = true;
           }).options;
         modules = mods;
@@ -292,19 +370,21 @@ let
         # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
         # second time, double-evaluating the base module (a readOnly config value — e.g.
         # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
-        rebuild = m: submodule (if isList m then m else [ m ]);
+        rebuild = m: mkSubmodule args m;
       };
       mergeDefs =
         loc: defs:
         (evalModuleTree {
           modules = mods ++ map defToModule defs;
           prefix = loc;
-          specialArgs = {
-            name = if loc == [ ] then "" else prelude.last loc;
-          };
+          specialArgs = argsAt loc;
           check = true;
         }).config;
     };
+
+  # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
+  # base module args to the TYPE it returns, never to this.
+  submodule = mkSubmodule { };
 
   # listOf — concat all list defs in order (byte-mode drops the order pass; spec §7), each element
   # merged through the element type (a submodule element becomes an instance; a leaf is verified).

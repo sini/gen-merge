@@ -1827,5 +1827,71 @@ in
         };
       };
     };
+
+    # ── `withArgs`'s reserved keys ────────────────────────────────────────────────────────────
+    # The inlet refuses a key a submodule's own evaluation would write over, AT THE MOMENT THE
+    # CALLER STATES IT, and names the key. Refusing at the eval sites instead would be too late in
+    # two ways: the loss would already have happened, and the caller's name for it would be gone.
+    #
+    # ★ THERE ARE FOUR, NOT ONE, AND THREE OF THEM ARE LOST AT A SECOND SURFACE. `name` is injected
+    # by `submodule`'s own two `evalModuleTree` calls; `config`, `options` and `prefix` are injected
+    # by the ENGINE, at both strata (`lib/modules.nix:1267` and `:1529`), with the supplied set on
+    # the LEFT of `//` — so the engine's value wins and a caller's is discarded in silence. A
+    # reserved set of `{ name }` alone would pass `.withArgs { config = …; }` straight through into
+    # that loss, which is the exact outcome the refusal exists to prevent.
+    #
+    # Each cell reads the TEXT, not merely that it threw: `tryEval` discards the message, and "it
+    # threw" passes on any refusal anywhere in the construction.
+    flake.testsError.submodule-args = {
+      test-withArgs-refuses-the-reserved-name-by-name = {
+        expr = (t.submodule [ { } ]).withArgs { name = "CALLER"; };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `withArgs' cannot supply the base module argument `name'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
+        };
+      };
+      test-withArgs-refuses-the-reserved-config-by-name = {
+        expr = (t.submodule [ { } ]).withArgs { config = "CALLER"; };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `withArgs' cannot supply the base module argument `config'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
+        };
+      };
+      test-withArgs-refuses-the-reserved-options-by-name = {
+        expr = (t.submodule [ { } ]).withArgs { options = "CALLER"; };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `withArgs' cannot supply the base module argument `options'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
+        };
+      };
+      test-withArgs-refuses-the-reserved-prefix-by-name = {
+        expr = (t.submodule [ { } ]).withArgs { prefix = "CALLER"; };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `withArgs' cannot supply the base module argument `prefix'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
+        };
+      };
+      # Two at once are named together rather than one-at-a-time, so a caller fixes both in one
+      # edit instead of rediscovering the second after the first.
+      test-withArgs-names-every-reserved-key-the-caller-stated = {
+        expr = (t.submodule [ { } ]).withArgs {
+          name = "A";
+          prefix = "B";
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `withArgs' cannot supply the base module arguments `name', `prefix'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
+        };
+      };
+      # LIVE CONTROL, same run: an UNRESERVED key is admitted and the type still builds. Without it
+      # the five cells above are consistent with a `withArgs` that refuses everything — which would
+      # pass its own oracle while shipping no inlet at all.
+      test-withArgs-admits-an-unreserved-key-control = {
+        expr = ((t.submodule [ { } ]).withArgs { anArg = "CALLER"; }).specialArgs;
+        expected = {
+          anArg = "CALLER";
+        };
+      };
+    };
   };
 }
