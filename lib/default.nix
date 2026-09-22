@@ -278,18 +278,19 @@ in
   # are the compatibility promise being kept, and they carry no architectural claim about how gen
   # itself decides which contribution wins.
   #
-  # ★ PARITY IS VERIFIED AGAINST A PINNED nixpkgs, AND THE PIN IS STAMPED HERE SO IT CANNOT AGE
-  # SILENTLY. This library's `lib/` is nixpkgs-free (ci/tests/purity.nix), so the law and the pass
-  # are an INDEPENDENT REIMPLEMENTATION rather than a wrapper: when the module system upstream
-  # moves, nothing here notices. The rev below is read back out of this file by
-  # ci/tests/parity-surface.nix and compared, both directions, against the rev `ci/flake.lock`
-  # actually resolves for the root's own `nixpkgs` input. A routine bump reds that cell with both
-  # laws byte-unchanged — which is intended: it is a prompt to re-verify parity and re-stamp, never
-  # an assertion that the law broke.
+  # ★ PARITY IS VERIFIED AGAINST THE LIVE nixpkgs, WHICH IS WHY NO REV IS STAMPED HERE. This
+  # library's `lib/` is nixpkgs-free (ci/tests/purity.nix), so the law and the pass are an
+  # INDEPENDENT REIMPLEMENTATION rather than a wrapper — and what watches upstream is
+  # ci/tests/parity-surface.nix's `bothLaws`, whose `nixpkgs` arm calls `np.mergeDefaultOption` at
+  # whatever rev `ci/flake.lock` resolves. Every parity cell there asserts BOTH sides against
+  # literal expected values, so an upstream change to the merge law reds them ON THE PROPERTY.
   #
-  # nixpkgs-parity-rev:begin
-  #   44a91898084f46797b5fac650c7e8c9ac38c43d4
-  # nixpkgs-parity-rev:end
+  # ★★ A STAMPED REV USED TO SIT HERE, read back out of this file by that suite and compared against
+  # the lock both directions. It was retired by owner ruling 2026-09-22 — *"the parity contract
+  # should move with upstream, remove the hardcode"* — because it watched LOCK MOVEMENT rather than
+  # the law: a routine bump redded it with both laws byte-unchanged and blocked a whole roster
+  # relock. What is given up is lock-movement notification, and nothing else. Do not re-stamp; the
+  # retirement note at the foot of parity-surface.nix carries the reasoning.
   inherit (core) mergeDefaultOption;
   inherit (priority)
     mkOrder

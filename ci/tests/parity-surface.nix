@@ -1,6 +1,9 @@
 # The nixpkgs-PARITY SURFACE this landing adds: the shape-directed default-merge law
-# (`mergeDefaultOption`), the ORDER pass (`sortProperties` + `mkOrder`/`mkBefore`/`mkAfter`), and the
-# drift oracle that keeps the parity claim from ageing silently.
+# (`mergeDefaultOption`) and the ORDER pass (`sortProperties` + `mkOrder`/`mkBefore`/`mkAfter`).
+#
+# ★ THE PARITY CLAIM IS WATCHED LIVE, NOT STAMPED. A rev-stamp drift oracle used to sit at the foot of
+# this file; it was retired by owner ruling 2026-09-22. The note where it stood says what carries the
+# property forward and what was deliberately given up — read it before restoring anything like it.
 #
 # ★★★ EVERY RED AND GREEN IN THIS FILE WAS EVALUATED BEFORE THE CELL WAS WRITTEN, NEVER DERIVED FROM
 # READING SOURCE. RED was run against gen-merge as it stood before the pass landed; GREEN was run at
@@ -16,10 +19,8 @@
 # implementation: every multi-definition fixture uses DIFFERING, ORDERED payloads, so an
 # agree-or-refuse law, a first-wins law and a reversed-order law each red.
 {
-  lib,
   genMerge,
   nixpkgsLib,
-  prelude,
   ...
 }:
 let
@@ -102,54 +103,15 @@ let
     gen = (gmCfg fx).${attr};
     nixpkgs = (npCfg fx).${attr};
   };
-
-  # ── the DRIFT oracle's two sides ──────────────────────────────────────────────────────────────
-  # The rev the parity claim is STAMPED at, read back out of the committed source between its
-  # markers — structural, not line-numbered, so an edit above or below cannot silently move it.
-  exportSource = builtins.readFile ../../lib/default.nix;
-  window = lib.elemAt (lib.splitString "nixpkgs-parity-rev:end" (lib.elemAt (lib.splitString "nixpkgs-parity-rev:begin" exportSource) 1)) 0;
-  # The window is comment lines: strip the `#` markers and all whitespace, leaving the bare rev.
-  statedRev = lib.concatStrings (
-    lib.filter (s: s != "#") (lib.splitString "#" (lib.replaceStrings [ "\n" " " ] [ "" "" ] window))
-  );
-
-  # ★ THE NODE SELECTION IS THE WHOLE CORRECTNESS OF THIS CELL, AND THE LOCK CARRIES A DECOY.
-  # `ci/flake.lock` holds more than one nixpkgs-bearing node, and the one literally NAMED `nixpkgs`
-  # is NOT this flake's: it is a transitive node (gen-harness's), and reading it would give a
-  # plausible rev rather than an error. The right node is whatever the ROOT's own `nixpkgs` input
-  # resolves to — which this lock happens to name `nixpkgs_2` — so it is reached by INDIRECTION
-  # through `root.inputs`, never by spelling a node name.
-  #
-  # ONE reader, TWO callers: the live lock here and the fixture the control drives it on. That is
-  # what makes the control a control — a reader rewritten to spell `nodes.nixpkgs` still satisfies
-  # the live lock whenever the two nodes happen to agree, and reds the fixture always.
-  revOfRootNixpkgs = l: l.nodes.${l.nodes.root.inputs.nixpkgs}.locked.rev;
-  lock = builtins.fromJSON (builtins.readFile ../flake.lock);
-  lockedRev = revOfRootNixpkgs lock;
-
-  # ★★ THE DECOY IS BUILT HERE, NOT BORROWED FROM THE LIVE LOCK, AND THAT IS THE REPAIR.
-  # The control used to assert that the live `nodes.nixpkgs` sat at a DIFFERENT rev from the root's
-  # — true only because the two had drifted apart. A relock bumps both to the same channel tip and
-  # the two revs AGREE, so the live lock stops carrying a decoy and the control can no longer tell a
-  # correct reader from a name-spelling one. Measured 2026-09-18 at the converged pins: both nodes
-  # at `e554fab72f81915600f3f449b786fd9af40439a5`, and convergence is the expected steady state, so
-  # the instrument would have gone blunt on every future relock. A fixture cannot converge.
-  # ★ The LIVE half is not dropped: `lockedRev` below is read from the real file, and the oracle
-  # cell asserts its literal value — so the reader is proven WIRED there and proven DISCRIMINATING
-  # here, which is the pair the control owes.
-  decoyLock = {
-    nodes = {
-      root.inputs.nixpkgs = "nixpkgs_2";
-      nixpkgs.locked.rev = "decoydecoydecoydecoydecoydecoydecoydecoy";
-      nixpkgs_2.locked.rev = "r00tr00tr00tr00tr00tr00tr00tr00tr00tr00t";
-    };
-  };
 in
 {
   flake.tests.parity-surface = {
     # ── O11: the default-merge law, one cell per arm, both engines, ordered payloads ────────────
     # RED for every cell below: `mergeDefaultOption` did not exist in this library (measured absent
-    # at the pin, whole repo). GREEN: the nixpkgs value measured on the same input at `44a91898`.
+    # at the pin, whole repo). GREEN: the nixpkgs value measured on the same input — first at
+    # `44a91898`, and RE-DERIVED on every run since, because the `nixpkgs` arm of `bothLaws` calls
+    # upstream's function live. The rev names where the literal was first read, NOT a basis the
+    # suite asserts; no rev is stamped anywhere (see the retirement note at the foot of this file).
     test-law-singleton = {
       expr = bothLaws [ 42 ];
       expected = {
@@ -450,50 +412,24 @@ in
       };
     };
 
-    # ── O15: THE PARITY-DRIFT ORACLE ────────────────────────────────────────────────────────────
-    # The exported law and the order pass are an INDEPENDENT REIMPLEMENTATION — `lib/` is
-    # nixpkgs-free (ci/tests/purity.nix) — so parity is a claim verified once against a pinned rev
-    # with nothing watching upstream. This binds the stated rev to the resolved one, BOTH
-    # DIRECTIONS, so the claim cannot age in silence.
-    # ★ WHAT IT DETECTS, stated so it is not over-read: LOCK MOVEMENT, not module-system drift. A
-    # routine nixpkgs bump reds it with both laws byte-unchanged. That is intended — it is a prompt
-    # to re-verify parity and re-stamp the rev, not an assertion that the law broke.
-    test-parity-rev-stamp-matches-the-lock = {
-      expr = {
-        stated = statedRev;
-        locked = lockedRev;
-        agree = statedRev == lockedRev;
-      };
-      expected = {
-        stated = "44a91898084f46797b5fac650c7e8c9ac38c43d4";
-        locked = "44a91898084f46797b5fac650c7e8c9ac38c43d4";
-        agree = true;
-      };
-    };
-
-    # CONTROL for the oracle, same run: without it the comparison may not be wired to anything, and
-    # a drift oracle that cannot fail is the defect it exists to prevent. It asserts that BOTH
-    # readers actually read — that the stated rev came out of the file rather than out of a
-    # default, and that the lock reader follows `root.inputs.nixpkgs` rather than spelling the node
-    # name, which on this lock would land on the decoy literally named `nixpkgs`.
+    # ── RETIRED 2026-09-22: O15, the rev-stamp drift oracle, and its control ────────────────────
+    # ★★★ WHAT CARRIES THE PARITY PROPERTY FORWARD: the `nixpkgs` arm of `bothLaws` in this file's
+    # `let`, which calls `np.mergeDefaultOption` — nixpkgs' OWN function, evaluated LIVE at whatever
+    # rev `ci/flake.lock` resolves. Every O11 law cell above goes through `bothLaws` and asserts BOTH
+    # sides against literal expected values, so an upstream change to the merge law reds those cells
+    # on the PROPERTY. The order cells do the same through `bothCfg`/`npCfg`. Parity is not left
+    # unwatched by this removal; it is watched DIRECTLY instead of through a proxy.
     #
-    # ★ THE INDIRECTION ARM RUNS ON `decoyLock`, NOT ON THE LIVE LOCK, and the comment there says
-    # why: the live lock's decoy is an artefact of drift and a relock removes it. The two live arms
-    # are the ones a fixture cannot give — a stated rev of full length, and a lock reader that
-    # produced one from the real file — and they hold at any pins.
-    test-control-both-drift-readers-are-live = {
-      expr = {
-        stated-is-a-full-rev = prelude.stringLength statedRev == 40;
-        live-lock-reader-produced-a-rev = prelude.stringLength lockedRev == 40;
-        node-reached-by-indirection = decoyLock.nodes.root.inputs.nixpkgs;
-        reader-walks-past-the-decoy = revOfRootNixpkgs decoyLock;
-      };
-      expected = {
-        stated-is-a-full-rev = true;
-        live-lock-reader-produced-a-rev = true;
-        node-reached-by-indirection = "nixpkgs_2";
-        reader-walks-past-the-decoy = "r00tr00tr00tr00tr00tr00tr00tr00tr00tr00t";
-      };
-    };
+    # ★★ WHAT IS DELIBERATELY GIVEN UP: LOCK-MOVEMENT NOTIFICATION. O15 stated a nixpkgs rev in
+    # source text and asserted `ci/flake.lock` agreed with it, both directions, so a routine bump
+    # redded it with both laws byte-unchanged — intended, as a prompt to re-verify and re-stamp. The
+    # 2026-09-22 roster relock is what that cost: the red refused publication at this node and
+    # skipped 11 downstream members plus both trailing nodes. Owner ruling that day, verbatim — *"the
+    # parity contract should move with upstream, remove the hardcode"*. There is now NO signal when
+    # the pin moves; the property is re-checked on every run against whatever it moved to.
+    #
+    # ★ SO DO NOT RESTORE THE STAMP BELIEVING PARITY WENT UNWATCHED — it did not — and do not
+    # "preserve" it by deriving the stated rev from the lock: that makes the comparison vacuously
+    # true, and a drift oracle that cannot fail is the defect it exists to prevent.
   };
 }

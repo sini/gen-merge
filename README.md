@@ -126,10 +126,14 @@ is reproduced: the recursion here runs over the value list, which is what the ar
 `[ (x: [x]) (x: [x+1]) ]` applied to `1` gives `[ 1 2 ]`. Every other arm is byte-equal to nixpkgs' on
 the same input, asserted against the live nixpkgs in `ci/tests/parity-surface.nix`.
 
-**The parity rev is stamped at the export** (`lib/default.nix`, between `nixpkgs-parity-rev` markers)
-and bound to `ci/flake.lock` by a drift cell that compares both directions. `lib/` is nixpkgs-free, so
-the law and the pass are an independent reimplementation with nothing watching upstream; a nixpkgs bump
-reds that cell with both laws byte-unchanged, which is the point — re-verify parity, re-stamp the rev.
+**The parity claim is watched live, not stamped.** Every law cell in `ci/tests/parity-surface.nix` runs
+through `bothLaws`, whose `nixpkgs` arm calls `nixpkgsLib.mergeDefaultOption` at whatever rev
+`ci/flake.lock` resolves, and asserts both sides against literal expected values — so an upstream change
+to the merge law reds those cells on the property. `lib/` is nixpkgs-free, which is what makes that a
+real comparison rather than a wrapper checking itself. A rev-stamp drift cell used to bind a stated pin
+to the lock as well; it was retired 2026-09-22 by ruling, because it watched lock movement rather than
+the law and a routine bump redded it with both laws byte-unchanged. What that gave up is notification
+when the pin moves.
 
 ## Usage
 
