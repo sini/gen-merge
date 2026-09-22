@@ -1059,10 +1059,21 @@ let
             # marker for "the option default supplied the value".
             defaulted = winners != [ ] && all (w: w.file == "<default>") winners;
           };
+      # The undeclared-report channel (ADR-0025 item 1) — `[ ]` for every ordinary type, the same
+      # default posture `coreShortCircuit ? false`/`warmFrom ? null` already take on this file: a
+      # type only produces one by carrying `mergeUndeclared` (today, only `moduleTree`'s nesting
+      # seam), and `soleCore` skips it exactly as it skips the discharge/fold spine itself. Read with
+      # `typeDefs` — the SAME post-discharge, post-priority, file-preserving list `fold loc typeDefs`
+      # above already reads — never `rawDefs`, so the report and the value agree about which defs won.
+      undeclared =
+        if soleCore || type == null || !(type ? mergeUndeclared) then
+          [ ]
+        else
+          type.mergeUndeclared loc typeDefs;
     in
     {
       value = if soleCore then coreDef.value.values else checked;
-      inherit prov;
+      inherit prov undeclared;
     };
 
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
@@ -1207,6 +1218,9 @@ let
       {
         value = builtins.seq _ro applied;
         prov = builtins.seq _ro merged.prov;
+        # Threaded unchanged — an option that is BOTH `moduleTree`-typed and carries `apply`/
+        # `readOnly` must not lose its undeclared report at this second re-wrap seam.
+        undeclared = builtins.seq _ro merged.undeclared;
       };
 
   # ── STRATUM 1 — THE DECLARATION FOLD. NOT A FIXPOINT ──────────────────────────────────────────
@@ -1489,7 +1503,9 @@ let
                 {
                   name = k;
                   inherit (m) value prov;
-                  unmatched = [ ];
+                  # `[ ]` for every ordinary leaf type (no change); a `moduleTree`-typed leaf's own
+                  # dropped defs, bubbled up exactly like a GROUP recursion's `r.unmatched` beside it.
+                  unmatched = m.undeclared or [ ];
                 }
             else
               let
@@ -2246,13 +2262,32 @@ let
       #     into an abort. Absence is the answer here, and `nonMountable` is what states it.
       type =
         let
-          nestingFold =
+          # ONE fixpoint definition, read from two sibling fields below — `mergeDefs` reads its
+          # `.config`, `mergeUndeclared` reads its `.undeclared` (ADR-0025 item 1: the def that
+          # `.config` drops is exactly what `.undeclared` names, off the SAME nested eval rather than
+          # a second, independently-authored one that could drift from it).
+          nested =
             loc: defs:
-            (evalModuleTree {
+            evalModuleTree {
               inherit specialArgs check coreShortCircuit;
               prefix = loc;
-              modules = modList ++ map (d: setDefaultModuleLocation (d.file or "<def>") d.value) defs;
-            }).config;
+              # `{_file; config;}` directly, NOT `setDefaultModuleLocation` (`{_file; imports=[m];}`):
+              # the `imports` shape loses `_file` on recursion — `collectModules` flattens the wrapper
+              # via `imported ++ [self]`, so the real content becomes its OWN entry with neither
+              # `m0._file` nor `m._file` set, and falls to this file's `"<gen-merge>"` default
+              # (line ~581) — a PRE-EXISTING loss in that helper, reproducible with no nesting and no
+              # `mergeUndeclared` involved at all (isolated, positive-controlled). `config = d.value`
+              # keeps `d.value`'s own entry attribution and was measured byte-identical to the
+              # `imports` shape on `.config` across a two-file non-conflicting case and an
+              # `mkOverride`-priority-conflict case, in the same run as this fix.
+              modules =
+                modList
+                ++ map (d: {
+                  _file = d.file or "<def>";
+                  config = d.value;
+                }) defs;
+            };
+          nestingFold = loc: defs: (nested loc defs).config;
         in
         interface.refuseMount {
           name = "moduleTree";
@@ -2262,6 +2297,17 @@ let
         // {
           name = "moduleTree";
           mergeDefs = nestingFold;
+
+          # THE UNDECLARED TWIN — a third gen-native sibling beside `mergeDefs`/`nonMountable` (not a
+          # fourth kind of thing on this record). Before this field, a def under a key the nested tree
+          # does not declare vanished at `check = false`: no throw, and no report — the third,
+          # unnamed disposition ADR-0025 item 1 forbids. `mergeDefsRichWith` (below) is this field's
+          # only reader, calling it with the SAME `typeDefs` it already built for `mergeDefs`, so the
+          # report and the value never see two different def sets. Never read by the foreign protocol:
+          # `carrierRefusal`/`payloadRole` (lib/interface.nix) compute off a fixed five-name
+          # foreign-protocol set and never a gen-native key, so this field cannot move either
+          # function's output for any input — W6's refusal is untouched.
+          mergeUndeclared = loc: defs: (nested loc defs).undeclared;
 
           # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
           # the reason, so a consumer that finds it needs no other document to know what to do.

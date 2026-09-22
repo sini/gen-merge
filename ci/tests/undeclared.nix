@@ -276,5 +276,86 @@ in
         absorbedAborts = false;
       };
     };
+
+    # 10 — the channel reaches gen-merge's OWN nesting seam too: an option typed with another
+    # `evalModuleTree` call's `.type` directly (not `t.submodule`, which W6 refuses to mount by
+    # name) is this engine talking to itself, and ADR-0025 item 1 does not carve out an exception
+    # for that boundary — a def dropped one level down is reported at its full path, same as any
+    # other undeclared def, and `.config` stays exactly what it was before this channel existed.
+    # Live control, same cell: a mirrored fixture supplies the identical undeclared key at the
+    # KIND'S OWN top level, where cell 1 already covers this discipline — proving the assertion
+    # below exercises the nested seam specifically, not just re-confirming the top-level behaviour.
+    test-nested-tree-as-type-leaf-reports-its-own-orphan =
+      let
+        innerType =
+          (evalModuleTree {
+            modules = [
+              {
+                options.known = mkOption {
+                  type = t.str;
+                  default = "k";
+                };
+              }
+            ];
+            check = false;
+          }).type;
+        r = evalModuleTree {
+          modules = [
+            {
+              options.nest = mkOption {
+                type = innerType;
+                default = { };
+              };
+            }
+            {
+              _file = "C";
+              config.nest = {
+                known = "k2";
+                bogus = "B";
+              };
+            }
+          ];
+          check = false;
+        };
+        control = report {
+          modules = [
+            declared
+            {
+              _file = "C";
+              config.bogus = "B";
+            }
+          ];
+          check = false;
+        };
+      in
+      {
+        expr = {
+          undeclared = r.undeclared;
+          config = r.config;
+          inherit control;
+        };
+        expected = {
+          undeclared = [
+            {
+              file = "C";
+              path = [
+                "nest"
+                "bogus"
+              ];
+            }
+          ];
+          config = {
+            nest = {
+              known = "k2";
+            };
+          };
+          control = [
+            {
+              file = "C";
+              path = [ "bogus" ];
+            }
+          ];
+        };
+      };
   };
 }
