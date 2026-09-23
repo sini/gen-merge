@@ -245,8 +245,14 @@ surface here with their full absolute path (`nest.z`, or `sub.nest.z` at `prefix
 finding is **never absorbed** by an outer `freeformType`: its key has an associated option (the
 declared leaf `nest`), so it is outside the freeform domain (nixpkgs: *"merge all definitions that
 don't have an associated option"*), and absorbing it would change a declared option's value. So it is
-reported under every regime, and refused at `check = true` whatever `freeformType` is:
-`` gen-merge: option `nest.z' is not declared by the nested tree that owns it ``. The domain is exactly
+reported under every regime, and refused whatever `freeformType` is when the nested tree is strict: by
+its own `check`, or because an evaluation carrying its report is at `check = true`. The refusal is the
+owner's, at the owner's level, when that level is read (nixpkgs' per-level rule): reading `config.nest`
+or deeper refuses, a sibling read does not, and neither does an `apply` that discards the nested value.
+A lax tree under a strict carrier refuses as
+`` gen-merge: option `nest.z' is not declared by the nested tree that owns it ``; a tree at
+`check = true` refuses in its own words, `` option `nest.z' does not exist (no freeformType to absorb it) ``.
+The domain is exactly
 the leaves whose declared type carries `mergeDefs.reported`; a nested tree inside a wrapper (an `attrsOf`
 of a moduleTree) has no report channel, so it refuses its own level's findings by name when that level
 is read (see [the tree-as-a-type](#the-tree-as-a-type-is-not-mountable-and-it-says-so)). Order: this level's own definitions first, then nested findings;
@@ -270,27 +276,26 @@ loc *with everything beneath it*. Deeper rendering has no well-defined answer: w
 `config.nested.deep.key = "X"` and `config.nested = { deep.key = "X"; }` are the same definition, so a
 descent could not tell a dropped option path from a dropped attrset value.
 
-★ **Two declared divergences from `lib.evalModules`, both on this channel's leaf binding.** Deciding a
+★ **One declared divergence from `lib.evalModules`, on this channel's leaf binding.** Deciding a
 leaf's contribution to the list reads that leaf's **declaration** — `opts.<k>.type` — so that no
 *definition* is forced to learn the answer.
 
-1. **A leaf whose `type` is an expression derived from this eval's own `config`** reads
-   `infinite recursion encountered` at `check = true`, with or without a `freeformType`, through the
-   orphan check's walk of the nested-findings channel. nixpkgs' own `lib.evalModules` evaluates the
-   same fixture to a value. It is **uncatchable by `builtins.tryEval`**, so no cell can collect it, and
-   it arrived with the report channel itself rather than with the guard that made the channel cheap. At
-   `check = false` the same fixture evaluates, in both regimes. A wrapper that reaches WHNF without
-   forcing its element type — `attrsOf`, which is what the registry idiom actually ships — is
-   unaffected, and `ci/tests/undeclared.nix`'s
-   `test-a-config-derived-leaf-type-is-a-declared-divergence` pins that boundary. The construction it
-   wants is the declaration guard's, extended to reach descriptor types — it already names this failure
-   class in its own words while reaching only option paths and `imports` targets. That is a different
-   mechanism on a different stratum, and it is not authored here.
-2. **A strict parent over a lax nested tree refuses the nested tree's finding**, where nixpkgs admits
-   it. `test-a-lax-nested-tree-is-still-refused-by-a-strict-parent` pins it without a `freeformType`,
-   and the refusal holds under one too (`test-a-nested-finding-under-a-freeformtype-is-refused-at-check`):
-   the finding is outside the freeform domain, so the report↔refusal correspondence fixes the refusal
-   gate as `check` alone.
+**A strict parent over a lax nested tree refuses the nested tree's finding when the nested tree's
+value is reachable from the read**, where nixpkgs admits it.
+`test-a-lax-nested-tree-is-still-refused-by-a-strict-parent` pins it without a `freeformType`, and the
+refusal holds under one too (`test-a-nested-finding-under-a-freeformtype-is-refused-at-check`): the
+finding is outside the freeform domain. The refusal gate is the owner's effective strictness (its own
+`check`, or a carrying evaluation's), and it fires at the owner's level, so a finding can be reported
+and not refused. A sibling read, or an `apply` that discards the tree's value
+(`test-a-strict-parent-whose-apply-discards-a-lax-nested-tree-reads-the-apply-value`), reads what nixpkgs
+reads.
+
+No level walks a nested tree's findings on its own WHNF, so **a leaf whose `type` is an expression
+derived from this eval's own `config` is not a divergence**: it reads its value at `check = true`, typed
+bare (`test-a-config-derived-bare-leaf-type-reads-at-check`) and wrapped in `attrsOf`
+(`test-a-config-derived-leaf-type-is-a-declared-divergence`, which pins the wrapper shape), and so does
+a nested `mkIf` reading the tree's own config
+(`test-a-bare-tree-reads-a-self-referential-nested-mkif`), as in nixpkgs.
 
 ## Deprecated types
 
@@ -423,7 +428,14 @@ trace) when any edited entry carries `disabledModules` (it would disable a clean
 to the footprint) — defence only; unreachable through `evalModuleTree` while module removal is
 refused, since the module reader refuses `disabledModules` by presence on its first read, before any
 warm decision (see
-[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate)). Whether an override *reduces* to a modules-append at all is the caller's call
+[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate)). Warm is also REFUSED (cold
+fallback, `reason = "check differs from warmFrom's (warm refused)"`) when `warmFrom` was evaluated under
+a different effective strictness, or records none, as a result from an evaluator that predates the
+`strict` field does: every reused leaf reads the prior's `config`, whose refusals are the prior's
+regime's. With that clause a warm evaluation equals the cold one across a change of `check`, under the
+warm plane's standing assumption that `specialArgs` are unchanged between evaluations (below): a nested
+tree whose own `check` is derived from a `specialArg` changes underneath a warm evaluation invisibly,
+as any other `specialArg`-derived value does. Whether an override *reduces* to a modules-append at all is the caller's call
 (the `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
 
 **The contribution relation (the FACT) and gen-memo's decision.** A module entry is
@@ -443,7 +455,8 @@ name collides — `["a.b"]."c"` and `["a"]."b.c"` both read `"a.b.c"`). gen-merg
 **gen-memo** (`memo.warmDecision`, the incremental plane's one reuse DECISION for the whole gen
 ecosystem — gen-merge decides only ADMISSION (whether warm participates at all: the
 `disabledModules` refusal above — defence only; unreachable through `evalModuleTree` while module
-removal is refused — and the freeform reuse gate below), never the per-location REUSE
+removal is refused —, the regime key above, which keeps a prior of a different effective strictness
+cold, and the freeform reuse gate below), never the per-location REUSE
 verdict, which is gen-memo's `isClean` alone; otherwise gen-merge only reports what an entry can
 perturb). A declared
 leaf is **REUSABLE iff gen-memo's `isClean` admits its location** — sound whenever the relation is
@@ -476,7 +489,8 @@ plain compose):
 {
   mode     = "warm" | "cold";                     # ADMISSION: cold = the fallback fired (reason stated)
   inert    = <bool>;                              # warm admitted, but no non-edited module is clean ⇒ reuses nothing
-  reason   = <string|null>;                       # why cold (no warmFrom / disabledModules refusal — defence only; unreachable through evalModuleTree while module removal is refused)
+  reason   = <string|null>;                       # why cold (no warmFrom / check differs from warmFrom's / disabledModules refusal — defence only; unreachable through evalModuleTree while module removal is refused)
+  strict   = <bool>;                              # the effective strictness this result was evaluated under; the next warm admission reads it
   reused   = [ <loc-string> … ];                  # the spliced declared leaves (dot-joined)
   remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
   modules  = { clean = [ file… ]; dirty = [ … ]; edited = [ … ]; };   # the classification
@@ -1062,9 +1076,10 @@ it is the strict fold: every site that reaches it by calling it — a container 
 so a key the tree's own level does not declare is refused by name when that level is read, with its
 path, its file and the element's location. The trees nested inside that level fold the same way, so each
 refuses its own level when it is read, and a level that is not read decides nothing. `mergeDefs.reported`
-is the same fold for the one caller that carries a report, the declared leaf of an evaluation: it
-returns `{ value; undeclared; }` from one nested evaluation, and the finding is reported (above), not
-refused. To wrap a tree's fold, **replace `mergeDefs` whole**: refining it as
+is the same fold for the one caller that carries a report, the declared leaf of an evaluation: it takes
+that evaluation's effective strictness and returns `{ value; undeclared; }` from one nested evaluation.
+The finding is reported (above), and, when either the carrier or the nested tree is strict, refused by
+the nested evaluation at its own level when that level is read. To wrap a tree's fold, **replace `mergeDefs` whole**: refining it as
 `mergeDefs // { __functor = …; }` is honoured at an element site and ignored at the reporting site, which
 still reads the unwrapped `.reported`.
 

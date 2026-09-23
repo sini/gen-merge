@@ -459,7 +459,7 @@ in
     # evaluates its right operand when the left is false. Since the channel split, that spine holds
     # definitions only (no leaf contributes to it), so an eager LEAF decision no longer reaches this
     # cell: the leaf-channel forcing point is pinned by cells 11-12, which walk `realized.reported`
-    # through `_orphanCheck` and the report. This cell pins that the freeform plane's own walk stays
+    # through the report. This cell pins that the freeform plane's own walk stays
     # off every declared sibling.
     # LIVE CONTROLS, same cell: `never` still throws on access, and `loose` proves the freeform plane
     # really absorbed an unmatched key here — so the reading above is taken over a tree whose
@@ -494,8 +494,9 @@ in
 
     # 14 — ★ THE ARM DISCRIMINATOR, and the reason the fix is a HOISTED PREDICATE rather than a
     # structural-only `unmatched`. A nested tree at `check = false` typed into a parent at
-    # `check = true` does NOT refuse on its own `_orphanCheck`, so the parent's leaf channel is the
-    # ONLY thing that can refuse the dropped def. Every construction that takes the leaf channel out
+    # `check = true` does NOT refuse on its own `check`: it refuses only because the parent's leaf
+    # channel hands it the parent's strictness (`mergeDefs.reported strict`, the owner's `inherited`
+    # arm of `_orphanCheck`). Every construction that takes the leaf channel out
     # of the refusal predicate greens cells 11-13 and loses this refusal silently; deciding the leaf's
     # contribution from its DECLARATION keeps both.
     # LIVE CONTROL, same cell: the report still names the dropped key, so a green here is the refusal
@@ -536,13 +537,13 @@ in
       };
 
     # 15 — A FORWARD PIN, NOT AN ARM DISCRIMINATOR. The guard reads `opts.${k}.type`, so a leaf whose
-    # `type` is an EXPRESSION derived from this eval's own `config` diverges — README's declared
-    # divergence, and uncatchable (`tryEval` does not contain infinite recursion), so no cell can
-    # assert the bare form. What IS assertable is the shape the divergence does NOT reach: an
-    # `attrsOf` wrapper reaches WHNF without forcing its element type, so the documented
-    # self-referential registry idiom evaluates. This cell reads GREEN on every arm priced for this
-    # change and therefore separates none of them — it pins the boundary of the declared divergence
-    # against a FUTURE edit that moves it, which is the only thing it is here to do.
+    # `type` is an EXPRESSION derived from this eval's own `config` reads that config while the
+    # leaf's findings are decided. The bare form reads its value at `check = true`
+    # (`test-a-config-derived-bare-leaf-type-reads-at-check`, ci/tests/bare-site.nix), since no
+    # level walks a nested tree's findings on its own WHNF. This cell pins the `attrsOf` wrapper,
+    # which reaches WHNF without forcing its element type, so the documented self-referential
+    # registry idiom evaluates. It separates no arm; it pins the wrapper shape against a FUTURE
+    # edit that makes a config-derived type recurse again, which is the only thing it is here to do.
     test-a-config-derived-leaf-type-is-a-declared-divergence =
       let
         r = evalModuleTree {

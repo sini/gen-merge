@@ -1195,7 +1195,7 @@ let
       # every declared leaf.
       fold =
         if mode.carried && type != null && type ? mergeDefs.reported then
-          type.mergeDefs.reported
+          type.mergeDefs.reported mode.strict
         else
           ownFold type;
       # A reporting seam's EMPTY value is its lax fold over no definitions, run where its reference
@@ -1206,7 +1206,7 @@ let
         if winners == [ ] && mode.carried && type != null && type ? mergeDefs.reported then
           (
             let
-              r = type.mergeDefs.reported [ ] [ ];
+              r = type.mergeDefs.reported mode.strict [ ] [ ];
             in
             {
               inherit (r) value;
@@ -1393,10 +1393,13 @@ let
     (mergeOptionWith {
       coreShortCircuit = false;
       carried = true;
+      strict = false;
     } loc optDecl rawDefs).value;
-  # `mode` = `{ coreShortCircuit; carried; }`, one record rather than two arguments: an argument
-  # added here is an environment allocated on every declared leaf, and the record is built once per
-  # evaluation. `carried` says whether this evaluation's undeclared report is read by anyone.
+  # `mode` = `{ coreShortCircuit; carried; strict; }`, one record rather than three arguments: an
+  # argument added here is an environment allocated on every declared leaf, and the record is built
+  # once per evaluation. `carried` says whether this evaluation's undeclared report is read by anyone;
+  # `strict` is this evaluation's effective strictness, which the reporting fold hands down to the
+  # nested tree whose report it carries.
   mergeOptionWith =
     mode: loc: optDecl: rawDefs:
     let
@@ -1610,10 +1613,13 @@ let
       knotAttr;
 
   # ── evalModuleTree — one call = one `evalModules`, one knot on the one evaluator ──────
-  # `carried`: whether this evaluation's `undeclared` report is read. The public binding is
-  # `evalModuleTreeWith true`; only a nesting seam's strict fold passes `false`.
+  # `carried`: whether this evaluation's `undeclared` report is read. `inherited`: whether a tree
+  # that carries that report is strict, which makes this evaluation refuse its own level's findings
+  # as the nested tree that owns them (`_orphanCheck`). The public binding is
+  # `evalModuleTreeWith true false`; only a nesting seam passes anything else: its strict fold
+  # `false false`, its reporting fold `true <the carrying evaluation's effective strictness>`.
   evalModuleTreeWith =
-    carried:
+    carried: inherited:
     {
       modules,
       specialArgs ? { },
@@ -1644,7 +1650,9 @@ let
       modList = if isList modules then modules else [ modules ];
       # Rich option merge (`{ value; prov }`) — the realizer reads BOTH the value tree and the
       # provenance tree from one shared discharge/priority pass per declared leaf.
-      localMergeOptionRich = mergeOptionWith { inherit coreShortCircuit carried; };
+      # This evaluation's effective strictness: its own `check`, or a carrying tree's.
+      strict = check || inherited;
+      localMergeOptionRich = mergeOptionWith { inherit coreShortCircuit carried strict; };
 
       # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
       # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
@@ -1785,9 +1793,9 @@ let
           # warm-reused leaf's is only because an unreported eval is a nested one, which is always
           # cold. The guard states that here, where the walk decides, rather than borrowing it. Decided
           # inside this walk: every ordinary leaf type contributes `[ ]` without its merge record being
-          # touched, so no definition is forced to learn it. Two readers walk `reported`'s spine,
-          # `_orphanCheck` (at `check`) and the `undeclared` report, and a walk that read `x.m.undeclared`
-          # for every leaf would force EVERY leaf's merge through them — against this engine's own
+          # touched, so no definition is forced to learn it. One reader walks `reported`'s spine, the
+          # `undeclared` report (no refusal reads it; see `_orphanCheck`), and a walk that read
+          # `x.m.undeclared` for every leaf would force EVERY leaf's merge through it — against this engine's own
           # contract ("undefined+no-default throws only on access"). The decision lives here, and not
           # as a field on the pair, because the walk is already the point that forces it: a per-pair
           # field is a thunk and a record slot on every leaf, and deciding at pair construction would
@@ -1915,6 +1923,17 @@ let
           # REFUSED (cold fallback) when an edited entry carries `disabledModules` (§2 guard) — defence
           # only; unreachable through `evalModuleTree` while module removal is refused
           # (`moduleSyntaxChecked`).
+          # Warm is also REFUSED (cold fallback, reason stated) when `warmFrom` was evaluated under a
+          # different effective strictness, or records none (a result from an evaluator that predates
+          # `warmDecision.strict` reads `null`). Every reused leaf is `getAttrByPath` of the prior's
+          # `config`, whose WHNF carries the PRIOR's `_orphanCheck`, so reuse across a change of
+          # `check` would refuse where cold is a value, or admit where cold refuses (ADR-0008 item 2:
+          # warm is byte-identical to cold). The key is on the admission, not per leaf, for that
+          # reason, and it is read inline, here and in `reason`, since a `let` binding costs a thunk
+          # per evaluation. At this, the only warm site, `strict` is `check` (`inherited` is `false`
+          # at the top). A nested owner's own strictness changing underneath is covered by the
+          # plane's standing premises: a dirty declaring module re-merges, and `specialArgs` are
+          # unchanged between evaluations.
           editedCount = if editedModules == [ ] then 0 else length (collectModules callM editedModules);
           decision = warmDecide {
             inherit
@@ -1924,7 +1943,8 @@ let
               warmFrom
               ;
           };
-          warmActive = warmFrom != null && !decision.disabledRefusal;
+          warmActive =
+            warmFrom != null && warmFrom.warmDecision.strict or null == strict && !decision.disabledRefusal;
           warmCtx =
             if warmActive then
               {
@@ -2054,11 +2074,21 @@ let
           # Unknown keys — at ANY depth — route as ONE freeformType def-set at the ROOT (nixpkgs
           # freeform), each reshaped to its full nested path so lazyAttrsOf/attrsOf owns the per-key
           # merge. With no freeform they are orphans → the option does not exist → throw (per level).
-          # A nested tree's FINDING (`realized.reported`) is refused at `check` whatever `freeform` is:
-          # its key has an associated option (the declared leaf that owns the nested tree), so it lies
-          # outside the freeformType's domain ("definitions that don't have an associated option") and
-          # can be neither absorbed nor dropped silently. Its path is already absolute, so it is named
-          # as is. This extends the standing divergence from `lib.evalModules` that
+          # A finding is refused at its OWNER's level, when that level is read: nixpkgs' per-level rule
+          # (`checkUnmatched` is `seq`'d onto its own evaluation's result only). The owner of a nested
+          # tree's finding is the nested evaluation that did not merge the definition, and it refuses
+          # under its EFFECTIVE strictness: its own `check` (the first arm, in its own words), or
+          # `inherited`, set when an evaluation carrying its report is strict (the second arm). Both
+          # arms read the owner's own `freeform`: a key the owner's `freeformType` absorbs is no
+          # finding. No level refuses `realized.reported`. Deciding a descendant's findings here would
+          # force every carried nested evaluation down to its option merges on this level's WHNF, and
+          # a nested `mkIf` reading this tree's own config would close a cycle through the gate. So a
+          # read that does not reach the owner's value (a sibling leaf, an `apply` that discards the
+          # tree) is not refused, as in nixpkgs. An OUTER `freeformType` never absorbs a nested
+          # finding: its key has an associated option (the declared leaf that owns the nested tree),
+          # so it lies outside that type's domain ("definitions that don't have an associated
+          # option"), and the owner refuses it whatever the outer `freeform` is. This extends the
+          # standing divergence from `lib.evalModules` that
           # `test-a-lax-nested-tree-is-still-refused-by-a-strict-parent` pins (nixpkgs admits a strict
           # parent over a lax child) to the freeform regime.
           _orphanCheck =
@@ -2066,8 +2096,10 @@ let
               throw "gen-merge: option `${
                 showOption (prefix ++ (head realized.unmatched).path)
               }' does not exist (no freeformType to absorb it)"
-            else if check && realized.reported != [ ] then
-              throw "gen-merge: option `${showOption (head realized.reported).path}' is not declared by the nested tree that owns it"
+            else if inherited && freeform == null && realized.unmatched != [ ] then
+              throw "gen-merge: option `${
+                showOption (prefix ++ (head realized.unmatched).path)
+              }' is not declared by the nested tree that owns it"
             else
               null;
           # An unmatched def has THREE dispositions and no fourth: a `freeformType` absorbs it (below),
@@ -2084,7 +2116,7 @@ let
           # is not a checking question. The freeform plane gates THIS LEVEL's own definitions only
           # (`realized.unmatched`), because there those defs ARE merged and nothing was dropped. A nested
           # tree's findings (`realized.reported`) are never absorbed (see `_orphanCheck`), so they are
-          # reported under every regime. Order: this level's own definitions first, then nested
+          # reported under every regime, and refused by the nested tree that owns them, never here. Order: this level's own definitions first, then nested
           # findings; order is promised per key only.
           #
           # By construction, not a new tracking layer: the first part is `realized.unmatched` (the same
@@ -2271,8 +2303,10 @@ let
           # gen-flake's dissolved `override`). Laziness contract: `mode`/`modules` are cheap
           # (classification only);
           # `reused`/`remerged` are O(declared-locs) SPINE-forcing when read (they enumerate the loc
-          # partition — never leaf values). Cold (`warmFrom == null` or a disabledModules refusal) ⇒
-          # nothing spliced ⇒ `reused = [ ]`, `remerged = { }`, with the cold `reason` stated.
+          # partition — never leaf values). Cold (`warmFrom == null`, a prior whose `strict` is not
+          # this evaluation's, or a disabledModules refusal) ⇒ nothing spliced ⇒ `reused = [ ]`,
+          # `remerged = { }`, with the cold `reason` stated. `strict` is the effective strictness this
+          # result was evaluated under, which the next warm admission reads.
           #
           # `mode` reports ADMISSION, not reuse: a warm run over a base with no clean module reads
           # "warm" and reuses nothing. `inert` says so at the cheap cost: `true` ⇔ warm was admitted
@@ -2302,10 +2336,13 @@ let
               reason =
                 if warmFrom == null then
                   "no warmFrom (cold)"
+                else if warmFrom.warmDecision.strict or null != strict then
+                  "check differs from warmFrom's (warm refused)"
                 else if decision.disabledRefusal then
                   "disabledModules on an edited module (warm refused)"
                 else
                   null;
+              inherit strict;
               reused = if warmActive then map showOption reusableLeaves else [ ];
               remerged = if warmActive then remerged else { };
               inherit (decision) modules;
@@ -2583,10 +2620,12 @@ let
           # its `.undeclared` the report (ADR-0025 item 1: the def that `.config` drops is exactly
           # what `.undeclared` names, off the SAME nested eval rather than a second,
           # independently-authored one that could drift from it). `carried` is whether that eval's
-          # own report is read, so its own nested trees fold strictly when it is not.
+          # own report is read, so its own nested trees fold strictly when it is not. `inherited` is
+          # whether the evaluation carrying that report is strict; the strict fold passes `false`,
+          # since it refuses by its own functor.
           nested =
-            carried: loc: defs:
-            evalModuleTreeWith carried {
+            carried: inherited: loc: defs:
+            evalModuleTreeWith carried inherited {
               inherit specialArgs check coreShortCircuit;
               prefix = loc;
               # Every DEFINITION is a MODULE, as the reference `(evalModules …).type` reads it
@@ -2599,12 +2638,14 @@ let
           # too, and its `.undeclared` is its OWN level's — and a finding there is refused by name,
           # at this level's WHNF, as nixpkgs refuses per level. `.reported` is the same fold for the
           # one caller that carries a report (the rich realizer fold): the value and the report from
-          # one nested eval. A caller replacing `mergeDefs` replaces both at once.
+          # one nested eval. It takes the carrying evaluation's effective strictness first, which the
+          # nested eval inherits, so a strict carrier's finding is refused by the nested tree that
+          # owns it when that tree's value is read. A caller replacing `mergeDefs` replaces both at once.
           nestingFold = {
             __functor =
               _: loc: defs:
               let
-                n = nested false loc defs;
+                n = nested false false loc defs;
               in
               if n.undeclared == [ ] then
                 n.config
@@ -2622,9 +2663,9 @@ let
                   + " is merged where no undeclared report is carried"
                 );
             reported =
-              loc: defs:
+              strict: loc: defs:
               let
-                n = nested true loc defs;
+                n = nested true strict loc defs;
               in
               {
                 value = n.config;
@@ -2652,7 +2693,7 @@ let
           nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
         };
     };
-  evalModuleTree = evalModuleTreeWith true;
+  evalModuleTree = evalModuleTreeWith true false;
 in
 {
   inherit

@@ -2786,5 +2786,49 @@ in
           };
         };
       };
+
+    # tgj54 — at the bare site a finding is refused at its OWNER's level, in the owner's regime:
+    # a strict nested tree refuses its own key as an option that does not exist.
+    flake.testsError.bare-site =
+      let
+        t2 =
+          (gm.evalModuleTree {
+            check = true;
+            modules = [
+              {
+                options.k = gm.mkOption {
+                  type = t.str;
+                  default = "d";
+                };
+              }
+            ];
+          }).type;
+        t1 =
+          (gm.evalModuleTree {
+            check = true;
+            modules = [ { options.sub = gm.mkOption { type = t2; }; } ];
+          }).type;
+      in
+      {
+        test-a-strict-nested-tree-refuses-its-own-finding-in-its-own-words = {
+          expr = realize {
+            check = false;
+            modules = [
+              { options.x = gm.mkOption { type = t1; }; }
+              {
+                _file = "/real/F.nix";
+                config.x.sub = {
+                  k = "s";
+                  bogus = 1;
+                };
+              }
+            ];
+          };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x\\.sub\\.bogus' does not exist \\(no freeformType to absorb it\\)$";
+          };
+        };
+      };
   };
 }
