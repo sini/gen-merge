@@ -526,6 +526,21 @@ let
   # args.config` reports only `genSchema` yet the `@`-binding captures the full argument set, and a bare
   # lambda (`args: args.config`) reports `{ }` — either reads `config` despite its visible formals. So a
   # function module is DIRTY BY DEFAULT; `pureModule` is the author's explicit clean assertion (§5).
+  #
+  # WHY CLEANLINESS IS DECLARED, NOT DERIVED (ADR-0013: a dependence fact is derived unless derivation
+  # is proven impossible, and the proof names what would have to change). "This module reads no
+  # fixpoint value" is a dependence fact, and under the whole-set application above it is sealed
+  # inside a closure: which attributes of its argument a function body reads is not observable before
+  # it runs, and after `callM` the content no longer shows whether `config` was reachable. So the
+  # classifier takes the conservative verdict, and the only clean verdict a function can get is the
+  # one its author DECLARES with `pureModule` — trusted, never checked.
+  # WHAT WOULD HAVE TO CHANGE for the fact to become derivable: apply a function module with ONLY its
+  # named formals (`intersectAttrs (functionArgs m) args`) instead of the whole set. A hidden read —
+  # `args@{ … }: args.config`, or a bare lambda — then fails loudly (`attribute 'config' missing`)
+  # instead of silently seeing `config`, so the formals become the complete read set: a module whose
+  # formals name no fixpoint-derived argument is clean BY DERIVATION, and `pureModule` is checked
+  # rather than trusted. The price is nixpkgs application parity for `args@`-capturing and bare-lambda
+  # modules in whatever scope adopts it, which is why the whole-set application stands.
   #   • attrset (no `__functor`, no `__pureModule`)  → "attrset"   — no body, cannot read anything.
   #   • path                                          → import it, classify the RESULT.
   #   • `__pureModule`-marked wrapper                 → "marked-pure" — tags THIS entry only; the
@@ -552,7 +567,9 @@ let
   # wrapped function reads ONLY its declared formals and EVERY formal resolves from `specialArgs` — the
   # engine TRUSTS the marker. HAZARD (non-local): a formal is unsafe if another module can shadow its
   # NAME into `_module.args`, making it fixpoint-derived rather than specialArgs-sourced — a lying marker
-  # then reuses stale values silently (README §pureModule spells out the blast radius). The tag
+  # then reuses stale values silently (README §pureModule spells out the blast radius). The marker is a
+  # DECLARED dependence fact because the engine cannot derive it; the argued impossibility, and the
+  # named-formals application that would make it derivable, are stated at `classifyModule`. The tag
   # classifies this wrapper's own content entry marked-pure; entries reached through the module's
   # `imports` classify independently.
   pureModule = f: {
@@ -2016,6 +2033,17 @@ let
           # `reused`/`remerged` are O(declared-locs) SPINE-forcing when read (they enumerate the loc
           # partition — never leaf values). Cold (`warmFrom == null` or a disabledModules refusal) ⇒
           # nothing spliced ⇒ `reused = [ ]`, `remerged = { }`, with the cold `reason` stated.
+          #
+          # `mode` reports ADMISSION, not reuse: a warm run over a base with no clean module reads
+          # "warm" and reuses nothing. `inert` says so at the cheap cost: `true` ⇔ warm was admitted
+          # AND no non-edited module is clean (`modules.clean == [ ]`). It forces classification
+          # only, never the loc partition. Why `inert` ⇒ `reused == [ ]`: every declared leaf is
+          # declared by some module; with none clean, each is declared by a dirty or edited one and
+          # so sits in the footprint; and freeform content has no clean contributor to reuse. The
+          # implication is one-way: `inert = false` does not promise reuse (a clean base whose every
+          # leaf the edit touches reuses nothing too) — only `reused` answers that, at spine cost.
+          # A separate field rather than a third `mode` value, so every reader of `mode` as admission
+          # keeps its meaning.
           warmDecision =
             let
               reusableLeaves = filter (l: decision.isClean (builtins.toJSON l)) (declLeafPaths allOptions);
@@ -2030,6 +2058,7 @@ let
             in
             {
               mode = if warmActive then "warm" else "cold";
+              inert = warmActive && decision.modules.clean == [ ];
               reason =
                 if warmFrom == null then
                   "no warmFrom (cold)"

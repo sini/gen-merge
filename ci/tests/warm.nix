@@ -544,6 +544,91 @@ in
         };
       };
 
+    # `inert` — the cheap "admitted warm, reuses nothing" verdict. A function-headed base is admitted
+    # warm (`mode` is admission) yet every function module is dirty, so nothing is spliced; `inert`
+    # must say so. The attrset and `pureModule` bases carry the same options and DO reuse `bobbin`,
+    # so `inert` must stay false there — and `reused` is read beside it on every arm, so the cell
+    # pins the implication (`inert` ⇒ `reused == [ ]`) against the spine-forcing field it summarises.
+    test-inert-says-a-function-base-reuses-nothing =
+      let
+        opts = {
+          options.spool = mkOption {
+            type = t.int;
+            default = 1;
+          };
+          options.bobbin = mkOption {
+            type = t.int;
+            default = 7;
+          };
+        };
+        edited = [ { config.spool = 2; } ];
+        read =
+          base:
+          let
+            d = (warmOf base edited).warmDecision;
+          in
+          {
+            inherit (d) mode inert reused;
+          };
+      in
+      {
+        expr = {
+          functionBase = read [ (_: opts) ];
+          attrsetBase = read [ opts ];
+          pureBase = read [ (pureModule (_: opts)) ];
+          cold = (coldOf [ (_: opts) ]).warmDecision.inert;
+        };
+        expected = {
+          functionBase = {
+            mode = "warm";
+            inert = true;
+            reused = [ ];
+          };
+          attrsetBase = {
+            mode = "warm";
+            inert = false;
+            reused = [ "bobbin" ];
+          };
+          pureBase = {
+            mode = "warm";
+            inert = false;
+            reused = [ "bobbin" ];
+          };
+          cold = false;
+        };
+      };
+
+    # `inert` forces classification only, never the loc partition. The dirty module's `config` throws
+    # when walked; `reused` walks it (the live control: it must throw on this fixture) and `inert`
+    # must read without touching it.
+    test-inert-forces-no-leaf-walk =
+      let
+        w =
+          warmOf
+            [
+              (_: {
+                options.spool = mkOption {
+                  type = t.int;
+                  default = 1;
+                };
+              })
+              (_: { config = throw "gen-merge test: the loc partition was walked"; })
+            ]
+            [ { config.spool = 2; } ];
+        reads = e: (builtins.tryEval (builtins.deepSeq e e)).success;
+      in
+      {
+        expr = {
+          # Guarded so an eager `inert` reddens this cell instead of aborting the suite.
+          inert = if reads w.warmDecision.inert then w.warmDecision.inert else "threw";
+          reusedWalks = !(reads w.warmDecision.reused);
+        };
+        expected = {
+          inert = true;
+          reusedWalks = true;
+        };
+      };
+
     # 2 — decl-side dirtiness: a dirty module DECLARES an option (b); its loc lands in the footprint and
     # re-merges (reason "dirty-decl <file>"), even though its value is unchanged. A clean leaf (c) still
     # reuses. Whole result == cold.

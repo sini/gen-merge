@@ -14,7 +14,10 @@ answers *"is this value well-typed?"* (a `verify : v → null|err` checker), gen
 these definitions combine into one value?"* (a def-list → value fold). They meet only at leaves,
 post-merge.
 
-Design spec: `den-architecture/gen-specs/gen-resolve/2026-07-02-evalmoduletree-byte-mode-design.md`.
+*Byte-mode* names the design's one yardstick: nixpkgs `lib.evalModules` is the reference, and the
+same modules must yield the same `config`, down to the priority-resolved winner at every option. Every
+place gen-merge departs from it on purpose is listed under
+[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate).
 
 ## Layering
 
@@ -345,6 +348,16 @@ the `@`-binding captures the whole argument set, and a bare lambda (`args: args.
 module with the full `specialArgs // extra` set (nixpkgs application semantics, which byte-mode
 keeps), so a function module can always reach `config`. Only the author knows it doesn't.
 
+That makes cleanliness a **declared** fact rather than a derived one, and the reason is an argued
+impossibility, not a convenience: what a function body reads from its argument is sealed in the
+closure until it runs. **What would have to change** for the engine to derive it: apply each function
+module with *only its named formals* (`intersectAttrs (functionArgs m) args`) instead of the whole
+set. A hidden `config` read then fails loudly (`attribute 'config' missing`) instead of succeeding
+silently, so the formals become the module's complete read set — a module whose formals name no
+fixpoint-derived argument is clean by derivation, and `pureModule` becomes checked rather than
+trusted. The price is nixpkgs application parity for `args@`-capturing and bare-lambda modules, which
+is why the engine keeps the whole-set application and function modules stay dirty by default.
+
 ### The `pureModule` contract
 
 ```nix
@@ -444,7 +457,8 @@ plain compose):
 
 ```nix
 {
-  mode     = "warm" | "cold";                     # cold = the fallback fired (reason stated)
+  mode     = "warm" | "cold";                     # ADMISSION: cold = the fallback fired (reason stated)
+  inert    = <bool>;                              # warm admitted, but no non-edited module is clean ⇒ reuses nothing
   reason   = <string|null>;                       # why cold (no warmFrom / disabledModules refusal)
   reused   = [ <loc-string> … ];                  # the spliced declared leaves (dot-joined)
   remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
@@ -452,9 +466,18 @@ plain compose):
 }
 ```
 
-**Laziness contract.** `mode` / `modules` are cheap (classification only). `reused` / `remerged` are
-`O(declared-locs)` spine-forcing when read (they enumerate the loc partition — never leaf values). This
-is adios's "what was reused vs re-evaluated," delivered as data.
+**Laziness contract.** `mode` / `inert` / `modules` are cheap (classification only). `reused` /
+`remerged` are `O(declared-locs)` spine-forcing when read (they enumerate the loc partition — never leaf
+values). This is adios's "what was reused vs re-evaluated," delivered as data.
+
+**`mode` is admission, `inert` is the cheap reuse verdict.** `mode = "warm"` says the warm path was
+taken; it does not say anything was reused. A base made only of function modules is admitted warm and
+reuses nothing, because every function module is dirty (above). `inert = true` says exactly that
+without walking the loc partition: warm was admitted and `modules.clean` is empty, so every declared
+leaf is declared by a dirty or edited module and re-merges. The implication runs one way —
+`inert = false` does not promise reuse (a clean base whose every leaf the edit touches reuses nothing
+too); only `reused` answers that, at its spine cost. On a cold result `inert` is `false`: `mode`
+already says nothing was spliced.
 
 **The `pureModule` teeth here.** A lying marker's stale reuse surfaces as a warm-vs-cold byte
 divergence — the standing override oracle (every consumer's CI), the in-bench byte gate, and the
