@@ -9,6 +9,7 @@
 # nixpkgs optionType shape (purely, no nixpkgs import) so the SAME type value serves both engines.
 {
   genMerge,
+  genTypes,
   nixpkgsLib,
   interface,
   genMergeCore,
@@ -683,6 +684,62 @@ in
         nullaryLeafStillSelfMerges = true;
         nullaryLeafCrossName = null;
         sealedSelfStillRefuses = null;
+      };
+    };
+
+    # A self-referential leaf (`r = union [ int (listOf r) ]`) has no identity: gen-types' type-identity
+    # bound tags it `unmintable`, so the relation reads a `null` digest and refuses BY NAME, where it
+    # used to re-enter `r`'s own mint and abort uncatchably. The bound is 128 levels, so an identical
+    # redeclaration of a type nested deeper than that is refused too (`chain200`), while one within it
+    # still merges (`chain100`, and the flat twin). `listOf` is gen-types' predicate, not the strategy
+    # this namespace publishes under that name.
+    test-parametric-leaf-typeMerge-bounds-type-nesting = {
+      expr =
+        let
+          r = gmT.union [
+            gmT.int
+            (genTypes.listOf r)
+          ];
+          flat = gmT.union [
+            gmT.int
+            (genTypes.listOf gmT.int)
+          ];
+          chain = n: if n == 0 then gmT.int else genTypes.listOf (chain (n - 1));
+          rel = t: builtins.attrNames (t.typeMergeRel t);
+          deep =
+            n:
+            rel (
+              gmT.union [
+                gmT.int
+                (chain n)
+              ]
+            );
+          redeclare =
+            ty:
+            (genMerge.evalModuleTree {
+              modules = [
+                { options.tree = genMerge.mkOption { type = ty; }; }
+                { options.tree = genMerge.mkOption { type = ty; }; }
+                { config.tree = [ 1 ]; }
+              ];
+            }).config.tree;
+        in
+        {
+          selfReferential = rel r;
+          redeclareSelfReferentialIsCatchable =
+            (builtins.tryEval (builtins.deepSeq (redeclare r) true)).success;
+          flatControl = rel flat;
+          redeclareFlatControl = redeclare flat;
+          chain100 = deep 100;
+          chain200 = deep 200;
+        };
+      expected = {
+        selfReferential = [ "refused" ];
+        redeclareSelfReferentialIsCatchable = false;
+        flatControl = [ "merged" ];
+        redeclareFlatControl = [ 1 ];
+        chain100 = [ "merged" ];
+        chain200 = [ "refused" ];
       };
     };
 
