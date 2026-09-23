@@ -42,6 +42,8 @@ let
     evalModuleTree
     mergeDefs
     mergeLeaf
+    isDefinedValue
+    isDefinedBy
     showOption
     setDefaultModuleLocation
     defsAsModules
@@ -302,9 +304,19 @@ let
       # nixpkgs reaches the same three shapes through its `path` check, which additionally admits a
       # string beginning with `/`; the same narrowing as `deferredModule` below.
       admits = isModuleValue;
-      # A CONTAINER nobody added to is legitimately empty; only a type that declares no empty value
-      # is an error when undefined.
-      whenEmpty.value = { };
+      # With no surviving definition the value is the module set evaluated over NO definitions, as
+      # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
+      # with the documentation placeholder as `name`, so its defaults read as they would there and an
+      # undefined sub-option refuses by name.
+      whenEmpty.value =
+        (evalModuleTree {
+          modules = mods;
+          prefix = [ ];
+          specialArgs = args // {
+            name = "‹name›";
+          };
+          check = true;
+        }).config;
       # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
       # relation unions rather than merges: an option declared as a submodule in two modules ends up
       # declaring the union of what they declare. On a nullary relation the second declaration would
@@ -405,24 +417,33 @@ let
         modules = (subOf element).modules;
         rebuild = m: listOf (if carriesSub element then (subOf element).rebuild m else element);
       };
+      # A position whose every definition was discharged is DROPPED, as nixpkgs' `listOf` drops it.
+      # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
+      # loc (and a submodule element's `name`) is its source position whatever an earlier sibling's
+      # condition says.
       mergeDefs =
         loc: defs:
         concatMap (
           d:
-          imap0 (
-            i: v:
-            mergeDefs (loc ++ [ (toString i) ]) element [
-              {
-                inherit (d) file;
-                value = v;
-              }
-            ]
-          ) d.value
+          concatLists (
+            imap0 (
+              i: v:
+              optional (isDefinedValue v) (
+                mergeDefs (loc ++ [ (toString i) ]) element [
+                  {
+                    inherit (d) file;
+                    value = v;
+                  }
+                ]
+              )
+            ) d.value
+          )
         ) defs;
     };
 
-  # attrsOf / lazyAttrsOf — per-key merge through the element type. Byte-mode output is identical
-  # for both (Nix values are already lazy — spec §1 item 2); kept as distinct names for the surface.
+  # attrsOf / lazyAttrsOf — per-key merge through the element type. They differ where nixpkgs' do: a
+  # key whose every definition was discharged is DROPPED by `attrsOf` and KEPT by `lazyAttrsOf` (at
+  # the element's empty value), so `attrsOf`'s key set forces each key's definitions to WHNF.
   attrsOfWith =
     tyName: element:
     defineType {
@@ -445,26 +466,50 @@ let
         modules = (subOf element).modules;
         rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
       };
+      # The fold is selected ONCE, when the type is built, and not per call: the lazy fold's text is
+      # the hub bench's `wideFreeform` hot path, whose allocation bound has no headroom for a test
+      # inside it.
       mergeDefs =
-        loc: defs:
-        let
-          # key union via attrset fold — a list `unique` is O(k²) in key count
-          keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
-        in
-        listToAttrs (
-          map (k: {
-            name = k;
-            value = mergeDefs (loc ++ [ k ]) element (
-              concatMap (
-                d:
-                optional (d.value ? ${k}) {
-                  inherit (d) file;
-                  value = d.value.${k};
-                }
-              ) defs
-            );
-          }) keys
-        );
+        if tyName == "attrsOf" then
+          loc: defs:
+          listToAttrs (
+            concatMap (
+              k:
+              let
+                ds = concatMap (
+                  d:
+                  optional (d.value ? ${k}) {
+                    inherit (d) file;
+                    value = d.value.${k};
+                  }
+                ) defs;
+              in
+              optional (isDefinedBy ds) {
+                name = k;
+                value = mergeDefs (loc ++ [ k ]) element ds;
+              }
+            ) (attrNames (foldl' (acc: d: acc // d.value) { } defs))
+          )
+        else
+          loc: defs:
+          let
+            # key union via attrset fold — a list `unique` is O(k²) in key count
+            keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
+          in
+          listToAttrs (
+            map (k: {
+              name = k;
+              value = mergeDefs (loc ++ [ k ]) element (
+                concatMap (
+                  d:
+                  optional (d.value ? ${k}) {
+                    inherit (d) file;
+                    value = d.value.${k};
+                  }
+                ) defs
+              );
+            }) keys
+          );
     };
   attrsOf = attrsOfWith "attrsOf";
   lazyAttrsOf = attrsOfWith "lazyAttrsOf";

@@ -716,7 +716,8 @@ in
     # declares no empty value" and made every undefined option an error. Pinned as the full table
     # against nixpkgs rather than for the four that changed: the types that must declare NONE are the
     # other half of the contract, and a regression that hands every type an `emptyValue.value` would
-    # pass a four-row test.
+    # pass a four-row test. The `submodule { }` row reads `{ }` because that module set declares
+    # nothing; its empty value is `base.config`, pinned over a declaring set in `empty-definitions.nix`.
     test-emptyValue-matches-nixpkgs = {
       expr =
         let
@@ -1372,8 +1373,9 @@ in
           answersIsTypeFalse = (ty._type or null) == "option-type";
           # The nesting seam is intact — nothing was deleted to make the mark.
           keepsTheSeam = (ty ? name) && (ty ? merge);
-          # The three answered truthfully. A tree is not deprecated, supplies no value for an
-          # undefined nesting option, and wraps no element TYPE.
+          # The three answered truthfully. A tree is not deprecated, supplies a value for an
+          # undefined nesting option (its fold over no definitions; read for PRESENCE, since the
+          # value forces the tree's own undefined options), and wraps no element TYPE.
           #
           # Read through `or` — the way every consumer of an optional protocol field reads it, this
           # engine's own readers included — so an ANSWER of `null` stays distinguishable from a
@@ -1382,7 +1384,7 @@ in
           # against absence under a careless predicate.
           answered = {
             deprecationMessage = ty.deprecationMessage or "<absent>";
-            emptyValue = ty.emptyValue or "<absent>";
+            emptyValue = (ty.emptyValue or { }) ? value;
             nestedTypes = ty.nestedTypes or "<absent>";
           };
           # The protocol is otherwise DISPOSED OF, not half-present: every field of the fourteen is
@@ -1396,7 +1398,7 @@ in
         keepsTheSeam = true;
         answered = {
           deprecationMessage = null;
-          emptyValue = { };
+          emptyValue = true;
           nestedTypes = { };
         };
         unanswered = [ "_type" ];

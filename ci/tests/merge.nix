@@ -214,6 +214,9 @@ in
     #
     # Two ways to arrive with nothing, and both reach the ONE `emptyValue` site in the fold: an option
     # never defined at all, and an option whose every definition was discharged away.
+    #
+    # `s = { }` is the fold of `submodule { }` over no definitions, which declares nothing; a submodule
+    # that declares options is pinned in `empty-definitions.nix`.
     test-emptyValue-mkIf-false-sole-def = {
       expr = cfg {
         modules = [

@@ -834,10 +834,10 @@ let
   # and uncatchable by the caller. Completing the protocol would be the wrong repair — the boundary
   # is the eval and what crosses it is plain data, so a mountable nesting seam is crossing work, not
   # a gap in a type. Every field is therefore disposed of explicitly, and the three that are ANSWERED
-  # are answered truthfully: such a value is not deprecated, supplies no value when the option
-  # nesting it goes undefined, and wraps no element type. `_type` is deliberately absent — a consumer
-  # that ASKS whether this is an option type reads it through `or null` and gets a correct `false`,
-  # and a throwing tombstone would turn the one working negative answer into an abort.
+  # are answered truthfully: such a value is not deprecated, supplies the caller's `whenEmpty` when
+  # the option nesting it goes undefined, and wraps no element type. `_type` is deliberately absent —
+  # a consumer that ASKS whether this is an option type reads it through `or null` and gets a correct
+  # `false`, and a throwing tombstone would turn the one working negative answer into an abort.
   #
   # ★ THE FOLD IS ANSWERED, NOT REFUSED, and that is a fourth truthful answer rather than a crack in
   # the refusal. Such a value really does combine definitions that way — it is a nesting seam, and
@@ -850,6 +850,7 @@ let
       name,
       reason,
       fold,
+      whenEmpty,
     }:
     let
       refuse =
@@ -858,7 +859,7 @@ let
     {
       merge = fold;
       deprecationMessage = null;
-      emptyValue = { };
+      emptyValue = whenEmpty;
       nestedTypes = { };
 
       check = refuse "check";

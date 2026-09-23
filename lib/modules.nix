@@ -1003,9 +1003,9 @@ let
 
   # THE EMPTY-DEFINITION RULE, and it is gen's own. With no surviving definition the type gets to
   # supply a value before this is an error, and only a type declaring none is an error. A container is
-  # empty-able — `attrsOf`/`lazyAttrsOf`/`submodule` → `{ }`, `listOf` → `[ ]`, `nullOr` → `null` —
-  # while every leaf (and `raw`/`anything`/`deferredModule`/`either`) declares no empty value and
-  # still throws.
+  # empty-able — `attrsOf`/`lazyAttrsOf` → `{ }`, `listOf` → `[ ]`, `nullOr` → `null`, and a
+  # `submodule` or tree → its own fold over no definitions (nixpkgs' `base.config`) — while every
+  # leaf (and `raw`/`anything`/`deferredModule`/`either`) declares no empty value and still throws.
   #
   # Two distinct ways to arrive with nothing, and both land here: an option that was never defined at
   # all, and an option every one of whose definitions was discharged away — `mkIf false` as the sole
@@ -1081,6 +1081,11 @@ let
   #     `values` as a plain def and run the normal spine (correctness over the skip). Byte-identical
   #     to a config that had supplied `values` in place of the marker.
   mergeDefs = mergeDefsWith false;
+  # Whether a definition survives discharge — nixpkgs' `isDefined = defsFinal != [ ]`, decided by
+  # discharge alone because `filterOverrides` never empties a non-empty list. The `? _type` fast
+  # path is nixpkgs' own: a value with no property marker cannot discharge to nothing.
+  isDefinedValue = v: !(v ? _type) || dischargeProperties v != [ ];
+  isDefinedBy = defs: any (d: isDefinedValue d.value) defs;
   mergeDefsWith =
     coreShortCircuit: loc: type: rawDefs:
     let
@@ -2500,9 +2505,10 @@ let
       # asks for, even in order to refuse it, is exactly the knowledge that unit exists to hold. What
       # stays here is the gen half — a name, a fold, and the mark:
       #
-      #   * THREE ARE ANSWERED TRUTHFULLY, and their answers are the ones this engine's own readers
-      #     already derive from absence, so nothing internal changes: a tree is not deprecated, it
-      #     supplies no value when a nesting option goes undefined, and it wraps no element TYPE.
+      #   * THREE ARE ANSWERED TRUTHFULLY, and they are the answers this engine's own readers take:
+      #     a tree is not deprecated, it supplies its own fold over no definitions when a nesting
+      #     option goes undefined (`emptyTree`, the one binding both faces publish), and it wraps
+      #     no element TYPE.
       #     Supplying them opens no mount: they are answers, not capabilities. The deprecation answer
       #     additionally closes the consumer's one remaining DIRECT (non-`or`) read of this type — the
       #     read that would abort UNCATCHABLY rather than refuse. The refusal does not depend on it:
@@ -2532,15 +2538,18 @@ let
               modules = modList ++ defsAsModules false defs;
             };
           nestingFold = loc: defs: (nested loc defs).config;
+          emptyTree.value = nestingFold [ ] [ ];
         in
         interface.refuseMount {
           name = "moduleTree";
           reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data)";
           fold = nestingFold;
+          whenEmpty = emptyTree;
         }
         // {
           name = "moduleTree";
           mergeDefs = nestingFold;
+          whenEmpty = emptyTree;
 
           # THE UNDECLARED TWIN — a third gen-native sibling beside `mergeDefs`/`nonMountable` (not a
           # fourth kind of thing on this record). Before this field, a def under a key the nested tree
@@ -2577,6 +2586,8 @@ in
     # binding is what keeps the vocabulary's answer and the engine's from drifting apart. Internal
     # seam only — the public `lib/default.nix` surface is unchanged.
     mergeLeaf
+    isDefinedValue
+    isDefinedBy
     # The shape-directed default-merge law (nixpkgs `lib.mergeDefaultOption` parity) — an INTERIM
     # surface BESIDE `mergeLeaf`, which stays this engine's own no-`.merge` default. See the public
     # export in lib/default.nix for the marker.

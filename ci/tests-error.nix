@@ -2583,5 +2583,27 @@ in
           };
         };
       };
+    flake.testsError.empty-definitions =
+      let
+        t = genMerge.types;
+        sub = t.submodule {
+          options.a = genMerge.mkOption { type = t.int; };
+        };
+      in
+      {
+        test-submodule-empty-value-refuses-an-undefined-sub-option = {
+          expr =
+            (genMerge.evalModuleTree {
+              modules = [
+                { options.o = genMerge.mkOption { type = sub; }; }
+                { config.o = genMerge.mkIf false { a = 1; }; }
+              ];
+            }).config.o.a;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `a' is used but not defined$";
+          };
+        };
+      };
   };
 }
