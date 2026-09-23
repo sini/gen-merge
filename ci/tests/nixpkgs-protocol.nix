@@ -101,13 +101,15 @@ let
   substrateKeys =
     let
       # A leaf brings a domain predicate and nothing else; its substructure and empty answer are the
-      # leaf ones, stated rather than inherited. `__id`/`__mint`/`__name`/`verify` are gen-types' own
-      # fields riding the import-environment passthrough (see the header comment above) — substrate,
-      # not foreign protocol, so they belong here rather than in `completedKeysBefore`.
+      # leaf ones, stated rather than inherited. `__id`/`__mint`/`__name`/`__nameWithin`/`verify` are
+      # gen-types' own fields riding the import-environment passthrough (see the header comment
+      # above) — substrate, not foreign protocol, so they belong here rather than in
+      # `completedKeysBefore`.
       leaf = [
         "__id"
         "__mint"
         "__name"
+        "__nameWithin"
         "_protoLeafMerge"
         "substructure"
         "typeMergeRel"

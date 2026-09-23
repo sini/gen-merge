@@ -311,11 +311,11 @@
         "gen-prelude": "gen-prelude_6"
       },
       "locked": {
-        "lastModified": 1790183873,
-        "narHash": "sha256-Ak0AcAl/kemmJND1XS0U8jnsOF/oKlf52bWhXQoAfik=",
+        "lastModified": 1790185536,
+        "narHash": "sha256-6XGpWfLd9Z3pKLjH2wbJkInTDIhsGwh4R8GZE7BMG6k=",
         "owner": "sini",
         "repo": "gen-types",
-        "rev": "aef6c0159f7be379d3dccd41aba47546afee8cb9",
+        "rev": "1542e471260637ad0a180ac1d24e9c538bac1089",
         "type": "github"
       },
       "original": {
