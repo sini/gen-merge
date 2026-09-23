@@ -1940,5 +1940,102 @@ in
         };
       };
     };
+    # File threading (ci/tests/file-thread.nix): the refusal TEXT names the file a wrapped
+    # declaration came from, at top level and inside a `submodule` def (`lib/types.nix`
+    # `defToModule` wraps each def with `setDefaultModuleLocation`). Each wrapped arm has a
+    # direct-`_file` control carrying the same message.
+    flake.testsError.file-thread =
+      let
+        F = "/real/F.nix";
+        sdml = file: m: {
+          _file = file;
+          imports = [ m ];
+        };
+        declA = {
+          _file = "/real/A.nix";
+          options.a = gm.mkOption { type = t.int; };
+        };
+        redeclare =
+          m:
+          (gm.evalModuleTree {
+            modules = [
+              declA
+              m
+            ];
+          }).options.a.type.name;
+        strA = {
+          options.a = gm.mkOption { type = t.str; };
+        };
+        freeformA = {
+          _file = "/real/A.nix";
+          freeformType = t.int;
+        };
+        freeform =
+          m:
+          builtins.deepSeq (cfg {
+            modules = [
+              freeformA
+              m
+            ];
+          }) null;
+        declaredMsg = "^gen-merge: option `a' is declared with types that do not merge \\(`int' and `string'\\); declared in /real/A\\.nix, /real/F\\.nix$";
+        freeformMsg = "^gen-merge: the freeform type is defined with types that do not merge \\(`int' and `string'\\); defined in /real/A\\.nix, /real/F\\.nix$";
+      in
+      {
+        test-declared-in-names-wrapped-file = {
+          expr = redeclare (sdml F strA);
+          expectedError = {
+            type = "ThrownError";
+            msg = declaredMsg;
+          };
+        };
+        test-declared-in-direct-file-control = {
+          expr = redeclare (strA // { _file = F; });
+          expectedError = {
+            type = "ThrownError";
+            msg = declaredMsg;
+          };
+        };
+        test-declared-in-inside-submodule-names-def-file = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.s = gm.mkOption {
+                    type = t.submodule {
+                      _file = "/real/SUB.nix";
+                      options.a = gm.mkOption { type = t.int; };
+                    };
+                  };
+                }
+                {
+                  _file = F;
+                  config.s = strA;
+                }
+              ];
+            }).config.s.a;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `s\\.a' is declared with types that do not merge \\(`int' and `string'\\); declared in /real/SUB\\.nix, /real/F\\.nix$";
+          };
+        };
+        test-freeform-defined-in-names-wrapped-file = {
+          expr = freeform (sdml F { freeformType = t.str; });
+          expectedError = {
+            type = "ThrownError";
+            msg = freeformMsg;
+          };
+        };
+        test-freeform-defined-in-direct-file-control = {
+          expr = freeform {
+            _file = F;
+            freeformType = t.str;
+          };
+          expectedError = {
+            type = "ThrownError";
+            msg = freeformMsg;
+          };
+        };
+      };
   };
 }

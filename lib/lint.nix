@@ -102,16 +102,16 @@ let
   };
   # ── module collection (import-expanding, function-OPAQUE), _file tracked as core.collectModules ──
   # Path leaves are `import`ed (pure); an attrset module contributes its `imports` recursively; a
-  # function (or `__functor`) module is an OPAQUE leaf. `file` mirrors `collectModules`' own `_file` rule
-  # exactly (a path's provenance IS its path string, else the module's `_file`, else the engine
-  # fallback).
+  # function (or `__functor`) module is an OPAQUE leaf. `file` mirrors `collectModulesFrom`'s inherited
+  # `_file` rule exactly (a path's provenance IS its path string, else the module's `_file`, else the
+  # importer's resolved `parentFile`, else the engine fallback at the root).
   collect =
-    mods:
+    parentFile: mods:
     concatMap (
       m0:
       let
         m = if builtins.isPath m0 then import m0 else m0;
-        file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or "<gen-merge>"));
+        file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or parentFile));
       in
       if isFunction m then
         [
@@ -138,7 +138,7 @@ let
               inherit file;
             }
           ]
-          ++ collect (importsOf m)
+          ++ collect file (importsOf m)
       else
         [ ]
     ) mods;
@@ -210,7 +210,7 @@ let
     { modules }:
     let
       modList = if isList modules then modules else [ modules ];
-      collected = collect modList;
+      collected = collect "<gen-merge>" modList;
       attrsetEntries = filter (e: !e.fn) collected;
 
       # ── construct 2: a function module whose formals include `options` ──

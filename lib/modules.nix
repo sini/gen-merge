@@ -585,24 +585,35 @@ let
   # module scope so `evalModuleTree` can flatten `editedModules` with the SAME machinery it flattens the
   # full list with — the warm path derives the EDITED tail-count from `length (collectModules callM
   # editedModules)`, never trusting a caller-supplied count (imports expansion is config-dependent).
-  collectModules =
-    callM: mods:
+  #
+  # `_file` is an INHERITED attribute of the import tree (Knuth 1968): `parentFile` is the importer's
+  # resolved file flowing down, and a node's own attribution overrides it. Precedence, most specific
+  # first: a raw path leaf's own path string (nixpkgs-parity error location; `isPath` is guarded first so
+  # a non-attrset is never `._file`-selected), then the entry's own `_file` (pre-application `m0`, then
+  # the applied `m`), then the importer's file, then `"<gen-merge>"` at the root. So content passed
+  # through an unattributed wrapper (`setDefaultModuleLocation F m` = `{ _file = F; imports = [ m ]; }`)
+  # is attributed to its IMPORT site `F` rather than to the fallback, as nixpkgs'
+  # `collectStructuredModules` threads `parentFile`. That equivalence is of the IMPORT-site reading only:
+  # a path module whose content names its own `_file` is named by its path here and by the declared
+  # `_file` in nixpkgs, a pre-existing precedence difference this threading passes on to its
+  # children unchanged. `self._file` stays a thunk: the parent's `m` is already in WHNF (its `imports`
+  # were read), and a child's file is forced only when a file surface is read, never by `.config`.
+  collectModulesFrom =
+    parentFile: callM: mods:
     concatMap (
       m0:
       let
         m = callM m0;
         self = {
-          # A raw path leaf's provenance IS its path string (nixpkgs-parity error location); guard
-          # `isPath` first so we never `._file`-select a non-attrset. Otherwise the module carries its
-          # own `_file`, else the imported result's, else the engine fallback.
-          _file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or "<gen-merge>"));
+          _file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or parentFile));
           content = m;
           srcClass = classifyModule m0;
         };
-        imported = collectModules callM (importsOf m);
+        imported = collectModulesFrom self._file callM (importsOf m);
       in
       imported ++ [ self ]
     ) mods;
+  collectModules = collectModulesFrom "<gen-merge>";
 
   # ── warm re-eval decision layer (design spec §§1-2) ─────────────────────────
   # The opt-in warm path reuses the previous eval's declared-leaf values/provenance for locs PROVABLY
@@ -2339,15 +2350,16 @@ let
             evalModuleTree {
               inherit specialArgs check coreShortCircuit;
               prefix = loc;
-              # `{_file; config;}` directly, NOT `setDefaultModuleLocation` (`{_file; imports=[m];}`):
-              # the `imports` shape loses `_file` on recursion — `collectModules` flattens the wrapper
-              # via `imported ++ [self]`, so the real content becomes its OWN entry with neither
-              # `m0._file` nor `m._file` set, and falls to this file's `"<gen-merge>"` default
-              # (line ~581) — a PRE-EXISTING loss in that helper, reproducible with no nesting and no
-              # `mergeUndeclared` involved at all (isolated, positive-controlled). `config = d.value`
-              # keeps `d.value`'s own entry attribution and was measured byte-identical to the
-              # `imports` shape on `.config` across a two-file non-conflicting case and an
-              # `mkOverride`-priority-conflict case, in the same run as this fix.
+              # `{_file; config;}`: a moduleTree DEFINITION VALUE is read as a CONFIG TREE, not as a
+              # module. Under that reading every key of `d.value` is either a declared option of the
+              # tree or an undeclared key that `.undeclared` names (lax) or the orphan check refuses by
+              # name (strict), with `d.file` as its file. The module reading
+              # (`setDefaultModuleLocation d.file d.value`) would carry the same file, since
+              # `collectModulesFrom` threads the wrapper's `_file` down to its imports, but the module
+              # reader keeps only the structural keys of a def that has any (`config`, `imports`, …)
+              # and drops every other key unread, so a mixed-shape def such as
+              # `{ bogus = 1; config.a = 2; }` would lose `bogus` with no report. The file is not the
+              # reason for this shape; that silent drop is.
               modules =
                 modList
                 ++ map (d: {
