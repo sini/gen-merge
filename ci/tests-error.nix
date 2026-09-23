@@ -1344,6 +1344,70 @@ in
           x = "b";
         };
       };
+      # gen-types' `union` over a gen-merge STRUCTURAL member. A `submodule` carries `admits` and no
+      # `verify`, so the union read the member's `verify` bare and aborted uncatchably with
+      # `attribute 'verify' missing`, on the fold and on a nixpkgs mount alike. gen-types (cyiuz)
+      # now refuses a member that is not a checker by name; this namespace needs no change of its
+      # own, only the relock onto it. The two sites are two cells because a cell carries one
+      # `expectedError`; the checker-only union beside them is their control.
+      test-gentypes-union-over-a-strategy-refuses-by-name = {
+        expr = builtins.deepSeq (cfg {
+          modules = [
+            {
+              options.seam = gm.mkOption {
+                type = t.union [
+                  (t.submodule { options.key = gm.mkOption { type = t.str; }; })
+                  t.str
+                ];
+              };
+            }
+            { config.seam.key = "sateen"; }
+          ];
+        }) null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-types: union: member 'submodule' is not a checker";
+        };
+      };
+      test-gentypes-union-over-a-strategy-refuses-by-name-mounted = {
+        expr =
+          builtins.deepSeq
+            (nixpkgsLib.evalModules {
+              modules = [
+                {
+                  options.seam = nixpkgsLib.mkOption {
+                    type = t.union [
+                      (t.submodule { options.key = gm.mkOption { type = t.str; }; })
+                      t.str
+                    ];
+                  };
+                }
+                { config.seam.key = "sateen"; }
+              ];
+            }).config
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-types: union: member 'submodule' is not a checker";
+        };
+      };
+      test-gentypes-union-over-checkers-answers-control = {
+        expr =
+          (cfg {
+            modules = [
+              {
+                options.seam = gm.mkOption {
+                  type = t.union [
+                    t.int
+                    t.str
+                  ];
+                };
+              }
+              { config.seam = "hello"; }
+            ];
+          }).seam;
+        expected = "hello";
+      };
     };
 
     # The sub-protocol refusal fires at CONSTRUCTION, so there is no bad intermediate to inspect and
