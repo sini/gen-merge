@@ -854,10 +854,17 @@ gap**, and the correction is worth stating because the reasoning is general: a u
 unable to refuse anything, and its merge then hands a definition to a member that cannot consume it.
 See "`either` — a union's merge is total" below.
 
-The remaining shape difference is a *diagnostic* one and stays, for gen-native records only: where a
-definition reaches a gen structural type's merge that cannot consume it without passing a union —
-through `mergeDefs`, which reads `verify` and never `check` — gen-merge still aborts with a raw builtin
-error (`expected a set but found a list`) where nixpkgs names the option and the defining file.
+**Each structural fold refuses a definition outside its `admits`, by name and catchably**, before
+the fold runs. The engine's `mergeDefs` reads `verify` and never `admits`, so a definition reaching
+a gen structural type's merge without passing a union used to reach `imap0` or `//` and abort with
+a raw builtin error (`expected a set but found a list`), or, for `deferredModule`, be accepted and
+fail wherever it was imported. `listOf`, `attrsOf`, `lazyAttrsOf`, `attrs`, `deferredModule` and
+`submodule` now wrap their folds in one binding, `refusingOutside` (`lib/types.nix`), passing the
+same binding they state as `admits`, so their domain check cannot disagree with the `check` they
+export. It tests the surviving definitions, where nixpkgs' `checkedAndMerged` tests `defsFinal`, and
+refuses `` gen-merge: option `<loc>' has definitions `<type>' cannot consume (<files>) ``
+(`ci/tests-error.nix` `structural-domain`). The tree type states no `admits` and keeps the module
+reader's refusal.
 
 **A foreign type's `check` is applied to every definition before its fold**, as nixpkgs'
 `mergeDefinitions` does (`checkedAndMerged`). A type whose domain is stated in the foreign protocol —

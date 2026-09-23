@@ -646,16 +646,12 @@ in
           msg = "^gen-merge: option `x' has definitions `attrs' cannot consume \\(a\\.nix\\)$";
         };
       };
-      # ★ THE LIVE CONTROL FOR THE PARTITION, same input one type over. `attrsOf` indexes the
-      # definition by key without asking its domain first, so the interpreter answers instead — a
-      # raw type error naming neither the option nor the file, and a `TypeError` rather than a
-      # `ThrownError`, which is what "escapes `tryEval`" looks like from outside. That is the
-      # partition the cell above exists to keep `attrs` OUT of, and without this arm "refuses
-      # catchably by name" reads as a property every container already has.
-      #
-      # The pattern is UNANCHORED here alone: the interpreter's message carries the offending value,
-      # and pinning that would assert the interpreter's formatting rather than this engine's.
-      test-control-attrsOf-on-the-same-input-aborts-in-the-interpreter = {
+      # THE SAME INPUT ONE TYPE OVER REFUSES THE SAME WAY. `attrsOf` once indexed the definition by
+      # key without asking its domain first, so the interpreter answered with a raw `TypeError`
+      # naming neither the option nor the file. Every structural container now checks its domain
+      # through the one binding `attrs` uses (`refusingOutside`), so the two refusals differ only in
+      # the type they name; the per-member cells are the `structural-domain` group.
+      test-attrsOf-on-the-same-input-refuses-naming-the-file = {
         expr = realize {
           modules = [
             { options.x = gm.mkOption { type = t.attrsOf t.int; }; }
@@ -666,8 +662,8 @@ in
           ];
         };
         expectedError = {
-          type = "TypeError";
-          msg = "expected a set but found a string";
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions `attrsOf' cannot consume \\(a\\.nix\\)$";
         };
       };
       # A SURVIVING SAME-KEY COLLISION IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029): the
@@ -726,6 +722,86 @@ in
         expected = "attrs";
       };
     };
+
+    # A STRUCTURAL CONTAINER REFUSES A DEFINITION OUTSIDE ITS DOMAIN BY NAME, BEFORE ITS FOLD RUNS
+    # (`refusingOutside`, lib/types.nix). Before it did, `listOf`/`attrsOf`/`lazyAttrsOf` aborted in
+    # the interpreter (`TypeError`, escaping `tryEval`, naming neither option nor file),
+    # `deferredModule` accepted the value silently, and `submodule` refused with the module
+    # reader's text, which names neither. Every pattern is anchored `^…$`, so each cell reads the
+    # option, the type and the file, and the reader's text cannot pass it.
+    flake.testsError.structural-domain =
+      let
+        defined =
+          ty: defs:
+          realize {
+            modules = [ { options.o = gm.mkOption { type = ty; }; } ] ++ defs;
+          };
+        at = file: v: {
+          _file = file;
+          o = v;
+        };
+        refuses = o: ty: file: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `${o}' has definitions `${ty}' cannot consume \\(${file}\\)$";
+        };
+        sub = t.submodule {
+          options.a = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+      in
+      {
+        test-listOf-refuses-a-non-list-definition = {
+          expr = defined (t.listOf t.int) [ (at "/p/F.nix" 5) ];
+          expectedError = refuses "o" "listOf" "/p/F\\.nix";
+        };
+        test-attrsOf-refuses-a-non-attrset-definition = {
+          expr = defined (t.attrsOf t.int) [ (at "/p/F.nix" 5) ];
+          expectedError = refuses "o" "attrsOf" "/p/F\\.nix";
+        };
+        test-lazyAttrsOf-refuses-a-non-attrset-definition = {
+          expr = defined (t.lazyAttrsOf t.int) [ (at "/p/F.nix" [ 1 ]) ];
+          expectedError = refuses "o" "lazyAttrsOf" "/p/F\\.nix";
+        };
+        test-deferredModule-refuses-a-non-module-definition = {
+          expr = defined t.deferredModule [ (at "/p/F.nix" 5) ];
+          expectedError = refuses "o" "deferredModule" "/p/F\\.nix";
+        };
+        test-submodule-refuses-a-non-module-definition-naming-option-and-file = {
+          expr = defined sub [ (at "/p/F.nix" 5) ];
+          expectedError = refuses "o" "submodule" "/p/F\\.nix";
+        };
+        # THE FORCED-CONDITION LEAK (9f4bn's adjacent finding). `mkForce (mkIf false …)` survives
+        # discharge as the `mkIf` record itself, and wins on priority, so the fold is handed a set
+        # where it expects a list. The guard reads the definitions AFTER discharge — where nixpkgs'
+        # `checkedAndMerged` reads `defsFinal` — so only the leaking file is named, not `G.nix`,
+        # whose definition lost on priority.
+        test-listOf-refuses-a-forced-condition-leak = {
+          expr = defined (t.listOf t.int) [
+            (at "/p/F.nix" (gm.mkForce (gm.mkIf false [ 1 ])))
+            (at "/p/G.nix" [ 2 ])
+          ];
+          expectedError = refuses "o" "listOf" "/p/F\\.nix";
+        };
+        test-listOf-submodule-refuses-a-forced-condition-leak = {
+          expr = defined (t.listOf sub) [
+            (at "/p/F.nix" (gm.mkForce (gm.mkIf false [ { a = 1; } ])))
+            (at "/p/G.nix" [ { a = 2; } ])
+          ];
+          expectedError = refuses "o" "listOf" "/p/F\\.nix";
+        };
+        # THE NESTED POSITION: the inner container's fold is reached through the element path, so
+        # the location is the element's and the type named is the inner one.
+        test-nested-listOf-in-attrsOf-refuses-at-the-key = {
+          expr = defined (t.attrsOf (t.listOf t.int)) [ (at "/p/F.nix" { k = 5; }) ];
+          expectedError = refuses "o\\.k" "listOf" "/p/F\\.nix";
+        };
+        test-nested-attrsOf-in-listOf-refuses-at-the-index = {
+          expr = defined (t.listOf (t.attrsOf t.int)) [ (at "/p/F.nix" [ 5 ]) ];
+          expectedError = refuses "o\\.0" "attrsOf" "/p/F\\.nix";
+        };
+      };
 
     # The DEFINITION-side twin of `declaration-merge` above. Two equal-priority `freeformType`
     # contributions used to be resolved by taking the last: the loser was destroyed and no channel

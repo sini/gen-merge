@@ -276,6 +276,12 @@ let
       # The args a nested evaluation runs with. The substrate's `name` is injected LAST, so its key
       # wins by construction rather than by the caller having behaved.
       argsAt = loc: args // { name = if loc == [ ] then "" else prelude.last loc; };
+      # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
+      # through `defsAsModules true` to a nested `evalModuleTree`, so an attrset def is CONFIG and a
+      # function or path def is a MODULE, and the domain is `isModuleValue`'s and not "any value":
+      # nixpkgs `submoduleWith`'s `isAttrs x || isFunction x || path.check x`, as at `deferredModule`.
+      # Bound once: the fold's domain check below reads this same binding.
+      admits = isModuleValue;
     in
     defineType {
       name = "submodule";
@@ -299,11 +305,7 @@ let
           )
         else
           mkSubmodule (args // a) mods;
-      # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
-      # through `defsAsModules true` to a nested `evalModuleTree`, so an attrset def is CONFIG and a
-      # function or path def is a MODULE, and the domain is `isModuleValue`'s and not "any value":
-      # nixpkgs `submoduleWith`'s `isAttrs x || isFunction x || path.check x`, as at `deferredModule`.
-      admits = isModuleValue;
+      inherit admits;
       # With no surviving definition the value is the module set evaluated over NO definitions, as
       # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
       # with the documentation placeholder as `name`, so its defaults read as they would there and an
@@ -382,14 +384,17 @@ let
         # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
         rebuild = m: mkSubmodule args m;
       };
-      mergeDefs =
+      # A definition outside `admits` is refused here, naming the option and the file, before the
+      # module reader would refuse it without either (`refusingOutside`).
+      mergeDefs = refusingOutside "submodule" admits (
         loc: defs:
         (evalModuleTree {
           modules = mods ++ defsAsModules true defs;
           prefix = loc;
           specialArgs = argsAt loc;
           check = true;
-        }).config;
+        }).config
+      );
     };
 
   # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
@@ -400,11 +405,15 @@ let
   # merged through the element type (a submodule element becomes an instance; a leaf is verified).
   listOf =
     element:
+    let
+      # `mergeDefs` walks each definition with `imap0`, so a definition that is not a list is one
+      # this type cannot consume — the domain, stated where the type is built and bound once: the
+      # fold's domain check reads this same binding and refuses the definition by name.
+      admits = isList;
+    in
     defineType {
       name = "listOf";
-      # `mergeDefs` walks each definition with `imap0`, so a definition that is not a list is one
-      # this type cannot consume — the domain, stated where the type is built.
-      admits = isList;
+      inherit admits;
       whenEmpty.value = [ ];
       carries.element = element;
       recarry = c: listOf c.element;
@@ -421,7 +430,7 @@ let
       # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
       # loc (and a submodule element's `name`) is its source position whatever an earlier sibling's
       # condition says.
-      mergeDefs =
+      mergeDefs = refusingOutside "listOf" admits (
         loc: defs:
         concatMap (
           d:
@@ -438,7 +447,8 @@ let
               )
             ) d.value
           )
-        ) defs;
+        ) defs
+      );
     };
 
   # attrsOf / lazyAttrsOf — per-key merge through the element type. They differ where nixpkgs' do: a
@@ -446,11 +456,15 @@ let
   # the element's empty value), so `attrsOf`'s key set forces each key's definitions to WHNF.
   attrsOfWith =
     tyName: element:
+    let
+      # `mergeDefs` takes the key union across the definitions and indexes each by key, so a
+      # definition that is not an attrset is one this type cannot consume. Bound once: the fold's
+      # domain check reads this same binding and refuses the definition by name.
+      admits = isAttrs;
+    in
     defineType {
       name = tyName;
-      # `mergeDefs` takes the key union across the definitions and indexes each by key, so a
-      # definition that is not an attrset is one this type cannot consume.
-      admits = isAttrs;
+      inherit admits;
       whenEmpty.value = { };
       carries.element = element;
       recarry = c: attrsOfWith tyName c.element;
@@ -468,8 +482,8 @@ let
       };
       # The fold is selected ONCE, when the type is built, and not per call: the lazy fold's text is
       # the hub bench's `wideFreeform` hot path, whose allocation bound has no headroom for a test
-      # inside it.
-      mergeDefs =
+      # inside it. The domain check wraps whichever fold was selected, so the selection stays here.
+      mergeDefs = refusingOutside tyName admits (
         if tyName == "attrsOf" then
           loc: defs:
           listToAttrs (
@@ -509,7 +523,8 @@ let
                 ) defs
               );
             }) keys
-          );
+          )
+      );
     };
   attrsOf = attrsOfWith "attrsOf";
   lazyAttrsOf = attrsOfWith "lazyAttrsOf";
@@ -526,117 +541,128 @@ let
   # The TYPE-MERGE collision is new at this name and is not the same fact: unlike `listOf`/`attrsOf`,
   # whose two spellings disagree in their NAMES and so never meet as merge operands, both spellings
   # here are literally `attrs`. That is what the stated relation below answers.
-  attrs = defineType {
-    name = "attrs";
-    # The domain stays the predicate's. What this type does with a definition OUTSIDE that domain is
-    # stated here because the engine does not state it: the post-fold check reads `verify`, and a
-    # structural type carries `admits`, so `admits` is never consulted on the option-fold path.
-    admits = isAttrs;
-    whenEmpty.value = { };
-    # STATED, NOT INHERITED, AND TWO-LEVEL. The default nullary relation matches on `.name` alone,
-    # which is right for a name this library alone mints. This is not one of those, so a name-only
-    # relation would answer `merged` to any same-named partner and silently adopt a fold that is not
-    # this one's. The second level asks the DISCRIMINATING FACT — did the partner bring a fold of its
-    # own? — through `mergeDefs`, the same presence test the engine's own dispatch asks.
-    #
-    # ★ THREE ANSWERS, AND THE THIRD IS WHY THERE ARE NOT TWO. Collapsing the name mismatch and the
-    # foldless same-name case into one `else` reports "a partner named `attrs'" about a partner named
-    # `string', and reaches the refusal shape this file's discipline forbids — the same name on both
-    # sides of the pair, which tells the reader nothing they did not already have.
-    typeMergeRel =
-      other:
-      if !(isAttrs other) || (other.name or null) != "attrs" then
-        { refused = "`attrs' and `${nameOf other}'"; }
-      else if other ? mergeDefs then
-        { merged = attrs; }
-      else
-        { refused = "`attrs' and a partner named `attrs' that states no fold of its own"; };
-    # THE FOLD IS TOTAL OVER ITS INPUT IN BOTH DIRECTIONS, and each refusal is a catchable throw
-    # naming the option, this type, and the files that wrote the definitions at fault.
-    #
-    # ★ THE DOMAIN CHECK RUNS BEFORE THE FOLD, matching `either`'s fold below — and it has to run
-    # there rather than after. The engine's `verify` dispatch reads the FOLDED result, so a definition
-    # this type cannot consume reaches `//` first and the interpreter answers with a raw type error
-    # naming neither the option nor the file, an abort no caller can turn into a diagnostic.
-    #
-    # ★ A SURVIVING SAME-KEY COLLISION IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029). By the
-    # time this fold runs the priority pass has already resolved every INTENDED override, so a key two
-    # definitions still both set is a disagreement nobody expressed, and letting fold order drop one
-    # side is the silent-loss shape this project refuses. Disjoint keys union; a collision refuses by
-    # name, and names the key — which is the part the author has to go and reconcile.
-    mergeDefs =
-      loc: defs:
-      let
-        rejects = map (d: toString (d.file or "<def>")) (filter (d: !(isAttrs d.value)) defs);
-        keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
-        collided = filter (k: length (filter (d: d.value ? ${k}) defs) > 1) keys;
-        collidingFiles = map (d: toString (d.file or "<def>")) (
-          filter (d: filter (k: d.value ? ${k}) collided != [ ]) defs
-        );
-      in
-      if rejects != [ ] then
-        throw "gen-merge: option `${showOption loc}' has definitions `attrs' cannot consume (${concatStringsSep ", " rejects})"
-      else if collided != [ ] then
-        throw "gen-merge: option `${showOption loc}' has `attrs' definitions that collide at ${
-          concatStringsSep ", " (map (k: "`${k}'") collided)
-        } (${concatStringsSep ", " collidingFiles})"
-      else
-        foldl' (res: d: res // d.value) { } defs;
-  };
+  attrs =
+    let
+      # The domain stays the predicate's. What this type does with a definition OUTSIDE that domain
+      # is stated by its fold because the engine does not state it: the post-fold check reads
+      # `verify`, and a structural type carries `admits`, so the engine never consults `admits` on
+      # the option-fold path. Bound once, for `admits` and for the fold's domain check alike.
+      admits = isAttrs;
+    in
+    defineType {
+      name = "attrs";
+      inherit admits;
+      whenEmpty.value = { };
+      # STATED, NOT INHERITED, AND TWO-LEVEL. The default nullary relation matches on `.name` alone,
+      # which is right for a name this library alone mints. This is not one of those, so a name-only
+      # relation would answer `merged` to any same-named partner and silently adopt a fold that is not
+      # this one's. The second level asks the DISCRIMINATING FACT — did the partner bring a fold of its
+      # own? — through `mergeDefs`, the same presence test the engine's own dispatch asks.
+      #
+      # ★ THREE ANSWERS, AND THE THIRD IS WHY THERE ARE NOT TWO. Collapsing the name mismatch and the
+      # foldless same-name case into one `else` reports "a partner named `attrs'" about a partner named
+      # `string', and reaches the refusal shape this file's discipline forbids — the same name on both
+      # sides of the pair, which tells the reader nothing they did not already have.
+      typeMergeRel =
+        other:
+        if !(isAttrs other) || (other.name or null) != "attrs" then
+          { refused = "`attrs' and `${nameOf other}'"; }
+        else if other ? mergeDefs then
+          { merged = attrs; }
+        else
+          { refused = "`attrs' and a partner named `attrs' that states no fold of its own"; };
+      # THE FOLD IS TOTAL OVER ITS INPUT IN BOTH DIRECTIONS, and each refusal is a catchable throw
+      # naming the option, this type, and the files that wrote the definitions at fault.
+      #
+      # ★ THE DOMAIN CHECK RUNS BEFORE THE FOLD, matching `either`'s fold below — and it has to run
+      # there rather than after. The engine's `verify` dispatch reads the FOLDED result, so a definition
+      # this type cannot consume would reach `//` first and the interpreter would answer with a raw
+      # type error naming neither the option nor the file, an abort no caller can turn into a
+      # diagnostic. The check is `refusingOutside`, the one every structural container here uses.
+      #
+      # ★ A SURVIVING SAME-KEY COLLISION IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029). By the
+      # time this fold runs the priority pass has already resolved every INTENDED override, so a key two
+      # definitions still both set is a disagreement nobody expressed, and letting fold order drop one
+      # side is the silent-loss shape this project refuses. Disjoint keys union; a collision refuses by
+      # name, and names the key — which is the part the author has to go and reconcile.
+      mergeDefs = refusingOutside "attrs" admits (
+        loc: defs:
+        let
+          keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
+          collided = filter (k: length (filter (d: d.value ? ${k}) defs) > 1) keys;
+          collidingFiles = map (d: toString (d.file or "<def>")) (
+            filter (d: filter (k: d.value ? ${k}) collided != [ ]) defs
+          );
+        in
+        if collided != [ ] then
+          throw "gen-merge: option `${showOption loc}' has `attrs' definitions that collide at ${
+            concatStringsSep ", " (map (k: "`${k}'") collided)
+          } (${concatStringsSep ", " collidingFiles})"
+        else
+          foldl' (res: d: res // d.value) { } defs
+      );
+    };
 
   # deferredModule (spec §1 item 7) — collect defs into ONE module (via imports), located; NEVER
   # forced by the composition plane. Output is a plain, import-usable module value (nixpkgs-faithful:
   # a deferred module's fold produces `{ imports = [ … ]; }`), handed opaque to the terminal.
-  deferredModule = defineType {
-    name = "deferredModule";
-    # A type carrying no domain at all accepts every definition, which is right only for a type whose
-    # fold really does accept any value. This one's does not: `mergeDefs` wraps each def into an
-    # `imports` list, and the engine's `callM` (lib/modules.nix) can apply only a path, a string
-    # naming an absolute path, a function, a `__functor` attrset, or a plain attrset. Any other value
-    # is carried into `imports` unexamined and refused by whoever imports it, so the definition is
-    # accepted HERE and fails somewhere else — with no option path and no definition file. A check
-    # that cannot fail is not a check.
-    #
-    # The domain is nixpkgs `deferredModuleWith`'s `isAttrs x || isFunction x || path.check x`, whose
-    # `path` predicate admits a STRING beginning with `/` as well as a path; `callM` imports both.
-    admits = isModuleValue;
-    # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
-    # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
-    # "this type has no sub-module concept at all" (a leaf's answer), `[ ]` says "this type has a
-    # module set and there is nothing in it". Reported as `null`, this type's "has nothing to
-    # declare" was indistinguishable from a leaf's "declares nothing" — the missing distinction is
-    # the design choice, so the encoding states it. gen-merge ships no
-    # `deferredModuleWith`/`staticModules`, which is exactly WHY the set is empty by construction
-    # rather than by omission, and why reporting it is a statement of fact and not a stub.
-    #
-    # The three answers are stated together because a consumer reads them together: a foreign module
-    # system branches on whether the module set is null and, on every other type, REPLACES the
-    # option's type with the rebuild. So a non-null module set with a leaf's null rebuild would hand
-    # every mounted option a null type — the encoding and the rebuild are one decision, not two.
-    substructure = {
-      declares = _prefix: { };
-      modules = [ ];
-      # Rebuilding over the empty set is this same type. Over a NON-EMPTY one there is nothing to
-      # build: without a static-module parameter the modules could only be dropped, and a rebuild
-      # that silently discards what it was handed is the wrong value with no diagnostic. Refuse by
-      # name instead.
-      rebuild =
-        m:
-        if m == [ ] then
-          deferredModule
-        else
-          throw (
-            "gen-merge: `deferredModule' cannot be rebuilt over a module set of "
-            + toString (length m)
-            + "; it carries no static modules and dropping them would lose the declarations silently"
-          );
+  deferredModule =
+    let
+      # A type carrying no domain at all accepts every definition, which is right only for a type
+      # whose fold really does accept any value. This one's does not: `mergeDefs` wraps each def into
+      # an `imports` list, and the engine's `callM` (lib/modules.nix) can apply only a path, a string
+      # naming an absolute path, a function, a `__functor` attrset, or a plain attrset. Any other
+      # value carried into `imports` unexamined would be refused by whoever imports it — accepted
+      # HERE and failing somewhere else, with no option path and no definition file. So the fold
+      # refuses it here, by name, through the same binding it states as `admits`.
+      #
+      # The domain is nixpkgs `deferredModuleWith`'s `isAttrs x || isFunction x || path.check x`,
+      # whose `path` predicate admits a STRING beginning with `/` as well as a path; `callM` imports
+      # both.
+      admits = isModuleValue;
+    in
+    defineType {
+      name = "deferredModule";
+      inherit admits;
+      # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
+      # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
+      # "this type has no sub-module concept at all" (a leaf's answer), `[ ]` says "this type has a
+      # module set and there is nothing in it". Reported as `null`, this type's "has nothing to
+      # declare" was indistinguishable from a leaf's "declares nothing" — the missing distinction is
+      # the design choice, so the encoding states it. gen-merge ships no
+      # `deferredModuleWith`/`staticModules`, which is exactly WHY the set is empty by construction
+      # rather than by omission, and why reporting it is a statement of fact and not a stub.
+      #
+      # The three answers are stated together because a consumer reads them together: a foreign module
+      # system branches on whether the module set is null and, on every other type, REPLACES the
+      # option's type with the rebuild. So a non-null module set with a leaf's null rebuild would hand
+      # every mounted option a null type — the encoding and the rebuild are one decision, not two.
+      substructure = {
+        declares = _prefix: { };
+        modules = [ ];
+        # Rebuilding over the empty set is this same type. Over a NON-EMPTY one there is nothing to
+        # build: without a static-module parameter the modules could only be dropped, and a rebuild
+        # that silently discards what it was handed is the wrong value with no diagnostic. Refuse by
+        # name instead.
+        rebuild =
+          m:
+          if m == [ ] then
+            deferredModule
+          else
+            throw (
+              "gen-merge: `deferredModule' cannot be rebuilt over a module set of "
+              + toString (length m)
+              + "; it carries no static modules and dropping them would lose the declarations silently"
+            );
+      };
+      mergeDefs = refusingOutside "deferredModule" admits (
+        loc: defs: {
+          imports = map (
+            d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
+          ) defs;
+        }
+      );
     };
-    mergeDefs = loc: defs: {
-      imports = map (
-        d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
-      ) defs;
-    };
-  };
 
   # The module-value domain, shared by the two types whose definitions ARE modules (`submodule`,
   # `deferredModule`) so the two cannot drift into answering it differently. The engine's `callM`
@@ -644,6 +670,24 @@ let
   # attrset, and nothing else; the string test is the loader's own `isPathString`, so this domain is
   # nixpkgs `pathWith { absolute = true; }` beside attrsets and functions, context irrelevant.
   isModuleValue = v: isAttrs v || isFunction v || builtins.isPath v || isPathString v;
+
+  # A STRUCTURAL FOLD IS TOTAL OVER ITS INPUT: a definition outside the type's stated domain is
+  # refused catchably, naming the option, the type and the files, BEFORE the fold runs — otherwise
+  # it reaches `imap0`/`//`/`?` and the interpreter aborts with a raw type error naming neither, or
+  # (`deferredModule`) is accepted here and fails wherever it is imported. The engine's post-fold
+  # check reads `verify`, never `admits`, so each structural constructor applies this to its own
+  # fold, passing the SAME binding it states as `admits`; its domain check therefore cannot disagree
+  # with the `check` it exports. It tests the surviving definitions (after discharge, priority and
+  # order), where nixpkgs' `checkedAndMerged` tests `defsFinal`, and forces each only to WHNF, which
+  # the engine's discharge has already done. The refusal list is built only on refusal.
+  refusingOutside =
+    tyName: inDomain: fold: loc: defs:
+    if all (d: inDomain d.value) defs then
+      fold loc defs
+    else
+      throw "gen-merge: option `${showOption loc}' has definitions `${tyName}' cannot consume (${
+        concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: !(inDomain d.value)) defs))
+      })";
 
   # Membership predicate for union dispatch. gen-types leaf checkers expose `verify` (v → null|err);
   # gen-merge structural types expose `admits` (v → bool). Prefer `verify` FIRST — a gen-types
