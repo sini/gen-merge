@@ -1242,9 +1242,9 @@ in
     # keeps its type's merge) and `.config` is byte-identical to cold. At `prefix = [ "sub" ]` the
     # warm report must equal the cold one AND read `sub.nest.z` once: agreement alone is not the
     # discriminator, since a warm reader that inverts a doubled cold frame agrees with it.
-    # The warm half at `prefix = [ "sub" ]` pins the REPORT frame only: the warm VALUE plane there
-    # splices `getAttrByPath abs warm.prevConfig` against a config rooted at `[ ]`, which fails on
-    # this fixture before and after the channel split, so `.config` is not read there.
+    # At `prefix = [ "sub" ]` the warm `.config` is byte-identical to cold as well: the value splice
+    # reads the prior `config` at the leaf's relative location, the frame that `config` is rooted in
+    # (`test-reused-leaf-under-a-prefix-reads-the-prior-value`, below).
     test-reused-module-tree-leaf-reports-its-finding-under-freeform-and-prefix =
       let
         inner =
@@ -1324,6 +1324,7 @@ in
           prefixNestReused = builtins.elem "nest" pW.warmDecision.reused;
           prefixReport = map (u: u.path) pW.undeclared;
           prefixAgreesWithCold = pW.undeclared == pC.undeclared;
+          prefixConfigByte = jsonEq pW.config pC.config;
         };
         expected = {
           ffNestReused = true;
@@ -1352,6 +1353,83 @@ in
             ]
           ];
           prefixAgreesWithCold = true;
+          prefixConfigByte = true;
+        };
+      };
+
+    # A REUSED LEAF AT A NON-EMPTY `prefix` IS DECIDED AND READ IN THE PRIOR RESULT'S OWN FRAME.
+    # `config`, `provenance` and the footprint `isClean` decides over are all rooted at `[ ]` whatever
+    # the `prefix`, so the warm leaf asks and splices at its RELATIVE location. The ABSOLUTE one
+    # (`prefix ++ loc`) names nothing in any of them: the value read aborts, and `isClean` admits
+    # every leaf, including one the edit contributes to (`ls`, which must re-merge, not keep `[ "a" ]`).
+    # Reuse is asserted, not only agreement: a leaf that silently re-merged would agree with cold too.
+    # One and two prefix levels, one reused leaf nested a group deep.
+    test-reused-leaf-under-a-prefix-reads-the-prior-value =
+      let
+        base = [
+          {
+            options.nest.x = mkOption { type = t.int; };
+            options.top = mkOption { type = t.str; };
+            options.ls = mkOption { type = t.listOf t.str; };
+          }
+          {
+            _file = "B";
+            config.nest.x = 1;
+            config.top = "t";
+            config.ls = [ "a" ];
+          }
+        ];
+        # The edit only contributes to a leaf the prior result already holds, so a mis-framed
+        # `isClean` does not abort: it reads the stale `[ "a" ]` silently.
+        edited = [ { config.ls = [ "b" ]; } ];
+        at =
+          prefix:
+          let
+            w = evalModuleTree {
+              inherit prefix;
+              modules = base ++ edited;
+              warmFrom = evalModuleTree {
+                inherit prefix;
+                modules = base;
+              };
+              editedModules = edited;
+            };
+            c = evalModuleTree {
+              inherit prefix;
+              modules = base ++ edited;
+            };
+          in
+          {
+            inherit (w.warmDecision) mode reused;
+            ls = w.config.ls;
+            configByte = jsonEq w.config c.config;
+            provByte = jsonEq w.provenance c.provenance;
+          };
+        want = {
+          mode = "warm";
+          reused = [
+            "nest.x"
+            "top"
+          ];
+          ls = [
+            "b"
+            "a"
+          ];
+          configByte = true;
+          provByte = true;
+        };
+      in
+      {
+        expr = {
+          one = at [ "sub" ];
+          two = at [
+            "sub"
+            "deep"
+          ];
+        };
+        expected = {
+          one = want;
+          two = want;
         };
       };
   };

@@ -1515,16 +1515,19 @@ let
               abs = prefix ++ lk;
             in
             if isOptLeaf opts.${k} then
-              if warm.active && warm.isClean (builtins.toJSON abs) then
+              if warm.active && warm.isClean (builtins.toJSON lk) then
                 # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
                 # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
                 # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
                 # (both the decl set and the def set at this loc come only from CLEAN modules).
+                # The decision and both splices take the RELATIVE `lk`: the footprint `isClean` decides
+                # over (`declLeafPaths`/`moduleDefFootprint`) and prev's `config`/`provenance` are all
+                # rooted at `[ ]` whatever the `prefix`. `abs` names nothing in them.
                 {
                   name = k;
                   m = {
-                    value = getAttrByPath abs warm.prevConfig;
-                    prov = getAttrByPath abs warm.prevProv;
+                    value = getAttrByPath lk warm.prevConfig;
+                    prov = getAttrByPath lk warm.prevProv;
                     # The reused leaf's findings are the PRIOR eval's report records at and below `abs`,
                     # passed through unchanged: both are in the absolute frame. The same §2 predicate
                     # (decls and defs here come only from clean modules) makes that report the cold
