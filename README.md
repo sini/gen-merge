@@ -419,7 +419,9 @@ an opt-in knob with a documented firing contract). Warm is the reverse-cone reus
 the tail-k of the full flatten (k = `length (collectModules callM editedModules)`, never a caller
 count, since `imports` expansion is config-dependent). Warm is REFUSED (cold fallback, stated in the
 trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
-to the footprint). Whether an override *reduces* to a modules-append at all is the caller's call
+to the footprint) — defence only; unreachable through `evalModuleTree` while module removal is
+refused, since the module reader refuses `disabledModules` by presence on the cold read first (see
+[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate)). Whether an override *reduces* to a modules-append at all is the caller's call
 (the `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
 
 **The contribution relation (the FACT) and gen-memo's decision.** A module entry is
@@ -438,7 +440,8 @@ Each declared-leaf location is keyed by the injective `builtins.toJSON path` id 
 name collides — `["a.b"]."c"` and `["a"]."b.c"` both read `"a.b.c"`). gen-merge hands this relation to
 **gen-memo** (`memo.warmDecision`, the incremental plane's one reuse DECISION for the whole gen
 ecosystem — gen-merge decides only ADMISSION (whether warm participates at all: the
-`disabledModules` refusal above, the freeform reuse gate below), never the per-location REUSE
+`disabledModules` refusal above — defence only; unreachable through `evalModuleTree` while module
+removal is refused — and the freeform reuse gate below), never the per-location REUSE
 verdict, which is gen-memo's `isClean` alone; otherwise gen-merge only reports what an entry can
 perturb). A declared
 leaf is **REUSABLE iff gen-memo's `isClean` admits its location** — sound whenever the relation is
@@ -471,7 +474,7 @@ plain compose):
 {
   mode     = "warm" | "cold";                     # ADMISSION: cold = the fallback fired (reason stated)
   inert    = <bool>;                              # warm admitted, but no non-edited module is clean ⇒ reuses nothing
-  reason   = <string|null>;                       # why cold (no warmFrom / disabledModules refusal)
+  reason   = <string|null>;                       # why cold (no warmFrom / disabledModules refusal — defence only; unreachable through evalModuleTree while module removal is refused)
   reused   = [ <loc-string> … ];                  # the spliced declared leaves (dot-joined)
   remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
   modules  = { clean = [ file… ]; dirty = [ … ]; edited = [ … ]; };   # the classification
@@ -1093,6 +1096,35 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `raw` only if a consumer hits it.
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
+
+The module reader is nixpkgs' `unifyModuleSyntax`: a module is structured iff it carries `config` or
+`options`, a structured module admits exactly nixpkgs' `attrsToRemove` and refuses any other key by
+name (naming every surplus key and the file, whatever `check` says), and a shorthand module strips
+nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require` joins `imports`;
+`meta` on a structured module is folded into config). Both lists also carry gen-merge's engine keys
+`_module` and `__pureModule`. Its departures:
+
+- `_class` is stripped in both forms and never checked. gen-merge has no `class` parameter, which is
+  nixpkgs with `class = null`.
+- `_module` beside `config`/`options` is folded into config, where nixpkgs refuses it as an
+  unsupported attribute. A strict superset: no module nixpkgs accepts changes meaning.
+- `disabledModules` is **refused by presence**, in both module forms and before the surplus check:
+  gen-merge does not implement module removal, so the modules it names would stay enabled. The empty
+  list is refused too, which over-refuses relative to nixpkgs (it accepts `[ ]`); refusing on
+  presence never forces the list. *Defaulted, reversible.* Implementing module removal is deferred
+  work, re-armed by a consumer that needs it.
+- **The refusals above fire on every CONFIG read, and on no declaration-only read.** They sit in the
+  config reader, which every config read forces for every module (top level, `submodule` and
+  `deferredModule` defs, and `lint`). A read that forces only declarations —
+  `(evalModuleTree …).options`, or `declaredOptions` — is not refused, and its answer can be wrong:
+  on the typo `{ options.b = mkOption …; option.c = mkOption …; }` the declaration `c` is absent
+  from `.options` and `declaredOptions` returns `[ "b" ]`, silently, where nixpkgs refuses the
+  module. Closing it costs a second surplus test per structured module on the declaration path; the
+  cheapest placement measured (at the declaration stratum's entries) costs +432 480 B of allocation
+  on the hub's schemaHosts bench, over its bound. It stays open for that cost, carried by the
+  deferred row for the declaration-only surplus refusal, whose construction and cost are decided
+  together. Pinned as this boundary by
+  `test-declaration-only-read-of-a-typo-key-is-not-refused`, so a fix turns it red on purpose.
 
 These boundaries are mechanically checkable — see [Portable-subset lint](#portable-subset-lint).
 

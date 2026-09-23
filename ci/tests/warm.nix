@@ -920,7 +920,10 @@ in
       };
 
     # 6 — disabledModules on an EDITED entry ⇒ warm REFUSED (cold fallback): the trace says mode=cold
-    # with the reason, and the result is byte-identical to the full cold eval (nothing spliced).
+    # with the reason. The module reader now refuses `disabledModules` by presence on the cold read,
+    # so `.config` is refused on BOTH arms — warm and the full cold eval alike — and the warm refusal
+    # is defence only (see `disabledRefusal`). The trace fields are asserted unchanged; the refusal is
+    # asserted on both configs, so neither arm can answer a value.
     test-disabled-modules-cold-fallback =
       let
         base = [
@@ -943,13 +946,15 @@ in
       in
       {
         expr = {
-          byte = byteOracle base edited;
+          warmConfig = (builtins.tryEval (builtins.deepSeq w.config null)).success;
+          coldConfig = (builtins.tryEval (builtins.deepSeq (coldOf (base ++ edited)).config null)).success;
           mode = w.warmDecision.mode;
           reason = w.warmDecision.reason;
           reused = w.warmDecision.reused;
         };
         expected = {
-          byte = true;
+          warmConfig = false;
+          coldConfig = false;
           mode = "cold";
           reason = "disabledModules on an edited module (warm refused)";
           reused = [ ];

@@ -323,6 +323,94 @@ let
     }
   ];
   remergedKeys = edited: builtins.attrNames (warmOf warmBase edited).warmDecision.remerged;
+
+  # ── the module reader: module syntax refused by name, through every reader path ─────────────
+  # `readerDecl` declares `a` and `foo`; `readerBad` is a structured module carrying a surplus key.
+  # Each refusal cell first forces its LIVE CONTROL through the same path — C0 `{ config.a = 2; }`
+  # must read 2, or C1 `{ foo = 1; }` must read 1 for the `disabledModules` shapes — and throws a
+  # different message when it does not, so a reader that refused everything fails the match.
+  readerDecl = {
+    options.a = gm.mkOption {
+      type = t.int;
+      default = 0;
+    };
+    options.foo = gm.mkOption {
+      type = t.int;
+      default = 0;
+    };
+  };
+  readerBad = {
+    bogus = 1;
+    config.a = 2;
+  };
+  readerC0 = {
+    config.a = 2;
+  };
+  withControl =
+    ctl: want: v:
+    if ctl == want then v else throw "reader control failed: ${builtins.toJSON ctl}";
+  viaTop =
+    m:
+    cfg {
+      modules = [
+        readerDecl
+        {
+          _file = "/real/M.nix";
+          imports = [ m ];
+        }
+      ];
+    };
+  viaTopLax =
+    m:
+    map (u: u.path)
+      (gm.evalModuleTree {
+        modules = [
+          readerDecl
+          m
+        ];
+        check = false;
+      }).undeclared;
+  viaSubmodule =
+    m:
+    (cfg {
+      modules = [
+        { options.s = gm.mkOption { type = t.submodule readerDecl; }; }
+        {
+          _file = "/real/S.nix";
+          config.s = m;
+        }
+      ];
+    }).s;
+  viaDeferred =
+    m:
+    cfg {
+      modules = [
+        readerDecl
+        (cfg {
+          modules = [
+            { options.d = gm.mkOption { type = t.deferredModule; }; }
+            {
+              _file = "/real/D.nix";
+              config.d = m;
+            }
+          ];
+        }).d
+      ];
+    };
+  viaLint =
+    m:
+    gm.lint {
+      modules = [
+        readerDecl
+        ({ _file = "/real/L.nix"; } // m)
+      ];
+    };
+  surplusMsg =
+    file:
+    "^gen-merge: module `${file}' has an unsupported attribute `bogus'\\. A module carrying a top-level `config' or `options' reads only the module keys; move bogus into its explicit `config', or drop `config'/`options' and write every configuration key at the top level\\.$";
+  disabledMsg =
+    file:
+    "^gen-merge: module `${file}' sets `disabledModules'\\. gen-merge does not implement module removal \\(it is deferred work\\): the modules it names would stay enabled here, where the reference module system removes them\\. Remove the key; it is refused by presence, an empty list included\\.$";
 in
 {
   config = {
@@ -2148,5 +2236,98 @@ in
           };
         };
       };
+
+    # THE MODULE READER IS THE REFERENCE'S `unifyModuleSyntax`. A structured module (one carrying
+    # `config` or `options`) with any other key outside the module keys is refused BY NAME, naming
+    # the key and the file, on every config read and through every reader that treats a value as a
+    # module — top level, `check = false`, `types.submodule`, `types.deferredModule` and `lint`.
+    # `disabledModules` is refused by presence in both module forms, and before the surplus test.
+    flake.testsError.module-reader = {
+      test-surplus-key-refused-top-level = {
+        expr = withControl (viaTop readerC0).a 2 (builtins.deepSeq (viaTop readerBad) null);
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusMsg "/real/M\\.nix";
+        };
+      };
+      # Not gated by `check`: a lax eval does not report the key on `.undeclared`, it refuses.
+      test-surplus-key-refused-with-check-false = {
+        expr = withControl (viaTopLax readerC0) [ ] (viaTopLax (readerBad // { _file = "/real/X.nix"; }));
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusMsg "/real/X\\.nix";
+        };
+      };
+      test-surplus-key-refused-in-a-submodule-def = {
+        expr = withControl (viaSubmodule readerC0).a 2 (builtins.deepSeq (viaSubmodule readerBad) null);
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusMsg "/real/S\\.nix";
+        };
+      };
+      test-surplus-key-refused-in-a-deferred-module-def = {
+        expr = withControl (viaDeferred readerC0).a 2 (builtins.deepSeq (viaDeferred readerBad) null);
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusMsg "/real/D\\.nix, via option d";
+        };
+      };
+      # `lint` reads through the same reader: without it, lint called a module the engine refuses
+      # "portable" (`[ ]`).
+      test-surplus-key-refused-by-lint = {
+        expr = withControl (viaLint readerC0) [ ] (viaLint {
+          bogus = gm.mkAfter [ 1 ];
+          config.a = 2;
+        });
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: module `/real/L\\.nix' has an unsupported attribute `bogus'\\. .*";
+        };
+      };
+      # S5, shorthand: `foo = 1` beside `disabledModules` was read as structured and `foo` dropped.
+      test-disabled-modules-refused-on-a-shorthand-module = {
+        expr = withControl (viaTop { foo = 1; }).foo 1 (
+          builtins.deepSeq (viaTop {
+            _file = "/real/DM.nix";
+            foo = 1;
+            disabledModules = [ ];
+          }) null
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = disabledMsg "/real/DM\\.nix";
+        };
+      };
+      # S5b, structured: the key was admitted and ignored on the cold path.
+      test-disabled-modules-refused-on-a-structured-module = {
+        expr = withControl (viaTop readerC0).a 2 (
+          builtins.deepSeq (viaTop {
+            _file = "/real/DS.nix";
+            config.a = 2;
+            disabledModules = [ ];
+          }) null
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = disabledMsg "/real/DS\\.nix";
+        };
+      };
+      # ORDER: a module carrying both a surplus key and `disabledModules` gets the `disabledModules`
+      # refusal, not the surplus one.
+      test-disabled-modules-refused-before-the-surplus-key = {
+        expr = withControl (viaTop readerC0).a 2 (
+          builtins.deepSeq (viaTop {
+            _file = "/real/DO.nix";
+            config.a = 2;
+            bogus = 1;
+            disabledModules = [ ];
+          }) null
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = disabledMsg "/real/DO\\.nix";
+        };
+      };
+    };
   };
 }

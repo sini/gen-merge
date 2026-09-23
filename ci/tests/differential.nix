@@ -264,7 +264,70 @@ let
     };
   };
 
-  fixtures = valueFixtures // refusalFixtures;
+  # ── THE MODULE READER'S SHORTHAND PARITY ──────────────────────────────────────────────────────
+  #
+  # The reader is nixpkgs' `unifyModuleSyntax`: only `config`/`options` make a module structured,
+  # so a bare key beside `imports` or `freeformType` is CONFIG (it was dropped unread when those
+  # keys counted as structural), `_class` and `require` are shorthand metadata (they were read as
+  # undeclared options), and `meta` beside `config` is folded into config (it was dropped). Each
+  # fixture reads `foo = 1` / `meta.m = 7` where nixpkgs does, against the live reference arm; a
+  # reader that dropped the key reads the default 0 and one that refused it evaluates nothing, and
+  # both are reds here.
+  readerDecl = P: {
+    options.a = P.mkOption {
+      type = P.types.int;
+      default = 0;
+    };
+    options.foo = P.mkOption {
+      type = P.types.int;
+      default = 0;
+    };
+  };
+  readerFixture =
+    extra:
+    d.mkFixture {
+      comparison = "value";
+      observables = valueOnly;
+      modules = P: [
+        (readerDecl P)
+        (extra P)
+      ];
+    };
+  readerFixtures = {
+    reader-imports-beside-a-bare-key = readerFixture (_: {
+      foo = 1;
+      imports = [ ];
+    });
+    reader-freeformtype-beside-a-bare-key = readerFixture (P: {
+      foo = 1;
+      freeformType = P.types.attrsOf P.types.int;
+    });
+    reader-class-on-a-shorthand-module = readerFixture (_: {
+      foo = 1;
+      _class = "x";
+    });
+    reader-require-on-a-shorthand-module = readerFixture (_: {
+      foo = 1;
+      require = [ ];
+    });
+    reader-require-imports-its-modules = readerFixture (_: {
+      require = [ { foo = 1; } ];
+    });
+    reader-meta-beside-config-is-folded = readerFixture (P: {
+      imports = [
+        {
+          options.meta.m = P.mkOption {
+            type = P.types.int;
+            default = 0;
+          };
+        }
+      ];
+      config.a = 2;
+      meta.m = 7;
+    });
+  };
+
+  fixtures = valueFixtures // refusalFixtures // readerFixtures;
 
   # ── THE SUBJECTS ──────────────────────────────────────────────────────────────────────────────
   #
@@ -776,10 +839,10 @@ in
         expr = builtins.attrNames valueFixtures == builtins.attrNames corpus;
         expected = true;
       };
-      # The refusal fixtures are the addition, and the count says so.
+      # The refusal and module-reader fixtures are the additions, and the count says so.
       test-fixture-count = {
         expr = builtins.length (builtins.attrNames fixtures);
-        expected = builtins.length (builtins.attrNames corpus) + 2;
+        expected = builtins.length (builtins.attrNames corpus) + 2 + 6;
       };
     };
 }

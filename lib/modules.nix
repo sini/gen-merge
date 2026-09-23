@@ -505,38 +505,92 @@ let
       }
     ) (prelude.genList (i: i) moduleCount);
 
-  # ── module classification ────────────────────────────────────────────────
-  # A module is "structured" if it carries any structural marker; otherwise it is config-shorthand
-  # (the whole attrset is config, minus key/_file metadata). Mirrors nixpkgs unifyModuleSyntax.
-  # `_module` is NOT a structural marker — it is always a CONFIG path (`config._module`), so a
-  # top-level `{ _module.args.x = y; … }` is still config-shorthand (else the whole module would be
-  # dropped), and a top-level `_module` on a structured module is folded into its config.
-  markers = [
+  # ── module classification: the reference's `unifyModuleSyntax`, key list for key list ─────────
+  # STRUCTURED iff the module carries `config` or `options` — nothing else makes it structured. A
+  # structured module admits exactly `structuredKeys` (the reference's `attrsToRemove`, verbatim, plus
+  # this engine's `_module` and `__pureModule`); any other top-level key is REFUSED BY NAME, naming
+  # every surplus key and the file, whatever `check` says. `meta` is folded into config as `meta`.
+  # Otherwise the module is SHORTHAND: `shorthandMetaKeys` (the reference's `shorthandAttrsToRemove`,
+  # verbatim, plus the same two) are metadata, `require` joins `imports` (`importsOf`), and every other
+  # key is config. The shorthand arm copies the module only when a metadata key is present.
+  #
+  # The deliberate departures, each listed under README "Known byte-mode boundaries":
+  #   * `_class` is stripped and never checked — this engine has no `class` parameter, which is the
+  #     reference's `class = null`.
+  #   * `_module` beside `config`/`options` is folded into config (as it always was here), where the
+  #     reference refuses it: a strict superset, and no module the reference accepts changes meaning.
+  #     `_module` is always a CONFIG path (`config._module`), so a top-level `{ _module.args.x = y; }`
+  #     is shorthand.
+  #   * `disabledModules` is REFUSED BY PRESENCE, before the surplus test, in both forms — an empty
+  #     list included, which the reference accepts. This engine does not implement module removal
+  #     (deferred work, re-armed by a consumer that needs it): the modules named would stay enabled.
+  #     Refusing by presence never forces the list. The key stays in both lists so they are verbatim.
+  #   * THE REFUSALS SIT IN THE CONFIG READER, SO THEIR REACH IS "ON EVERY CONFIG READ" AND NO
+  #     FURTHER. Any config read forces `configOf` for every flattened entry (the fixpoint's `pushed`),
+  #     so it covers top-level modules, `submodule` and `deferredModule` defs, and `lint`. A read that
+  #     forces only the DECLARATION stratum — `(evalModuleTree …).options`, `declaredOptions` — is NOT
+  #     refused, and its answer can be wrong: on the typo `{ options.b = …; option.c = …; }` the
+  #     declaration `c` is absent from `.options` without a word, where the reference refuses. Closing
+  #     it costs a second `removeAttrs` per structured entry on the declaration path; the cheapest
+  #     placement measured (at `declarationStratum`'s entries) is +432 480 B of allocation on the
+  #     hub's schemaHosts bench, over its bound. It is open for that cost, not by choice of answer.
+  #
+  # COST. The clean path adds no call, binding or thunk per entry: `configOf` takes the ENTRY and reads
+  # `m = e.content` in the slot the argument thunk used to take, the predicate is `?` tests written
+  # inline (not a call to `isStructured`), `e._file` and the key names are read only inside the throws,
+  # and a structured entry pays one `removeAttrs` compared against `{ }`.
+  structuredKeys = [
+    "_class"
+    "_file"
+    "key"
+    "disabledModules"
     "imports"
     "options"
     "config"
+    "meta"
     "freeformType"
-    "disabledModules"
+    "_module"
+    "__pureModule"
   ];
-  isStructured = m: prelude.any (k: m ? ${k}) markers;
+  shorthandMetaKeys = [
+    "_class"
+    "_file"
+    "key"
+    "disabledModules"
+    "require"
+    "imports"
+    "freeformType"
+    "_module"
+    "__pureModule"
+  ];
+  isStructured = m: m ? config || m ? options;
   configOf =
-    m:
+    e:
     let
+      m = e.content;
       base =
-        if isStructured m then
-          (m.config or { })
+        if m ? config || m ? options then
+          (if m ? meta then (m.config or { }) // { inherit (m) meta; } else m.config or { })
+        else if
+          m ? _file
+          || m ? key
+          || m ? _class
+          || m ? disabledModules
+          || m ? require
+          || m ? imports
+          || m ? freeformType
+          || m ? _module
+          || m ? __pureModule
+        then
+          builtins.removeAttrs m shorthandMetaKeys
         else
-          builtins.removeAttrs m [
-            "key"
-            "_file"
-            "_module"
-            # Defensive: `callM` consumes the `pureModule` wrapper before its content is recorded, so
-            # the marker never reaches config keys — strip it belt-and-braces so a hand-built shorthand
-            # carrying the key cannot leak it into config.
-            "__pureModule"
-          ];
+          m;
     in
-    if m ? _module then
+    if m ? disabledModules then
+      throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
+    else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
+      throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
+    else if m ? _module then
       base // { _module = recursiveUpdate m._module (base._module or { }); }
     else
       base;
@@ -546,7 +600,12 @@ let
     let
       i = m.imports or [ ];
     in
-    if isList i then i else [ i ];
+    if m ? require && !(isStructured m) then
+      m.require ++ (if isList i then i else [ i ])
+    else if isList i then
+      i
+    else
+      [ i ];
   topFreeformOf = m: m.freeformType or null;
 
   # ── source-class classifier (design spec §0.3 / §3) ────────────────────────
@@ -742,7 +801,10 @@ let
               }
             ]
         ) (attrNames attrs);
-      rootAttrs = builtins.removeAttrs (pushDownProperties (configOf content)) [ "_module" ];
+      rootAttrs = builtins.removeAttrs (pushDownProperties (configOf {
+        inherit content;
+        _file = "<gen-merge>";
+      })) [ "_module" ];
     in
     descend allOptions [ ] rootAttrs;
 
@@ -763,6 +825,13 @@ let
   # none of them. disabledModules on any edited entry ⇒ refuse warm (it would disable a clean base
   # module invisibly to the footprint — the same failure shape). Each footprint record keeps a `reason`
   # for the decision trace (spec §4).
+  #
+  # `disabledRefusal` IS DEFENCE ONLY while module removal is refused: `configOf` refuses any entry
+  # carrying `disabledModules` by presence, and the cold `pushed` read forces it first, so this
+  # refusal is unreachable through `evalModuleTree` (a warm eval over such an edit reports mode `cold`
+  # with this reason, and its `.config` is refused). It is kept because it becomes live again,
+  # unchanged, the moment module removal is implemented, and the unit cells that build `flat` by hand
+  # still reach it.
   warmDecide =
     {
       flat,
@@ -838,7 +907,7 @@ let
       freeContribs = concatMap (x: x.free) allF;
 
       editedFreeformType = prelude.any (
-        e: (topFreeformOf e.content != null) || ((configOf e.content)._module.freeformType or null != null)
+        e: (topFreeformOf e.content != null) || ((configOf e)._module.freeformType or null != null)
       ) editedEntries;
       reuseAllFreeform = freeContribs == [ ] && !editedFreeformType;
       disabledRefusal = prelude.any (e: e.content ? disabledModules) editedEntries;
@@ -1746,7 +1815,8 @@ let
           # (`warmActive` short-circuits on the null check), so no classification/footprint runs. (An
           # explicit read of `.warmDecision.modules` on a cold result DOES force classification — the
           # trace is data on demand, consistent with the `reused`/`remerged` cost note below.) Warm is
-          # REFUSED (cold fallback) when an edited entry carries `disabledModules` (§2 guard).
+          # REFUSED (cold fallback) when an edited entry carries `disabledModules` (§2 guard) — defence
+          # only; unreachable through `evalModuleTree` while module removal is refused (`configOf`).
           editedCount = if editedModules == [ ] then 0 else length (collectModules callM editedModules);
           decision = warmDecide {
             inherit
@@ -1776,10 +1846,11 @@ let
           # either way when the flag holds; the flag exists to keep the SKIP sound.
           reuseFreeform = warmActive && decision.reuseAllFreeform;
 
-          # Config attrsets (shorthand-aware), config-root properties pushed to keys.
+          # Config attrsets (shorthand-aware), config-root properties pushed to keys. Every config
+          # read forces this for every entry, so it is where the module-syntax refusals fire.
           pushed = map (e: {
             inherit (e) _file;
-            attrs = pushDownProperties (configOf e.content);
+            attrs = pushDownProperties (configOf e);
           }) flat;
 
           # The `_module` pseudo-tree: deep-merge every module's `_module`, extract args.
@@ -2424,10 +2495,12 @@ let
               # name (strict), with `d.file` as its file. The module reading
               # (`setDefaultModuleLocation d.file d.value`) would carry the same file, since
               # `collectModulesFrom` threads the wrapper's `_file` down to its imports, but the module
-              # reader keeps only the structural keys of a def that has any (`config`, `imports`, …)
-              # and drops every other key unread, so a mixed-shape def such as
-              # `{ bogus = 1; config.a = 2; }` would lose `bogus` with no report. The file is not the
-              # reason for this shape; that silent drop is.
+              # reader reads a def by MODULE syntax: a def carrying `config`/`options` admits only
+              # module keys and refuses the rest, and one carrying `imports` or `key` loses them to
+              # the module grammar, where this tree may declare options of those names. So a
+              # mixed-shape def such as `{ bogus = 1; config.a = 2; }` would be refused as malformed
+              # module syntax rather than having `bogus` reported as an undeclared config key. The
+              # file is not the reason for this shape; the reading is.
               modules =
                 modList
                 ++ map (d: {
