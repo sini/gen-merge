@@ -2195,8 +2195,9 @@ let
           #
           # THE REACH, STATED RATHER THAN LEFT TO BE DISCOVERED. A position whose declared type
           # carries nothing is not in the map even when the value sitting there IS an instance on the
-          # ecosystem's own `hasId` test — `raw`/`anything`/`package`, and the whole freeform layer,
-          # which has no declaration at all. The refusal domain is therefore the MINTED instances of
+          # ecosystem's own `hasId` test — `raw`/`anything`/`package`, a nesting seam (a
+          # `nonMountable` tree type, whose nested eval is always cold), and the whole freeform
+          # layer, which has no declaration at all. The refusal domain is therefore the MINTED instances of
           # this option tree, which is what the bound above names; an instance carried to a `raw`
           # position as a value is compared by the byte oracle and not by this fact. A
           # self-referential value at a typed STRUCTURAL position is still reachable in principle,
@@ -2227,9 +2228,15 @@ let
               };
 
               # Below a declared leaf, by the TYPE'S OWN ANSWER.
+              #
+              # A NESTING SEAM STOPS THE WALK, read off the gen-native mark before any protocol read
+              # — the fence `mergeTypes` already has. `(evalModuleTree …).type` refuses `functor`, so
+              # asking it `importedCarried` would throw on a warm read that cold serves. Its own
+              # truthful answer is `nestedTypes = { }` (it wraps no element type), and a nested
+              # tree's eval is always cold, the same boundary provenance draws.
               below =
                 loc: ty: v:
-                if !(isAttrs ty) then
+                if !(isAttrs ty) || ty ? nonMountable then
                   { }
                 else
                   let
@@ -2394,7 +2401,8 @@ let
       #     engine forces first is the module-set read, which it takes through `or`.
       #   * EIGHT REFUSE BY NAME. None is read by this engine on a declared leaf's type, so the
       #     refusals are reachable only from outside; the type-merge pair is additionally fenced at
-      #     `mergeTypes` above, which owes a value.
+      #     `mergeTypes` above, which owes a value, and the warm identity walk (`identityMapOf`'s
+      #     `below`) stops on the mark before it asks what the type carries.
       #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
       #     consumer that ASKS whether this is an option type reads it through `or null` and gets a
       #     correct `false` today; a throwing tombstone would turn the one working negative answer

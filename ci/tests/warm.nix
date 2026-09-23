@@ -1166,10 +1166,11 @@ in
     # branch and passes on a warm splice that answers `[ ]`. The report is asserted against the COLD
     # eval's, not a literal alone, so the two planes are held to one answer; `.config` byte-identity
     # is the fence that the report moved nothing else.
-    # The inner tree declares `id_hash` and the value carries one because the warm identity walk
-    # (`identityMapOf`) stops at a value with `id_hash` before asking the leaf's type what it carries —
-    # and asking `moduleTree` that is refused (it is non-mountable), so without it the warm `.config`
-    # throws on this fixture on both sides of this change. That refusal is a separate defect.
+    # The warm identity walk (`identityMapOf`) passes this leaf on both configs: `inst` is a minted
+    # instance in the BASE, so the prior map is non-empty and the NEXT walk is forced too (gen-memo's
+    # `movedIdentities` reads the next map only under a prior key). At `nest` the walk meets the
+    # tree type and stops on its `nonMountable` mark, before any foreign-protocol read — asking the
+    # seam what it carries is refused by name, and was what made the warm `.config` throw here.
     test-reused-module-tree-leaf-reports-its-dropped-def =
       let
         inner =
@@ -1178,19 +1179,21 @@ in
             modules = [
               {
                 options.known = mkOption { type = t.str; };
-                options.id_hash = mkOption { type = t.str; };
               }
             ];
           }).type;
         base = [
-          { options.nest = mkOption { type = inner; }; }
+          {
+            options.nest = mkOption { type = inner; };
+            options.inst = mkOption { type = hostSub; };
+          }
           {
             _file = "C";
             config.nest = {
               known = "k";
-              id_hash = "nest:0";
               bogus = "B";
             };
+            config.inst.spool = "s";
           }
         ];
         edited = [

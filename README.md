@@ -1018,7 +1018,10 @@ hold. What stays with the engine is the gen half: a name, a fold, and the mark.
 `mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
 either vocabulary's type-merge half is read, because "do these two types merge?" has a true answer
 here — `null`, they do not — and returning it keeps the declaration stratum's own refusal, which names
-both types and every declaring file.
+both types and every declaring file. The warm identity walk fences the same way: at a declared leaf
+typed by a tree it stops on the mark before asking what the type carries, since the seam wraps no
+element type and a nested tree's eval is always cold. Pinned by
+`test-reused-module-tree-leaf-reports-its-dropped-def`.
 
 **One thing inside gen-merge changes, and it is deliberate.** Forcing a parent's whole `.options` tree
 *deeply* now refuses, because the nested tree-type sits in that tree and a deep force reaches its
