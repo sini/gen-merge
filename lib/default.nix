@@ -233,6 +233,7 @@ in
     # than a divergence if the declarations it is asking about turn out to need the value stratum.
     declaredOptions
     mergeDefs
+    mergeTypes
     mergeOneOption
     showOption
     # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; }`.

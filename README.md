@@ -948,6 +948,14 @@ one-parameter containers mutually legible. For the same reason an element that s
 all — a gen-types **parametric** leaf (`enum`, `struct`, `union`) reaches the unified namespace as a
 bare constructor — makes its container not mergeable instead of aborting on a missing attribute.
 
+**The relation is published as `genMerge.mergeTypes a b`** — the merged type or `null` — the one
+binding the declaration stratum and the structural element folds both answer through. It asks a gen
+type's `typeMergeRel` first and a foreign type's own `a.typeMerge b.functor` otherwise, behind the
+type-walk fuel guard and the `nonMountable` fence. A consumer holding two types it did not build
+(gen-schema's `refined` asks it about its base) calls this rather than keeping a copy of the relation,
+which would answer the question twice with two answers that could disagree. Pinned by
+`test-merge-types-is-published-and-answers-a-foreign-pair-at-its-parameter`.
+
 ### Redeclaring an option
 
 Two modules may declare the same option loc. The merge splits the record in two:

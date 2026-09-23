@@ -229,4 +229,35 @@ in
       };
     };
   };
+
+  flake.tests.type-merge-relation.test-merge-types-is-published-and-answers-a-foreign-pair-at-its-parameter =
+    let
+      f = nixpkgsLib.types;
+      answer =
+        a: b:
+        if !(genMerge ? mergeTypes) then
+          "unpublished"
+        else if genMerge.mergeTypes a b == null then
+          "null"
+        else
+          "merged";
+    in
+    {
+      # `mergeTypes` is the one relation the declaration and element strata both answer through; a
+      # consumer holding two types it did not build asks it here rather than keeping a copy.
+      expr = {
+        published = genMerge ? mergeTypes;
+        foreignDifferentElement = answer (f.listOf f.str) (f.listOf f.int);
+        foreignTwin = answer (f.listOf f.str) (f.listOf f.str);
+        genDifferentElement = answer (genMerge.types.listOf genMerge.types.str) (
+          genMerge.types.listOf genMerge.types.int
+        );
+      };
+      expected = {
+        published = true;
+        foreignDifferentElement = "null";
+        foreignTwin = "merged";
+        genDifferentElement = "null";
+      };
+    };
 }
