@@ -1503,9 +1503,22 @@ let
                 {
                   name = k;
                   inherit (m) value prov;
-                  # `[ ]` for every ordinary leaf type (no change); a `moduleTree`-typed leaf's own
-                  # dropped defs, bubbled up exactly like a GROUP recursion's `r.unmatched` beside it.
-                  unmatched = m.undeclared or [ ];
+                  # `[ ]` for every ordinary leaf type, decided from the DECLARATION so no definition
+                  # is forced to learn it: `localMergeOptionRich`'s own `undeclared` binding answers
+                  # `[ ]` for exactly this set, and reaching that answer through `m` would force the
+                  # leaf's merge. FOUR bindings walk this list's spine and each of them would then
+                  # force EVERY leaf: `_orphanCheck` (at `freeform == null`), `freeformConfigCold` and
+                  # `freeformProvCold` (at `freeform != null` — their `||` guard evaluates its right
+                  # operand), and the `undeclared` report. Deciding here is what keeps all four cheap,
+                  # and cheap is what this engine's own contract requires ("undefined+no-default
+                  # throws only on access").
+                  # A `moduleTree`-typed leaf's own dropped defs still bubble up here, exactly as a
+                  # GROUP recursion's `r.unmatched` does beside it.
+                  unmatched =
+                    let
+                      lt = opts.${k}.type or null;
+                    in
+                    if lt != null && lt ? mergeUndeclared then m.undeclared else [ ];
                 }
             else
               let

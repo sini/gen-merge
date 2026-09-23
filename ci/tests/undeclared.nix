@@ -23,6 +23,10 @@ let
     };
   };
   report = args: (evalModuleTree args).undeclared;
+
+  # Does forcing `e` whole succeed? Cells 11-15 are about WHAT THE CHANNEL FORCES, so they read a
+  # success/failure bit rather than a value: the defect they pin turns a readable sibling into a throw.
+  forces = e: (builtins.tryEval (builtins.deepSeq e null)).success;
 in
 {
   flake.tests.undeclared = {
@@ -355,6 +359,193 @@ in
               path = [ "bogus" ];
             }
           ];
+        };
+      };
+
+    # 11 — THE REPORT DESCRIBES THE EVAL, IT DOES NOT CHANGE ITS EVALUATION ORDER. Every binding that
+    # walks `realized.unmatched`'s spine forces each declared leaf's contribution to it, so a leaf
+    # channel that reaches its answer THROUGH the merge forces every leaf's merge — and this engine's
+    # contract is the opposite ("lazily (undefined+no-default throws only on access, matching
+    # nixpkgs)", the comment above `realized`). Declared-and-never-defined with no default is the
+    # supported shape that pays: the value arrives afterwards by `//` and the option is never read.
+    # LIVE CONTROL, same cell: reading the undefined option ITSELF still throws. Without it this cell
+    # also passes on an engine that has stopped refusing undefined options altogether.
+    test-undeclared-report-does-not-force-an-undefined-sibling =
+      let
+        r = evalModuleTree {
+          check = true;
+          modules = [
+            {
+              options.defined = mkOption { type = t.str; };
+              options.never = mkOption { type = t.str; };
+              config.defined = "ok";
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          siblingReadIsLazy = forces r.config.defined;
+          undefinedThrowsOnAccess = !(forces r.config.never);
+        };
+        expected = {
+          siblingReadIsLazy = true;
+          undefinedThrowsOnAccess = true;
+        };
+      };
+
+    # 12 — the same forcing point, reached through the OTHER message class: a `readOnly` option
+    # defined twice has its arbiter (`mergeOptionWith`'s `_ro`) inside the merge, so forcing an
+    # unrelated leaf's merge fires a read-only refusal nobody asked for.
+    # LIVE CONTROL, same cell: the arbiter is un-forced, never removed — reading `locked` itself
+    # still refuses.
+    test-undeclared-report-does-not-force-a-readonly-arbiter =
+      let
+        r = evalModuleTree {
+          check = true;
+          modules = [
+            {
+              options.locked = mkOption {
+                type = t.str;
+                readOnly = true;
+              };
+              options.other = mkOption { type = t.str; };
+              config.other = "ok";
+            }
+            { config.locked = "a"; }
+            { config.locked = "b"; }
+          ];
+        };
+      in
+      {
+        expr = {
+          unrelatedReadIsLazy = forces r.config.other;
+          readOnlyStillRefuses = !(forces r.config.locked);
+        };
+        expected = {
+          unrelatedReadIsLazy = true;
+          readOnlyStillRefuses = true;
+        };
+      };
+
+    # 13 — THE READER CELLS 11-12 CANNOT REACH. `realized.unmatched` has four readers, and
+    # `_orphanCheck` is only one of them: at `check = false` UNDER a `freeformType` it is `null` twice
+    # over, yet `freeformConfigCold`'s branch condition (`freeform == null || realized.unmatched == [ ]`)
+    # walks the same spine, because `||` evaluates its right operand when the left is false. That is
+    # the reader a freeform-carrying consumer actually takes, so a cell over `_orphanCheck` alone
+    # certifies half the surface.
+    # LIVE CONTROLS, same cell: `never` still throws on access, and `loose` proves the freeform plane
+    # really absorbed an unmatched key here — so the reading above is taken over a tree whose
+    # `realized.unmatched` had something in it to force, not one where there was nothing.
+    test-undeclared-report-does-not-force-a-sibling-under-a-freeformtype =
+      let
+        r = evalModuleTree {
+          check = false;
+          modules = [
+            {
+              _module.freeformType = t.lazyAttrsOf t.str;
+              options.defined = mkOption { type = t.str; };
+              options.never = mkOption { type = t.str; };
+              config.defined = "ok";
+              config.loose = "absorbed";
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          freeformSiblingLazy = forces r.config.defined;
+          freeformUndefinedStillThrows = !(forces r.config.never);
+          absorbed = r.config.loose or "ABSENT";
+        };
+        expected = {
+          freeformSiblingLazy = true;
+          freeformUndefinedStillThrows = true;
+          absorbed = "absorbed";
+        };
+      };
+
+    # 14 — ★ THE ARM DISCRIMINATOR, and the reason the fix is a HOISTED PREDICATE rather than a
+    # structural-only `unmatched`. A nested tree at `check = false` typed into a parent at
+    # `check = true` does NOT refuse on its own `_orphanCheck`, so the parent's leaf channel is the
+    # ONLY thing that can refuse the dropped def. Every construction that takes the leaf channel out
+    # of the refusal predicate greens cells 11-13 and loses this refusal silently; deciding the leaf's
+    # contribution from its DECLARATION keeps both.
+    # LIVE CONTROL, same cell: the report still names the dropped key, so a green here is the refusal
+    # firing and not the report having been silenced along with it.
+    test-a-lax-nested-tree-is-still-refused-by-a-strict-parent =
+      let
+        innerLax = evalModuleTree {
+          check = false;
+          modules = [ { options.a = mkOption { type = t.str; }; } ];
+        };
+        r = evalModuleTree {
+          check = true;
+          modules = [
+            {
+              options.nest = mkOption { type = innerLax.type; };
+              config.nest = {
+                a = "declared";
+                z = "dropped";
+              };
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          laxNestedRefusedByParent = !(forces r.config);
+          laxNestedReport = map (u: u.path) r.undeclared;
+        };
+        expected = {
+          laxNestedRefusedByParent = true;
+          laxNestedReport = [
+            [
+              "nest"
+              "z"
+            ]
+          ];
+        };
+      };
+
+    # 15 — A FORWARD PIN, NOT AN ARM DISCRIMINATOR. The guard reads `opts.${k}.type`, so a leaf whose
+    # `type` is an EXPRESSION derived from this eval's own `config` diverges — README's declared
+    # divergence, and uncatchable (`tryEval` does not contain infinite recursion), so no cell can
+    # assert the bare form. What IS assertable is the shape the divergence does NOT reach: an
+    # `attrsOf` wrapper reaches WHNF without forcing its element type, so the documented
+    # self-referential registry idiom evaluates. This cell reads GREEN on every arm priced for this
+    # change and therefore separates none of them — it pins the boundary of the declared divergence
+    # against a FUTURE edit that moves it, which is the only thing it is here to do.
+    test-a-config-derived-leaf-type-is-a-declared-divergence =
+      let
+        r = evalModuleTree {
+          check = true;
+          modules = [
+            {
+              options.kindName = mkOption {
+                type = t.str;
+                default = "igloo";
+              };
+              options.registry = mkOption {
+                type = t.attrsOf (if r.config.kindName == "igloo" then t.str else t.int);
+                default = { };
+              };
+              options.plain = mkOption { type = t.str; };
+              config.plain = "ok";
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          wrappedSelfRefSiblingLazy = forces r.config.plain;
+          wrappedSelfRefValueReadable = forces r.config.registry;
+          wrappedSelfRefKindName = r.config.kindName;
+        };
+        expected = {
+          wrappedSelfRefSiblingLazy = true;
+          wrappedSelfRefValueReadable = true;
+          wrappedSelfRefKindName = "igloo";
         };
       };
   };

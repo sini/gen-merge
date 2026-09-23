@@ -251,6 +251,30 @@ loc *with everything beneath it*. Deeper rendering has no well-defined answer: w
 descent could not tell a dropped option path from a dropped attrset value. The nested-tree boundary is
 provenance's: a tree merged as a type surfaces its `.config` only.
 
+★ **Two declared divergences, both on this channel's leaf binding.** Deciding a leaf's contribution
+to the list reads that leaf's **declaration** — `opts.<k>.type` — so that no *definition* is forced
+to learn the answer; the two shapes below are what that costs, and they are stated here because
+neither is a value and neither is a named refusal. Both are **uncatchable by `builtins.tryEval`**, so
+no cell can collect either, and both arrived with the report channel itself rather than with the
+guard that made the channel cheap.
+
+1. **A leaf whose `type` is an expression derived from this eval's own `config`** reads
+   `infinite recursion encountered` — in both regimes (`check = true` with no `freeformType`, through
+   the orphan check; and any `check` under a `freeformType`, through the freeform plane). nixpkgs'
+   own `lib.evalModules` evaluates the same fixture to a value. A wrapper that reaches WHNF without
+   forcing its element type — `attrsOf`, which is what the registry idiom actually ships — is
+   unaffected, and `ci/tests/undeclared.nix`'s
+   `test-a-config-derived-leaf-type-is-a-declared-divergence` pins that boundary.
+2. **A tree carrying a `freeformType` *and* a nested-tree-typed leaf that drops a key** dies on a raw
+   `attribute 'modIndex' missing`. The leaf channel feeds **report-shaped** records (`{ path, file }`
+   — the values are deliberately dropped, which is what makes reading the report force no def) into a
+   list the freeform plane's coalescing reader consumes as **def-shaped**. It is a record-SHAPE
+   defect rather than a forcing one, tracked as `den-hoag-modindex-record-shape-wwiv9`.
+
+The construction either one wants is the declaration guard's, extended to reach descriptor types —
+it already names this failure class in its own words while reaching only option paths and `imports`
+targets. That is a different mechanism on a different stratum, and it is not authored here.
+
 ## Deprecated types
 
 `deprecationMessage` is one of the 14 fields of the nixpkgs `optionType` protocol this library stamps
