@@ -269,7 +269,8 @@ guard that made the channel cheap.
    `attribute 'modIndex' missing`. The leaf channel feeds **report-shaped** records (`{ path, file }`
    — the values are deliberately dropped, which is what makes reading the report force no def) into a
    list the freeform plane's coalescing reader consumes as **def-shaped**. It is a record-SHAPE
-   defect rather than a forcing one, tracked as `den-hoag-modindex-record-shape-wwiv9`.
+   defect rather than a forcing one, and it is open: the producer and the consumer of that list
+   disagree on what one of its records is.
 
 The construction either one wants is the declaration guard's, extended to reach descriptor types —
 it already names this failure class in its own words while reaching only option paths and `imports`
