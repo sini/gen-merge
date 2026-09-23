@@ -145,6 +145,12 @@ let
   # `"${modulesPath}/…"` load. Tested after the attrset arm, so a clean module never pays for it.
   isPathString = m: builtins.isString m && builtins.substring 0 1 m == "/";
 
+  # The refusal of a value that is none of those shapes, one binding for every reader that loads a
+  # module: the config and declaration strata's `callM`/`callD`, and the lint's `collect`.
+  notAModule =
+    m:
+    throw "gen-merge: a module must be a path, a function or an attribute set, and this one is ${builtins.typeOf m} (an `imports' element, or a nesting type's definition read as a module)";
+
   # Deep attrset merge (rhs wins at leaves) — for the `_module` pseudo-tree and the final
   # declared-over-freeform config merge (~:433).
   recursiveUpdate =
@@ -1488,7 +1494,7 @@ let
         else if isPathString m then
           callD (import m)
         else
-          throw "gen-merge: a module must be a path, a function or an attribute set, and this one is ${builtins.typeOf m} (an `imports' element, or a nesting type's definition read as a module)";
+          notAModule m;
 
       flat = collectModules callD modules;
       declEntries = prelude.imap0 (i: e: {
@@ -1805,7 +1811,7 @@ let
             else if isPathString m then
               callM (import m)
             else
-              throw "gen-merge: a module must be a path, a function or an attribute set, and this one is ${builtins.typeOf m} (an `imports' element, or a nesting type's definition read as a module)";
+              notAModule m;
 
           # THE GUARD IS INTERPOSED HERE, and the position is the whole of its reach: every field
           # this engine publishes is derived from `flat`, so no path into the result can get past
@@ -2595,6 +2601,10 @@ in
     showOption
     setDefaultModuleLocation
     defsAsModules
+    # The module question's fourth shape, read by `isModuleValue` (lib/types.nix) and the lint's
+    # `collect` as well as the loader, so the admission predicate cannot fall behind what `callM`
+    # imports.
+    isPathString
     mkCoreValue
     # `pureModule` (design spec §3 / §5) — the author's clean-module assertion; wraps a function module
     # in the `{ __pureModule = true; __functor = …; }` shape `classifyModule` reads pre-application.
@@ -2606,6 +2616,7 @@ in
     isOptLeaf
     configOf
     moduleSyntaxChecked
+    notAModule
     importsOf
     mergeOptionDecls
     # The guarded pair-merge of two TYPES. It lives here rather than in lib/types.nix because the

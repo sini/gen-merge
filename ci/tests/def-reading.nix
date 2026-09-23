@@ -167,5 +167,20 @@ in
       expr = topA [ { imports = [ a5 ]; } ];
       expected = 5;
     };
+    # A union's member dispatch asks the submodule the same question: a def that is both a `str` and
+    # a path string is the MODULE under `either (submodule M) str`, as in nixpkgs. Before, the union
+    # answered the string. The plain string is the control that the right member still takes a string.
+    test-either-submodule-str-takes-a-path-string-as-the-module = {
+      expr = {
+        pathString = valueAt (t.either sub t.str) "${a5}";
+        plainString = valueAt (t.either sub t.str) "hello";
+      };
+      expected = {
+        pathString = {
+          a = 5;
+        };
+        plainString = "hello";
+      };
+    };
   };
 }

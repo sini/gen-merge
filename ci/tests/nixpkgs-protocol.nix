@@ -757,7 +757,8 @@ in
     # `deferredModule.check` — a check that CANNOT FAIL is not a check. `lib/interface.nix`
     # `exportType` derives the foreign `check` from a gen type's `verify`, else its `admits`, else
     # `_: true` — right for a type whose merge accepts any value; `deferredModule`'s does not. Its merge wraps each def into an `imports` list, and the
-    # engine's `callM` applies only a path, a function, a `__functor` attrset or a plain attrset — so a
+    # engine's `callM` applies only a path, a string naming an absolute path, a function, a `__functor`
+    # attrset or a plain attrset — so a
     # wrong-shaped definition was accepted here and detonated later, at whoever imported it, carrying no
     # option path and no definition file.
     #
@@ -776,11 +777,12 @@ in
         list = [ { } ];
         isNull = null;
         bool = true;
-        # DELIBERATE divergence from nixpkgs, pinned so it stays deliberate: nixpkgs reuses
-        # `types.path.check`, which admits a STRING beginning with `/` as a module. `callM` dispatches on
-        # `builtins.isPath`, so gen-merge would carry such a string through as a module VALUE — admitting
-        # it here would re-create the silent acceptance this check exists to close.
+        # nixpkgs reuses `types.path.check`, which admits a STRING beginning with `/` as a module,
+        # context irrelevant; `callM` imports it, so the domain admits it. A relative string is
+        # neither, and stays refused.
         absolutePathString = "/abs/path.nix";
+        storePathString = "${./nixpkgs-protocol.nix}";
+        relativeString = "m.nix";
       };
       expected = {
         attrs = true;
@@ -792,7 +794,40 @@ in
         list = false;
         isNull = false;
         bool = false;
-        absolutePathString = false;
+        absolutePathString = true;
+        storePathString = true;
+        relativeString = false;
+      };
+    };
+
+    # A gen `submodule` mounted in nixpkgs takes a def naming its module file by a store-path STRING
+    # as nixpkgs' own `submodule` does, beside the path-literal control. Refused before `admits`
+    # carried the loader's path-string shape.
+    test-submodule-path-string-def-mounted-in-nixpkgs = {
+      expr =
+        let
+          sub = gmT.submodule {
+            options.a = genMerge.mkOption {
+              type = gmT.int;
+              default = 0;
+            };
+          };
+          a5 = ./_fixtures/def-reading-a5.nix;
+          read = def: builtins.tryEval (builtins.deepSeq (mount sub def) (mount sub def));
+        in
+        {
+          pathString = read "${a5}";
+          pathLiteral = read a5;
+        };
+      expected = {
+        pathString = {
+          success = true;
+          value.a = 5;
+        };
+        pathLiteral = {
+          success = true;
+          value.a = 5;
+        };
       };
     };
 
@@ -886,8 +921,8 @@ in
           # nixpkgs spells the same way — so they control the default's reachability, not parity.
           anyValue = builtins.mapAttrs (_: t: shapes t.check) { inherit (gmT) raw anything; };
           matchesNixpkgs = builtins.mapAttrs (n: v: v == np.${n}) gen;
-          # The ONE divergence, read as a divergence rather than eyeballed off two tables: the
-          # submodule rows differ on exactly one shape, and it is the named one.
+          # Any divergence, read as a list rather than eyeballed off two tables: the submodule rows
+          # differ on no shape.
           submoduleDiffers = builtins.filter (n: gen.submodule.${n} != np.submodule.${n}) shapeNames;
         };
       expected =
@@ -917,14 +952,14 @@ in
             listOf = accepts [ "list" ];
             attrsOf = accepts [ "attrs" ];
             lazyAttrsOf = accepts [ "attrs" ];
-            # A submodule definition is a module: an attrset, a function, or a path. The same three
-            # shapes as `deferredModule` above and, as there, WITHOUT nixpkgs' string-that-looks-like-
-            # a-path — nixpkgs reaches its check through `types.path.check`, gen-merge through
-            # `builtins.isPath`, and `callM` dispatches on the latter.
+            # A submodule definition is a module: an attrset, a function, a path, or a string naming
+            # an absolute path. The same shapes as `deferredModule` above, and nixpkgs' own through
+            # its `types.path.check`.
             submodule = accepts [
               "attrs"
               "fn"
               "path"
+              "absolutePathString"
             ];
             # The union accepts exactly what one of its members accepts, which is the property its
             # merge's dispatch rests on. `absolutePathString` is in because `str` takes it.
@@ -960,10 +995,10 @@ in
             listOf = true;
             attrsOf = true;
             lazyAttrsOf = true;
-            submodule = false;
+            submodule = true;
             either = true;
           };
-          submoduleDiffers = [ "absolutePathString" ];
+          submoduleDiffers = [ ];
         };
     };
 

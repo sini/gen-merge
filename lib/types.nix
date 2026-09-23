@@ -47,6 +47,7 @@ let
     showOption
     setDefaultModuleLocation
     defsAsModules
+    isPathString
     interface
     ;
 
@@ -300,9 +301,8 @@ let
           mkSubmodule (args // a) mods;
       # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
       # through `defsAsModules true` to a nested `evalModuleTree`, so an attrset def is CONFIG and a
-      # function or path def is a MODULE, and the domain is `isModuleValue`'s and not "any value".
-      # nixpkgs reaches the same three shapes through its `path` check, which additionally admits a
-      # string beginning with `/`; the same narrowing as `deferredModule` below.
+      # function or path def is a MODULE, and the domain is `isModuleValue`'s and not "any value":
+      # nixpkgs `submoduleWith`'s `isAttrs x || isFunction x || path.check x`, as at `deferredModule`.
       admits = isModuleValue;
       # With no surviving definition the value is the module set evaluated over NO definitions, as
       # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
@@ -597,9 +597,8 @@ let
     # accepted HERE and fails somewhere else — with no option path and no definition file. A check
     # that cannot fail is not a check.
     #
-    # STRICTER than nixpkgs on one shape: nixpkgs reuses its `path` predicate, which also admits a
-    # STRING beginning with `/`. `callM` imports such a string, as the reference does; this domain
-    # does not admit it.
+    # The domain is nixpkgs `deferredModuleWith`'s `isAttrs x || isFunction x || path.check x`, whose
+    # `path` predicate admits a STRING beginning with `/` as well as a path; `callM` imports both.
     admits = isModuleValue;
     # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
     # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
@@ -641,8 +640,10 @@ let
 
   # The module-value domain, shared by the two types whose definitions ARE modules (`submodule`,
   # `deferredModule`) so the two cannot drift into answering it differently. The engine's `callM`
-  # applies a path, a function, a `__functor` attrset or a plain attrset, and nothing else.
-  isModuleValue = v: isAttrs v || isFunction v || builtins.isPath v;
+  # applies a path, a string naming an absolute path, a function, a `__functor` attrset or a plain
+  # attrset, and nothing else; the string test is the loader's own `isPathString`, so this domain is
+  # nixpkgs `pathWith { absolute = true; }` beside attrsets and functions, context irrelevant.
+  isModuleValue = v: isAttrs v || isFunction v || builtins.isPath v || isPathString v;
 
   # Membership predicate for union dispatch. gen-types leaf checkers expose `verify` (v → null|err);
   # gen-merge structural types expose `admits` (v → bool). Prefer `verify` FIRST — a gen-types

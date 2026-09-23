@@ -406,6 +406,34 @@ in
       ];
     };
 
+    # A module given as a STRING naming its file is collected as the engine's loader imports it, and
+    # its finding names that string, beside the path-literal control. Before, it was dropped with no
+    # finding.
+    test-path-string-module-is-collected = {
+      expr =
+        let
+          fx = ./_fixtures/lint-options-arg.nix;
+        in
+        {
+          pathString = proj (lint {
+            modules = [ "${fx}" ];
+          });
+          pathLiteral = builtins.length (lint {
+            modules = [ fx ];
+          });
+        };
+      expected = {
+        pathString = [
+          {
+            kind = "options-introspection";
+            loc = [ ];
+            file = "${./_fixtures/lint-options-arg.nix}";
+          }
+        ];
+        pathLiteral = 1;
+      };
+    };
+
     # SHAPE — a finding is a `{ detail; file; kind; loc }` attrset (attrNames sorted).
     test-finding-shape = {
       expr = builtins.attrNames (

@@ -88,6 +88,8 @@ let
     isOptLeaf
     configOf
     moduleSyntaxChecked
+    isPathString
+    notAModule
     importsOf
     mergeOptionDecls
     ;
@@ -102,17 +104,20 @@ let
       ;
   };
   # ── module collection (import-expanding, function-OPAQUE), _file tracked as core.collectModules ──
-  # Path leaves are `import`ed (pure); an attrset module contributes its `imports` recursively; a
-  # function (or `__functor`) module is an OPAQUE leaf. `file` mirrors `collectModulesFrom`'s inherited
-  # `_file` rule exactly (a path's provenance IS its path string, else the module's `_file`, else the
-  # importer's resolved `parentFile`, else the engine fallback at the root).
+  # Path leaves (a path, or a string naming an absolute path, as the engine's loader reads them) are
+  # `import`ed (pure); an attrset module contributes its `imports` recursively; a function (or
+  # `__functor`) module is an OPAQUE leaf; any other value is refused by the engine's own refusal, as
+  # `callM` refuses it. `file` mirrors `collectModulesFrom`'s inherited `_file` rule exactly (a path's
+  # provenance IS its path string, else the module's `_file`, else the importer's resolved
+  # `parentFile`, else the engine fallback at the root).
   collect =
     parentFile: mods:
     concatMap (
       m0:
       let
-        m = if builtins.isPath m0 then import m0 else m0;
-        file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or parentFile));
+        loaded = builtins.isPath m0 || isPathString m0;
+        m = if loaded then import m0 else m0;
+        file = if loaded then toString m0 else (m0._file or (m._file or parentFile));
       in
       if isFunction m then
         [
@@ -141,7 +146,7 @@ let
           ]
           ++ collect file (importsOf m)
       else
-        [ ]
+        notAModule m
     ) mods;
 
   # ── option-decl leaves of one module (loc + descriptor), via the engine's `isOptLeaf` ──

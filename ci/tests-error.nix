@@ -2541,6 +2541,19 @@ in
             msg = surplusMsg "/real/F\\.nix";
           };
         };
+        # `lint` refuses a value that is not a module as the engine does, where it answered "no
+        # findings" (`[ ]`) for a module set the engine refuses. The path-literal control is collected.
+        test-lint-module-that-is-not-a-module-refused = {
+          expr = withControl (builtins.length (
+            gm.lint {
+              modules = [ ./tests/_fixtures/lint-options-arg.nix ];
+            }
+          )) 1 (builtins.deepSeq (gm.lint { modules = [ "m.nix" ]; }) null);
+          expectedError = {
+            type = "ThrownError";
+            msg = notModuleMsg;
+          };
+        };
         test-tree-import-that-is-not-a-module-refused = {
           expr = builtins.deepSeq (valueAt importsTree { imports = [ "x" ]; }) null;
           expectedError = {

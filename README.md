@@ -831,12 +831,12 @@ nixpkgs `anything` posture.
 
 That default is correct for a type whose merge really does accept any value. **`deferredModule`'s does
 not.** Its merge wraps each def into an `imports` list, and the engine's `callM` can apply only a path,
-a function, a `__functor` attrset, or a plain attrset — so a wrong-shaped definition used to be
-accepted and then detonate at whoever imported it, with no option path and no definition file. It now
-tests the three shapes, as nixpkgs `deferredModuleWith` does, and is **stricter on one**: nixpkgs
-reuses `types.path.check`, which admits a string beginning with `/`. `callM` imports such a string
-as the reference's `loadModule` does, so the merge could consume it; this domain still does not admit
-it.
+a string naming an absolute path, a function, a `__functor` attrset, or a plain attrset — so a
+wrong-shaped definition used to be accepted and then detonate at whoever imported it, with no option
+path and no definition file. It now tests those shapes, and its domain equals nixpkgs
+`deferredModuleWith`'s `isAttrs x || isFunction x || path.check x`: `types.path.check` admits a string
+beginning with `/`, context irrelevant, and `callM` imports such a string as the reference's
+`loadModule` does. `submodule` admits the same domain, and `lint` collects it.
 
 **Nor did the rest of the structural surface's.** `listOf` walks every definition with `imap0`,
 `attrsOf`/`lazyAttrsOf` take the key union with `//`, and a submodule reads its definitions as
@@ -1158,8 +1158,8 @@ nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require`
   — an `imports` element, a top-level module, or a nesting type's definition read as a module, such
   as `{ imports = [ "x" ]; }` on a tree that declares an option `imports` — is refused with
   `gen-merge: a module must be a path, a function or an attribute set, and this one is <type>`.
-  nixpkgs fails the `import` uncatchably. A strict superset: no module nixpkgs accepts changes
-  meaning.
+  nixpkgs fails the `import` uncatchably. `lint` refuses the same value with the same message, where it
+  once reported no findings. A strict superset: no module nixpkgs accepts changes meaning.
 
 These boundaries are mechanically checkable — see [Portable-subset lint](#portable-subset-lint).
 
@@ -1200,7 +1200,8 @@ marker), and an order marker **nested more than one level under a freeform/undec
 fixpoint, which a lint must not force — it may throw, and catching throws is disallowed in pure
 eval; the engine binds modules by static formals only). So a function module is opaque except
 for its formals (only `options-introspection` is decidable on it); the other kinds are decided
-on attrset modules, `import`ed path leaves, and the modules reached through `imports`. A
+on attrset modules, `import`ed path leaves (a path or a string naming an absolute path), and the
+modules reached through `imports`. A
 submodule's `getSubModules` is a separate nested eval — lint those by passing them to `lint`
 directly.
 
