@@ -8,8 +8,9 @@
 # included (cell 8). The report is a SIBLING of `config`: `check = false` exists so that the merged
 # value does NOT grow the undeclared key, so a report placed inside `config` would change what the flag
 # produces instead of describing it. `check` therefore does not gate the report (checking and
-# visibility are different questions) while the freeform plane does (there the defs are merged, and
-# nothing was dropped).
+# visibility are different questions) while the freeform plane gates this level's OWN definitions
+# (there the defs are merged, and nothing was dropped). A nested tree's findings are never absorbed,
+# so they are reported under every regime (cells 16-19).
 { genMerge, ... }:
 let
   gm = genMerge;
@@ -27,6 +28,30 @@ let
   # Does forcing `e` whole succeed? Cells 11-15 are about WHAT THE CHANNEL FORCES, so they read a
   # success/failure bit rather than a value: the defect they pin turns a readable sibling into a throw.
   forces = e: (builtins.tryEval (builtins.deepSeq e null)).success;
+
+  # Cells 16-19: a lax nested tree (`check = false`), a definition of it carrying the undeclared key
+  # `z`, and a freeform parent declaring it as `nest`.
+  laxNest =
+    (evalModuleTree {
+      check = false;
+      modules = [
+        {
+          options.a = mkOption { type = t.str; };
+          options.id_hash = mkOption {
+            type = t.str;
+            default = "nest:0";
+          };
+        }
+      ];
+    }).type;
+  laxNestDropping = {
+    a = "declared";
+    z = "dropped";
+  };
+  freeformNestDecl = {
+    _module.freeformType = t.lazyAttrsOf t.anything;
+    options.nest = mkOption { type = laxNest; };
+  };
 in
 {
   flake.tests.undeclared = {
@@ -428,12 +453,14 @@ in
         };
       };
 
-    # 13 — THE READER CELLS 11-12 CANNOT REACH. `realized.unmatched` has four readers, and
-    # `_orphanCheck` is only one of them: at `check = false` UNDER a `freeformType` it is `null` twice
-    # over, yet `freeformConfigCold`'s branch condition (`freeform == null || realized.unmatched == [ ]`)
-    # walks the same spine, because `||` evaluates its right operand when the left is false. That is
-    # the reader a freeform-carrying consumer actually takes, so a cell over `_orphanCheck` alone
-    # certifies half the surface.
+    # 13 — THE FREEFORM REGIME'S READERS. At `check = false` UNDER a `freeformType`, `_orphanCheck`
+    # is `null` twice over, yet `freeformConfigCold`'s branch condition
+    # (`freeform == null || realized.unmatched == [ ]`) walks `realized.unmatched`'s spine, because `||`
+    # evaluates its right operand when the left is false. Since the channel split, that spine holds
+    # definitions only (no leaf contributes to it), so an eager LEAF decision no longer reaches this
+    # cell: the leaf-channel forcing point is pinned by cells 11-12, which walk `realized.reported`
+    # through `_orphanCheck` and the report. This cell pins that the freeform plane's own walk stays
+    # off every declared sibling.
     # LIVE CONTROLS, same cell: `never` still throws on access, and `loose` proves the freeform plane
     # really absorbed an unmatched key here — so the reading above is taken over a tree whose
     # `realized.unmatched` had something in it to force, not one where there was nothing.
@@ -546,6 +573,174 @@ in
           wrappedSelfRefSiblingLazy = true;
           wrappedSelfRefValueReadable = true;
           wrappedSelfRefKindName = "igloo";
+        };
+      };
+
+    # 16 — A NESTED TREE'S FINDING UNDER A `freeformType`: REPORTED, NEVER ABSORBED. The finding
+    # `nest.z` has an associated option (`nest`), so it is outside the freeform type's domain
+    # (nixpkgs: "merge all definitions that don't have an associated option"; `lib.evalModules` on
+    # this shape gives `nest`'s keys `[ "a" ]`). Absorbing it would graft `z` into a declared option's
+    # value; dropping it silently is the third disposition. So `nest` keeps its type's merge, and the
+    # report names the finding with the freeform plane active. `loose` is this level's own undeclared
+    # key, which the freeform plane DOES absorb and the report therefore does not list.
+    # LIVE CONTROL, same cell: the same tree with no dropped key reports nothing.
+    test-a-nested-finding-under-a-freeformtype-is-reported-and-not-absorbed =
+      let
+        read = r: {
+          nestKeys = builtins.attrNames r.config.nest;
+          loose = r.config.loose or "ABSENT";
+          report = map (u: u.path) r.undeclared;
+        };
+        ff = nestDef: {
+          check = false;
+          modules = [
+            freeformNestDecl
+            {
+              _file = "C";
+              config.nest = nestDef;
+              config.loose = "absorbed";
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          dropped = read (evalModuleTree (ff laxNestDropping));
+          control = read (
+            evalModuleTree (ff {
+              a = "declared";
+            })
+          );
+        };
+        expected = {
+          dropped = {
+            nestKeys = [
+              "a"
+              "id_hash"
+            ];
+            loose = "absorbed";
+            report = [
+              [
+                "nest"
+                "z"
+              ]
+            ];
+          };
+          control = {
+            nestKeys = [
+              "a"
+              "id_hash"
+            ];
+            loose = "absorbed";
+            report = [ ];
+          };
+        };
+      };
+
+    # 17 — AND REFUSED AT `check = true`, WHATEVER `freeformType` IS. The report↔refusal
+    # correspondence ("whatever `check = true` refuses, `check = false` reports") fixes the refusal
+    # gate as `check` alone. The refusal is catchable (a named `throw`, not an interpreter error), and
+    # the report still names the finding while `config` refuses.
+    test-a-nested-finding-under-a-freeformtype-is-refused-at-check =
+      let
+        r = evalModuleTree {
+          check = true;
+          modules = [
+            freeformNestDecl
+            {
+              _file = "C";
+              config.nest = laxNestDropping;
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          refused = !(forces r.config);
+          report = map (u: u.path) r.undeclared;
+        };
+        expected = {
+          refused = true;
+          report = [
+            [
+              "nest"
+              "z"
+            ]
+          ];
+        };
+      };
+
+    # 18 — EACH KIND IN ONE FRAME. This level's own undeclared key is RELATIVE to `prefix` and is
+    # prefixed once; a nested tree's finding is already ABSOLUTE (the nested eval ran at
+    # `prefix = abs`) and is appended as is. At `prefix = [ ]` the frames coincide, so only a
+    # non-empty prefix can see a finding prefixed twice.
+    test-a-nested-finding-is-absolute-and-not-prefixed-twice = {
+      expr =
+        map (u: u.path)
+          (evalModuleTree {
+            check = false;
+            prefix = [ "sub" ];
+            modules = [
+              { options.nest = mkOption { type = laxNest; }; }
+              {
+                _file = "C";
+                config.nest = laxNestDropping;
+                config.orphan = "o";
+              }
+            ];
+          }).undeclared;
+      expected = [
+        [
+          "sub"
+          "orphan"
+        ]
+        [
+          "sub"
+          "nest"
+          "z"
+        ]
+      ];
+    };
+
+    # 19 — TWO NESTING LEVELS AT `prefix = [ ]`: the finding climbs two moduleTree boundaries and is
+    # named once, `a.b.z`. LIVE CONTROL, same cell: `.config` is the two declared keys only.
+    test-a-finding-two-nesting-levels-down-is-named-once =
+      let
+        middle =
+          (evalModuleTree {
+            check = false;
+            modules = [ { options.b = mkOption { type = laxNest; }; } ];
+          }).type;
+        r = evalModuleTree {
+          check = false;
+          modules = [
+            { options.a = mkOption { type = middle; }; }
+            {
+              _file = "C";
+              config.a.b = laxNestDropping;
+            }
+          ];
+        };
+      in
+      {
+        expr = {
+          report = map (u: u.path) r.undeclared;
+          inherit (r) config;
+        };
+        expected = {
+          report = [
+            [
+              "a"
+              "b"
+              "z"
+            ]
+          ];
+          config = {
+            a.b = {
+              a = "declared";
+              id_hash = "nest:0";
+            };
+          };
         };
       };
   };

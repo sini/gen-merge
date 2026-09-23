@@ -295,6 +295,19 @@ let
   # Read through `.warmDecision.remerged` ONLY: never `.config`, never `.reused`, never `.options`,
   # each of which is already reached by the fold's guard and would make the cell pass for the wrong
   # reason.
+  # A lax nested tree (`check = false`) and a definition of it that carries a key it does not declare.
+  laxNest =
+    (gm.evalModuleTree {
+      check = false;
+      modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
+    }).type;
+  laxNestDef = {
+    _file = "C";
+    config.nest = {
+      a = "declared";
+      z = "dropped";
+    };
+  };
   coldOf = mods: gm.evalModuleTree { modules = mods; };
   warmOf =
     base: edited:
@@ -357,6 +370,44 @@ in
             slot = "s";
             stray = 1;
           };
+        };
+      };
+      # A NESTED TREE'S FINDING IS REFUSED BY NAME UNDER A `freeformType` TOO. `nest.z` has an
+      # associated option (`nest`, whose declared type is a lax moduleTree that drops `z`), so it is
+      # outside the freeform type's domain: it can be neither absorbed nor dropped silently, and at
+      # `check = true` it is refused, naming the finding's own absolute path.
+      test-nested-finding-refused-under-a-freeformtype-names-its-path = {
+        expr = realize {
+          check = true;
+          modules = [
+            {
+              _module.freeformType = t.lazyAttrsOf t.anything;
+              options.nest = gm.mkOption { type = laxNest; };
+            }
+            laxNestDef
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `nest\\.z' is not declared by the nested tree that owns it$";
+        };
+      };
+      # THE FRAME OF THAT PATH. A finding is ABSOLUTE (the nested eval ran at `prefix = abs`), so the
+      # refusal names it as is: at `prefix = [ "sub" ]` the message reads `sub.nest.z`, never
+      # `sub.sub.nest.z`. At `prefix = [ ]` the two frames coincide, which is why the cell above
+      # cannot see a message that prepends `prefix` a second time and this one can.
+      test-nested-finding-refusal-is-not-prefixed-twice = {
+        expr = realize {
+          check = true;
+          prefix = [ "sub" ];
+          modules = [
+            { options.nest = gm.mkOption { type = laxNest; }; }
+            laxNestDef
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `sub\\.nest\\.z' is not declared by the nested tree that owns it$";
         };
       };
     };

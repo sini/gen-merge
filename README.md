@@ -235,12 +235,28 @@ by reverse module order like `provenance.defs`.
 It is a **sibling of `config`, never a key inside it**: `check = false` exists so that the merged value
 does *not* grow the undeclared key, so a report living in `config` would change what the flag produces
 instead of describing it. `check` does not gate the list — whether the engine tells the truth about
-what it consumed is a different question from whether it checks — while a `freeformType` does, since
-there the definitions are merged and nothing was dropped. A fully declared config reports `[ ]`.
+what it consumed is a different question from whether it checks — while a `freeformType` gates **this
+level's own definitions only**, since there those definitions are merged and nothing was dropped. A
+fully declared config reports `[ ]`.
 
-Reading it forces **no definition value**: the records carry names and originating files only (the
-same data the freeform provenance records read), so a def that is a bare `throw` does not fire.
-`path` is absolute against `prefix`, naming the same location the orphan throw would.
+**A nested tree's findings.** A leaf whose declared type carries `mergeUndeclared` — a tree merged as a
+type, `(evalModuleTree { … }).type` — reports the definitions *its own* eval did not merge, and they
+surface here with their full absolute path (`nest.z`, or `sub.nest.z` at `prefix = [ "sub" ]`). Such a
+finding is **never absorbed** by an outer `freeformType`: its key has an associated option (the
+declared leaf `nest`), so it is outside the freeform domain (nixpkgs: *"merge all definitions that
+don't have an associated option"*), and absorbing it would change a declared option's value. So it is
+reported under every regime, and refused at `check = true` whatever `freeformType` is:
+`` gen-merge: option `nest.z' is not declared by the nested tree that owns it ``. The domain is exactly
+the leaves whose declared type carries `mergeUndeclared`; a nested tree inside a wrapper (an `attrsOf`
+of a moduleTree) reports nothing here. Order: this level's own definitions first, then nested findings;
+order is promised per key only.
+
+Reading it forces **no definition value of this level's own**: the records carry names and originating
+files only (the same data the freeform provenance records read), so an own-level def that is a bare
+`throw` does not fire. That claim is about `.config`'s neighbours and this level's records; it does
+**not** extend to a leaf whose declared type carries `mergeUndeclared`, whose definitions the report
+does force, since a nested tree's findings cannot be named without its key set. `path` is absolute
+against `prefix`, naming the same location the orphan throw would.
 
 It is **over-inclusive in the same way the freeform provenance records are**: a def wrapped in a false
 `mkIf` still appears, because properties are discharged per key only inside the freeform `.merge`,
@@ -251,33 +267,29 @@ under `check = true`. Filtering it here would desynchronise the report from the 
 **Capture granularity.** A path is the first undeclared name on its branch, and the record covers that
 loc *with everything beneath it*. Deeper rendering has no well-defined answer: with no declaration,
 `config.nested.deep.key = "X"` and `config.nested = { deep.key = "X"; }` are the same definition, so a
-descent could not tell a dropped option path from a dropped attrset value. The nested-tree boundary is
-provenance's: a tree merged as a type surfaces its `.config` only.
+descent could not tell a dropped option path from a dropped attrset value.
 
-★ **Two declared divergences, both on this channel's leaf binding.** Deciding a leaf's contribution
-to the list reads that leaf's **declaration** — `opts.<k>.type` — so that no *definition* is forced
-to learn the answer; the two shapes below are what that costs, and they are stated here because
-neither is a value and neither is a named refusal. Both are **uncatchable by `builtins.tryEval`**, so
-no cell can collect either, and both arrived with the report channel itself rather than with the
-guard that made the channel cheap.
+★ **Two declared divergences from `lib.evalModules`, both on this channel's leaf binding.** Deciding a
+leaf's contribution to the list reads that leaf's **declaration** — `opts.<k>.type` — so that no
+*definition* is forced to learn the answer.
 
 1. **A leaf whose `type` is an expression derived from this eval's own `config`** reads
-   `infinite recursion encountered` — in both regimes (`check = true` with no `freeformType`, through
-   the orphan check; and any `check` under a `freeformType`, through the freeform plane). nixpkgs'
-   own `lib.evalModules` evaluates the same fixture to a value. A wrapper that reaches WHNF without
+   `infinite recursion encountered` at `check = true`, with or without a `freeformType`, through the
+   orphan check's walk of the nested-findings channel. nixpkgs' own `lib.evalModules` evaluates the
+   same fixture to a value. It is **uncatchable by `builtins.tryEval`**, so no cell can collect it, and
+   it arrived with the report channel itself rather than with the guard that made the channel cheap. At
+   `check = false` the same fixture evaluates, in both regimes. A wrapper that reaches WHNF without
    forcing its element type — `attrsOf`, which is what the registry idiom actually ships — is
    unaffected, and `ci/tests/undeclared.nix`'s
-   `test-a-config-derived-leaf-type-is-a-declared-divergence` pins that boundary.
-2. **A tree carrying a `freeformType` *and* a nested-tree-typed leaf that drops a key** dies on a raw
-   `attribute 'modIndex' missing`. The leaf channel feeds **report-shaped** records (`{ path, file }`
-   — the values are deliberately dropped, which is what makes reading the report force no def) into a
-   list the freeform plane's coalescing reader consumes as **def-shaped**. It is a record-SHAPE
-   defect rather than a forcing one, and it is open: the producer and the consumer of that list
-   disagree on what one of its records is.
-
-The construction either one wants is the declaration guard's, extended to reach descriptor types —
-it already names this failure class in its own words while reaching only option paths and `imports`
-targets. That is a different mechanism on a different stratum, and it is not authored here.
+   `test-a-config-derived-leaf-type-is-a-declared-divergence` pins that boundary. The construction it
+   wants is the declaration guard's, extended to reach descriptor types — it already names this failure
+   class in its own words while reaching only option paths and `imports` targets. That is a different
+   mechanism on a different stratum, and it is not authored here.
+2. **A strict parent over a lax nested tree refuses the nested tree's finding**, where nixpkgs admits
+   it. `test-a-lax-nested-tree-is-still-refused-by-a-strict-parent` pins it without a `freeformType`,
+   and the refusal holds under one too (`test-a-nested-finding-under-a-freeformtype-is-refused-at-check`):
+   the finding is outside the freeform domain, so the report↔refusal correspondence fixes the refusal
+   gate as `check` alone.
 
 ## Deprecated types
 

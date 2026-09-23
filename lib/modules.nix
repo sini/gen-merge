@@ -1502,10 +1502,12 @@ let
           undeclaredKeys = filter (k: !(opts ? ${k})) cfgKeys;
 
           # Each declared name yields BOTH its merged value and its provenance sub-tree from one
-          # descent: a declared LEAF → the rich option merge's `{ value; prov }` (prov = the record);
-          # a declared GROUP → the recursive subtree's `{ value; prov }` (prov = the sub-tree). Both
-          # trees are assembled at this level by the SAME `listToAttrs` pattern, so provenance mirrors
-          # config's loc structure attribute-for-attribute.
+          # descent, as a pair `{ name; m; group? }` carrying the merge record whole: a declared LEAF →
+          # `m` = the rich option merge `{ value; prov; undeclared }` (prov = the record); a declared
+          # GROUP → `m` = the recursive subtree `{ value; prov; unmatched; reported }` (prov = the
+          # sub-tree), marked `group = true`. The pair projects nothing; every reader below projects
+          # through `x.m`. Both trees are assembled at this level by the SAME `listToAttrs` pattern, so
+          # provenance mirrors config's loc structure attribute-for-attribute.
           declaredPairs = map (
             k:
             let
@@ -1520,63 +1522,33 @@ let
                 # (both the decl set and the def set at this loc come only from CLEAN modules).
                 {
                   name = k;
-                  value = getAttrByPath abs warm.prevConfig;
-                  prov = getAttrByPath abs warm.prevProv;
-                  # The reused leaf's dropped defs are the ones the PRIOR eval reported at and below
-                  # `abs` — the same §2 predicate (decls and defs here come only from clean modules)
-                  # makes that report the cold merge's, so reuse survives: nothing is re-merged. The
-                  # prior report holds entries at or below `abs` only from this leaf's own channel (an
-                  # undeclared key elsewhere is captured above a declared leaf, never below one).
-                  # Decided from the DECLARATION, as the cold branch does: every other leaf type
-                  # contributes a constant `[ ]`, so the spine walks below force nothing.
-                  unmatched =
-                    let
-                      lt = opts.${k}.type or null;
-                      at = prefix ++ abs;
-                      n = length at;
-                    in
-                    if lt != null && lt ? mergeUndeclared then
-                      concatMap (
-                        u:
-                        optional (length u.path >= n && take n u.path == at) {
-                          inherit (u) file;
-                          path = drop (length prefix) u.path;
-                        }
-                      ) warm.prevUndeclared
-                    else
-                      [ ];
+                  m = {
+                    value = getAttrByPath abs warm.prevConfig;
+                    prov = getAttrByPath abs warm.prevProv;
+                    # The reused leaf's findings are the PRIOR eval's report records at and below `abs`,
+                    # passed through unchanged: both are in the absolute frame. The same §2 predicate
+                    # (decls and defs here come only from clean modules) makes that report the cold
+                    # merge's, so reuse survives and nothing is re-merged. The prior report holds entries
+                    # at or below `abs` only from this leaf's own channel (an undeclared key elsewhere is
+                    # captured above a declared leaf, never below one). Read only through the walk's
+                    # declaration guard below, like the cold record's `undeclared`.
+                    undeclared =
+                      let
+                        n = length abs;
+                      in
+                      filter (u: length u.path >= n && take n u.path == abs) warm.prevUndeclared;
+                  };
                 }
               else
-                let
-                  m = localMergeOptionRich abs opts.${k} (subDefs k);
-                in
                 {
                   name = k;
-                  inherit (m) value prov;
-                  # `[ ]` for every ordinary leaf type, decided from the DECLARATION so no definition
-                  # is forced to learn it: `localMergeOptionRich`'s own `undeclared` binding answers
-                  # `[ ]` for exactly this set, and reaching that answer through `m` would force the
-                  # leaf's merge. FOUR bindings walk this list's spine and each of them would then
-                  # force EVERY leaf: `_orphanCheck` (at `freeform == null`), `freeformConfigCold` and
-                  # `freeformProvCold` (at `freeform != null` — their `||` guard evaluates its right
-                  # operand), and the `undeclared` report. Deciding here is what keeps all four cheap,
-                  # and cheap is what this engine's own contract requires ("undefined+no-default
-                  # throws only on access").
-                  # A `moduleTree`-typed leaf's own dropped defs still bubble up here, exactly as a
-                  # GROUP recursion's `r.unmatched` does beside it.
-                  unmatched =
-                    let
-                      lt = opts.${k}.type or null;
-                    in
-                    if lt != null && lt ? mergeUndeclared then m.undeclared else [ ];
+                  m = localMergeOptionRich abs opts.${k} (subDefs k);
                 }
             else
-              let
-                r = mergeTree warm lk opts.${k} (subDefs k);
-              in
               {
                 name = k;
-                inherit (r) value prov unmatched;
+                group = true;
+                m = mergeTree warm lk opts.${k} (subDefs k);
               }
           ) (attrNames opts);
 
@@ -1592,14 +1564,48 @@ let
           ) undeclaredKeys;
         in
         {
-          value = listToAttrs (map (x: { inherit (x) name value; }) declaredPairs);
+          value = listToAttrs (
+            map (x: {
+              inherit (x) name;
+              value = x.m.value;
+            }) declaredPairs
+          );
           prov = listToAttrs (
             map (x: {
               inherit (x) name;
-              value = x.prov;
+              value = x.m.prov;
             }) declaredPairs
           );
-          unmatched = ownUnmatched ++ concatMap (x: x.unmatched) declaredPairs;
+          # TWO CHANNELS, ONE PER KIND OF RECORD, each in exactly one frame.
+          # `unmatched` holds DEFINITIONS this level must dispose of, `{ file; modIndex; path; value; }`
+          # with paths RELATIVE to `prefix`: this level's own and a group's. A leaf contributes none.
+          # `reported` holds FINDINGS a nested tree already settled, `{ path; file; }` with paths
+          # ABSOLUTE (the nested eval ran at `prefix = abs`). A finding carries no `modIndex` (it indexes
+          # the PARENT's `topDefs`, and the finding came from the nested tree's modules) and no `value`
+          # (so reading the report forces no nested definition value), so no definition-kind reader
+          # (`coalesceUnmatched`, `freeformProvCold`) may ever meet one, and none can.
+          #
+          # A leaf's findings are decided from the DECLARATION, `opts.<k> ? type.mergeUndeclared`,
+          # inside this walk: every ordinary leaf type contributes `[ ]` without its merge record being
+          # touched, so no definition is forced to learn it. Two readers walk `reported`'s spine,
+          # `_orphanCheck` (at `check`) and the `undeclared` report, and a walk that read `x.m.undeclared`
+          # for every leaf would force EVERY leaf's merge through them — against this engine's own
+          # contract ("undefined+no-default throws only on access"). The decision lives here, and not
+          # as a field on the pair, because the walk is already the point that forces it: a per-pair
+          # field is a thunk and a record slot on every leaf, and deciding at pair construction would
+          # force every declared type whenever `listToAttrs` forces the pairs. `group = true` records
+          # the pair's kind where the group/leaf branch was taken, so the walk reads a marker rather
+          # than re-deriving leafness.
+          unmatched = ownUnmatched ++ concatMap (x: if x ? group then x.m.unmatched else [ ]) declaredPairs;
+          reported = concatMap (
+            x:
+            if x ? group then
+              x.m.reported
+            else if opts.${x.name} ? type.mergeUndeclared then
+              x.m.undeclared
+            else
+              [ ]
+          ) declaredPairs;
         };
 
       # ── THE DECLARATION GUARD ─────────────────────────────────────────────────────────────────
@@ -1725,8 +1731,8 @@ let
                 prevConfig = warmFrom.config;
                 prevProv = warmFrom.provenance;
                 # The prior eval's OWN undeclared report, read by `mergeTree`'s reused leaf only when
-                # the leaf's type carries `mergeUndeclared` (see there). Its paths are `prefix ++` the
-                # `unmatched` record's path, which is what the reader strips back off.
+                # the leaf's type carries `mergeUndeclared` (see there). Its paths are absolute, the
+                # frame of `mergeTree`'s `reported` channel, so the reader passes them through as is.
                 prevUndeclared = warmFrom.undeclared;
               }
             else
@@ -1845,11 +1851,20 @@ let
           # Unknown keys — at ANY depth — route as ONE freeformType def-set at the ROOT (nixpkgs
           # freeform), each reshaped to its full nested path so lazyAttrsOf/attrsOf owns the per-key
           # merge. With no freeform they are orphans → the option does not exist → throw (per level).
+          # A nested tree's FINDING (`realized.reported`) is refused at `check` whatever `freeform` is:
+          # its key has an associated option (the declared leaf that owns the nested tree), so it lies
+          # outside the freeformType's domain ("definitions that don't have an associated option") and
+          # can be neither absorbed nor dropped silently. Its path is already absolute, so it is named
+          # as is. This extends the standing divergence from `lib.evalModules` that
+          # `test-a-lax-nested-tree-is-still-refused-by-a-strict-parent` pins (nixpkgs admits a strict
+          # parent over a lax child) to the freeform regime.
           _orphanCheck =
             if check && freeform == null && realized.unmatched != [ ] then
               throw "gen-merge: option `${
                 showOption (prefix ++ (head realized.unmatched).path)
               }' does not exist (no freeformType to absorb it)"
+            else if check && realized.reported != [ ] then
+              throw "gen-merge: option `${showOption (head realized.reported).path}' is not declared by the nested tree that owns it"
             else
               null;
           # An unmatched def has THREE dispositions and no fourth: a `freeformType` absorbs it (below),
@@ -1863,13 +1878,21 @@ let
           # produces instead of describing it.
           #
           # `check` does not gate the report — whether the engine tells the truth about what it consumed
-          # is not a checking question — while the freeform plane does, because there the defs ARE
-          # merged and nothing was dropped.
+          # is not a checking question. The freeform plane gates THIS LEVEL's own definitions only
+          # (`realized.unmatched`), because there those defs ARE merged and nothing was dropped. A nested
+          # tree's findings (`realized.reported`) are never absorbed (see `_orphanCheck`), so they are
+          # reported under every regime. Order: this level's own definitions first, then nested
+          # findings; order is promised per key only.
           #
-          # By construction, not a new tracking layer: this is `realized.unmatched` (the same records
-          # `coalesceUnmatched` and `freeformProvCold` read) minus its `value`s. Names and originating
-          # files are already carried; the VALUES are deliberately dropped, so reading the report forces
-          # no def. Inheriting that list inherits its reach: like `freeformProvCold`'s records the report
+          # By construction, not a new tracking layer: the first part is `realized.unmatched` (the same
+          # records `coalesceUnmatched` and `freeformProvCold` read) minus its `value`s, prefixed into
+          # the absolute frame; the second is `realized.reported`, already absolute and appended as is.
+          # Names and originating files are already carried; the VALUES are deliberately dropped, so
+          # reading the report forces no definition value of this level's own. It DOES force the
+          # definitions of every leaf whose declared type carries `mergeUndeclared` (a nested tree's
+          # findings cannot be named without its key set, so a moduleTree def that is a bare `throw`
+          # fires here); that set is the report channel's whole domain. Inheriting that list inherits
+          # its reach: like `freeformProvCold`'s records the report
           # may be OVER-INCLUSIVE — a false-`mkIf`-wrapped def still shows here, because properties are
           # discharged per key only inside `freeform.merge`, which this pass does not enter. That is the
           # report↔refusal correspondence holding rather than leaking: the same def under `check = true`
@@ -1881,13 +1904,16 @@ let
           # where the option path ends and an attrset VALUE begins; a path here therefore means "this
           # loc and everything beneath it was not merged".
           undeclared =
-            if freeform == null then
-              map (u: {
-                path = prefix ++ u.path;
-                inherit (u) file;
-              }) realized.unmatched
-            else
-              [ ];
+            (
+              if freeform == null then
+                map (u: {
+                  path = prefix ++ u.path;
+                  inherit (u) file;
+                }) realized.unmatched
+              else
+                [ ]
+            )
+            ++ realized.reported;
           # Coalesce the per-key unmatched defs into one wide def per originating module BEFORE the
           # freeform type's fold (see `coalesceUnmatched`) — restores nixpkgs' per-module freeform
           # shape, so `attrsOf`/`lazyAttrsOf` stays linear in sibling-key count (byte-identical

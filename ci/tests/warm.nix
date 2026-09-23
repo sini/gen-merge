@@ -1235,6 +1235,125 @@ in
           configByte = true;
         };
       };
+
+    # THE SAME REUSED LEAF UNDER A `freeformType`, and AT A NON-EMPTY `prefix`. The reused leaf passes
+    # the prior report's records at and below its absolute location through unchanged, since both are
+    # in the absolute frame. Under a freeformType the finding is reported (never absorbed, so `nest`
+    # keeps its type's merge) and `.config` is byte-identical to cold. At `prefix = [ "sub" ]` the
+    # warm report must equal the cold one AND read `sub.nest.z` once: agreement alone is not the
+    # discriminator, since a warm reader that inverts a doubled cold frame agrees with it.
+    # The warm half at `prefix = [ "sub" ]` pins the REPORT frame only: the warm VALUE plane there
+    # splices `getAttrByPath abs warm.prevConfig` against a config rooted at `[ ]`, which fails on
+    # this fixture before and after the channel split, so `.config` is not read there.
+    test-reused-module-tree-leaf-reports-its-finding-under-freeform-and-prefix =
+      let
+        inner =
+          (evalModuleTree {
+            check = false;
+            modules = [
+              {
+                options.a = mkOption { type = t.str; };
+                options.id_hash = mkOption {
+                  type = t.str;
+                  default = "nest:0";
+                };
+              }
+            ];
+          }).type;
+        def = {
+          _file = "C";
+          config.nest = {
+            a = "declared";
+            z = "dropped";
+          };
+        };
+        edited = [
+          {
+            options.other = mkOption { type = t.str; };
+            config.other = "o";
+          }
+        ];
+        ffBase = [
+          {
+            _module.freeformType = t.lazyAttrsOf t.anything;
+            options.nest = mkOption { type = inner; };
+          }
+          def
+        ];
+        pfxBase = [
+          { options.nest = mkOption { type = inner; }; }
+          (
+            def
+            // {
+              config = def.config // {
+                orphan = "o";
+              };
+            }
+          )
+        ];
+        lax =
+          extra: mods:
+          evalModuleTree (
+            {
+              check = false;
+              modules = mods;
+            }
+            // extra
+          );
+        warmOver =
+          extra: base:
+          lax (
+            extra
+            // {
+              warmFrom = lax extra base;
+              editedModules = edited;
+            }
+          ) (base ++ edited);
+        ffW = warmOver { } ffBase;
+        ffC = lax { } (ffBase ++ edited);
+        pW = warmOver { prefix = [ "sub" ]; } pfxBase;
+        pC = lax { prefix = [ "sub" ]; } (pfxBase ++ edited);
+      in
+      {
+        expr = {
+          ffNestReused = builtins.elem "nest" ffW.warmDecision.reused;
+          ffReport = map (u: u.path) ffW.undeclared;
+          ffNestKeys = builtins.attrNames ffW.config.nest;
+          ffAgreesWithCold = ffW.undeclared == ffC.undeclared;
+          ffConfigByte = jsonEq ffW.config ffC.config;
+          prefixNestReused = builtins.elem "nest" pW.warmDecision.reused;
+          prefixReport = map (u: u.path) pW.undeclared;
+          prefixAgreesWithCold = pW.undeclared == pC.undeclared;
+        };
+        expected = {
+          ffNestReused = true;
+          ffReport = [
+            [
+              "nest"
+              "z"
+            ]
+          ];
+          ffNestKeys = [
+            "a"
+            "id_hash"
+          ];
+          ffAgreesWithCold = true;
+          ffConfigByte = true;
+          prefixNestReused = true;
+          prefixReport = [
+            [
+              "sub"
+              "orphan"
+            ]
+            [
+              "sub"
+              "nest"
+              "z"
+            ]
+          ];
+          prefixAgreesWithCold = true;
+        };
+      };
   };
 
   # THE OTHER HALF OF `test-freeform-edited-toplevel-freeformtype-remerges-byte`, AND THE ONLY WARM
