@@ -2207,9 +2207,11 @@ in
                     };
                   };
                 }
+                # A FUNCTION def: a submodule reads an attrset def as config, and only a module
+                # can declare an option.
                 {
                   _file = F;
-                  config.s = strA;
+                  config.s = _: strA;
                 }
               ];
             }).config.s.a;
@@ -2258,8 +2260,12 @@ in
           msg = surplusMsg "/real/X\\.nix";
         };
       };
+      # A FUNCTION def, because a submodule reads an attrset def as config (`types.submodule`), so
+      # the module reader applies to its function and path defs.
       test-surplus-key-refused-in-a-submodule-def = {
-        expr = withControl (viaSubmodule readerC0).a 2 (builtins.deepSeq (viaSubmodule readerBad) null);
+        expr = withControl (viaSubmodule (_: readerC0)).a 2 (
+          builtins.deepSeq (viaSubmodule (_: readerBad)) null
+        );
         expectedError = {
           type = "ThrownError";
           msg = surplusMsg "/real/S\\.nix";
@@ -2329,5 +2335,107 @@ in
         };
       };
     };
+
+    # EACH NESTING TYPE READS A DEFINITION AS ITS REFERENCE DOES (`defsAsModules`, nixpkgs'
+    # `allModules` flag for flag), and a value that is not a module is refused by name. The values
+    # these readings produce are `./tests/def-reading.nix`; these are the refusals. The tree type
+    # reads every def as a module, so a mixed def meets the module reader; `types.submodule` reads an
+    # attrset def as config, so a module key in one is an undeclared option.
+    flake.testsError.def-reading =
+      let
+        tree = (gm.evalModuleTree { modules = [ { options.a = int0; } ]; }).type;
+        sub = t.submodule { options.a = int0; };
+        int0 = gm.mkOption {
+          type = t.int;
+          default = 0;
+        };
+        valueAt =
+          type: def:
+          (cfg {
+            modules = [
+              { options.t = gm.mkOption { inherit type; }; }
+              {
+                _file = "/real/F.nix";
+                config.t = def;
+              }
+            ];
+          }).t;
+        notModuleMsg = "^gen-merge: a module must be a path, a function or an attribute set, and this one is string \\(an `imports' element, or a nesting type's definition read as a module\\)$";
+        undeclaredMsg =
+          key: "^gen-merge: option `t\\.${key}' does not exist \\(no freeformType to absorb it\\)$";
+        # An option named `imports', so the def `{ imports = [ "x" ]; }` is a value at `submodule`
+        # and a module whose import is not a module at the tree type.
+        importsTree =
+          (gm.evalModuleTree {
+            modules = [ { options.imports = gm.mkOption { type = t.listOf t.str; }; } ];
+          }).type;
+      in
+      {
+        # Uncatchable at the tree type before the landing: the def was read as config.
+        test-tree-function-def-with-surplus-key-refused = {
+          expr = builtins.deepSeq (valueAt tree (
+            { ... }:
+            {
+              bogus = 1;
+              config.a = 2;
+            }
+          )) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = surplusMsg "/real/F\\.nix";
+          };
+        };
+        test-tree-mixed-def-refused-by-the-module-reader = {
+          expr = builtins.deepSeq (valueAt tree {
+            bogus = 1;
+            config.a = 2;
+          }) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = surplusMsg "/real/F\\.nix";
+          };
+        };
+        test-tree-import-that-is-not-a-module-refused = {
+          expr = builtins.deepSeq (valueAt importsTree { imports = [ "x" ]; }) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = notModuleMsg;
+          };
+        };
+        test-submodule-config-key-is-an-undeclared-option = {
+          expr = builtins.deepSeq (valueAt sub { config.a = 2; }) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = undeclaredMsg "config";
+          };
+        };
+        test-submodule-imports-key-is-an-undeclared-option = {
+          expr = builtins.deepSeq (valueAt sub { imports = [ { a = 4; } ]; }) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = undeclaredMsg "imports";
+          };
+        };
+        test-submodule-functor-key-is-an-undeclared-option = {
+          expr = builtins.deepSeq (valueAt sub { __functor = _: { ... }: { a = 6; }; }) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = undeclaredMsg "__functor";
+          };
+        };
+        # The top level: nixpkgs aborts on `import "x"`; this refuses by name.
+        test-top-level-import-that-is-not-a-module-refused = {
+          expr = builtins.deepSeq (cfg {
+            modules = [
+              { options.imports = gm.mkOption { type = t.listOf t.str; }; }
+              { imports = [ "x" ]; }
+            ];
+          }) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = notModuleMsg;
+          };
+        };
+      };
   };
 }

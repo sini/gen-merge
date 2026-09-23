@@ -123,6 +123,28 @@ let
     imports = [ m ];
   };
 
+  # A nesting type's DEFINITIONS, as the modules its nested evaluation reads: the reference's
+  # `submoduleWith` `allModules`, flag for flag. With `shorthandOnlyDefinesConfig` an attrset def is
+  # CONFIG (`types.submodule`); otherwise, and for every function or path def, the def is a MODULE
+  # (`(evalModules …).type`, `submoduleWith`'s default).
+  defsAsModules =
+    shorthandOnlyDefinesConfig: defs:
+    map (
+      d:
+      if shorthandOnlyDefinesConfig && isAttrs d.value then
+        {
+          _file = toString (d.file or "<def>");
+          config = d.value;
+        }
+      else
+        setDefaultModuleLocation (toString (d.file or "<def>")) d.value
+    ) defs;
+
+  # A STRING naming an absolute path is a module the way a path literal is: the reference's
+  # `loadModule` `import`s whatever is not a function or an attrset, so `"${inputs.x}/m.nix"` and
+  # `"${modulesPath}/…"` load. Tested after the attrset arm, so a clean module never pays for it.
+  isPathString = m: builtins.isString m && builtins.substring 0 1 m == "/";
+
   # Deep attrset merge (rhs wins at leaves) — for the `_module` pseudo-tree and the final
   # declared-over-freeform config merge (~:433).
   recursiveUpdate =
@@ -698,7 +720,11 @@ let
       let
         m = callM m0;
         self = {
-          _file = if builtins.isPath m0 then toString m0 else (m0._file or (m._file or parentFile));
+          _file =
+            if builtins.isPath m0 || isPathString m0 then
+              toString m0
+            else
+              (m0._file or (m._file or parentFile));
           content = m;
           srcClass = classifyModule m0;
         };
@@ -1445,10 +1471,12 @@ let
             ) formals;
           in
           m (declArgs // extra)
-        else if isAttrs m && m ? __functor then
-          callD (m.__functor m)
+        else if isAttrs m then
+          if m ? __functor then callD (m.__functor m) else m
+        else if isPathString m then
+          callD (import m)
         else
-          m;
+          throw "gen-merge: a module must be a path, a function or an attribute set, and this one is ${builtins.typeOf m} (an `imports' element, or a nesting type's definition read as a module)";
 
       flat = collectModules callD modules;
       declEntries = prelude.imap0 (i: e: {
@@ -1760,10 +1788,12 @@ let
                 ) formals;
               in
               m (baseArgs // extra)
-            else if isAttrs m && m ? __functor then
-              callM (m.__functor m)
+            else if isAttrs m then
+              if m ? __functor then callM (m.__functor m) else m
+            else if isPathString m then
+              callM (import m)
             else
-              m;
+              throw "gen-merge: a module must be a path, a function or an attribute set, and this one is ${builtins.typeOf m} (an `imports' element, or a nesting type's definition read as a module)";
 
           # THE GUARD IS INTERPOSED HERE, and the position is the whole of its reach: every field
           # this engine publishes is derived from `flat`, so no path into the result can get past
@@ -2489,24 +2519,9 @@ let
             evalModuleTree {
               inherit specialArgs check coreShortCircuit;
               prefix = loc;
-              # `{_file; config;}`: a moduleTree DEFINITION VALUE is read as a CONFIG TREE, not as a
-              # module. Under that reading every key of `d.value` is either a declared option of the
-              # tree or an undeclared key that `.undeclared` names (lax) or the orphan check refuses by
-              # name (strict), with `d.file` as its file. The module reading
-              # (`setDefaultModuleLocation d.file d.value`) would carry the same file, since
-              # `collectModulesFrom` threads the wrapper's `_file` down to its imports, but the module
-              # reader reads a def by MODULE syntax: a def carrying `config`/`options` admits only
-              # module keys and refuses the rest, and one carrying `imports` or `key` loses them to
-              # the module grammar, where this tree may declare options of those names. So a
-              # mixed-shape def such as `{ bogus = 1; config.a = 2; }` would be refused as malformed
-              # module syntax rather than having `bogus` reported as an undeclared config key. The
-              # file is not the reason for this shape; the reading is.
-              modules =
-                modList
-                ++ map (d: {
-                  _file = d.file or "<def>";
-                  config = d.value;
-                }) defs;
+              # Every DEFINITION is a MODULE, as the reference `(evalModules …).type` reads it
+              # (`submoduleWith`'s `shorthandOnlyDefinesConfig` defaults to false).
+              modules = modList ++ defsAsModules false defs;
             };
           nestingFold = loc: defs: (nested loc defs).config;
         in
@@ -2560,6 +2575,7 @@ in
     mergeDefaultOption
     showOption
     setDefaultModuleLocation
+    defsAsModules
     mkCoreValue
     # `pureModule` (design spec §3 / §5) — the author's clean-module assertion; wraps a function module
     # in the `{ __pureModule = true; __functor = …; }` shape `classifyModule` reads pre-application.

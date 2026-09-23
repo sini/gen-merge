@@ -826,13 +826,14 @@ not.** Its merge wraps each def into an `imports` list, and the engine's `callM`
 a function, a `__functor` attrset, or a plain attrset — so a wrong-shaped definition used to be
 accepted and then detonate at whoever imported it, with no option path and no definition file. It now
 tests the three shapes, as nixpkgs `deferredModuleWith` does, and is **stricter on one**: nixpkgs
-reuses `types.path.check`, which admits a string beginning with `/`, while `callM` dispatches on
-`builtins.isPath` and would carry such a string through as a module value. A check must never admit
-what the merge cannot consume.
+reuses `types.path.check`, which admits a string beginning with `/`. `callM` imports such a string
+as the reference's `loadModule` does, so the merge could consume it; this domain still does not admit
+it.
 
 **Nor did the rest of the structural surface's.** `listOf` walks every definition with `imap0`,
-`attrsOf`/`lazyAttrsOf` take the key union with `//`, and a submodule's definitions *are* modules —
-so each states its domain too, matching nixpkgs on every shape except the submodule string-that-looks-
+`attrsOf`/`lazyAttrsOf` take the key union with `//`, and a submodule reads its definitions as
+nixpkgs `types.submodule` does — an attrset definition is config, and any other definition is a
+module — so each states its domain too, matching nixpkgs on every shape except the submodule string-that-looks-
 like-a-path, where the `deferredModule` narrowing above applies for the same reason
 (`test-structural-check-shapes-match-nixpkgs`). Only `raw` and `anything` keep `_: true`, which is
 what their merges genuinely do.
@@ -989,7 +990,11 @@ union produces. A third declaration appends to the chain rather than replacing i
 ### The tree-as-a-type is NOT mountable, and it says so
 
 `(evalModuleTree …).type` is the seam that lets a parent tree nest a child (submodule recursion,
-freeform). It is not an option type, and the rest of this section does not apply to it.
+freeform). It is not an option type, and the rest of this section does not apply to it. It reads
+every definition as a module, as its reference `(lib.evalModules …).type` does (`submoduleWith`'s
+`shorthandOnlyDefinesConfig` defaults to false), where `types.submodule` reads an attrset definition
+as config. Both nesting types read through the one binding `defsAsModules`, nixpkgs' `allModules`
+flag for flag.
 
 It used to be indistinguishable from one at a glance. It answered `name` and `merge` and nothing else
 — the two fields that make a value **look** like an option type, which is not the same thing as the
@@ -1125,6 +1130,13 @@ nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require`
   deferred row for the declaration-only surplus refusal, whose construction and cost are decided
   together. Pinned as this boundary by
   `test-declaration-only-read-of-a-typo-key-is-not-refused`, so a fix turns it red on purpose.
+- **A value that is not a module is refused by name**, where nixpkgs aborts. A module is a path, a
+  string naming an absolute path (imported, as nixpkgs does), a function or an attrset; anything else
+  — an `imports` element, a top-level module, or a nesting type's definition read as a module, such
+  as `{ imports = [ "x" ]; }` on a tree that declares an option `imports` — is refused with
+  `gen-merge: a module must be a path, a function or an attribute set, and this one is <type>`.
+  nixpkgs fails the `import` uncatchably. A strict superset: no module nixpkgs accepts changes
+  meaning.
 
 These boundaries are mechanically checkable — see [Portable-subset lint](#portable-subset-lint).
 

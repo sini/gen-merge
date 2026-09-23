@@ -44,6 +44,7 @@ let
     mergeLeaf
     showOption
     setDefaultModuleLocation
+    defsAsModules
     interface
     ;
 
@@ -229,9 +230,6 @@ let
   # because the answer depends on which vocabulary the element states it in.
   carriesSub = interface.importedRebuilds;
 
-  # Turn a def value into a module (located) for a nested evalModuleTree.
-  defToModule = d: setDefaultModuleLocation (toString (d.file or "<def>")) d.value;
-
   # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
   # `name` is injected by the two `evalModuleTree` calls below; `config`, `options` and `prefix` are
   # injected by the engine itself at BOTH strata — `lib/modules.nix:1267` (declaration) and `:1529`
@@ -298,11 +296,11 @@ let
           )
         else
           mkSubmodule (args // a) mods;
-      # A submodule's definitions ARE modules: `mergeDefs` hands each through `defToModule` to a
-      # nested `evalModuleTree`, so the domain is `isModuleValue`'s and not "any value". nixpkgs
-      # reaches the same three shapes through its `path` check, which additionally admits a string
-      # beginning with `/`; the same deliberate narrowing as `deferredModule` below, and for the same
-      # reason.
+      # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
+      # through `defsAsModules true` to a nested `evalModuleTree`, so an attrset def is CONFIG and a
+      # function or path def is a MODULE, and the domain is `isModuleValue`'s and not "any value".
+      # nixpkgs reaches the same three shapes through its `path` check, which additionally admits a
+      # string beginning with `/`; the same narrowing as `deferredModule` below.
       admits = isModuleValue;
       # A CONTAINER nobody added to is legitimately empty; only a type that declares no empty value
       # is an error when undefined.
@@ -375,7 +373,7 @@ let
       mergeDefs =
         loc: defs:
         (evalModuleTree {
-          modules = mods ++ map defToModule defs;
+          modules = mods ++ defsAsModules true defs;
           prefix = loc;
           specialArgs = argsAt loc;
           check = true;
@@ -548,15 +546,15 @@ let
     name = "deferredModule";
     # A type carrying no domain at all accepts every definition, which is right only for a type whose
     # fold really does accept any value. This one's does not: `mergeDefs` wraps each def into an
-    # `imports` list, and the engine's `callM` (lib/modules.nix) can apply only a path, a function, a
-    # `__functor` attrset, or a plain attrset. Any other value is carried into `imports` unexamined
-    # and handed to whoever imports it, so the definition is accepted HERE and fails somewhere else —
-    # with no option path and no definition file. A check that cannot fail is not a check.
+    # `imports` list, and the engine's `callM` (lib/modules.nix) can apply only a path, a string
+    # naming an absolute path, a function, a `__functor` attrset, or a plain attrset. Any other value
+    # is carried into `imports` unexamined and refused by whoever imports it, so the definition is
+    # accepted HERE and fails somewhere else — with no option path and no definition file. A check
+    # that cannot fail is not a check.
     #
-    # STRICTER than nixpkgs on one shape, deliberately: nixpkgs reuses its `path` predicate, which
-    # also admits a STRING beginning with `/`. `callM` dispatches on `builtins.isPath`, so such a
-    # string would pass through as a module VALUE — admitting it here would re-create the exact
-    # silent acceptance this domain exists to close.
+    # STRICTER than nixpkgs on one shape: nixpkgs reuses its `path` predicate, which also admits a
+    # STRING beginning with `/`. `callM` imports such a string, as the reference does; this domain
+    # does not admit it.
     admits = isModuleValue;
     # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
     # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
