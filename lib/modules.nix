@@ -68,12 +68,46 @@ let
 
   showOption = loc: concatStringsSep "." loc;
 
+  # The conflict refusal, ONE text for both leaf folds (`mergeLeaf` below and the boundary's
+  # `leafFold`), so the engine and what it publishes outward cannot drift apart. ADR-0025 item 1:
+  # a refusal names what a reader acts on, and for a conflict that is every contributing
+  # definition's FILE, listed with its value where a scalar prints — the information nixpkgs'
+  # `mergeEqualOption` lists. It is built only on the refusal path, where the fold's agreement test
+  # has already forced every value, and it reads each value's type and nothing deeper.
+  showConflict =
+    loc: defs:
+    let
+      showValue =
+        v:
+        let
+          ty = builtins.typeOf v;
+        in
+        if ty == "path" then
+          toString v
+        else if
+          builtins.elem ty [
+            "string"
+            "int"
+            "float"
+            "bool"
+            "null"
+          ]
+        then
+          builtins.toJSON v
+        else
+          "«${ty}»";
+    in
+    "gen-merge: the option `${showOption loc}' has conflicting definitions:"
+    + concatStringsSep "" (
+      map (d: "\n- In `${toString (d.file or "<unknown-file>")}': ${showValue d.value}") defs
+    );
+
   # The protocol boundary (lib/interface.nix). Imported HERE, and re-exported on the core seam, so the
   # dependency graph stays a chain — prelude → interface → this engine → the type vocabulary — rather
-  # than a knot: the boundary needs only the prelude and this file's one-line loc renderer, and both
-  # of its consumers reach it through the same binding, so their views of the foreign protocol cannot
-  # drift apart.
-  interface = import ./interface.nix { inherit prelude showOption; };
+  # than a knot: the boundary needs only the prelude and this file's loc and conflict renderers, and
+  # both of its consumers reach it through the same binding, so their views of the foreign protocol
+  # cannot drift apart.
+  interface = import ./interface.nix { inherit prelude showOption showConflict; };
 
   reverse =
     xs:
@@ -1115,10 +1149,7 @@ let
         vals = map (w: w.value) winners;
         first = head vals;
       in
-      if all (v: v == first) vals then
-        first
-      else
-        throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
+      if all (v: v == first) vals then first else throw (showConflict loc winners);
 
   # ── mergeDefaultOption — the nixpkgs SHAPE-DIRECTED default-merge law ─────────────────────────
   # The nixpkgs `lib.mergeDefaultOption` analogue: the combination law nixpkgs applies at a position

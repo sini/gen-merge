@@ -241,9 +241,8 @@ let
 
   # ── the `anything` scalar tie's fixtures (den-hoag-1fu0a) ───────────────────────────────────
   # One declaration and two definitions of it differing in exactly the value, so what separates
-  # refusal from a merge is the pair and nothing else. `_file` distinguishes them for a reader;
-  # `mergeLeaf` reports through the option path rather than the files, so it does not appear in
-  # any message here.
+  # refusal from a merge is the pair and nothing else. `_file` distinguishes them, and `mergeLeaf`
+  # names each file in its refusal (den-hoag-ur0nr), so every message here lists `A' and `B'.
   anyDecl = {
     options.o = gm.mkOption { type = t.anything; };
   };
@@ -754,7 +753,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': \"y\"\n- In `A': \"x\"$";
         };
       };
       # The reverse order. Both orders SUCCEEDED before, with two DIFFERENT wrong answers — defs
@@ -770,7 +769,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `A': \"x\"\n- In `B': \"y\"$";
         };
       };
       # THE DESCENT NAMES THE FULL PATH. The tie is under two attrset levels, reached through the
@@ -799,7 +798,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o\\.svc\\.k' has conflicting definitions$";
+          msg = "^gen-merge: the option `o\\.svc\\.k' has conflicting definitions:\n- In `B': \"y\"\n- In `A': \"x\"$";
         };
       };
       # A HETEROGENEOUS pair. nixpkgs refuses this through a different arm — `commonType` fails
@@ -822,7 +821,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': \"one\"\n- In `A': 1$";
         };
       };
       # ★★ A STATED DIVERGENCE FROM THE FOREIGN PROTOCOL, ASSERTED RATHER THAN INHERITED
@@ -845,7 +844,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': «lambda»\n- In `A': «lambda»$";
         };
       };
       # The control that keeps the cell above honest about its subject. Both arms refuse, and with
@@ -861,7 +860,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': «lambda»\n- In `A': «lambda»$";
         };
       };
       # The runner is not uniformly throwing on this vocabulary: one definition attempts no merge
@@ -913,7 +912,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': \"y\"\n- In `A': \"x\"$";
         };
       };
       # A gen-types `list` CHECKER, not gen-merge's `listOf` strategy: the definitions disagree and
@@ -934,7 +933,68 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': «list»\n- In `A': «list»$";
+        };
+      };
+    };
+
+    # ── the conflict refusal NAMES EVERY DEFINITION'S FILE (den-hoag-ur0nr, ADR-0025 item 1) ─────
+    # Two sites throw it — the engine's own `mergeLeaf` and the boundary's `leafFold`, the fold a
+    # gen type with none of its own publishes into a FOREIGN module system — and one cell per site
+    # meets each through its own entry. The file is the name a reader acts on; before this refusal
+    # listed the definitions, both sites named the option and neither file, so every conjunct but
+    # the file lines was already satisfied by the state these cells exclude. A scalar value is
+    # printed beside its file, which is the rest of what nixpkgs' `mergeEqualOption` lists.
+    flake.testsError.conflict-names-files = {
+      test-engine-leaf-fold-conflict-names-both-files = {
+        expr = realize {
+          modules = [
+            { options.o = gm.mkOption { type = t.raw; }; }
+            {
+              _file = "a.nix";
+              o = "x";
+            }
+            {
+              _file = "b.nix";
+              o = "y";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `b\\.nix': \"y\"\n- In `a\\.nix': \"x\"$";
+        };
+      };
+      # The BOUNDARY site, reached the only way it is reached: a gen type bringing no fold, mounted
+      # in a REAL `lib.evalModules`, which calls the exported `merge` with its own `{ file; value; }`
+      # definitions.
+      test-boundary-leaf-fold-conflict-names-both-files = {
+        expr =
+          builtins.deepSeq
+            (nixpkgsLib.evalModules {
+              modules = [
+                {
+                  options.o = nixpkgsLib.mkOption {
+                    type = genMergeVocab.defineType {
+                      name = "gauge";
+                      verify = v: if builtins.isInt v then null else "expected an int";
+                    };
+                  };
+                }
+                {
+                  _file = "a.nix";
+                  o = 1;
+                }
+                {
+                  _file = "b.nix";
+                  o = 2;
+                }
+              ];
+            }).config
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `b\\.nix': 2\n- In `a\\.nix': 1$";
         };
       };
     };

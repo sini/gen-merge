@@ -58,6 +58,7 @@
 {
   prelude,
   showOption,
+  showConflict,
 }:
 let
   inherit (prelude)
@@ -645,10 +646,7 @@ let
       let
         first = (head defs).value;
       in
-      if all (d: d.value == first) defs then
-        first
-      else
-        throw "gen-merge: the option `${showOption loc}' has conflicting definitions";
+      if all (d: d.value == first) defs then first else throw (showConflict loc defs);
 
   # isOptionType — the DUAL of the `_type = "option-type"` stamp `exportType` applies below, asked
   # here rather than spelled at the asking site. The engine needs it at the declaration boundary,
