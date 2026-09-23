@@ -563,9 +563,10 @@ in
         };
       };
       # The path is the FULL option path, and the file list is EVERY declaring file rather than the
-      # two the merge happened to be holding: `a.nix` and `b.nix` merge with each other before
-      # `c.nix` refuses, and a message naming only the pair at the point of refusal would send the
-      # author to two of the three modules they have to reconcile.
+      # two the merge happened to be holding: the list folds from the last declaration back, so
+      # `c.nix` against `b.nix` refuses first and `a.nix` is party to no refusing step, and a message
+      # naming only the pair at the point of refusal would send the author to two of the three
+      # modules they have to reconcile.
       test-refusal-names-the-full-path-and-every-declaring-file = {
         expr =
           (gm.evalModuleTree {
@@ -689,12 +690,11 @@ in
           msg = "^gen-merge: option `x' has `attrs' definitions that collide at `a' \\(b\\.nix, a\\.nix\\)$";
         };
       };
-      # THE NAME COLLISION, END TO END AND IN THE ORDER THE ENGINE CAN SEE IT. `mergeTypes` consults
-      # the FIRST operand's relation and never the second, so this is a refusal with gen's `attrs`
-      # declared first; declared second its relation is never asked and the first operand's fold
-      # runs. That order-dependence is `den-hoag-efepm`'s open question and is NOT claimed here —
-      # it is also not introduced here, the same pairing behaving identically before this type
-      # existed.
+      # THE NAME COLLISION, END TO END, IN BOTH ORDERS. A redeclaration step asks the EARLIER
+      # declaration's gen-native relation first (a veto no later relation overrules) and otherwise
+      # lets the LATER one decide, so gen's `attrs` refuses its foldless partner whichever module
+      # declares it: first (the veto) or second (it decides). The reverse-order cells below pin
+      # the second.
       #
       # The reason names the DISCRIMINATING FACT rather than the pair, because the pair is the same
       # name twice and would tell the reader nothing: both partners below really are called `attrs`.
@@ -710,6 +710,34 @@ in
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      test-attrs-redeclared-after-the-foreign-spelling-refuses = {
+        expr = declaredTwice nixpkgsLib.types.attrs t.attrs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      test-attrs-redeclared-after-the-shadowed-predicate-refuses = {
+        expr = declaredTwice attrsCompletedLeaf t.attrs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # e07bf: a refusal the DECIDING relation words is that relation's text, deciding type first.
+      test-a-relation-worded-refusal-names-the-deciding-type-first = {
+        expr =
+          declaredTwice
+            (gm.evalModuleTree {
+              check = false;
+              modules = [ { options.known = gm.mkOption { type = t.str; }; } ];
+            }).type
+            (t.submodule { options.known = gm.mkOption { type = t.str; }; });
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`submodule' and `moduleTree'\\); declared in a\\.nix, b\\.nix$";
         };
       };
       # LIVE CONTROL, same run and same helper — an `expected` cell in an `expectedError` output on
@@ -877,10 +905,10 @@ in
           msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge\\); defined in B, A$";
         };
       };
-      # THE FILE LIST IS EVERY CONTRIBUTOR, NOT THE PAIR HOLDING THE REFUSAL. The fold refuses at its
-      # FIRST step — `attrsOf (submodule)` against `attrsOf str`, both from `A` — and `B` is named
-      # anyway, undeduplicated and in fold order, because it is a third module the author still has
-      # to reconcile. Same convention, and same reason, as
+      # THE FILE LIST IS EVERY CONTRIBUTOR, NOT THE PAIR HOLDING THE REFUSAL. The fold starts from
+      # the LAST winner, so it refuses at its first step — `attrsOf str` from `A` against `attrsOf
+      # int` from `B` — and `ffSubA`'s `A` is named anyway, undeduplicated and in fold order, because
+      # it is a module the author still has to reconcile. Same convention, and same reason, as
       # `test-refusal-names-the-full-path-and-every-declaring-file` above.
       test-freeform-refusal-names-every-contributing-file = {
         expr = realize {
@@ -893,7 +921,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `submodule' and `attrsOf' over `string', whose element types do not merge\\); defined in A, A, B$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge\\); defined in A, A, B$";
         };
       };
       # The runner is not uniformly throwing: the same fixture vocabulary, one contribution, returns

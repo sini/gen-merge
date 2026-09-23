@@ -14,9 +14,11 @@
 #                            is a minimal descriptor map (the merged decl tree), not the reference
 #                            `options` structure (no per-node `_type`/`loc`/`declarations`).
 #   3. type-merge          — the same option loc DECLARED (with a `type`) in more than one module.
-#                            On the TYPE the two engines agree: both route the pair through
-#                            `type.typeMerge` (a functor over two `optionType`s) and refuse when it
-#                            answers null. They part on the OTHER fields — nixpkgs refuses the
+#                            On the TYPE the two engines agree on every all-foreign declaration
+#                            list: both fold it as nixpkgs brackets it, the LATER type deciding
+#                            through `typeMerge`, and refuse on null; gen-merge departs only by
+#                            refusing, where a fold step's gen-native relation refuses (README
+#                            "Known byte-mode boundaries"). They part on the OTHER fields — nixpkgs refuses the
 #                            redeclaration outright when both declarations carry any of
 #                            `default`/`example`/`description`/`apply` (its `bothHave` guard, which
 #                            fires ahead of the functor), where gen-merge right-biases them under a
@@ -358,7 +360,7 @@ let
         v:
         optional (length v.files >= 2) (
           mkFinding "type-merge" v.loc v.files
-            "option `${showLoc v.loc}' is declared with a type in more than one module; on the TYPE the engines agree (both combine the two declared types through the type's own merge relation and refuse when it answers nothing), but the reference engine ALSO refuses the redeclaration outright when both declarations carry any of `default'/`example'/`description'/`apply' (its `bothHave' guard, which runs BEFORE the types are combined at all), where gen-merge right-biases those fields — so a field-colliding pair is accepted here and rejected there"
+            "option `${showLoc v.loc}' is declared with a type in more than one module; on the TYPE the engines agree on every declaration list of foreign types (both fold the declared types as the reference engine brackets them, the later type deciding, and refuse when it answers nothing; gen-merge also refuses where a gen-native relation does), but the reference engine ALSO refuses the redeclaration outright when both declarations carry any of `default'/`example'/`description'/`apply' (its `bothHave' guard, which runs BEFORE the types are combined at all), where gen-merge right-biases those fields — so a field-colliding pair is accepted here and rejected there"
         )
       ) (attrValues byLoc);
 

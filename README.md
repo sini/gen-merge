@@ -932,8 +932,8 @@ and reads their exit codes.
 
 The question "do these two types merge?" is about two **declarations** rather than about defs: when
 an option is declared with a type in more than one module, `redeclareDecl` asks the algebra about the
-pair and refuses the declaration outright if the answer is nothing. `null` is a refusal naming the
-option path and *every* declaring file; the **non-type** fields keep their ordered bias (see
+whole declared-type list, bracketed as nixpkgs brackets it, and refuses the declaration outright if the
+answer is nothing. A refusal names the option path and *every* declaring file; the **non-type** fields keep their ordered bias (see
 "Redeclaring an option" below).
 
 **gen states this as `typeMergeRel`, and it is ROW-FREE — that is the whole difference.** nixpkgs
@@ -946,7 +946,10 @@ declaration site reports what did not merge instead of a bare null:
 typeMergeRel = other: if <compatible> then { merged = <type>; } else { refused = "<reason>"; };
 ```
 
-The engine dispatches **gen-native first, foreign second**. The foreign arm stays and is not legacy:
+The engine dispatches **gen-native first, foreign second**. On a declaration plane that has two
+meanings, one per operand. The LATER declaration's type decides (`mergeTypes later earlier`, nixpkgs'
+`later.typeMerge earlier.functor`), and an EARLIER gen-native relation is asked first whether it
+refuses the later type, a refusal no later relation overrules. The foreign arm stays and is not legacy:
 gen-merge meets foreign functors by construction — a gen type mounted in a foreign module system can
 face a same-named foreign type declared for the same option, and that partner has no relation and
 never will. Removing the arm would make the boundary one-directional, which is the C-3 ceremony
@@ -999,9 +1002,13 @@ which would answer the question twice with two answers that could disagree. Pinn
 
 Two modules may declare the same option loc. The merge splits the record in two:
 
-- **The `type` is the algebra's answer, or a refusal.** When both declarations carry a `type`, the
-  merged type is `typeMerge`'s (above). `null` — "not mergeable" — is a named refusal carrying the
-  option path and *every* declaring file. The outcome the routing removes is one declaration's field
+- **The `type` is the algebra's answer about the declaration list, or a refusal.** When two or more
+  declarations carry a `type`, the merged type is the list folded as nixpkgs' `mergeOptionDecls`
+  folds it: seeded from the LAST declaration, the accumulated type deciding against each earlier one,
+  `[a, b, c] = (c ⊳ b) ⊳ a` (the relation above, later operand deciding). A refusal is named and
+  carries the option path and *every* declaring file. A relation-worded reason names the deciding
+  (later) type first: a tree type declared first and a `submodule` second reads
+  `` (`submodule' and `moduleTree') ``. The outcome the routing removes is one declaration's field
   surviving beside the *other's* type on a record that then disagrees with itself.
 - **The non-type fields are right-biased, and what they shadow stays reachable.** Later declarations
   win field by field: this fold is an *ordered* fold over the authored module order, so a later
@@ -1020,9 +1027,46 @@ shadowed, which is not always the module that first declared the option: a modul
 shadows nothing and records no entry of its own, and when a later module restates that field the
 entry names the module that wrote it.
 
-**Against nixpkgs, measured on four shapes.** On the **type** the two engines agree: a type-only
-`str`/`str` redeclaration merges under both, and `str`/`int` is refused by both, in nixpkgs' case
-through the same functor. They part on the **other** fields — nixpkgs refuses a redeclaration
+**The type is decided once, at the last typed declaration.** `⊳` is not associative, so a left
+module fold cannot build `(c ⊳ b) ⊳ a` step by step. Each redeclaration step reads the typed
+declaring sites up to itself; only the step with no typed site after it may refuse. An earlier
+step's type is the prefix's own answer, read lazily, so `overridden[].declaration.type` still means
+"the accumulated earlier declaration" — and where that prefix does not merge on its own it is a named
+throw if forced, since a later declaration may merge the whole list: nixpkgs accepts
+`[int, str, Fx]` (`Fx = str // { typeMerge = _: int; }`) as `int`, and so does gen-merge, whose
+`overridden` types then read `int` and the throw. A later **untyped** declaration does not defer the
+decision. The freeform plane reads its winner list through the same fold.
+
+**An earlier gen-native relation's refusal is never overruled.** Each fold step first asks the
+earlier operand's `typeMergeRel`, if it has one, about the type every later declaration jointly
+became; a refusal there is the answer. So `[gt.int, Fint, str]` refuses as nixpkgs does, and
+`[gt.int, str, Fx]` accepts `int` as nixpkgs does, since `Fx` has already decided `str` away before
+`gt.int` is asked. The veto protects a gen relation against the type it is actually merged into and
+leaves to a foreign relation the authority nixpkgs gives it.
+
+**Against nixpkgs, on the type.** Over every declaration list of length 3 and 4 in a seven-family
+census (8,338 words), gen-merge agrees with nixpkgs on every all-foreign list, on both the
+declaration and the freeform planes. It departs only where a fold step's gen-native relation
+refuses, and then always by refusing; the members are listed under
+[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A refined type redeclared against
+its bare base refuses in both orders, directly or under a gen container.
+
+**Cost.** Each typed redeclaration step reads the declaring-site list, `O(modules × depth)`, so an
+option declared with a type in `n` of `M` modules costs `O(n × M × depth)`: flat for a fixed small
+`n`, and **quadratic when `n` grows with `M`**. Measured with `NIX_SHOW_STATS`, one option declared
+`int` in `n` of `M` modules, reading `config.p` and the type's name:
+
+|                              | M = 200       | M = 400   | M = 800            |
+| ---------------------------- | ------------- | --------- | ------------------ |
+| n = M, before the bracketing | 26,663 thunks | 50,663    | 98,663 (0.03 s)    |
+| n = M                        | 552,854       | 2,143,054 | 8,443,454 (1.34 s) |
+| n = 2, before the bracketing | 18,941        | 35,141    | 67,541             |
+| n = 2                        | 19,442        | 36,042    | 69,242             |
+
+A per-loc memo of the site list would remove the `n` factor; none is taken while no consumer
+redeclares one option in hundreds of modules.
+
+**Against nixpkgs, on the other fields.** They part on the **other** fields — nixpkgs refuses a redeclaration
 outright when both declarations carry any of `default`/`example`/`description`/`apply` (its
 `bothHave` guard, which fires ahead of the functor), where gen-merge right-biases them under the
 stated rule above. So the divergence runs one way: gen-merge accepts field-colliding redeclarations
@@ -1159,8 +1203,28 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict
   `raw` only if a consumer hits it.
+
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
+
+- **A redeclared option's type refuses where a gen-native relation refuses, even where nixpkgs
+  accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign list the
+  two engines agree, on the declaration and freeform planes (see "Redeclaring an option"). The
+  departures are all over-refusals, each at a fold step whose earlier operand is a gen type whose
+  relation refuses the later one. Measured members:
+
+  - `gt.attrs` against `lib.types.attrs`, in the order nixpkgs accepts (the foreign `attrs` fold is
+    `//`; gen's `attrs` refuses a collision, so it refuses a partner that states no fold of its own);
+  - the same pair under a gen container;
+  - an earlier gen relation vetoing a later foreign relation that answers another type
+    (`[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`, and a refined type before `Fx`);
+  - a refinement under a gen container against its bare element (`[listOf R, listOf int, listOf int]`,
+    where nixpkgs accepts `listOf` and drops the refinement).
+
+  Under a **foreign** outer container the element relation runs in foreign code and accepts what
+  nixpkgs accepts. The cost of the list fold is quadratic when one option is declared with a type in a
+  number of modules that grows with the module count ("Redeclaring an option", **Cost**).
+
 - **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
   drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`
   with `_module.check = false`) returns a value with the key gone; gen-merge refuses it by name, since
@@ -1211,13 +1275,13 @@ These boundaries are mechanically checkable — see [Portable-subset lint](#port
 step outside the byte-mode surface, so the "runs on gen-merge and `lib.evalModules` byte-identically"
 claim is verifiable, not asserted. The flagged kinds:
 
-| kind                    | what it catches                                                                        | why it diverges                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ----------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `order-pass`            | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale |
-| `options-introspection` | a module **function** whose formals include `options`                                  | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure                                                                                                                                                                                                                                                                                                                                                                  |
-| `type-merge`            | the same option loc declared **with a `type`** in more than one module                 | on the type the engines agree (both route the pair through the `typeMerge` functor and refuse on `null`); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge                                                                               |
-| `function-to`           | an option type named `functionTo`                                                      | intentionally omitted from the type surface (wrap guard functions as data)                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `unverifiable`          | an option type nested deeper than the type-walk fuel                                   | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative)                                                                                                                                                                                                                                                                                                                                                        |
+| kind                    | what it catches                                                                        | why it diverges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `order-pass`            | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale                                                                  |
+| `options-introspection` | a module **function** whose formals include `options`                                  | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `type-merge`            | the same option loc declared **with a `type`** in more than one module                 | on the type the engines agree on every all-foreign declaration list (both fold it as nixpkgs brackets it, the later type deciding), and gen-merge departs only by refusing where a fold step's gen-native relation refuses (Known byte-mode boundaries); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge |
+| `function-to`           | an option type named `functionTo`                                                      | intentionally omitted from the type surface (wrap guard functions as data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `unverifiable`          | an option type nested deeper than the type-walk fuel                                   | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative)                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Each finding is `{ kind; loc; file; detail }` — `loc` is the option/config path (`[]` for a whole-module
 finding like `options-introspection`); `file` is the def/decl provenance (`_file`), a **list** of files

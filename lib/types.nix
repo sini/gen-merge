@@ -361,7 +361,7 @@ let
                 + concatStringsSep ", " (map (k: "`${k}'") conflicting);
             }
           else
-            { merged = mkSubmodule (args // partnerArgs) (mods ++ partnerMods); };
+            { merged = mkSubmodule (args // partnerArgs) (partnerMods ++ mods); };
       substructure = {
         # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
         #   declares = prefix: (evalModuleTree { inherit modules prefix; }).options

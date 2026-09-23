@@ -309,9 +309,9 @@ let
   # turns it into a reason an author can act on; the fuel is interpolated from the one binding that
   # states it, so the number lives at a single site.
   #
-  # ★ BOTH THROW SITES INHERIT THIS, and neither is touched: `redeclareDecl` (the declaration plane)
-  # and the freeform `step` fold below both read `mergeTypesReason` and prefer it to a bare name
-  # pair. A gen type is unaffected — `mergeTypes` short-circuits on `typeMergeRel` before the
+  # ★ BOTH THROW SITES INHERIT THIS through `declaredPair` below: `redeclareDecl` (the declaration
+  # plane) and the freeform selection both report `declaredRefusalText`, which prefers this reason
+  # to a bare name pair. It is asked `(later, earlier)`, the deciding operand first. A gen type is unaffected — `mergeTypes` short-circuits on `typeMergeRel` before the
   # boundary is reached, so the first arm still answers for every pair that has a relation.
   mergeTypesReason =
     a: b:
@@ -322,12 +322,64 @@ let
     else
       null;
 
+  # ── the declared-type LIST: how N declarations of one option (or N freeform winners) merge ──
+  #
+  # nixpkgs' `mergeOptionDecls` folds `res.type.typeMerge opt.options.type.functor` over a
+  # declaration list `evalModules` has REVERSED, so the accumulated type is seeded from the LAST
+  # declaration and decides against each earlier one: [a,b,c] = (c ⊳ b) ⊳ a. `⊳` is not
+  # associative, so the bracketing is part of the answer, not a presentation choice: a left fold
+  # (a ⊳ b) ⊳ c, or pairwise-correct operands under a left fold, c ⊳ (b ⊳ a), each disagree with
+  # nixpkgs from three declarations up. Both planes read the list through `mergeDeclaredTypes`.
+  #
+  # `declaredPair earlier later` is ONE fold step, and it answers
+  # `{ merged = <type>; }` or `{ refused = <reason-or-null>; earlier; later; }`:
+  #   · VETO FIRST — an earlier gen-native relation (`typeMergeRel`) that refuses the later operand
+  #     is the answer, in that relation's own words. No later relation overrules it.
+  #   · otherwise the LATER operand decides, `mergeTypes later earlier`, which is nixpkgs'
+  #     `later.typeMerge earlier.functor` on a foreign pair.
+  # Because the step is asked of the ACCUMULATED later type, a gen relation is asked about the type
+  # the later declarations jointly became, never about a declaration a later relation has already
+  # merged away (`[gt.int, str, Fx]` with `Fx = str // { typeMerge = _: int; }` accepts `int`, as
+  # nixpkgs does). Where this departs from nixpkgs it departs only by REFUSING, and only where a
+  # step's gen relation refuses: README "Known byte-mode boundaries (deliberate)".
+  declaredPair =
+    earlier: later:
+    let
+      veto = if earlier ? typeMergeRel then earlier.typeMergeRel later else { };
+      m = mergeTypes later earlier;
+    in
+    if veto ? refused then
+      {
+        inherit (veto) refused;
+        inherit earlier later;
+      }
+    else if m == null then
+      {
+        refused = mergeTypesReason later earlier;
+        inherit earlier later;
+      }
+    else
+      { merged = m; };
+  # The list, in AUTHORED order; stops at the first refusing step. A one-element list is itself.
+  mergeDeclaredTypes =
+    ts:
+    foldl' (acc: earlier: if acc ? refused then acc else declaredPair earlier acc.merged) {
+      merged = prelude.last ts;
+    } (reverse (prelude.init ts));
+  # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
+  # first; only the null-reason fallback is spelled here, and it names the pair in authored order.
+  declaredRefusalText =
+    d: if d.refused != null then d.refused else "`${d.earlier.name}' and `${d.later.name}'";
+
   # The declaring SITES at one option loc, in authored module order — the entries whose own
   # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The
   # index is what lets a shadow record name the module that actually contributed the field being
   # shadowed rather than the n-th declarer of the option. A direct path lookup per module —
-  # O(modules × depth), never a tree walk — which is what makes it affordable both on the refusal
-  # path and behind the shadow record, each of which reads it lazily.
+  # O(modules × depth), never a tree walk. Each site also carries its own leaf as `decl`, lazily.
+  # ★ IT IS READ ON THE HAPPY PATH: every redeclaration step where both operands are typed reads
+  # it, since the declared-type list is what decides the type (`redeclareDecl`). So an option
+  # redeclared with a type in n of M modules costs O(n × M × depth) — flat for small n, quadratic
+  # when n grows with M. README "Redeclaring an option" carries the measured table.
   declaringSitesAt =
     entries: loc:
     let
@@ -341,13 +393,16 @@ let
           && opts ? ${head path}
           && declaresLeaf opts.${head path} (tail path);
     in
-    filter (e: declaresLeaf e.options loc) entries;
+    map (e: e // { decl = getAttrByPath loc e.options; }) (
+      filter (e: declaresLeaf e.options loc) entries
+    );
 
   # redeclareDecl — the ENGINE's answer when one option loc is declared by two modules.
   #
   # A DECLARATION MERGE CONSULTS THE TYPE ALGEBRA THE LIBRARY ALREADY SHIPS. When both declarations
-  # carry a `type`, the merged declaration's type is `mergeTypes`' answer about the pair; `null` —
-  # "not mergeable" — is a NAMED REFUSAL carrying the option path and the declaring files. This is
+  # carry a `type`, the merged declaration's type is `mergeDeclaredTypes`' answer about EVERY typed
+  # declaration of the loc, bracketed as nixpkgs brackets it (see `declaredPair`); a refusal is a
+  # NAMED REFUSAL carrying the option path and the declaring files. This is
   # the one place on the declaration path that did not consult the protocol, and the measured cost
   # was a record disagreeing with itself: one declaration's descriptor surviving beside the OTHER's
   # type, no error and no warning. Routing here is why that is no longer expressible — the only way
@@ -371,8 +426,17 @@ let
   # BOUNDARY, stated because the rule does not reach it: a field whose value is REFLECTED INTO AN
   # IDENTITY is not made safe here. Those sit under ADR-0016's option-set-closure precondition, and
   # enforcing it belongs to the minting spec, not to this engine. What this guarantees is narrower:
-  # the merged record's TYPE is the algebra's answer about both declarations, never one of them
-  # picked in silence.
+  # the merged record's TYPE is the algebra's answer about every typed declaration, never one of
+  # them picked in silence.
+  #
+  # THE TYPE IS DECIDED ONCE, AT THE LAST TYPED DECLARATION. The record fold is left and binary
+  # (ADR-0029) and `⊳` is not associative, so the fold cannot compute (c ⊳ b) ⊳ a step by step.
+  # Each step instead reads the typed sites up to its own module from `sitesAt`; the step with no
+  # typed site after it is `final`, and only there does a refusal throw. An earlier step's `type` is
+  # the prefix's answer — lazy, so `overridden[].declaration.type` keeps its meaning of "the
+  # accumulated earlier declaration" — and a prefix that does not merge on its own reads as a named
+  # throw if forced, since a later declaration may still merge the whole list (nixpkgs accepts
+  # `[int, str, Fx]` as `int`). A later UNTYPED site does not defer the decision.
   redeclareDecl =
     sitesAt: modIndex: lk: av: bv:
     let
@@ -404,17 +468,25 @@ let
     in
     if (av ? type) && (bv ? type) then
       let
-        mergedType = mergeTypes av.type bv.type;
+        typed = filter (s: s.decl ? type) sites;
+        # the LAST typed declaration decides the whole list; an earlier step's prefix is provisional
+        final = all (s: s.idx <= modIndex) typed;
+        prior = filter (s: s.idx <= modIndex) typed;
+        upTo = mergeDeclaredTypes (map (s: s.decl.type) prior);
       in
-      if mergedType == null then
-        throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${
-          let
-            reason = mergeTypesReason av.type bv.type;
-          in
-          if reason != null then reason else "`${av.type.name}' and `${bv.type.name}'"
-        }); declared in ${concatStringsSep ", " (map (s: s.file) sites)}"
+      if final && upTo ? refused then
+        throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${declaredRefusalText upTo}); declared in ${
+          concatStringsSep ", " (map (s: s.file) sites)
+        }"
       else
-        kept // { type = mergedType; }
+        kept
+        // {
+          type =
+            if upTo ? merged then
+              upTo.merged
+            else
+              throw "gen-merge: option `${showOption lk}': the declarations through the one in ${(prelude.last prior).file} do not merge on their own (${declaredRefusalText upTo}); a later declaration decides them";
+        }
     else
       kept;
 
@@ -1888,8 +1960,9 @@ let
           #
           # `declEntries` carries the provenance the tree walk itself cannot see: each module's own
           # options root beside the file that declared it and its POSITION in the fold. It is read
-          # only through `sitesAt` — on a refusal, or when a shadow record's `file` is read — so the
-          # happy path never touches it. The position is what a shadow record needs to name its
+          # through `sitesAt` — at every redeclaration step where both declarations carry a type
+          # (the declared-type list decides the type), on a refusal, and when a shadow record's
+          # `file` is read. The position is what a shadow record needs to name its
           # contributor; the fold therefore hands each step its own index rather than one shared
           # rule. The locs the walk hands over are PREFIXED (the fold's `loc` IS `prefix`) while
           # these trees are not, hence the `drop`.
@@ -2001,17 +2074,19 @@ let
           # merged downstream"; taking `last` of them was the whole of the downstream, so two
           # equal-priority contributions destroyed one declaration with no diagnostic on any channel
           # — not `config`, not `provenance`, not `freeformProv`, not `undeclared`. This is the
-          # DEFINITION-side twin of `redeclareDecl`, which routes the declaration plane's two-type
-          # question through `mergeTypes` and turns a `null` answer into a named refusal; the two
-          # planes now give one relation one answer. A merge that succeeds displaces nothing, so
+          # DEFINITION-side twin of `redeclareDecl`: both read the declared-type list through
+          # `mergeDeclaredTypes`, bracketed as nixpkgs' `types.optionType.merge` brackets it (the
+          # last winner decides against each earlier one), and turn a refusal into a named one; the
+          # two planes give one list one answer. A merge that succeeds displaces nothing, so
           # there is no `overridden` analogue here and none is wanted.
           #
           # The refusal names EVERY contributing file in fold order, undeduplicated — the same
           # convention `declaringSitesAt` gives the declaration plane, and for the same reason: the
           # pair holding the refusal is not the set of modules the author has to reconcile.
-          # `mergeTypesReason` is order-sensitive in its TEXT, so two presentation orders carry two
-          # different messages; that matches `redeclareDecl` reporting in authored order and is
-          # deliberate, not a canonicalisation this site declined to do by oversight.
+          # The refusing pair is the first step that refuses, which under the bracketing is the
+          # LAST two contributions first; a relation-worded reason names the deciding (later) type
+          # first, and only the null-reason fallback reads in authored order — the same text rule
+          # as `redeclareDecl`, by construction, since both report `declaredRefusalText`.
           #
           # The one-winner path attempts no merge: it keeps its current cost and its current type
           # IDENTITY, which is what `strict.nix`'s throw-on-unknown default depends on.
@@ -2032,22 +2107,16 @@ let
                 concatMap (c: map (d: d // { inherit (c) _file; }) (dischargeProperties c.type)) candidates
               );
               files = concatStringsSep ", " (map (w: w._file) winners);
-              step =
-                acc: w:
-                let
-                  merged = mergeTypes acc w.value;
-                in
-                if merged != null then
-                  merged
-                else
-                  throw "gen-merge: the freeform type is defined with types that do not merge (${
-                    let
-                      reason = mergeTypesReason acc w.value;
-                    in
-                    if reason != null then reason else "`${acc.name}' and `${w.value.name}'"
-                  }); defined in ${files}";
+              decided = mergeDeclaredTypes (map (w: w.value) winners);
             in
-            if winners == [ ] then null else foldl' step (head winners).value (tail winners);
+            if winners == [ ] then
+              null
+            else if length winners == 1 then
+              (head winners).value
+            else if decided ? merged then
+              decided.merged
+            else
+              throw "gen-merge: the freeform type is defined with types that do not merge (${declaredRefusalText decided}); defined in ${files}";
 
           # Definition order is REVERSE flattened-module order — byte-identical to nixpkgs, which
           # collects defs last-module-first (observable in list-typed options: `[a] [b] [c]` merges
