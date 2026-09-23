@@ -1494,7 +1494,29 @@ let
                   name = k;
                   value = getAttrByPath abs warm.prevConfig;
                   prov = getAttrByPath abs warm.prevProv;
-                  unmatched = [ ];
+                  # The reused leaf's dropped defs are the ones the PRIOR eval reported at and below
+                  # `abs` — the same §2 predicate (decls and defs here come only from clean modules)
+                  # makes that report the cold merge's, so reuse survives: nothing is re-merged. The
+                  # prior report holds entries at or below `abs` only from this leaf's own channel (an
+                  # undeclared key elsewhere is captured above a declared leaf, never below one).
+                  # Decided from the DECLARATION, as the cold branch does: every other leaf type
+                  # contributes a constant `[ ]`, so the spine walks below force nothing.
+                  unmatched =
+                    let
+                      lt = opts.${k}.type or null;
+                      at = prefix ++ abs;
+                      n = length at;
+                    in
+                    if lt != null && lt ? mergeUndeclared then
+                      concatMap (
+                        u:
+                        optional (length u.path >= n && take n u.path == at) {
+                          inherit (u) file;
+                          path = drop (length prefix) u.path;
+                        }
+                      ) warm.prevUndeclared
+                    else
+                      [ ];
                 }
               else
                 let
@@ -1674,6 +1696,10 @@ let
                 inherit (decision) isClean;
                 prevConfig = warmFrom.config;
                 prevProv = warmFrom.provenance;
+                # The prior eval's OWN undeclared report, read by `mergeTree`'s reused leaf only when
+                # the leaf's type carries `mergeUndeclared` (see there). Its paths are `prefix ++` the
+                # `unmatched` record's path, which is what the reader strips back off.
+                prevUndeclared = warmFrom.undeclared;
               }
             else
               { active = false; };

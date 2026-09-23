@@ -1075,6 +1075,81 @@ in
           freeByte = true;
         };
       };
+
+    # A REUSED `moduleTree` LEAF REPORTS ITS DROPPED DEFS, as the cold merge does (ADR-0025 item 1 on
+    # the incremental plane). `nest` must be in `reused`: without it this cell measures the cold
+    # branch and passes on a warm splice that answers `[ ]`. The report is asserted against the COLD
+    # eval's, not a literal alone, so the two planes are held to one answer; `.config` byte-identity
+    # is the fence that the report moved nothing else.
+    # The inner tree declares `id_hash` and the value carries one because the warm identity walk
+    # (`identityMapOf`) stops at a value with `id_hash` before asking the leaf's type what it carries —
+    # and asking `moduleTree` that is refused (it is non-mountable), so without it the warm `.config`
+    # throws on this fixture on both sides of this change. That refusal is a separate defect.
+    test-reused-module-tree-leaf-reports-its-dropped-def =
+      let
+        inner =
+          (evalModuleTree {
+            check = false;
+            modules = [
+              {
+                options.known = mkOption { type = t.str; };
+                options.id_hash = mkOption { type = t.str; };
+              }
+            ];
+          }).type;
+        base = [
+          { options.nest = mkOption { type = inner; }; }
+          {
+            _file = "C";
+            config.nest = {
+              known = "k";
+              id_hash = "nest:0";
+              bogus = "B";
+            };
+          }
+        ];
+        edited = [
+          {
+            options.other = mkOption { type = t.str; };
+            config.other = "o";
+          }
+        ];
+        coldLax =
+          mods:
+          evalModuleTree {
+            check = false;
+            modules = mods;
+          };
+        w = evalModuleTree {
+          check = false;
+          modules = base ++ edited;
+          warmFrom = coldLax base;
+          editedModules = edited;
+        };
+        c = coldLax (base ++ edited);
+      in
+      {
+        expr = {
+          nestReused = builtins.elem "nest" w.warmDecision.reused;
+          warmReport = w.undeclared;
+          agreesWithCold = w.undeclared == c.undeclared;
+          configByte = jsonEq w.config c.config;
+        };
+        expected = {
+          nestReused = true;
+          warmReport = [
+            {
+              file = "C";
+              path = [
+                "nest"
+                "bogus"
+              ];
+            }
+          ];
+          agreesWithCold = true;
+          configByte = true;
+        };
+      };
   };
 
   # THE OTHER HALF OF `test-freeform-edited-toplevel-freeformtype-remerges-byte`, AND THE ONLY WARM
