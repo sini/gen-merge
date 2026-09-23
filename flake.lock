@@ -72,11 +72,11 @@
         "gen-prelude": "gen-prelude_2"
       },
       "locked": {
-        "lastModified": 1790110098,
-        "narHash": "sha256-RKcWARK8AHn2jKUdyQMawo7xtZvXP2jEREUz2c7mIog=",
+        "lastModified": 1790128495,
+        "narHash": "sha256-jVBKyLyqiUCQwHSLhYMseQ9NUdMIvxvY/8ywAm3IBXo=",
         "owner": "sini",
         "repo": "gen-memo",
-        "rev": "0f92c71d26d7b633230318059db35903f7b575ee",
+        "rev": "e019d6c450c457b1d09f9f4a3d81b6c92731c050",
         "type": "github"
       },
       "original": {
