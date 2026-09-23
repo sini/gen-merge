@@ -1058,7 +1058,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': «lambda»\n- In `A': «lambda»$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': <a lambda>\n- In `A': <a lambda>$";
         };
       };
       # The control that keeps the cell above honest about its subject. Both arms refuse, and with
@@ -1074,7 +1074,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': «lambda»\n- In `A': «lambda»$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': <a lambda>\n- In `A': <a lambda>$";
         };
       };
       # The runner is not uniformly throwing on this vocabulary: one definition attempts no merge
@@ -1147,7 +1147,34 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': «list»\n- In `A': «list»$";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': <a list>\n- In `A': <a list>$";
+        };
+      };
+      # The refusal forces NO list element (den-hoag-shared-refusal-renderer-6wtos, gate C1). List
+      # `==` decides unequal lengths without reading an element, so `({ }).nope` — an uncatchable
+      # abort at its WHNF, the shape of a definition naming an absent config attribute — is first
+      # reached, if at all, inside the refusal. A renderer that forced it would replace this
+      # catchable, named refusal with an `EvalError`.
+      test-leaf-list-conflict-forces-no-element = {
+        expr = realize {
+          modules = [
+            { options.o = gm.mkOption { type = t.list; }; }
+            {
+              _file = "A";
+              o = [
+                "a"
+                ({ }).nope
+              ];
+            }
+            {
+              _file = "B";
+              o = [ "b" ];
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': <a list>\n- In `A': <a list>$";
         };
       };
     };

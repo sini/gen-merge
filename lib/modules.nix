@@ -73,29 +73,17 @@ let
   # a refusal names what a reader acts on, and for a conflict that is every contributing
   # definition's FILE, listed with its value where a scalar prints — the information nixpkgs'
   # `mergeEqualOption` lists. It is built only on the refusal path, where the fold's agreement test
-  # has already forced every value, and it reads each value's type and nothing deeper.
+  # has already forced every value to WHNF, and it renders through gen-prelude's shared `renderValue`.
+  #
+  # A LIST is named by its type here and never handed to the shared renderer, whose string-list arm
+  # forces every element. The agreement test does not force them — list `==` decides unequal lengths
+  # before it reads an element — so an element that aborts at WHNF (`({ }).nope`, a missing config
+  # attribute) would first be forced INSIDE the refusal, turning this catchable, named refusal into
+  # an uncatchable abort (ADR-0025 item 1). Forcing no element keeps the refusal total on every list.
   showConflict =
     loc: defs:
     let
-      showValue =
-        v:
-        let
-          ty = builtins.typeOf v;
-        in
-        if ty == "path" then
-          toString v
-        else if
-          builtins.elem ty [
-            "string"
-            "int"
-            "float"
-            "bool"
-            "null"
-          ]
-        then
-          builtins.toJSON v
-        else
-          "«${ty}»";
+      showValue = v: if builtins.isList v then "<a list>" else prelude.renderValue v;
     in
     "gen-merge: the option `${showOption loc}' has conflicting definitions:"
     + concatStringsSep "" (
