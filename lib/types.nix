@@ -360,6 +360,10 @@ let
                 + (if length conflicting == 1 then " " else "s ")
                 + concatStringsSep ", " (map (k: "`${k}'") conflicting);
             }
+          # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
+          # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
+          # the union nixpkgs builds. Pinned by
+          # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
           else
             { merged = mkSubmodule (args // partnerArgs) (partnerMods ++ mods); };
       substructure = {

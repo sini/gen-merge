@@ -1047,8 +1047,10 @@ leaves to a foreign relation the authority nixpkgs gives it.
 **Against nixpkgs, on the type.** Over every declaration list of length 3 and 4 in a seven-family
 census (8,338 words), gen-merge agrees with nixpkgs on every all-foreign list, on both the
 declaration and the freeform planes. It departs only where a fold step's gen-native relation
-refuses, and then always by refusing; the members are listed under
-[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A refined type redeclared against
+refuses, and then always by refusing: gen `attrs` against foreign `attrs` in the order nixpkgs
+accepts, directly or under a gen container; an earlier gen relation vetoing a later foreign relation
+that answers another type; and a refinement under a gen container against its bare element. They are
+listed under [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A refined type redeclared against
 its bare base refuses in both orders, directly or under a gen container.
 
 **Cost.** Each typed redeclaration step reads the declaring-site list, `O(modules × depth)`, so an
@@ -1058,15 +1060,14 @@ option declared with a type in `n` of `M` modules costs `O(n × M × depth)`: fl
 
 |                              | M = 200       | M = 400   | M = 800            |
 | ---------------------------- | ------------- | --------- | ------------------ |
-| n = M, before the bracketing | 26,663 thunks | 50,663    | 98,663 (0.03 s)    |
-| n = M                        | 552,854       | 2,143,054 | 8,443,454 (1.34 s) |
-| n = 2, before the bracketing | 18,941        | 35,141    | 67,541             |
-| n = 2                        | 19,442        | 36,042    | 69,242             |
+| n = M, before the bracketing | 26,664 thunks | 50,664    | 98,664 (0.03 s)    |
+| n = M                        | 553,251       | 2,143,851 | 8,445,051 (1.36 s) |
+| n = 2, before the bracketing | 18,942        | 35,142    | 67,542             |
+| n = 2                        | 19,443        | 36,043    | 69,243             |
 
-A per-loc memo of the site list would remove the `n` factor; none is taken while no consumer
-redeclares one option in hundreds of modules.
+A per-loc memo of the site list would remove the `n` factor; it is not taken here.
 
-**Against nixpkgs, on the other fields.** They part on the **other** fields — nixpkgs refuses a redeclaration
+**Against nixpkgs, on the other fields.** The engines part on the **other** fields — nixpkgs refuses a redeclaration
 outright when both declarations carry any of `default`/`example`/`description`/`apply` (its
 `bothHave` guard, which fires ahead of the functor), where gen-merge right-biases them under the
 stated rule above. So the divergence runs one way: gen-merge accepts field-colliding redeclarations
@@ -1203,16 +1204,16 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict
   `raw` only if a consumer hits it.
-
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
-
 - **A redeclared option's type refuses where a gen-native relation refuses, even where nixpkgs
   accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign list the
   two engines agree, on the declaration and freeform planes (see "Redeclaring an option"). The
   departures are all over-refusals, each at a fold step whose earlier operand is a gen type whose
-  relation refuses the later one. Measured members:
-
+  relation refuses the later one. Under a **foreign** outer container the element relation runs in
+  foreign code and accepts what nixpkgs accepts. The list fold's cost is quadratic when one option is
+  declared with a type in a number of modules that grows with the module count ("Redeclaring an
+  option", **Cost**). Measured members:
   - `gt.attrs` against `lib.types.attrs`, in the order nixpkgs accepts (the foreign `attrs` fold is
     `//`; gen's `attrs` refuses a collision, so it refuses a partner that states no fold of its own);
   - the same pair under a gen container;
@@ -1220,11 +1221,6 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     (`[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`, and a refined type before `Fx`);
   - a refinement under a gen container against its bare element (`[listOf R, listOf int, listOf int]`,
     where nixpkgs accepts `listOf` and drops the refinement).
-
-  Under a **foreign** outer container the element relation runs in foreign code and accepts what
-  nixpkgs accepts. The cost of the list fold is quadratic when one option is declared with a type in a
-  number of modules that grows with the module count ("Redeclaring an option", **Cost**).
-
 - **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
   drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`
   with `_module.check = false`) returns a value with the key gone; gen-merge refuses it by name, since
