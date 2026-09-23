@@ -2261,6 +2261,55 @@ in
         };
       };
 
+    # A FOREIGN TYPE'S `check` IS APPLIED BEFORE ITS FOLD (`../tests/foreign-leaf-check.nix` holds the
+    # class table). The refusal names the option, the type's description and the failing file; the
+    # two further cells are the ones whose stock arm was not a catchable refusal at all — a hybrid
+    # descriptor's own `mergeDefs` fed a non-list, and a gen `listOf` round-tripped through
+    # `mkOptionType`, each of which aborted in a raw builtin.
+    flake.testsError.foreign-leaf-check =
+      let
+        read =
+          T: defs:
+          builtins.deepSeq
+            (gm.evalModuleTree {
+              modules = [ { options.p = gm.mkOption { type = T; }; } ] ++ defs;
+            }).config.p
+            null;
+        bad = v: [
+          {
+            _file = "bad.nix";
+            p = v;
+          }
+        ];
+      in
+      {
+        test-foreign-type-refusal-names-option-type-file = {
+          expr = read nixpkgsLib.types.str (bad 1);
+          expectedError = {
+            type = "ThrownError";
+            msg = "option `p'.*not of type `string'.*`bad\\.nix'";
+          };
+        };
+        test-hybrid-descriptor-checks-before-its-own-mergeDefs = {
+          expr = read (gm.mkOptionType {
+            name = "h";
+            check = builtins.isList;
+            mergeDefs = _loc: defs: builtins.concatLists (map (d: d.value) defs);
+          }) (bad 1);
+          expectedError = {
+            type = "ThrownError";
+            msg = "option `p'.*not of type `h'.*`bad\\.nix'";
+          };
+        };
+        test-round-tripped-structural-type-refuses-by-name = {
+          expr = read (gm.mkOptionType (t.listOf t.int)) (bad 1);
+          expectedError = {
+            type = "ThrownError";
+            msg = "option `p'.*not of type `.*`bad\\.nix'";
+          };
+        };
+      };
+
     # THE MODULE READER IS THE REFERENCE'S `unifyModuleSyntax`. A structured module (one carrying
     # `config` or `options`) with any other key outside the module keys is refused BY NAME, naming
     # the key and the file, on each door's first read of a module — every config read, every

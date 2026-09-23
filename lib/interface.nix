@@ -190,7 +190,34 @@ let
   # a fold no longer answers "is this the type's own?", and the marker records the answer at the only
   # point that knew it. Absent marker reads as `false` — right for a genuinely foreign type, which
   # owns whatever fold it published.
-  importedFold = t: if t ? merge && !(t._protoLeafMerge or false) then t.merge else null;
+  #
+  # A foreign fold is the foreign engine's CHECKED merge: where the type states its domain as a
+  # foreign `check` (and no `verify`, which marks a gen leaf whose `check` is curried and which the
+  # spine already applies), every definition passes that `check` before the fold sees it — nixpkgs
+  # `mergeDefinitions`' `checkedAndMerged`. The check wraps the descriptor's OWN fold, whichever
+  # spelling states it, and reaches `leafFold` only for a descriptor that states none.
+  importedFold =
+    t:
+    if t._protoLeafMerge or false then
+      null
+    else if t ? check && !(t ? verify) then
+      checkedFold t (t.merge or t.mergeDefs or leafFold)
+    else if t ? merge then
+      t.merge
+    else
+      null;
+
+  checkedFold =
+    t: fold: loc: defs:
+    let
+      bad = filter (d: !(t.check d.value)) defs;
+    in
+    if bad == [ ] then
+      fold loc defs
+    else
+      throw "gen-merge: a definition for option `${showOption loc}' is not of type `${
+        t.description or t.name or "raw"
+      }', in ${concatStringsSep ", " (map (d: "`${d.file}'") bad)}";
 
   # What value does this type supply when nothing defined it? `{ }` is "it declares none" and is a
   # different fact from `{ value = null; }`, which is a declared null.

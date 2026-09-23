@@ -846,10 +846,19 @@ gap**, and the correction is worth stating because the reasoning is general: a u
 unable to refuse anything, and its merge then hands a definition to a member that cannot consume it.
 See "`either` — a union's merge is total" below.
 
-The remaining shape difference is a *diagnostic* one and stays: where a definition reaches a merge
-that cannot consume it without passing a union — through `mergeDefs`, which reads `verify` and never
-`check` — gen-merge still aborts with a raw builtin error (`expected a set but found a list`) where
-nixpkgs names the option and the defining file.
+The remaining shape difference is a *diagnostic* one and stays, for gen-native records only: where a
+definition reaches a gen structural type's merge that cannot consume it without passing a union —
+through `mergeDefs`, which reads `verify` and never `check` — gen-merge still aborts with a raw builtin
+error (`expected a set but found a list`) where nixpkgs names the option and the defining file.
+
+**A foreign type's `check` is applied to every definition before its fold**, as nixpkgs'
+`mergeDefinitions` does (`checkedAndMerged`). A type whose domain is stated in the foreign protocol —
+`lib.types.str`, a `check` given to `mkOptionType`, a leaf vocabulary injected as `types`, or a gen
+structural type sent out and brought back through `mkOptionType` — has its `check` tested at the
+boundary (`importedFold`), wrapping whichever fold the type brought, so `lib.types.str` refuses `1` at
+every position gen-merge folds and the refusal names the option, the type and the failing files
+(`ci/tests/foreign-leaf-check.nix`). As in nixpkgs, only the definitions that survive `mkIf` and
+priority are checked.
 
 ### `either` — a union's merge is total
 
