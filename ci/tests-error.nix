@@ -2618,5 +2618,97 @@ in
           };
         };
       };
+    # 0s6zi — a tree merged as a container element carries no undeclared report, so it refuses a
+    # key its own level does not declare, by name, with the element's location and the def's file.
+    flake.testsError.container-element =
+      let
+        el =
+          (gm.evalModuleTree {
+            check = false;
+            modules = [
+              {
+                options.known = gm.mkOption {
+                  type = t.str;
+                  default = "k";
+                };
+              }
+            ];
+          }).type;
+        cx =
+          ty: def:
+          (gm.evalModuleTree {
+            check = false;
+            modules = [
+              { options.x = gm.mkOption { type = ty; }; }
+              {
+                _file = "/real/F.nix";
+                config.x = def;
+              }
+            ];
+          }).config.x;
+        bad = {
+          known = "v";
+          bogus = 1;
+        };
+        msg =
+          path: at:
+          "^gen-merge: option `${path}' is not declared by the nested tree that owns it \\(defined in /real/F\\.nix\\); the tree at `${at}' is merged where no undeclared report is carried$";
+      in
+      {
+        test-attrsof-element-refuses-deep = {
+          expr = builtins.deepSeq (cx (t.attrsOf el) { a = bad; }) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "x\\.a\\.bogus" "x\\.a";
+          };
+        };
+        test-attrsof-element-refuses-at-element-whnf = {
+          expr = builtins.seq (cx (t.attrsOf el) { a = bad; }).a null;
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "x\\.a\\.bogus" "x\\.a";
+          };
+        };
+        test-listof-element-refuses = {
+          expr = builtins.deepSeq (cx (t.listOf el) [ bad ]) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "x\\.0\\.bogus" "x\\.0";
+          };
+        };
+        # 9f4bn K4, the non-reporting half: an element whose every def is discharged takes the
+        # tree's `whenEmpty`, the strict fold over no definitions, and the tree's own undeclared
+        # `zz` is refused rather than dropped (nixpkgs at `check = false` drops it: the P1 boundary).
+        test-an-empty-element-tree-refuses-its-own-finding = {
+          expr =
+            let
+              zzTree =
+                (gm.evalModuleTree {
+                  check = false;
+                  modules = [
+                    {
+                      options.b = gm.mkOption {
+                        type = t.int;
+                        default = 7;
+                      };
+                    }
+                    { config.zz = 1; }
+                  ];
+                }).type;
+            in
+            builtins.deepSeq (cx (t.lazyAttrsOf zzTree) { a = gm.mkIf false { b = 9; }; }).a.b null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `zz' is not declared by the nested tree that owns it \\(defined in <gen-merge>\\); the tree is merged where no undeclared report is carried$";
+          };
+        };
+        test-nullor-element-refuses = {
+          expr = builtins.deepSeq (cx (t.nullOr el) bad) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "x\\.bogus" "x";
+          };
+        };
+      };
   };
 }

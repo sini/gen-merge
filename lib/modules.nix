@@ -1162,12 +1162,12 @@ let
   # coreShortCircuit skip: the record is SYNTHESIZED from the marker (core def as sole def + winner at
   # the bare priority, defaulted=false) so the skip stays a skip — the discharge/fold spine never runs.
   mergeDefsRichWith =
-    coreShortCircuit: loc: type: rawDefs:
+    mode: loc: type: rawDefs:
     let
       coreDef = head rawDefs;
-      soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
+      soleCore = mode.coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
       normalized =
-        if coreShortCircuit then
+        if mode.coreShortCircuit then
           map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
         else
           rawDefs;
@@ -1188,10 +1188,32 @@ let
       # the filter selected, and the order axis must not be allowed to answer that question.
       sorted = if any (w: isOrderMarker w.value) winners then sortProperties winners else winners;
       typeDefs = map (w: { inherit (w) file value; }) sorted;
-      # The fold dispatch, exactly as the value path reads it above — the twin stays parallel.
-      fold = ownFold type;
+      # The fold dispatch, exactly as the value path reads it above — the twin stays parallel —
+      # except where a report is carried and the type's fold states one (a nesting seam's
+      # `mergeDefs.reported`): there ONE application yields `{ value; undeclared; }`, read apart
+      # below. The condition is restated inline rather than bound: a binding here is a thunk on
+      # every declared leaf.
+      fold =
+        if mode.carried && type != null && type ? mergeDefs.reported then
+          type.mergeDefs.reported
+        else
+          ownFold type;
+      # A reporting seam's EMPTY value is its lax fold over no definitions, run where its reference
+      # runs it (nixpkgs' `base.config`, prefix `[ ]`, as `whenEmpty` does), with the report of that
+      # same fold read at this option's location. Its `whenEmpty` is the strict call, for the sites
+      # that carry no report.
       result =
-        if winners == [ ] then
+        if winners == [ ] && mode.carried && type != null && type ? mergeDefs.reported then
+          (
+            let
+              r = type.mergeDefs.reported [ ] [ ];
+            in
+            {
+              inherit (r) value;
+              undeclared = map (u: u // { path = loc ++ u.path; }) r.undeclared;
+            }
+          )
+        else if winners == [ ] then
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if fold != null then
           fold loc typeDefs
@@ -1236,18 +1258,31 @@ let
           };
       # The undeclared-report channel (ADR-0025 item 1) — `[ ]` for every ordinary type, the same
       # default posture `coreShortCircuit ? false`/`warmFrom ? null` already take on this file: a
-      # type only produces one by carrying `mergeUndeclared` (today, only `moduleTree`'s nesting
-      # seam), and `soleCore` skips it exactly as it skips the discharge/fold spine itself. Read with
-      # `typeDefs` — the SAME post-discharge, post-priority, file-preserving list `fold loc typeDefs`
-      # above already reads — never `rawDefs`, so the report and the value agree about which defs won.
+      # type only produces one by carrying `mergeDefs.reported` (today, only `moduleTree`'s nesting
+      # seam), only where this evaluation's report is carried, and `soleCore` skips it exactly as it
+      # skips the discharge/fold spine itself. It is the SAME application `result` made over
+      # `typeDefs`, so the report and the value agree about which defs won.
       undeclared =
-        if soleCore || type == null || !(type ? mergeUndeclared) then
+        if soleCore || !(mode.carried && type != null && type ? mergeDefs.reported) then
           [ ]
         else
-          type.mergeUndeclared loc typeDefs;
+          result.undeclared;
     in
     {
-      value = if soleCore then coreDef.value.values else checked;
+      value =
+        if soleCore then
+          coreDef.value.values
+        else if mode.carried && type != null && type ? mergeDefs.reported then
+          # `verify` applied here, inline, as `checked` applies it on every other path: `checked`
+          # itself cannot read this branch without costing a thunk on every verified leaf.
+          (
+            if type ? verify && type.verify result.value != null then
+              throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${type.verify result.value}"
+            else
+              result.value
+          )
+        else
+          checked;
       inherit prov undeclared;
     };
 
@@ -1355,9 +1390,15 @@ let
   # same `_ro` gate the value forces).
   mergeOption =
     loc: optDecl: rawDefs:
-    (mergeOptionWith false loc optDecl rawDefs).value;
+    (mergeOptionWith {
+      coreShortCircuit = false;
+      carried = true;
+    } loc optDecl rawDefs).value;
+  # `mode` = `{ coreShortCircuit; carried; }`, one record rather than two arguments: an argument
+  # added here is an environment allocated on every declared leaf, and the record is built once per
+  # evaluation. `carried` says whether this evaluation's undeclared report is read by anyone.
   mergeOptionWith =
-    coreShortCircuit: loc: optDecl: rawDefs:
+    mode: loc: optDecl: rawDefs:
     let
       hasApply = optDecl ? apply;
       readOnly = optDecl.readOnly or false;
@@ -1374,7 +1415,7 @@ let
         if rawDefs == [ ] && !(optDecl ? default) && !(hasEmptyValue (optDecl.type or null)) then
           throw "gen-merge: the option `${showOption loc}' is used but not defined"
         else
-          mergeDefsRichWith coreShortCircuit loc (optDecl.type or null) withDefault;
+          mergeDefsRichWith mode loc (optDecl.type or null) withDefault;
     in
     if !hasApply && !readOnly then
       merged
@@ -1569,7 +1610,10 @@ let
       knotAttr;
 
   # ── evalModuleTree — one call = one `evalModules`, one knot on the one evaluator ──────
-  evalModuleTree =
+  # `carried`: whether this evaluation's `undeclared` report is read. The public binding is
+  # `evalModuleTreeWith true`; only a nesting seam's strict fold passes `false`.
+  evalModuleTreeWith =
+    carried:
     {
       modules,
       specialArgs ? { },
@@ -1600,7 +1644,7 @@ let
       modList = if isList modules then modules else [ modules ];
       # Rich option merge (`{ value; prov }`) — the realizer reads BOTH the value tree and the
       # provenance tree from one shared discharge/priority pass per declared leaf.
-      localMergeOptionRich = mergeOptionWith coreShortCircuit;
+      localMergeOptionRich = mergeOptionWith { inherit coreShortCircuit carried; };
 
       # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
       # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
@@ -1734,7 +1778,12 @@ let
           # (so reading the report forces no nested definition value), so no definition-kind reader
           # (`coalesceUnmatched`, `freeformProvCold`) may ever meet one, and none can.
           #
-          # A leaf's findings are decided from the DECLARATION, `opts.<k> ? type.mergeUndeclared`,
+          # A leaf's findings are decided from the DECLARATION, `opts.<k> ? type.mergeDefs.reported`,
+          # and only where this evaluation's report is `carried`. Without one, a nested tree's leaf
+          # folds strictly (`mergeDefsRichWith`'s `mode.carried`), refusing its own level's findings
+          # when that level is read, so a cold leaf's `undeclared` is `[ ]` already, and a
+          # warm-reused leaf's is only because an unreported eval is a nested one, which is always
+          # cold. The guard states that here, where the walk decides, rather than borrowing it. Decided
           # inside this walk: every ordinary leaf type contributes `[ ]` without its merge record being
           # touched, so no definition is forced to learn it. Two readers walk `reported`'s spine,
           # `_orphanCheck` (at `check`) and the `undeclared` report, and a walk that read `x.m.undeclared`
@@ -1750,7 +1799,7 @@ let
             x:
             if x ? group then
               x.m.reported
-            else if opts.${x.name} ? type.mergeUndeclared then
+            else if carried && opts.${x.name} ? type.mergeDefs.reported then
               x.m.undeclared
             else
               [ ]
@@ -1884,7 +1933,7 @@ let
                 prevConfig = warmFrom.config;
                 prevProv = warmFrom.provenance;
                 # The prior eval's OWN undeclared report, read by `mergeTree`'s reused leaf only when
-                # the leaf's type carries `mergeUndeclared` (see there). Its paths are absolute, the
+                # the leaf's type carries `mergeDefs.reported` (see there). Its paths are absolute, the
                 # frame of `mergeTree`'s `reported` channel, so the reader passes them through as is.
                 prevUndeclared = warmFrom.undeclared;
               }
@@ -2043,7 +2092,7 @@ let
           # the absolute frame; the second is `realized.reported`, already absolute and appended as is.
           # Names and originating files are already carried; the VALUES are deliberately dropped, so
           # reading the report forces no definition value of this level's own. It DOES force the
-          # definitions of every leaf whose declared type carries `mergeUndeclared` (a nested tree's
+          # definitions of every leaf whose declared type carries `mergeDefs.reported` (a nested tree's
           # findings cannot be named without its key set, so a moduleTree def that is a bare `throw`
           # fires here); that set is the report channel's whole domain. Inheriting that list inherits
           # its reach: like `freeformProvCold`'s records the report
@@ -2530,20 +2579,61 @@ let
       #     into an abort. Absence is the answer here, and `nonMountable` is what states it.
       type =
         let
-          # ONE fixpoint definition, read from two sibling fields below — `mergeDefs` reads its
-          # `.config`, `mergeUndeclared` reads its `.undeclared` (ADR-0025 item 1: the def that
-          # `.config` drops is exactly what `.undeclared` names, off the SAME nested eval rather than
-          # a second, independently-authored one that could drift from it).
+          # ONE fixpoint definition, read by the one fold value below — its `.config` is the value,
+          # its `.undeclared` the report (ADR-0025 item 1: the def that `.config` drops is exactly
+          # what `.undeclared` names, off the SAME nested eval rather than a second,
+          # independently-authored one that could drift from it). `carried` is whether that eval's
+          # own report is read, so its own nested trees fold strictly when it is not.
           nested =
-            loc: defs:
-            evalModuleTree {
+            carried: loc: defs:
+            evalModuleTreeWith carried {
               inherit specialArgs check coreShortCircuit;
               prefix = loc;
               # Every DEFINITION is a MODULE, as the reference `(evalModules …).type` reads it
               # (`submoduleWith`'s `shorthandOnlyDefinesConfig` defaults to false).
               modules = modList ++ defsAsModules false defs;
             };
-          nestingFold = loc: defs: (nested loc defs).config;
+          # ONE fold value. Called, it is the STRICT fold: every site that reaches it by calling it
+          # (a container element, a freeform plane, the public `mergeDefs`) carries no undeclared
+          # report, so its nested eval runs with none either — its own tree leaves fold strictly
+          # too, and its `.undeclared` is its OWN level's — and a finding there is refused by name,
+          # at this level's WHNF, as nixpkgs refuses per level. `.reported` is the same fold for the
+          # one caller that carries a report (the rich realizer fold): the value and the report from
+          # one nested eval. A caller replacing `mergeDefs` replaces both at once.
+          nestingFold = {
+            __functor =
+              _: loc: defs:
+              let
+                n = nested false loc defs;
+              in
+              if n.undeclared == [ ] then
+                n.config
+              else
+                throw (
+                  "gen-merge: "
+                  + concatStringsSep "; " (
+                    map (
+                      u:
+                      "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
+                    ) n.undeclared
+                  )
+                  + "; "
+                  + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
+                  + " is merged where no undeclared report is carried"
+                );
+            reported =
+              loc: defs:
+              let
+                n = nested true loc defs;
+              in
+              {
+                value = n.config;
+                inherit (n) undeclared;
+              };
+          };
+          # The fold over no definitions, CALLED: a site reading `whenEmpty` carries no report (a
+          # value-path empty: an element, a freeform plane), so it is the strict call. The one
+          # reporting site, the rich fold, never reads it: it applies `.reported` to the empty list.
           emptyTree.value = nestingFold [ ] [ ];
         in
         interface.refuseMount {
@@ -2557,22 +2647,12 @@ let
           mergeDefs = nestingFold;
           whenEmpty = emptyTree;
 
-          # THE UNDECLARED TWIN — a third gen-native sibling beside `mergeDefs`/`nonMountable` (not a
-          # fourth kind of thing on this record). Before this field, a def under a key the nested tree
-          # does not declare vanished at `check = false`: no throw, and no report — the third,
-          # unnamed disposition ADR-0025 item 1 forbids. `mergeDefsRichWith` (below) is this field's
-          # only reader, calling it with the SAME `typeDefs` it already built for `mergeDefs`, so the
-          # report and the value never see two different def sets. Never read by the foreign protocol:
-          # `carrierRefusal`/`payloadRole` (lib/interface.nix) compute off a fixed five-name
-          # foreign-protocol set and never a gen-native key, so this field cannot move either
-          # function's output for any input — W6's refusal is untouched.
-          mergeUndeclared = loc: defs: (nested loc defs).undeclared;
-
           # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
           # the reason, so a consumer that finds it needs no other document to know what to do.
           nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
         };
     };
+  evalModuleTree = evalModuleTreeWith true;
 in
 {
   inherit

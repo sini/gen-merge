@@ -239,7 +239,7 @@ what it consumed is a different question from whether it checks — while a `fre
 level's own definitions only**, since there those definitions are merged and nothing was dropped. A
 fully declared config reports `[ ]`.
 
-**A nested tree's findings.** A leaf whose declared type carries `mergeUndeclared` — a tree merged as a
+**A nested tree's findings.** A leaf whose declared type carries `mergeDefs.reported` — a tree merged as a
 type, `(evalModuleTree { … }).type` — reports the definitions *its own* eval did not merge, and they
 surface here with their full absolute path (`nest.z`, or `sub.nest.z` at `prefix = [ "sub" ]`). Such a
 finding is **never absorbed** by an outer `freeformType`: its key has an associated option (the
@@ -247,14 +247,15 @@ declared leaf `nest`), so it is outside the freeform domain (nixpkgs: *"merge al
 don't have an associated option"*), and absorbing it would change a declared option's value. So it is
 reported under every regime, and refused at `check = true` whatever `freeformType` is:
 `` gen-merge: option `nest.z' is not declared by the nested tree that owns it ``. The domain is exactly
-the leaves whose declared type carries `mergeUndeclared`; a nested tree inside a wrapper (an `attrsOf`
-of a moduleTree) reports nothing here. Order: this level's own definitions first, then nested findings;
+the leaves whose declared type carries `mergeDefs.reported`; a nested tree inside a wrapper (an `attrsOf`
+of a moduleTree) has no report channel, so it refuses its own level's findings by name when that level
+is read (see [the tree-as-a-type](#the-tree-as-a-type-is-not-mountable-and-it-says-so)). Order: this level's own definitions first, then nested findings;
 order is promised per key only.
 
 Reading it forces **no definition value of this level's own**: the records carry names and originating
 files only (the same data the freeform provenance records read), so an own-level def that is a bare
 `throw` does not fire. That claim is about `.config`'s neighbours and this level's records; it does
-**not** extend to a leaf whose declared type carries `mergeUndeclared`, whose definitions the report
+**not** extend to a leaf whose declared type carries `mergeDefs.reported`, whose definitions the report
 does force, since a nested tree's findings cannot be named without its key set. `path` is absolute
 against `prefix`, naming the same location the orphan throw would.
 
@@ -1048,6 +1049,18 @@ hold. What stays with the engine is the gen half: a name, a fold, and the mark.
 | `check`, `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `_type`                                                                                                                 | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort                                                                                                                                                                                                                                                                                                     |
 
+**Its fold is one value, and where no report is carried it refuses.** `mergeDefs` is a functor. Called,
+it is the strict fold: every site that reaches it by calling it — a container element (`attrsOf`,
+`listOf`, `nullOr` of the tree), a freeform plane, the public `mergeDefs` — carries no undeclared report,
+so a key the tree's own level does not declare is refused by name when that level is read, with its
+path, its file and the element's location. The trees nested inside that level fold the same way, so each
+refuses its own level when it is read, and a level that is not read decides nothing. `mergeDefs.reported`
+is the same fold for the one caller that carries a report, the declared leaf of an evaluation: it
+returns `{ value; undeclared; }` from one nested evaluation, and the finding is reported (above), not
+refused. To wrap a tree's fold, **replace `mergeDefs` whole**: refining it as
+`mergeDefs // { __functor = …; }` is honoured at an element site and ignored at the reporting site, which
+still reads the unwrapped `.reported`.
+
 `mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
 either vocabulary's type-merge half is read, because "do these two types merge?" has a true answer
 here — `null`, they do not — and returning it keeps the declaration stratum's own refusal, which names
@@ -1126,6 +1139,13 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `raw` only if a consumer hits it.
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
+- **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
+  drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`
+  with `_module.check = false`) returns a value with the key gone; gen-merge refuses it by name, since
+  every read here yields a value or a named refusal and a silent drop is neither. Where nixpkgs
+  checks, both refuse at the same level on the same read. The finding can come from the tree type's
+  **own** module set, so such a type refuses at every non-reporting use, a fully discharged
+  `lazyAttrsOf` element included (its empty value is the strict fold over no definitions).
 
 The module reader is nixpkgs' `unifyModuleSyntax`: a module is structured iff it carries `config` or
 `options`, a structured module admits exactly nixpkgs' `attrsToRemove` and refuses any other key by
