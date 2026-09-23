@@ -87,6 +87,7 @@ let
   inherit (core)
     isOptLeaf
     configOf
+    moduleSyntaxChecked
     importsOf
     mergeOptionDecls
     ;
@@ -270,10 +271,12 @@ let
       # tree (`topDefs` strips it from the realizer), never an order-bearing config path.
       rootPushed = map (e: {
         inherit (e) file;
-        attrs = builtins.removeAttrs (pushDownProperties (configOf {
-          content = e.module;
-          _file = e.file;
-        })) [ "_module" ];
+        attrs = builtins.removeAttrs (pushDownProperties (
+          configOf (moduleSyntaxChecked {
+            content = e.module;
+            _file = e.file;
+          })
+        )) [ "_module" ];
       }) attrsetEntries;
       descend =
         opts: loc: pushed:

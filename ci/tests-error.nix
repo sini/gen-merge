@@ -405,9 +405,31 @@ let
         ({ _file = "/real/L.nix"; } // m)
       ];
     };
-  surplusMsg =
-    file:
-    "^gen-merge: module `${file}' has an unsupported attribute `bogus'\\. A module carrying a top-level `config' or `options' reads only the module keys; move bogus into its explicit `config', or drop `config'/`options' and write every configuration key at the top level\\.$";
+  surplusKeyMsg =
+    file: key:
+    "^gen-merge: module `${file}' has an unsupported attribute `${key}'\\. A module carrying a top-level `config' or `options' reads only the module keys; move ${key} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level\\.$";
+  surplusMsg = file: surplusKeyMsg file "bogus";
+  readerInt0 = gm.mkOption {
+    type = t.int;
+    default = 0;
+  };
+  # The typo `option.c` (for `options.c`), and its spelled-right twin, for the declaration-only reads.
+  readerTypo = {
+    _file = "/real/T.nix";
+    options.b = readerInt0;
+    option.c = readerInt0;
+  };
+  readerRight = {
+    _file = "/real/R.nix";
+    options.b = readerInt0;
+    options.c = readerInt0;
+  };
+  readerDeclares = m: builtins.attrNames ((t.submodule m).substructure.declares [ "s" ]);
+  # Module B declares `x`, keyed so a `disabledModules` entry can name it.
+  readerKeyed = {
+    key = "B";
+    options.x = readerInt0;
+  };
   disabledMsg =
     file:
     "^gen-merge: module `${file}' sets `disabledModules'\\. gen-merge does not implement module removal \\(it is deferred work\\): the modules it names would stay enabled here, where the reference module system removes them\\. Remove the key; it is refused by presence, an empty list included\\.$";
@@ -2241,9 +2263,10 @@ in
 
     # THE MODULE READER IS THE REFERENCE'S `unifyModuleSyntax`. A structured module (one carrying
     # `config` or `options`) with any other key outside the module keys is refused BY NAME, naming
-    # the key and the file, on every config read and through every reader that treats a value as a
-    # module — top level, `check = false`, `types.submodule`, `types.deferredModule` and `lint`.
-    # `disabledModules` is refused by presence in both module forms, and before the surplus test.
+    # the key and the file, on each door's first read of a module — every config read, every
+    # declaration-only read, and every reader that treats a value as a module: top level,
+    # `check = false`, `types.submodule`, `types.deferredModule` and `lint`. `disabledModules` is
+    # refused by presence in both module forms, and before the surplus test.
     flake.testsError.module-reader = {
       test-surplus-key-refused-top-level = {
         expr = withControl (viaTop readerC0).a 2 (builtins.deepSeq (viaTop readerBad) null);
@@ -2332,6 +2355,80 @@ in
         expectedError = {
           type = "ThrownError";
           msg = disabledMsg "/real/DO\\.nix";
+        };
+      };
+      # `lint` refuses `disabledModules` at its own first read, the empty list included: without its
+      # site, lint called this module portable (`[ ]`).
+      test-disabled-modules-refused-by-lint = {
+        expr = withControl (viaLint readerC0) [ ] (viaLint {
+          config.a = 2;
+          disabledModules = [ ];
+        });
+        expectedError = {
+          type = "ThrownError";
+          msg = disabledMsg "/real/L\\.nix";
+        };
+      };
+
+      # THE DECLARATION-ONLY READS. The refusals fire on each door's first read of a module, which is
+      # the declaration stratum's, so a read that forces no config refuses as a config read does.
+      # Before, the typo's declaration `c` vanished from these answers without a word (`[ "b" ]`),
+      # where the reference refuses the module.
+      test-declaration-only-read-of-a-typo-key-refused-by-name = {
+        expr = withControl (builtins.attrNames (gm.declaredOptions { modules = [ readerRight ]; })) [
+          "b"
+          "c"
+        ] (builtins.attrNames (gm.declaredOptions { modules = [ readerTypo ]; }));
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusKeyMsg "/real/T\\.nix" "option";
+        };
+      };
+      test-declaration-only-options-read-of-a-typo-key-refused-by-name = {
+        expr =
+          builtins.attrNames
+            (gm.evalModuleTree {
+              modules = [
+                readerDecl
+                readerTypo
+              ];
+            }).options;
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusKeyMsg "/real/T\\.nix" "option";
+        };
+      };
+      test-substructure-declares-of-a-typo-key-refused-by-name = {
+        expr = withControl (readerDeclares readerRight) [
+          "b"
+          "c"
+        ] (readerDeclares readerTypo);
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusKeyMsg "/real/T\\.nix" "option";
+        };
+      };
+      # Where the reference REMOVES `x` (`[ "_module" ]`), the declaration read answered `[ "x" ]`:
+      # a changed meaning on a module set the reference accepts. It is refused by name instead.
+      test-declaration-only-read-of-disabled-modules-refused-by-name = {
+        expr =
+          withControl (builtins.attrNames (gm.declaredOptions { modules = [ readerKeyed ]; })) [ "x" ]
+            (
+              builtins.attrNames (
+                gm.declaredOptions {
+                  modules = [
+                    readerKeyed
+                    {
+                      _file = "/real/DK.nix";
+                      disabledModules = [ { key = "B"; } ];
+                    }
+                  ];
+                }
+              )
+            );
+        expectedError = {
+          type = "ThrownError";
+          msg = disabledMsg "/real/DK\\.nix";
         };
       };
     };

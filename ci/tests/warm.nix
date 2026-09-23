@@ -919,12 +919,11 @@ in
         };
       };
 
-    # 6 — disabledModules on an EDITED entry ⇒ warm REFUSED (cold fallback): the trace says mode=cold
-    # with the reason. The module reader now refuses `disabledModules` by presence on the cold read,
-    # so `.config` is refused on BOTH arms — warm and the full cold eval alike — and the warm refusal
-    # is defence only (see `disabledRefusal`). The trace fields are asserted unchanged; the refusal is
-    # asserted on both configs, so neither arm can answer a value.
-    test-disabled-modules-cold-fallback =
+    # 6 — disabledModules on an EDITED entry: the module reader refuses it by presence on its first
+    # read, before any warm decision, so the trace is refused with `.config` — warm and the full cold
+    # eval alike. The warm refusal (`disabledRefusal`) is defence only. Before, the trace answered
+    # mode `cold` about an evaluation whose every value read refuses.
+    test-disabled-modules-edit-refuses-the-trace =
       let
         base = [
           {
@@ -945,19 +944,23 @@ in
         w = warmOf base edited;
       in
       {
-        expr = {
-          warmConfig = (builtins.tryEval (builtins.deepSeq w.config null)).success;
-          coldConfig = (builtins.tryEval (builtins.deepSeq (coldOf (base ++ edited)).config null)).success;
-          mode = w.warmDecision.mode;
-          reason = w.warmDecision.reason;
-          reused = w.warmDecision.reused;
-        };
+        expr =
+          let
+            ok = v: (builtins.tryEval (builtins.deepSeq v null)).success;
+          in
+          {
+            warmConfig = ok w.config;
+            coldConfig = ok (coldOf (base ++ edited)).config;
+            mode = ok w.warmDecision.mode;
+            reason = ok w.warmDecision.reason;
+            reused = ok w.warmDecision.reused;
+          };
         expected = {
           warmConfig = false;
           coldConfig = false;
-          mode = "cold";
-          reason = "disabledModules on an edited module (warm refused)";
-          reused = [ ];
+          mode = false;
+          reason = false;
+          reused = false;
         };
       };
 

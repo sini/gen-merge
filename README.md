@@ -420,7 +420,8 @@ the tail-k of the full flatten (k = `length (collectModules callM editedModules)
 count, since `imports` expansion is config-dependent). Warm is REFUSED (cold fallback, stated in the
 trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
 to the footprint) — defence only; unreachable through `evalModuleTree` while module removal is
-refused, since the module reader refuses `disabledModules` by presence on the cold read first (see
+refused, since the module reader refuses `disabledModules` by presence on its first read, before any
+warm decision (see
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate)). Whether an override *reduces* to a modules-append at all is the caller's call
 (the `override` handle — the hub's `lib.compose`, formerly gen-flake's); the engine just splices when handed a `warmFrom`.
 
@@ -1125,19 +1126,17 @@ nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require`
   gen-merge does not implement module removal, so the modules it names would stay enabled. The empty
   list is refused too, which over-refuses relative to nixpkgs (it accepts `[ ]`); refusing on
   presence never forces the list. *Defaulted, reversible.* Implementing module removal is deferred
-  work, re-armed by a consumer that needs it.
-- **The refusals above fire on every CONFIG read, and on no declaration-only read.** They sit in the
-  config reader, which every config read forces for every module (top level, `submodule` and
-  `deferredModule` defs, and `lint`). A read that forces only declarations —
-  `(evalModuleTree …).options`, or `declaredOptions` — is not refused, and its answer can be wrong:
-  on the typo `{ options.b = mkOption …; option.c = mkOption …; }` the declaration `c` is absent
-  from `.options` and `declaredOptions` returns `[ "b" ]`, silently, where nixpkgs refuses the
-  module. Closing it costs a second surplus test per structured module on the declaration path; the
-  cheapest placement measured (at the declaration stratum's entries) costs +432 480 B of allocation
-  on the hub's schemaHosts bench, over its bound. It stays open for that cost, carried by the
-  deferred row for the declaration-only surplus refusal, whose construction and cost are decided
-  together. Pinned as this boundary by
-  `test-declaration-only-read-of-a-typo-key-is-not-refused`, so a fix turns it red on purpose.
+  work, re-armed by a consumer that needs it. Its reach is every door below, so a declaration-only
+  read — `.options`, `declaredOptions`, `substructure.declares` — refuses the empty list too, which
+  nixpkgs accepts on those reads as on any other.
+- **The refusals above fire on each door's first read of a module**, as nixpkgs' `unifyModuleSyntax`
+  does. That read is the declaration stratum's, which every `evalModuleTree` read forces before any
+  config, and which `declaredOptions` and `substructure.declares` read directly, at any nesting; `lint`
+  refuses at its own first read. So a declaration-only read refuses exactly as a config read does: on
+  the typo `{ options.b = mkOption …; option.c = mkOption …; }` both `.options` and `declaredOptions`
+  refuse by name, where they once answered `[ "b" ]` silently. A warm trace over an edited module the
+  reader refuses is refused with it: `warmDecision.mode` on a surplus-key edit is refused where it
+  once read `"warm"`, and on a `disabledModules` edit where it once read `"cold"`.
 - **A value that is not a module is refused by name**, where nixpkgs aborts. A module is a path, a
   string naming an absolute path (imported, as nixpkgs does), a function or an attrset; anything else
   — an `imports` element, a top-level module, or a nesting type's definition read as a module, such

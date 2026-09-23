@@ -547,20 +547,20 @@ let
   #     list included, which the reference accepts. This engine does not implement module removal
   #     (deferred work, re-armed by a consumer that needs it): the modules named would stay enabled.
   #     Refusing by presence never forces the list. The key stays in both lists so they are verbatim.
-  #   * THE REFUSALS SIT IN THE CONFIG READER, SO THEIR REACH IS "ON EVERY CONFIG READ" AND NO
-  #     FURTHER. Any config read forces `configOf` for every flattened entry (the fixpoint's `pushed`),
-  #     so it covers top-level modules, `submodule` and `deferredModule` defs, and `lint`. A read that
-  #     forces only the DECLARATION stratum — `(evalModuleTree …).options`, `declaredOptions` — is NOT
-  #     refused, and its answer can be wrong: on the typo `{ options.b = …; option.c = …; }` the
-  #     declaration `c` is absent from `.options` without a word, where the reference refuses. Closing
-  #     it costs a second `removeAttrs` per structured entry on the declaration path; the cheapest
-  #     placement measured (at `declarationStratum`'s entries) is +432 480 B of allocation on the
-  #     hub's schemaHosts bench, over its bound. It is open for that cost, not by choice of answer.
+  #     A declaration read refuses it too, so `.options`, `declaredOptions` and
+  #     `substructure.declares` refuse the empty list as well as a config read does.
+  #   * THE REFUSALS FIRE ON EACH DOOR'S FIRST READ OF A MODULE, as the reference's
+  #     `unifyModuleSyntax` does. Both throws live in `moduleSyntaxChecked`, in this order, and it is
+  #     read at exactly two sites: `declarationStratum`'s entries and `lint`'s `rootPushed`. The first
+  #     is the engine's first read of every flattened entry: `evalModuleTree` forces it through
+  #     `declarationGuard` before any config, and `declaredOptions` and `substructure.declares` read it
+  #     directly. So a declaration-only read refuses exactly as a config read does, and a warm trace
+  #     over a refused module set refuses with it. `configOf` only classifies.
   #
-  # COST. The clean path adds no call, binding or thunk per entry: `configOf` takes the ENTRY and reads
-  # `m = e.content` in the slot the argument thunk used to take, the predicate is `?` tests written
-  # inline (not a call to `isStructured`), `e._file` and the key names are read only inside the throws,
-  # and a structured entry pays one `removeAttrs` compared against `{ }`.
+  # COST. The clean path pays one call per entry: `moduleSyntaxChecked` returns the ENTRY it was handed,
+  # the predicate is `?` tests written inline (not a call to `isStructured`), `e._file` and the key
+  # names are read only inside the throws, and a structured entry pays one `removeAttrs` compared
+  # against `{ }`.
   structuredKeys = [
     "_class"
     "_file"
@@ -608,15 +608,22 @@ let
         else
           m;
     in
-    if m ? disabledModules then
-      throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
-    else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
-      throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
-    else if m ? _module then
+    if m ? _module then
       base // { _module = recursiveUpdate m._module (base._module or { }); }
     else
       base;
   optionsOf = m: m.options or { };
+  moduleSyntaxChecked =
+    e:
+    let
+      m = e.content;
+    in
+    if m ? disabledModules then
+      throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
+    else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
+      throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
+    else
+      e;
   importsOf =
     m:
     let
@@ -852,10 +859,10 @@ let
   # module invisibly to the footprint — the same failure shape). Each footprint record keeps a `reason`
   # for the decision trace (spec §4).
   #
-  # `disabledRefusal` IS DEFENCE ONLY while module removal is refused: `configOf` refuses any entry
-  # carrying `disabledModules` by presence, and the cold `pushed` read forces it first, so this
-  # refusal is unreachable through `evalModuleTree` (a warm eval over such an edit reports mode `cold`
-  # with this reason, and its `.config` is refused). It is kept because it becomes live again,
+  # `disabledRefusal` IS DEFENCE ONLY while module removal is refused: `moduleSyntaxChecked` refuses
+  # any entry carrying `disabledModules` by presence, and `flat` is forced through `declarationGuard`
+  # first, so this refusal is unreachable through `evalModuleTree` (a warm eval over such an edit
+  # refuses its trace and its `.config` alike). It is kept because it becomes live again,
   # unchanged, the moment module removal is implemented, and the unit cells that build `flat` by hand
   # still reach it.
   warmDecide =
@@ -1482,7 +1489,7 @@ let
       declEntries = prelude.imap0 (i: e: {
         idx = i;
         file = e._file;
-        options = optionsOf e.content;
+        options = optionsOf (moduleSyntaxChecked e).content;
       }) flat;
       sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
     in
@@ -1846,7 +1853,8 @@ let
           # explicit read of `.warmDecision.modules` on a cold result DOES force classification — the
           # trace is data on demand, consistent with the `reused`/`remerged` cost note below.) Warm is
           # REFUSED (cold fallback) when an edited entry carries `disabledModules` (§2 guard) — defence
-          # only; unreachable through `evalModuleTree` while module removal is refused (`configOf`).
+          # only; unreachable through `evalModuleTree` while module removal is refused
+          # (`moduleSyntaxChecked`).
           editedCount = if editedModules == [ ] then 0 else length (collectModules callM editedModules);
           decision = warmDecide {
             inherit
@@ -2582,10 +2590,11 @@ in
     pureModule
     # Classification/collection predicates shared with the portable-subset lint (lib/lint.nix) so the
     # lint's view of "declared leaf vs group / config-shorthand / imports / decl-tree merge" cannot
-    # DRIFT from the engine's. The export list is EXACTLY what the lint consumes. Additive — the
-    # public `lib/default.nix` surface is unchanged.
+    # DRIFT from the engine's. This group is EXACTLY what the lint consumes, and none of it is on the
+    # public `lib/default.nix` surface.
     isOptLeaf
     configOf
+    moduleSyntaxChecked
     importsOf
     mergeOptionDecls
     # The guarded pair-merge of two TYPES. It lives here rather than in lib/types.nix because the

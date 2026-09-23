@@ -1,8 +1,7 @@
 # THE MODULE READER — the values it answers. Its refusals are `ci/tests-error.nix`'s `module-reader`
 # group (a refusal's message is only assertable there); the shorthand shapes' agreement with nixpkgs
-# is `differential.nix`'s `reader-*` fixtures. This file holds the two things neither can: the
-# controls that must read the same before and after the reader became the reference's
-# `unifyModuleSyntax`, and the one boundary it leaves open, pinned at today's value.
+# is `differential.nix`'s `reader-*` fixtures. This file holds what neither can: the controls that
+# must read the same before and after the reader became the reference's `unifyModuleSyntax`.
 { genMerge, ... }:
 let
   gm = genMerge;
@@ -30,11 +29,8 @@ let
       inherit (c) a foo;
     };
 
-  # ★ THE BOUNDARY, PINNED — README "Known byte-mode boundaries". A DECLARATION-ONLY read does not
-  # reach the module-syntax refusals, which sit in the config reader: on the typo `option.c` (for
-  # `options.c`) the declaration `c` vanishes from `declaredOptions` and `.options` without a word,
-  # where the reference refuses the module. These cells assert that silent answer ON PURPOSE, so a
-  # fix that refuses the declaration-only read turns them red and has to rewrite them.
+  # The typo `option.c` (for `options.c`). Its declaration-only reads are refused by name in
+  # `ci/tests-error.nix`'s `module-reader` group; here, its config read and the spelled-right control.
   typo = {
     _file = "/real/T.nix";
     options.b = int0;
@@ -43,27 +39,8 @@ let
 in
 {
   flake.tests.module-reader = {
-    test-declaration-only-read-of-a-typo-key-is-not-refused = {
-      expr = builtins.attrNames (gm.declaredOptions { modules = [ typo ]; });
-      expected = [ "b" ];
-    };
-    test-declaration-only-options-read-of-a-typo-key-is-not-refused = {
-      expr =
-        builtins.attrNames
-          (gm.evalModuleTree {
-            modules = [
-              decl
-              typo
-            ];
-          }).options;
-      expected = [
-        "a"
-        "b"
-        "foo"
-      ];
-    };
-    # The same module on a CONFIG read is refused — the boundary is the declaration-only read, not
-    # the module. And the control: spelled `options.c`, the same read does see `c`.
+    # A CONFIG read of the typo module is refused, as its declaration-only reads are. And the
+    # control: spelled `options.c`, a declaration-only read sees `c`.
     test-config-read-of-the-same-typo-module-is-refused = {
       expr = (builtins.tryEval (builtins.deepSeq (read typo) null)).success;
       expected = false;
