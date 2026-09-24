@@ -345,7 +345,97 @@ let
   importedMerge =
     a: b:
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
-      a.typeMerge b.functor
+      joinKeepingOperands a b (a.typeMerge b.functor)
+    else
+      null;
+
+  # ── THE WITNESS: A FOREIGN JOIN MAY NOT DROP WHAT AN OPERAND STATES ─────────────────────────────
+  # A foreign `typeMerge` can answer a type that no longer states an operand's own check: nixpkgs'
+  # `addCheck` is `elemType // { check = …; }`, so `ints.between`, `port` and `u8` keep `int`'s
+  # functor and every join of them rebuilds bare `int` (nixpkgs' own docstring calls this "broken
+  # behavior see #396021"). Passing that answer on is a silent drop, which ADR-0025 item 1 forbids.
+  # So a foreign join is taken only where it keeps each operand's stated NAME at every depth the
+  # operand wraps a type; otherwise the pair refuses.
+  #
+  # ★ REFUSE IS THE ONE ARM SOUND UNDER BOTH READINGS OF A REDECLARATION. Read as a join, `port ∥ int
+  # → int` is an upper bound; read as a meet, it drops `port`'s check. Which reading a redeclaration
+  # means is LEFT OPEN here, not settled: refusing is wrong under neither, and it keeps the standing
+  # parity convention that gen-merge departs from nixpkgs by refusing (a README yardstick, not an ADR;
+  # ADR-0025 item 1 alone would admit any value over the silent drop). A later ruling for the join reading re-admits subsumption pairs by relaxing this witness
+  # alone. The witness compares the relation's ANSWER with each operand's own name, never one operand
+  # with the other, so it keys no identity (ADR-0034 is scoped to IDENTITY).
+  #
+  # ★ THE WALK IS BY ROLE, KEYED ON THE OPERAND. A role the operand states and the join lacks is a
+  # drop; a role the join GAINS is not, because an upper bound may wrap more than either operand.
+  # nixpkgs has exactly two constructors whose wrapped-role set depends on data — `submoduleWith`
+  # (`freeformType`, present only when stated) and `attrTag` (one role per tag) — and a union of
+  # either grows. Positions are compared only within one role. Both records are first read in ONE
+  # spelling, the foreign `nestedTypes` keys, through `roleSpelling.<role>.nested`: a gen `listOf`
+  # states `element` where a foreign one states `elemType`, and without the normalisation that
+  # legitimate mixed pair reads as a drop. A module set holds modules, not types, and spells as
+  # nothing. The walk is fuel-bounded like `importedDecidable`, and exhaustion counts as a drop.
+  joinRenames =
+    let
+      roles =
+        x:
+        if x ? carries then
+          prelude.foldl' (acc: r: acc // roleSpelling.${r}.nested x.carries.${r}) { } (attrNames x.carries)
+        else
+          x.nestedTypes or { };
+      asList = v: if isList v then v else [ v ];
+      go =
+        fuel: j: o:
+        if !(isAttrs j) || !(isAttrs o) then
+          false
+        else if fuel <= 0 then
+          true
+        else if (j.name or null) != (o.name or null) then
+          true
+        else
+          let
+            rj = roles j;
+            ro = roles o;
+          in
+          prelude.any (
+            r:
+            !(rj ? ${r})
+            || (
+              let
+                wj = asList rj.${r};
+                wo = asList ro.${r};
+              in
+              length wj != length wo
+              || prelude.any (i: go (fuel - 1) (elemAt wj i) (elemAt wo i)) (prelude.genList (i: i) (length wo))
+            )
+          ) (attrNames ro);
+    in
+    go importedTypeWalkFuel;
+
+  # The witness's refusal as a REASON, for `mergeTypesReason`: it names the join, so an author sees
+  # which type their relation answered and why that answer was not taken.
+  importedMergeReason =
+    a: b:
+    let
+      j = if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+    in
+    if j != null && (joinRenames j a || joinRenames j b) then
+      "`${a.name}' and `${b.name}', which their own relation joins to `${j.name}', a type that states neither declaration's own check"
+    else
+      null;
+
+  # ★ A PAIR THAT IS ONE REIFIED VALUE KEEPS THE OPERAND — ADR-0034's sealed limb, which compares "the
+  # reified value itself" under Nix `==`: `port ∥ port` from one shared `types.port` answers `port`,
+  # check intact. The clause is live on the `importedMerge` path only. On `foreignRel` the caller's raw
+  # record meets the engine's imported partner and pointer identity does not survive the import, so a
+  # shared imported twin refuses (README, Known byte-mode boundaries).
+  joinKeepingOperands =
+    a: b: j:
+    if j == null then
+      null
+    else if !(joinRenames j a) && !(joinRenames j b) then
+      j
+    else if a == b then
+      a
     else
       null;
 
@@ -570,19 +660,24 @@ let
   # foreignRel — the caller's stated relation, expressed as gen's own row-free relation so the engine
   # reads the AUTHOR's answer rather than the vocabulary's nullary one. The refusal names the
   # discriminating fact: it is the author's own `functor' that declined to reconcile the pair, not
-  # this boundary's inability to read it.
+  # this boundary's inability to read it. An author's answer is held to the same witness as an
+  # inherited one, and a join the witness declines is named as that, not as a declined reconciliation.
   foreignRel =
     t: other:
     let
       f = if isAttrs other then other.functor or null else null;
-      answer = if f == null then null else callerTypeMerge t f;
+      joined = if f == null then null else callerTypeMerge t f;
+      answer = joinKeepingOperands t other joined;
+      pair = "`${t.name or "raw"}' and `${
+        if isAttrs other then other.name or "<unnamed>" else "<not a type>"
+      }'";
     in
-    if answer == null then
+    if answer == null && joined != null then
       {
-        refused = "`${t.name or "raw"}' and `${
-          if isAttrs other then other.name or "<unnamed>" else "<not a type>"
-        }', which the first type's own `functor' does not reconcile";
+        refused = "${pair}, which the first type's own `functor' joins to `${joined.name or "raw"}', a type that states neither declaration's own check";
       }
+    else if answer == null then
+      { refused = "${pair}, which the first type's own `functor' does not reconcile"; }
     else
       { merged = answer; };
 
@@ -885,6 +980,8 @@ in
     importedEmpty
     importedFold
     importedMerge
+    importedMergeReason
+    joinRenames
     importedPartner
     importedRebuilds
     importedSubstructure

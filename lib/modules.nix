@@ -308,7 +308,7 @@ let
     else if !(interface.importedDecidable a) || !(interface.importedDecidable b) then
       "`${a.name}' and `${b.name}', whose structure does not bottom out within the boundary's type-walk fuel (${toString interface.importedTypeWalkFuel})"
     else
-      null;
+      interface.importedMergeReason a b;
 
   # ── the declared-type LIST: how N declarations of one option (or N freeform winners) merge ──
   #
@@ -327,9 +327,10 @@ let
   #     `later.typeMerge earlier.functor` on a foreign pair.
   # Because the step is asked of the ACCUMULATED later type, a gen relation is asked about the type
   # the later declarations jointly became, never about a declaration a later relation has already
-  # merged away (`[gt.int, str, Fx]` with `Fx = str // { typeMerge = _: int; }` accepts `int`, as
-  # nixpkgs does). Where this departs from nixpkgs it departs only by REFUSING, and only where a
-  # step's gen relation refuses: README "Known byte-mode boundaries (deliberate)".
+  # merged away. Where this departs from nixpkgs it departs by REFUSING — where a step's gen relation
+  # refuses, or where a foreign join drops a name an operand states (`interface.joinRenames`) — or,
+  # for a foreign pair that is one shared value, by keeping it: README "Known byte-mode boundaries
+  # (deliberate)".
   declaredPair =
     earlier: later:
     let

@@ -124,6 +124,12 @@ in
             name = "other";
           };
         };
+        # a prefix that refuses and a whole list that merges, with a relation that keeps every name
+        # it is handed: `[fOver, B]` refuses (B's relation declines fOver's functor), and `Fk`'s answer
+        # is an `attrsOf int` whose own relation admits anything
+        Fk = B // {
+          typeMerge = _: B // { typeMerge = _: B; };
+        };
         tmNull = B // {
           typeMerge = _: null;
         };
@@ -155,7 +161,7 @@ in
           three-tagged = read ev mk [ (tagged "first") (tagged "second") (tagged "third") ] d;
           three-int-Fint-str = read ev mk [ np.types.int Fint np.types.str ] n;
           three-Fint-int-str = read ev mk [ Fint np.types.int np.types.str ] n;
-          three-int-str-Fx = read ev mk [ np.types.int np.types.str Fx ] n;
+          three-fo-B-Fk = read ev mk [ fOver B Fk ] n;
           four-int-int-Fint-str = read ev mk [ np.types.int np.types.int Fint np.types.str ] n;
           four-int-Fint-int-int = read ev mk [ np.types.int Fint np.types.int np.types.int ] n;
           ctl-int-int-int = read ev mk [ np.types.int np.types.int np.types.int ] n;
@@ -172,7 +178,7 @@ in
           three-tagged = "attribute set of signed integer";
           three-int-Fint-str = "REFUSE";
           three-Fint-int-str = "REFUSE";
-          three-int-str-Fx = "int";
+          three-fo-B-Fk = "attrsOf";
           four-int-int-Fint-str = "REFUSE";
           four-int-Fint-int-int = "int";
           ctl-int-int-int = "int";
@@ -185,20 +191,28 @@ in
           ref = table np.evalModules np.mkOption;
           # the gen-native veto across a fold step it is not adjacent to by position
           gen-first-int-Fint-str = read evalModuleTree mkOption [ t.int Fint np.types.str ] n;
+          # the one departure, by refusing: `Fx`'s relation answers `int` for `str`, which keeps
+          # neither operand's name (nixpkgs answers `int`)
+          renaming-int-str-Fx = read evalModuleTree mkOption [ np.types.int np.types.str Fx ] n;
         };
         expected = {
           gm = expected;
           ref = expected;
           gen-first-int-Fint-str = "REFUSE";
+          renaming-int-str-Fx = "REFUSE";
         };
       };
     # e07bf, the FREEFORM twin: the winner list folds the same way, `[A, fo, B]` included (A's
-    # relation answers `attrsOf str`, `fo` renames the functor, B is `attrsOf int`: nixpkgs refuses,
-    # and a left fold with the later operand deciding would accept). `ref` is nixpkgs live.
+    # relation answers an `attrsOf int` whose element folds to 42, `fo` renames the functor, B is
+    # `attrsOf int`: nixpkgs refuses, and a left fold with the later operand deciding would accept).
+    # `ref` is nixpkgs live. A relation that renames is the one departure, by refusing.
     test-freeform-type-follows-the-nixpkgs-bracketing =
       let
         B = np.types.attrsOf np.types.int;
         A = B // {
+          typeMerge = _f: np.types.attrsOf (np.types.int // { merge = _loc: _defs: 42; });
+        };
+        Ar = B // {
           typeMerge = _f: np.types.attrsOf np.types.str;
         };
         Bf = B // {
@@ -224,8 +238,8 @@ in
           in
           if r.success then r.value else "REFUSE";
         table = ev: {
-          ff-decider-12 = read ev [ A Bf ] "s";
-          ff-decider-21 = read ev [ Bf A ] "s";
+          ff-decider-12 = read ev [ A Bf ] 1;
+          ff-decider-21 = read ev [ Bf A ] 1;
           ff-functor-override-12 = read ev [ fOver B ] 1;
           ff-functor-override-21 = read ev [ B fOver ] 1;
           ff-typeMerge-null-12 = read ev [ tmNull B ] 1;
@@ -235,8 +249,8 @@ in
           ff-ctl-bad = read ev [ B B ] "s";
         };
         expected = {
-          ff-decider-12 = "REFUSE";
-          ff-decider-21 = "s";
+          ff-decider-12 = 1;
+          ff-decider-21 = 42;
           ff-functor-override-12 = "REFUSE";
           ff-functor-override-21 = 1;
           ff-typeMerge-null-12 = 1;
@@ -250,10 +264,12 @@ in
         expr = {
           gm = table evalModuleTree;
           ref = table np.evalModules;
+          ff-renaming-21 = read evalModuleTree [ Bf Ar ] "s";
         };
         expected = {
           gm = expected;
           ref = expected;
+          ff-renaming-21 = "REFUSE";
         };
       };
 

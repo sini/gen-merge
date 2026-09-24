@@ -15,10 +15,12 @@
 #                            `options` structure (no per-node `_type`/`loc`/`declarations`).
 #   3. type-merge          — the same option loc DECLARED (with a `type`) in more than one module.
 #                            On the TYPE the two engines agree on every all-foreign declaration
-#                            list: both fold it as nixpkgs brackets it, the LATER type deciding
-#                            through `typeMerge`, and refuse on null; gen-merge departs only by
-#                            refusing, where a fold step's gen-native relation refuses (README
-#                            "Known byte-mode boundaries"). They part on the OTHER fields — nixpkgs refuses the
+#                            list whose joins keep their operands' names: both fold it as nixpkgs
+#                            brackets it, the LATER type deciding through `typeMerge`, and refuse on
+#                            null; gen-merge departs by refusing, where a fold step's gen-native
+#                            relation refuses or a foreign join drops a name an operand states, or
+#                            by keeping one shared value declared twice (README "Known byte-mode
+#                            boundaries"). They part on the OTHER fields — nixpkgs refuses the
 #                            redeclaration outright when both declarations carry any of
 #                            `default`/`example`/`description`/`apply` (its `bothHave` guard, which
 #                            fires ahead of the functor), where gen-merge right-biases them under a
