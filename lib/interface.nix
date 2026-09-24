@@ -298,6 +298,27 @@ let
         rebuild = t.substSubModules or (_m: null);
       };
 
+  # ── AN OPERAND'S NAME, AS A REFUSAL SAYS IT ─────────────────────────────────────────────────────
+  # The one reader every refusal in this library names a merge operand through — gen's relations
+  # (./types.nix), the parametric-leaf refusals (./default.nix), the declaration plane's reasons
+  # (./modules.nix) and `foreignRel` below — and it lives here because this is the lowest unit all of
+  # them reach. Total over anything that can arrive as a merge operand, whichever vocabulary built it.
+  #
+  # ★ TOTAL MEANS THE NAME IS READ, NEVER COERCED. An operand whose `.name` is not a string would
+  # otherwise be interpolated, and a coercion error is not a throw: `tryEval` does not contain it, so
+  # the refusal it belongs to would abort uncatchably instead of being reported. For such an operand
+  # the discriminating fact is what its name IS.
+  nameOf =
+    t:
+    if !(isAttrs t) then
+      "<not a type>"
+    else if !(t ? name) then
+      "<unnamed>"
+    else if builtins.isString t.name then
+      t.name
+    else
+      "<a name of type ${builtins.typeOf t.name}>";
+
   # ── THE DECIDABILITY PRE-CHECK THE FOREIGN MERGE IS GUARDED BY ──────────────────────────────────
   # A foreign `typeMerge` recurses through its own structure and bounds nothing: `types.json` is
   # self-referential, so `json.typeMerge json.functor` unfolds forever and dies with
@@ -712,7 +733,7 @@ let
       joined = if f == null then null else callerTypeMerge t f;
       answer = joinKeepingOperands t other joined;
       tName = t.name or "raw";
-      otherName = if isAttrs other then other.name or "<unnamed>" else "<not a type>";
+      otherName = nameOf other;
       pair = "`${tName}' and `${otherName}'";
       # Same asymmetry `importedMergeReason` names above: `t` and `other` are asked separately, and
       # "neither" is said only when the join renamed past both.
@@ -1036,6 +1057,7 @@ in
     importedMerge
     importedMergeReason
     joinRenames
+    nameOf
     importedPartner
     importedRebuilds
     importedSubstructure

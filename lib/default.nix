@@ -169,19 +169,19 @@ let
   # declaring one option twice with an unreconciled parametric leaf still gets a NAMED REFUSAL rather
   # than a wrong type: gen-merge's own on its declaration path (lib/modules.nix `redeclareDecl`), and
   # the foreign engine's `already declared` under a mount.
-  refuseParametricMerge = name: other: {
-    refused = "`${name}' and `${
-      if builtins.isAttrs other then other.name or "<unnamed>" else "<not a type>"
-    }', whose parameters live behind their own predicate and cannot be compared";
+  #
+  # Both operands are named through `interface.nameOf`, the library's one total reader, so a partner
+  # whose name is not a string is refused by name here rather than aborting the interpolation.
+  inherit (core.interface) nameOf;
+  refuseParametricMerge = t: other: {
+    refused = "`${nameOf t}' and `${nameOf other}', whose parameters live behind their own predicate and cannot be compared";
   };
   # The MINTED-but-differing refusal — same shape as `refuseParametricMerge`, a different reason,
   # because the two are no longer the same failure. This one fires only when a digest was minted and
   # the two did not match, so "cannot be compared" would be a lie: the mint compared them and they
   # are not the same construction. What is missing is a channel back to their arguments.
-  refuseUnreconciledMint = name: other: {
-    refused = "`${name}' and `${
-      if builtins.isAttrs other then other.name or "<unnamed>" else "<not a type>"
-    }', which mint to different constructions and carry no readable component values to reconcile";
+  refuseUnreconciledMint = t: other: {
+    refused = "`${nameOf t}' and `${nameOf other}', which mint to different constructions and carry no readable component values to reconcile";
   };
   completeParametric =
     v:
@@ -196,11 +196,11 @@ let
         rel =
           self: other:
           if digest == null then
-            refuseParametricMerge (base.name or "<unnamed>") other
+            refuseParametricMerge base other
           else if builtins.isAttrs other && (other.__mint.minted or null) == digest then
             { merged = self; }
           else
-            refuseUnreconciledMint (base.name or "<unnamed>") other;
+            refuseUnreconciledMint base other;
         exported = strategies.defineType (base // { typeMergeRel = rel exported; });
       in
       exported

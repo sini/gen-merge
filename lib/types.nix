@@ -94,7 +94,8 @@ let
     "rebuild"
   ];
 
-  # A partner's name, for a refusal — total over anything that can arrive as a merge operand.
+  # A partner's name, for a refusal — `interface.nameOf`, the one reader every refusal in this library
+  # names an operand through, so it is total over anything that can arrive as a merge operand.
   #
   # ★ A REFUSAL'S REASON IS A NOUN PHRASE NAMING THE PAIR, never a sentence repeating the verdict.
   # The relation's reason is read back at the declaration site, which has already said "declared with
@@ -102,21 +103,7 @@ let
   # `types that do not merge (types do not merge: …)`. So every refusal below names the two operands
   # and, where there is one, the DISCRIMINATING FACT — which is the part the reader does not already
   # have from the sentence around it.
-  #
-  # ★ TOTAL MEANS THE NAME IS READ, NEVER COERCED. A partner whose `.name` is not a string would
-  # otherwise be interpolated, and a coercion error is not a throw: `tryEval` does not contain it, so
-  # the refusal this phrase belongs to would abort uncatchably instead of being reported. For such a
-  # partner the discriminating fact is what its name IS.
-  nameOf =
-    other:
-    if !(isAttrs other) then
-      "<not a type>"
-    else if !(other ? name) then
-      "<unnamed>"
-    else if builtins.isString other.name then
-      other.name
-    else
-      "<a name of type ${builtins.typeOf other.name}>";
+  inherit (interface) nameOf;
   # `self` is what this type's own default relation answers WITH — the value a caller actually holds.
   # It is threaded rather than closed over locally because a type built through `defineType` is used
   # in its EXPORTED form, and a relation answering with the un-exported twin would hand a consumer a

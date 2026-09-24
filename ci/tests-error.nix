@@ -2957,17 +2957,44 @@ in
         };
       };
 
-    # A PARTNER WHOSE NAME IS NOT A STRING, at each of the six refusal sites in lib/types.nix that
-    # name their partner through `nameOf`. Before `nameOf` read the name instead of interpolating it,
-    # every one of these aborted with a coercion error — class `TypeError`, which `tryEval` does not
-    # contain — so the declaration plane's own refusal never got to speak. `type = "ThrownError"` is
-    # therefore the discriminating half of each cell: against the old tree nix-unit reds it and names
-    # the class it actually met, and the message pins which site answered.
+    # AN OPERAND WHOSE NAME IS NOT A STRING, at each refusal site in lib/ that names a merge operand —
+    # the six relations in lib/types.nix, the two parametric-leaf refusals in lib/default.nix,
+    # `foreignRel` in lib/interface.nix and the two declaration-plane reasons in lib/modules.nix — all
+    # of which now name it through `interface.nameOf`. Before that reader existed, every one of these
+    # aborted with a coercion error — class `TypeError`, which `tryEval` does not contain — so the
+    # declaration plane's own refusal never got to speak. `type = "ThrownError"` is therefore the
+    # discriminating half of each cell: against the old tree nix-unit reds it and names the class it
+    # actually met, and the message pins which site answered.
     flake.testsError.partner-name-not-a-string =
       let
         badlyNamed = {
           name = 7;
         };
+        # A caller's foreign-protocol type that STATES its relation, so the boundary retains it as
+        # `foreignRel` rather than supplying the nullary one.
+        foreignStating = gm.mkOptionType {
+          name = "foreign";
+          check = _: true;
+          merge = _loc: defs: (builtins.head defs).value;
+          functor = {
+            name = "foreign";
+            type = _: foreignStating;
+            payload = null;
+            wrapped = null;
+            binOp = _: _: null;
+          };
+        };
+        # Raw records with no relation of their own, so the declaration plane's reasons speak: one
+        # nested past the boundary's type-walk fuel, one that bottoms out at once.
+        nested =
+          n:
+          if n == 0 then
+            { name = "leaf"; }
+          else
+            {
+              name = "deep";
+              nestedTypes.elemType = nested (n - 1);
+            };
         declaredTwice =
           a: b:
           realize {
@@ -3005,6 +3032,26 @@ in
         test-either-relation-names-the-partner-name-type = {
           expr = declaredTwice (t.either t.int t.str) badlyNamed;
           expectedError = refuses "`either' and `<a name of type int>'";
+        };
+        test-unminted-parametric-leaf-names-the-partner-name-type = {
+          expr = declaredTwice (t.refined t.str (_: true)) badlyNamed;
+          expectedError = refuses "`refined<string>' and `<a name of type int>', whose parameters live behind their own predicate and cannot be compared";
+        };
+        test-minted-parametric-leaf-names-the-partner-name-type = {
+          expr = declaredTwice (t.union [ t.str ]) badlyNamed;
+          expectedError = refuses "`union<string>' and `<a name of type int>', which mint to different constructions and carry no readable component values to reconcile";
+        };
+        test-stated-foreign-relation-names-the-partner-name-type = {
+          expr = declaredTwice foreignStating badlyNamed;
+          expectedError = refuses "`foreign' and `<a name of type int>', which the first type's own `functor' does not reconcile";
+        };
+        test-undecidable-pair-names-the-operand-name-type = {
+          expr = declaredTwice (nested 40) badlyNamed;
+          expectedError = refuses "`<a name of type int>' and `deep', whose structure does not bottom out within the boundary's type-walk fuel \\(32\\)";
+        };
+        test-reasonless-pair-names-the-operand-name-type = {
+          expr = declaredTwice { name = "plain"; } badlyNamed;
+          expectedError = refuses "`plain' and `<a name of type int>'";
         };
       };
   };

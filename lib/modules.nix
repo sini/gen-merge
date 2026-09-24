@@ -306,7 +306,7 @@ let
     if a ? typeMergeRel then
       (a.typeMergeRel b).refused or null
     else if !(interface.importedDecidable a) || !(interface.importedDecidable b) then
-      "`${a.name}' and `${b.name}', whose structure does not bottom out within the boundary's type-walk fuel (${toString interface.importedTypeWalkFuel})"
+      "`${interface.nameOf a}' and `${interface.nameOf b}', whose structure does not bottom out within the boundary's type-walk fuel (${toString interface.importedTypeWalkFuel})"
     else
       interface.importedMergeReason a b;
 
@@ -356,9 +356,14 @@ let
       merged = prelude.last ts;
     } (reverse (prelude.init ts));
   # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
-  # first; only the null-reason fallback is spelled here, and it names the pair in authored order.
+  # first; only the null-reason fallback is spelled here, and it names the pair in authored order,
+  # through the library's one total name reader (`interface.nameOf`).
   declaredRefusalText =
-    d: if d.refused != null then d.refused else "`${d.earlier.name}' and `${d.later.name}'";
+    d:
+    if d.refused != null then
+      d.refused
+    else
+      "`${interface.nameOf d.earlier}' and `${interface.nameOf d.later}'";
 
   # The declaring SITES at one option loc, in authored module order — the entries whose own
   # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The
