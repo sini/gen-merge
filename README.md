@@ -1229,8 +1229,9 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   surface, so the throw path is rarely hit).
 
 - **A redeclared option's type refuses where a gen-native relation refuses, even where nixpkgs
-  accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign list the
-  two engines agree, on the declaration and freeform planes (see "Redeclaring an option"). The
+  accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign list whose
+  joins keep their operands' names the two engines agree, on the declaration and freeform planes
+  (see "Redeclaring an option"). The
   departures are all over-refusals, each at a fold step whose earlier operand is a gen type whose
   relation refuses the later one. Under a **foreign** outer container the element relation runs in
   foreign code and accepts what nixpkgs accepts. The list fold's cost is quadratic when one option is

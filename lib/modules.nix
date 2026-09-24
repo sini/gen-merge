@@ -424,8 +424,10 @@ let
   # typed site after it is `final`, and only there does a refusal throw. An earlier step's `type` is
   # the prefix's answer — lazy, so `overridden[].declaration.type` keeps its meaning of "the
   # accumulated earlier declaration" — and a prefix that does not merge on its own reads as a named
-  # throw if forced, since a later declaration may still merge the whole list (nixpkgs accepts
-  # `[int, str, Fx]` as `int`). A later UNTYPED site does not defer the decision.
+  # throw if forced, since a later declaration may still merge the whole list (with `B = attrsOf
+  # int`, `fo` a `B` whose functor is renamed and `Fk` a `B` whose relation admits any partner,
+  # `[fo, B, Fk]` merges to `attrsOf` on both engines). A later UNTYPED site does not defer the
+  # decision.
   redeclareDecl =
     sitesAt: modIndex: lk: av: bv:
     let

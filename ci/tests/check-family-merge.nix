@@ -47,7 +47,10 @@ let
 
   ff = t.submodule { freeformType = t.attrsOf t.str; };
   opt = t.submodule { options.x = nixpkgsLib.mkOption { type = t.int; }; };
-  tag = k: t.attrTag { ${k} = nixpkgsLib.mkOption { type = t.int; }; };
+  # `tagOf` generalises `tag` with the tag's own carried type, so a redeclaration under the SAME
+  # tag key (D1) is expressible; `tag` keeps its int default for the distinct-key control below.
+  tagOf = k: ty: t.attrTag { ${k} = nixpkgsLib.mkOption { type = ty; }; };
+  tag = k: tagOf k t.int;
   gsub = gt.submodule { options.x = gm.mkOption { type = gt.int; }; };
 in
 {
@@ -62,6 +65,10 @@ in
         r14 = ev [ t.ints.unsigned t.ints.positive ] 0;
         r16 = ev [ (t.numbers.between 0 1) (t.numbers.between 5 6) ] 3;
         r17 = ev [ (t.passwdEntry t.str) t.str ] "a:b";
+        # D1: the same tag key carrying different types is a drop UNDER the tag, which the walk must
+        # reach through `attrTag`'s option-record members (`roles`' foreign arm), not stop at them.
+        r23 = ev [ (tagOf "a" t.port) (tagOf "a" t.int) ] { a = 70000; };
+        r24 = ev [ (tagOf "a" t.int) (tagOf "a" t.port) ] { a = 70000; };
       };
       expected = {
         r01 = "REFUSED";
@@ -71,6 +78,8 @@ in
         r14 = "REFUSED";
         r16 = "REFUSED";
         r17 = "REFUSED";
+        r23 = "REFUSED";
+        r24 = "REFUSED";
       };
     };
 
@@ -142,19 +151,27 @@ in
       };
     };
 
+    # D2: the text is false whenever the join keeps ONE operand's own name — `int ∥ port` joins to
+    # `int`, which IS `int`'s own name, so only `port`'s check is gone and "neither" over-claims.
+    # "Neither" is pinned true only where the join renames past BOTH operands (`between ∥ between`).
     test-the-refusal-names-the-join = {
       expr =
         let
           reason = genMergeCore.mergeTypesReason t.int t.port;
+          reasonBothDrop = genMergeCore.mergeTypesReason (t.ints.between 0 10) (t.ints.between 100 200);
         in
         {
-          inherit reason;
+          inherit reason reasonBothDrop;
           imported = ((imp t.int).typeMergeRel (imp t.port)).refused or null;
+          importedBothDrop =
+            ((imp (t.ints.between 0 10)).typeMergeRel (imp (t.ints.between 100 200))).refused or null;
           ctl = genMergeCore.mergeTypesReason t.int t.int;
         };
       expected = {
-        reason = "`int' and `unsignedInt16', which their own relation joins to `int', a type that states neither declaration's own check";
-        imported = "`int' and `unsignedInt16', which the first type's own `functor' joins to `int', a type that states neither declaration's own check";
+        reason = "`int' and `unsignedInt16', which their own relation joins to `int', a type that states the check `int' declares but not the check `unsignedInt16' declares";
+        reasonBothDrop = "`intBetween' and `intBetween', which their own relation joins to `int', a type that states neither declaration's own check";
+        imported = "`int' and `unsignedInt16', which the first type's own `functor' joins to `int', a type that states the check `int' declares but not the check `unsignedInt16' declares";
+        importedBothDrop = "`intBetween' and `intBetween', which the first type's own `functor' joins to `int', a type that states neither declaration's own check";
         ctl = null;
       };
     };

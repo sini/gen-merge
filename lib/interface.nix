@@ -381,7 +381,15 @@ let
         if x ? carries then
           prelude.foldl' (acc: r: acc // roleSpelling.${r}.nested x.carries.${r}) { } (attrNames x.carries)
         else
-          x.nestedTypes or { };
+          # `attrTag`'s `nestedTypes` is `tags` itself — OPTION RECORDS, one per tag, not types. An
+          # option record carries no `.name` (`_type = "option"` only), so comparing it directly at
+          # the next `go` call sees `null == null` and stops without reaching the type each tag
+          # actually wraps. Read at its `.type` first; every other foreign `nestedTypes` site in
+          # nixpkgs' `lib/types.nix` already carries types (`elemType`, `left`/`right`,
+          # `freeformType`), so this is a no-op there.
+          prelude.mapAttrs (_: v: if isAttrs v && (v._type or null) == "option" then v.type else v) (
+            x.nestedTypes or { }
+          );
       asList = v: if isList v then v else [ v ];
       go =
         fuel: j: o:
@@ -413,13 +421,28 @@ let
 
   # The witness's refusal as a REASON, for `mergeTypesReason`: it names the join, so an author sees
   # which type their relation answered and why that answer was not taken.
+  #
+  # ★ "NEITHER" IS SAID ONLY WHEN NEITHER OPERAND'S CHECK SURVIVED. `joinRenames j a` and
+  # `joinRenames j b` are asked SEPARATELY, because a join that keeps one operand's name (`int ∥ port
+  # → int`) drops only the other — "states neither declaration's own check" is false there, the join
+  # states `int`'s. Only a fold step whose join renames past BOTH operands (`between ∥ between →
+  # int`, `listOf int ∥ listOf port` at the wrapped role) truly states neither.
   importedMergeReason =
     a: b:
     let
       j = if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+      dropsA = j != null && joinRenames j a;
+      dropsB = j != null && joinRenames j b;
+      dropped =
+        if dropsA && dropsB then
+          "neither declaration's own check"
+        else if dropsA then
+          "the check `${b.name}' declares but not the check `${a.name}' declares"
+        else
+          "the check `${a.name}' declares but not the check `${b.name}' declares";
     in
-    if j != null && (joinRenames j a || joinRenames j b) then
-      "`${a.name}' and `${b.name}', which their own relation joins to `${j.name}', a type that states neither declaration's own check"
+    if dropsA || dropsB then
+      "`${a.name}' and `${b.name}', which their own relation joins to `${j.name}', a type that states ${dropped}"
     else
       null;
 
@@ -668,13 +691,24 @@ let
       f = if isAttrs other then other.functor or null else null;
       joined = if f == null then null else callerTypeMerge t f;
       answer = joinKeepingOperands t other joined;
-      pair = "`${t.name or "raw"}' and `${
-        if isAttrs other then other.name or "<unnamed>" else "<not a type>"
-      }'";
+      tName = t.name or "raw";
+      otherName = if isAttrs other then other.name or "<unnamed>" else "<not a type>";
+      pair = "`${tName}' and `${otherName}'";
+      # Same asymmetry `importedMergeReason` names above: `t` and `other` are asked separately, and
+      # "neither" is said only when the join renamed past both.
+      dropsT = joined != null && joinRenames joined t;
+      dropsOther = joined != null && isAttrs other && joinRenames joined other;
+      dropped =
+        if dropsT && dropsOther then
+          "neither declaration's own check"
+        else if dropsT then
+          "the check `${otherName}' declares but not the check `${tName}' declares"
+        else
+          "the check `${tName}' declares but not the check `${otherName}' declares";
     in
     if answer == null && joined != null then
       {
-        refused = "${pair}, which the first type's own `functor' joins to `${joined.name or "raw"}', a type that states neither declaration's own check";
+        refused = "${pair}, which the first type's own `functor' joins to `${joined.name or "raw"}', a type that states ${dropped}";
       }
     else if answer == null then
       { refused = "${pair}, which the first type's own `functor' does not reconcile"; }
