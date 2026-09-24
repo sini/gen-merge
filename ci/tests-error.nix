@@ -76,17 +76,17 @@ let
       // extra
     );
 
-  # ── the functor refusal's subject: a FIELD-FOR-FIELD RECONSTRUCTION of a real consumer ──────
-  # This is gen-aspects' `aspectsRootWith` (its `lib/types.nix`) as it stood when the defect this
-  # refusal converts was measured on it, rebuilt field for field: a container written in the
-  # nixpkgs convention, whose `functor.payload` is the element type BARE rather than a
-  # `{ elemType = …; }` row, and whose `binOp` defers to the two elements' own relation. gen-aspects'
-  # `aspectsRootWith` keeps that payload shape, but its `binOp` is `mergeElemTypes`, bound to
-  # gen-merge's `mergeTypes`, not the elements' own relation. The reconstruction stays the subject
-  # rather than a minimal fixture because a minimal one would leave open whether the shape a
-  # consumer shipped is the shape that fires.
-  mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
-  aspectsRootWith =
+  # ── the functor refusal's subject: a SYNTHETIC foreign-relation container ──────────────────
+  # A container written in the nixpkgs convention, whose `functor.payload` is the element type BARE
+  # rather than a `{ elemType = …; }` row, and whose `binOp` defers to the two elements' OWN foreign
+  # `typeMerge` rather than to gen-merge's `mergeTypes`. gen-aspects no longer ships this shape:
+  # it was lifted field for field from gen-aspects' container as it stood when the defect this
+  # refusal converts was measured, and gen-aspects has since bound its `binOp` to `mergeTypes`. It
+  # stays because any consumer may still write a `binOp` that asks the elements' own relation, and
+  # gen-merge's protocol owes that shape an answer; the fixture holds the protocol to it. Its type
+  # `name` is kept verbatim from the lifted original so the cells' expected values are unchanged.
+  foreignElemRelation = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+  foreignRelationRootWith =
     elemType:
     gm.mkOptionType {
       name = "aspectsRoot";
@@ -95,13 +95,16 @@ let
       functor = {
         name = "aspectsRoot";
         payload = elemType;
-        binOp = a: b: if b == null then null else mergeElemTypes a b;
-        type = aspectsRootWith;
+        binOp = a: b: if b == null then null else foreignElemRelation a b;
+        type = foreignRelationRootWith;
       };
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
       getSubModules = elemType.getSubModules or null;
       substSubModules =
-        m: aspectsRootWith (if elemType ? substSubModules then elemType.substSubModules m else elemType);
+        m:
+        foreignRelationRootWith (
+          if elemType ? substSubModules then elemType.substSubModules m else elemType
+        );
       merge = _loc: defs: (builtins.head defs).value;
     };
 
@@ -1654,7 +1657,7 @@ in
       # therefore ADMITTED: the parameter is still in a spelling this boundary does not read, and that
       # has not changed — what changed is the CONSEQUENCE, because the relation that discriminates on
       # it is the author's own and is applied unread rather than discarded. The last cell in this
-      # group is what says so, and it is the same reconstruction that used to be refused here.
+      # group is what says so, and it is the same synthetic container that used to be refused here.
       # ADR-0025 §1's rule — a value or a NAMED refusal, never a silent downgrade — is met by
       # construction on this arm instead of by refusal.
       #
@@ -1785,16 +1788,18 @@ in
           ((box t.str).typeMerge (box t.str).functor).name;
         expected = "okBox";
       };
-      # ★★ AND THE ADMITTED SUBJECT ANSWERS FOR ITSELF. `aspectsRootWith` — the field-for-field
-      # reconstruction of gen-aspects' container, above — is the shape this group used to refuse.
+      # ★★ AND THE ADMITTED SUBJECT ANSWERS FOR ITSELF. `foreignRelationRootWith` — the synthetic
+      # foreign-relation container, above — is the shape this group used to refuse.
       # It now crosses, and these two rows are what says the admission is not a silent downgrade: its
       # own `binOp` refuses two containers over DIFFERENT elements and reconciles two over the same
       # one. That is the property the old refusal existed to protect, now held by construction. Both
       # rows in one cell because either alone is consistent with a relation that answers constantly.
       test-control-the-admitted-subject-merges-by-its-own-relation = {
         expr = {
-          differingParameters = (aspectsRootWith t.str).typeMerge (aspectsRootWith t.int).functor;
-          equalParameters = ((aspectsRootWith t.str).typeMerge (aspectsRootWith t.str).functor).name;
+          differingParameters = (foreignRelationRootWith t.str).typeMerge (foreignRelationRootWith t.int)
+            .functor;
+          equalParameters =
+            ((foreignRelationRootWith t.str).typeMerge (foreignRelationRootWith t.str).functor).name;
         };
         expected = {
           differingParameters = null;
