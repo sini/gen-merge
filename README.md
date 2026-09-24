@@ -1065,6 +1065,9 @@ its bare base refuses in both orders, directly or under a gen container.
 stated relation) only where it keeps each operand's stated name at every depth the operand wraps a
 type; otherwise the pair refuses, with a reason naming the join. A role the join gains is not a drop,
 so a freeform submodule unioned with an option-only one, or two `attrTag`s, merge as on nixpkgs. A
+join that is a gen record is compared with each operand as the import environment reads it, so a
+type whose relation rebuilds it through `mkOptionType` (gen-schema's `refined`, gen-aspects'
+`aspectsRoot`) merges when redeclared as itself. A
 pair that is one shared value keeps it: `[port, port]` from one `types.port` answers `port`, and
 rejects 70000. Refusing is the one answer sound whether a redeclaration is read as a join or as a
 meet; which of those it means is left open. The cost is one fuel-bounded walk per foreign fold step,
@@ -1263,7 +1266,11 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 
   Not covered, because no name separates the check from its base: an `addCheck` that keeps its
   base's name (`addCheck int f`, `nonEmptyListOf`), and gen-merge's own check-only `mkOptionType`
-  redeclared under one name with a different check, which merges on the name.
+  redeclared under one name with a different check, which merges on the name. Nor a drop under a
+  role no functor payload carries, when the join is a gen record: the operand is read in the join's
+  vocabulary, which cannot state that role. A relation that asks `mergeTypes` for what it wraps
+  (gen-schema's `refined`) is judged there instead; one that asks the wrapped type's own foreign
+  `typeMerge` (gen-aspects' `aspectsRoot`) is not judged.
 
 - **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
   drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`
