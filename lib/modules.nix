@@ -186,7 +186,7 @@ let
       at = if loc == [ ] then "the `options' attrset itself" else "option `${showOption loc}'";
     in
     if tag == "bare-type" then
-      "gen-merge: ${at} is declared as a bare type (`${v.name or "?"}'), not a declaration; "
+      "gen-merge: ${at} is declared as a bare type (`${interface.nameOf v}'), not a declaration; "
       + "wrap it: `mkOption { type = <that type>; }'"
     else
       "gen-merge: ${at} is declared as the `${v._type}' combinator "
@@ -357,13 +357,23 @@ let
     } (reverse (prelude.init ts));
   # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
   # first; only the null-reason fallback is spelled here, and it names the pair in authored order,
-  # through the library's one total name reader (`interface.nameOf`).
+  # through the library's one total name reader (`interface.nameOf`). Where the two state functor
+  # names that differ, those are what a foreign `typeMerge' keyed on, so the fallback names them too
+  # (`interface.functorNamesOf`): a derivation keeps its base's type name, and the bare pair would
+  # read "`int' and `int'".
   declaredRefusalText =
     d:
     if d.refused != null then
       d.refused
     else
-      "`${interface.nameOf d.earlier}' and `${interface.nameOf d.later}'";
+      let
+        pair = "`${interface.nameOf d.earlier}' and `${interface.nameOf d.later}'";
+        functorNames = interface.functorNamesOf d.earlier d.later;
+      in
+      if functorNames == null then
+        pair
+      else
+        "${pair}, whose functors are named `${functorNames.first}' and `${functorNames.second}'";
 
   # The declaring SITES at one option loc, in authored module order — the entries whose own
   # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The

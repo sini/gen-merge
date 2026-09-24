@@ -216,7 +216,7 @@ let
       fold loc defs
     else
       throw "gen-merge: a definition for option `${showOption loc}' is not of type `${
-        t.description or t.name or "raw"
+        if builtins.isString (t.description or null) then t.description else nameOf t
       }', in ${concatStringsSep ", " (map (d: "`${d.file}'") bad)}";
 
   # What value does this type supply when nothing defined it? `{ }` is "it declares none" and is a
@@ -318,6 +318,35 @@ let
       t.name
     else
       "<a name of type ${builtins.typeOf t.name}>";
+
+  # ── THE NAME THAT GOVERNED ──────────────────────────────────────────────────────────────────────
+  # The foreign protocol keys a redeclaration on the FUNCTOR name, not the type name (`protoTypeMerge'
+  # below, and the derived `typeMerge' in `exportType'). A type derived from another keeps its base's
+  # `name', the value vocabulary its messages speak, and distinguishes only its functor. So a refusal
+  # naming the pair by type name alone reads "`int' and `int'" in exactly the case the functor names
+  # decided, which looks like a self-contradiction. Where both operands state a functor name and the
+  # two differ, this answers them, read through `nameOf'; otherwise `null' and the refusal is
+  # unchanged. A `nonMountable' operand's `functor' is itself a refusal (`refuseMount'), so it is not
+  # read.
+  functorNamesOf =
+    a: b:
+    let
+      functorOf =
+        x:
+        if isAttrs x && !(x ? nonMountable) && isAttrs (x.functor or null) && x.functor ? name then
+          x.functor
+        else
+          null;
+      fa = functorOf a;
+      fb = functorOf b;
+    in
+    if fa == null || fb == null || fa.name == fb.name then
+      null
+    else
+      {
+        first = nameOf fa;
+        second = nameOf fb;
+      };
 
   # ── THE DECIDABILITY PRE-CHECK THE FOREIGN MERGE IS GUARDED BY ──────────────────────────────────
   # A foreign `typeMerge` recurses through its own structure and bounds nothing: `types.json` is
@@ -478,12 +507,12 @@ let
         if dropsA && dropsB then
           "neither declaration's own check"
         else if dropsA then
-          "the check `${b.name}' declares but not the check `${a.name}' declares"
+          "the check `${nameOf b}' declares but not the check `${nameOf a}' declares"
         else
-          "the check `${a.name}' declares but not the check `${b.name}' declares";
+          "the check `${nameOf a}' declares but not the check `${nameOf b}' declares";
     in
     if dropsA || dropsB then
-      "`${a.name}' and `${b.name}', which their own relation joins to `${j.name}', a type that states ${dropped}"
+      "`${nameOf a}' and `${nameOf b}', which their own relation joins to `${nameOf j}', a type that states ${dropped}"
     else
       null;
 
@@ -555,7 +584,7 @@ let
   carrierRefusal =
     t:
     let
-      name = t.name or "raw";
+      name = nameOf t;
       carriesElemType = t ? elemType || (t.nestedTypes or { }) ? elemType;
       carriesModuleSet = (t.getSubModules or null) != null;
       missing = filter (f: !(t ? ${f})) subProtocol;
@@ -614,7 +643,7 @@ let
   functorRefusal =
     t:
     let
-      name = t.name or "raw";
+      name = nameOf t;
       f = t.functor or null;
       payload = if f == null then null else f.payload or null;
       # BOTH slots the foreign protocol states a parameter in. `wrapped` is the older spelling and
@@ -714,7 +743,7 @@ let
     if gaps == [ ] then
       null
     else
-      "gen-merge: the option type `${t.name or "raw"}' states a merge relation in `functor.binOp' "
+      "gen-merge: the option type `${nameOf t}' states a merge relation in `functor.binOp' "
       + "but its `functor' does not answer "
       + concatStringsSep ", " (map (g: "`${g}'") gaps)
       + "; the relation is retained verbatim and applied by the protocol's own default, which reads "
@@ -732,8 +761,9 @@ let
       f = if isAttrs other then other.functor or null else null;
       joined = if f == null then null else callerTypeMerge t f;
       answer = joinKeepingOperands t other joined;
-      tName = t.name or "raw";
+      tName = nameOf t;
       otherName = nameOf other;
+      functorNames = functorNamesOf t other;
       pair = "`${tName}' and `${otherName}'";
       # Same asymmetry `importedMergeReason` names above: `t` and `other` are asked separately, and
       # "neither" is said only when the join renamed past both.
@@ -749,7 +779,11 @@ let
     in
     if answer == null && joined != null then
       {
-        refused = "${pair}, which the first type's own `functor' joins to `${joined.name or "raw"}', a type that states ${dropped}";
+        refused = "${pair}, which the first type's own `functor' joins to `${nameOf joined}', a type that states ${dropped}";
+      }
+    else if answer == null && functorNames != null then
+      {
+        refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
       }
     else if answer == null then
       { refused = "${pair}, which the first type's own `functor' does not reconcile"; }
@@ -885,7 +919,7 @@ let
     let
       name = t.name or "raw";
       sub = t.substructure or null;
-      role = if t ? carries then roleOf name t.carries else null;
+      role = if t ? carries then roleOf (nameOf t) t.carries else null;
       spelling = if role == null then null else roleSpelling.${role};
       carried = if role == null then null else t.carries.${role};
 
@@ -989,7 +1023,7 @@ let
     in
     if !(t ? typeMergeRel) then
       throw (
-        "gen-merge: the type `${name}' cannot be exported: it declares no type-merge relation, so "
+        "gen-merge: the type `${nameOf t}' cannot be exported: it declares no type-merge relation, so "
         + "the foreign protocol's `typeMerge'/`functor' pair has no gen datum to be derived from. "
         + "Build it through the vocabulary's own constructor, which states the relation"
       )
@@ -1058,6 +1092,7 @@ in
     importedMergeReason
     joinRenames
     nameOf
+    functorNamesOf
     importedPartner
     importedRebuilds
     importedSubstructure

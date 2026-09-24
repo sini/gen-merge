@@ -3054,5 +3054,277 @@ in
           expectedError = refuses "`plain' and `<a name of type int>'";
         };
       };
+
+    # A TYPE'S OWN NAME (or a member's) that is not a string, at each refusal site in lib/ that
+    # names the type it is about rather than its merge partner. Each of these interpolated the name
+    # directly and aborted with a coercion error — class `TypeError`, which `tryEval` does not
+    # contain. They now read it through `interface.nameOf`, so `type = "ThrownError"` is the
+    # discriminating half of every cell and the message pins which site answered. The last two
+    # cells pin the one wording change the reader brings: an UNNAMED record is `<unnamed>' at every
+    # site, where these sites used to say `raw' or `?'.
+    flake.testsError.own-name-not-a-string =
+      let
+        bad = 7;
+        declaredTwice =
+          a: b:
+          realize {
+            modules = [
+              { options.x = gm.mkOption { type = a; }; }
+              { options.x = gm.mkOption { type = b; }; }
+            ];
+          };
+        refuses = pair: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+        };
+        thrown = msg: {
+          type = "ThrownError";
+          inherit msg;
+        };
+        leafProtocol = {
+          getSubOptions = _: { };
+          getSubModules = null;
+          substSubModules = _: null;
+          recarry = x: x;
+        };
+        noRelation = {
+          name = "f";
+          type = null;
+          payload = null;
+          binOp = _: _: null;
+        };
+        # Two raw records with no gen relation, whose own `typeMerge' joins to a type named `j' —
+        # a join that keeps neither operand's name, so the witness names it.
+        renamingJoin = name: {
+          inherit name;
+          check = _: true;
+          merge = _: defs: (builtins.head defs).value;
+          typeMerge = _: {
+            name = "j";
+            check = _: true;
+          };
+          functor = noRelation;
+        };
+      in
+      {
+        test-nullary-relation-names-its-own-name-type = {
+          expr = declaredTwice (t.mkType { name = bad; }) t.str;
+          expectedError = refuses "`<a name of type int>' and `string'";
+        };
+        test-either-names-its-member-name-type = {
+          expr = realize {
+            modules = [
+              {
+                options.x = gm.mkOption {
+                  type = t.either (t.mkType {
+                    name = bad;
+                    admits = _: false;
+                  }) t.int;
+                };
+              }
+              { config.x = "no"; }
+            ];
+          };
+          expectedError = thrown "^gen-merge: option `x' has definitions no single `either' member accepts \\(`<a name of type int>' rejects <gen-merge>; `int' rejects <gen-merge>\\)$";
+        };
+        test-stated-foreign-relation-names-its-own-name-type = {
+          expr = declaredTwice (gm.mkOptionType {
+            name = bad;
+            check = _: true;
+            functor = noRelation;
+          }) t.str;
+          expectedError = refuses "`<a name of type int>' and `string', which the first type's own `functor' \\(named `f'\\) does not reconcile with the second's \\(named `string'\\)";
+        };
+        test-bare-type-declaration-names-its-name-type = {
+          expr = realize {
+            modules = [
+              {
+                options.x = {
+                  _type = "option-type";
+                  name = bad;
+                };
+              }
+            ];
+          };
+          expectedError = thrown "^gen-merge: option `x' is declared as a bare type \\(`<a name of type int>'\\), not a declaration; ";
+        };
+        test-structural-type-missing-its-sub-protocol-names-its-name-type = {
+          expr =
+            (t.mkType {
+              name = bad;
+              carries.element = t.str;
+            }).typeMergeRel;
+          expectedError = thrown "^gen-merge: the structural type `<a name of type int>' carries a parameter but does not supply ";
+        };
+        test-checked-fold-names-its-name-type = {
+          expr = realize {
+            modules = [
+              {
+                options.x = gm.mkOption {
+                  type = gm.mkOptionType {
+                    name = bad;
+                    check = _: false;
+                  };
+                };
+              }
+              { config.x = 1; }
+            ];
+          };
+          expectedError = thrown "^gen-merge: a definition for option `x' is not of type `<a name of type int>', in `<gen-merge>'$";
+        };
+        test-two-carried-roles-names-its-name-type = {
+          expr =
+            (gm.mkOptionType (
+              leafProtocol
+              // {
+                name = bad;
+                check = _: true;
+                carries = {
+                  a = t.str;
+                  b = t.str;
+                };
+              }
+            )).functor;
+          expectedError = thrown "^gen-merge: the type `<a name of type int>' declares 2 carried roles ";
+        };
+        test-unspelled-carried-role-names-its-name-type = {
+          expr =
+            (gm.mkOptionType (
+              leafProtocol
+              // {
+                name = bad;
+                check = _: true;
+                carries.zz = t.str;
+              }
+            )).functor;
+          expectedError = thrown "^gen-merge: the type `<a name of type int>' carries the role `zz', ";
+        };
+        test-renaming-foreign-join-names-the-operand-name-type = {
+          expr = declaredTwice (renamingJoin "b") (renamingJoin bad);
+          expectedError = refuses "`<a name of type int>' and `b', which their own relation joins to `j', a type that states neither declaration's own check";
+        };
+        test-carrier-refusal-names-its-name-type = {
+          expr = gm.mkOptionType {
+            name = bad;
+            nestedTypes.elemType = t.str;
+          };
+          expectedError = thrown "^gen-merge: the structural type `<a name of type int>' carries an element type but does not supply ";
+        };
+        test-unreadable-functor-names-its-name-type = {
+          expr = gm.mkOptionType {
+            name = bad;
+            functor = {
+              name = "f";
+              binOp = null;
+              payload.x = 1;
+            };
+          };
+          expectedError = thrown "^gen-merge: the option type `<a name of type int>' supplies a `functor' this boundary cannot read";
+        };
+        test-unanswerable-relation-names-its-name-type = {
+          expr = gm.mkOptionType {
+            name = bad;
+            functor = {
+              binOp = a: _: a;
+              payload = null;
+            };
+          };
+          expectedError = thrown "^gen-merge: the option type `<a name of type int>' states a merge relation in `functor\\.binOp' ";
+        };
+        test-stated-relation-join-names-the-join-name-type = {
+          expr = declaredTwice (gm.mkOptionType {
+            name = "fr";
+            check = _: true;
+            functor = noRelation;
+            typeMerge = _: { name = bad; };
+          }) t.str;
+          expectedError = refuses "`fr' and `string', which the first type's own `functor' joins to `<a name of type int>', a type that states neither declaration's own check";
+        };
+        test-rebuilt-type-without-a-relation-names-its-name-type = {
+          expr =
+            (gm.mkOptionType (
+              leafProtocol
+              // {
+                name = "box";
+                check = _: true;
+                functor = {
+                  name = "box";
+                  payload.elemType = t.str;
+                };
+                recarry = _: { name = bad; };
+              }
+            )).functor.type
+              { elemType = t.int; };
+          expectedError = thrown "^gen-merge: the type `<a name of type int>' cannot be exported: it declares no type-merge relation";
+        };
+        test-an-unnamed-type-is-named-unnamed = {
+          expr = declaredTwice (t.mkType { }) t.str;
+          expectedError = refuses "`<unnamed>' and `string'";
+        };
+        test-an-unnamed-bare-type-declaration-is-named-unnamed = {
+          expr = realize { modules = [ { options.x._type = "option-type"; } ]; };
+          expectedError = thrown "^gen-merge: option `x' is declared as a bare type \\(`<unnamed>'\\), not a declaration; ";
+        };
+      };
+
+    # THE REFUSAL NAMES THE NAME THAT GOVERNED. The foreign protocol keys a redeclaration on the
+    # FUNCTOR name; a derivation keeps its base's TYPE name and distinguishes only the functor. So
+    # the pair `int' and `int' refuses, and a message naming only type names reads as a
+    # self-contradiction. Both sites that spell the pair now name the two functor names where they
+    # differ: `foreignRel' (a stated relation) and the declaration plane's null-reason fallback (two
+    # raw foreign records). The control keeps a functor-name clause out where the names agree.
+    flake.testsError.refusal-names-the-functor-names =
+      let
+        declaredTwice =
+          a: b:
+          realize {
+            modules = [
+              { options.x = gm.mkOption { type = a; }; }
+              { options.x = gm.mkOption { type = b; }; }
+            ];
+          };
+        refuses = pair: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+        };
+        derivedInt =
+          fname:
+          gm.mkOptionType {
+            name = "int";
+            check = builtins.isInt;
+            functor = {
+              name = fname;
+              type = null;
+              payload = null;
+              binOp = _: _: null;
+            };
+          };
+        rawOf = fname: {
+          name = "int";
+          check = builtins.isInt;
+          merge = _: defs: (builtins.head defs).value;
+          functor = {
+            name = fname;
+            type = null;
+            payload = null;
+            binOp = _: _: null;
+          };
+          typeMerge = f: if f.name == fname then rawOf fname else null;
+        };
+      in
+      {
+        test-a-stated-relation-refusal-names-both-functor-names = {
+          expr = declaredTwice (derivedInt "refined") t.int;
+          expectedError = refuses "`int' and `int', which the first type's own `functor' \\(named `refined'\\) does not reconcile with the second's \\(named `int'\\)";
+        };
+        test-a-reasonless-refusal-names-both-functor-names = {
+          expr = declaredTwice (rawOf "refined") (rawOf "int");
+          expectedError = refuses "`int' and `int', whose functors are named `refined' and `int'";
+        };
+        test-control-agreeing-functor-names-are-not-named = {
+          expr = declaredTwice (derivedInt "refined") (derivedInt "refined");
+          expectedError = refuses "`int' and `int', which the first type's own `functor' does not reconcile";
+        };
+      };
   };
 }

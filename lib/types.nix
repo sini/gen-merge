@@ -140,11 +140,11 @@ let
         if isAttrs other && (other.name or null) == name then
           { merged = self; }
         else
-          { refused = "`${name}' and `${nameOf other}'"; };
+          { refused = "`${nameOf t}' and `${nameOf other}'"; };
     in
     if carriesSomething && missing != [ ] then
       throw (
-        "gen-merge: the structural type `${name}' carries a parameter but does not supply "
+        "gen-merge: the structural type `${nameOf t}' carries a parameter but does not supply "
         + concatStringsSep ", " (map (f: "`${f}'") missing)
         + "; a type that carries something answers for it rather than inheriting a leaf's answers"
       )
@@ -831,7 +831,7 @@ let
           rejects = t: map (d: toString (d.file or "<def>")) (filter (d: !(isValid t d.value)) defs);
         in
         if chosen == null then
-          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (`${a.name}' rejects ${concatStringsSep ", " (rejects a)}; `${b.name}' rejects ${concatStringsSep ", " (rejects b)})"
+          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (`${nameOf a}' rejects ${concatStringsSep ", " (rejects a)}; `${nameOf b}' rejects ${concatStringsSep ", " (rejects b)})"
         else
           mergeDefs loc chosen defs;
     };
