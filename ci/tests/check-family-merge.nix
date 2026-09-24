@@ -52,6 +52,75 @@ let
   tagOf = k: ty: t.attrTag { ${k} = nixpkgsLib.mkOption { type = ty; }; };
   tag = k: tagOf k t.int;
   gsub = gt.submodule { options.x = gm.mkOption { type = gt.int; }; };
+
+  # Two wrappers built through `mkOptionType` whose stated `nestedTypes` no payload carries across,
+  # so the join their relation answers is a gen record that cannot spell the operand's role.
+  # `refinedLike` is gen-schema's `refined` (base's `nestedTypes`, `null` payload, a relation that
+  # asks `mergeTypes` for the base and rebuilds); `rootWith` is gen-aspects' `aspectsRoot` (the
+  # element itself as payload, `binOp` asking the element's own `typeMerge`).
+  refinedLike =
+    base:
+    let
+      self = imp (
+        removeAttrs base [
+          "functor"
+          "typeMerge"
+        ]
+        // {
+          __base = base;
+          typeMerge =
+            f:
+            let
+              p = f.type or null;
+              j = if p ? __base then gm.mergeTypes base p.__base else null;
+            in
+            if j == null then null else refinedLike j;
+          functor = {
+            name = "refined<${base.name}>";
+            type = self;
+            payload = null;
+            binOp = _a: _b: null;
+          };
+        }
+      );
+    in
+    self;
+  rootWith =
+    elemType:
+    imp {
+      name = "root";
+      check = builtins.isAttrs;
+      merge = _loc: defs: builtins.foldl' (acc: d: acc // d.value) { } defs;
+      nestedTypes = { inherit elemType; };
+      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+      getSubModules = elemType.getSubModules or null;
+      substSubModules = _m: rootWith elemType;
+      functor = {
+        name = "root";
+        payload = elemType;
+        binOp = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+        type = rootWith;
+      };
+    };
+  # a carried role (`payload.elemType`) whose relation answers `int` whatever it is asked: the
+  # operand read in the join's vocabulary still states its element, so the drop stays visible
+  intWrap =
+    elemType:
+    imp {
+      name = "wrap";
+      check = builtins.isList;
+      merge = _loc: defs: builtins.concatMap (d: d.value) defs;
+      nestedTypes = { inherit elemType; };
+      getSubOptions = _prefix: { };
+      getSubModules = null;
+      substSubModules = _m: intWrap elemType;
+      functor = {
+        name = "wrap";
+        payload = { inherit elemType; };
+        binOp = _a: _b: { elemType = t.int; };
+        type = { elemType }: intWrap elemType;
+      };
+    };
 in
 {
   flake.tests.check-family-merge = {
@@ -149,6 +218,64 @@ in
         imported = "REFUSED";
         bare = "MERGED unsignedInt16 / ACCEPTED";
       };
+    };
+
+    # A TYPE REDECLARED AS ITSELF DROPS NOTHING. Each operand is built separately, so no identity
+    # carries it; the join is a gen record and the operand is read in its vocabulary. The planted
+    # rows keep refusing: a different base, a different element, and a carried role renamed.
+    test-a-self-redeclaration-through-a-gen-join-merges = {
+      expr = {
+        refined-listOf = ev [ (refinedLike (t.listOf t.str)) (refinedLike (t.listOf t.str)) ] [ "a" ];
+        refined-listOf-listOf =
+          ev
+            [
+              (refinedLike (t.listOf (t.listOf t.str)))
+              (refinedLike (t.listOf (t.listOf t.str)))
+            ]
+            [ [ "a" ] ];
+        refined-gen-listOf = ev [ (refinedLike (gt.listOf t.str)) (refinedLike (gt.listOf t.str)) ] [ "a" ];
+        listOf-refined =
+          ev
+            [
+              (t.listOf (refinedLike (t.listOf t.str)))
+              (t.listOf (refinedLike (t.listOf t.str)))
+            ]
+            [ [ "a" ] ];
+        root = ev [ (rootWith t.str) (rootWith t.str) ] { a = "x"; };
+        root-three = ev [ (rootWith t.str) (rootWith t.str) (rootWith t.str) ] { a = "x"; };
+        imported-listOf = ev [ (imp (t.listOf t.str)) (imp (t.listOf t.str)) ] [ "a" ];
+        planted-refined-element =
+          ev
+            [ (refinedLike (t.listOf t.str)) (refinedLike (t.listOf t.int)) ]
+            [ "a" ];
+        planted-refined-check = ev [ (refinedLike (t.listOf t.port)) (refinedLike (t.listOf t.int)) ] [ 1 ];
+        planted-carried-rename = ev [ (intWrap t.port) (intWrap t.port) ] [ 70000 ];
+        # the refusal is the witness's, not a malformed fixture's
+        planted-carried-rename-reason = ((intWrap t.port).typeMergeRel (intWrap t.port)).refused or null;
+      };
+      expected = {
+        refined-listOf = "MERGED listOf / ACCEPTED";
+        refined-listOf-listOf = "MERGED listOf / ACCEPTED";
+        refined-gen-listOf = "MERGED listOf / ACCEPTED";
+        listOf-refined = "MERGED listOf / ACCEPTED";
+        root = "MERGED root / ACCEPTED";
+        root-three = "MERGED root / ACCEPTED";
+        imported-listOf = "MERGED listOf / ACCEPTED";
+        planted-refined-element = "REFUSED";
+        planted-refined-check = "REFUSED";
+        planted-carried-rename = "REFUSED";
+        planted-carried-rename-reason = "`wrap' and `wrap', which the first type's own `functor' joins to `wrap', a type that states neither declaration's own check";
+      };
+    };
+
+    # ★ A KNOWN BOUNDARY, PINNED: a gen join is judged in gen's vocabulary, and a role no payload
+    # carries is not in it. `rootWith`'s relation asks the element's own foreign `typeMerge`, which
+    # joins `port ∥ int` to `int` without the witness, so the drop under the element is not seen here.
+    # A boundary that carries a descriptor's stated `nestedTypes`, or a relation that asks
+    # `mergeTypes` for its element (as `refinedLike` does, above), flips this.
+    test-a-drop-under-an-uncarried-role-is-not-seen = {
+      expr = ev [ (rootWith t.port) (rootWith t.int) ] { a = 70000; };
+      expected = "MERGED root / ACCEPTED";
     };
 
     # D2: the text is false whenever the join keeps ONE operand's own name — `int ∥ port` joins to

@@ -374,6 +374,17 @@ let
   # states `element` where a foreign one states `elemType`, and without the normalisation that
   # legitimate mixed pair reads as a drop. A module set holds modules, not types, and spells as
   # nothing. The walk is fuel-bounded like `importedDecidable`, and exhaustion counts as a drop.
+  #
+  # ★ THE OPERAND IS READ IN THE JOIN'S VOCABULARY. A join this boundary built is a gen record, and a
+  # gen record's roles are its `carries`, which is all its exported `nestedTypes` is derived from. A
+  # foreign descriptor can state roles no payload carries across: `gen-schema`'s `refined`
+  # keeps its base's `nestedTypes` under a `null` payload, `gen-aspects`' `aspectsRoot` states
+  # `elemType` beside a payload that is the element itself. Read raw against such a join, a type
+  # redeclared as ITSELF lacks a role only because the join could not spell it, and refuses. So
+  # where the join is a gen record and the operand is not, the operand is read as the import
+  # environment reads it; a record the import refuses stays raw. The residue, stated: a gen join
+  # over a role no gen record can carry is judged at the relation that built it (`refined` asks
+  # `mergeTypes` for its base), never here.
   joinRenames =
     let
       roles =
@@ -391,8 +402,17 @@ let
             x.nestedTypes or { }
           );
       asList = v: if isList v then v else [ v ];
+      inJoinSpelling =
+        j: o:
+        if isAttrs j && j ? typeMergeRel && isAttrs o && !(o ? typeMergeRel) then
+          (importType o).imported or o
+        else
+          o;
       go =
-        fuel: j: o:
+        fuel: j: o':
+        let
+          o = inJoinSpelling j o';
+        in
         if !(isAttrs j) || !(isAttrs o) then
           false
         else if fuel <= 0 then
