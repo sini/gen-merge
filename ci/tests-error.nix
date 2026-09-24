@@ -2956,5 +2956,56 @@ in
           };
         };
       };
+
+    # A PARTNER WHOSE NAME IS NOT A STRING, at each of the six refusal sites in lib/types.nix that
+    # name their partner through `nameOf`. Before `nameOf` read the name instead of interpolating it,
+    # every one of these aborted with a coercion error — class `TypeError`, which `tryEval` does not
+    # contain — so the declaration plane's own refusal never got to speak. `type = "ThrownError"` is
+    # therefore the discriminating half of each cell: against the old tree nix-unit reds it and names
+    # the class it actually met, and the message pins which site answered.
+    flake.testsError.partner-name-not-a-string =
+      let
+        badlyNamed = {
+          name = 7;
+        };
+        declaredTwice =
+          a: b:
+          realize {
+            modules = [
+              { options.x = gm.mkOption { type = a; }; }
+              { options.x = gm.mkOption { type = b; }; }
+            ];
+          };
+        refuses = pair: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+        };
+      in
+      {
+        test-nullary-relation-names-the-partner-name-type = {
+          expr = declaredTwice t.bool badlyNamed;
+          expectedError = refuses "`bool' and `<a name of type int>'";
+        };
+        test-element-relation-names-the-partner-name-type = {
+          expr = declaredTwice (t.attrsOf t.int) badlyNamed;
+          expectedError = refuses "`attrsOf' and `<a name of type int>'";
+        };
+        test-element-relation-names-the-partner-element-name-type = {
+          expr = declaredTwice (t.attrsOf t.int) (t.attrsOf badlyNamed);
+          expectedError = refuses "`attrsOf' over `int' and `attrsOf' over `<a name of type int>', whose element types do not merge";
+        };
+        test-submodule-relation-names-the-partner-name-type = {
+          expr = declaredTwice (t.submodule { }) badlyNamed;
+          expectedError = refuses "`submodule' and `<a name of type int>'";
+        };
+        test-attrs-relation-names-the-partner-name-type = {
+          expr = declaredTwice t.attrs badlyNamed;
+          expectedError = refuses "`attrs' and `<a name of type int>'";
+        };
+        test-either-relation-names-the-partner-name-type = {
+          expr = declaredTwice (t.either t.int t.str) badlyNamed;
+          expectedError = refuses "`either' and `<a name of type int>'";
+        };
+      };
   };
 }
