@@ -76,13 +76,15 @@ let
       // extra
     );
 
-  # ── the functor refusal's subject: a BYTE-IDENTICAL RECONSTRUCTION of a real consumer ───────
-  # This is gen-aspects' `aspectsRootWith` (its `lib/types.nix`), rebuilt here field for field: a
-  # container written in the nixpkgs convention, whose `functor.payload` is the element type BARE
-  # rather than a `{ elemType = …; }` row, and whose `binOp` defers to the two elements' own
-  # relation. The reconstruction is the subject rather than a minimal fixture because the defect
-  # this refusal converts was MEASURED on it — a minimal one would leave open whether the shape a
-  # consumer actually ships is the shape that fires.
+  # ── the functor refusal's subject: a FIELD-FOR-FIELD RECONSTRUCTION of a real consumer ──────
+  # This is gen-aspects' `aspectsRootWith` (its `lib/types.nix`) as it stood when the defect this
+  # refusal converts was measured on it, rebuilt field for field: a container written in the
+  # nixpkgs convention, whose `functor.payload` is the element type BARE rather than a
+  # `{ elemType = …; }` row, and whose `binOp` defers to the two elements' own relation. gen-aspects'
+  # `aspectsRootWith` keeps that payload shape, but its `binOp` is `mergeElemTypes`, bound to
+  # gen-merge's `mergeTypes`, not the elements' own relation. The reconstruction stays the subject
+  # rather than a minimal fixture because a minimal one would leave open whether the shape a
+  # consumer shipped is the shape that fires.
   mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
   aspectsRootWith =
     elemType:
@@ -1783,8 +1785,8 @@ in
           ((box t.str).typeMerge (box t.str).functor).name;
         expected = "okBox";
       };
-      # ★★ AND THE ADMITTED SUBJECT ANSWERS FOR ITSELF. `aspectsRootWith` — the byte-identical
-      # reconstruction of gen-aspects' real container, above — is the shape this group used to refuse.
+      # ★★ AND THE ADMITTED SUBJECT ANSWERS FOR ITSELF. `aspectsRootWith` — the field-for-field
+      # reconstruction of gen-aspects' container, above — is the shape this group used to refuse.
       # It now crosses, and these two rows are what says the admission is not a silent downgrade: its
       # own `binOp` refuses two containers over DIFFERENT elements and reconciles two over the same
       # one. That is the property the old refusal existed to protect, now held by construction. Both

@@ -56,8 +56,10 @@ let
   # Two wrappers built through `mkOptionType` whose stated `nestedTypes` no payload carries across,
   # so the join their relation answers is a gen record that cannot spell the operand's role.
   # `refinedLike` is gen-schema's `refined` (base's `nestedTypes`, `null` payload, a relation that
-  # asks `mergeTypes` for the base and rebuilds); `rootWith` is gen-aspects' `aspectsRoot` (the
-  # element itself as payload, `binOp` asking the element's own `typeMerge`).
+  # asks `mergeTypes` for the base and rebuilds); `rootWith` is a container carrying the element
+  # itself as payload whose `binOp` asks the element's own foreign `typeMerge`. That relation is
+  # NOT gen-aspects' `aspectsRoot`: its `aspectsRootWith` binds `binOp` to `mergeElemTypes`, which
+  # is gen-merge's `mergeTypes`, so it is judged the way `refinedLike` is.
   refinedLike =
     base:
     let

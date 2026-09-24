@@ -1269,8 +1269,8 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   redeclared under one name with a different check, which merges on the name. Nor a drop under a
   role no functor payload carries, when the join is a gen record: the operand is read in the join's
   vocabulary, which cannot state that role. A relation that asks `mergeTypes` for what it wraps
-  (gen-schema's `refined`) is judged there instead; one that asks the wrapped type's own foreign
-  `typeMerge` (gen-aspects' `aspectsRoot`) is not judged.
+  (gen-schema's `refined`, gen-aspects' `aspectsRoot`) is judged there instead; one that asks the
+  wrapped type's own foreign `typeMerge` is not judged.
 
 - **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
   drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`
