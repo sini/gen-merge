@@ -160,6 +160,11 @@
           differential
           ;
       };
-      extraModules = [ ./tests-error.nix ];
+      extraModules = [
+        ./tests-error.nix
+        # The per-process cells: verdicts that are PROCESS EXITS (uncatchable aborts), one
+        # fixture per evaluator process, run as a check so `nix flake check` carries them.
+        ./tests-process.nix
+      ];
     };
 }

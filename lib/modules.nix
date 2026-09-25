@@ -1903,12 +1903,34 @@ let
       #
       # It costs one declaration-side application of the module set. The value side — the merge, the
       # priority pass, the type folds — is untouched, and the guard forces no definition.
-      declarationGuard = builtins.deepSeq (declLeafPaths
-        (declarationStratum {
-          inherit specialArgs prefix;
-          modules = modList;
-        }).options
-      ) null;
+      #
+      # The spine is forced by `declLeafEntries`'s own descent — the same `isOptLeaf` stop, the same
+      # group recursion, so the same set of forced nodes — answered as a boolean rather than as
+      # `deepSeq (declLeafPaths …)`, which builds and then forces a loc list per declared leaf that
+      # nothing reads. Forcing is the whole of the guard; no path is its product.
+      declarationGuard =
+        let
+          spine =
+            t:
+            builtins.all (
+              k:
+              let
+                v = t.${k};
+              in
+              if isOptLeaf v then
+                true
+              else if isAttrs v then
+                spine v
+              else
+                true
+            ) (attrNames t);
+        in
+        builtins.seq (spine
+          (declarationStratum {
+            inherit specialArgs prefix;
+            modules = modList;
+          }).options
+        ) null;
 
       result = driveKnot (
         result:
