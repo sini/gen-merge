@@ -2173,6 +2173,28 @@ in
             msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a lambda>\\n- In `/demo/warp\\.nix': <a lambda>$";
           };
         };
+        # A shared key compares each definer's own value slot (`sharedKeyDiffers`), and identity is
+        # sound only while DISTINCT closures stay unequal: two closures of one lambda over different
+        # environments, and two function literals, refuse on all three evaluators. RED (a fold that
+        # calls every shared function equal): ☢, a value and no error, ×3.
+        test-distinct-closures-of-one-lambda-refuse-naming-files = {
+          expr =
+            let
+              mkF = _: x: x;
+            in
+            heddle thread { a = mkF 1; } { a = mkF 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
+          };
+        };
+        test-two-function-literals-refuse-naming-files = {
+          expr = heddle thread { a = y: y; } { a = y: y; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
+          };
+        };
         # R-4's FENCE: a descriptor stating `verify` is a gen leaf, whose no-fold default stays
         # `mergeLeaf` — lists that nixpkgs' law would concatenate are still refused. RED (the
         # `verify` guard struck from `importDescriptor`): ☢, a value and no error.

@@ -1484,9 +1484,22 @@ let
     loc: defs:
     let
       list = map (d: d.value) defs;
-      sharedKeyDiffers = any (vs: length vs > 1 && !all (v: v == head vs) vs) (
-        builtins.attrValues (builtins.zipAttrsWith (_: vs: vs) list)
-      );
+      # Compare each definer's OWN value slot. `==`'s identity short-circuit (the Nix manual's
+      # "Value identity optimization") compares value SLOTS on upstream Nix and Determinate and
+      # object identity on Lix, so comparing fresh copies (`v == head vs`) would refuse one bound
+      # function on the first two and keep it on Lix. A singleton list keeps its element's slot
+      # (`head` is a primop, whose result is a copy), so the three agree wherever the definitions
+      # hold one value in one slot. The split that remains is stated in the README.
+      sharedKeyDiffers = any (
+        vs:
+        length vs > 1
+        && (
+          let
+            cells = map (v: [ v ]) vs;
+          in
+          !all (c: c == head cells) cells
+        )
+      ) (builtins.attrValues (builtins.zipAttrsWith (_: vs: vs) list));
     in
     if length list > 1 && (all isFunction list || (all isAttrs list && sharedKeyDiffers)) then
       throw (showConflict loc defs)
@@ -2009,11 +2022,21 @@ let
             else if isFunction m then
               let
                 formals = functionArgs m;
-                extra = mapAttrs (
-                  name: _:
-                  baseArgs.${name} or result.moduleArgs.${name}
-                    or (throw "gen-merge: module argument `${name}' is not defined")
-                ) formals;
+                extra =
+                  mapAttrs (
+                    name: _:
+                    baseArgs.${name} or result.moduleArgs.${name}
+                      or (throw "gen-merge: module argument `${name}' is not defined")
+                  ) formals
+                  # A formal `baseArgs` holds (specialArgs, `config`, `options`, `prefix`) binds to
+                  # `baseArgs`' OWN attribute, so every module sees one value slot and `==` answers
+                  # alike on the three evaluators (see `sharedKeyDiffers`). This departs from nixpkgs'
+                  # `applyModuleArgs`, which copies every formal: `[ fa ] == box` reads true on every
+                  # evaluator here. The `//` operand costs no thunk per application; a
+                  # `removeAttrs formals names` operand does, and the hub perf-bench's kindMatch rows
+                  # catch it. A `_module.args` formal stays a per-application copy (a priced residue,
+                  # README "Known byte-mode boundaries").
+                  // builtins.intersectAttrs formals baseArgs;
               in
               m (baseArgs // extra)
             else if isAttrs m then

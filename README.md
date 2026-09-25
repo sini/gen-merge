@@ -141,8 +141,14 @@ values are **not `==`**, which nixpkgs' shallow `//` settles by keeping the firs
 dropping the rest without a word, and functions, where nixpkgs aborts or unwraps silently. Attrsets
 with disjoint keys, or whose shared keys carry `==` values, are `//`-folded: `{ a = 1; b = 1; }`,
 `{ a = 1; c = 2; }` ⇒ `{ a = 1; b = 1; c = 2; }`, nixpkgs' value, which 6a508e3 refused. "Equal" is
-Nix `==` and nothing wider. A function is never `==`, so `{ a = f; }`,`{ a = f; }` over one binding
-`f` refuses, where nixpkgs and 6a508e3 both take it: a new refusal, named. A functor is an attrset to
+the running evaluator's `==` applied to each definer's own value, and nothing wider. Between
+functions that is identity, which is sound (no evaluator accepts two different functions), so
+`{ a = f; }`,`{ a = f; }` over one binding `f` is kept on Nix, Determinate and Lix alike, as is one
+value passed to both modules through `specialArgs`; two distinct closures refuse on all three. The
+evaluators split only where the definitions hold one function, or one value with an attribute that
+throws when forced, in *different* value slots (a selection written at each site, a `_module.args`
+module argument, …): that case, and why it stays, is under
+[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A functor is an attrset to
 `builtins.isFunction`, so two functors refuse through the attrset arm, not the function arm. And
 deciding a shared key forces its values, so `{ a = 1; b = 1; }`,`{ a = throw …; }` throws on reading
 `.b`, where nixpkgs gives `1`. A descriptor stating `verify` is a gen leaf and keeps
@@ -1300,9 +1306,49 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   the key (`{ a = 1; }` in the first file, `{ a = 2; }` in the second ⇒ `{ a = 1; }`: its
   definitions list runs in reverse file order and `//` is last-wins over that list), and for
   functions aborts uncatchably or unwraps a `{ value = …; }` result. Every other arm of the default is nixpkgs' value, with "equal"
-  meaning Nix `==`: a function-valued shared key refuses where nixpkgs takes it, and shared keys'
-  values are forced where nixpkgs forces none. The price, stated with the 2026-09-25 ruling: a
-  nixpkgs module relying on silent last-wins attrset merging under a check-only type is refused here.
+  meaning the evaluator's `==` on each definer's own value, and shared keys' values are forced
+  where nixpkgs forces none. The price, stated with the 2026-09-25 ruling: a nixpkgs module relying
+  on silent last-wins attrset merging under a check-only type is refused here.
+
+- **At that shared key the three evaluators split in one stated case.** `==`'s identity
+  short-circuit (the Nix manual, *Value identity optimization*) compares value *slots* on upstream
+  Nix and Determinate and object identity on Lix. The fold compares each definer's own slot
+  (`sharedKeyDiffers`), so between functions "equal" is identity, which is sound: no evaluator
+  accepts two different functions (`ci/tests-error.nix` `mkoptiontype-default-merge`, distinct
+  closures). `==` also treats an int as equal to the same float, and two derivations with one
+  `outPath` as equal, on every evaluator. The three agree wherever the definitions hold one value in
+  one slot: a value bound once and written at each site, and a module argument supplied through
+  `specialArgs` (`ci/tests/shared-key-identity.nix`, cells kept ×3). They split when the same
+  function, or one value holding an attribute that throws when forced (a nixpkgs package set), is
+  held in a *different* slot by each definition: a selection written at each site (`lib.id`,
+  `h.pkgs`), a `with`-bound name, a separate `import`, a function result, or a module argument
+  supplied only through `_module.args`. There Nix and Determinate refuse by name (a function) or
+  throw the value's own error, and Lix keeps the value. Two kinds of residue, priced differently:
+
+  - *User-made copies* cannot be made to agree: upstream Nix has no observer of closure identity, so
+    a relation it can compute cannot tell "one closure in two slots" from "two closures of one
+    lambda". Calling them equal drops a distinct function silently; calling every function unequal
+    refuses values all three accept today. Pinned per evaluator by
+    `test-a-function-reached-by-selection-answers-as-the-evaluator-s-own-identity`.
+  - *The `_module.args` copy is chosen, not forced.* One shared cell per argument name per
+    evaluation removes it on all three evaluators; it costs thunks on every nested submodule
+    evaluation, which the hub perf-bench's kindMatch bounds do not admit today, so it is not paid.
+    `test-a-function-passed-through-module-args-answers-as-the-evaluator-s-own-identity` pins it,
+    and is meant to go red on Nix and Determinate when a landing pays that price.
+
+  `mergeLeaf` and `leafFold` answer as nixpkgs' `mergeEqualOption` does on the same evaluator, this
+  split included.
+
+- **A module formal that `specialArgs`, `config`, `options` or `prefix` supplies is that attribute
+  itself, not a copy.** nixpkgs' `applyModuleArgs` copies every formal; `callM` binds a `baseArgs`
+  formal by a right operand of `//` (0 thunks per module application), so every module holds one
+  slot. Observable through any `==`: with `specialArgs = { inherit fa; box = [ fa ]; }` and `fa` a
+  function, `[ fa ] == box` in a user module reads true on all three evaluators, where nixpkgs reads
+  false on Nix and Determinate and true on Lix. nixpkgs is evaluator-split there, so no single
+  answer matches it everywhere; this one is uniform. Precedence (`specialArgs` over `_module.args`),
+  default formals, the missing-argument message and laziness are unchanged. The price is
+  allocation, not thunks: the `//` result on each module application, nested submodule
+  evaluations included (measured below the hub perf-bench's bounds).
 
 - **Two structurally equal CYCLIC values at a shared key abort uncatchably**, a known boundary.
   Nix `==` is not total: `{ a = r; }`,`{ a = r'; }` with `r` and `r'` separate bindings of
