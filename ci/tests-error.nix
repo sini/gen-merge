@@ -2537,6 +2537,83 @@ in
             msg = "option `p'.*not of type `h'.*`bad\\.nix'";
           };
         };
+        test-v2-headError-refusal-names-its-reason = {
+          expr =
+            read
+              (
+                nixpkgsLib.types.attrsOf nixpkgsLib.types.int
+                // {
+                  merge = {
+                    __functor =
+                      self: loc: defs:
+                      (self.v2 { inherit loc defs; }).value;
+                    v2 = _: {
+                      headError.message = "boom";
+                      value = { };
+                      valueMeta = { };
+                    };
+                  };
+                }
+              )
+              (bad {
+                a = 1;
+              });
+          expectedError = {
+            type = "ThrownError";
+            msg = "option `p'.*not of type.*TypeError: boom";
+          };
+        };
+        test-v2-answer-without-headError-aborts-as-nixpkgs-does = {
+          expr =
+            read
+              (
+                nixpkgsLib.types.attrsOf nixpkgsLib.types.int
+                // {
+                  merge = {
+                    __functor =
+                      self: loc: defs:
+                      (self.v2 { inherit loc defs; }).value;
+                    v2 = _: {
+                      value = { };
+                      valueMeta = { };
+                    };
+                  };
+                }
+              )
+              (bad {
+                a = 1;
+              });
+          expectedError = {
+            type = "TypeError";
+            msg = "called without required argument 'headError'";
+          };
+        };
+        test-submodule-bearing-adhoc-check-override-refused-by-name = {
+          expr =
+            read
+              (
+                nixpkgsLib.types.submodule { options.q = nixpkgsLib.mkOption { type = nixpkgsLib.types.int; }; }
+                // {
+                  check = builtins.isAttrs;
+                }
+              )
+              (bad {
+                q = 1;
+              });
+          expectedError = {
+            type = "ThrownError";
+            msg = "option `p'.*ad-hoc.*submodule-bearing";
+          };
+        };
+        test-v2-adhoc-check-override-refused-by-name = {
+          expr = read (nixpkgsLib.types.attrsOf nixpkgsLib.types.int // { check = builtins.isAttrs; }) (bad {
+            a = 1;
+          });
+          expectedError = {
+            type = "ThrownError";
+            msg = "option `p'.*ad-hoc";
+          };
+        };
         test-round-tripped-structural-type-refuses-by-name = {
           expr = read (gm.mkOptionType (t.listOf t.int)) (bad 1);
           expectedError = {

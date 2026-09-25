@@ -227,11 +227,14 @@ in
     # something a consumer can print, diff or hand on: it survives a JSON round trip unchanged. Live
     # control in the same cell — the type value carries functions, so a record holding one could not
     # be serialised at all (`toJSON` on a function is not even catchable by `tryEval`, which is why
-    # this control asserts the function's presence rather than the failure).
+    # this control asserts the function's presence rather than the failure). A checked fold is a
+    # functor carrying its unchecked twin (`mergeDefs.unchecked`), so the function is read through it.
     test-report-round-trips-through-json = {
       expr = {
         roundTripped = builtins.fromJSON (builtins.toJSON (reportFor deprecatedType));
-        typeValueCarriesFunctions = builtins.isFunction deprecatedType.merge;
+        typeValueCarriesFunctions = builtins.isFunction (
+          deprecatedType.merge.__functor or deprecatedType.merge
+        );
       };
       expected = {
         roundTripped = [

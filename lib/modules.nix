@@ -1138,6 +1138,17 @@ let
     else
       interface.importedFold type;
 
+  # The fold a type merges by WITHOUT a definition check: nixpkgs' raw `merge`, which it calls only at
+  # the freeformType site. A gen type's own fold is the same at every site; a foreign one is checked
+  # at option sites (`ownFold`) and unchecked here, and an imported record whose fold is checked
+  # carries the unchecked one on it as `mergeDefs.unchecked`.
+  rawFold =
+    type:
+    if type ? mergeDefs then
+      type.mergeDefs.unchecked or type.mergeDefs
+    else
+      interface.importedRawFold type;
+
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
   # every existing consumer of the exported `mergeDefs` escape hatch (spec §1 item 6) is unchanged.
@@ -2253,14 +2264,15 @@ let
           # Coalesce the per-key unmatched defs into one wide def per originating module BEFORE the
           # freeform type's fold (see `coalesceUnmatched`) — restores nixpkgs' per-module freeform
           # shape, so `attrsOf`/`lazyAttrsOf` stays linear in sibling-key count (byte-identical
-          # output). The fold is reached through `ownFold`, the same gen-first dispatch every other
-          # merge in this engine takes: a freeformType is an ordinary option type and may equally be
-          # one this library did not build.
+          # output). The fold is `rawFold`, not `ownFold`: nixpkgs merges the freeform plane with the
+          # type's raw `merge` (`freeformType.merge prefix defs`), outside `mergeDefinitions`, so a
+          # foreign type's `check` and v2 protocol do not apply here. The keys it owns are checked by
+          # its own merge, as they are there.
           freeformConfigCold =
             if freeform == null || realized.unmatched == [ ] then
               { }
             else
-              (ownFold freeform) prefix (coalesceUnmatched (length topDefs) realized.unmatched);
+              (rawFold freeform) prefix (coalesceUnmatched (length topDefs) realized.unmatched);
           # Warm: reuse prev's whole freeform layer (byte-identical when `reuseFreeform`), skipping the
           # freeform fold's re-run; else the cold layer. The cold thunk stays unforced under reuse.
           freeformConfig = if reuseFreeform then warmFrom.freeformConfig else freeformConfigCold;

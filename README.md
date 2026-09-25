@@ -889,6 +889,21 @@ every position gen-merge folds and the refusal names the option, the type and th
 (`ci/tests/foreign-leaf-check.nix`). As in nixpkgs, only the definitions that survive `mkIf` and
 priority are checked.
 
+**A nixpkgs v2 type is merged by its own `merge.v2`**, as `mergeDefinitions` merges it: its
+`headError` decides, not the record's `check`, and an answer that is not exactly
+`{ headError, value, valueMeta }` aborts as it does there. An ad-hoc `type // { check = …; }` on a v2
+type is **refused by name**, as nixpkgs refuses it; state the check with `addCheck`. On a
+**submodule-bearing** v2 type (`submodule`, `attrsOf submodule`, …) nixpkgs does not refuse the override
+but erases it without a word when it rebuilds the type at declaration (`substSubModules`); gen-merge
+refuses it by name there too, a deliberate departure from a silent answer. An ad-hoc `check` on a
+non-v2 submodule-bearing type (`deferredModule`, `attrTag`, `functionTo`, `uniq`) cannot be told from
+the one its constructor shipped, and is applied.
+
+**A foreign type used as the `freeformType` is merged by its raw `merge`**, as nixpkgs' freeform site
+merges it (`freeformType.merge prefix defs`): no `check`, no coherence guard, no `headError` apply
+there. The keys it owns are still checked by that merge. A record that crossed `mkOptionType` has lost
+`merge`, so its checked fold carries the raw one on it as `mergeDefs.unchecked`.
+
 ### `either` — a union's merge is total
 
 **Every definition is merged through a member that accepts it, or the merge refuses by name.** The
@@ -1149,7 +1164,10 @@ that evaluation's effective strictness and returns `{ value; undeclared; }` from
 The finding is reported (above), and, when either the carrier or the nested tree is strict, refused by
 the nested evaluation at its own level when that level is read. To wrap a tree's fold, **replace `mergeDefs` whole**: refining it as
 `mergeDefs // { __functor = …; }` is honoured at an element site and ignored at the reporting site, which
-still reads the unwrapped `.reported`.
+still reads the unwrapped `.reported`. The same holds for a foreign type imported with a `check`, whose
+`mergeDefs` is a functor carrying its unchecked fold as `.unchecked` for the freeformType site: a whole
+replacement governs at every site, a refined `__functor` is ignored at the freeformType site
+(`test-replaced-mergeDefs-governs-at-the-freeformType-site`).
 
 `mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
 either vocabulary's type-merge half is read, because "do these two types merge?" has a true answer

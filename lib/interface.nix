@@ -196,16 +196,72 @@ let
   # spine already applies), every definition passes that `check` before the fold sees it — nixpkgs
   # `mergeDefinitions`' `checkedAndMerged`. The check wraps the descriptor's OWN fold, whichever
   # spelling states it, and reaches `leafFold` only for a descriptor that states none.
+  #
+  # A type whose `merge` carries `v2` is checked by the v2 PROTOCOL instead, as nixpkgs checks it:
+  # its `check` is refused unless it is the coherent one the constructor shipped, and the verdict is
+  # the `headError` its own merge computes, never the record's `check` (`v2Fold`). A submodule-bearing
+  # v2 type keeps the checked fold, and an ad-hoc `check` on one is refused by name too: nixpkgs
+  # rebuilds such a type at declaration (`substSubModules`), which erases the override silently, and a
+  # silent erasure is the one answer this side does not reproduce (`adHocFold`).
   importedFold =
     t:
     if t._protoLeafMerge or false then
       null
-    else if t ? check && !(t ? verify) then
-      checkedFold t (t.merge or t.mergeDefs or leafFold)
+    else if isV2 t && !(t.check.isV2MergeCoherent or false) then
+      adHocFold t
+    else if isV2 t && (t.getSubModules or null) == null then
+      v2Fold t
+    else if checksDefs t then
+      checkedFold t (importedRawFold t)
+    else
+      importedRawFold t;
+
+  # The same type's UNCHECKED fold: the foreign engine's raw `merge`, which nixpkgs calls with no
+  # check, no coherence guard and no `headError` wherever it merges outside `mergeDefinitions` — the
+  # freeformType site. `checkedFold` wraps it; `v2Fold` reads the same `merge` value's `v2` half.
+  importedRawFold =
+    t:
+    if t._protoLeafMerge or false then
+      null
+    else if checksDefs t || isV2 t then
+      t.merge or t.mergeDefs or leafFold
     else if t ? merge then
       t.merge
     else
       null;
+
+  isV2 = t: (t.merge or { }) ? v2;
+  checksDefs = t: t ? check && !(t ? verify);
+  describe = t: if builtins.isString (t.description or null) then t.description else nameOf t;
+
+  adHocFold =
+    t: loc: _defs:
+    throw "gen-merge: the option `${showOption loc}' has a type `${describe t}' that uses an ad-hoc `type // { check = ...; }' override, which ${
+      if (t.getSubModules or null) == null then
+        "the v2 merge protocol refuses"
+      else
+        "the foreign engine erases without a word when it rebuilds a submodule-bearing type"
+    }; state the check with `addCheck' instead";
+
+  # nixpkgs reads a v2 merge's answer through a CLOSED pattern, so an answer missing `headError` or
+  # carrying anything beyond the three fields aborts there; it aborts here the same way.
+  v2Result =
+    {
+      headError,
+      value,
+      valueMeta,
+    }@r:
+    r;
+
+  v2Fold =
+    t: loc: defs:
+    let
+      r = v2Result (t.merge.v2 { inherit loc defs; });
+    in
+    if r.headError != null then
+      throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe t}'. TypeError: ${r.headError.message}"
+    else
+      r.value;
 
   checkedFold =
     t: fold: loc: defs:
@@ -215,9 +271,9 @@ let
     if bad == [ ] then
       fold loc defs
     else
-      throw "gen-merge: a definition for option `${showOption loc}' is not of type `${
-        if builtins.isString (t.description or null) then t.description else nameOf t
-      }', in ${concatStringsSep ", " (map (d: "`${d.file}'") bad)}";
+      throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe t}', in ${
+        concatStringsSep ", " (map (d: "`${d.file}'") bad)
+      }";
 
   # What value does this type supply when nothing defined it? `{ }` is "it declares none" and is a
   # different fact from `{ value = null; }`, which is a declared null.
@@ -812,6 +868,10 @@ let
           let
             name = t.name or "raw";
             fold = importedFold t;
+            # Where the fold is CHECKED, the unchecked one it guards rides ON it, for the one site that
+            # merges without checking (the freeformType); a caller replacing `mergeDefs` whole replaces
+            # both at once, as with `mergeDefs.reported`.
+            checked = isV2 t || checksDefs t;
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
             payload = (t.functor or { }).payload or null;
@@ -828,7 +888,19 @@ let
           }
           // (if t ? verify then { inherit (t) verify; } else { })
           // (if admits == null || t ? verify then { } else { inherit admits; })
-          // (if fold == null then { } else { mergeDefs = fold; })
+          // (
+            if fold == null then
+              { }
+            else if checked then
+              {
+                mergeDefs = {
+                  __functor = _: fold;
+                  unchecked = importedRawFold t;
+                };
+              }
+            else
+              { mergeDefs = fold; }
+          )
           // (if deprecated == null then { } else { inherit deprecated; })
           // (if t ? description then { inherit (t) description; } else { })
           // (if role == null then { } else { carries.${role} = payload.${roleSpelling.${role}.payloadKey}; })
@@ -1089,6 +1161,7 @@ in
     importedEmpty
     importedFold
     importedMerge
+    importedRawFold
     importedMergeReason
     joinRenames
     nameOf

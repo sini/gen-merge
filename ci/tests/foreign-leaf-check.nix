@@ -209,6 +209,184 @@ let
           { p = v; }
         ];
       }).config.p;
+
+  # A nixpkgs v2 type (its `merge` carries `v2`) given an ad-hoc `check` by `//`: nixpkgs refuses
+  # it at every definition (`checkV2MergeCoherence`); the stock type beside it is the control.
+  # [ stock-type value ]; each row is overridden with a check that ADMITS the value.
+  v2Stock = {
+    attrsOf = [
+      (t.attrsOf t.int)
+      { a = 1; }
+    ];
+    lazyAttrsOf = [
+      (t.lazyAttrsOf t.int)
+      { a = 1; }
+    ];
+    listOf = [
+      (t.listOf t.int)
+      [ 1 ]
+    ];
+    nullOr = [
+      (t.nullOr t.int)
+      1
+    ];
+    either = [
+      (t.either t.int t.str)
+      1
+    ];
+    coercedTo = [
+      (t.coercedTo t.int toString t.str)
+      1
+    ];
+    addCheck = [
+      (t.addCheck (t.listOf t.int) (_: true))
+      [ 1 ]
+    ];
+  };
+  adHoc = T: T // { check = _: true; };
+  v2Cells = cellsOf v2Stock;
+  cellsOf = rows: concatMap (pn: map (ln: { inherit pn ln; }) (attrNames rows)) (attrNames positions);
+  acceptedOf =
+    rows: wrap:
+    filter (
+      c:
+      accepted
+        (gm.evalModuleTree {
+          modules = positions.${c.pn} (wrap (builtins.elemAt rows.${c.ln} 0)) (
+            builtins.elemAt rows.${c.ln} 1
+          );
+        }).config.p
+    ) (cellsOf rows);
+  v2Accepted = acceptedOf v2Stock;
+  # A submodule-bearing v2 type: nixpkgs rebuilds it at declaration (`substSubModules`) and so ERASES
+  # an ad-hoc `check`; gen-merge refuses that override by name instead of reproducing the erasure.
+  sub = t.submodule { options.q = nixpkgsLib.mkOption { type = t.int; }; };
+  subStock = {
+    submodule = [
+      sub
+      { q = 1; }
+    ];
+    attrsOfSubmodule = [
+      (t.attrsOf sub)
+      { a.q = 1; }
+    ];
+  };
+  # A fold replaced WHOLE by `//` on a record that crossed `mkOptionType`: the replacement governs at
+  # every site, the freeformType included (`mergeDefs.unchecked` rides on the fold it replaces).
+  replaced = T: T // { mergeDefs = _: _: { p = "REPLACED"; }; };
+  replacedAt = T: {
+    freeform = freeformRead T 1;
+    option =
+      (gm.evalModuleTree {
+        modules = [
+          { options.p = gm.mkOption { type = T; }; }
+          { p.a = 1; }
+        ];
+      }).config.p.p;
+  };
+  forged = f: {
+    __functor = _: f;
+    isV2MergeCoherent = true;
+  };
+  # a hand-written v2 `merge` answering `answer` merged over a well-formed result
+  v2Answer = answer: {
+    __functor =
+      self: loc: defs:
+      (self.v2 { inherit loc defs; }).value;
+    v2 =
+      { loc, defs }:
+      {
+        headError = null;
+        value.p = 7;
+        valueMeta = { };
+      }
+      // answer;
+  };
+  freeformRead =
+    T: v:
+    let
+      p =
+        (gm.evalModuleTree {
+          modules = [
+            { freeformType = T; }
+            { p = v; }
+          ];
+        }).config.p;
+      r = tryEval (deepSeq p p);
+    in
+    if r.success then r.value else "REFUSED";
+  freeformRows =
+    let
+      B = t.attrsOf t.int;
+    in
+    {
+      control = {
+        T = B;
+        v = 1;
+      };
+      checkAccepting = {
+        T = B // {
+          check = builtins.isAttrs;
+        };
+        v = 1;
+      };
+      v2HeadError = {
+        T = B // {
+          merge = v2Answer { headError.message = "boom"; };
+        };
+        v = 1;
+      };
+      checkFalseV2 = {
+        T = B // {
+          check = _: false;
+        };
+        v = 1;
+      };
+      checkFalseNonV2 = {
+        T = t.attrs // {
+          check = _: false;
+        };
+        v = 1;
+      };
+      checkRemoved = {
+        T = builtins.removeAttrs B [ "check" ];
+        v = 1;
+      };
+      lazyCheck = {
+        T = t.lazyAttrsOf t.int // {
+          check = builtins.isAttrs;
+        };
+        v = 1;
+      };
+      elemBad = {
+        T = B;
+        v = "x";
+      };
+      routedCheckFalse = {
+        T = gm.mkOptionType (B // { check = _: false; });
+        v = 1;
+      };
+      routedCheckAccepting = {
+        T = gm.mkOptionType (B // { check = builtins.isAttrs; });
+        v = 1;
+      };
+      routedDescriptor = {
+        T = gm.mkOptionType {
+          name = "h";
+          check = _: false;
+        };
+        v = 1;
+      };
+    };
+  topAccepted =
+    T: v:
+    accepted
+      (gm.evalModuleTree {
+        modules = [
+          { options.p = gm.mkOption { type = T; }; }
+          { p = v; }
+        ];
+      }).config.p;
 in
 {
   flake.tests.foreign-leaf-check = {
@@ -279,6 +457,120 @@ in
     test-round-tripped-structural-type-keeps-good-values = {
       expr = twoDefs roundTripped [ 1 ] [ 2 ];
       expected = twoDefs listOfInt [ 1 ] [ 2 ];
+    };
+
+    # 7 v2 types x 8 gen-owned positions: the ad-hoc override is refused in every cell, and the
+    # stock type admits the same value in every cell.
+    test-v2-adhoc-check-override-refused-at-every-gen-position = {
+      expr = {
+        cells = length v2Cells;
+        overrideAccepted = map (c: "${c.pn}/${c.ln}") (v2Accepted adHoc);
+        stockAccepted = length (v2Accepted (T: T));
+      };
+      expected = {
+        cells = 56;
+        overrideAccepted = [ ];
+        stockAccepted = 56;
+      };
+    };
+    # 2 submodule-bearing v2 types x 8 gen-owned positions, each given a check that ADMITS the value:
+    # the override is refused in every cell (nixpkgs erases it, and a silent erasure is not
+    # reproduced), and the stock type admits the same value in every cell.
+    test-submodule-bearing-adhoc-check-override-refused-at-every-gen-position = {
+      expr = {
+        cells = length (cellsOf subStock);
+        overrideAccepted = map (c: "${c.pn}/${c.ln}") (acceptedOf subStock adHoc);
+        stockAccepted = length (acceptedOf subStock (T: T));
+      };
+      expected = {
+        cells = 16;
+        overrideAccepted = [ ];
+        stockAccepted = 16;
+      };
+    };
+
+    # A whole `mergeDefs` replacement on a routed check-bearing record reaches the freeformType site
+    # as it reaches an option site; the gen-native type is the control.
+    test-replaced-mergeDefs-governs-at-the-freeformType-site = {
+      expr = {
+        routed = replacedAt (replaced (gm.mkOptionType (t.attrsOf t.int)));
+        native = replacedAt (replaced (gt.attrsOf gt.int));
+      };
+      expected = {
+        routed = {
+          freeform = "REPLACED";
+          option = "REPLACED";
+        };
+        native = {
+          freeform = "REPLACED";
+          option = "REPLACED";
+        };
+      };
+    };
+
+    # The v2 protocol is read whole, as nixpkgs reads it: its `headError` decides, not the record's
+    # `check`. A non-v2 type's override stays honoured, as nixpkgs honours it.
+    test-v2-protocol-read-whole = {
+      expr = {
+        forgedWidening = topAccepted (t.either t.int t.str // { check = forged (_: true); }) true;
+        forgedNarrowing = topAccepted (t.attrsOf t.int // { check = forged (_: false); }) { a = 1; };
+        headError = topAccepted (
+          t.attrsOf t.int
+          // {
+            merge = {
+              __functor =
+                self: loc: defs:
+                (self.v2 { inherit loc defs; }).value;
+              v2 =
+                { loc, defs }:
+                {
+                  headError.message = "boom";
+                  value = { };
+                  valueMeta = { };
+                };
+            };
+          }
+        ) { a = 1; };
+        checkRemoved = topAccepted (builtins.removeAttrs (t.attrsOf t.int) [ "check" ]) { a = 1; };
+        nonV2Widened = topAccepted (t.str // { check = _: true; }) 1;
+        wellFormed = topAccepted (t.attrsOf t.int // { merge = v2Answer { headError = null; }; }) {
+          a = 1;
+        };
+      };
+      expected = {
+        forgedWidening = false;
+        forgedNarrowing = true;
+        headError = false;
+        checkRemoved = false;
+        nonV2Widened = true;
+        wellFormed = true;
+      };
+    };
+
+    # A foreign type used AS the freeformType is merged by its raw `merge`, as nixpkgs merges it
+    # (`freeformType.merge prefix defs`): no `check`, no coherence guard, no `headError` — on either
+    # route in (the record itself, or through `mkOptionType`). The element check inside the type's own
+    # merge still fires (`elemBad`), and an OPTION site on the same route is still checked (`optionSite`).
+    test-foreign-type-as-freeformType-merges-unchecked = {
+      expr = builtins.mapAttrs (_: c: freeformRead c.T c.v) freeformRows // {
+        optionSite = topAccepted (gm.mkOptionType (t.attrsOf t.int // { check = builtins.isAttrs; })) {
+          a = 1;
+        };
+      };
+      expected = {
+        control = 1;
+        checkAccepting = 1;
+        v2HeadError = 7;
+        checkFalseV2 = 1;
+        checkFalseNonV2 = 1;
+        checkRemoved = 1;
+        lazyCheck = 1;
+        elemBad = "REFUSED";
+        routedCheckFalse = 1;
+        routedCheckAccepting = 1;
+        routedDescriptor = 1;
+        optionSite = false;
+      };
     };
   };
 }
