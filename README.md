@@ -505,7 +505,7 @@ incidental).
 
 **A moved minted identity is refused, not re-composed.** A warm `.config` read throws
 `gen-memo.identitiesHeld: minted identity moved … at '<coordinate>'` when the edit moved an instance's
-`id_hash` (ADR-0016's option-set closure; cold emits the same moved identity, so there is no correct
+`id_hash` (the option-set closure; cold emits the same moved identity, so there is no correct
 fallback). The walk that finds instances (`identityMapOf`) decides membership from the DECLARATION: an
 instance is a position whose declaration declares an `id_hash` option, and only that `id_hash` is
 forced, so an undefined or throwing leaf nobody reads stays unread warm, as cold. **A minted instance
@@ -513,7 +513,7 @@ must sit at a position whose declared type carries identity; an identity in an u
 tracked by the warm plane** — an `id_hash` value at a `raw`/`anything` leaf, as an element of
 `attrsOf raw`, as a member of an `either`, below a terminal leaf, in the freeform layer, or inside a
 foreign container whose payload the boundary does not read (nixpkgs' `attrsOf`/`lazyAttrsOf`, even over
-a submodule declaring `id_hash`; den-hoag-tn3qf). A nesting seam (a tree type) is not walked either,
+a submodule declaring `id_hash`; a known boundary). A nesting seam (a tree type) is not walked either,
 as a leaf or as a container's element. The byte
 oracle still compares those values; the refusal does not see them. A wrapper that adds no path level
 (`nullOr`, nixpkgs' `uniq`/`unique`) holds its instance at its own position. Pinned by
@@ -1291,7 +1291,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   values are forced where nixpkgs forces none. The price, stated with the 2026-09-25 ruling: a
   nixpkgs module relying on silent last-wins attrset merging under a check-only type is refused here.
 
-- **Two structurally equal CYCLIC values at a shared key abort uncatchably** (`den-hoag-8owed`).
+- **Two structurally equal CYCLIC values at a shared key abort uncatchably**, a known boundary.
   Nix `==` is not total: `{ a = r; }`,`{ a = r'; }` with `r` and `r'` separate bindings of
   `{ s = r; n = 1; }` under a check-only `mkOptionType` exits
   `stack overflow; max-call-depth exceeded`, which `tryEval` does not catch, where nixpkgs returns
