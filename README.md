@@ -1470,7 +1470,11 @@ reports.
 
 ## Testing
 
-`nix flake check ./ci` runs the nix-unit suites: `merge` (the 7-item primitive + priority subset),
+`nix develop ./ci --command ci` runs the nix-unit suites behind the read-roots guard, which refuses
+when anything under a declared read root is unknown to git (any extension or name, `_`-prefixed
+included; `git add` it or move it). The bare `nix flake check ./ci` and `nix-unit --flake ./ci#tests`
+are unguarded: they read a git-filtered copy of the tree, so an untracked cell is silently absent
+and the run stays green. The suites: `merge` (the 7-item primitive + priority subset),
 `deferred` / `checking` (non-forcing + leaf verification), `oracle` (byte-identity vs
 `lib.evalModules`, with mutation-teeth assertions), `compat` (nixpkgs `lib.types` on the engine),
 `core-kernel` (the fixed-input short-circuit), `provenance` (the `.provenance` record shapes + forcing
