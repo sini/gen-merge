@@ -92,10 +92,17 @@ let
 
   # The protocol boundary (lib/interface.nix). Imported HERE, and re-exported on the core seam, so the
   # dependency graph stays a chain — prelude → interface → this engine → the type vocabulary — rather
-  # than a knot: the boundary needs only the prelude and this file's loc and conflict renderers, and
-  # both of its consumers reach it through the same binding, so their views of the foreign protocol
-  # cannot drift apart.
-  interface = import ./interface.nix { inherit prelude showOption showConflict; };
+  # than a knot: the boundary needs only the prelude, this file's loc and conflict renderers, and the
+  # constructor's default fold (`mergeDescriptorDefault`, below), and both of its consumers reach it
+  # through the same binding, so their views of the foreign protocol cannot drift apart.
+  interface = import ./interface.nix {
+    inherit
+      prelude
+      showOption
+      showConflict
+      mergeDescriptorDefault
+      ;
+  };
 
   reverse =
     xs:
@@ -1398,8 +1405,10 @@ let
   # requiring them to agree.
   #
   # ★★★ IT SITS BESIDE `mergeLeaf`, NOT IN PLACE OF IT, AND IT IS AN INTERIM SURFACE. `mergeLeaf`
-  # above remains this engine's no-`.merge` default and keeps its agree-or-refuse posture — nothing
-  # in this library routes through the law below, and no existing consumer's merge semantics move.
+  # above remains this engine's no-`.merge` default and keeps its agree-or-refuse posture, and no
+  # existing consumer's merge semantics move. The one route inside this library is `mkOptionType`'s
+  # default for a descriptor stating no fold (`mergeDescriptorDefault`, below), which is nixpkgs'
+  # constructor default rather than a leaf default.
   # The full statement of what the marker means and does not claim is at the public export
   # (lib/default.nix), which is where a caller meets it.
   #
@@ -1428,20 +1437,22 @@ let
   #     `getValues`, so nixpkgs merges the payloads where this law merges the records.
   # Reproducing either would be bug-compatibility rather than parity, and the first would put an
   # uncatchable abort inside a law whose whole contract is a value or a named refusal (ADR-0025 §1).
-  # So the recursion here runs over the VALUE list, which is what the arm plainly means:
-  # `[ (x: [x]) (x: [x+1]) ]` applied to `1` gives `[ 1 2 ]` — pointwise then merged, observably NOT
-  # composition, which would give `[ [ 2 ] ]`. Every OTHER arm is byte-equal to nixpkgs' on the same
-  # input, and the parity suite asserts that against the live nixpkgs rather than a transcription.
-  mergeDefaultOption = loc: defs: mergeDefaultValues loc (map (d: d.value) defs);
-
-  # The law over VALUES — the recursion the function arm re-enters. `mergeDefaultOption` is this
-  # composed with `getValues`; keeping them separate is what makes the function arm total.
-  mergeDefaultValues =
-    loc: list:
+  # So the recursion re-enters with each DEFINITION's value applied, which is what the arm plainly
+  # means: `[ (x: [x]) (x: [x+1]) ]` applied to `1` gives `[ 1 2 ]` — pointwise then merged,
+  # observably NOT composition, which would give `[ [ 2 ] ]`. It recurses over definitions rather
+  # than values so the files survive it: the terminal refusal is `showConflict`, the ONE conflict
+  # text, naming every definition's file (ADR-0025 item 1). Every OTHER arm is byte-equal to
+  # nixpkgs' on the same input, and the parity suite asserts that against the live nixpkgs rather
+  # than a transcription.
+  mergeDefaultOption =
+    loc: defs:
+    let
+      list = map (d: d.value) defs;
+    in
     if length list == 1 then
       head list
     else if all isFunction list then
-      (x: mergeDefaultValues loc (map (f: f x) list))
+      (x: mergeDefaultOption loc (map (d: d // { value = d.value x; }) defs))
     else if all isList list then
       concatLists list
     else if all isAttrs list then
@@ -1453,7 +1464,32 @@ let
     else if all builtins.isInt list && all (x: x == head list) list then
       head list
     else
-      throw "gen-merge: cannot merge definitions of option `${showOption loc}'";
+      throw (showConflict loc defs);
+
+  # The CONSTRUCTOR'S default: the fold a `mkOptionType` descriptor stating no fold receives, as
+  # nixpkgs' `mkOptionType` takes `merge ? mergeDefaultOption` (lib/interface.nix `importDescriptor`
+  # applies it). It is the law above with a named refusal kept at the two arms where nixpkgs'
+  # own answer is SILENT or absent — the parity criterion, owner-ruled 2026-09-25: "Take nixpkgs'
+  # value where gen-merge today refuses or silently diverges, EXCEPT WHERE NIXPKGS' OWN VALUE IS
+  # SILENT (keep a named refusal there)".
+  #   · attrsets sharing a key with DIFFERING values: `//` keeps the last and drops the rest without
+  #     a word. Disjoint keys, and shared keys carrying equal values, lose nothing and fold as above.
+  #   · functions: nixpkgs aborts uncatchably, or silently unwraps a `{ value = …; }` result.
+  # The price, stated with the ruling: a nixpkgs module relying on silent last-wins attrset merging
+  # under a check-only type is refused here. The exported law keeps both arms, because its ruled
+  # caller (gen-aspects' freeform arm) is not this one.
+  mergeDescriptorDefault =
+    loc: defs:
+    let
+      list = map (d: d.value) defs;
+      sharedKeyDiffers = any (vs: length vs > 1 && !all (v: v == head vs) vs) (
+        builtins.attrValues (builtins.zipAttrsWith (_: vs: vs) list)
+      );
+    in
+    if length list > 1 && (all isFunction list || (all isAttrs list && sharedKeyDiffers)) then
+      throw (showConflict loc defs)
+    else
+      mergeDefaultOption loc defs;
 
   # mergeOneOption — the nixpkgs `lib.mergeOneOption` helper: exactly one definition permitted
   # (else throw). Exported for consumers whose custom `(loc, defs)` merges want unique-def semantics

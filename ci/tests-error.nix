@@ -2004,9 +2004,10 @@ in
     # The shape-directed default-merge law's terminal arm. ci/tests/parity-surface.nix asserts THAT
     # it refuses and that the refusal is catchable; only this output can assert WHAT IT SAYS, and a
     # law whose whole contract is "a value or a NAMED refusal" (ADR-0025 §1) owes the name.
+    # The text is `showConflict`'s, the ONE conflict text, naming every definition's file.
     # ★ Both patterns are anchored `^…$` — nix-unit SEARCHES `expectedError.msg`, so an unanchored
     # one pins a substring and would keep passing if the message grew a wrong clause on either side.
-    # Neither message carries an ERE metacharacter, so the anchors carry the whole of the exactness.
+    # The one ERE metacharacter the messages carry, the `.` of the option path, is escaped.
     flake.testsError.default-merge-law = {
       # DIFFERING INTS are one of exactly two inputs that reach this arm — differing bools are OR'd
       # and differing strings are concatenated, so "scalars refuse" would be the wrong reading and
@@ -2027,7 +2028,7 @@ in
             ];
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: cannot merge definitions of option `svc\\.port'$";
+          msg = "^gen-merge: the option `svc\\.port' has conflicting definitions:\\n- In `<a>': 1\\n- In `<b>': 2$";
         };
       };
       # A TYPE-HETEROGENEOUS definition list is the other one, and it reaches the same refusal by a
@@ -2048,7 +2049,7 @@ in
             ];
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: cannot merge definitions of option `svc\\.port'$";
+          msg = "^gen-merge: the option `svc\\.port' has conflicting definitions:\\n- In `<a>': 1\\n- In `<b>': \"two\"$";
         };
       };
       # LIVE CONTROL, same run: the same law on the same option path with definitions that DO
@@ -2074,6 +2075,79 @@ in
         ];
       };
     };
+
+    # The REFUSING arms of a check-only `mkOptionType`'s default fold (lib/interface.nix
+    # `importDescriptor`; the combining arms are ci/tests/parity-surface.nix's). Each refusal is the
+    # ONE conflict text, naming every definition's file (ADR-0025 item 1). Every cell here is green at
+    # gen-merge 6a508e3, whose constructor folded agree-or-refuse and so refused all three by the
+    # same text: they pin that the text SURVIVES the new default. Each RED was driven by a planted
+    # mutant, recorded per cell. Both patterns anchor `^…$` and carry the whole multi-line message.
+    flake.testsError.mkoptiontype-default-merge =
+      let
+        heddle =
+          descriptor: a: b:
+          (genMerge.evalModuleTree {
+            modules = [
+              { options.heddle = genMerge.mkOption { type = genMerge.mkOptionType descriptor; }; }
+              {
+                _file = "/demo/warp.nix";
+                heddle = a;
+              }
+              {
+                _file = "/demo/weft.nix";
+                heddle = b;
+              }
+            ];
+          }).config.heddle;
+        thread = {
+          name = "thread";
+          check = v: v != null;
+        };
+      in
+      {
+        # nixpkgs' own law refuses here too. RED (the default without the rider — `mergeDefaultOption`
+        # refusing by its old text): ❌, the message named no file.
+        test-differing-ints-refuse-naming-files = {
+          expr = heddle thread 1 2;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': 2\\n- In `/demo/warp\\.nix': 1$";
+          };
+        };
+        # THE CARVE-OUT (parity criterion, owner 2026-09-25): nixpkgs' shallow `//` keeps `{ a = 2; }`
+        # and drops the other definition without a word, so this fold keeps a named refusal. RED (the
+        # default as nixpkgs' law unmodified): ☢, a value and no error.
+        test-differing-values-at-a-shared-attrset-key-refuse-naming-files = {
+          expr = heddle thread { a = 1; } { a = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
+          };
+        };
+        # nixpkgs' function arm aborts uncatchably, or silently unwraps a `{ value = …; }` result, so
+        # there is no value to take and the refusal stays (as for 0q5u6's `anything`). RED (the
+        # default as nixpkgs' law unmodified): ☢, a function and no error.
+        test-functions-refuse-naming-files = {
+          expr = heddle thread (x: [ x ]) (x: [ (x + 1) ]);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a lambda>\\n- In `/demo/warp\\.nix': <a lambda>$";
+          };
+        };
+        # R-4's FENCE: a descriptor stating `verify` is a gen leaf, whose no-fold default stays
+        # `mergeLeaf` — lists that nixpkgs' law would concatenate are still refused. RED (the
+        # `verify` guard struck from `importDescriptor`): ☢, a value and no error.
+        test-control-a-verify-descriptor-keeps-agree-or-refuse = {
+          expr = heddle {
+            name = "thread";
+            verify = _: null;
+          } [ "warp" ] [ "weft" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a list>\\n- In `/demo/warp\\.nix': <a list>$";
+          };
+        };
+      };
 
     # A DEFINITION-plane value standing in a DECLARATION position used to abort with a raw, pathless,
     # `tryEval`-UNCATCHABLE Nix type error (`expected a set but found a string: "merge"`) — fired

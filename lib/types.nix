@@ -183,11 +183,12 @@ let
   # descriptor comes IN through the import environment, acquires the relation every gen type owes,
   # and goes back OUT through the export environment. Consumers write
   # `mkOptionType { name = "aspect"; merge = loc: defs: …; }` and get a type that both gen-merge
-  # (dispatches on `.mergeDefs`) and nixpkgs (reads the full protocol) accept.
+  # (dispatches on `.mergeDefs`) and nixpkgs (reads the full protocol) accept. A descriptor stating
+  # no fold gets the constructor's default, as nixpkgs' does (`importDescriptor`).
   mkOptionType =
     descriptor:
     let
-      answer = interface.importType descriptor;
+      answer = interface.importDescriptor descriptor;
     in
     if answer ? refused then throw answer.refused else defineType answer.imported;
 

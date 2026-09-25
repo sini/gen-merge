@@ -79,9 +79,31 @@ let
     { config.k = def P; }
   ];
 
+  # A CHECK-ONLY `mkOptionType`, declared through each engine's OWN constructor: no fold is stated, so
+  # the fold is the constructor's default. Two files define the option, in the order given.
+  threadFx = a: b: P: [
+    {
+      options.heddle = P.mkOption {
+        type = P.mkOptionType {
+          name = "thread";
+          check = v: v != null;
+        };
+      };
+    }
+    {
+      _file = "/demo/warp.nix";
+      config.heddle = a;
+    }
+    {
+      _file = "/demo/weft.nix";
+      config.heddle = b;
+    }
+  ];
+
   gmP = {
     inherit (gm)
       mkOption
+      mkOptionType
       mkForce
       mkBefore
       mkAfter
@@ -91,6 +113,7 @@ let
   npP = {
     inherit (np)
       mkOption
+      mkOptionType
       mkForce
       mkBefore
       mkAfter
@@ -318,6 +341,103 @@ in
       expected = {
         gen = [ 3 ];
         nixpkgs = [ 3 ];
+      };
+    };
+
+    # ── the CONSTRUCTOR'S default: a check-only `mkOptionType` folds by nixpkgs' law ─────────────
+    # nixpkgs' `mkOptionType` takes `merge ? mergeDefaultOption`; a descriptor stating `name` and no
+    # fold gets that default here too (lib/interface.nix `importDescriptor`). Parity criterion, owner
+    # 2026-09-25: take nixpkgs' value where it is not silent. RED for each cell below was evaluated
+    # at gen-merge 6a508e3, whose constructor folded agree-or-refuse; it is recorded per cell. The
+    # carve-outs (differing values at a shared attrset key, functions) refuse, and their cells are on
+    # the error plane (ci/tests-error.nix `mkoptiontype-default-merge`), which can read the message.
+    #
+    # RED: ☢ refused, lists are not equal.
+    test-mkoptiontype-default-lists-concatenate = {
+      expr = bothCfg (threadFx [ "warp" ] [ "weft" ]) "heddle";
+      expected = {
+        gen = [
+          "weft"
+          "warp"
+        ];
+        nixpkgs = [
+          "weft"
+          "warp"
+        ];
+      };
+    };
+    # RED: ❌ gen `"a"` — agree-or-refuse passed equal strings through, a changed value with no word.
+    test-mkoptiontype-default-equal-strings-concatenate = {
+      expr = bothCfg (threadFx "a" "a") "heddle";
+      expected = {
+        gen = "aa";
+        nixpkgs = "aa";
+      };
+    };
+    # RED: ☢ refused.
+    test-mkoptiontype-default-differing-strings-concatenate = {
+      expr = bothCfg (threadFx "warp" "weft") "heddle";
+      expected = {
+        gen = "weftwarp";
+        nixpkgs = "weftwarp";
+      };
+    };
+    # The payloads are chosen so the LAST definition read is `false`: OR gives `true`, last-wins would
+    # not. RED: ☢ refused.
+    test-mkoptiontype-default-differing-bools-are-ored = {
+      expr = bothCfg (threadFx false true) "heddle";
+      expected = {
+        gen = true;
+        nixpkgs = true;
+      };
+    };
+    # RED: ☢ refused. Disjoint keys: `//` drops nothing, so nixpkgs' value is not silent.
+    test-mkoptiontype-default-disjoint-attrsets-union = {
+      expr = bothCfg (threadFx { a = 1; } { b = 2; }) "heddle";
+      expected = {
+        gen = {
+          a = 1;
+          b = 2;
+        };
+        nixpkgs = {
+          a = 1;
+          b = 2;
+        };
+      };
+    };
+    # A SHARED key carrying EQUAL values also drops nothing, so the carve-out does not reach it: it
+    # is a differing value at a shared key that `//` loses. RED: ☢ refused (the whole values differ).
+    test-mkoptiontype-default-attrsets-sharing-an-equal-key-union = {
+      expr = bothCfg (threadFx
+        {
+          a = 1;
+          b = 1;
+        }
+        {
+          a = 1;
+          c = 2;
+        }
+      ) "heddle";
+      expected = {
+        gen = {
+          a = 1;
+          b = 1;
+          c = 2;
+        };
+        nixpkgs = {
+          a = 1;
+          b = 1;
+          c = 2;
+        };
+      };
+    };
+    # Equal ints pass through in both laws, so this cell is green at 6a508e3 by design; it fences
+    # the change from over-reaching. RED driven with a planted default that refuses every int.
+    test-mkoptiontype-default-equal-ints-pass = {
+      expr = bothCfg (threadFx 3 3) "heddle";
+      expected = {
+        gen = 3;
+        nixpkgs = 3;
       };
     };
 

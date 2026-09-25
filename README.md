@@ -61,7 +61,9 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 3. **per-key `name` + `_module.args`** binding under keyed collections.
 4. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
 5. **`imports` merging** — recursive collect/flatten, imports before own config.
-6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`.
+6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`. A
+   descriptor stating `name` and no fold takes nixpkgs' constructor default (see
+   [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-interim-exported-beside-mergeleaf)).
 7. **`deferredModule`** — a lazy, import-usable module value, **never forced** by composition (handed
    opaque to the terminal). `functionTo` is intentionally omitted (consumers wrap guard functions as
    data).
@@ -115,8 +117,8 @@ value · anything else ⇒ a named refusal. **Only differing ints and type-heter
 refuse**; differing bools and strings combine.
 
 ★ **It is an INTERIM surface and it does NOT replace `mergeLeaf`.** `mergeLeaf` remains the engine's
-no-`.merge` default with its agree-or-refuse posture, nothing inside this library routes through the
-new law, and no existing consumer's merge semantics move. It claims one law at one arm, never
+no-`.merge` default with its agree-or-refuse posture, and no existing consumer's merge semantics move.
+The one route inside this library is `mkOptionType`'s default, below. It claims one law at one arm, never
 whole-pipeline parity: nixpkgs' own `attrsOf`/`listOf` merge each key *through* the element type where
 this law's attrset arm never consults it, so two definitions of `attrsOf (listOf str)` sharing a key
 concatenate under nixpkgs and drop the first here.
@@ -125,9 +127,22 @@ concatenate under nixpkgs and drop the first here.
 `x: mergeDefaultOption loc (map (f: f x) list)` — passing raw values into a parameter whose first act
 is `getValues`. For functions returning anything but an attrset carrying a `value` attribute it
 therefore dies *uncatchably*; for functions that do, the stray `getValues` unwraps that field. Neither
-is reproduced: the recursion here runs over the value list, which is what the arm plainly means, and
-`[ (x: [x]) (x: [x+1]) ]` applied to `1` gives `[ 1 2 ]`. Every other arm is byte-equal to nixpkgs' on
+is reproduced: the recursion here re-enters with each definition's value applied, which is what the arm
+plainly means, and `[ (x: [x]) (x: [x+1]) ]` applied to `1` gives `[ 1 2 ]`. The terminal refusal is
+the engine's one conflict text, naming every definition's file. Every other arm is byte-equal to nixpkgs' on
 the same input, asserted against the live nixpkgs in `ci/tests/parity-surface.nix`.
+
+**`mkOptionType`'s default is this law, with two arms kept as refusals.** nixpkgs' `mkOptionType`
+takes `merge ? mergeDefaultOption`, so a descriptor stating `name` and no `merge`, `mergeDefs` or
+`verify` folds here by the law above: lists and strings concatenate (equal strings too: `"a"`,`"a"` ⇒
+`"aa"`), bools OR, equal ints pass. Two arms keep a named refusal, by the parity criterion ruled
+2026-09-25 (take nixpkgs' value except where that value is silent): attrsets sharing a key with
+**differing** values, which nixpkgs' shallow `//` settles by dropping a definition without a word, and
+functions, where nixpkgs aborts or unwraps silently. Attrsets with disjoint keys, or shared keys
+carrying equal values, are `//`-folded. A descriptor stating `verify` is a gen leaf and keeps
+`mergeLeaf`. Cells: `ci/tests/parity-surface.nix` (both engines) and `ci/tests-error.nix`
+`mkoptiontype-default-merge`. The price is listed under
+[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate).
 
 **The parity claim is watched live, not stamped.** Every law cell in `ci/tests/parity-surface.nix` runs
 through `bothLaws`, whose `nixpkgs` arm calls `nixpkgsLib.mergeDefaultOption` at whatever rev
@@ -1241,6 +1256,13 @@ nixpkgs-faithful kernel; the structural mode later swaps a confluent-join kernel
 engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 
 ## Known byte-mode boundaries (deliberate)
+
+- **A check-only `mkOptionType` refuses where nixpkgs' default merge is silent.** Two definitions
+  that are attrsets sharing a key with differing values, or that are functions, are refused by name
+  (`ci/tests-error.nix` `mkoptiontype-default-merge`); nixpkgs keeps the last value at the key, and for
+  functions aborts uncatchably or unwraps a `{ value = …; }` result. Every other arm of the default
+  is nixpkgs' value. The price, stated with the 2026-09-25 ruling: a nixpkgs module relying on silent
+  last-wins attrset merging under a check-only type is refused here.
 
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict

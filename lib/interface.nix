@@ -59,6 +59,7 @@
   prelude,
   showOption,
   showConflict,
+  mergeDescriptorDefault,
 }:
 let
   inherit (prelude)
@@ -846,6 +847,27 @@ let
     else
       { merged = answer; };
 
+  # importDescriptor — a `mkOptionType` DESCRIPTOR, imported with the constructor's default fold, as
+  # nixpkgs' `mkOptionType` takes `merge ? mergeDefaultOption`. The default is the CONSTRUCTOR'S, not
+  # the protocol's (a finished record always states `merge`), so it is applied here and not in
+  # `importType`, which also serves `importLeaf` and the engine's `ownFold`. It applies where
+  # nixpkgs' would, to a descriptor stating the one required formal, `name`; without that guard a
+  # record answering neither vocabulary would gain a fold and stop being refused. A descriptor
+  # stating a fold in either vocabulary is imported as written, and so is one stating `verify` — a
+  # gen leaf, whose no-fold default stays the engine's `mergeLeaf` (den-hoag-sezf R-4).
+  #
+  # ★ The guard is decided HERE, before `importType` is entered, and not passed to it as a thunk.
+  # Forcing the descriptor inside `importType` would put this frame under every level of a chain of
+  # descriptors built from descriptors (gen-schema's `refined` over a refined base), one call deeper
+  # per level: measured, gen-schema's 1500-deep refinement chain then overflowed `max-call-depth`
+  # where it stood refused by name.
+  importDescriptor =
+    d:
+    if isAttrs d && d ? name && !(d ? merge) && !(d ? mergeDefs) && !(d ? verify) then
+      importType (d // { merge = mergeDescriptorDefault; })
+    else
+      importType d;
+
   importType =
     t:
     if !(isAttrs t) then
@@ -1153,6 +1175,7 @@ in
     exportClasses
     exportFields
     exportType
+    importDescriptor
     importType
     importedAdmits
     importedCarried
