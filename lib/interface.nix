@@ -317,6 +317,43 @@ let
       in
       if payload == null || attrNames payload != [ key ] then null else payload.${key};
 
+  # WHERE A TYPE DECLARES ITS ELEMENT, as the prefix it hands the element's declaration answer when
+  # asked at `prefix`. The type is rebuilt over a probe element whose declaration answer IS the
+  # prefix it was asked at, so the type's own `declares` states the path segment it adds: `attrsOf`
+  # answers `prefix ++ [ "<name>" ]`, `listOf` `prefix ++ [ "*" ]`, a nullable `prefix` itself. No
+  # name is consulted, so a wrapper this unit has never heard of answers for itself. `null` when the
+  # type carries no single element or cannot be rebuilt over another in either vocabulary.
+  #
+  # A foreign payload stating MORE than the element (nixpkgs' attribute container carries laziness
+  # and a placeholder beside it) is handed back to its own constructor WHOLE, with only the element
+  # swapped. That reads no parameter this side has no place for — nothing is merged or dropped — so
+  # `importedCarried`'s read-whole guard is not crossed: the answer is a location, not a type.
+  importedElementPrefix =
+    t: prefix:
+    let
+      probe = {
+        substructure = {
+          declares = p: p;
+          modules = null;
+          rebuild = _m: null;
+        };
+        getSubOptions = p: p;
+      };
+      key = roleSpelling.element.payloadKey;
+      f = t.functor or { };
+      payload = f.payload or null;
+      rebuilt =
+        if t ? carries then
+          (if t.carries ? element && t ? recarry then t.recarry { element = probe; } else null)
+        else if
+          isAttrs payload && payload ? ${key} && !(isList payload.${key}) && isFunction (f.type or null)
+        then
+          f.type (payload // { ${key} = probe; })
+        else
+          null;
+    in
+    if rebuilt == null then null else (importedSubstructure rebuilt).declares prefix;
+
   # EVERY TYPE THIS ONE WRAPS, flattened, whichever vocabulary states it — a role may carry one type
   # or a positional list of them, and the foreign side says the same thing in its introspection alias.
   # For a walker that only wants to reach the wrapped types (the portable-subset lint's `functionTo`
@@ -1181,6 +1218,7 @@ in
     importedCarried
     importedDecidable
     importedDeprecation
+    importedElementPrefix
     importedEmpty
     importedFold
     importedMerge

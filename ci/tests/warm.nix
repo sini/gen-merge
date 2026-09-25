@@ -10,7 +10,12 @@
 #     result toJSON == cold result toJSON on VALUES and PROVENANCE, across registry reuse, decl-side
 #     dirtiness, the three freeform scenarios, the group-splice hazard, the two adversarial markers,
 #     disabledModules fallback, and chained warm.
-{ genMerge, genMergeCore, ... }:
+{
+  genMerge,
+  genMergeCore,
+  nixpkgsLib,
+  ...
+}:
 let
   gm = genMerge;
   inherit (gm)
@@ -231,9 +236,10 @@ let
     in
     "crate:" + builtins.hashString "sha256" (builtins.toJSON (map (k: config.${k}) keys));
 
-  # IN — a declared position is a position, whatever its type carries. `raw` carries nothing, so the
-  # descent stops HERE; stopping at a position is not the same as not reaching it, and the value
-  # sitting at one is read before its type is ever asked what is underneath.
+  # OUT — AT an untyped slot. `raw` carries no identity, so the value sitting here is not an instance
+  # this tree minted, whatever keys it has: membership is decided by the declaration, never by the
+  # value (owner-ruled 2026-09-25 on den-hoag-72izy, reversing den-hoag-9iobq's rule 1, under which
+  # this position was IN and refused).
   rawAtBase = [
     (
       { config, options, ... }:
@@ -281,6 +287,73 @@ let
       config.name = "igloo";
     }
   ];
+  # OUT — an ELEMENT of a container of an untyped slot. `attrsOf raw` enumerates `bag`'s keys, and
+  # each entry is a `raw` position: the same boundary as `rawAtBase`, one container level down.
+  rawElemBase = [
+    (
+      { config, options, ... }:
+      {
+        options.name = mkOption { type = t.str; };
+        options.bag = mkOption {
+          type = t.attrsOf t.raw;
+          default = { };
+        };
+        config.bag.k.id_hash = crateOf config options;
+      }
+    )
+    {
+      _file = "raw-base";
+      config.name = "igloo";
+    }
+  ];
+  # OUT — a MEMBER of a union. `either` declares nothing of its own, and which member a value is can
+  # only be read off the value, so the declaration does not name an instance here.
+  eitherBase = [
+    { options.pick = mkOption { type = t.either hostSub t.str; }; }
+    {
+      _file = "either-base";
+      config.pick.spool = "silk";
+    }
+  ];
+  eitherMoves = [
+    {
+      _file = "either-edit";
+      config.pick.spool = mkForce "satin";
+    }
+  ];
+
+  # ══ region 2 fixtures — A WRAPPER THAT ADDS NO PATH LEVEL ══════════════════════════════════════
+  #
+  # `nullOr` carries an element but declares it at its OWN location, so an instance sitting in one is
+  # at `h`, not at `h.<key>`. The walk asks the type where it declares its element; iterating the
+  # instance's own keys as entries would read `.id_hash` off a string, an abort `tryEval` does not
+  # contain. nixpkgs' `nullOr`, `uniq` and `unique` are the foreign members of the same class.
+  wrapped = ty: [
+    { options.h = mkOption { type = ty; }; }
+    {
+      _file = "wrap-base";
+      config.h.spool = "silk";
+    }
+  ];
+  wrappedMoves = [
+    {
+      _file = "wrap-edit";
+      config.h.spool = mkForce "satin";
+    }
+  ];
+  # nixpkgs' own submodule, declaring `id_hash` through nixpkgs' options, so the foreign wrappers
+  # hold a foreign instance.
+  npSub = nixpkgsLib.types.submodule (
+    { config, ... }:
+    {
+      options.id_hash = nixpkgsLib.mkOption { type = nixpkgsLib.types.str; };
+      options.spool = nixpkgsLib.mkOption {
+        type = nixpkgsLib.types.str;
+        default = "";
+      };
+      config.id_hash = "thimble:" + builtins.hashString "sha256" config.spool;
+    }
+  );
 in
 {
   flake.tests.warm = {
@@ -1121,12 +1194,20 @@ in
 
     # ══ region 2 — WHAT THE FACT DOES *NOT* HOLD, stated rather than left to be inferred ══════════
     #
-    # The other side of the two refusals on `flake.testsError.warm`. Those say what a moved identity
-    # costs; this says where the engine stops calling one a minted identity at all — and the two
-    # classes here are the WHOLE of the difference, which is why they are asserted together rather
-    # than one per cell. An `id_hash` BELOW a terminal-typed leaf, and an `id_hash` anywhere in the
-    # freeform layer, are values carried to a coordinate this option tree does not name. The byte
-    # oracle still compares them; the identity fact does not.
+    # The other side of the refusals on `flake.testsError.warm`. Those say what a moved identity
+    # costs; this says where the engine stops calling one a minted identity at all — and the classes
+    # here are the WHOLE of the difference, which is why they are asserted together rather than one
+    # per cell. THE BOUNDARY: a minted instance must sit at a position whose declared type carries
+    # identity; an identity in an untyped slot is not tracked by the warm plane. An `id_hash` AT a
+    # `raw` leaf (`at*`), as an ELEMENT of `attrsOf raw` (`elem*`), as a member of a union
+    # (`either*`), BELOW a terminal-typed leaf (`below*`), and anywhere in the freeform layer
+    # (`free*`) are values carried to a slot whose declaration names no instance. The byte oracle
+    # still compares them; the identity fact does not.
+    #
+    # ★ THE FIRST THREE ARE LOSSES, PINNED. Under den-hoag-9iobq's value-first rule 1 each was
+    # REFUSED (`at*` was that row's own IN cell, `…-at-a-terminal-typed-position-refuses-by-name`,
+    # re-stated here). The owner ruled the declaration decides (2026-09-25, den-hoag-72izy: "2, with
+    # both losses pinned"), which is what keeps a warm `.config` read from forcing leaves nobody read.
     #
     # ★ `moved` IS THE ARMING HALF AND IT IS WHAT MAKES THE CELL DISCRIMINATE. Without it, a
     # construction that found no identity anywhere — or one that never computed the fact at all —
@@ -1141,11 +1222,29 @@ in
     # names — and a cell is what keeps the difference legible instead of silent.
     test-identity-outside-the-declaration-stratum-is-not-a-minted-identity =
       let
+        at = warmOf rawAtBase plantLive;
+        elem = warmOf rawElemBase plantLive;
+        either = warmOf eitherBase eitherMoves;
         below = warmOf rawBelowBase plantLive;
         free = warmOf freeformIdBase plantLive;
       in
       {
         expr = {
+          atMode = at.warmDecision.mode;
+          atReason = at.warmDecision.reason;
+          atMoved = at.config.stow.id_hash != (coldOf rawAtBase).config.stow.id_hash;
+          atByte = jsonEq at.config (coldOf (rawAtBase ++ plantLive)).config;
+
+          elemMode = elem.warmDecision.mode;
+          elemReason = elem.warmDecision.reason;
+          elemMoved = elem.config.bag.k.id_hash != (coldOf rawElemBase).config.bag.k.id_hash;
+          elemByte = jsonEq elem.config (coldOf (rawElemBase ++ plantLive)).config;
+
+          eitherMode = either.warmDecision.mode;
+          eitherReason = either.warmDecision.reason;
+          eitherMoved = either.config.pick.id_hash != (coldOf eitherBase).config.pick.id_hash;
+          eitherByte = jsonEq either.config (coldOf (eitherBase ++ eitherMoves)).config;
+
           belowMode = below.warmDecision.mode;
           belowReason = below.warmDecision.reason;
           belowMoved = below.config.stow.inner.id_hash != (coldOf rawBelowBase).config.stow.inner.id_hash;
@@ -1157,6 +1256,21 @@ in
           freeByte = jsonEq free.config (coldOf (freeformIdBase ++ plantLive)).config;
         };
         expected = {
+          atMode = "warm";
+          atReason = null;
+          atMoved = true;
+          atByte = true;
+
+          elemMode = "warm";
+          elemReason = null;
+          elemMoved = true;
+          elemByte = true;
+
+          eitherMode = "warm";
+          eitherReason = null;
+          eitherMoved = true;
+          eitherByte = true;
+
           belowMode = "warm";
           belowReason = null;
           belowMoved = true;
@@ -1167,6 +1281,124 @@ in
           freeMoved = true;
           freeByte = true;
         };
+      };
+
+    # A WARM `.config` READ FORCES NO DECLARED LEAF THAT IS NOT AN INSTANCE'S `id_hash`, as cold does
+    # not (ADR-0008 §2). An undefined option, in the base or in the edit, and a defined leaf whose
+    # value throws, each leave a sibling readable warm.
+    # ★ `regBase` CARRIES AN INSTANCE, and that is what arms the cell: gen-memo's `movedIdentities`
+    # reads the NEXT map only under a key of the PRIOR one, so over an instance-free base the next
+    # walk never runs and `inEditRead` is green whatever the walk forces. `movedRefused` is the
+    # half that shows the walk ran at all: the same fixture with the instance moved must refuse.
+    test-72izy-warm-config-read-forces-no-undeclared-identity =
+      let
+        undefinedIn = [
+          {
+            _file = "u";
+            options.never = mkOption { type = t.str; };
+          }
+        ];
+        booming = [
+          {
+            _file = "b";
+            options.boom = mkOption { type = t.str; };
+            config.boom = throw "72izy: a leaf nobody read was forced";
+          }
+        ];
+        other = [
+          {
+            _file = "o";
+            options.other = mkOption { type = t.str; };
+            config.other = "o";
+          }
+        ];
+        ok = e: (builtins.tryEval e).success;
+        inBase = warmOf (regBase ++ undefinedIn) other;
+        inEdit = warmOf regBase (undefinedIn ++ other);
+        boomed = warmOf (regBase ++ booming) other;
+      in
+      {
+        expr = {
+          inBaseRead = ok inBase.config.other;
+          inEditRead = ok inEdit.config.other;
+          boomRead = ok boomed.config.other;
+          neverReused = builtins.elem "never" inBase.warmDecision.reused;
+          hostsReused = builtins.elem "hosts" inEdit.warmDecision.reused;
+          pewter = inEdit.config.hosts.pewter.id_hash == (coldOf regBase).config.hosts.pewter.id_hash;
+          movedRefused = !(ok (warmOf (regBase ++ undefinedIn) (regMoves ++ other)).config.other);
+        };
+        expected = {
+          inBaseRead = true;
+          inEditRead = true;
+          boomRead = true;
+          neverReused = true;
+          hostsReused = true;
+          pewter = true;
+          movedRefused = true;
+        };
+      };
+
+    # A WRAPPER THAT ADDS NO PATH LEVEL HOLDS ITS INSTANCE AT ITS OWN POSITION, in both vocabularies:
+    # an unrelated edit re-composes warm, byte-identical to cold, and an edit moving the instance is
+    # refused (`tryEval` contains the refusal, a throw). A walk that iterated the instance's own keys
+    # as container entries aborts on every row here, uncatchably. `absent` is a nullable left null.
+    # `foreignContainer` is nixpkgs' `attrsOf`, whose payload states more than its element: its
+    # entries are not walked (den-hoag-tn3qf's reach), and its warm read does not abort.
+    test-identity-wrapper-without-a-path-level-holds-its-instance-in-place =
+      let
+        ok = e: (builtins.tryEval (builtins.deepSeq e e)).success;
+        np = nixpkgsLib.types;
+        other = [
+          {
+            _file = "o";
+            options.other = mkOption { type = t.str; };
+            config.other = "o";
+          }
+        ];
+        arm = ty: {
+          held = jsonEq (warmOf (wrapped ty) other).config (coldOf (wrapped ty ++ other)).config;
+          moveRefused = !(ok (warmOf (wrapped ty) wrappedMoves).config);
+        };
+        absent = [
+          {
+            options.h = mkOption {
+              type = t.nullOr hostSub;
+              default = null;
+            };
+          }
+        ];
+        foreignReg = [
+          { options.hs = mkOption { type = np.attrsOf npSub; }; }
+          {
+            _file = "fr";
+            config.hs.p.spool = "silk";
+          }
+        ];
+      in
+      {
+        expr = {
+          nullOr = arm (t.nullOr hostSub);
+          npNullOr = arm (np.nullOr npSub);
+          npUniq = arm (np.uniq npSub);
+          npUnique = arm (np.unique { message = "72izy"; } npSub);
+          absent = jsonEq (warmOf absent other).config (coldOf (absent ++ other)).config;
+          foreignContainer = jsonEq (warmOf foreignReg other).config (coldOf (foreignReg ++ other)).config;
+        };
+        expected =
+          let
+            both = {
+              held = true;
+              moveRefused = true;
+            };
+          in
+          {
+            nullOr = both;
+            npNullOr = both;
+            npUniq = both;
+            npUnique = both;
+            absent = true;
+            foreignContainer = true;
+          };
       };
 
     # A REUSED `moduleTree` LEAF REPORTS ITS DROPPED DEFS, as the cold merge does (ADR-0025 item 1 on
@@ -1526,17 +1758,14 @@ in
       };
     };
 
-    # A TERMINAL TYPE IS WHERE THE DESCENT STOPS, NOT A POSITION IT SKIPS — and the difference is a
-    # refusal, so it is asserted rather than reasoned about. `stow` is declared `raw`, which carries
-    # nothing and names nothing below itself; the value sitting AT it is still read, because a
-    # declared position is reached before its type is asked what is underneath it. The companion on
-    # `flake.tests.warm` puts the same identity ONE LEVEL further down and gets no refusal, which is
-    # the whole of the boundary in two cells: at the stop, in; below it, out.
-    test-identity-move-at-a-terminal-typed-position-refuses-by-name = {
-      expr = (warmOf rawAtBase plantLive).config.stow.id_hash;
+    # NULLABLE — the instance sits AT the wrapper's own position, because `nullOr` adds no path level,
+    # so the coordinate is `h` and not one of the instance's own keys. The hold arm is on
+    # `flake.tests.warm` (`…-wrapper-without-a-path-level-holds-its-instance-in-place`).
+    test-identity-move-in-a-nullable-refuses-by-name = {
+      expr = (warmOf (wrapped (t.nullOr hostSub)) wrappedMoves).config.h.id_hash;
       expectedError = {
         type = "ThrownError";
-        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'stow' \\(kind 'crate', was 'crate:[0-9a-f]{64}', now 'crate:[0-9a-f]{64}', re-merged declarations: .*, 1 instance\\(s\\) moved\\)$";
+        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'h' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: h, 1 instance\\(s\\) moved\\)$";
       };
     };
   };

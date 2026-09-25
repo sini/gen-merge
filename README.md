@@ -497,6 +497,21 @@ incidental).
 **Boundary.** A nested `moduleTree`-as-type merge is always COLD (no `warmFrom` threaded through
 `.type.merge`) — the same boundary provenance draws.
 
+**A moved minted identity is refused, not re-composed.** A warm `.config` read throws
+`gen-memo.identitiesHeld: minted identity moved … at '<coordinate>'` when the edit moved an instance's
+`id_hash` (ADR-0016's option-set closure; cold emits the same moved identity, so there is no correct
+fallback). The walk that finds instances (`identityMapOf`) decides membership from the DECLARATION: an
+instance is a position whose declaration declares an `id_hash` option, and only that `id_hash` is
+forced, so an undefined or throwing leaf nobody reads stays unread warm, as cold. **A minted instance
+must sit at a position whose declared type carries identity; an identity in an untyped slot is not
+tracked by the warm plane** — an `id_hash` value at a `raw`/`anything` leaf, as an element of
+`attrsOf raw`, as a member of an `either`, below a terminal leaf, or in the freeform layer. The byte
+oracle still compares those values; the refusal does not see them. A wrapper that adds no path level
+(`nullOr`, nixpkgs' `uniq`/`unique`) holds its instance at its own position. Pinned by
+`test-identity-outside-the-declaration-stratum-is-not-a-minted-identity`,
+`test-identity-wrapper-without-a-path-level-holds-its-instance-in-place` and
+`test-72izy-warm-config-read-forces-no-undeclared-identity`.
+
 **The decision trace.** Every result carries `.warmDecision` (always-on data; `mode = "cold"` on a
 plain compose):
 

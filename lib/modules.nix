@@ -2521,10 +2521,13 @@ let
           # walk never runs, and `identityHeld` is `[ ]` for the same zero-behaviour-change reason
           # `warmFrom`/`coreShortCircuit` default off.
           #
-          # `id_hash` is the ecosystem's own membership test for an instance value (gen-scope's
-          # `hasId`, the shape gen-select's registry adapter and gen-product's `factor` already use),
-          # read here as `isAttrs v && v ? id_hash`. Testing the key forces no identity that is not
-          # on an instance; a node that IS one is forced, which is the traversal above.
+          # MEMBERSHIP IS DECIDED BY THE DECLARATION, never by inspecting a value (ADR-0034's three
+          # regimes, read onto this walk; owner-ruled 2026-09-25 on den-hoag-72izy, reversing
+          # den-hoag-9iobq's value-first rule 1). An instance is a position whose declaration
+          # declares an `id_hash` option — what the one mint stamps (gen-schema `lib/id-hash.nix`).
+          # So the walk forces container and group spines and each instance's `id_hash`, and no
+          # other declared leaf: an undefined or throwing leaf nobody read stays unread, as cold
+          # leaves it (ADR-0008 §2).
           #
           # ── THE BOUND IS THE DECLARATION STRATUM, AND THE CONFIG IS NEVER EXPLORED ──────────────
           # The map is read at positions DERIVED from the declaration side, and the config is read
@@ -2548,26 +2551,33 @@ let
           # so a FOREIGN type answers in its own spelling with no second copy of the question — the
           # same boundary call shape `deprecations` above takes for `importedDeprecation`.
           #
-          # THE REACH, STATED RATHER THAN LEFT TO BE DISCOVERED. A position whose declared type
-          # carries nothing is not in the map even when the value sitting there IS an instance on the
-          # ecosystem's own `hasId` test — `raw`/`anything`/`package`, a nesting seam (a
+          # THE REACH, STATED RATHER THAN LEFT TO BE DISCOVERED. A minted instance must sit at a
+          # position whose declared type carries identity; an identity in an untyped slot is not
+          # tracked. Not in the map, even when the value there IS an instance on the ecosystem's own
+          # `hasId` test: a value AT or BELOW a `raw`/`anything`/`package` leaf, an element of a
+          # container of one (`attrsOf raw`), a member of a union (`either` declares nothing of its
+          # own, so which member a value is cannot be read off the declaration), a nesting seam (a
           # `nonMountable` tree type, whose nested eval is always cold), and the whole freeform
-          # layer, which has no declaration at all. The refusal domain is therefore the MINTED instances of
-          # this option tree, which is what the bound above names; an instance carried to a `raw`
-          # position as a value is compared by the byte oracle and not by this fact. A
-          # self-referential value at a typed STRUCTURAL position is still reachable in principle,
-          # since the value's own keys guide that arm — it is a strictly smaller residual than a
-          # cycle guard's, and neither a derivation nor a completed type can occupy one.
+          # layer. The refusal domain is the MINTED instances of this option tree, which is what the
+          # bound above names; a value carried into an untyped slot is compared by the byte oracle
+          # and not by this fact. A self-referential value at a typed STRUCTURAL position is still
+          # reachable in principle, since the value's own keys guide that arm — it is a strictly
+          # smaller residual than a cycle guard's, and neither a derivation nor a completed type can
+          # occupy one.
           identityMapOf =
             declTree: cfg:
             let
               # The lockstep descent: declaration `d` and value `v` at loc `l`, one step each.
+              # An INSTANCE is a position whose declaration declares an `id_hash` option, which is
+              # what the one mint stamps (ADR-0034: decided at the declaration, never by inspecting
+              # a value). Only that instance's `id_hash` is read. `null` there is a nullable's
+              # absent instance.
               go =
                 loc: d: v:
-                if isAttrs v && v ? id_hash then
-                  { ${showOption loc} = v.id_hash; }
-                else if isOptLeaf d then
+                if isOptLeaf d then
                   below loc (d.type or null) v
+                else if isAttrs d && d ? id_hash && isOptLeaf d.id_hash then
+                  (if v == null then { } else { ${showOption loc} = v.id_hash; })
                 else if isAttrs d && isAttrs v then
                   foldl' (acc: k: acc // go (loc ++ [ k ]) d.${k} (v.${k} or null)) { } (attrNames d)
                 else
@@ -2596,8 +2606,31 @@ let
                 else
                   let
                     element = interface.importedCarried "element" ty;
+                    # Where the type's own `declares` puts its element: `loc` for a wrapper, one
+                    # segment below for a container, `null` for a type carrying no single element.
+                    elementAt = interface.importedElementPrefix ty loc;
                   in
-                  if element != null then
+                  # AN ELEMENT THAT CARRIES NOTHING declares no instance at any depth (`listOf str`,
+                  # `attrsOf raw`, `nullOr str`), so neither the value nor the type's level is read.
+                  if
+                    element != null
+                    && interface.importedCarried "element" element == null
+                    && (interface.importedSubstructure element).modules == null
+                  then
+                    { }
+                  # A WRAPPER THAT ADDS NO PATH LEVEL (`nullOr`, nixpkgs' `uniq`/`unique`, any type
+                  # whose `declares` hands its element the same prefix) holds its element's value AT
+                  # this position, so it is re-entered here with the element type rather than
+                  # iterated: the value's keys are the element's own options, not entries.
+                  else if element != null && elementAt == loc then
+                    below loc element v
+                  # A CONTAINER WHOSE ELEMENT THE BOUNDARY DOES NOT READ (a foreign payload stating
+                  # more than the element — den-hoag-tn3qf's reach): its entries are not walked. The
+                  # module-set arm below would hand the ELEMENT's declarations to the container's
+                  # value at the container's own loc, and read an entry name as an instance.
+                  else if element == null && elementAt != null && elementAt != loc then
+                    { }
+                  else if element != null then
                     # A container: one level into the VALUE's keys or indices, each with the element
                     # type. Asked FIRST, because a container's module set IS its element's — a
                     # registry would otherwise answer the module-set arm below and skip the key level
