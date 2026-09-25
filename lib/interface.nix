@@ -328,6 +328,13 @@ let
   # and a placeholder beside it) is handed back to its own constructor WHOLE, with only the element
   # swapped. That reads no parameter this side has no place for — nothing is merged or dropped — so
   # `importedCarried`'s read-whole guard is not crossed: the answer is a location, not a type.
+  #
+  # THE PROBE IS NOT A TYPE RECORD: it has no `_type`, `name`, `check` or `merge`. A foreign
+  # constructor that reads its element when it is BUILT (rather than when it merges) throws here, and
+  # the warm read that asked throws with it where cold serves. None of gen's or nixpkgs' element
+  # carriers probed does (den-hoag-72izy). The cost is one type rebuild and one `declares` call per ask, paid by the identity
+  # walk once per declared container position (per entry inside a registry element); a leaf never
+  # reaches it.
   importedElementPrefix =
     t: prefix:
     let

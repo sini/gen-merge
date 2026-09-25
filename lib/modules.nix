@@ -2610,9 +2610,13 @@ let
                     # segment below for a container, `null` for a type carrying no single element.
                     elementAt = interface.importedElementPrefix ty loc;
                   in
+                  # A SEAM AS THE ELEMENT stops the walk the same way, before the guard below asks it
+                  # what it carries (`attrsOf`/`listOf`/`nullOr` of a tree type, empty ones included).
+                  if element != null && isAttrs element && element ? nonMountable then
+                    { }
                   # AN ELEMENT THAT CARRIES NOTHING declares no instance at any depth (`listOf str`,
                   # `attrsOf raw`, `nullOr str`), so neither the value nor the type's level is read.
-                  if
+                  else if
                     element != null
                     && interface.importedCarried "element" element == null
                     && (interface.importedSubstructure element).modules == null

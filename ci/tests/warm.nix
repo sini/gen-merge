@@ -1479,6 +1479,66 @@ in
         };
       };
 
+    # A NESTING SEAM AS A CONTAINER'S OR WRAPPER'S ELEMENT STOPS THE WALK TOO, on its `nonMountable`
+    # mark and before any protocol read of the element: an unrelated edit re-composes warm and
+    # byte-identical to cold. `inst` is a minted instance in the BASE, so the next walk is forced. A
+    # walk that asks the element what it carries first throws `moduleTree … does not answer functor`
+    # on every row, the empty and defaulted `attrsOf` included, while cold serves them.
+    test-identity-walk-stops-at-a-seam-element =
+      let
+        inner =
+          (evalModuleTree {
+            check = false;
+            modules = [ { options.known = mkOption { type = t.str; }; } ];
+          }).type;
+        ok = e: (builtins.tryEval (builtins.deepSeq e e)).success;
+        other = [
+          {
+            _file = "o";
+            options.other = mkOption { type = t.str; };
+            config.other = "o";
+          }
+        ];
+        arm =
+          decl: defs:
+          let
+            base = [
+              {
+                options.n = decl;
+                options.inst = mkOption { type = hostSub; };
+              }
+              {
+                _file = "sv";
+                config = defs // {
+                  inst.spool = "s";
+                };
+              }
+            ];
+            w = (warmOf base other).config;
+          in
+          ok w && jsonEq w (coldOf (base ++ other)).config;
+        at = ty: v: arm (mkOption { type = ty; }) { n = v; };
+      in
+      {
+        expr = {
+          attrsOfEmpty = at (t.attrsOf inner) { };
+          attrsOfDefault = arm (mkOption {
+            type = t.attrsOf inner;
+            default = { };
+          }) { };
+          attrsOf = at (t.attrsOf inner) { a.known = "k"; };
+          listOf = at (t.listOf inner) [ { known = "k"; } ];
+          nullOr = at (t.nullOr inner) { known = "k"; };
+        };
+        expected = {
+          attrsOfEmpty = true;
+          attrsOfDefault = true;
+          attrsOf = true;
+          listOf = true;
+          nullOr = true;
+        };
+      };
+
     # THE SAME REUSED LEAF UNDER A `freeformType`, and AT A NON-EMPTY `prefix`. The reused leaf passes
     # the prior report's records at and below its absolute location through unchanged, since both are
     # in the absolute frame. Under a freeformType the finding is reported (never absorbed, so `nest`

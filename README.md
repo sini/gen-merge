@@ -511,7 +511,10 @@ instance is a position whose declaration declares an `id_hash` option, and only 
 forced, so an undefined or throwing leaf nobody reads stays unread warm, as cold. **A minted instance
 must sit at a position whose declared type carries identity; an identity in an untyped slot is not
 tracked by the warm plane** — an `id_hash` value at a `raw`/`anything` leaf, as an element of
-`attrsOf raw`, as a member of an `either`, below a terminal leaf, or in the freeform layer. The byte
+`attrsOf raw`, as a member of an `either`, below a terminal leaf, in the freeform layer, or inside a
+foreign container whose payload the boundary does not read (nixpkgs' `attrsOf`/`lazyAttrsOf`, even over
+a submodule declaring `id_hash`; den-hoag-tn3qf). A nesting seam (a tree type) is not walked either,
+as a leaf or as a container's element. The byte
 oracle still compares those values; the refusal does not see them. A wrapper that adds no path level
 (`nullOr`, nixpkgs' `uniq`/`unique`) holds its instance at its own position. Pinned by
 `test-identity-outside-the-declaration-stratum-is-not-a-minted-identity`,
