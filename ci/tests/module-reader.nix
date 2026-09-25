@@ -36,6 +36,7 @@ let
     options.b = int0;
     option.c = int0;
   };
+  selfFn = { lib, ... }: selfFn;
 in
 {
   flake.tests.module-reader = {
@@ -63,6 +64,23 @@ in
         "b"
         "c"
       ];
+    };
+
+    # A module function whose result is not a module is refused CATCHABLY (it once aborted with
+    # `expected a set but found a function`, which `tryEval` does not contain). The control: a
+    # module function returning a module merges.
+    test-function-module-returning-a-function-is-refused-catchably = {
+      expr = (builtins.tryEval (builtins.deepSeq (read (_: selfFn)) null)).success;
+      expected = false;
+    };
+    test-function-module-returning-a-module-control = {
+      expr = read (_: {
+        a = 2;
+      });
+      expected = {
+        a = 2;
+        foo = 0;
+      };
     };
 
     # ── UNCHANGED by the reader: the controls and gen-merge's kept `_module` superset ─────────────

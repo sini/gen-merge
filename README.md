@@ -1399,6 +1399,16 @@ nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require`
   `gen-merge: a module must be a path, a function or an attribute set, and this one is <type>`.
   nixpkgs fails the `import` uncatchably. `lint` refuses the same value with the same message, where it
   once reported no findings. A strict superset: no module nixpkgs accepts changes meaning.
+- **A module function whose result is not an attribute set is refused by name, catchably** — parity,
+  not a departure: it is `unifyModuleSyntax`'s own third arm, which nixpkgs words
+  `module <file> (<key>) does not look like a module.` A module function is applied once, to the
+  module arguments, and its result must be the module; a curried `a: b: { … }`, a returned path and
+  any other non-attrset result are refused with
+  `` gen-merge: module `<file>' is a function whose result is <type>, not an attribute set ``. It fires
+  at the declaration stratum's read, so `.config`, `.options`, `declaredOptions`, an `imports`
+  element, a `submodule` or `deferredModule` definition and a warm trace all refuse. The config read
+  once aborted uncatchably (`expected a set but found a function`), and the declaration-only reads
+  once answered silently. `lint` never applies a function module, so this arm does not reach it.
 
 These boundaries are mechanically checkable — see [Portable-subset lint](#portable-subset-lint).
 

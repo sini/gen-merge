@@ -713,8 +713,10 @@ let
       throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
+    else if isAttrs m then
+      e
     else
-      e;
+      throw "gen-merge: module `${e._file}' is a function whose result is ${builtins.typeOf m}, not an attribute set. A module function is applied once, to the module arguments, and must return the module itself; a function that returns another function (`a: b: { … }`) is not a module.";
   importsOf =
     m:
     let

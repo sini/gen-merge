@@ -435,6 +435,38 @@ let
     key = "B";
     options.x = readerInt0;
   };
+  # A module function whose result is itself: the reference's `does not look like a module` shape.
+  readerSelfFn = { lib, ... }: readerSelfFn;
+  readerOptionNames =
+    m:
+    builtins.attrNames
+      (gm.evalModuleTree {
+        modules = [
+          readerDecl
+          m
+        ];
+      }).options;
+  readerDeclaredNames =
+    m:
+    builtins.attrNames (
+      gm.declaredOptions {
+        modules = [
+          readerDecl
+          m
+        ];
+      }
+    );
+  readerPathA =
+    p:
+    (cfg {
+      modules = [
+        readerDecl
+        p
+      ];
+    }).a;
+  fnResultMsg =
+    file: type:
+    "^gen-merge: module `${file}' is a function whose result is ${type}, not an attribute set\\. A module function is applied once, to the module arguments, and must return the module itself; .* is not a module\\.$";
   disabledMsg =
     file:
     "^gen-merge: module `${file}' sets `disabledModules'\\. gen-merge does not implement module removal \\(it is deferred work\\): the modules it names would stay enabled here, where the reference module system removes them\\. Remove the key; it is refused by presence, an empty list included\\.$";
@@ -2709,8 +2741,55 @@ in
     # the key and the file, on each door's first read of a module — every config read, every
     # declaration-only read, and every reader that treats a value as a module: top level,
     # `check = false`, `types.submodule`, `types.deferredModule` and `lint`. `disabledModules` is
-    # refused by presence in both module forms, and before the surplus test.
+    # refused by presence in both module forms, and before the surplus test. The reference's third
+    # arm, a module FUNCTION whose result is not an attribute set, is refused at the same reads
+    # EXCEPT `lint`: lint never applies a function module (it is function-opaque by design), so no
+    # function result reaches it.
     flake.testsError.module-reader = {
+      # The third arm, at an `imports` element: `readerSelfFn` returns itself, so the result is a
+      # function.
+      test-function-result-not-a-module-refused-top-level = {
+        expr =
+          withControl
+            (viaTop (_: {
+              a = 5;
+            })).a
+            5
+            (builtins.deepSeq (viaTop (_: readerSelfFn)) null);
+        expectedError = {
+          type = "ThrownError";
+          msg = fnResultMsg "/real/M\\.nix" "lambda";
+        };
+      };
+      # The declaration-only reads refuse it too, where they once answered silently (`[ "a" "foo" ]`).
+      test-function-result-not-a-module-refused-on-the-options-read = {
+        expr = withControl (readerOptionNames (_: {
+          a = 5;
+        })) [ "a" "foo" ] (readerOptionNames (_: readerSelfFn));
+        expectedError = {
+          type = "ThrownError";
+          msg = fnResultMsg "<gen-merge>" "lambda";
+        };
+      };
+      test-function-result-not-a-module-refused-by-declared-options = {
+        expr = withControl (readerDeclaredNames (_: {
+          a = 5;
+        })) [ "a" "foo" ] (readerDeclaredNames (_: readerSelfFn));
+        expectedError = {
+          type = "ThrownError";
+          msg = fnResultMsg "<gen-merge>" "lambda";
+        };
+      };
+      # A path module is attributed to its own file. Control: a path module that is an attrset.
+      test-function-result-not-a-module-names-its-file = {
+        expr = withControl (readerPathA ./tests/_fixtures/def-reading-a5.nix) 5 (
+          builtins.deepSeq (readerPathA ./tests/_fixtures/fn-returns-fn.nix) null
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = fnResultMsg "/[^']*/_fixtures/fn-returns-fn\\.nix" "lambda";
+        };
+      };
       test-surplus-key-refused-top-level = {
         expr = withControl (viaTop readerC0).a 2 (builtins.deepSeq (viaTop readerBad) null);
         expectedError = {
