@@ -136,10 +136,16 @@ the same input, asserted against the live nixpkgs in `ci/tests/parity-surface.ni
 takes `merge ? mergeDefaultOption`, so a descriptor stating `name` and no `merge`, `mergeDefs` or
 `verify` folds here by the law above: lists and strings concatenate (equal strings too: `"a"`,`"a"` ⇒
 `"aa"`), bools OR, equal ints pass. Two arms keep a named refusal, by the parity criterion ruled
-2026-09-25 (take nixpkgs' value except where that value is silent): attrsets sharing a key with
-**differing** values, which nixpkgs' shallow `//` settles by dropping a definition without a word, and
-functions, where nixpkgs aborts or unwraps silently. Attrsets with disjoint keys, or shared keys
-carrying equal values, are `//`-folded. A descriptor stating `verify` is a gen leaf and keeps
+2026-09-25 (take nixpkgs' value except where that value is silent): attrsets sharing a key whose
+values are **not `==`**, which nixpkgs' shallow `//` settles by keeping the first file's value and
+dropping the rest without a word, and functions, where nixpkgs aborts or unwraps silently. Attrsets
+with disjoint keys, or whose shared keys carry `==` values, are `//`-folded: `{ a = 1; b = 1; }`,
+`{ a = 1; c = 2; }` ⇒ `{ a = 1; b = 1; c = 2; }`, nixpkgs' value, which 6a508e3 refused. "Equal" is
+Nix `==` and nothing wider. A function is never `==`, so `{ a = f; }`,`{ a = f; }` over one binding
+`f` refuses, where nixpkgs and 6a508e3 both take it: a new refusal, named. A functor is an attrset to
+`builtins.isFunction`, so two functors refuse through the attrset arm, not the function arm. And
+deciding a shared key forces its values, so `{ a = 1; b = 1; }`,`{ a = throw …; }` throws on reading
+`.b`, where nixpkgs gives `1`. A descriptor stating `verify` is a gen leaf and keeps
 `mergeLeaf`. Cells: `ci/tests/parity-surface.nix` (both engines) and `ci/tests-error.nix`
 `mkoptiontype-default-merge`. The price is listed under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate).
@@ -1273,11 +1279,21 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 ## Known byte-mode boundaries (deliberate)
 
 - **A check-only `mkOptionType` refuses where nixpkgs' default merge is silent.** Two definitions
-  that are attrsets sharing a key with differing values, or that are functions, are refused by name
-  (`ci/tests-error.nix` `mkoptiontype-default-merge`); nixpkgs keeps the last value at the key, and for
-  functions aborts uncatchably or unwraps a `{ value = …; }` result. Every other arm of the default
-  is nixpkgs' value. The price, stated with the 2026-09-25 ruling: a nixpkgs module relying on silent
-  last-wins attrset merging under a check-only type is refused here.
+  that are attrsets sharing a key whose values are not `==`, or that are functions, are refused by
+  name (`ci/tests-error.nix` `mkoptiontype-default-merge`); nixpkgs keeps the FIRST file's value at
+  the key (`{ a = 1; }` in the first file, `{ a = 2; }` in the second ⇒ `{ a = 1; }`: its
+  definitions list runs in reverse file order and `//` is last-wins over that list), and for
+  functions aborts uncatchably or unwraps a `{ value = …; }` result. Every other arm of the default is nixpkgs' value, with "equal"
+  meaning Nix `==`: a function-valued shared key refuses where nixpkgs takes it, and shared keys'
+  values are forced where nixpkgs forces none. The price, stated with the 2026-09-25 ruling: a
+  nixpkgs module relying on silent last-wins attrset merging under a check-only type is refused here.
+
+- **Two structurally equal CYCLIC values at a shared key abort uncatchably** (`den-hoag-8owed`).
+  Nix `==` is not total: `{ a = r; }`,`{ a = r'; }` with `r` and `r'` separate bindings of
+  `{ s = r; n = 1; }` under a check-only `mkOptionType` exits
+  `stack overflow; max-call-depth exceeded`, which `tryEval` does not catch, where nixpkgs returns
+  `{ a = …; }`. 6a508e3 aborts on the same input, so this is a boundary the fold inherits, not one
+  it introduced.
 
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict

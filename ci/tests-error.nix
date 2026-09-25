@@ -2114,8 +2114,8 @@ in
             msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': 2\\n- In `/demo/warp\\.nix': 1$";
           };
         };
-        # THE CARVE-OUT (parity criterion, owner 2026-09-25): nixpkgs' shallow `//` keeps `{ a = 2; }`
-        # and drops the other definition without a word, so this fold keeps a named refusal. RED (the
+        # THE CARVE-OUT (parity criterion, owner 2026-09-25): nixpkgs' shallow `//` keeps `{ a = 1; }`
+        # (warp's, the first file's) and drops weft's without a word, so this fold keeps a named refusal. RED (the
         # default as nixpkgs' law unmodified): ☢, a value and no error.
         test-differing-values-at-a-shared-attrset-key-refuse-naming-files = {
           expr = heddle thread { a = 1; } { a = 2; };
