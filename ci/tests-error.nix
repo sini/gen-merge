@@ -1509,7 +1509,15 @@ in
       test-element-carrier-supplying-all-three-constructs-control = {
         expr =
           let
-            ty = rackOf { substSubModules = _m: null; };
+            ty = rackOf {
+              substSubModules = _m: null;
+              recarry =
+                c:
+                rackOf {
+                  substSubModules = _m: null;
+                  elemType = c.element;
+                };
+            };
           in
           {
             inherit (ty) name;
@@ -1685,7 +1693,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the option type `emptyRel' supplies a `functor' this boundary cannot read: its parameter is stated as neither `payload\\.elemType' nor `payload\\.modules', so the parameter and the `binOp' that discriminates on it are discarded and `emptyRel' merges on its NAME ALONE — accepting two operands its own `binOp' refuses\\. State the parameter as `functor\\.payload\\.elemType' \\(or `\\.modules'\\), or drop the `functor' if merging on the name alone is what this type means$";
+          msg = "^gen-merge: the option type `emptyRel' states a parameter in its `functor' but leaves `functor\\.binOp' empty, so nothing it states can discriminate on that parameter and `emptyRel' would merge on its NAME ALONE — accepting two operands the parameter tells apart\\. State the relation in `functor\\.binOp', or drop the `functor' if merging on the name alone is what this type means$";
         };
       };
       # ★★ LIVE CONTROL, AND IT IS THE ONE THAT KEEPS THE REFUSAL PRECISE RATHER THAN MERELY LOUD. A
@@ -1711,29 +1719,22 @@ in
           }).name;
         expected = "plain";
       };
-      # ★ AND THE SECOND CONTROL SEPARATES "was not read" FROM "was not read YET". A payload stated in
-      # a spelling this boundary DOES read is consumed into `carries` and the functor refusal stays
-      # silent — what fires instead is the carried-role requirement above, a DIFFERENT refusal with a
-      # different message, which is only reachable because the payload crossed. Asserting that message
-      # here is what proves the two refusals are not one loud predicate wearing two names. It differs
-      # from the refusal above in the PAYLOAD SPELLING and in nothing else, `binOp` empty in both:
-      # a record that stated its relation is answered by that relation and owes no `recarry`, so this
-      # control has to leave the slot empty to reach the requirement at all.
-      test-control-a-payload-the-boundary-reads-reaches-the-carried-role-refusal-instead = {
+      # ★ AND THE SECOND CONTROL SEPARATES THE TWO REFUSALS. A payload is what a type offers to MERGE
+      # on and never what it carries, so the carried-role requirement is reached by a record stating
+      # its element in the CARRYING spelling and no relation to answer for it — a different refusal
+      # with a different message. Asserting that message here is what proves the two refusals are not
+      # one loud predicate wearing two names.
+      test-control-a-stated-element-with-no-relation-reaches-the-owed-relation-refusal = {
         expr = gm.mkOptionType {
           name = "boxOf";
-          functor = {
-            name = "boxOf";
-            payload.elemType = t.str;
-            binOp = null;
-          };
+          nestedTypes.elemType = t.str;
           getSubOptions = _p: { };
           getSubModules = null;
           substSubModules = _m: null;
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the structural type `boxOf' carries a parameter but does not supply `recarry'; a type that carries something answers for it rather than inheriting a leaf's answers$";
+          msg = "^gen-merge: the structural type `boxOf' carries an element type but states no merge relation for it; state one in `functor\\.binOp' \\(with `functor\\.name' and `functor\\.type'\\), since a type that carries something answers for how two of it merge$";
         };
       };
       # ★★★ THE OTHER HALF OF THE PARTITION, AND IT IS A HAZARD THE RETENTION ITSELF CREATED. A
@@ -1859,6 +1860,12 @@ in
                     getSubOptions = _p: { };
                     getSubModules = null;
                     substSubModules = _m: null;
+                    functor = {
+                      name = "politeOf";
+                      payload = null;
+                      type = null;
+                      binOp = a: _b: a;
+                    };
                   };
                 }
               )).types;
@@ -3404,7 +3411,7 @@ in
               payload.x = 1;
             };
           };
-          expectedError = thrown "^gen-merge: the option type `<a name of type int>' supplies a `functor' this boundary cannot read";
+          expectedError = thrown "^gen-merge: the option type `<a name of type int>' states a parameter in its `functor' but leaves ";
         };
         test-unanswerable-relation-names-its-name-type = {
           expr = gm.mkOptionType {
@@ -3432,10 +3439,7 @@ in
               // {
                 name = "box";
                 check = _: true;
-                functor = {
-                  name = "box";
-                  payload.elemType = t.str;
-                };
+                nestedTypes.elemType = t.str;
                 recarry = _: { name = bad; };
               }
             )).functor.type

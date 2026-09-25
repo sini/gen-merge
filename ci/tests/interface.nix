@@ -221,14 +221,19 @@ let
   };
   caught = v: !(builtins.tryEval (builtins.deepSeq v v)).success;
   # A FOREIGN descriptor that STATES its own relation (a `functor` with a real `binOp`) and carries an
-  # element payload, and supplies NO `recarry`. This is exactly the record the escape exists for.
+  # element in its carrying spelling (`nestedTypes`), and supplies NO `recarry`. This is exactly the
+  # record the escape exists for.
   probeStates = V.mkOptionType {
     name = "probeStates";
     check = builtins.isInt;
     merge = _loc: defs: (builtins.head defs).value;
+    nestedTypes.elemType = genMerge.types.str;
+    getSubOptions = _: { };
+    getSubModules = null;
+    substSubModules = _: null;
     functor = {
       name = "probeStates";
-      payload.elemType = genMerge.types.str;
+      payload = null;
       type = _p: null;
       binOp = a: _b: a;
     };
@@ -240,9 +245,13 @@ let
     name = "probeSilent";
     check = builtins.isInt;
     merge = _loc: defs: (builtins.head defs).value;
+    nestedTypes.elemType = genMerge.types.str;
+    getSubOptions = _: { };
+    getSubModules = null;
+    substSubModules = _: null;
     functor = {
       name = "probeSilent";
-      payload.elemType = genMerge.types.str;
+      payload = null;
       type = _p: null;
     };
   };

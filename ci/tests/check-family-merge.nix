@@ -270,14 +270,12 @@ in
       };
     };
 
-    # ★ A KNOWN BOUNDARY, PINNED: a gen join is judged in gen's vocabulary, and a role no payload
-    # carries is not in it. `rootWith`'s relation asks the element's own foreign `typeMerge`, which
-    # joins `port ∥ int` to `int` without the witness, so the drop under the element is not seen here.
-    # A boundary that carries a descriptor's stated `nestedTypes`, or a relation that asks
-    # `mergeTypes` for its element (as `refinedLike` does, above), flips this.
-    test-a-drop-under-an-uncarried-role-is-not-seen = {
+    # A ROLE STATED IN `nestedTypes` IS CARRIED, so a gen join is judged over it: `rootWith`'s relation
+    # asks the element's own foreign `typeMerge`, which joins `port ∥ int` to `int`, and the witness now
+    # sees the element's check dropped.
+    test-a-drop-under-a-stated-nested-role-is-seen = {
       expr = ev [ (rootWith t.port) (rootWith t.int) ] { a = 70000; };
-      expected = "MERGED root / ACCEPTED";
+      expected = "REFUSED";
     };
 
     # D2: the text is false whenever the join keeps ONE operand's own name — `int ∥ port` joins to

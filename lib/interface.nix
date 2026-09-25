@@ -317,6 +317,30 @@ let
       in
       if payload == null || attrNames payload != [ key ] then null else payload.${key};
 
+  # What this type OFFERS TO MERGE ON at a given role: the parameter of the relation it merges by.
+  # A gen type's relation is derived from its `carries`, so it offers what it carries; a type that
+  # crossed STATING its own relation offers that relation's payload, which is not what it carries
+  # (a refinement carries its base's element and offers nothing); a foreign one offers its functor
+  # payload. A payload is read WHOLE and in its role's own shape, or it offers nothing.
+  importedOffered =
+    role: t:
+    let
+      payload =
+        if t ? retainedRelation then
+          t.retainedRelation.functor.payload or null
+        else if t ? carries then
+          null
+        else
+          (t.functor or { }).payload or null;
+      key = roleSpelling.${role}.payloadKey;
+    in
+    if t ? carries && !(t ? retainedRelation) then
+      t.carries.${role} or null
+    else if payload == null || attrNames payload != [ key ] || payloadRole payload != role then
+      null
+    else
+      payload.${key};
+
   # WHERE A TYPE DECLARES ITS ELEMENT, as the prefix it hands the element's declaration answer when
   # asked at `prefix`. The type is rebuilt over a probe element whose declaration answer IS the
   # prefix it was asked at, so the type's own `declares` states the path segment it adds: `attrsOf`
@@ -682,24 +706,80 @@ let
     "getSubModules"
     "substSubModules"
   ];
+  # ★ ONE DEFINITION, read twice — by the refusal below to decide its domain, and by the import to
+  # populate `carries`. The roles are read in each role's own introspection spelling
+  # (`roleSpelling.<role>.nested`'s keys) or, for a module set, the sub-protocol slot that states it.
+  # The order is load-bearing: a container's module set IS its element's, so the module-set arm is
+  # reached only by a record stating no element, and reading it first would force the element type
+  # at construction. A role key holding an OPTION record states no role: `attrTag`'s `nestedTypes`
+  # is its tag set (see `joinRenames`), so a tag an author NAMED `elemType`, `left` or `right` is a
+  # tag, and read as a role it would stop the identity walk on a slot whose type carries identity.
+  statedRoles =
+    t:
+    let
+      nested = t.nestedTypes or { };
+      isOption = v: isAttrs v && (v._type or null) == "option";
+    in
+    if nested ? elemType && !(isOption nested.elemType) then
+      { element = nested.elemType; }
+    else if t ? elemType then
+      { element = t.elemType; }
+    else if nested ? left && nested ? right && !(isOption nested.left) && !(isOption nested.right) then
+      {
+        alternatives = [
+          nested.left
+          nested.right
+        ];
+      }
+    else if (t.getSubModules or null) != null then
+      { moduleSet = t.getSubModules; }
+    else
+      { };
+
   carrierRefusal =
     t:
     let
       name = nameOf t;
-      carriesElemType = t ? elemType || (t.nestedTypes or { }) ? elemType;
-      carriesModuleSet = (t.getSubModules or null) != null;
+      roles = statedRoles t;
       missing = filter (f: !(t ? ${f})) subProtocol;
     in
-    # `||` short-circuits, and the order is load-bearing: a container's module set IS its element's,
-    # so reading it to decide the domain would force the element type at construction.
-    if !(carriesElemType || carriesModuleSet) || missing == [ ] then
+    # A union's members introduce no path level, so a leaf's three answers are ITS answers; the
+    # roles that owe the sub-protocol are the two a leaf's answer is false for.
+    if !(roles ? element || roles ? moduleSet) || missing == [ ] then
       null
     else
       "gen-merge: the structural type `${name}' carries "
-      + (if carriesElemType then "an element type" else "a module set")
+      + (if roles ? element then "an element type" else "a module set")
       + " but does not supply "
       + concatStringsSep ", " (map (f: "`${f}'") missing)
       + "; a structural type may not inherit a leaf's protocol answer";
+
+  # relationOwedRefusal — a record that CARRIES something and states nothing to answer for it.
+  #
+  # A carrier is rebuilt over another parameter wherever the export half derives its relation, so
+  # gen's constructor owes it `recarry` unless a stated relation answers instead. A descriptor written
+  # in the foreign protocol states its relation as `functor.binOp`; one stating neither would reach
+  # gen's constructor and be refused there in a word its author never wrote. The refusal belongs here,
+  # in the author's vocabulary, for the reason `carrierRefusal` does.
+  relationOwedRefusal =
+    t:
+    let
+      roles = statedRoles t;
+    in
+    if roles == { } || statesRelation t || t ? recarry then
+      null
+    else
+      "gen-merge: the structural type `${nameOf t}' carries "
+      + (
+        if roles ? element then
+          "an element type"
+        else if roles ? alternatives then
+          "alternatives"
+        else
+          "a module set"
+      )
+      + " but states no merge relation for it; state one in `functor.binOp' (with `functor.name' and "
+      + "`functor.type'), since a type that carries something answers for how two of it merge";
 
   # The role a foreign payload is stating, or null when it states none. `elemType` is the protocol's
   # key for BOTH a single wrapped type and a union's positional member list, and the two are told
@@ -758,21 +838,14 @@ let
     # own relation, so there is nothing to lose and nothing to name. What survives is the case the
     # refusal is still true of — a functor that states the relation SLOT and leaves it empty, where
     # there is a parameter to discriminate on and nothing stated to discriminate with.
-    if
-      f == null
-      || !(f ? binOp)
-      || !statesParameter
-      || payloadRole payload != null
-      || (f.binOp or null) != null
-    then
+    if f == null || !(f ? binOp) || !statesParameter || (f.binOp or null) != null then
       null
     else
-      "gen-merge: the option type `${name}' supplies a `functor' this boundary cannot read: its "
-      + "parameter is stated as neither `payload.elemType' nor `payload.modules', so the parameter "
-      + "and the `binOp' that discriminates on it are discarded and `${name}' merges on its NAME "
-      + "ALONE — accepting two operands its own `binOp' refuses. State the parameter as "
-      + "`functor.payload.elemType' (or `.modules'), or drop the `functor' if merging on the name "
-      + "alone is what this type means";
+      "gen-merge: the option type `${name}' states a parameter in its `functor' but leaves "
+      + "`functor.binOp' empty, so nothing it states can discriminate on that parameter and "
+      + "`${name}' would merge on its NAME ALONE — accepting two operands the parameter tells apart. "
+      + "State the relation in `functor.binOp', or drop the `functor' if merging on the name alone is "
+      + "what this type means";
 
   # protoTypeMerge — the foreign protocol's OWN generic type-merge combinator, transcribed.
   #
@@ -928,6 +1001,8 @@ let
       { refused = functorRefusal t; }
     else if relationRefusal t != null then
       { refused = relationRefusal t; }
+    else if relationOwedRefusal t != null then
+      { refused = relationOwedRefusal t; }
     else
       {
         imported =
@@ -940,8 +1015,7 @@ let
             checked = isV2 t || checksDefs t;
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
-            payload = (t.functor or { }).payload or null;
-            role = payloadRole payload;
+            roles = statedRoles t;
           in
           # WHAT THE FOREIGN PROTOCOL DID NOT SAY SURVIVES UNTOUCHED. Only the protocol's own names
           # are consumed here; a descriptor's other fields are the author's and are none of this
@@ -969,7 +1043,7 @@ let
           )
           // (if deprecated == null then { } else { inherit deprecated; })
           // (if t ? description then { inherit (t) description; } else { })
-          // (if role == null then { } else { carries.${role} = payload.${roleSpelling.${role}.payloadKey}; })
+          // (if roles == { } then { } else { carries = roles; })
           # ★★ THE AUTHOR'S RELATION IS RETAINED UNDER A GEN NAME, NOT UNDER THE PROTOCOL'S. What the
           # author stated about how this type merges is not the protocol's to take back — stripped
           # with the rest, the record has no relation and the vocabulary supplies its nullary one,
@@ -1223,6 +1297,7 @@ in
     importType
     importedAdmits
     importedCarried
+    importedOffered
     importedDecidable
     importedDeprecation
     importedElementPrefix

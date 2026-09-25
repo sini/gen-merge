@@ -211,7 +211,7 @@ let
       { refused = "`${name}' and `${nameOf other}'"; }
     else
       let
-        partnerElem = interface.importedCarried "element" other;
+        partnerElem = interface.importedOffered "element" other;
       in
       if partnerElem == null then
         { refused = "`${name}' and a partner that states no element type of its own"; }
@@ -333,7 +333,7 @@ let
           { refused = "`submodule' and `${nameOf other}'"; }
         else
           let
-            partnerMods = interface.importedCarried "moduleSet" other;
+            partnerMods = interface.importedOffered "moduleSet" other;
             # A partner's base module args are read off the descriptor attribute directly, for the
             # reason stated above: it is an ordinary attribute and survives export.
             #
@@ -772,7 +772,7 @@ let
           { refused = "`either' and `${nameOf other}'"; }
         else
           let
-            alts = interface.importedCarried "alternatives" other;
+            alts = interface.importedOffered "alternatives" other;
           in
           if alts == null || !(isList alts) || length alts != 2 then
             { refused = "`either' and a partner that states no member pair"; }

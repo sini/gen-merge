@@ -2634,6 +2634,12 @@ let
                   # value at the container's own loc, and read an entry name as an instance.
                   else if element == null && elementAt != null && elementAt != loc then
                     { }
+                  # AN ELEMENT WHOSE POSITION THE TYPE DOES NOT STATE: the type carries an element but
+                  # has no rebuild to ask where it sits (a record that crossed stating its own relation
+                  # owes no `recarry`). Wrapper and container cannot be told apart, and either guess
+                  # reads the wrong level, so its entries are not walked — the mirror of the stop above.
+                  else if element != null && elementAt == null then
+                    { }
                   else if element != null then
                     # A container: one level into the VALUE's keys or indices, each with the element
                     # type. Asked FIRST, because a container's module set IS its element's — a

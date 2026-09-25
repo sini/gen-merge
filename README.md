@@ -513,7 +513,13 @@ must sit at a position whose declared type carries identity; an identity in an u
 tracked by the warm plane** — an `id_hash` value at a `raw`/`anything` leaf, as an element of
 `attrsOf raw`, as a member of an `either`, below a terminal leaf, in the freeform layer, or inside a
 foreign container whose payload the boundary does not read (nixpkgs' `attrsOf`/`lazyAttrsOf`, even over
-a submodule declaring `id_hash`; a known boundary). A nesting seam (a tree type) is not walked either,
+a submodule declaring `id_hash`; a known boundary). **A typed position the walk cannot place is not
+tracked either**, and that is a boundary of its own, not a member of the untyped list: below a type that
+carries an element but states no position for it (a record that crossed stating its own merge relation
+and no rebuild, such as a refinement over a nixpkgs wrapper or container), nothing says whether the type
+adds a path level, so the walk stops rather than guess. A moved identity there re-composes warm, equal to
+cold, rather than being refused; the slot's declared type does carry identity, so this is a known loss,
+kept until the walk has a position datum to read. A nesting seam (a tree type) is not walked either,
 as a leaf or as a container's element. The byte
 oracle still compares those values; the refusal does not see them. A wrapper that adds no path level
 (`nullOr`, nixpkgs' `uniq`/`unique`) holds its instance at its own position. Pinned by
@@ -594,7 +600,7 @@ The two vocabularies, kept apart on purpose:
 | `verify` / `admits`   | value predicate (`v -> null \| err`) / domain predicate (`v -> bool`) | `check`                                             |
 | `mergeDefs`           | definition fold, `loc -> defs -> value`                               | `merge`                                             |
 | `whenEmpty`           | what it is worth when nobody defined it                               | `emptyValue`                                        |
-| `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another               | `nestedTypes`, the functor payload                  |
+| `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another               | `nestedTypes`, `getSubModules`                      |
 | `substructure`        | `{ declares; modules; rebuild; }`                                     | `getSubOptions`, `getSubModules`, `substSubModules` |
 | `typeMergeRel`        | the **row-free** type-merge relation                                  | `typeMerge`, `functor`                              |
 | `deprecated`          | the deprecation message, if any                                       | `deprecationMessage`                                |
@@ -776,12 +782,19 @@ over and owes none.
 The missing declaration is the design choice; making the field required makes it total.
 
 **The domain is what the type carries** — a property of the constructor, read off the descriptor rather
-than off any measurement. Two ways a descriptor says so:
+than off any measurement. What a type carries has one source: the same reading (`statedRoles`) decides
+this refusal's domain and fills the imported record's `carries`. A functor payload is what a type
+offers to **merge** on, never what it carries: the container relations read a partner's payload, whole
+and in its role's shape. The one exception is the identity walk's reading of a raw foreign record
+(`importedCarried` and `importedElementPrefix`), which still takes the element and its position from the
+payload, because nothing else such a record states gives the element's position. A record that carries
+something and states no merge relation (`functor.binOp`) is refused by name at import. Two ways a
+descriptor says it carries something:
 
-| the descriptor carries                                                                    | the test           | who is in                                   |
-| ----------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------- |
-| an element type — `elemType`, or nixpkgs' `nestedTypes.elemType` spelling                 | `carriesElemType`  | `listOf`, `attrsOf`/`lazyAttrsOf`, `nullOr` |
-| a module set — `getSubModules`, the protocol's own field for one, supplied and non-`null` | `carriesModuleSet` | `submodule`, `deferredModule`               |
+| the descriptor carries                                                                    | the test      | who is in                                   |
+| ----------------------------------------------------------------------------------------- | ------------- | ------------------------------------------- |
+| an element type — `elemType`, or nixpkgs' `nestedTypes.elemType` spelling                 | `statedRoles` | `listOf`, `attrsOf`/`lazyAttrsOf`, `nullOr` |
+| a module set — `getSubModules`, the protocol's own field for one, supplied and non-`null` | `statedRoles` | `submodule`, `deferredModule`               |
 
 The `nestedTypes.elemType` arm is **load-bearing rather than defensive**: `nullOr` carries its element
 only there, so without it `nullOr` would escape its own rule. Disjunct **order** is load-bearing too —
@@ -1341,10 +1354,9 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   Not covered, because no name separates the check from its base: an `addCheck` that keeps its
   base's name (`addCheck int f`, `nonEmptyListOf`), and gen-merge's own check-only `mkOptionType`
   redeclared under one name with a different check, which merges on the name. Nor a drop under a
-  role no functor payload carries, when the join is a gen record: the operand is read in the join's
-  vocabulary, which cannot state that role. A relation that asks `mergeTypes` for what it wraps
-  (gen-schema's `refined`, gen-aspects' `aspectsRoot`) is judged there instead; one that asks the
-  wrapped type's own foreign `typeMerge` is not judged.
+  key `nestedTypes` states that names no role this boundary carries (`freeformType`,
+  `coercedType`/`finalType`, an `attrTag`'s tags): it is not in gen's vocabulary, so a join is not
+  judged over it.
 
 - **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
   drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`
