@@ -842,6 +842,10 @@ let
   # Two descents would be two answers to "which locs are declared leaves" that can drift apart —
   # the same reason the portable-subset lint consumes the engine's own predicates rather than its
   # own copies. Only the SPINE is walked: an entry's `opt` is the descriptor thunk, unforced here.
+  # `evalModuleTree`'s `declarationGuard` is the one second descent, and it is deliberate: routing
+  # the guard through this list builds and forces a loc per declared leaf that nothing reads, and a
+  # boolean walk over the same branches recovers that cost. The price is that the guard's depth is
+  # its own; `ci/tests-error.nix` pins it with a key set read three groups down.
   declLeafEntries =
     tree:
     let
@@ -1904,15 +1908,15 @@ let
       # It costs one declaration-side application of the module set. The value side — the merge, the
       # priority pass, the type folds — is untouched, and the guard forces no definition.
       #
-      # The spine is forced by `declLeafEntries`'s own descent — the same `isOptLeaf` stop, the same
-      # group recursion, so the same set of forced nodes — answered as a boolean rather than as
+      # The spine is forced by a copy of `declLeafEntries`'s descent — the same `isOptLeaf` stop, the
+      # same group recursion, so the same set of forced nodes — answered as a boolean rather than as
       # `deepSeq (declLeafPaths …)`, which builds and then forces a loc list per declared leaf that
       # nothing reads. Forcing is the whole of the guard; no path is its product.
       declarationGuard =
         let
           spine =
             t:
-            builtins.all (
+            all (
               k:
               let
                 v = t.${k};

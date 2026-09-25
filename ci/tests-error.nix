@@ -2231,8 +2231,42 @@ in
           msg = "^gen-merge: a module read `config' while its own declarations were being folded, .*Declare the option unconditionally and gate its `config' instead, or compose the modules before evaluation rather than through `imports = \\[ config\\.… \\]'$";
         };
       };
+      # ★ THE GUARD'S DEPTH. The same read, two groups down: the key set at `g.h.k` is reached only
+      # by the guard's own recursion into groups, which is a descent of its own rather than
+      # `declLeafEntries`'s, so nothing else in the suites pins how far it goes. A walk that stops
+      # at the top level is cheaper and green on every other cell, and this module then reads
+      # `infinite recursion encountered` — uncatchable and unnamed — instead of the refusal.
+      test-a-config-dependent-key-set-three-groups-down-refuses-at-the-fold = {
+        expr = realize {
+          modules = [
+            (
+              { config, ... }:
+              {
+                options.flag = gm.mkOption {
+                  type = t.bool;
+                  default = true;
+                };
+                options.g.h.k =
+                  if config.flag then
+                    {
+                      leaf = gm.mkOption {
+                        type = t.str;
+                        default = "d";
+                      };
+                    }
+                  else
+                    { };
+              }
+            )
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read `config' while its own declarations were being folded, .*Declare the option unconditionally and gate its `config' instead, or compose the modules before evaluation rather than through `imports = \\[ config\\.… \\]'$";
+        };
+      };
       # LIVE CONTROL, same run: the same reader over a module set that crosses no plane evaluates.
-      # Without it the three cells above are consistent with a door and a fold that refuse
+      # Without it the four cells above are consistent with a door and a fold that refuse
       # everything, which is a broken library passing its own oracle.
       test-the-door-and-the-fold-admit-an-ordinary-module-control = {
         expr = cfg {
