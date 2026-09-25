@@ -11,18 +11,22 @@
 #
 #   prelude : gen-prelude.lib (the pure builtins/utility base)
 #   types   : gen-types.lib (the injected leaf CHECKERS — { <name> = { verify; check; } }).
-#             REQUIRED, no default — the `memo` precedent below, and here the reason is measured
-#             rather than chosen. This formal read `types ? { }` and the prose above it called the
-#             argument optional for byte-mode bring-up; that default DID NOT EVALUATE. The published
-#             `types` namespace is a linkset merge whose allowlist names three collisions AGAINST THE
-#             LEAF VOCABULARY, so an empty vocabulary makes every entry stale and `merge.types`
-#             throws from inside: `linkset: allowlist entry 'attrsOf' names no actual collision
-#             between 'gen-types' and 'gen-merge'`. A default that throws is strictly worse than no
-#             default at all — a caller reading this header cannot tell "I called it wrong" from
-#             "the library is broken", whereas a missing required formal aborts AT THE CALL SITE
-#             naming `types`. Nothing loses a default it was using: every construction in this repo
-#             and every by-path consumer in the ecosystem already passes it explicitly, swept
-#             (den-hoag-qsrcp). The checker contract is `verify : v -> null|err`.
+#             REQUIRED, no default — the `memo` precedent below. A defaulted vocabulary cannot be
+#             told apart from a forgotten one: `{ }` now publishes a strategies-only namespace (it
+#             once threw from inside), so a `types ? { }` default would hand a caller who forgot the
+#             argument a namespace with no leaves, where a missing required formal aborts AT THE
+#             CALL SITE naming `types`. Every construction in this repo and every by-path consumer
+#             already passes it explicitly, swept (den-hoag-qsrcp). The checker contract is
+#             `verify : v -> null|err`.
+#             WHAT THE ASSEMBLY CHECKS OF IT, and no more: that it is an untagged attribute set
+#             (`vocabularyDefect` below — a null, a list, or a tagged value such as a flake's
+#             outputs refuses by name), that each type-shaped member imports through the refusing
+#             import environment (`importLeaf`), and that every name it shares with this library's
+#             strategies is declared in `types-allowlist.nix`. A vocabulary meeting those publishes
+#             whatever subset of names it carries; one sharing an UNdeclared name with the
+#             strategies refuses the namespace (nixpkgs' whole `lib.types` does, at nine names).
+#             Members that are neither a type record nor a function pass through unexamined, and a
+#             function member is examined only when applied (den-hoag-ltnf7).
 #   memo    : gen-memo.lib (ADR-0008 item 2 — the ONE incremental plane's reuse DECISION,
 #             `warmDecision`). REQUIRED, no default: gen-merge computes the bipartite
 #             contribution-relation FACT (design spec §2.1) and hands it to gen-memo, which decides
@@ -90,6 +94,31 @@ let
     in
     if defect == null then scope else throw "gen-merge: ${defect}";
 
+  # ── THE VOCABULARY DOOR — `scopeDefect`'s shape, over the one fact this library demands of `types`
+  # before the per-member import: that it is a RECORD OF NAMES. A non-attrset aborted `mapAttrs`
+  # uncatchably. A TAGGED attrset is a value, not a namespace — `_type` is how Nix marks one, and a
+  # flake's outputs carry `_type = "flake"` — and admitting one published `narHash`/`inputs`/… as types,
+  # so the consumer's `types.str` aborted uncatchably instead. Which names a vocabulary carries is the
+  # caller's business and is not judged here.
+  vocabularyDefect =
+    t:
+    if !builtins.isAttrs t then
+      "declares a `types' that is a ${builtins.typeOf t} rather than a leaf vocabulary record (an attribute set)"
+    else if t ? _type then
+      let
+        tag = if builtins.isString t._type then t._type else builtins.typeOf t._type;
+      in
+      "declares a `types' that is a tagged `${tag}' value rather than a leaf vocabulary record"
+      + (if tag == "flake" then " — a flake's outputs; its vocabulary is the flake's `lib'" else "")
+    else
+      null;
+
+  checkedTypes =
+    let
+      defect = vocabularyDefect types;
+    in
+    if defect == null then types else throw "gen-merge: ${defect}";
+
   priority = import ./priority.nix { inherit prelude; };
   # ★ THE DOOR IS FORCED BY `core` ITSELF, NOT BY THE FIRST USE OF THE EVALUATOR. `scope` is read
   # only where the knot is driven, so without this `seq` a defective evaluator would sit unexamined
@@ -107,7 +136,7 @@ let
   lintLib = import ./lint.nix { inherit prelude priority core; };
   linkset = import ./linkset.nix { inherit prelude; };
 
-  # A leaf vocabulary arrives from OUTSIDE this library — gen-types by default, and in compat mode a
+  # A leaf vocabulary arrives from OUTSIDE this library — gen-types in the shipped wiring, and in compat mode a
   # foreign one — so entering the published namespace is an inbound crossing followed by an outbound
   # one: the record is read through the boundary's import environment and rebuilt as a gen type, which
   # is then expressed in the foreign protocol like every other type this library publishes.
@@ -368,44 +397,24 @@ in
   # The overlap here is real and is not going away, so the rule is disjointness WITH A DECLARED
   # ALLOWLIST: every collision is named, carries the ground for which side wins AT THAT NAME, and
   # leaves the shadowed value reachable. An undeclared collision refuses.
+  #
+  # ★ THE ALLOWLIST IS THIS LIBRARY'S DECLARATION, SO ITS STALENESS IS JUDGED AGAINST THIS LIBRARY'S
+  # EXPORTS (`linkset.nix`, `stale`), never against the supplied vocabulary. An entry naming a name
+  # the vocabulary lacks is INAPPLICABLE — no overlap there, nothing decided, nothing shadowed — which
+  # is `scopeDefect`'s rule: the caller is judged only on names this library demands. Whether the
+  # SHIPPED roster still collides at each entry is a fact about the pair, checked where the roster is
+  # pinned (ci/tests/linkset.nix, `rosterMissing`). The left label is neutral because this library
+  # cannot know which vocabulary it was handed.
   types =
     (linkset.mergeExports {
       left = {
-        library = "gen-types";
-        exports = builtins.mapAttrs (_: completeExport) types;
+        library = "the supplied `types` vocabulary";
+        exports = builtins.mapAttrs (_: completeExport) checkedTypes;
       };
       right = {
         library = "gen-merge";
         exports = strategies;
       };
-      allow = {
-        listOf.ground = ''
-          This namespace is the drop-in a foreign module system mounts, and at this name such a
-          consumer requires the CROSS-DEFINITION MERGE meaning: the strategy folds definitions
-          across modules, where gen-types' constructor is a structural PREDICATE over one value.
-          The cost is exactly the unqualified spelling inside this namespace — the gen-types
-          predicate stays reachable through the hub's flat roster and from gen-types directly.
-        '';
-        attrsOf.ground = ''
-          The same cross-definition merge meaning as `listOf`, over attribute sets rather than
-          lists: a mounting consumer declaring `attrsOf` in a foreign module system needs
-          definitions from several modules folded, not one value checked. Stated for THIS name
-          rather than carried from `listOf` because the two constructors differ in what they fold.
-        '';
-        attrs.ground = ''
-          The one name at which BOTH sides mint a nullary VALUE rather than a constructor, and the
-          drop-in meaning here is the folding one twice over: a mounting consumer declaring `attrs`
-          needs what several modules contribute to that option COMBINED, and needs an answer for the
-          case where nobody contributed anything. Neither is sayable by a predicate over one value,
-          which is what gen-types' entry is; that predicate stays reachable through the hub's flat
-          roster and from gen-types directly, unchanged and still minted where it was.
-        '';
-        option.ground = ''
-          ★ THE WEAKEST ENTRY, AND IT SAYS SO. This library's `option` is a bare alias for
-          `nullOr`, so what shadows gen-types' parametric `option` is an alias rather than a
-          distinct construct — the winning side wins by sitting in the drop-in namespace, not by
-          meaning more. This is the first entry to retire if the namespace is ever split.
-        '';
-      };
+      allow = import ./types-allowlist.nix;
     }).exports;
 }

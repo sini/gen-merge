@@ -25,7 +25,6 @@ let
   inherit (builtins)
     attrNames
     concatStringsSep
-    elem
     filter
     isString
     length
@@ -81,7 +80,7 @@ in
   #
   #   left  : { library; exports; }   the environment that LOSES an admitted collision
   #   right : { library; exports; }   the environment that WINS one (Nix `//` is right-biased)
-  #   allow : { <name> = { ground = "…"; }; }
+  #   allow : { <name> = { ground = "…"; }; }   the RIGHT side's declaration of where it wins
   #
   # ★ THE RETENTION RECORD IS REQUIRED AND PERMANENT (owner-ruled). Every ADMITTED shadow carries an
   # `overridden` record naming the shadowed value and the library it came from. This is Leijen's
@@ -105,9 +104,14 @@ in
 
       copied = duplicateGround allow;
 
-      # An allowlist entry naming a name that does not actually collide is a stale exemption — it
-      # reads as a decided overlap and decides nothing. Named rather than ignored.
-      stale = filter (n: !(elem n collisions)) (attrNames allow);
+      # An allowlist entry naming a name the RIGHT side does not export is a stale exemption — it
+      # reads as a decided overlap and can decide nothing, whatever the left supplies. Named rather
+      # than ignored. It is judged against `right` alone because the allowlist is right's claim: an
+      # entry naming a name the LEFT lacks is inapplicable to this link (no overlap there, nothing
+      # decided, nothing shadowed), not stale, and refusing on it would judge the left for the right's
+      # hygiene. Whether a particular left still collides at each entry is a fact about that pair,
+      # checked by whoever pins the pair.
+      stale = filter (n: !(right.exports ? ${n})) (attrNames allow);
 
       admitted = prelude.listToAttrs (
         map (n: {
@@ -132,8 +136,8 @@ in
       refuseUndeclared left.library right.library undeclared
     else if stale != [ ] then
       throw (
-        "linkset: allowlist entry '${prelude.head stale}' names no actual collision between "
-        + "'${left.library}' and '${right.library}'. A stale exemption reads as a decided overlap "
+        "linkset: allowlist entry '${prelude.head stale}' names no export of '${right.library}', "
+        + "the side the allowlist decides in favour of. A stale exemption reads as a decided overlap "
         + "and decides nothing; remove it or state the collision it is for."
       )
     else

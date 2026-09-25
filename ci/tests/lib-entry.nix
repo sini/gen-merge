@@ -2,12 +2,13 @@
 # the same thing about what a caller must supply.
 #
 # ★★★ WHY THIS FILE EXISTS. `lib/default.nix` documented `types ? { }` as an OPTIONAL parameter for
-# byte-mode bring-up, and that default DID NOT EVALUATE. The published `types` namespace is a
-# linkset merge whose allowlist names three collisions AGAINST THE LEAF VOCABULARY (`listOf`,
-# `attrsOf`, `option`), so an EMPTY vocabulary makes every entry stale and `merge.types` throws from
-# inside: `linkset: allowlist entry 'attrsOf' names no actual collision between 'gen-types' and
-# 'gen-merge'`. A caller following the library's own stated convention got an exception, not a
-# default — and could not tell "I called it wrong" from "the library is broken" (den-hoag-qsrcp).
+# byte-mode bring-up, and that default DID NOT EVALUATE: the allowlist's staleness was then judged
+# against the supplied vocabulary, so an EMPTY one threw from inside (`linkset: allowlist entry
+# 'attrsOf' names no actual collision …`). A caller following the library's own stated convention got
+# an exception, not a default — and could not tell "I called it wrong" from "the library is broken"
+# (den-hoag-qsrcp). Staleness is now judged against this library's own exports (den-hoag-2f4gm), so
+# `{ }` would publish a strategies-only namespace instead; the property below is independent of
+# that, since a default would still hand a caller who forgot `types` a namespace with no leaves.
 #
 # ★★ THE DEFECT WAS INVISIBLE TO EVERY OTHER CELL IN THIS SUITE, WHICH IS THE REASON FOR A FILE
 # RATHER THAN A LINE. Measured: `ci#tests` 450/450 and `ci#testsError` 61/61, exit 0 on both, with

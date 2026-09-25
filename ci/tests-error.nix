@@ -37,6 +37,9 @@
   genMergeWith,
   genMergeWithScope,
   genTypes,
+  genTypesFlake,
+  genLinkset,
+  genMergeCompat,
   ...
 }:
 let
@@ -3616,5 +3619,71 @@ in
           expectedError = refuses "`int' and `int', which the first type's own `functor' does not reconcile";
         };
       };
+
+    # THE NAMESPACE ASSEMBLY'S REFUSALS OVER A SUPPLIED VOCABULARY (den-hoag-2f4gm). Each names
+    # what is wrong in the caller's terms; `tryEval` would discard which.
+    flake.testsError.linkset-vocabulary = {
+      # Owned staleness: an allowlist entry naming nothing the RIGHT side exports refuses, and the
+      # message says it is judged against the side the allowlist decides for.
+      test-stale-entry-names-the-side-it-is-judged-against = {
+        expr =
+          (genLinkset.mergeExports {
+            left = {
+              library = "l";
+              exports = { };
+            };
+            right = {
+              library = "gen-merge";
+              exports.x = 1;
+            };
+            allow.nosuch.ground = "names a name the right side does not export";
+          }).exports;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^linkset: allowlist entry 'nosuch' names no export of 'gen-merge', the side the allowlist decides in favour of\\.";
+        };
+      };
+      # A non-attrset vocabulary refuses by name, catchably — it used to abort `mapAttrs`.
+      test-null-vocabulary-refuses-by-name = {
+        expr = builtins.attrNames (genMergeWith null).types;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: declares a `types' that is a null rather than a leaf vocabulary record \\(an attribute set\\)$";
+        };
+      };
+      test-list-vocabulary-refuses-by-name = {
+        expr = builtins.attrNames (genMergeWith [ ]).types;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: declares a `types' that is a list rather than a leaf vocabulary record \\(an attribute set\\)$";
+        };
+      };
+      # The honest wiring mistake: the gen-types FLAKE passed where its `lib` belongs. Admitted, its
+      # `narHash`/`inputs`/… published as types and `types.str` aborted uncatchably.
+      test-flake-passed-as-vocabulary-refuses-by-name = {
+        expr = (genMergeWith genTypesFlake).types.str;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: declares a `types' that is a tagged `flake' value rather than a leaf vocabulary record — a flake's outputs; its vocabulary is the flake's `lib'$";
+        };
+      };
+      # Any other tagged value — here one type passed where a namespace of them belongs.
+      test-single-type-passed-as-vocabulary-refuses-by-name = {
+        expr = builtins.attrNames (genMergeWith nixpkgsLib.types.str).types;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: declares a `types' that is a tagged `option-type' value rather than a leaf vocabulary record$";
+        };
+      };
+      # The undeclared refusal names the supplied vocabulary neutrally — this library cannot know
+      # whose it is — and is the paired refusing control for the publication cell in tests/linkset.nix.
+      test-undeclared-collision-names-the-supplied-vocabulary = {
+        expr = builtins.attrNames genMergeCompat.types;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at names 'anything', 'deferredModule', 'either', 'lazyAttrsOf', 'mkOptionType', 'nullOr', 'oneOf', 'raw', 'submodule'\\.";
+        };
+      };
+    };
   };
 }

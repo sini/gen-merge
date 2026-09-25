@@ -46,6 +46,9 @@
       # gen-prelude at its own root — which this is.
       prelude = gen-prelude.lib;
       genTypes = gen-types.lib;
+      # The gen-types FLAKE itself, for the one cell asserting that passing it where its `lib` belongs
+      # refuses by name (tests-error.nix, `linkset-vocabulary`).
+      genTypesFlake = gen-types;
       # ADR-0008 item 2 — the ONE incremental plane. Bound once, same substrate precedent as
       # `prelude` above: every `../lib` instance this file builds shares this one `genMemo`.
       genMemo = gen-memo.lib;
@@ -155,6 +158,7 @@
           genMergeWithMemo
           genMergeWithScope
           genMemo
+          genTypesFlake
           genScope
           interface
           differential

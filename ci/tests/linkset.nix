@@ -10,10 +10,41 @@
 # entries are CONSTRUCTORS, and gen's type equality is not total over functions (it forces `v.name`
 # on a lambda and the abort escapes `tryEval`). A precondition unevaluable at the merged objects is
 # not a precondition.
-{ genLinkset, ... }:
+{
+  genLinkset,
+  genMergeWith,
+  genTypes,
+  nixpkgsLib,
+  ...
+}:
 let
   ok = e: (builtins.tryEval e).success;
   refuses = e: !(builtins.tryEval e).success;
+
+  # The allowlist the library reads, by the same path — not a second copy of it.
+  allowlist = import ../../lib/types-allowlist.nix;
+
+  # A vocabulary gen-merge never saw, lacking every allowlist name.
+  np = nixpkgsLib.types;
+  V = { inherit (np) str int bool; };
+  overV = genMergeWith V;
+  readV =
+    v:
+    (overV.evalModuleTree {
+      modules = [
+        { options.p = overV.mkOption { type = overV.types.str; }; }
+        { p = v; }
+      ];
+    }).config.p;
+  # The same vocabulary padded with every allowlist name (`foreign-leaf-check.nix`'s `compat` shape).
+  padded = V // {
+    inherit (np) attrs listOf attrsOf;
+    option = np.nullOr;
+  };
+
+  # ROSTER HYGIENE (claim (ii)): every allowlist entry still names a collision WITH THE SHIPPED
+  # ROSTER. It lives here because this is where the roster is pinned; `lib/` sees only an argument.
+  rosterMissing = roster: builtins.filter (n: !(roster ? ${n})) (builtins.attrNames allowlist);
 
   L = {
     library = "gen-types";
@@ -160,8 +191,8 @@ in
     };
   };
 
-  # A STALE EXEMPTION — an allowlist entry naming no actual collision — refuses too: it reads as a
-  # decided overlap and decides nothing.
+  # A STALE EXEMPTION — an allowlist entry naming nothing the RIGHT side exports — refuses: it reads
+  # as a decided overlap and can decide nothing. The message is asserted in tests-error.nix.
   flake.tests.linkset.test-stale-allowlist-entry-refuses = {
     expr =
       refuses
@@ -177,5 +208,95 @@ in
           allow.nosuch.ground = "names a collision that does not exist";
         }).exports;
     expected = true;
+  };
+
+  # AN INAPPLICABLE ENTRY IS NOT STALE. The entry names a name the right side exports and the left
+  # lacks: there is no overlap at it for this link, so it decides nothing and shadows nothing, and
+  # the merge constructs.
+  flake.tests.linkset.test-inapplicable-entry-constructs = {
+    expr =
+      (genLinkset.mergeExports {
+        left = {
+          library = "l";
+          exports = { };
+        };
+        right = {
+          library = "gen-merge";
+          exports.x = 1;
+        };
+        allow.x.ground = "the right side wins here because X";
+      }).exports;
+    expected = {
+      x = 1;
+    };
+  };
+
+  # A VOCABULARY LACKING EVERY ALLOWLIST NAME PUBLISHES its own names beside the strategies. Scoped:
+  # this holds for a vocabulary whose overlap with the strategies is allowlisted; nixpkgs' whole
+  # `lib.types` shares nine undeclared names and refuses (tests-error.nix, the paired control).
+  flake.tests.linkset.test-foreign-vocabulary-without-allowlist-names-publishes = {
+    expr = builtins.attrNames overV.types;
+    expected = [
+      "anything"
+      "attrs"
+      "attrsOf"
+      "bool"
+      "deferredModule"
+      "defineType"
+      "either"
+      "int"
+      "lazyAttrsOf"
+      "listOf"
+      "mkOption"
+      "mkOptionType"
+      "mkType"
+      "nullOr"
+      "oneOf"
+      "option"
+      "raw"
+      "str"
+      "submodule"
+    ];
+  };
+
+  # ...AND ITS OWN NAME STILL CHECKS, as a pair: the `1` side alone would also read "refused" if the
+  # whole namespace refused, so only the pair discriminates.
+  flake.tests.linkset.test-foreign-vocabulary-own-name-mounts-and-checks = {
+    expr = {
+      good = readV "x";
+      badRefused = refuses (readV 1);
+    };
+    expected = {
+      good = "x";
+      badRefused = true;
+    };
+  };
+
+  # EACH ALLOWLIST NAME, REMOVED ALONE from a vocabulary carrying all of them, leaves a namespace
+  # that publishes. The live half of the pair is the padded vocabulary itself.
+  flake.tests.linkset.test-each-allowlist-name-is-droppable-from-the-vocabulary = {
+    expr = {
+      padded = ok (builtins.attrNames (genMergeWith padded).types);
+      dropped = builtins.mapAttrs (
+        n: _: ok (builtins.attrNames (genMergeWith (removeAttrs padded [ n ])).types)
+      ) allowlist;
+    };
+    expected = {
+      padded = true;
+      dropped = builtins.mapAttrs (_: _: true) allowlist;
+    };
+  };
+
+  # ROSTER HYGIENE — the shipped gen-types still collides at every allowlist entry; the planted drift
+  # (one name removed) is the same-run control that the predicate can fire.
+  flake.tests.linkset.test-every-allowlist-entry-names-a-shipped-roster-collision = {
+    expr = {
+      shipped = rosterMissing genTypes;
+      plantedDrift = rosterMissing (removeAttrs genTypes [ "listOf" ]);
+    };
+    expected = {
+      shipped = [ ];
+      plantedDrift = [ "listOf" ];
+    };
   };
 }

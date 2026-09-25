@@ -663,6 +663,16 @@ reason to swallow. Being total over that input is the whole reason the import en
 rather than doing its best. Refusal is **per name**: the namespace is lazy, so a bad entry refuses
 when forced and every other name still publishes.
 
+What the assembly checks of the vocabulary, and no more: that it is an untagged attribute set (a
+null, a list, or a tagged value such as a flake's outputs refuses by name), that each type-shaped
+member imports as above, and that every name it shares with gen-merge's strategies is declared in
+`lib/types-allowlist.nix`. A vocabulary whose overlap with the strategies is allowlisted publishes
+whatever subset of names it carries — `{ inherit (lib.types) str int bool; }` publishes its three
+beside the strategies. One sharing an undeclared name refuses the whole namespace: nixpkgs' entire
+`lib.types` does, at nine names. The allowlist is gen-merge's own declaration, so an entry is stale
+only when it names nothing gen-merge exports; an entry naming a name the vocabulary lacks is
+inapplicable, and whether the shipped gen-types still collides at each entry is a CI cell.
+
 ## The nixpkgs `optionType` protocol
 
 Every type in the `types` namespace carries the full **14-field nixpkgs `mkOptionType` shape** —

@@ -181,6 +181,7 @@ in
       "lib/lint.nix"
       "lib/modules.nix"
       "lib/priority.nix"
+      "lib/types-allowlist.nix"
       "lib/types.nix"
       "flake.nix"
       "default.nix"
@@ -272,6 +273,6 @@ in
     expr = map (s: lib.removePrefix "${toString ../..}/" s.name) (
       lib.filter (s: genPrelude.hasInfix "''" s.text) rawSources
     );
-    expected = [ "lib/default.nix" ];
+    expected = [ "lib/types-allowlist.nix" ];
   };
 }
