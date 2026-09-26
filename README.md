@@ -1399,7 +1399,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   refused by name. `q = mkIf false "a"` under `freeformType = types.str` therefore reads
   `{ _type = "if"; condition = false; content = "a"; }`, the value nixpkgs gives on the same type and
   the value a foreign leaf gives at this site (`ci/tests/undeclared.nix` cell 22). Whether the
-  plane should discharge or refuse such properties is an open owner question (den-hoag-hgi8v, Q-M).
+  plane should discharge or refuse such properties is an open design question.
 
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
