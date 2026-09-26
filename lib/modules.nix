@@ -1525,6 +1525,23 @@ let
     else
       throw (showConflict loc defs);
 
+  # Whether the values several definers state for one key DIFFER, decided on each definer's OWN
+  # value slot: `==` over a subject that contains the value (`[ v ]`), which is ADR-0034's COMPARED
+  # limb. `==`'s identity short-circuit compares value SLOTS on upstream Nix and Determinate and
+  # heap objects on Lix; a singleton list keeps its element's slot, so the three agree wherever
+  # the definers hold one value in one slot, and a shared value is decided at its WHNF without
+  # walking it. One definer never differs, and its value is not forced: the length guard lives
+  # here and not at a caller, because every key of a union reaches this binding at the `withArgs`
+  # relation (lib/types.nix `mkSubmodule`), and without the guard `[ v ] == head cells` forces a
+  # single definer's value on Nix and Determinate and not on Lix. Its two callers are
+  # `sharedKeyDiffers` below and that relation; the core export says why they share it.
+  slotsDiffer =
+    vs:
+    let
+      cells = map (v: [ v ]) vs;
+    in
+    length vs > 1 && !all (c: c == head cells) cells;
+
   # The CONSTRUCTOR'S default: the fold a `mkOptionType` descriptor stating no fold receives, as
   # nixpkgs' `mkOptionType` takes `merge ? mergeDefaultOption` (lib/interface.nix `importDescriptor`
   # applies it). It is the law above with a named refusal kept at the two arms where nixpkgs'
@@ -1547,16 +1564,7 @@ let
       # function on the first two and keep it on Lix. A singleton list keeps its element's slot
       # (`head` is a primop, whose result is a copy), so the three agree wherever the definitions
       # hold one value in one slot. The split that remains is stated in the README.
-      sharedKeyDiffers = any (
-        vs:
-        length vs > 1
-        && (
-          let
-            cells = map (v: [ v ]) vs;
-          in
-          !all (c: c == head cells) cells
-        )
-      ) (builtins.attrValues (builtins.zipAttrsWith (_: vs: vs) list));
+      sharedKeyDiffers = any slotsDiffer (builtins.attrValues (builtins.zipAttrsWith (_: vs: vs) list));
     in
     if length list > 1 && (all isFunction list || (all isAttrs list && sharedKeyDiffers)) then
       throw (showConflict loc defs)
@@ -1729,6 +1737,14 @@ let
       # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
       # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
       # it refuses with the same reason rather than resolving to a different one.
+      #
+      # `declArgs` is the RIGHT operand for `callM`'s reason: a formal it holds (specialArgs, the
+      # refusing `config`/`options`, `prefix`) binds `declArgs`' OWN attribute, so every declaring
+      # module sees one value slot, and a `withArgs` relation comparing what two of them pass
+      # decides on that slot (`slotsDiffer`). The swap changes cell identity only, never a value.
+      # Per key k: a formal in `declArgs` has `extra.k` = `declArgs.k`; a formal not in `declArgs`
+      # has the inadmissible refusal in `extra` and nothing in `declArgs`; a key in `declArgs`
+      # that is not a formal is absent from `extra`. Both operand orders hold one value per key.
       callD =
         m:
         if builtins.isPath m then
@@ -1740,7 +1756,7 @@ let
               name: _: declArgs.${name} or (inadmissible "config" "read the module argument `${name}'")
             ) formals;
           in
-          m (declArgs // extra)
+          m (extra // declArgs)
         else if isAttrs m then
           if m ? __functor then callD (m.__functor m) else m
         else if isPathString m then
@@ -3018,6 +3034,10 @@ in
     # binding is what keeps the vocabulary's answer and the engine's from drifting apart. Internal
     # seam only — the public `lib/default.nix` surface is unchanged.
     mergeLeaf
+    # The shared-key "differ" notion, exported for the same reason: `mergeDescriptorDefault`'s
+    # shared keys and the `withArgs` relation's base arguments (lib/types.nix `mkSubmodule`) ask
+    # one question, and one binding keeps the two answers from drifting apart.
+    slotsDiffer
     isDefinedValue
     isDefinedBy
     # The shape-directed default-merge law (nixpkgs `lib.mergeDefaultOption` parity) — an INTERIM

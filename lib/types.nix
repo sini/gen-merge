@@ -42,6 +42,7 @@ let
     evalModuleTree
     mergeDefs
     mergeLeaf
+    slotsDiffer
     isDefinedValue
     isDefinedBy
     showOption
@@ -348,7 +349,16 @@ let
             # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
             # its own parameters beside it, which the arm above already refuses by name.
             partnerArgs = other.specialArgs or { };
-            conflicting = filter (k: (partnerArgs ? ${k}) && partnerArgs.${k} != args.${k}) (attrNames args);
+            # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
+            # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
+            # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
+            # its WHNF on every evaluator, where comparing two selections walked the whole value
+            # on Nix and Determinate. A key only one declaration states never conflicts.
+            slots = builtins.zipAttrsWith (_: vs: vs) [
+              args
+              partnerArgs
+            ];
+            conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
           in
           if partnerMods == null then
             {

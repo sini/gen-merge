@@ -1370,9 +1370,20 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `mergeLeaf` and `leafFold` answer as nixpkgs' `mergeEqualOption` does on the same evaluator, this
   split included.
 
+  The same rule, through the same binding (`slotsDiffer`), decides the base module arguments two
+  `(submodule …).withArgs` declarations of one option state: one bound value passed by both (one
+  nixpkgs `lib`, one function, a `specialArgs` formal each declaring module hands on) merges on
+  all three evaluators, decided at its WHNF; an argument only one declaration states is never
+  compared and never forced. The user-copy residue is the same: where each declaration holds a
+  *different* cell of one value that throws when walked (`{ lib = h.lib; }` at each site, or
+  `lib // { }` at each site), Nix and Determinate throw the value's own error and Lix merges. It is
+  stated, not converted into a named refusal: a `tryEval` there would turn the split into a
+  quieter one (refused on two evaluators, merged on the third).
+
 - **A module formal that `specialArgs`, `config`, `options` or `prefix` supplies is that attribute
-  itself, not a copy.** nixpkgs' `applyModuleArgs` copies every formal; `callM` applies a module
-  to `extra // baseArgs`, so a `baseArgs` formal is `baseArgs`' own attribute (0 thunks and no
+  itself, not a copy**, in both strata: the value stratum's `callM` and the declaration stratum's
+  `callD` alike. nixpkgs' `applyModuleArgs` copies every formal; `callM` applies a module
+  to `extra // baseArgs` (and `callD` to `extra // declArgs`), so a `baseArgs` formal is `baseArgs`' own attribute (0 thunks and no
   allocation beyond the application's one `//`), and every module holds one slot. Observable through any `==`: with `specialArgs = { inherit fa; box = [ fa ]; }` and `fa` a
   function, `[ fa ] == box` in a user module reads true on all three evaluators, where nixpkgs reads
   false on Nix and Determinate and true on Lix. nixpkgs is evaluator-split there, so no single

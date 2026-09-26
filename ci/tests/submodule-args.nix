@@ -143,6 +143,57 @@ in
           ? merged;
       expected = true;
     };
+    # The engine path: `lib` reaches each declaring module as a `specialArgs` formal and both hand it
+    # to `withArgs`. The declaration stratum's `callD` binds the formal to `specialArgs`' own slot,
+    # so the relation meets one cell; a per-application copy walks nixpkgs `lib` on Nix and
+    # Determinate and throws on its removed aliases.
+    test-lib-from-specialArgs-in-two-declarations-merges = {
+      expr =
+        let
+          declares =
+            file:
+            { lib, ... }:
+            {
+              _file = file;
+              options.o = mkOption { type = (t.submodule [ forcesLib ]).withArgs { inherit lib; }; };
+            };
+        in
+        (evalModuleTree {
+          specialArgs.lib = nixpkgsLib;
+          modules = [
+            (declares "/warp.nix")
+            (declares "/weft.nix")
+            { config.o = { }; }
+          ];
+        }).config.o.seen;
+      expected = "LIB-ARRIVED";
+    };
+    # One function bound once and passed by both declarations is one value: it merges.
+    test-one-function-passed-by-two-declarations-merges = {
+      expr =
+        let
+          f = x: x;
+        in
+        (((t.submodule [ { } ]).withArgs { g = f; }).typeMergeRel (
+          (t.submodule [ { } ]).withArgs { g = f; }
+        ))
+          ? merged;
+      expected = true;
+    };
+    # A key only ONE declaration states is never compared, so its value is never forced: a throwing
+    # value there merges on every evaluator rather than throwing on two of them.
+    test-an-arg-only-one-declaration-states-is-not-forced = {
+      expr =
+        (
+          ((t.submodule [ { } ]).withArgs {
+            p = 1;
+            q = throw "an arg only one declaration states was forced";
+          }).typeMergeRel
+            ((t.submodule [ { } ]).withArgs { p = 1; })
+        )
+          ? merged;
+      expected = true;
+    };
     # Disagreeing is, and it is REFUSED BY NAME rather than resolved by declaration order.
     test-two-declarations-disagreeing-on-an-arg-refuse-by-name = {
       expr =
@@ -150,6 +201,14 @@ in
           (t.submodule [ { } ]).withArgs { lib = "RIGHT"; }
         )).refused;
       expected = "two `submodule' declarations stating different values for the base module argument `lib'";
+    };
+    # LIVE CONTROL for the function cell: two distinct closures are two values, refused by name.
+    test-two-distinct-functions-refuse-by-name-control = {
+      expr =
+        (((t.submodule [ { } ]).withArgs { g = x: x; }).typeMergeRel (
+          (t.submodule [ { } ]).withArgs { g = y: y; }
+        )).refused;
+      expected = "two `submodule' declarations stating different values for the base module argument `g'";
     };
 
     # ── nothing moved for a caller who does not use the inlet ───────────────────────────────────
