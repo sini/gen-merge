@@ -15,8 +15,10 @@
 # `__fn` against them (`resolveMarkers`, ~:201), replacing the marker with the resolved value.
 #
 # ── minimal faithful model (this file) ───────────────────────────────────────────────────────────
-# `mkThunk fn` is den's marker; `fn` reads the terminal owner (`config` / `osConfig`). We add a
-# `probe = throw "forced too early"` poison payload so ANY premature forcing is directly observable
+# `mkThunk fn` is den's marker, its two keys spelled locally (`configThunk`, `markerFn`): the oracle
+# is that opaque data rides unforced, whatever it is called. `fn` reads the terminal owner (`config` /
+# `osConfig`). We add a `probe = throw "forced too early"` poison payload so ANY premature forcing is
+# directly observable
 # (mirrors merge.nix `deferred.test-not-forced`). `resolveMarker` is den's `resolveMarkers`, run at
 # the terminal against the fixpoint config. den carries markers in the scope-context; here they ride
 # a `lazyAttrsOf raw` option (the same lazy/deferred discipline nixpkgs uses) — the deferral CONTRACT
@@ -42,20 +44,20 @@ let
   gmEval = args: (gm.evalModuleTree args).config;
   npEval = args: stripModule (lib.evalModules args).config;
 
-  # ── minimal faithful model of den's `__configThunk` ────────────────────────────────────────────
-  # A config-dependent quirk value carried as an OPAQUE marker. `__fn` is the deferred function
+  # ── minimal faithful model of den's config-thunk marker ────────────────────────────────────────────
+  # A config-dependent quirk value carried as an OPAQUE marker. `markerFn` is the deferred function
   # reading the TERMINAL owner (config / osConfig); it is applied ONLY at the terminal. `probe` is a
   # poison thunk — forcing it means the marker was touched too early. Resolution REPLACES the marker
-  # with `__fn`'s result (dropping `probe`), exactly like den's `resolveMarkers`.
+  # with `markerFn`'s result (dropping `probe`), exactly like den's `resolveMarkers`.
   mkThunk = fn: {
-    __configThunk = true;
-    __fn = fn;
+    configThunk = true;
+    markerFn = fn;
     probe = throw "forced too early";
   };
   # den class-module.nix `resolveMarkers` (minimal): applied at the terminal with the fixpoint
   # config + owner config. Non-markers pass through untouched. Engine-agnostic plain Nix — the SAME
   # code runs on both the gen-merge and nixpkgs sides, so any output divergence is the ENGINE's.
-  resolveMarker = args: v: if v ? __configThunk then v.__fn args else v;
+  resolveMarker = args: v: if v ? configThunk then v.markerFn args else v;
 
   # ── the fixture modules (parameterized by the engine's `P`) ────────────────────────────────────
   # `host.port` defaults to 0 during composition and is set to 8080 ONLY at the terminal — so a
@@ -194,15 +196,15 @@ in
 {
   flake.tests.deferral = {
     # AC#1/#2 — the marker survives compose(stage1) + route(stage2) as an OPAQUE marker: tag intact,
-    # __fn present, and its poison payload STILL deferred (forcing it throws). Proves it was carried,
+    # markerFn present, and its poison payload STILL deferred (forcing it throws). Proves it was carried,
     # not coincidentally reconstructed.
     test-carried-unforced-through-composition-and-route = {
       expr =
         let
           m = gmRun.carried2.fromConfig;
         in
-        m.__configThunk == true
-        && (m ? __fn)
+        m.configThunk == true
+        && (m ? markerFn)
         && (builtins.tryEval (builtins.seq m.probe null)).success == false;
       expected = true;
     };
@@ -219,13 +221,13 @@ in
     };
 
     # AC#2 — the whole compose + route pipeline COMPLETES with no throw: deepSeq the markers' spine
-    # (tags + __fn-presence, NOT the poison payloads) succeeds.
+    # (tags + markerFn-presence, NOT the poison payloads) succeeds.
     test-composition-completes-without-throw = {
       expr =
         (builtins.tryEval (
           builtins.deepSeq (map (m: {
-            inherit (m) __configThunk;
-            hasFn = m ? __fn;
+            inherit (m) configThunk;
+            hasFn = m ? markerFn;
           }) (builtins.attrValues gmRun.carried2)) null
         )).success;
       expected = true;
