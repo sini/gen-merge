@@ -187,13 +187,35 @@ let
   # and goes back OUT through the export environment. Consumers write
   # `mkOptionType { name = "aspect"; merge = loc: defs: …; }` and get a type that both gen-merge
   # (dispatches on `.mergeDefs`) and nixpkgs (reads the full protocol) accept. A descriptor stating
-  # no fold gets the constructor's default, as nixpkgs' does (`importDescriptor`).
+  # no fold gets the constructor's default, as nixpkgs' does (`importDescriptor`). A descriptor
+  # stating no relation gets `sealedRel` below: one construction redeclared merges, two
+  # constructions of one name are refused, and the name alone never decides it.
   mkOptionType =
     descriptor:
     let
       answer = interface.importDescriptor descriptor;
+      imported = answer.imported;
+      # A descriptor stating no relation gets this one (den-hoag-bfc0k). Its `check` is a caller's
+      # function, so it is SEALED (ADR-0034): the name alone cannot say two of them are one type, and
+      # merging on it let the later declaration win with its own check. A same-named partner merges
+      # only when it is this construction — decided by the reified value under Nix `==`, over
+      # `closuresFirst`'s subject so the comparison terminates on two constructions — and every other
+      # one is refused by name. A `//` derivation of a built record is a different value, and refuses.
+      sealedRel =
+        self: other:
+        if !(isAttrs other) || (other.name or null) != imported.name then
+          { refused = "`${nameOf imported}' and `${nameOf other}'"; }
+        else if interface.closuresFirst [ other ] other == interface.closuresFirst [ self ] self then
+          { merged = self; }
+        else
+          {
+            refused = "`${nameOf imported}' and `${nameOf other}', two separately constructed `mkOptionType' types of one name whose checks are caller-supplied functions and cannot be compared";
+          };
+      exported = defineType (
+        imported // { typeMergeRel = imported.typeMergeRel or (sealedRel exported); }
+      );
     in
-    if answer ? refused then throw answer.refused else defineType answer.imported;
+    if answer ? refused then throw answer.refused else exported;
 
   # Merge two ELEMENT types — the element stratum's name for `core.mergeTypes` (lib/modules.nix),
   # which is guarded on both halves and stated there. It is the SAME binding the DECLARATION stratum

@@ -1449,11 +1449,29 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     Nix `==` does not survive that path.
 
   Not covered, because no name separates the check from its base: an `addCheck` that keeps its
-  base's name (`addCheck int f`, `nonEmptyListOf`), and gen-merge's own check-only `mkOptionType`
-  redeclared under one name with a different check, which merges on the name. Nor a drop under a
+  base's name (`addCheck int f`, `nonEmptyListOf`). Nor a drop under a
   key `nestedTypes` states that names no role this boundary carries (`freeformType`,
   `coercedType`/`finalType`, an `attrTag`'s tags): it is not in gen's vocabulary, so a join is not
   judged over it.
+
+- **A `mkOptionType` stating no relation merges with one construction and refuses two of one name.**
+  Its check is a caller's function, so the name cannot say two of them are one type; the relation
+  compares the reified records under Nix `==` over `closuresFirst`'s subject, which terminates on
+  two constructions (`ci/tests/samename-relation.nix`, `compatEngine` included). Three departures,
+  stated:
+
+  - *One value declared twice merges and keeps its check* (`[g, g]`), where nixpkgs refuses the
+    second declaration. A value equals itself under ADR-0034's compared limb.
+  - *A `//` derivation is another value.* `g // { … }` declared beside `g`, or twice, is refused,
+    loudly, even where the derivation changes nothing the check reads.
+  - *A selection reaches the one record.* `h.g` written at each declaration merges on all three
+    evaluators (`test-one-construction-merges.reachedTwice`): the subject's closures are the
+    record's own attributes. The evaluator split of the shared-key bullet above belongs to a
+    FUNCTION reached by selection at each site, which is where the companions' compared
+    components meet it (gen-schema, gen-aspects READMEs).
+
+  `closuresFirst`'s enumerated exceptions (a graft; a record in open caller content) and its value
+  move (a listed field that throws propagates) are stated at its declaration in `lib/interface.nix`.
 
 - **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
   drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`
