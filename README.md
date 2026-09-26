@@ -1461,7 +1461,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   stated:
 
   - *One value declared twice merges and keeps its check* (`[g, g]`), where nixpkgs refuses the
-    second declaration. A value equals itself under ADR-0034's compared limb.
+    second declaration. A value equals itself under Nix `==`, so it is one construction.
   - *A `//` derivation is another value.* `g // { … }` declared beside `g`, or twice, is refused,
     loudly, even where the derivation changes nothing the check reads.
   - *A selection reaches the one record.* `h.g` written at each declaration merges on all three
