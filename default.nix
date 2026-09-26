@@ -27,10 +27,10 @@
 # THE HAND-WRITTEN THREADING IS GONE, AND WHAT REPLACES IT IS PIN COHERENCE RATHER THAN DATAFLOW.
 # This shim used to pass its own `prelude` down into gen-types and gen-memo's own standalone
 # entries by hand so that one evaluator over one authority served all three — two instances being
-# two content-address formulas for one node. Coherent `ci/flake.lock` pins resolve to one store
-# path and `import` memoises, so there is no second instance for a threading to collapse. What
-# makes the count one is now the PINS, and the roster-wide coherence check that keeps them coherent
-# is the hub's rather than this file's.
+# two content-address formulas for one node. Coherent pins in THIS directory's `flake.lock` resolve
+# to one store path and `import` memoises, so there is no second instance for a threading to
+# collapse. What makes the count one is now the PINS, and the roster-wide coherence check that
+# keeps them coherent is the hub's rather than this file's.
 #
 # The `let` is OUTSIDE the lambda because a formal's default is evaluated in the FORMAL scope, which
 # does not see a `let` in the body.
