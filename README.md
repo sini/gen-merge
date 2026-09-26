@@ -1384,7 +1384,9 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   itself, not a copy**, in both strata: the value stratum's `callM` and the declaration stratum's
   `callD` alike. nixpkgs' `applyModuleArgs` copies every formal; `callM` applies a module
   to `extra // baseArgs` (and `callD` to `extra // declArgs`), so a `baseArgs` formal is `baseArgs`' own attribute (0 thunks and no
-  allocation beyond the application's one `//`), and every module holds one slot. Observable through any `==`: with `specialArgs = { inherit fa; box = [ fa ]; }` and `fa` a
+  allocation beyond the application's one `//`), and every module holds one slot. A module whose
+  every formal is in `baseArgs` (`{ options, ... }`) is applied to `baseArgs` itself, which is that
+  union key for key, so it pays neither `extra` nor the `//` (`callD` likewise over `declArgs`). Observable through any `==`: with `specialArgs = { inherit fa; box = [ fa ]; }` and `fa` a
   function, `[ fa ] == box` in a user module reads true on all three evaluators, where nixpkgs reads
   false on Nix and Determinate and true on Lix. nixpkgs is evaluator-split there, so no single
   answer matches it everywhere; this one is uniform. Precedence (`specialArgs` over `_module.args`),
