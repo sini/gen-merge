@@ -134,6 +134,53 @@ let
     ];
   };
 
+  # ── THE COMPARISON SUBJECT OF A VALUE THAT CAN CARRY A TYPE RECORD (den-hoag-bfc0k) ────────────
+  # An exported record is CYCLIC — `exportType` publishes `functor.type` as the record itself — and
+  # Nix `==` walks an attrset in symbol-interning order, so a bare `==` between two distinct records
+  # recurses until the evaluator aborts, uncatchably, whenever `functor` is interned before the first
+  # attribute on which they differ. The subject puts each record's CLOSURES first: the fields of
+  # `exportFields` that the record holds as functions, one attrset per record, ahead of the value
+  # itself. List `==` decides index 0 before index 1, and `==` on two functions never enters either
+  # closure, so two constructions — which differ in a closure, every `exportType` call deriving its
+  # own `typeMerge` — answer `false` before the back-edge can be reached. The prefix selects from the
+  # value, keeping every slot: one `==` over a subject that CONTAINS the reified value (ADR-0034's
+  # compared limb), never a projection in its place. It is a redundant conjunct for every value
+  # whose listed fields evaluate, and for no other (below).
+  #
+  # `records` are the type records sitting at positions the caller's grammar declares — `[ v ]` when
+  # `v` is one. The field set is read off `exportFields`, so the protocol's names stay in this unit.
+  #
+  # ★ ENUMERATED EXCEPTION TO TOTALITY (ADR-0025 item 1). The `==` can still abort, depending on
+  # interning order, where the prefix is EQUAL and the value then reaches a back-edge before a
+  # difference: (1) a GRAFT — every closure slot shared and another attribute holding distinct
+  # cyclic data, which only a hand `//` of such data onto one construction produces; (2) a record at
+  # a position `records` does not name, which caller content open to any shape can hold. (2) is not
+  # a contrived position: it is ORDINARY MODULE CONTENT — a module in a component whose grammar
+  # fixes no record position (declared `records = [ ]`), or a facet's `module`, that declares an
+  # option typed by a per-call `mkOptionType`. Two such components abort in the order that interns
+  # `functor` first, and in every order when the type carries a back-edge under `description`.
+  # Closing either needs an evaluator-observable value identity (a visited set), which pure Nix does
+  # not expose; a walk that collected every record would force content the slot shortcut skips and
+  # so change which values compare equal.
+  #
+  # ★ ENUMERATED VALUE MOVE (not an abort). The prefix forces each listed field to WHNF before the
+  # value is compared, so a record whose listed field throws propagates that throw where a bare `==`
+  # would have decided on another attribute first: two declarations `g` and `g // { typeMerge =
+  # throw …; }` merged on the name before `mkOptionType`'s relation compared through this subject,
+  # and are now the throw, in both orders.
+  closuresOf =
+    r:
+    builtins.intersectAttrs (builtins.listToAttrs (
+      map (n: {
+        name = n;
+        value = null;
+      }) (builtins.filter (n: isAttrs r && r ? ${n} && isFunction r.${n}) exportFields)
+    )) r;
+  closuresFirst = records: v: [
+    (map closuresOf records)
+    v
+  ];
+
   # ── THE FOREIGN PROTOCOL'S SPELLING OF WHAT A TYPE CARRIES ──────────────────────────────────────
   # A gen type says what it wraps in ROLES: `element` for the one-parameter containers, `alternatives`
   # for a union's members, `moduleSet` for a submodule's modules. The foreign protocol says the same
@@ -1379,6 +1426,7 @@ let
 in
 {
   inherit
+    closuresFirst
     exportClasses
     exportFields
     exportType

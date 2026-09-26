@@ -252,6 +252,11 @@ in
   # outside the byte-mode surface, so the byte-identity claim is mechanically verifiable.
   inherit (lintLib) lint;
 
+  # The comparison subject of a value that can carry a type record, for a relation outside this
+  # library deciding "one construction" over one (gen-schema's `constructionRelation`) — the same
+  # subject `mkOptionType`'s own relation decides by (lib/interface.nix, den-hoag-bfc0k).
+  inherit (core.interface) closuresFirst;
+
   # The engine + the shared fold (spec §2) + module-system helpers consumers need.
   inherit (core)
     evalModuleTree
