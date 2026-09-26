@@ -140,6 +140,33 @@ let
   # `"${modulesPath}/…"` load. Tested after the attrset arm, so a clean module never pays for it.
   isPathString = m: builtins.isString m && builtins.substring 0 1 m == "/";
 
+  # The module-value domain, shared by every type whose definitions ARE modules (`submodule`,
+  # `deferredModule`, and the tree's own `type` below) so they cannot drift into answering it
+  # differently. The engine's `callM` applies a path, a string naming an absolute path, a function,
+  # a `__functor` attrset or a plain attrset, and nothing else; the string test is the loader's own
+  # `isPathString`, so this domain is nixpkgs `pathWith { absolute = true; }` beside attrsets and
+  # functions, context irrelevant. It lives here rather than in `./types.nix` because the tree reads
+  # it too, and this file is below that one.
+  isModuleValue = v: isAttrs v || isFunction v || builtins.isPath v || isPathString v;
+
+  # A STRUCTURAL FOLD IS TOTAL OVER ITS INPUT: a definition outside the type's stated domain is
+  # refused catchably, naming the option, the type and the files, BEFORE the fold runs — otherwise
+  # it reaches `imap0`/`//`/`?` and the interpreter aborts with a raw type error naming neither, or
+  # (`deferredModule`) is accepted here and fails wherever it is imported. The engine's post-fold
+  # check reads `verify`, never `admits`, so each structural constructor applies this to its own
+  # fold, passing the SAME binding it states as `admits`; its domain check therefore cannot disagree
+  # with the `check` it exports. It tests the surviving definitions (after discharge, priority and
+  # order), where nixpkgs' `checkedAndMerged` tests `defsFinal`, and forces each only to WHNF, which
+  # the engine's discharge has already done. The refusal list is built only on refusal.
+  refusingOutside =
+    tyName: inDomain: fold: loc: defs:
+    if all (d: inDomain d.value) defs then
+      fold loc defs
+    else
+      throw "gen-merge: option `${showOption loc}' has definitions `${tyName}' cannot consume (${
+        concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: !(inDomain d.value)) defs))
+      })";
+
   # The refusal of a value that is none of those shapes, one binding for every reader that loads a
   # module: the config and declaration strata's `callM`/`callD`, and the lint's `collect`.
   notAModule =
@@ -2848,8 +2875,15 @@ let
       #     read that would abort UNCATCHABLY rather than refuse. The refusal does not depend on it:
       #     with the field removed the mount still refuses catchably, because the field a foreign
       #     engine forces first is the module-set read, which it takes through `or`.
-      #   * EIGHT REFUSE BY NAME. None is read by this engine on a declared leaf's type, so the
-      #     refusals are reachable only from outside; the type-merge pair is additionally fenced at
+      #   * THE GEN DOMAIN IS ANSWERED TOO — `admits`, a gen field and not one of the fourteen: the
+      #     module-value domain, exactly the reference `(evalModules …).type`'s `check`. A gen
+      #     union (`either`, `oneOf`, `nullOr`) asks its members `admits` before `check`, so inside
+      #     this engine's own eval the tree is a union member as nixpkgs' is — membership, not
+      #     mounting. The foreign face strips it (`lib/interface.nix` `foreignFace`), so a foreign
+      #     eval reaching the tree through a gen union still meets the refused `check` below.
+      #   * EIGHT REFUSE BY NAME. None is read by this engine's own folds on a declared leaf's type,
+      #     so the refusals are reachable only through a foreign fold — a foreign engine's, or a
+      #     foreign container's hosted in this eval; the type-merge pair is additionally fenced at
       #     `mergeTypes` above, which owes a value, and the warm identity walk (`identityMapOf`'s
       #     `below`) stops on the mark before it asks what the type carries.
       #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
@@ -2883,36 +2917,46 @@ let
           # one nested eval. It takes the carrying evaluation's effective strictness first, which the
           # nested eval inherits, so a strict carrier's finding is refused by the nested tree that
           # owns it when that tree's value is read. A caller replacing `mergeDefs` replaces both at once.
+          # Each arm refuses a definition outside `admits` before its nested eval runs
+          # (`refusingOutside`, as every structural fold does). The guard wraps each arm, never the
+          # record: wrapped whole, the record stops being a functor carrying `.reported`, and the
+          # rich fold, which selects on `.reported`, silently drops the undeclared report.
           nestingFold = {
             __functor =
-              _: loc: defs:
-              let
-                n = nested false false loc defs;
-              in
-              if n.undeclared == [ ] then
-                n.config
-              else
-                throw (
-                  "gen-merge: "
-                  + concatStringsSep "; " (
-                    map (
-                      u:
-                      "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
-                    ) n.undeclared
+              _:
+              refusingOutside "moduleTree" isModuleValue (
+                loc: defs:
+                let
+                  n = nested false false loc defs;
+                in
+                if n.undeclared == [ ] then
+                  n.config
+                else
+                  throw (
+                    "gen-merge: "
+                    + concatStringsSep "; " (
+                      map (
+                        u:
+                        "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
+                      ) n.undeclared
+                    )
+                    + "; "
+                    + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
+                    + " is merged where no undeclared report is carried"
                   )
-                  + "; "
-                  + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
-                  + " is merged where no undeclared report is carried"
-                );
+              );
             reported =
-              strict: loc: defs:
-              let
-                n = nested true strict loc defs;
-              in
-              {
-                value = n.config;
-                inherit (n) undeclared;
-              };
+              strict:
+              refusingOutside "moduleTree" isModuleValue (
+                loc: defs:
+                let
+                  n = nested true strict loc defs;
+                in
+                {
+                  value = n.config;
+                  inherit (n) undeclared;
+                }
+              );
           };
           # The fold over no definitions, CALLED: a site reading `whenEmpty` carries no report (a
           # value-path empty: an element, a freeform plane), so it is the strict call. The one
@@ -2929,6 +2973,7 @@ let
           name = "moduleTree";
           mergeDefs = nestingFold;
           whenEmpty = emptyTree;
+          admits = isModuleValue;
 
           # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
           # the reason, so a consumer that finds it needs no other document to know what to do.
@@ -2964,10 +3009,13 @@ in
     showOption
     setDefaultModuleLocation
     defsAsModules
-    # The module question's fourth shape, read by `isModuleValue` (lib/types.nix) and the lint's
-    # `collect` as well as the loader, so the admission predicate cannot fall behind what `callM`
-    # imports.
+    # The module question's fourth shape, read by `isModuleValue` and the lint's `collect` as well
+    # as the loader, so the admission predicate cannot fall behind what `callM` imports.
     isPathString
+    # The module-value domain and the structural fold's domain guard, read by `./types.nix`'s
+    # module-valued types and by the tree's own `type`, so the two files state one domain.
+    isModuleValue
+    refusingOutside
     mkCoreValue
     # `pureModule` (design spec §3 / §5) — the author's clean-module assertion; wraps a function module
     # in the `{ __pureModule = true; __functor = …; }` shape `classifyModule` reads pre-application.

@@ -48,6 +48,8 @@ let
     setDefaultModuleLocation
     defsAsModules
     isPathString
+    isModuleValue
+    refusingOutside
     interface
     ;
 
@@ -669,31 +671,6 @@ let
         }
       );
     };
-
-  # The module-value domain, shared by the two types whose definitions ARE modules (`submodule`,
-  # `deferredModule`) so the two cannot drift into answering it differently. The engine's `callM`
-  # applies a path, a string naming an absolute path, a function, a `__functor` attrset or a plain
-  # attrset, and nothing else; the string test is the loader's own `isPathString`, so this domain is
-  # nixpkgs `pathWith { absolute = true; }` beside attrsets and functions, context irrelevant.
-  isModuleValue = v: isAttrs v || isFunction v || builtins.isPath v || isPathString v;
-
-  # A STRUCTURAL FOLD IS TOTAL OVER ITS INPUT: a definition outside the type's stated domain is
-  # refused catchably, naming the option, the type and the files, BEFORE the fold runs — otherwise
-  # it reaches `imap0`/`//`/`?` and the interpreter aborts with a raw type error naming neither, or
-  # (`deferredModule`) is accepted here and fails wherever it is imported. The engine's post-fold
-  # check reads `verify`, never `admits`, so each structural constructor applies this to its own
-  # fold, passing the SAME binding it states as `admits`; its domain check therefore cannot disagree
-  # with the `check` it exports. It tests the surviving definitions (after discharge, priority and
-  # order), where nixpkgs' `checkedAndMerged` tests `defsFinal`, and forces each only to WHNF, which
-  # the engine's discharge has already done. The refusal list is built only on refusal.
-  refusingOutside =
-    tyName: inDomain: fold: loc: defs:
-    if all (d: inDomain d.value) defs then
-      fold loc defs
-    else
-      throw "gen-merge: option `${showOption loc}' has definitions `${tyName}' cannot consume (${
-        concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: !(inDomain d.value)) defs))
-      })";
 
   # Membership predicate for union dispatch. gen-types leaf checkers expose `verify` (v → null|err);
   # gen-merge structural types expose `admits` (v → bool). Prefer `verify` FIRST — a gen-types

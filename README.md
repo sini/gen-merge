@@ -1223,6 +1223,25 @@ hold. What stays with the engine is the gen half: a name, a fold, and the mark.
 | `check`, `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `_type`                                                                                                                 | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort                                                                                                                                                                                                                                                                                                     |
 
+**A union in gen's own eval holds the tree as nesting.** The tree also answers `admits`, a gen field
+outside the fourteen: the module-value domain (`isModuleValue`, the one binding `submodule` and
+`deferredModule` read), exactly the `check` of its reference `(lib.evalModules …).type`. A gen union
+(`either`, `oneOf`, `nullOr`) asks its members `admits` before `check`, so `either tree str` folded by
+gen-merge's own eval is union membership, not mounting, and gives what nixpkgs gives over the same
+construction. A definition outside that domain is refused by name before the nested eval runs
+(`` option … has definitions `moduleTree' cannot consume ``), and an undeclared key under the union is
+refused by name as at a container element. **A foreign eval that reaches the tree through a gen
+composite carrying it is still refused**: the published `check` and `merge` of a gen type read its
+*foreign face* (`interface.nix` `foreignFace`) — the type rebuilt over its members' foreign faces
+through `recarry`, where the tree's face is the tree without `admits` — so every such mount behaves
+exactly as it did before the tree answered its domain. A `submodule`'s inner eval is gen's own, so a
+union inside a submodule mounted abroad yields a value. Two reaches the fence does not have, both as
+before: a foreign combinator's fold over a gen union (nixpkgs `attrsOf (either tree str)`) reads the
+published face in **either** eval, so gen's own eval refuses it too; and a caller fold that closes
+over a union lexically, carrying no member, folds through gen's engine in a foreign eval and yields a
+value. A caller composite whose `recarry` rebuilds a differently-named type is refused by name when a
+foreign eval folds it.
+
 **Its fold is one value, and where no report is carried it refuses.** `mergeDefs` is a functor. Called,
 it is the strict fold: every site that reaches it by calling it — a container element (`attrsOf`,
 `listOf`, `nullOr` of the tree), a freeform plane, the public `mergeDefs` — carries no undeclared report,

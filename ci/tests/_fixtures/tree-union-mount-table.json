@@ -1,0 +1,422 @@
+{
+  "attrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "attrsOf.attrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "attrsOf.eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "attrsOf.eitherR": {
+    "module": "REFUSED",
+    "string": {
+      "k": "hello"
+    }
+  },
+  "attrsOf.lazyAttrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "attrsOf.listOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "attrsOf.nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "attrsOf.oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "attrsOf.oneOfR": {
+    "module": "REFUSED",
+    "string": {
+      "k": "hello"
+    }
+  },
+  "attrsOf.option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "eitherL.attrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "eitherL.eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "eitherL.eitherR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherL.lazyAttrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "eitherL.listOf": {
+    "module": [
+      {
+        "a": 5
+      }
+    ],
+    "string": "REFUSED"
+  },
+  "eitherL.nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "eitherL.oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "eitherL.oneOfR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherL.option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "eitherR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherR.attrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "eitherR.eitherL": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherR.eitherR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherR.lazyAttrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "eitherR.listOf": {
+    "module": [
+      {
+        "a": 5
+      }
+    ],
+    "string": "REFUSED"
+  },
+  "eitherR.nullOr": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherR.oneOfL": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherR.oneOfR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "eitherR.option": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "lazyAttrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.attrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.eitherR": {
+    "module": "REFUSED",
+    "string": {
+      "k": "hello"
+    }
+  },
+  "lazyAttrsOf.lazyAttrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.listOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.oneOfR": {
+    "module": "REFUSED",
+    "string": {
+      "k": "hello"
+    }
+  },
+  "lazyAttrsOf.option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf.attrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf.eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf.eitherR": {
+    "module": "REFUSED",
+    "string": [
+      "hello"
+    ]
+  },
+  "listOf.lazyAttrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf.listOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf.nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf.oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "listOf.oneOfR": {
+    "module": "REFUSED",
+    "string": [
+      "hello"
+    ]
+  },
+  "listOf.option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr.attrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr.eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr.eitherR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "nullOr.lazyAttrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr.listOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr.nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr.oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "nullOr.oneOfR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "nullOr.option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "oneOfL.attrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "oneOfL.eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "oneOfL.eitherR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfL.lazyAttrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "oneOfL.listOf": {
+    "module": [
+      {
+        "a": 5
+      }
+    ],
+    "string": "REFUSED"
+  },
+  "oneOfL.nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "oneOfL.oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "oneOfL.oneOfR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfL.option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "oneOfR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfR.attrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "oneOfR.eitherL": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfR.eitherR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfR.lazyAttrsOf": {
+    "module": {
+      "k": {
+        "a": 5
+      }
+    },
+    "string": "REFUSED"
+  },
+  "oneOfR.listOf": {
+    "module": [
+      {
+        "a": 5
+      }
+    ],
+    "string": "REFUSED"
+  },
+  "oneOfR.nullOr": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfR.oneOfL": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfR.oneOfR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "oneOfR.option": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "option.attrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "option.eitherL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "option.eitherR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "option.lazyAttrsOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "option.listOf": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "option.nullOr": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "option.oneOfL": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  },
+  "option.oneOfR": {
+    "module": "REFUSED",
+    "string": "hello"
+  },
+  "option.option": {
+    "module": "REFUSED",
+    "string": "REFUSED"
+  }
+}

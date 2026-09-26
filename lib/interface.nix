@@ -1125,6 +1125,61 @@ let
     else
       null;
 
+  # foreignFace — the type a FOREIGN eval folds, which is the gen type minus what only gen's own
+  # eval may read. The boundary is the eval (ADR-0014): inside gen's folds a union answers the
+  # nesting tree's module domain (`admits`) and holds the tree as nesting, while a foreign engine
+  # reaches a gen type only through the published `check` and `merge`, so those two read this face
+  # and gen's own fields are untouched. It is therefore lazy by construction — computed only when a
+  # foreign engine forces one of the two.
+  #
+  # The foreign face of a composite is the composite rebuilt over its members' foreign faces: the
+  # functorial map `recarry` exists to perform. The tree's is the tree without its gen domain
+  # answer, so a foreign membership question reaches its refused `check`, as before the tree
+  # answered one. A leaf is its own face, and so is a type carrying a module set (`submodule`):
+  # its fold is gen's own `evalModuleTree`, the eval boundary itself, which is why a union inside a
+  # submodule mounted abroad still yields a value. For every library combinator the face of a type
+  # holding the tree is therefore the type as it stood before, byte-for-byte.
+  #
+  # It rests on ONE law, `mkTypeWith`'s `recarry` contract (`t.recarry c'` is `t`'s own constructor
+  # over `c'`), and on nothing stronger: it rebuilds only when a direct member is the tree or a
+  # rebuildable composite, so a type over leaves is returned as itself and the identity round trip
+  # `t.recarry t.carries == t` is never assumed. A caller `recarry` rebuilding ANOTHER type would
+  # fold a foreign eval's definitions through that type's fold; the door refuses it by name, the
+  # identity the vocabulary's nullary relation keys on. A same-named rebuild that still breaks the
+  # law is past this door. Both guard and rebuild are one level deep and lazy, so a self-referential
+  # type (`j = either str (attrsOf j)`) is unfolded only as deep as a definition reaches.
+  #
+  # The fence reaches what a type CARRIES. A caller fold closing over a union lexically, and a
+  # foreign container's fold over a gen union in either eval, read no face this computes.
+  #
+  # ★ `exportType` CALLS IT INLINE IN BOTH FIELDS, never through a `let` binding: a binding is one
+  # more thunk on EVERY type construction, gen's own included, for a question only a foreign engine
+  # asks — measured on the hub bench as eleven gates over bound. And it asks `opensForeign` INLINE
+  # before calling, because the published fields are not read by foreign engines alone: a gen
+  # library may fold through a gen type's published `merge` inside gen's own eval (gen-aspects does,
+  # over a fresh `submodule` per node), and a call per read there is a per-node price on gen's side,
+  # which the fence does not charge. A type that does not open is returned before any binding.
+  opensForeign = u: isAttrs u && u ? carries && u ? recarry && !(u.carries ? moduleSet);
+  foreignMember =
+    u: if isAttrs u && u ? nonMountable then builtins.removeAttrs u [ "admits" ] else foreignFace u;
+  foreignFace =
+    t:
+    if !(opensForeign t) then
+      t
+    else
+      let
+        members = builtins.concatMap (c: if isList c then c else [ c ]) (builtins.attrValues t.carries);
+        rebuilt = t.recarry (
+          builtins.mapAttrs (_: c: if isList c then map foreignMember c else foreignMember c) t.carries
+        );
+      in
+      if !(builtins.any (m: isAttrs m && (m ? nonMountable || opensForeign m)) members) then
+        t
+      else if nameOf rebuilt == nameOf t then
+        rebuilt
+      else
+        throw "gen-merge: the type `${nameOf t}' cannot be folded by a foreign eval: its `recarry' rebuilds it as `${nameOf rebuilt}', so the fold published for it would be another type's";
+
   # exportType — a gen type EXPRESSED in the foreign protocol.
   #
   # ── THE PARTITION, AND IT IS TOTAL OVER THE FOURTEEN ────────────────────────────────────────────
@@ -1205,10 +1260,18 @@ let
           if t ? verify then
             (v: t.verify v == null)
           else if t ? admits then
-            t.admits
+            (
+              if t ? carries && t ? recarry && !(t.carries ? moduleSet) then (foreignFace t).admits else t.admits
+            )
           else
             (_: true);
-        merge = if t ? mergeDefs then t.mergeDefs else leafFold;
+        merge =
+          if !(t ? mergeDefs) then
+            leafFold
+          else if t ? carries && t ? recarry && !(t.carries ? moduleSet) then
+            (foreignFace t).mergeDefs
+          else
+            t.mergeDefs;
         emptyValue = t.whenEmpty or { };
         nestedTypes = if role == null then { } else spelling.nested carried;
         getSubOptions = if sub == null then (_prefix: { }) else sub.declares;

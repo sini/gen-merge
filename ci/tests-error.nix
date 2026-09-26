@@ -1946,102 +1946,421 @@ in
     # forces first is that engine's evaluation order, not this library's behaviour, so pinning it
     # here would pin nixpkgs' internals and go red on a bump that changed nothing about the refusal.
     # That one field name is the only part left open; every other byte of the message is anchored.
-    flake.testsError.tree-type = {
-      # THE BOUNDARY CELL: a real nixpkgs `lib.evalModules` mounting a tree-type is refused BY NAME,
-      # by gen-merge, before the consumer can trip over what the tree does not implement.
-      test-foreign-mount-refused-by-name = {
-        expr =
+    #
+    # ── THE TREE AS A UNION MEMBER: gen's eval holds it, a foreign eval is still refused ─────────
+    # The tree answers `admits`, so a gen union in this engine's own eval holds it as nesting
+    # (`ci/tests/nixpkgs-protocol.nix` pins the parity). What a FOREIGN eval folds is each type's
+    # foreign face (`lib/interface.nix` `foreignFace`), and for every library combinator that is the
+    # type as it stood before the tree answered: the cells below pin it against the table measured
+    # there, over the same 180-cell family, one cell per mount so every refusal's message is read.
+    flake.testsError.tree-type =
+      let
+        family = import ./tests/_fixtures/tree-union-family.nix {
+          genMerge = gm;
+          inherit nixpkgsLib;
+        };
+        T = family.T;
+        table = builtins.fromJSON (builtins.readFile ./tests/_fixtures/tree-union-mount-table.json);
+        treeRefusal =
+          field:
+          "^gen-merge: `moduleTree' is not an option type and does not answer `${field}'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data\\)$";
+        riderRefusal =
+          loc: file: "^gen-merge: option `${loc}' has definitions `moduleTree' cannot consume \\(${file}\\)$";
+        doorRefusal =
+          rebuiltAs:
+          "^gen-merge: the type `wrap' cannot be folded by a foreign eval: its `recarry' rebuilds it as `${rebuiltAs}', so the fold published for it would be another type's$";
+        # A caller composite over `el`, its `recarry` rebuilding through `rec_`: `good` rebuilds
+        # itself, `bad` rebuilds a `listOf` — the one law the foreign face relies on, kept and broken.
+        mkWrap =
+          rec_: el:
+          t.defineType {
+            name = "wrap";
+            carries.element = el;
+            recarry = c: rec_ c.element;
+            admits = _: true;
+            mergeDefs = loc: defs: gm.mergeDefs loc el defs;
+            substructure = {
+              declares = _: { };
+              modules = null;
+              rebuild = _: null;
+            };
+          };
+        good = el: mkWrap good el;
+        bad = mkWrap (el: t.listOf el);
+        subOf =
+          type:
+          t.submodule {
+            options.s = gm.mkOption { inherit type; };
+          };
+        # A construction whose MODULE definition mounts in the table folds the tree abroad (the
+        # twelve `either`/`oneOf` over a container holding the tree directly); its string definition
+        # reaches the tree's own fold, which refuses it by the domain guard before the nested eval.
+        foldsAbroad = c: builtins.isAttrs table.${c}.module || builtins.isList table.${c}.module;
+        mountCell =
+          c:
           let
-            tree = gm.evalModuleTree {
-              modules = [
+            inner = builtins.elemAt (builtins.split "\\." c.construction) 2;
+            recorded = table.${c.construction}.${c.definition};
+          in
+          {
+            name = "test-mount-${builtins.replaceStrings [ "." ] [ "-" ] c.construction}-${c.definition}";
+            value = {
+              expr = family.foreign c.gen c.value;
+            }
+            // (
+              if recorded != "REFUSED" then
+                { expected = recorded; }
+              else
                 {
-                  options.a = gm.mkOption {
-                    type = t.str;
-                    default = "x";
+                  expectedError = {
+                    type = "ThrownError";
+                    msg =
+                      if c.definition == "string" && foldsAbroad c.construction then
+                        riderRefusal (if inner == "listOf" then "s\\.0" else "s\\.k") "<unknown-file>"
+                      else
+                        treeRefusal "[a-zA-Z]+";
                   };
                 }
-              ];
-            };
-          in
-          builtins.deepSeq
+            );
+          };
+      in
+      builtins.listToAttrs (map mountCell family.cells)
+      // {
+        # THE BOUNDARY CELL: a real nixpkgs `lib.evalModules` mounting a tree-type is refused BY NAME,
+        # by gen-merge, before the consumer can trip over what the tree does not implement.
+        test-foreign-mount-refused-by-name = {
+          expr =
+            let
+              tree = gm.evalModuleTree {
+                modules = [
+                  {
+                    options.a = gm.mkOption {
+                      type = t.str;
+                      default = "x";
+                    };
+                  }
+                ];
+              };
+            in
+            builtins.deepSeq
+              (nixpkgsLib.evalModules {
+                modules = [
+                  {
+                    options.x = nixpkgsLib.mkOption { type = tree.type; };
+                    config.x = { };
+                  }
+                ];
+              }).config.x
+              null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `moduleTree' is not an option type and does not answer `[a-zA-Z]+'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data\\)$";
+          };
+        };
+        # The refusal NAMES THE FIELD the caller reached for. An author told only "this is not a type"
+        # still has to work out which read they made; the per-field message tells them, and it is what
+        # makes the refusal usable from any consumer rather than only from a mount.
+        test-protocol-read-names-the-field = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
+            }).type.getSubOptions
+              [ ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `moduleTree' is not an option type and does not answer `getSubOptions'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data\\)$";
+          };
+        };
+        # LIVE CONTROLS, same run, and BOTH are needed — the cells above are equally consistent with a
+        # change that broke ALL mounting, and with one that broke the tree's own nesting.
+        #
+        # (1) A protocol-COMPLETED gen-merge type still mounts in a real `lib.evalModules` and its
+        # value comes back, so the refusal above is the tree-type's and not the boundary's.
+        test-completed-leaf-still-mounts-control = {
+          expr =
             (nixpkgsLib.evalModules {
               modules = [
                 {
-                  options.x = nixpkgsLib.mkOption { type = tree.type; };
-                  config.x = { };
+                  options.x = nixpkgsLib.mkOption { type = t.str; };
+                  config.x = "ok";
                 }
               ];
-            }).config.x
-            null;
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: `moduleTree' is not an option type and does not answer `[a-zA-Z]+'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data\\)$";
+            }).config.x;
+          expected = "ok";
         };
-      };
-      # The refusal NAMES THE FIELD the caller reached for. An author told only "this is not a type"
-      # still has to work out which read they made; the per-field message tells them, and it is what
-      # makes the refusal usable from any consumer rather than only from a mount.
-      test-protocol-read-names-the-field = {
-        expr =
-          (gm.evalModuleTree {
-            modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
-          }).type.getSubOptions
-            [ ];
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: `moduleTree' is not an option type and does not answer `getSubOptions'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data\\)$";
-        };
-      };
-      # LIVE CONTROLS, same run, and BOTH are needed — the cells above are equally consistent with a
-      # change that broke ALL mounting, and with one that broke the tree's own nesting.
-      #
-      # (1) A protocol-COMPLETED gen-merge type still mounts in a real `lib.evalModules` and its
-      # value comes back, so the refusal above is the tree-type's and not the boundary's.
-      test-completed-leaf-still-mounts-control = {
-        expr =
-          (nixpkgsLib.evalModules {
-            modules = [
-              {
-                options.x = nixpkgsLib.mkOption { type = t.str; };
-                config.x = "ok";
-              }
-            ];
-          }).config.x;
-        expected = "ok";
-      };
-      # (2) The seam itself still merges: a parent tree nests a child through the child's `.type`.
-      # Nothing was deleted to make the mark, and this is the row that says so.
-      test-tree-still-nests-in-gen-merge-control = {
-        expr =
-          let
-            child = gm.evalModuleTree {
+        # (2) The seam itself still merges: a parent tree nests a child through the child's `.type`.
+        # Nothing was deleted to make the mark, and this is the row that says so.
+        test-tree-still-nests-in-gen-merge-control = {
+          expr =
+            let
+              child = gm.evalModuleTree {
+                modules = [
+                  {
+                    options.a = gm.mkOption {
+                      type = t.str;
+                      default = "x";
+                    };
+                  }
+                ];
+              };
+            in
+            cfg {
               modules = [
+                { options.inner = gm.mkOption { type = child.type; }; }
                 {
-                  options.a = gm.mkOption {
-                    type = t.str;
-                    default = "x";
+                  config.inner = {
+                    a = "set";
                   };
                 }
               ];
             };
-          in
-          cfg {
-            modules = [
-              { options.inner = gm.mkOption { type = child.type; }; }
-              {
-                config.inner = {
-                  a = "set";
-                };
-              }
+          expected = {
+            inner = {
+              a = "set";
+            };
+          };
+        };
+
+        # The family is the class, and the class is enumerated by EVALUATION: every name in `types`
+        # applied to a type at arity 0, 1 and 2 and to a list of types, kept when the result carries a
+        # member other than a module set. A new member-taking combinator reds this cell until the
+        # family covers it. `submodule` carries `moduleSet` and is the membership boundary itself.
+        #
+        # The five names skipped abort UNCATCHABLY on an arity misfit (`builtins.tryEval` cannot hold
+        # a type error), and none takes a member: measured one process per name and arity, none
+        # carries at any arity. A new name that aborts the same way reds this cell by its abort.
+        test-the-family-covers-the-member-taking-census = {
+          expr =
+            let
+              ap = f: x: if builtins.isFunction f then f x else null;
+              carrying = v: builtins.isAttrs v && v ? carries && !(v.carries ? moduleSet);
+              # The list arity first, so a list-taking combinator is never applied to a single type.
+              arities = f: [
+                (ap f [
+                  t.str
+                  t.str
+                ])
+                f
+                (ap f t.str)
+                (ap (ap f t.str) t.str)
+              ];
+              hit =
+                v:
+                let
+                  r = builtins.tryEval (carrying v);
+                in
+                r.success && r.value;
+              unappliable = [
+                "defaultOnError"
+                "defineType"
+                "formatErrors"
+                "mkOption"
+                "mkType"
+              ];
+            in
+            builtins.filter (n: !(builtins.elem n unappliable) && builtins.any hit (arities t.${n})) (
+              builtins.attrNames t
+            );
+          expected = lib.unique (lib.sort lib.lessThan (map (f: f.of) (builtins.attrValues family.forms)));
+        };
+
+        # An undeclared key under a union is refused by name, as at a container element: the union
+        # reaches the tree through its called fold, which is the strict one and carries no report.
+        test-an-undeclared-key-under-a-union-is-refused-by-name = {
+          expr = family.gen (t.either T t.str) {
+            a = 1;
+            zz = 2;
+          };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `s\\.zz' is not declared by the nested tree that owns it \\(defined in <gen-merge>\\); the tree at `s' is merged where no undeclared report is carried$";
+          };
+        };
+
+        # THE RIDER: the tree's fold refuses a definition outside its domain before the nested eval
+        # runs, naming the option, where the loader used to refuse it as a module it could not load.
+        test-a-bare-tree-refuses-a-string-before-its-nested-eval = {
+          expr = family.gen T "hello";
+          expectedError = {
+            type = "ThrownError";
+            msg = riderRefusal "s" "<gen-merge>";
+          };
+        };
+        # …and it guards each arm of the fold, never the record: the fold stays a functor carrying
+        # `.reported`, which the rich fold selects on, so the bare tree still reports what it drops.
+        test-the-rider-keeps-the-fold-a-reporting-functor = {
+          expr = {
+            reported = T ? mergeDefs.reported;
+            functor = T.mergeDefs ? __functor;
+            undeclared =
+              map (u: u.path)
+                (gm.evalModuleTree {
+                  modules = [
+                    { options.s = gm.mkOption { type = T; }; }
+                    {
+                      config.s = {
+                        a = 1;
+                        zz = 2;
+                      };
+                    }
+                  ];
+                }).undeclared;
+          };
+          expected = {
+            reported = true;
+            functor = true;
+            undeclared = [
+              [
+                "s"
+                "zz"
+              ]
             ];
           };
-        expected = {
-          inner = {
-            a = "set";
+        };
+
+        # THE KEEP-SET: foreign mounts that fold only through gen's own evals stay values. A
+        # `submodule`'s fold IS gen's `evalModuleTree`, the eval boundary, so a union inside one is
+        # membership however the submodule is mounted; a fence that propagated a foreign mode into
+        # nested gen evals would red the submodule rows.
+        test-a-union-choosing-its-string-member-first-still-mounts = {
+          expr = family.foreign (t.either t.str T) "hello";
+          expected = "hello";
+        };
+        test-a-submodule-over-the-tree-still-mounts = {
+          expr = family.foreign (subOf T) { s.a = 5; };
+          expected = {
+            s.a = 5;
+          };
+        };
+        test-a-container-of-submodules-over-the-tree-still-mounts = {
+          expr = family.foreign (t.attrsOf (subOf T)) { k.s.a = 5; };
+          expected = {
+            k.s.a = 5;
+          };
+        };
+        test-a-submodule-over-a-string-first-union-still-mounts = {
+          expr = family.foreign (subOf (t.either t.str T)) { s = "hello"; };
+          expected = {
+            s = "hello";
+          };
+        };
+        test-a-deferred-module-still-mounts = {
+          expr =
+            (nixpkgsLib.evalModules {
+              modules = [
+                {
+                  options.a = nixpkgsLib.mkOption { type = nixpkgsLib.types.int; };
+                }
+                (family.foreign t.deferredModule { a = 5; })
+              ];
+            }).config.a;
+          expected = 5;
+        };
+        # A submodule-wrapped union over the tree, mounted, yields what gen's own eval yields for it:
+        # the union is folded by the submodule's inner eval, which is gen's own.
+        test-a-submodule-wrapped-union-mounts-a-module = {
+          expr = family.foreign (subOf (t.either T t.str)) { s.a = 5; };
+          expected = {
+            s.a = 5;
+          };
+        };
+        test-a-submodule-wrapped-union-mounts-a-string = {
+          expr = family.foreign (subOf (t.either T t.str)) { s = "hello"; };
+          expected = {
+            s = "hello";
+          };
+        };
+
+        # THE DOOR. The foreign face rebuilds a composite through its own `recarry`; a caller whose
+        # `recarry` rebuilds ANOTHER type would fold a foreign eval's definitions through that type's
+        # fold, and is refused by name. Gen's own eval never reads the foreign face, so the same type
+        # folds there.
+        test-a-recarry-rebuilding-another-type-is-refused-abroad = {
+          expr = family.foreign (bad (t.either T t.str)) { a = 5; };
+          expectedError = {
+            type = "ThrownError";
+            msg = doorRefusal "listOf";
+          };
+        };
+        test-a-recarry-rebuilding-another-type-still-folds-in-gen = {
+          expr = family.gen (bad (t.either T t.str)) { a = 5; };
+          expected = {
+            a = 5;
+          };
+        };
+        test-a-lawful-caller-composite-meets-the-trees-refusal-abroad = {
+          expr = family.foreign (good (t.either T t.str)) { a = 5; };
+          expectedError = {
+            type = "ThrownError";
+            msg = treeRefusal "check";
+          };
+        };
+        # Over leaves alone the face is the type itself, so the door is never reached: the fence
+        # rebuilds only what holds the tree or a rebuildable composite.
+        test-a-law-breaking-composite-over-a-leaf-still-mounts = {
+          expr = family.foreign (bad t.str) "hello";
+          expected = "hello";
+        };
+        # The door NARROWS: a law-breaking composite over a composite with no tree in it mounted
+        # before the fence and is refused now (defaulted, reversible).
+        test-a-law-breaking-composite-over-a-composite-is-refused-abroad = {
+          expr = family.foreign (bad (t.listOf t.str)) [ "x" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = doorRefusal "listOf";
+          };
+        };
+        # The law, over the class: each combinator's `recarry` rebuilds a type of its own name.
+        test-every-member-taking-combinator-recarries-to-itself = {
+          expr = builtins.filter (
+            n:
+            let
+              k = family.forms.${n}.mk t t.str;
+            in
+            (k.recarry (
+              builtins.mapAttrs (_: c: if builtins.isList c then map (_: t.int) c else t.int) k.carries
+            )).name != k.name
+          ) (builtins.attrNames family.forms);
+          expected = [ ];
+        };
+
+        # WHAT THE FENCE DOES NOT REACH, pinned so a change to either is a decision on the record.
+        #
+        # A FOREIGN container over a gen union reads the union's published face whichever eval hosts
+        # it: gen's own eval over nixpkgs `attrsOf (either T str)` refuses, where nixpkgs over its own
+        # types gives `{ k = { a = 5; }; }`. Unchanged by the tree answering `admits`.
+        test-a-foreign-container-over-a-gen-union-refuses-in-gen = {
+          expr = family.gen (nixpkgsLib.types.attrsOf (t.either T t.str)) { k.a = 5; };
+          expectedError = {
+            type = "ThrownError";
+            msg = treeRefusal "check";
+          };
+        };
+        # A caller fold closing over a union LEXICALLY carries no member, so no face of it is
+        # rebuilt: folding through gen's engine, it yields a value abroad.
+        test-a-lexical-closure-over-a-union-folds-abroad = {
+          expr = family.foreign (t.defineType {
+            name = "w";
+            admits = _: true;
+            mergeDefs = loc: defs: gm.mergeDefs loc (t.either T t.str) defs;
+          }) { a = 5; };
+          expected = {
+            a = 5;
+          };
+        };
+        # Control, same run: the same closure calling the union's PUBLISHED fold is refused.
+        test-a-closure-over-a-unions-published-fold-is-refused-abroad = {
+          expr = family.foreign (t.defineType {
+            name = "w";
+            admits = _: true;
+            mergeDefs = loc: defs: (t.either T t.str).merge loc defs;
+          }) { a = 5; };
+          expectedError = {
+            type = "ThrownError";
+            msg = treeRefusal "[a-zA-Z]+";
           };
         };
       };
-    };
 
     # The shape-directed default-merge law's terminal arm. ci/tests/parity-surface.nix asserts THAT
     # it refuses and that the refusal is catchable; only this output can assert WHAT IT SAYS, and a

@@ -1596,6 +1596,165 @@ in
       };
     };
 
+    # ── INSIDE gen's OWN EVAL, UNION MEMBERSHIP IS NOT MOUNTING ─────────────────────────────────
+    # The boundary is the eval (ADR-0014), so a gen union folded by this engine holds the tree as
+    # nesting and owes nixpkgs' answer over the same construction. The family is every
+    # member-taking combinator at depth 1 and 2 over the tree, both member orders, with a module and
+    # a string definition (`_fixtures/tree-union-family.nix`); a refusal on either side reads
+    # `"REFUSED"`, so a construction both engines refuse agrees. Before the tree answered `admits`,
+    # 68 of the 180 differed, every one of them this engine's `check` refusal of a union member.
+    #
+    # The hand cells are the definition shapes the family does not carry — a module written as
+    # config, a function, a path, an absolute path string, a relative string and `null` — over the
+    # binary union and a three-member one.
+    test-tree-union-member-parity-over-the-class =
+      let
+        family = import ./_fixtures/tree-union-family.nix { inherit genMerge nixpkgsLib; };
+        try =
+          v:
+          let
+            r = builtins.tryEval (builtins.deepSeq v v);
+          in
+          if r.success then r.value else "REFUSED";
+        referenceTree =
+          (nixpkgsLib.evalModules {
+            modules = [
+              {
+                options.a = nixpkgsLib.mkOption {
+                  type = nixpkgsLib.types.int;
+                  default = 0;
+                };
+              }
+            ];
+          }).type;
+        hand = {
+          either = ts: x: ts.either x ts.str;
+          oneOf3 =
+            ts: x:
+            ts.oneOf [
+              ts.str
+              ts.int
+              x
+            ];
+        };
+        shapes = {
+          configAttrset = {
+            config.a = 5;
+          };
+          function = _: { a = 5; };
+          pathLiteral = ./_fixtures/def-reading-a5.nix;
+          absString = toString ./_fixtures/def-reading-a5.nix;
+          relString = "def-reading-a5.nix";
+          null = null;
+        };
+        differs = gen: reference: try gen != try reference;
+      in
+      {
+        expr = {
+          family = map (c: "${c.construction}/${c.definition}") (
+            builtins.filter (
+              c: differs (family.gen c.gen c.value) (family.foreign c.reference c.value)
+            ) family.cells
+          );
+          hand = builtins.concatMap (
+            h:
+            builtins.concatMap (
+              s:
+              if
+                differs (family.gen (hand.${h} gmT family.T) shapes.${s}) (
+                  family.foreign (hand.${h} nixpkgsLib.types referenceTree) shapes.${s}
+                )
+              then
+                [ "${h}/${s}" ]
+              else
+                [ ]
+            ) (builtins.attrNames shapes)
+          ) (builtins.attrNames hand);
+          cells = builtins.length family.cells;
+        };
+        expected = {
+          family = [ ];
+          hand = [ ];
+          cells = 180;
+        };
+      };
+
+    # The tree states its gen domain: the module-value domain, the `check` of its reference
+    # `(lib.evalModules …).type` — attrset, function, path, absolute path string. The mark stays:
+    # answering its own engine's membership question opens no mount.
+    test-tree-type-states-its-module-domain = {
+      expr =
+        let
+          ty =
+            (genMerge.evalModuleTree {
+              modules = [ { options.a = genMerge.mkOption { type = gmT.str; }; } ];
+            }).type;
+        in
+        {
+          admits = map ty.admits [
+            { }
+            (_: { })
+            ./_fixtures/plain-config.nix
+            "/abs"
+            "hello"
+            3
+          ];
+          marked = ty ? nonMountable;
+        };
+      expected = {
+        admits = [
+          true
+          true
+          true
+          true
+          false
+          false
+        ];
+        marked = true;
+      };
+    };
+
+    # A SELF-REFERENTIAL type folds in gen's eval and mounts abroad, to the definition itself. The
+    # foreign face rebuilds `attrsOf j` over `j`'s own face one level at a time and lazily, so it is
+    # unfolded only as deep as the definition reaches; a fence that walked the carried closure to
+    # ask whether a tree is inside would not terminate here.
+    test-a-self-referential-union-folds-and-mounts = {
+      expr =
+        let
+          j = gmT.either gmT.str (gmT.attrsOf j);
+          def = {
+            a = {
+              b = "x";
+            };
+            c = "y";
+          };
+        in
+        {
+          gen =
+            (genMerge.evalModuleTree {
+              modules = [
+                { options.s = genMerge.mkOption { type = j; }; }
+                { config.s = def; }
+              ];
+            }).config.s;
+          mounted = mount j def;
+        };
+      expected = {
+        gen = {
+          a = {
+            b = "x";
+          };
+          c = "y";
+        };
+        mounted = {
+          a = {
+            b = "x";
+          };
+          c = "y";
+        };
+      };
+    };
+
     # ── THE FOREIGN SELF-MERGE IS CONTAINED ─────────────────────────────────────────────────────
     # `types.json` is self-referential, so nixpkgs' own `either.typeMerge` unfolds forever on it and
     # dies `stack overflow; max-call-depth exceeded` — an interpreter error rather than a `throw`,
