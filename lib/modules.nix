@@ -2022,23 +2022,24 @@ let
             else if isFunction m then
               let
                 formals = functionArgs m;
-                extra =
-                  mapAttrs (
-                    name: _:
-                    baseArgs.${name} or result.moduleArgs.${name}
-                      or (throw "gen-merge: module argument `${name}' is not defined")
-                  ) formals
-                  # A formal `baseArgs` holds (specialArgs, `config`, `options`, `prefix`) binds to
-                  # `baseArgs`' OWN attribute, so every module sees one value slot and `==` answers
-                  # alike on the three evaluators (see `sharedKeyDiffers`). This departs from nixpkgs'
-                  # `applyModuleArgs`, which copies every formal: `[ fa ] == box` reads true on every
-                  # evaluator here. The `//` operand costs no thunk per application; a
-                  # `removeAttrs formals names` operand does, and the hub perf-bench's kindMatch rows
-                  # catch it. A `_module.args` formal stays a per-application copy (a priced residue,
-                  # README "Known byte-mode boundaries").
-                  // builtins.intersectAttrs formals baseArgs;
+                extra = mapAttrs (
+                  name: _:
+                  baseArgs.${name} or result.moduleArgs.${name}
+                    or (throw "gen-merge: module argument `${name}' is not defined")
+                ) formals;
               in
-              m (baseArgs // extra)
+              # `baseArgs` is the RIGHT operand, so a formal it holds (specialArgs, `config`,
+              # `options`, `prefix`) binds to `baseArgs`' OWN attribute: every module sees one value
+              # slot and `==` answers alike on the three evaluators (see `sharedKeyDiffers`). This
+              # departs from nixpkgs' `applyModuleArgs`, which copies every formal: `[ fa ] == box`
+              # reads true on every evaluator here. The answer is `baseArgs // extra //
+              # intersectAttrs formals baseArgs` with the middle set elided, at no thunk and no
+              # allocation beyond the one `//` every application already paid; the three-operand
+              # spelling allocates the intersection per application and reds the hub perf-bench's
+              # entityMatch alloc rows, and a `removeAttrs formals names` operand reds its kindMatch
+              # thunk rows. A `_module.args` formal stays a per-application copy (a priced residue,
+              # README "Known byte-mode boundaries").
+              m (extra // baseArgs)
             else if isAttrs m then
               if m ? __functor then callM (m.__functor m) else m
             else if isPathString m then

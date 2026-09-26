@@ -1350,15 +1350,15 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   split included.
 
 - **A module formal that `specialArgs`, `config`, `options` or `prefix` supplies is that attribute
-  itself, not a copy.** nixpkgs' `applyModuleArgs` copies every formal; `callM` binds a `baseArgs`
-  formal by a right operand of `//` (0 thunks per module application), so every module holds one
-  slot. Observable through any `==`: with `specialArgs = { inherit fa; box = [ fa ]; }` and `fa` a
+  itself, not a copy.** nixpkgs' `applyModuleArgs` copies every formal; `callM` applies a module
+  to `extra // baseArgs`, so a `baseArgs` formal is `baseArgs`' own attribute (0 thunks and no
+  allocation beyond the application's one `//`), and every module holds one slot. Observable through any `==`: with `specialArgs = { inherit fa; box = [ fa ]; }` and `fa` a
   function, `[ fa ] == box` in a user module reads true on all three evaluators, where nixpkgs reads
   false on Nix and Determinate and true on Lix. nixpkgs is evaluator-split there, so no single
   answer matches it everywhere; this one is uniform. Precedence (`specialArgs` over `_module.args`),
-  default formals, the missing-argument message and laziness are unchanged. The price is
-  allocation, not thunks: the `//` result on each module application, nested submodule
-  evaluations included (measured below the hub perf-bench's bounds).
+  default formals, the missing-argument message and laziness are unchanged. The price is nil:
+  the application's `//` swaps its operands, and the hub perf-bench reads the copying form's thunk
+  and allocation bounds.
 
 - **Two structurally equal CYCLIC values at a shared key abort uncatchably**, a known boundary.
   Nix `==` is not total: `{ a = r; }`,`{ a = r'; }` with `r` and `r'` separate bindings of
