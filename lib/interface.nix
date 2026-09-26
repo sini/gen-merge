@@ -1100,6 +1100,31 @@ let
   # exact file list, and a second file naming the literal fails it by name.
   isOptionType = v: isAttrs v && (v._type or null) == "option-type";
 
+  # typeDefect — why a value standing where a TYPE is demanded is not one, or `null` when it is.
+  # The engine asks it only where it folds a value against the type and nothing answered the
+  # question already: a fold of its own, a `verify`, or no type at all (`./modules.nix`
+  # `mergeDefsRichWith`, and the freeform fold). It judges one level deep and never walks, so a
+  # namespace such as `refinements` is refused as the value it is rather than entered.
+  #
+  # The last arm is `importType`'s second refusal read positively, WIDENED by the fold's own
+  # dispatch fields: that predicate was written for foreign records at the import boundary, and the
+  # fold also sees native ones — `mkType { mergeDefs = …; }` answers by its fold alone, and
+  # `mkType { }` carries only the relation `mkTypeWith` stamps. `importType` keeps its own.
+  typeDefect =
+    t:
+    if isFunction t then
+      "is a function, not a type (a type constructor must be applied)"
+    else if !(isAttrs t) then
+      "is a value of type `${builtins.typeOf t}', not a type"
+    else if t ? _type && !(isOptionType t) then
+      "is a tagged `${toString t._type}' value, not a type"
+    else if
+      !(t ? verify || t ? mergeDefs || t ? typeMergeRel || builtins.any (f: t ? ${f}) exportFields)
+    then
+      "answers neither this library's type vocabulary nor any field of the foreign protocol"
+    else
+      null;
+
   # exportType — a gen type EXPRESSED in the foreign protocol.
   #
   # ── THE PARTITION, AND IT IS TOTAL OVER THE FOURTEEN ────────────────────────────────────────────
@@ -1316,5 +1341,6 @@ in
     importedWrapped
     isOptionType
     refuseMount
+    typeDefect
     ;
 }

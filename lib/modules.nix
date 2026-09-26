@@ -1130,6 +1130,13 @@ let
   # undefined option so the ONE empty-value site stays inside the fold.
   hasEmptyValue = type: (whenEmptyOf type) ? value;
 
+  # The refusal of a declared `type` that is not one (ADR-0025 item 1): nixpkgs aborts on it at the
+  # declaration's use, uncatchably, and an unjudged fold returns the definition unchecked. Asked
+  # only on the arms where the engine would otherwise fold against it (`interface.typeDefect`).
+  declaredTypeRefusal =
+    loc: type:
+    "gen-merge: option `${showOption loc}' declares a `type' that ${interface.typeDefect type}";
+
   # DID THIS TYPE BRING A FOLD OF ITS OWN? On gen's record the presence test IS the question:
   # `mergeDefs` is there exactly when the type folds its own definitions, and a leaf simply has none.
   # On a FOREIGN record presence stopped answering it — the protocol boundary publishes a leaf fold
@@ -1319,8 +1326,13 @@ let
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if fold != null then
           fold loc typeDefs
+        # A declared type that brought no fold and no `verify` is where a value that is not a type
+        # lands, and the leaf fold would return the definition unchecked. It is judged HERE, on this
+        # arm alone: the gen-typed path has already answered, and pays nothing for the question.
+        else if type == null || type ? verify || interface.typeDefect type == null then
+          mergeLeaf loc sorted
         else
-          mergeLeaf loc sorted;
+          throw (declaredTypeRefusal loc type);
       checked =
         if type != null && type ? verify then
           (
@@ -1562,7 +1574,14 @@ let
         if rawDefs == [ ] && !(optDecl ? default) && !(hasEmptyValue (optDecl.type or null)) then
           throw "gen-merge: the option `${showOption loc}' is used but not defined"
         else
-          mergeDefsRichWith mode loc (optDecl.type or null) withDefault;
+          # An ABSENT `type` is the untyped option; a `type` STATED as `null` is a value in type
+          # position, refused where the fold forces it, like any other non-type.
+          mergeDefsRichWith mode loc (
+            if optDecl ? type && optDecl.type == null then
+              throw (declaredTypeRefusal loc null)
+            else
+              optDecl.type or null
+          ) withDefault;
     in
     if !hasApply && !readOnly then
       merged
@@ -2329,10 +2348,15 @@ let
           # output). The fold is `rawFold`, not `ownFold`: nixpkgs merges the freeform plane with the
           # type's raw `merge` (`freeformType.merge prefix defs`), outside `mergeDefinitions`, so a
           # foreign type's `check` and v2 protocol do not apply here. The keys it owns are checked by
-          # its own merge, as they are there.
+          # its own merge, as they are there. The fold demands a type, so a freeform type that is not
+          # one is refused here by name, once per evaluation (`interface.typeDefect`).
           freeformConfigCold =
             if freeform == null || realized.unmatched == [ ] then
               { }
+            else if interface.typeDefect freeform != null then
+              throw "gen-merge: the freeform type${
+                if prefix == [ ] then "" else " at `${showOption prefix}'"
+              } ${interface.typeDefect freeform}"
             else
               (rawFold freeform) prefix (coalesceUnmatched (length topDefs) realized.unmatched);
           # Warm: reuse prev's whole freeform layer (byte-identical when `reuseFreeform`), skipping the

@@ -3685,5 +3685,167 @@ in
         };
       };
     };
+
+    # A DECLARED `type` THAT IS NOT A TYPE IS REFUSED BY NAME WHERE THE FOLD DEMANDS IT (ADR-0025
+    # item 1; `interface.typeDefect`). Each vocabulary member below publishes — the namespace judges
+    # only what this library demands of it — and was accepted silently at the option, the definition
+    # returned unchecked. One cell per arm of the predicate, and the freeform fold beside it.
+    flake.testsError.declared-type =
+      let
+        T =
+          (genMergeWith (
+            genTypes
+            // {
+              bad5 = 5;
+              badFn = _: 5;
+              badPattern = { a }: genTypes.str;
+              badTag = {
+                _type = "option";
+                type = genTypes.str;
+                description = "d";
+              };
+            }
+          )).types;
+        read =
+          type: v:
+          realize {
+            modules = [
+              { options.p = gm.mkOption { inherit type; }; }
+              { p = v; }
+            ];
+          };
+        readCfg =
+          type: v:
+          (cfg {
+            modules = [
+              { options.p = gm.mkOption { inherit type; }; }
+              { p = v; }
+            ];
+          }).p;
+        refused = reason: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `p' declares a `type' that ${reason}$";
+        };
+        notAType = kind: "is a value of type `${kind}', not a type";
+        fnReason = "is a function, not a type \\(a type constructor must be applied\\)";
+        freeform =
+          type:
+          realize {
+            modules = [
+              { freeformType = type; }
+              { q = "a"; }
+            ];
+          };
+      in
+      {
+        test-a-scalar-member-as-a-type-is-refused = {
+          expr = read T.bad5 "a";
+          expectedError = refused (notAType "int");
+        };
+        test-a-bare-constructor-as-a-type-is-refused = {
+          expr = read T.enum "a";
+          expectedError = refused fnReason;
+        };
+        test-an-under-applied-constructor-is-refused = {
+          expr = read (T.enum "e") "a";
+          expectedError = refused fnReason;
+        };
+        test-a-constructor-returning-a-non-type-is-refused = {
+          expr = read (T.badFn 1) "a";
+          expectedError = refused (notAType "int");
+        };
+        test-a-namespace-as-a-type-is-refused = {
+          expr = read T.refinements "a";
+          expectedError = refused "answers neither this library's type vocabulary nor any field of the foreign protocol";
+        };
+        test-a-tagged-non-type-is-refused = {
+          expr = read T.badTag "a";
+          expectedError = refused "is a tagged `option' value, not a type";
+        };
+        # An ABSENT `type` is the untyped option (the control below); a `type` stated as `null` is a
+        # value in type position. nixpkgs refuses it too, uncatchably.
+        test-a-null-type-is-refused = {
+          expr = read null "a";
+          expectedError = refused (notAType "null");
+        };
+        # Reached through the default alone: the fold demands the type there too.
+        test-a-defaulted-option-with-a-non-type-is-refused = {
+          expr = realize {
+            modules = [
+              {
+                options.p = gm.mkOption {
+                  type = T.bad5;
+                  default = "d";
+                };
+              }
+            ];
+          };
+          expectedError = refused (notAType "int");
+        };
+        # FALSIFIER, not a door: a pattern formal given the wrong set aborts inside the application,
+        # before any value exists to be judged. Pinned so the door is never read as covering it.
+        test-a-misapplied-pattern-constructor-aborts-before-the-door = {
+          expr = read (T.badPattern { }) "a";
+          expectedError = {
+            type = "TypeError";
+            msg = "called without required argument 'a'";
+          };
+        };
+        test-a-non-type-freeform-is-refused = {
+          expr = freeform T.bad5;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the freeform type is a value of type `int', not a type$";
+          };
+        };
+        test-a-bare-constructor-freeform-is-refused = {
+          expr = freeform T.enum;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the freeform type ${fnReason}$";
+          };
+        };
+        # LIVE CONTROLS, same run. A leaf still refuses a bad definition with its own message and
+        # admits a good one; the untyped option stays untyped; the fold's own vocabulary is admitted
+        # (a type answering by `mergeDefs` alone, and the bare `mkType { }`); and the namespace door
+        # is not widened — the scalar member still publishes.
+        test-a-leaf-still-refuses-a-bad-definition-by-its-own-message = {
+          expr = read T.str 1;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `p' is not of the expected type: ";
+          };
+        };
+        test-controls-admitted = {
+          expr = {
+            str = readCfg T.str "a";
+            untyped =
+              (cfg {
+                modules = [
+                  { options.p = gm.mkOption { }; }
+                  { p = "a"; }
+                ];
+              }).p;
+            foldOnly = readCfg (T.mkType { mergeDefs = _loc: _defs: "folded"; }) "a";
+            bareMkType = readCfg (T.mkType { }) "a";
+            published = T ? bad5;
+            freeform =
+              (cfg {
+                modules = [
+                  { freeformType = T.attrsOf T.str; }
+                  { q = "a"; }
+                ];
+              }).q;
+          };
+          expected = {
+            str = "a";
+            untyped = "a";
+            foldOnly = "folded";
+            bareMkType = "a";
+            published = true;
+            freeform = "a";
+          };
+        };
+      };
   };
 }
