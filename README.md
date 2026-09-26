@@ -1472,6 +1472,8 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 
   `closuresFirst`'s enumerated exceptions (a graft; a record in open caller content) and its value
   move (a listed field that throws propagates) are stated at its declaration in `lib/interface.nix`.
+  A `records` member that is not an attrset (`type = "str"`, a lambda) contributes `{ }` and the
+  value decides (`test-a-non-record-in-records-answers`).
 
 - **A `check = false` tree merged where no report is carried refuses, per level, a key nixpkgs would
   drop.** At an element site, a freeform plane or the public `mergeDefs`, the reference (`evalModules`

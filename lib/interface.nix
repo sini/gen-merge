@@ -168,14 +168,22 @@ let
   # would have decided on another attribute first: two declarations `g` and `g // { typeMerge =
   # throw …; }` merged on the name before `mkOptionType`'s relation compared through this subject,
   # and are now the throw, in both orders.
+  #
+  # A member of `records` that is not an attrset carries no closures and contributes `{ }`: a grammar
+  # position declared to hold a type can hold a caller's string or lambda (`type = "str"`, the NixOS
+  # spelling), and `intersectAttrs` over it is an evaluator type error that `tryEval` does not catch
+  # (den-hoag-6b5ia). Such a value has no back-edge, so the `==` over `v` decides it.
   closuresOf =
     r:
-    builtins.intersectAttrs (builtins.listToAttrs (
-      map (n: {
-        name = n;
-        value = null;
-      }) (builtins.filter (n: isAttrs r && r ? ${n} && isFunction r.${n}) exportFields)
-    )) r;
+    if !(isAttrs r) then
+      { }
+    else
+      builtins.intersectAttrs (builtins.listToAttrs (
+        map (n: {
+          name = n;
+          value = null;
+        }) (builtins.filter (n: r ? ${n} && isFunction r.${n}) exportFields)
+      )) r;
   closuresFirst = records: v: [
     (map closuresOf records)
     v

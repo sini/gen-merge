@@ -150,5 +150,35 @@ in
         derivedCheck = "REFUSED";
       };
     };
+
+    # A position a caller's grammar declares for a type can hold a non-record (`type = "str"`, a
+    # lambda). It contributes `{ }` to the prefix and the value decides; `intersectAttrs` over it was
+    # an evaluator type error `tryEval` does not catch, so a regression reds this cell as ☢️.
+    test-a-non-record-in-records-answers = {
+      expr =
+        let
+          cf = genMerge.closuresFirst;
+        in
+        {
+          stringTwin = cf [ "gauge" ] "gauge" == cf [ "gauge" ] "gauge";
+          stringDiffer = cf [ "gauge" ] "gauge" == cf [ "meter" ] "meter";
+          prefix = builtins.head (
+            cf [
+              (x: x)
+              "s"
+              null
+            ] 0
+          );
+        };
+      expected = {
+        stringTwin = true;
+        stringDiffer = false;
+        prefix = [
+          { }
+          { }
+          { }
+        ];
+      };
+    };
   };
 }
