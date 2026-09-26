@@ -521,6 +521,29 @@ in
           };
         };
       };
+      # A LEAF `freeformType` REFUSES CONFLICTING UNDECLARED DEFS BY NAME, CATCHABLY. The leaf folds
+      # the plane as one value by the engine's leaf fold, so two files defining different keys are a
+      # conflict, named with both files, as nixpkgs names it; the fold was once `null`, and applying it
+      # aborted uncatchably with no name at all. The accepting arm is `../tests/undeclared.nix` cell 20.
+      test-leaf-freeformtype-conflict-names-both-files = {
+        expr = realize {
+          modules = [
+            { freeformType = t.raw; }
+            {
+              _file = "/demo/a.nix";
+              q = "a";
+            }
+            {
+              _file = "/demo/b.nix";
+              r = "b";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `' has conflicting definitions:\n- In `/demo/b\\.nix': <a set>\n- In `/demo/a\\.nix': <a set>$";
+        };
+      };
       # A NESTED TREE'S FINDING IS REFUSED BY NAME UNDER A `freeformType` TOO. `nest.z` has an
       # associated option (`nest`, whose declared type is a lax moduleTree that drops `z`), so it is
       # outside the freeform type's domain: it can be neither absorbed nor dropped silently, and at

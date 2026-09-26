@@ -11,7 +11,11 @@
 # visibility are different questions) while the freeform plane gates this level's OWN definitions
 # (there the defs are merged, and nothing was dropped). A nested tree's findings are never absorbed,
 # so they are reported under every regime (cells 16-19).
-{ genMerge, ... }:
+{
+  genMerge,
+  nixpkgsLib,
+  ...
+}:
 let
   gm = genMerge;
   inherit (gm) evalModuleTree mkOption;
@@ -51,6 +55,20 @@ let
   freeformNestDecl = {
     _module.freeformType = t.lazyAttrsOf t.anything;
     options.nest = mkOption { type = laxNest; };
+  };
+
+  # Cells 20-22: a type with no fold of its own as the `freeformType`, read at `config.q`.
+  underFreeform = T: defs: (evalModuleTree { modules = [ { freeformType = T; } ] ++ defs; }).config;
+  underNixpkgs =
+    T: defs: (nixpkgsLib.evalModules { modules = [ { freeformType = T; } ] ++ defs; }).config;
+  foldless = {
+    raw = t.raw;
+    str = t.str;
+    defineType = t.defineType { name = "leafy"; };
+    mkType = t.mkType { name = "leafy"; };
+    foreignNoMerge = {
+      description = "d";
+    };
   };
 in
 {
@@ -742,6 +760,85 @@ in
               id_hash = "nest:0";
             };
           };
+        };
+      };
+
+    # 20 — A TYPE WITH NO FOLD OF ITS OWN FOLDS THE FREEFORM PLANE. A gen leaf, a `defineType` leaf, a
+    # bare `mkType` and a foreign record stating neither `merge` nor `check` fold the undeclared defs
+    # by the engine's leaf fold, the fold the option site already gives them; before, the fold was
+    # `null` and applying it aborted uncatchably. Top level, `_module.freeformType`, and nested.
+    test-a-foldless-freeformtype-folds-the-undeclared-plane = {
+      expr = builtins.mapAttrs (_: T: (underFreeform T [ { q = "a"; } ]).q) foldless // {
+        moduleForm =
+          (evalModuleTree {
+            modules = [
+              { _module.freeformType = t.raw; }
+              { q = "a"; }
+            ];
+          }).config.q;
+        nested =
+          (evalModuleTree {
+            modules = [
+              { options.s = mkOption { type = t.submodule { freeformType = t.raw; }; }; }
+              { s.q = "a"; }
+            ];
+          }).config.s.q;
+      };
+      expected = {
+        raw = "a";
+        str = "a";
+        defineType = "a";
+        mkType = "a";
+        foreignNoMerge = "a";
+        moduleForm = "a";
+        nested = "a";
+      };
+    };
+
+    # 21 — THE SAME VALUE AS NIXPKGS' ENGINE HANDED THE SAME GEN LEAF. Equal defs collapse to one
+    # (a fold refusing every pair fails this), and `str` does not verify `1` at this site (a fold
+    # running the leaf's check fails this): the freeform site merges unchecked, as nixpkgs' does.
+    test-a-gen-leaf-freeformtype-agrees-with-nixpkgs = {
+      expr =
+        let
+          twice = [
+            { q = "a"; }
+            { q = "a"; }
+          ];
+          int = [ { q = 1; } ];
+        in
+        {
+          twice = underFreeform t.raw twice == underNixpkgs t.raw twice;
+          int = underFreeform t.str int == underNixpkgs t.str int;
+          value = (underFreeform t.str int).q;
+        };
+      expected = {
+        twice = true;
+        int = true;
+        value = 1;
+      };
+    };
+
+    # 22 — KEY-LEVEL PROPERTIES UNDER A LEAF `freeformType` ARE RETURNED AS DATA, NOT DISCHARGED. The
+    # leaf folds the plane as one value, so `mkIf false "a"` at `q` comes back as its `_type = "if"`
+    # marker: the value nixpkgs gives on the same gen type, and the value gen-merge already gives a
+    # foreign leaf at this site. Pinned as the status quo; whether to discharge or refuse them is an
+    # open owner question (den-hoag-hgi8v Q-M).
+    test-a-leaf-freeformtype-returns-key-level-properties-as-data =
+      let
+        defs = [ { q = gm.mkIf false "a"; } ];
+        gen = (underFreeform t.str defs).q;
+      in
+      {
+        expr = {
+          type = gen._type;
+          likeForeign = gen == (underFreeform nixpkgsLib.types.str defs).q;
+          likeNixpkgs = gen == (underNixpkgs t.str defs).q;
+        };
+        expected = {
+          type = "if";
+          likeForeign = true;
+          likeNixpkgs = true;
         };
       };
   };

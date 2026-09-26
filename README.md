@@ -1392,6 +1392,15 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict
   `raw` only if a consumer hits it.
 
+- **A leaf `freeformType` folds the undeclared plane as one leaf value, so key-level properties
+  are returned as data, not discharged.** A type with no fold of its own (a gen leaf, a bare
+  `mkType`, a foreign record stating neither `merge` nor `check`) folds the plane by `mergeLeaf`,
+  the fold the option site gives it: one file passes through, equal files agree, anything else is
+  refused by name. `q = mkIf false "a"` under `freeformType = types.str` therefore reads
+  `{ _type = "if"; condition = false; content = "a"; }`, the value nixpkgs gives on the same type and
+  the value a foreign leaf gives at this site (`ci/tests/undeclared.nix` cell 22). Whether the
+  plane should discharge or refuse such properties is an open owner question (den-hoag-hgi8v, Q-M).
+
 - `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
   surface, so the throw path is rarely hit).
 

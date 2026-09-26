@@ -1187,17 +1187,27 @@ let
   # The fold a type merges by WITHOUT a definition check: nixpkgs' raw `merge`, which it calls only at
   # the freeformType site. A gen type's own fold is the same at every site; a foreign one is checked
   # at option sites (`ownFold`) and unchecked here, and an imported record whose fold is checked
-  # carries the unchecked one on it as `mergeDefs.unchecked`.
+  # carries the unchecked one on it as `mergeDefs.unchecked`. A type with no fold of its own (a gen
+  # leaf, a bare `mkType`, a foreign record stating neither `merge` nor `check`) folds by `mergeLeaf`,
+  # because that is the fold the option site already gives it (`ownFold`'s `null` falls through to
+  # it), so the same type folds the same at every site. For a gen leaf it is also nixpkgs' answer:
+  # handed the same type, nixpkgs' freeform site folds by the `leafFold` the export publishes, which
+  # agrees with `mergeLeaf`.
   rawFold =
     type:
     if type ? mergeDefs then
       type.mergeDefs.unchecked or type.mergeDefs
     else
-      interface.importedRawFold type;
+      let
+        imported = interface.importedRawFold type;
+      in
+      if imported == null then mergeLeaf else imported;
 
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
-  # Public (loc,type,rawDefs) contract — NON-short-circuiting, byte-for-byte the pre-kernel fold, so
-  # every existing consumer of the exported `mergeDefs` escape hatch (spec §1 item 6) is unchanged.
+  # Public (loc,type,rawDefs) contract — NON-short-circuiting, and the pre-kernel fold's value on every
+  # input that fold answered, so every existing consumer of the exported `mergeDefs` escape hatch
+  # (spec §1 item 6) is unchanged; a non-type where a fold demands its element is refused by name
+  # (`elementTypeRefusal`) where the pre-kernel fold took it for a leaf.
   # The opt-in fixed-input path is `mergeDefsWith true`, reached ONLY through the evalModuleTree knob.
   #
   # This is the VALUE-ONLY fold — the hot path the structural strategies (attrsOf/listOf/submodule
