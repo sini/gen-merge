@@ -3676,12 +3676,21 @@ in
         };
       };
       # The undeclared refusal names the supplied vocabulary neutrally — this library cannot know
-      # whose it is — and is the paired refusing control for the publication cell in tests/linkset.nix.
+      # whose it is — and names the one name demanded, not the namespace's whole undecided set.
       test-undeclared-collision-names-the-supplied-vocabulary = {
-        expr = builtins.attrNames genMergeCompat.types;
+        expr = genMergeCompat.types.submodule;
         expectedError = {
           type = "ThrownError";
-          msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at names 'anything', 'deferredModule', 'either', 'lazyAttrsOf', 'mkOptionType', 'nullOr', 'oneOf', 'raw', 'submodule'\\.";
+          msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at name 'submodule'\\.";
+        };
+      };
+      # The per-name refusal is a named, catchable refusal at the name, over a vocabulary that
+      # shares only that name undeclared; `tests/linkset.nix` pins that the rest publishes.
+      test-undeclared-collision-refuses-at-its-name = {
+        expr = (genMergeWith { inherit (nixpkgsLib.types) str nullOr; }).types.nullOr;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at name 'nullOr'\\.";
         };
       };
     };

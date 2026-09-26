@@ -141,8 +141,8 @@ let
   # IS A MEASURED REFUSAL RATHER THAN A STYLE CHOICE. That namespace merges nixpkgs leaf checkers
   # with gen-merge's structural strategies through the linkset, and the two overlap at nine
   # undeclared names (`submodule`, `nullOr`, `either`, `oneOf`, `raw`, `anything`, `lazyAttrsOf`,
-  # `deferredModule`, `mkOptionType`), so forcing it refuses by design — Cardelli 1997's
-  # disjointness precondition, enforced. The compat mode's vocabulary IS nixpkgs' `lib.types`, and
+  # `deferredModule`, `mkOptionType`), each of which refuses by name when demanded — Cardelli 1997's
+  # disjointness precondition, enforced per name. The compat mode's vocabulary IS nixpkgs' `lib.types`, and
   # this seam says so structurally rather than in a comment somewhere else.
   installEvaluator =
     body:

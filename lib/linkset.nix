@@ -88,6 +88,17 @@ in
   # is ADMITTED rather than where it is refused, and the two disciplines are complementary:
   # Cardelli's decides admission, Leijen's decides what admission costs. The record is never
   # removable: a shadow whose loser is unreachable is a silent drop wearing a declaration.
+  #
+  # ★ AN UNDECLARED COLLISION REFUSES PER NAME. Each overlap the allowlist does not name is bound to
+  # its own named refusal, and every other name publishes: a demand is judged only on the names it
+  # touches, the rule `lib/default.nix` states for `scopeDefect` ("a name nothing here demands") and
+  # for the `types` binding ("judged only on names this library demands"). The merge is then of the
+  # DECIDED domain — Cardelli's `L\U + L'\U`, disjoint up to the allowlist — with each `u ∈ U`
+  # answering by name. Lemma 5-8 makes that restriction a linkset only if no remaining fragment
+  # depends on a removed export, which holds because BOTH export environments are closed: neither
+  # side's exports read the merged environment. The declaration-hygiene refusals — groundless,
+  # copied, stale — stay whole-merge, being defects in the right side's own declaration rather than
+  # facts about a name; so a link with an undeclared collision AND a stale entry raises the stale one.
   mergeExports =
     {
       left,
@@ -97,6 +108,7 @@ in
     let
       collisions = filter (n: right.exports ? ${n}) (attrNames left.exports);
       undeclared = filter (n: !(allow ? ${n})) collisions;
+      declared = filter (n: allow ? ${n}) collisions;
 
       groundless = filter (
         n: !(allow.${n} ? ground) || !(isString allow.${n}.ground) || allow.${n}.ground == ""
@@ -125,15 +137,23 @@ in
             };
             shadowedBy = right.library;
           };
-        }) collisions
+        }) declared
+      );
+
+      # An undecided name is BOUND TO ITS REFUSAL rather than taking the namespace with it: the
+      # decision is owed per name, so the merge is of the decided domain and every undecided name
+      # still answers, by name, when demanded.
+      refusedAt = prelude.listToAttrs (
+        map (n: {
+          name = n;
+          value = refuseUndeclared left.library right.library [ n ];
+        }) undeclared
       );
     in
     if groundless != [ ] then
       refuseGroundless (prelude.head groundless)
     else if copied != null then
       refuseCopiedGround copied.a copied.b
-    else if undeclared != [ ] then
-      refuseUndeclared left.library right.library undeclared
     else if stale != [ ] then
       throw (
         "linkset: allowlist entry '${prelude.head stale}' names no export of '${right.library}', "
@@ -142,7 +162,7 @@ in
       )
     else
       {
-        exports = left.exports // right.exports;
+        exports = left.exports // right.exports // refusedAt;
         # The admitted shadows, as data a consumer can read — which is what makes the declaration
         # checkable from outside rather than a comment inside this file.
         inherit admitted;

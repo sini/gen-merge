@@ -23,8 +23,9 @@
 #             outputs refuses by name), that each type-shaped member imports through the refusing
 #             import environment (`importLeaf`), and that every name it shares with this library's
 #             strategies is declared in `types-allowlist.nix`. A vocabulary meeting those publishes
-#             whatever subset of names it carries; one sharing an UNdeclared name with the
-#             strategies refuses the namespace (nixpkgs' whole `lib.types` does, at nine names).
+#             whatever subset of names it carries; a name it shares UNdeclared with the
+#             strategies refuses, by name, when demanded, and every other name still publishes
+#             (nixpkgs' whole `lib.types` refuses at nine names and publishes the rest).
 #             Members that are neither a type record nor a function pass through unexamined, and a
 #             function member is examined only when applied (den-hoag-ltnf7).
 #   memo    : gen-memo.lib (ADR-0008 item 2 — the ONE incremental plane's reuse DECISION,

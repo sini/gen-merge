@@ -12,6 +12,7 @@
 # not a precondition.
 {
   genLinkset,
+  genMergeCompat,
   genMergeWith,
   genTypes,
   nixpkgsLib,
@@ -95,7 +96,8 @@ in
     expected = 9;
   };
 
-  # (iii) AN UNDECLARED COLLISION REFUSES, and (ii) A GROUNDLESS ENTRY DOES NOT CONSTRUCT.
+  # (iii) AN UNDECLARED COLLISION REFUSES AT ITS NAME, and (ii) A GROUNDLESS ENTRY DOES NOT
+  # CONSTRUCT — the second is a defect in the right side's own declaration, so it stays whole-merge.
   flake.tests.linkset.test-undeclared-and-groundless-refuse = {
     expr = {
       undeclared =
@@ -104,7 +106,7 @@ in
             left = L;
             right = R;
             allow = { };
-          }).exports;
+          }).exports.shared;
       groundless =
         refuses
           (genLinkset.mergeExports {
@@ -152,7 +154,8 @@ in
   # ★★ THE DISCRIMINATING CONTROL, and it is the cell that separates the two mechanisms. A collision
   # whose two values AGREE must STILL be declared. A COMPATIBILITY test would admit it silently —
   # that is what `÷` means — whereas disjointness requires the decision either way. So this cell
-  # FAILS if anyone later swaps in a `÷` check, which is the outcome it exists to prevent.
+  # FAILS if anyone later swaps in a `÷` check, which is the outcome it exists to prevent. The
+  # refusal is per name, so the cell demands the name.
   flake.tests.linkset.test-control-agreeing-collision-still-requires-declaration = {
     expr =
       refuses
@@ -166,8 +169,127 @@ in
             exports.same = 7;
           };
           allow = { };
-        }).exports;
+        }).exports.same;
     expected = true;
+  };
+
+  # AN ADMITTED SHADOW AND AN UNDECLARED COLLISION IN ONE LINK. The undecided name refuses by name
+  # and takes nothing else with it: the admitted shadow resolves and keeps its retention record,
+  # and a non-colliding name lands.
+  flake.tests.linkset.test-undeclared-collision-refuses-only-its-name = {
+    expr =
+      let
+        m = genLinkset.mergeExports {
+          left = {
+            library = "l";
+            exports = {
+              shared = "LEFT";
+              clash = 1;
+              onlyLeft = 9;
+            };
+          };
+          right = {
+            library = "r";
+            exports = {
+              shared = "RIGHT";
+              clash = 2;
+            };
+          };
+          allow.shared.ground = "the right side wins here because X";
+        };
+      in
+      {
+        shared = m.exports.shared;
+        onlyLeft = m.exports.onlyLeft;
+        admitted = builtins.attrNames m.admitted;
+        overridden = m.admitted.shared.overridden.value;
+        clashRefused = refuses m.exports.clash;
+      };
+    expected = {
+      shared = "RIGHT";
+      onlyLeft = 9;
+      admitted = [ "shared" ];
+      overridden = "LEFT";
+      clashRefused = true;
+    };
+  };
+
+  # A VOCABULARY SHARING AN UNDECLARED NAME WITH THE STRATEGIES STILL PUBLISHES THE REST (ADR-0025
+  # item 1): a demand is judged only on the names it touches. `nullOr` is the one undecided name
+  # here; it stays in the namespace, answering with its refusal (tests-error.nix), and the caller's
+  # `str` and gen-merge's `listOf` publish beside it. The `1` definition is the paired control: a
+  # namespace that published a non-checking `str` would read it.
+  flake.tests.linkset.test-undeclared-collision-refuses-per-name = {
+    expr =
+      let
+        W = genMergeWith { inherit (np) str nullOr; };
+        read =
+          type: v:
+          (W.evalModuleTree {
+            modules = [
+              { options.p = W.mkOption { inherit type; }; }
+              { p = v; }
+            ];
+          }).config.p;
+      in
+      {
+        names = builtins.attrNames W.types;
+        str = read W.types.str "sateen";
+        listOf = read (W.types.listOf W.types.str) [ "sateen" ];
+        strRefusesInt = refuses (read W.types.str 1);
+        nullOrRefused = refuses W.types.nullOr;
+      };
+    expected = {
+      names = [
+        "anything"
+        "attrs"
+        "attrsOf"
+        "deferredModule"
+        "defineType"
+        "either"
+        "lazyAttrsOf"
+        "listOf"
+        "mkOption"
+        "mkOptionType"
+        "mkType"
+        "nullOr"
+        "oneOf"
+        "option"
+        "raw"
+        "str"
+        "submodule"
+      ];
+      str = "sateen";
+      listOf = [ "sateen" ];
+      strRefusesInt = true;
+      nullOrRefused = true;
+    };
+  };
+
+  # ...AND OVER NIXPKGS' WHOLE `lib.types`, THE REFUSING SET IS EXACTLY THE OLD WHOLE-NAMESPACE ONE:
+  # the nine undeclared names, each refusing on its own, and every other name a value. No refusal
+  # was lost to the per-name binding, and none was added.
+  flake.tests.linkset.test-compat-namespace-refuses-exactly-its-undeclared-names = {
+    expr = {
+      count = builtins.length (builtins.attrNames genMergeCompat.types);
+      refusing = builtins.filter (n: refuses genMergeCompat.types.${n}) (
+        builtins.attrNames genMergeCompat.types
+      );
+    };
+    expected = {
+      count = 71;
+      refusing = [
+        "anything"
+        "deferredModule"
+        "either"
+        "lazyAttrsOf"
+        "mkOptionType"
+        "nullOr"
+        "oneOf"
+        "raw"
+        "submodule"
+      ];
+    };
   };
 
   # CONTROL ON THE INSTRUMENT: a merge with no overlap constructs in the same run. Without this,
@@ -233,7 +355,7 @@ in
 
   # A VOCABULARY LACKING EVERY ALLOWLIST NAME PUBLISHES its own names beside the strategies. Scoped:
   # this holds for a vocabulary whose overlap with the strategies is allowlisted; nixpkgs' whole
-  # `lib.types` shares nine undeclared names and refuses (tests-error.nix, the paired control).
+  # `lib.types` shares nine undeclared names, and each refuses by name (tests-error.nix).
   flake.tests.linkset.test-foreign-vocabulary-without-allowlist-names-publishes = {
     expr = builtins.attrNames overV.types;
     expected = [
@@ -259,8 +381,8 @@ in
     ];
   };
 
-  # ...AND ITS OWN NAME STILL CHECKS, as a pair: the `1` side alone would also read "refused" if the
-  # whole namespace refused, so only the pair discriminates.
+  # ...AND ITS OWN NAME STILL CHECKS, as a pair: the `1` side alone would also read "refused" if
+  # `str` itself refused, so only the pair discriminates.
   flake.tests.linkset.test-foreign-vocabulary-own-name-mounts-and-checks = {
     expr = {
       good = readV "x";

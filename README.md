@@ -668,8 +668,10 @@ null, a list, or a tagged value such as a flake's outputs refuses by name), that
 member imports as above, and that every name it shares with gen-merge's strategies is declared in
 `lib/types-allowlist.nix`. A vocabulary whose overlap with the strategies is allowlisted publishes
 whatever subset of names it carries — `{ inherit (lib.types) str int bool; }` publishes its three
-beside the strategies. One sharing an undeclared name refuses the whole namespace: nixpkgs' entire
-`lib.types` does, at nine names. The allowlist is gen-merge's own declaration, so an entry is stale
+beside the strategies. A name it shares undeclared with the strategies refuses **per name** too: it
+answers with the linkset's named refusal when demanded, and every other name still publishes, so
+`{ inherit (lib.types) str nullOr; }` publishes `str` and `listOf` and refuses at `nullOr`, and nixpkgs'
+entire `lib.types` refuses at nine names. The allowlist is gen-merge's own declaration, so an entry is stale
 only when it names nothing gen-merge exports; an entry naming a name the vocabulary lacks is
 inapplicable, and whether the shipped gen-types still collides at each entry is a CI cell.
 
