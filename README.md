@@ -37,7 +37,7 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 | Library                                              | Role                                                                                                                                               |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [gen-prelude](https://github.com/sini/gen-prelude)   | Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils)                                                                      |
-| [gen-algebra](https://github.com/sini/gen-algebra)   | Pure primitives (record, search monad, either, intensional identity)                                                                               |
+| [gen-algebra](https://github.com/sini/gen-algebra)   | Pure primitives (record, either, intensional identity)                                                                                             |
 | [gen-types](https://github.com/sini/gen-types)       | Clean-room MIT structural type checker (leaf/poly checkers; `verify: v → null\|err`)                                                               |
 | [gen-merge](https://github.com/sini/gen-merge)       | **This lib** — Byte-mode module merge engine (`evalModuleTree`, byte-identical to nixpkgs `lib.evalModules` over the priority subset)              |
 | [gen-schema](https://github.com/sini/gen-schema)     | Typed registries (kinds, instances, collections, refs); re-hosted on gen-merge                                                                     |
