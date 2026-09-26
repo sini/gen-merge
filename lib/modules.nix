@@ -1205,9 +1205,9 @@ let
 
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, and the pre-kernel fold's value on every
-  # input that fold answered, so every existing consumer of the exported `mergeDefs` escape hatch
-  # (spec §1 item 6) is unchanged; a non-type where a fold demands its element is refused by name
-  # (`elementTypeRefusal`) where the pre-kernel fold took it for a leaf.
+  # input whose type is a type, so every existing consumer of the exported `mergeDefs` escape hatch
+  # (spec §1 item 6) is unchanged there; a non-type where a fold demands its element is refused by
+  # name (`elementTypeRefusal`), where the pre-kernel fold took it for a leaf.
   # The opt-in fixed-input path is `mergeDefsWith true`, reached ONLY through the evalModuleTree knob.
   #
   # This is the VALUE-ONLY fold — the hot path the structural strategies (attrsOf/listOf/submodule
