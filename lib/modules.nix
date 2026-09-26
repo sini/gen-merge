@@ -1163,6 +1163,9 @@ let
   declaredTypeRefusal =
     loc: type:
     "gen-merge: option `${showOption loc}' declares a `type' that ${interface.typeDefect type}";
+  elementTypeRefusal =
+    loc: type:
+    "gen-merge: option `${showOption loc}' is folded through an element type that ${interface.typeDefect type}";
 
   # DID THIS TYPE BRING A FOLD OF ITS OWN? On gen's record the presence test IS the question:
   # `mergeDefs` is there exactly when the type folds its own definitions, and a leaf simply has none.
@@ -1257,8 +1260,13 @@ let
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if fold != null then
           fold loc typeDefs
+        # The element twin of `mergeDefsRichWith`'s door: a container demands its element's fold here,
+        # and a value that is not a type lands on this arm. No caller of this fold means "untyped" by
+        # `null`, so null is judged with the rest.
+        else if type ? verify || interface.typeDefect type == null then
+          mergeLeaf loc sorted
         else
-          mergeLeaf loc sorted;
+          throw (elementTypeRefusal loc type);
       checked =
         if type != null && type ? verify then
           (

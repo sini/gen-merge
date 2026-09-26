@@ -4175,5 +4175,169 @@ in
           };
         };
       };
+
+    # A NON-TYPE IN AN ELEMENT POSITION IS REFUSED BY NAME WHERE A FOLD DEMANDS THE ELEMENT (ADR-0025
+    # item 1). Every container demands its element through the published `mergeDefs`
+    # (`lib/modules.nix` `mergeDefsWith`), and so does the freeform plane; each read below used to
+    # return the definition unchecked. An element no fold demands is not judged (the controls).
+    flake.testsError.element-type =
+      let
+        L = nixpkgsLib.types;
+        read =
+          type: v:
+          realize {
+            modules = [
+              { options.p = gm.mkOption { inherit type; }; }
+              { p = v; }
+            ];
+          };
+        readCfg =
+          type: v:
+          (cfg {
+            modules = [
+              { options.p = gm.mkOption { inherit type; }; }
+              { p = v; }
+            ];
+          }).p;
+        refused = loc: reason: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `${loc}' is folded through an element type that ${reason}$";
+        };
+        notAType = kind: "is a value of type `${kind}', not a type";
+        freeform =
+          type:
+          cfg {
+            modules = [
+              { freeformType = type; }
+              { x = "a"; }
+            ];
+          };
+        direct =
+          type:
+          gm.mergeDefs [ "o" ] type [
+            {
+              file = "f";
+              value = "a";
+            }
+          ];
+      in
+      {
+        test-attrsOf-a-scalar-is-refused = {
+          expr = read (t.attrsOf 5) { x = "a"; };
+          expectedError = refused "p.x" (notAType "int");
+        };
+        test-listOf-a-scalar-is-refused = {
+          expr = read (t.listOf 5) [ "a" ];
+          expectedError = refused "p.0" (notAType "int");
+        };
+        test-nullOr-a-scalar-is-refused = {
+          expr = read (t.nullOr 5) "a";
+          expectedError = refused "p" (notAType "int");
+        };
+        test-either-a-scalar-first-is-refused = {
+          expr = read (t.either 5 t.str) "a";
+          expectedError = refused "p" (notAType "int");
+        };
+        # Nested: each level re-enters the same fold, and the loc names the concrete position.
+        test-a-nested-scalar-element-is-refused-at-its-position = {
+          expr = read (t.attrsOf (t.listOf 5)) { x = [ "a" ]; };
+          expectedError = refused "p.x.0" (notAType "int");
+        };
+        test-attrsOf-a-bare-constructor-is-refused = {
+          expr = read (t.attrsOf t.enum) { x = "a"; };
+          expectedError = refused "p.x" "is a function, not a type \\(a type constructor must be applied\\)";
+        };
+        test-attrsOf-null-is-refused = {
+          expr = read (t.attrsOf null) { x = "a"; };
+          expectedError = refused "p.x" (notAType "null");
+        };
+        # The first member refuses the value, so the non-type member is the one chosen.
+        test-either-a-scalar-reached-as-the-chosen-member-is-refused = {
+          expr = read (t.either t.str 5) 1;
+          expectedError = refused "p" (notAType "int");
+        };
+        # The published fold itself: `null` is a value in type position here too, never "untyped".
+        test-the-published-mergeDefs-refuses-a-null-type = {
+          expr = direct null;
+          expectedError = refused "o" (notAType "null");
+        };
+        # The freeform plane folds its undeclared keys through the freeform type's own element.
+        test-a-freeform-element-that-is-not-a-type-is-refused = {
+          expr = builtins.deepSeq (freeform (t.attrsOf 5)) null;
+          expectedError = refused "x" (notAType "int");
+        };
+        # LIVE CONTROLS, same run. The leaf still refuses a bad definition by its own message.
+        test-an-element-leaf-still-refuses-a-bad-definition-by-its-own-message = {
+          expr = read (t.attrsOf t.str) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `p.x' is not of the expected type: ";
+          };
+        };
+        # Legitimate elements admit, over both vocabularies, and an element no fold demands is not
+        # judged.
+        test-element-controls-admitted = {
+          expr = {
+            str = readCfg (t.attrsOf t.str) { x = "a"; };
+            raw = readCfg (t.attrsOf t.raw) { x = "a"; };
+            bareMkType = readCfg (t.attrsOf (t.mkType { })) { x = "a"; };
+            foldOnly = readCfg (t.attrsOf (t.mkType { mergeDefs = _loc: _defs: "folded"; })) { x = "a"; };
+            submodule = readCfg (t.attrsOf (t.submodule { options.q = gm.mkOption { type = t.str; }; })) {
+              x.q = "a";
+            };
+            nullOr = readCfg (t.nullOr t.str) "a";
+            either = readCfg (t.either t.int t.str) "a";
+            foreignContainer = readCfg (L.attrsOf t.str) { x = "a"; };
+            foreignElement = readCfg (t.attrsOf L.str) { x = "a"; };
+            directRaw = direct t.raw;
+            freeform = (freeform (t.attrsOf t.str)).x;
+            emptyAttrsOf = readCfg (t.attrsOf 5) { };
+            nullNullOr = readCfg (t.nullOr 5) null;
+            firstMember = readCfg (t.either t.str 5) "a";
+          };
+          expected = {
+            str.x = "a";
+            raw.x = "a";
+            bareMkType.x = "a";
+            foldOnly.x = "folded";
+            submodule.x.q = "a";
+            nullOr = "a";
+            either = "a";
+            foreignContainer.x = "a";
+            foreignElement.x = "a";
+            directRaw = "a";
+            freeform = "a";
+            emptyAttrsOf = { };
+            nullNullOr = null;
+            firstMember = "a";
+          };
+        };
+        # THE LAZINESS CONTRACT: the element is judged at its fold and never before it. Reading the
+        # keys forces no element, and an element type bound through the config is read at the fold,
+        # where a judgement at the container's construction would force it early.
+        test-reading-the-keys-forces-no-element = {
+          expr = builtins.attrNames (readCfg (t.attrsOf 5) { x = "a"; });
+          expected = [ "x" ];
+        };
+        test-a-config-derived-element-type-is-read-at-the-fold = {
+          expr =
+            (cfg {
+              modules = [
+                (
+                  { config, ... }:
+                  {
+                    options.t = gm.mkOption {
+                      type = t.raw;
+                      default = t.raw;
+                    };
+                    options.p = gm.mkOption { type = t.attrsOf config.t; };
+                  }
+                )
+                { p.x = "a"; }
+              ];
+            }).p;
+          expected.x = "a";
+        };
+      };
   };
 }

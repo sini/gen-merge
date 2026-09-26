@@ -1103,7 +1103,8 @@ let
   # typeDefect — why a value standing where a TYPE is demanded is not one, or `null` when it is.
   # The engine asks it only where it folds a value against the type and nothing answered the
   # question already: a fold of its own, a `verify`, or no type at all (`./modules.nix`
-  # `mergeDefsRichWith`, and the freeform fold). It judges one level deep and never walks, so a
+  # `mergeDefsRichWith`, the freeform fold, and `mergeDefsWith`, where a container demands its
+  # element). It judges one level deep and never walks, so a
   # namespace such as `refinements` is refused as the value it is rather than entered.
   #
   # The last arm is `importType`'s second refusal read positively, WIDENED by the fold's own
