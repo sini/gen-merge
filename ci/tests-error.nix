@@ -601,25 +601,40 @@ in
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
         };
       };
-      # THE PARAMETRIC ARM, post-k1uv (43adfdc). A gen-types parametric leaf's `typeMergeRel` decides
-      # by MINTED CONSTRUCTION, not by name — so "same name" would still be a wrong answer for two
-      # `enum "e"` declarations over DIFFERENT value sets, but the reason is no longer "there is
-      # nothing to compare": the mint compares them fine, and says unequal. What is actually missing is
-      # a channel back to their component values (an enum's `elems`, …) to attempt a value-level
-      # reconciliation the way nixpkgs' own `enum` unions two differing sets — that channel does not
-      # exist (den-hoag-parametric-merge-unlock-6wb87). So the pair still refuses, and the message shows
-      # the two names matching while the pair still does not merge — which is exactly what distinguishes
-      # this arm from the one above.
-      #
-      # ★ AND IT NOW SAYS WHY, WHICH IS THE HALF THAT WAS MISSING. The pinned message used to be the
-      # bare pair, so this cell read as "`e' and `e' do not merge" and left the reader to work out
-      # that a parametric leaf is a different case from a name mismatch — the two arms of this suite
-      # were indistinguishable from their messages alone. The type-merge relation carries a REASON and
-      # the declaration site reports it where one is supplied, so the arm now names itself. That
-      # channel existed before and had no live producer: every type carried the foreign protocol and
-      # no relation, so the site always fell back to reconstructing the pair from two names.
-      test-parametric-redeclaration-refused-though-names-match = {
-        expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "e" [ "b" ]);
+      # THE PARAMETRIC ARM. A gen-types parametric leaf's `typeMergeRel` decides by MINTED
+      # CONSTRUCTION, not by name, and two same-named `enum`s over different value sets now merge to
+      # their union (the value cells are in ./tests/decl-merge.nix). What still refuses says WHICH of
+      # two things is missing: a law for the two constructions, though both payloads are readable, or
+      # a readable payload at all. The messages show the names matching while the pair does not merge,
+      # which is what distinguishes this arm from the one above.
+      test-parametric-redeclaration-without-a-law-names-the-constructor = {
+        expr = declaredTwice (t.struct "s" { a = t.str; }) (t.struct "s" { a = t.int; });
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`s' and `s', which mint to different constructions, and gen-merge has no reconciliation law for `struct'\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      test-parametric-redeclaration-across-constructors-names-both = {
+        expr = declaredTwice (t.enum "e" [ "a" ]) (t.struct "e" { a = t.str; });
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e', which mint to different constructions, and gen-merge has no reconciliation law between `enum' and `struct'\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # Two names still refuse: the union is a law over ONE enum, as nixpkgs' functor-name clause has it.
+      test-enum-redeclaration-under-two-names-refused = {
+        expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "f" [ "b" ]);
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `f', which mint to different constructions, and gen-merge reconciles two `enum's only under one name\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      # ★ THE READ IS TOTAL. A sealed partner has no payload `payloadOf` can certify, and the reader
+      # refuses it by `throw`; the refusal a declarer sees must still be THIS library's, naming the
+      # pair, and never the reader's. RED against a relation calling `payloadOf` unguarded, whose
+      # message is gen-types' "has no readable construction payload".
+      test-enum-against-a-sealed-partner-keeps-this-librarys-refusal = {
+        expr = declaredTwice (t.enum "e" [ "a" ]) (t.typedef' "e" (_: null));
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e', which mint to different constructions and carry no readable component values to reconcile\\); declared in a\\.nix, b\\.nix$";

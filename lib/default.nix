@@ -182,23 +182,20 @@ let
   #     constructions ("What a checker's identity is minted over"). Sealed and foreign leaves (no
   #     `__mint.minted` at all) therefore keep the ORIGINAL refusal below, unchanged.
   #
-  # What the MINTED half buys is real but narrower than nixpkgs' own `enum`, whose functor UNIONS two
-  # DIFFERING value sets on merge (`binOp = a: b: unique (a ++ b)`) — that half is NOT reproduced
-  # here. `__mint.minted` is a one-way `"type:<sha256>"` digest (gen-identity `hashIdentity`), and the
-  # checker record `mkChecker` returns carries neither a constructor's arguments (an enum's `elems`,
-  # a struct's `members`, …) nor any accessor for them — deliberately, per gen-types' own README
-  # ("publishing a caller-facing construction form would decide that open vocabulary by accretion").
-  # So a differing-construction pair is not "cannot be compared" — the mint compares it fine, and
-  # says unequal — it is "cannot read component values" to reconcile the difference. Reading them
-  # back would need a NEW channel, on gen-types or on this boundary, and picking one is a design fork
-  # of its own: banked on den-hoag-parametric-merge-unlock-6wb87 for an owner ruling rather than
-  # settled here.
+  # A differing-construction pair is not "cannot be compared" — the mint compares it fine, and says
+  # unequal — so what reconciles it is a LAW over the two constructions, read back through the
+  # vocabulary's certifying reader `payloadOf` (gen-types: the construction payload, read-only and
+  # non-identity-bearing; owner ruling on den-hoag-parametric-merge-unlock-6wb87). One law exists:
+  # nixpkgs' own `enum` functor UNIONS two differing value sets (`binOp = a: b: unique (a ++ b)`), and
+  # so does this relation for two `enum`s under one name. The digest stays the identity: a payload
+  # decides WHICH law applies and what the union holds, never whether two types are one.
   #
   # So: two checkers that mint to the SAME construction merge — trivially, to either operand, since a
-  # digest match means they denote one type — and every other pair still refuses by name. A consumer
-  # declaring one option twice with an unreconciled parametric leaf still gets a NAMED REFUSAL rather
-  # than a wrong type: gen-merge's own on its declaration path (lib/modules.nix `redeclareDecl`), and
-  # the foreign engine's `already declared` under a mount.
+  # digest match means they denote one type — two same-named `enum`s merge to their union, and every
+  # other pair still refuses by name, saying whether a payload was unreadable or no law exists for the
+  # constructions. A consumer declaring one option twice with an unreconciled parametric leaf still gets
+  # a NAMED REFUSAL rather than a wrong type: gen-merge's own on its declaration path
+  # (lib/modules.nix `redeclareDecl`), and the foreign engine's `already declared` under a mount.
   #
   # Both operands are named through `interface.nameOf`, the library's one total reader, so a partner
   # whose name is not a string is refused by name here rather than aborting the interpolation.
@@ -209,9 +206,27 @@ let
   # The MINTED-but-differing refusal — same shape as `refuseParametricMerge`, a different reason,
   # because the two are no longer the same failure. This one fires only when a digest was minted and
   # the two did not match, so "cannot be compared" would be a lie: the mint compared them and they
-  # are not the same construction. What is missing is a channel back to their arguments.
-  refuseUnreconciledMint = t: other: {
-    refused = "`${nameOf t}' and `${nameOf other}', which mint to different constructions and carry no readable component values to reconcile";
+  # are not the same construction. `pa`/`pb` are the operands' certified payloads, or `null` where
+  # one could not be read, and the message says which of the two is missing: a readable payload, or
+  # a law reconciling the constructions both payloads name.
+  refuseUnreconciledMint = t: other: pa: pb: {
+    refused =
+      "`${nameOf t}' and `${nameOf other}', which mint to different constructions"
+      + (
+        if pa == null || pb == null then
+          " and carry no readable component values to reconcile"
+        else
+          let
+            ctorOf =
+              p: if builtins.isString p.ctor then p.ctor else "<a constructor of type ${builtins.typeOf p.ctor}>";
+          in
+          if pa.ctor == "enum" && pb.ctor == "enum" then
+            ", and gen-merge reconciles two `enum's only under one name"
+          else if pa.ctor == pb.ctor then
+            ", and gen-merge has no reconciliation law for `${ctorOf pa}'"
+          else
+            ", and gen-merge has no reconciliation law between `${ctorOf pa}' and `${ctorOf pb}'"
+      );
   };
   completeParametric =
     v:
@@ -230,7 +245,54 @@ let
           else if builtins.isAttrs other && (other.__mint.minted or null) == digest then
             { merged = self; }
           else
-            refuseUnreconciledMint base other;
+            let
+              # ★ THE READ IS TOTAL. The vocabulary's `payloadOf` refuses by `throw` whatever it cannot
+              # certify (a sealed, foreign or `//`-derived partner), and that refusal is caught here
+              # and becomes `null`, so the pair falls to this library's own named refusal rather than
+              # surfacing the reader's. A vocabulary publishing no `payloadOf` reads `null` too.
+              read =
+                t:
+                let
+                  r = builtins.tryEval (
+                    if checkedTypes ? payloadOf then
+                      let
+                        p = checkedTypes.payloadOf t;
+                      in
+                      builtins.deepSeq p (if builtins.isAttrs p && p ? ctor && p ? args then p else null)
+                    else
+                      null
+                  );
+                in
+                if r.success then r.value else null;
+              pa = read base;
+              pb = read other;
+              elemsOf =
+                p: if builtins.isAttrs p.args && builtins.isList (p.args.elems or null) then p.args.elems else null;
+            in
+            # ★ THE ENUM-UNION LAW (owner ruling on den-hoag-parametric-merge-unlock-6wb87, nixpkgs
+            # parity): two `enum`s under ONE name merge to the enum of their ordered union, left operand
+            # first, first occurrence kept — nixpkgs' `enum` functor's `binOp`, `unique (a ++ b)`. Two
+            # names still refuse, as the foreign protocol's functor-name clause already does. The union
+            # is rebuilt through the vocabulary's own completed `enum`, so it mints, carries its own
+            # certified payload and merges again. Every other pair keeps the refusal.
+            if
+              pa != null
+              && pb != null
+              && pa.ctor == "enum"
+              && pb.ctor == "enum"
+              && builtins.isString (pa.args.name or null)
+              && (pa.args.name or null) == (pb.args.name or null)
+              && elemsOf pa != null
+              && elemsOf pb != null
+              && checkedTypes ? enum
+            then
+              {
+                merged = completeParametric checkedTypes.enum pa.args.name (
+                  prelude.unique (elemsOf pa ++ elemsOf pb)
+                );
+              }
+            else
+              refuseUnreconciledMint base other pa pb;
         exported = strategies.defineType (base // { typeMergeRel = rel exported; });
       in
       exported

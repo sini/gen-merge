@@ -102,8 +102,8 @@ let
   substrateKeys =
     let
       # A leaf brings a domain predicate and nothing else; its substructure and empty answer are the
-      # leaf ones, stated rather than inherited. `__id`/`__mint`/`__name`/`__nameWithin`/`verify` are
-      # gen-types' own fields riding the import-environment passthrough (see the header comment
+      # leaf ones, stated rather than inherited. `__id`/`__mint`/`__name`/`__nameWithin`/`__payload`/
+      # `verify` are gen-types' own fields riding the import-environment passthrough (see the header comment
       # above) — substrate, not foreign protocol, so they belong here rather than in
       # `completedKeysBefore`.
       leaf = [
@@ -111,6 +111,7 @@ let
         "__mint"
         "__name"
         "__nameWithin"
+        "__payload"
         "_protoLeafMerge"
         "substructure"
         "typeMergeRel"
@@ -637,18 +638,16 @@ in
       };
     };
 
-    # A parametric leaf's `typeMerge`, revisited at gen-types' k1uv mint (43adfdc / a1a5de3): a
-    # checker's identity is minted over its CONSTRUCTION, and `typeEq`/`conservativeEq` separates and
-    # equates constructions rather than names — so a MINTED leaf (`enum`, `struct` without a caller
-    # `verify`, …) now merges when the two operands are the SAME construction (`enumSelf`/`structSelf`
-    # below, each built from two textually-identical but SEPARATELY EVALUATED calls). A DIFFERING
-    # minted construction (`enumDiffering`) still refuses — not because it "cannot be compared" (the
-    # mint compares it fine, and says unequal) but because the checker record carries no readable
-    # payload (`elems`/`members`/… are hashed into the digest, never retained) to attempt a
-    # value-level reconciliation the way nixpkgs' own `enum` functor unions two differing value sets.
-    # Reading those values back would need a channel gen-types deliberately does not publish; picking
-    # one is an owner-level design fork, banked on den-hoag-parametric-merge-unlock-6wb87, not settled
-    # by this landing.
+    # A parametric leaf's `typeMerge`: a checker's identity is minted over its CONSTRUCTION, so a
+    # MINTED leaf (`enum`, `struct` without a caller `verify`, …) merges when the two operands are the
+    # SAME construction (`enumSelf`/`structSelf`, each built from two textually-identical but
+    # SEPARATELY EVALUATED calls). Two same-named `enum`s over DIFFERING value sets merge to their
+    # ordered union, read back through gen-types' certifying `payloadOf` — nixpkgs' `enum` functor
+    # `binOp`, `unique (a ++ b)`, left operand first (`enumDiffering`, `enumReversed`, `enumOverlap`).
+    # Every other differing pair still refuses: two enum names (`enumCrossName`, the functor-name
+    # clause), a differing `struct` (no law), and an enum against a same-named SEALED partner
+    # (`enumVsSealed`), whose payload cannot be certified — the relation reads it totally and answers
+    # `null`, never the reader's throw.
     #
     # A SEALED leaf (`refined`, a `struct` carrying a caller `verify`, `typedef`/`typedef'`) keeps
     # refusing UNCHANGED and unconditionally (`sealedSelfStillRefuses`, built the same
@@ -659,33 +658,78 @@ in
     # The nullary rows are the control and they must NOT refuse: a type with no parameters has nothing to
     # compare, so its self-merge is correct. A completion that stamped the refusal onto every leaf would
     # redden here.
-    test-parametric-leaf-typeMerge-refuses = {
-      expr = {
-        enumSelf = ((gmT.enum "e" [ "a" ]).typeMerge (gmT.enum "e" [ "a" ]).functor) != null;
-        enumDiffering = (gmT.enum "e" [ "a" ]).typeMerge (gmT.enum "e" [ "b" ]).functor;
-        structSelf =
-          ((gmT.struct "s" { a = gmT.str; }).typeMerge (gmT.struct "s" { a = gmT.str; }).functor) != null;
-        nullaryLeafStillSelfMerges = (gmT.str.typeMerge gmT.str.functor) != null;
-        nullaryLeafCrossName = gmT.str.typeMerge gmT.int.functor;
-        sealedSelfStillRefuses =
-          (gmT.refined gmT.str {
-            check = v: true;
-            message = "always true";
-          }).typeMerge
+    test-parametric-leaf-typeMerge-relation =
+      let
+        elemsOf = m: if m == null then null else (gmT.payloadOf m).args.elems;
+        merge = a: b: a.typeMerge b.functor;
+      in
+      {
+        expr = {
+          enumSelf = (merge (gmT.enum "e" [ "a" ]) (gmT.enum "e" [ "a" ])) != null;
+          enumDiffering = elemsOf (merge (gmT.enum "e" [ "a" ]) (gmT.enum "e" [ "b" ]));
+          enumReversed = elemsOf (merge (gmT.enum "e" [ "b" ]) (gmT.enum "e" [ "a" ]));
+          enumOverlap = elemsOf (
+            merge
+              (gmT.enum "e" [
+                "a"
+                "b"
+              ])
+              (
+                gmT.enum "e" [
+                  "b"
+                  "c"
+                ]
+              )
+          );
+          # the union merges again: it carries its own certified payload
+          enumUnionRemerges = elemsOf (
+            merge (merge (gmT.enum "e" [ "a" ]) (gmT.enum "e" [ "b" ])) (gmT.enum "e" [ "c" ])
+          );
+          enumCrossName = merge (gmT.enum "e" [ "a" ]) (gmT.enum "f" [ "a" ]);
+          enumVsSealed = merge (gmT.enum "e" [ "a" ]) (gmT.typedef' "e" (_: null));
+          structSelf = (merge (gmT.struct "s" { a = gmT.str; }) (gmT.struct "s" { a = gmT.str; })) != null;
+          structDiffering = merge (gmT.struct "s" { a = gmT.str; }) (gmT.struct "s" { a = gmT.int; });
+          nullaryLeafStillSelfMerges = (gmT.str.typeMerge gmT.str.functor) != null;
+          nullaryLeafCrossName = gmT.str.typeMerge gmT.int.functor;
+          sealedSelfStillRefuses =
             (gmT.refined gmT.str {
               check = v: true;
               message = "always true";
-            }).functor;
+            }).typeMerge
+              (gmT.refined gmT.str {
+                check = v: true;
+                message = "always true";
+              }).functor;
+        };
+        expected = {
+          enumSelf = true;
+          enumDiffering = [
+            "a"
+            "b"
+          ];
+          enumReversed = [
+            "b"
+            "a"
+          ];
+          enumOverlap = [
+            "a"
+            "b"
+            "c"
+          ];
+          enumUnionRemerges = [
+            "a"
+            "b"
+            "c"
+          ];
+          enumCrossName = null;
+          enumVsSealed = null;
+          structSelf = true;
+          structDiffering = null;
+          nullaryLeafStillSelfMerges = true;
+          nullaryLeafCrossName = null;
+          sealedSelfStillRefuses = null;
+        };
       };
-      expected = {
-        enumSelf = true;
-        enumDiffering = null;
-        structSelf = true;
-        nullaryLeafStillSelfMerges = true;
-        nullaryLeafCrossName = null;
-        sealedSelfStillRefuses = null;
-      };
-    };
 
     # A self-referential leaf (`r = union [ int (listOf r) ]`) has no identity: gen-types' type-identity
     # bound tags it `unmintable`, so the relation reads a `null` digest and refuses BY NAME, where it
@@ -1178,8 +1222,8 @@ in
     #              (43adfdc), its `typeMerge` decides by MINTED CONSTRUCTION: the two element enums here
     #              are separately-built but IDENTICAL, so they mint the same digest and merge — and the
     #              container inherits that success through `mergeElemTypes`, exactly as it inherits a
-    #              refusal for a DIFFERING pair (pinned at `test-parametric-leaf-typeMerge-refuses`'
-    #              `enumDiffering`). This particular pair is gen-native on both sides, not a foreign one
+    #              refusal for a DIFFERING pair (pinned at `test-parametric-leaf-typeMerge-relation`'
+    #              `structDiffering`). This particular pair is gen-native on both sides, not a foreign one
     #              — it rides this suite because it is the same element-guard path the row above pins,
     #              and it is where the completion and the element guard are pinned to AGREE: the guard
     #              handles a missing half, the completion removes the missing half, and a construction

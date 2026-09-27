@@ -337,6 +337,7 @@ in
           strVsStr = algebra t.str t.str;
           strVsInt = algebra t.str t.int;
           enumVsEnum = algebra (t.enum "e" [ "a" ]) (t.enum "e" [ "b" ]);
+          structVsStruct = algebra (t.struct "s" { a = t.str; }) (t.struct "s" { a = t.int; });
           attrsOfStrVsStr = algebra (t.attrsOf t.str) (t.attrsOf t.str);
           attrsOfStrVsInt = algebra (t.attrsOf t.str) (t.attrsOf t.int);
         };
@@ -344,6 +345,7 @@ in
           strVsStr = routed t.str t.str;
           strVsInt = routed t.str t.int;
           enumVsEnum = routed (t.enum "e" [ "a" ]) (t.enum "e" [ "b" ]);
+          structVsStruct = routed (t.struct "s" { a = t.str; }) (t.struct "s" { a = t.int; });
           attrsOfStrVsStr = routed (t.attrsOf t.str) (t.attrsOf t.str);
           attrsOfStrVsInt = routed (t.attrsOf t.str) (t.attrsOf t.int);
         };
@@ -359,14 +361,16 @@ in
         algebra = {
           strVsStr = "MERGED:string";
           strVsInt = "NULL-REFUSE";
-          enumVsEnum = "NULL-REFUSE";
+          enumVsEnum = "MERGED:e";
+          structVsStruct = "NULL-REFUSE";
           attrsOfStrVsStr = "MERGED:attrsOf";
           attrsOfStrVsInt = "NULL-REFUSE";
         };
         routed = {
           strVsStr = "MERGED:string";
           strVsInt = "REFUSED";
-          enumVsEnum = "REFUSED";
+          enumVsEnum = "MERGED:e";
+          structVsStruct = "REFUSED";
           attrsOfStrVsStr = "MERGED:attrsOf";
           attrsOfStrVsInt = "REFUSED";
         };
@@ -384,6 +388,60 @@ in
       expr = (evalModuleTree shadowing).config.x;
       expected = "from-B";
     };
+    # Two same-named `enum`s over different value sets merge to their ordered union (nixpkgs' `enum`
+    # functor `binOp`), so a value from the SECOND declaration is admitted and one outside both is
+    # refused. nixpkgs' `evalModules` over the same declarations is the reference arm. Three
+    # declarations fold pairwise, so the third's value is admitted too.
+    test-same-named-enum-redeclaration-unions =
+      let
+        enumsOf =
+          mk: ty: sets: v:
+          map (e: {
+            options.x = mk { type = ty "e" e; };
+          }) sets
+          ++ [ { config.x = v; } ];
+        gen =
+          sets: v: builtins.tryEval (evalModuleTree { modules = enumsOf mkOption t.enum sets v; }).config.x;
+        ref =
+          sets: v:
+          builtins.tryEval
+            (np.evalModules { modules = enumsOf np.mkOption (_: np.types.enum) sets v; }).config.x;
+        ab = [
+          [ "a" ]
+          [ "b" ]
+        ];
+      in
+      {
+        expr = {
+          admitted = gen ab "b";
+          outside = gen ab "c";
+          three = gen (ab ++ [ [ "c" ] ]) "c";
+          refAdmitted = ref ab "b";
+          refOutside = ref ab "c";
+        };
+        expected = {
+          admitted = {
+            success = true;
+            value = "b";
+          };
+          outside = {
+            success = false;
+            value = false;
+          };
+          three = {
+            success = true;
+            value = "c";
+          };
+          refAdmitted = {
+            success = true;
+            value = "b";
+          };
+          refOutside = {
+            success = false;
+            value = false;
+          };
+        };
+      };
     # …and the layering shape reaches its `apply`, which is the pattern the ordered fold exists for.
     # (Its lint-side twin is `test-accept-apply-redeclare-is-not-type-merge`, ci/tests/lint.nix.)
     test-apply-layering-is-not-a-redeclaration = {

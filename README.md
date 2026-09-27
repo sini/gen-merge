@@ -867,15 +867,18 @@ Two rules that look like details and are not:
 - **The predicate is `? verify`, not `? verify || ? name`.** A gen-types *helper* can return a
   `name`-bearing record that is not a type — `mkValidator name pred message` yields
   `{ message; name; pred; }`. Completing that would stamp `_type = "option-type"` onto a validator.
-- **A completed parametric leaf REFUSES `typeMerge`.** Its parameters live behind the checker closures
-  and cannot be read, and neither substitute works: gen-types' `__id` is name-only (`enum "e" [ "a" ]`
-  and `enum "e" [ "b" ]` share one), and value equality is pointer-based over the closures (two
-  identical constructions compare unequal). On the nullary default it would report "mergeable" for any
-  same-named partner and silently drop one declaration's allowed values. "Not mergeable" gets the
-  consumer a named refusal — gen-merge's own on the declaration path, nixpkgs' `already declared`
-  under a foreign mount — instead of a wrong type. This diverges from nixpkgs'
-  `enum`, whose functor unions the value sets — gen-merge cannot reproduce that without reading
-  parameters it cannot see. A **nullary** leaf keeps its self-merge: it has no parameters to compare.
+- **A completed parametric leaf merges only the SAME construction, or two same-named `enum`s.** Its
+  identity is minted over its construction, so two textually-identical constructions merge. Where two
+  differ, the relation reads both constructions through gen-types' certifying `payloadOf` (the
+  construction payload, read-only and never identity; owner ruling on
+  `den-hoag-parametric-merge-unlock-6wb87`), and one law applies: two `enum`s under one name merge to
+  the enum of their ordered union, nixpkgs' own `enum` functor `binOp` (`unique (a ++ b)`, left
+  operand first). Every other differing pair refuses by name, saying whether no law exists for the two
+  constructions (`struct`, two enum names) or a payload could not be read (a sealed or foreign
+  partner) — gen-merge's own refusal on the declaration path, nixpkgs' `already declared` under a
+  foreign mount — instead of a wrong type. A sealed leaf (`refined`, `typedef`) keeps refusing: its
+  parameters live behind its own predicate. A **nullary** leaf keeps its self-merge: it has no
+  parameters to compare.
 
 ### `emptyValue` — when "nothing was defined" is not an error
 
