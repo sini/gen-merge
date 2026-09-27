@@ -49,6 +49,10 @@ let
   # `deepSeq` is the forcing idiom the ./tests suites use: the refusals below fire while the
   # config tree is realized, so a shallow force would not reach them.
   realize = args: builtins.deepSeq (cfg args) null;
+  # `lint` and `mkCoreValue` carry no unrelated eagerly-computed sibling field the way the module
+  # tree's `.type.description` does (door-checks.nix), so a plain `deepSeq` of their result reads
+  # the door-check refusal directly.
+  force = v: builtins.deepSeq v null;
 
   # ── the refusal pair and its control share one skeleton ────────────────────────────────────
   # `rack.slot` is declared; `rack.stray` is not. The three fixtures differ in exactly one module,
@@ -4505,6 +4509,30 @@ in
               ];
             }).p;
           expected.x = "a";
+        };
+      };
+
+    # den-hoag-7gp66 P1: which message fires for gen-merge's closed record doors — lint,
+    # mkCoreValue — now that each routes through gen-prelude's shared `checkOptions` /
+    # `checkRequired` (R6: names the door first, the construct last). `evalModuleTree`'s own
+    # wiring is deferred (perf-bench regression; see the evalModuleTree hunk report) so it is not
+    # pinned here. `ci/tests/door-checks.nix` pins that each refusal is catchable and that a
+    # record door still admits an extra field; this suite pins the exact wording.
+    flake.testsError.door-checks =
+      let
+        pin = door: msg: {
+          type = "ThrownError";
+          msg = "^${door}: ${msg}$";
+        };
+      in
+      {
+        test-lint-missing-modules-named = {
+          expr = force (gm.lint { });
+          expectedError = pin "gen-merge[.]lint" "required field 'modules' is missing [(]required: 'modules'[)] [(]in prelude[.]checkRequired[)]";
+        };
+        test-mk-core-value-missing-values-named = {
+          expr = force (gm.mkCoreValue { digest = "d"; });
+          expectedError = pin "gen-merge[.]mkCoreValue" "required field 'values' is missing [(]required: 'digest', 'values'[)] [(]in prelude[.]checkRequired[)]";
         };
       };
   };

@@ -255,13 +255,13 @@ let
   # ONLY when `evalModuleTree` runs with `coreShortCircuit = true` — default-off leaves the marker an
   # ordinary attrset value, so the engine is byte-for-byte unchanged (spec §2.5 opt-in constraint).
   mkCoreValue =
-    {
-      digest,
-      values,
-    }:
+    args:
+    let
+      checked = prelude.checkRequired "gen-merge.mkCoreValue" [ "digest" "values" ] args;
+    in
     {
       __coreValue = true;
-      inherit digest values;
+      inherit (checked) digest values;
     };
   isCoreValue = v: isAttrs v && (v.__coreValue or false) == true;
 

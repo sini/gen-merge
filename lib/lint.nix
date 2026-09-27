@@ -217,8 +217,9 @@ let
       };
 
   lint =
-    { modules }:
+    args:
     let
+      modules = (prelude.checkRequired "gen-merge.lint" [ "modules" ] args).modules;
       modList = if isList modules then modules else [ modules ];
       collected = collect "<gen-merge>" modList;
       attrsetEntries = filter (e: !e.fn) collected;
