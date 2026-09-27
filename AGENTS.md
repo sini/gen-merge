@@ -34,7 +34,7 @@ Quoted text is the owner's own `flake.nix` `description` field, verbatim.
 
 Entry: `inputs.gen-merge.lib` (flake). Root `default.nix` is a **function** — `import ./gen-merge { }`
 — whose named parameters (`prelude`, `types`, `memo`, `scope`) default to the `ci/flake.lock` pins and
-may each be overridden. A further formal on that same root, `wire ? { deps, resolve }: import ./lib deps`,
+may each be overridden. A further formal on that same root, `wire ? { deps, resolve, lock }: import ./lib deps`,
 is the seam that hands this exact parameter set to `./lib` as `deps`, and it is also the shim's only
 outward channel: a formal is an INPUT channel and cannot carry a value out, so the lock-parameterised
 `follows` resolver rides out on the same record. Overriding `wire` is how a cell reads the shim's own
