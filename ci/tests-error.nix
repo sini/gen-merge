@@ -31,6 +31,7 @@
 {
   lib,
   genMerge,
+  genMergeCore,
   nixpkgsLib,
   interface,
   genMergeVocab,
@@ -4692,6 +4693,33 @@ in
           };
         };
       };
+
+    # den-hoag-n6dh7 Unit 2.4: S1 class (a), RULED (iii). A container that keys its elements by
+    # reading their definitions, holding nested trees, under a lazy container, is refused by name
+    # where its positions are keyed, naming the option, both containers and the upgrade path.
+    # `ci/tests/nesting-keys.nix` pins that it is catchable.
+    flake.testsError.nesting-keys = {
+      test-a-strict-container-of-trees-under-a-lazy-one-names-both-containers = {
+        expr =
+          let
+            r = genMergeCore.evalModuleTreeExposed {
+              modules = [
+                {
+                  options.o = gm.mkOption {
+                    type = t.lazyAttrsOf (t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }));
+                  };
+                  config.o.j.k.x = 1;
+                }
+              ];
+            };
+          in
+          force r._evaluation.allNodeIds;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+        };
+      };
+    };
 
     # den-hoag-7gp66 P1: which message fires for gen-merge's three closed doors — evalModuleTree
     # (mixed), lint (record), mkCoreValue (record) — now that each routes through gen-prelude's
