@@ -199,7 +199,10 @@ mark and refuses the rest of the option-type protocol by name (see below);
 
 Every function module receives `config`, `options`, and `prefix` (the module's option path, equal to
 the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]` inside an option
-named `sub`) in addition to any `specialArgs` and `_module.args` entries.
+named `sub`) in addition to any `specialArgs` and `_module.args` entries. The engine's three win over
+an entry of the same name: a `specialArgs` key among them is refused by name, since the caller's value
+would reach no module, and a `_module.args` entry of that name stays readable as
+`config._module.args.<name>` but does not bind the formal.
 
 ## Provenance
 

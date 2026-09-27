@@ -2770,12 +2770,11 @@ in
     # CALLER STATES IT, and names the key. Refusing at the eval sites instead would be too late in
     # two ways: the loss would already have happened, and the caller's name for it would be gone.
     #
-    # ★ THERE ARE FOUR, NOT ONE, AND THREE OF THEM ARE LOST AT A SECOND SURFACE. `name` is injected
-    # by `submodule`'s own two `evalModuleTree` calls; `config`, `options` and `prefix` are injected
-    # by the ENGINE, at both strata (`lib/modules.nix:1267` and `:1529`), with the supplied set on
-    # the LEFT of `//` — so the engine's value wins and a caller's is discarded in silence. A
-    # reserved set of `{ name }` alone would pass `.withArgs { config = …; }` straight through into
-    # that loss, which is the exact outcome the refusal exists to prevent.
+    # ★ THERE ARE FOUR, NOT ONE. `name` is injected by `submodule`'s own two `evalModuleTree` calls;
+    # `config`, `options` and `prefix` are injected by the ENGINE, at both strata (`lib/modules.nix`
+    # `declArgs` and `baseArgs`), with the supplied set on the LEFT of `//`, so the engine's value
+    # wins. The engine refuses those three itself (`engine-reserved-args` below), but only when a
+    # module is applied; the inlet answers when the caller states the key.
     #
     # Each cell reads the TEXT, not merely that it threw: `tryEval` discards the message, and "it
     # threw" passes on any refusal anywhere in the construction.
@@ -2830,6 +2829,137 @@ in
         };
       };
     };
+
+    # ── the engine's reserved keys ──────────────────────────────────────────────────────────────
+    # `evalModuleTree`/`declaredOptions { specialArgs }` put the caller's set on the LEFT of the
+    # engine's `config`/`options`/`prefix`, so a caller key among those three would reach no module.
+    # It refuses by name instead, at each binding (ADR-0025 item 1). The module takes no formals and
+    # reads its key only in an option default, so the declaration guard never forces `declArgs` and
+    # the `evalModuleTree` cells answer from `baseArgs`; the `declaredOptions` cells answer from
+    # `declArgs`. Each site therefore has cells of its own.
+    flake.testsError.engine-reserved-args =
+      let
+        reads = k: args: {
+          options.sel = gm.mkOption {
+            type = t.raw;
+            default = args.${k};
+          };
+        };
+        engine =
+          sa: k:
+          (gm.evalModuleTree {
+            modules = [ (reads k) ];
+            specialArgs = sa;
+          }).options.sel.default;
+        declared =
+          sa: k:
+          (gm.declaredOptions {
+            modules = [ (reads k) ];
+            specialArgs = sa;
+          }).sel.default;
+        msg =
+          keys:
+          "^gen-merge: `specialArgs' cannot supply the base module ${keys}; the engine injects its own value there, so the caller's would be discarded rather than used$";
+        refused = keys: {
+          type = "ThrownError";
+          msg = msg keys;
+        };
+        # One answer per key, per door: REFUSED, the caller's value, or LOST (the engine's won).
+        answer =
+          e:
+          let
+            r = builtins.tryEval e;
+          in
+          if !r.success then
+            "REFUSED"
+          else if r.value == "CALLER" then
+            "CALLER"
+          else
+            "LOST";
+        viaWithArgs = k: answer ((t.submodule [ { } ]).withArgs { ${k} = "CALLER"; }).specialArgs.${k};
+        one = k: { ${k} = "CALLER"; };
+      in
+      {
+        test-evalModuleTree-refuses-a-caller-config-by-name = {
+          expr = engine { config = "CALLER"; } "config";
+          expectedError = refused "argument `config'";
+        };
+        test-evalModuleTree-refuses-a-caller-options-by-name = {
+          expr = engine { options = "CALLER"; } "options";
+          expectedError = refused "argument `options'";
+        };
+        test-evalModuleTree-refuses-a-caller-prefix-by-name = {
+          expr = engine { prefix = "CALLER"; } "prefix";
+          expectedError = refused "argument `prefix'";
+        };
+        test-evalModuleTree-names-every-reserved-key-the-caller-stated = {
+          expr = engine {
+            config = "A";
+            prefix = "B";
+          } "config";
+          expectedError = refused "arguments `config', `prefix'";
+        };
+        # At HEAD `config`/`options` refused here with ADR-0033's "a module read `config'" text,
+        # which blamed the module for a key the caller supplied; `prefix` was lost in silence.
+        test-declaredOptions-refuses-a-caller-config-by-name = {
+          expr = declared { config = "CALLER"; } "config";
+          expectedError = refused "argument `config'";
+        };
+        test-declaredOptions-refuses-a-caller-options-by-name = {
+          expr = declared { options = "CALLER"; } "options";
+          expectedError = refused "argument `options'";
+        };
+        test-declaredOptions-refuses-a-caller-prefix-by-name = {
+          expr = declared { prefix = "CALLER"; } "prefix";
+          expectedError = refused "argument `prefix'";
+        };
+        # The two reserved sets are spelled twice (`withArgs`' in `lib/types.nix`, the engine's
+        # inline at each binding), so this cell holds them to one answer per key. Only `name`
+        # differs, because `submodule` injects `name` and the engine does not. `lib` and `anArg`
+        # are the controls: every door admits them. Each answer comes through `tryEval`, so this
+        # cell is also the catchability oracle.
+        test-withArgs-and-both-engine-strata-agree-per-key = {
+          expr = builtins.listToAttrs (
+            map
+              (k: {
+                name = k;
+                value = {
+                  withArgs = viaWithArgs k;
+                  engine = answer (engine (one k) k);
+                  declared = answer (declared (one k) k);
+                };
+              })
+              [
+                "config"
+                "options"
+                "prefix"
+                "name"
+                "lib"
+                "anArg"
+              ]
+          );
+          expected =
+            let
+              all3 = v: {
+                withArgs = v;
+                engine = v;
+                declared = v;
+              };
+            in
+            {
+              config = all3 "REFUSED";
+              options = all3 "REFUSED";
+              prefix = all3 "REFUSED";
+              name = {
+                withArgs = "REFUSED";
+                engine = "CALLER";
+                declared = "CALLER";
+              };
+              lib = all3 "CALLER";
+              anArg = all3 "CALLER";
+            };
+        };
+      };
 
     # ── WHICH REFUSAL FIRED WHEN A FOREIGN SELF-MERGE IS DECLINED ───────────────────────────────
     # The containment itself is a boolean and is asserted on the value plane

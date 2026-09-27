@@ -1728,11 +1728,34 @@ let
             ", or compose the modules before evaluation rather than through `imports = [ config.… ]'"
         }";
 
-      declArgs = specialArgs // {
-        config = inadmissible "config" "read `config'";
-        options = inadmissible "options" "read `options'";
-        inherit prefix;
-      };
+      # A caller key among `config`/`options`/`prefix` would be written over by the right operand and
+      # reach no module, so it refuses by name (ADR-0025 item 1), as at `baseArgs`. The guard is
+      # inline and the key list is built only on the refusing branch: a new binding on this path
+      # costs a constant thunk per nested evaluation, which the hub perf-bench prices.
+      declArgs =
+        (
+          if !(specialArgs ? config || specialArgs ? options || specialArgs ? prefix) then
+            specialArgs
+          else
+            let
+              stated = filter (k: specialArgs ? ${k}) [
+                "config"
+                "options"
+                "prefix"
+              ];
+            in
+            throw (
+              "gen-merge: `specialArgs' cannot supply the base module argument"
+              + (if length stated == 1 then " " else "s ")
+              + concatStringsSep ", " (map (k: "`${k}'") stated)
+              + "; the engine injects its own value there, so the caller's would be discarded rather than used"
+            )
+        )
+        // {
+          config = inadmissible "config" "read `config'";
+          options = inadmissible "options" "read `options'";
+          inherit prefix;
+        };
 
       # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
       # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
@@ -2082,13 +2105,33 @@ let
       result = driveKnot (
         result:
         let
-          baseArgs = specialArgs // {
-            inherit (result) options;
-            # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
-            # parity); the returned `result.config` stays `_module`-free.
-            config = result.moduleConfig;
-            inherit prefix;
-          };
+          # The same refusal as at `declArgs`, spelled inline for the same reason.
+          baseArgs =
+            (
+              if !(specialArgs ? config || specialArgs ? options || specialArgs ? prefix) then
+                specialArgs
+              else
+                let
+                  stated = filter (k: specialArgs ? ${k}) [
+                    "config"
+                    "options"
+                    "prefix"
+                  ];
+                in
+                throw (
+                  "gen-merge: `specialArgs' cannot supply the base module argument"
+                  + (if length stated == 1 then " " else "s ")
+                  + concatStringsSep ", " (map (k: "`${k}'") stated)
+                  + "; the engine injects its own value there, so the caller's would be discarded rather than used"
+                )
+            )
+            // {
+              inherit (result) options;
+              # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
+              # parity); the returned `result.config` stays `_module`-free.
+              config = result.moduleConfig;
+              inherit prefix;
+            };
 
           # Apply a module by its declared formals, sourcing each from baseArgs then the dynamic
           # module-args set. Using `functionArgs` (static) is what breaks the spine cycle.

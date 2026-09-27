@@ -262,10 +262,12 @@ let
 
   # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
   # `name` is injected by the two `evalModuleTree` calls below; `config`, `options` and `prefix` are
-  # injected by the engine itself at BOTH strata — `lib/modules.nix:1267` (declaration) and `:1529`
-  # (value) — and in both the caller's set is on the LEFT of `//`, so the engine's key wins. A caller
-  # stating one of these would have it silently discarded, which is exactly the loss the inlet exists
-  # to prevent, so `withArgs` refuses it by name at the moment the caller states it.
+  # injected by the engine itself at BOTH strata — `lib/modules.nix` `declArgs` (declaration) and
+  # `baseArgs` (value) — and in both the caller's set is on the LEFT of `//`, so the engine's key
+  # wins. The engine refuses those three keys itself at both bindings; `withArgs` refuses the whole
+  # set at the moment the caller states it, which is the earlier door, and it adds `name` because
+  # `submodule` injects that one. `ci/tests-error.nix` `engine-reserved-args` holds the two spellings
+  # to one answer per key.
   submoduleReservedArgs = {
     name = null;
     config = null;
