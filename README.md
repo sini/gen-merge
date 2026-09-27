@@ -1283,6 +1283,40 @@ shallow reads of the tree-type still answer. Pinned by
 Refusals are pinned in `ci/tests-error.nix` (`tree-type.*`), including a real nixpkgs mount and both
 live controls: a completed leaf still mounts, and a tree still nests.
 
+### A foreign type that declares a nested tree, and the declared opt-out
+
+A nested tree (`submodule`, `(evalModuleTree …).type`) is becoming a node of the one evaluation
+rather than a second evaluation called from inside a fold (den-hoag-n6dh7). Each nesting type now
+states its tree as data (`nests`: the module set, arguments, definition entry and the mode its
+called form evaluates in), and each container states its element positions once (`split`), which
+its own fold reads. `lazyAttrsOf` is the one exception: its fold is the split's twin, held equal
+by a cell, because it is the `wideFreeform` hot path.
+
+A foreign container outside the six gen-merge recognises (`attrsOf`, `lazyAttrsOf`, `listOf`,
+`nullOr`, `either`, `oneOf`) cannot pass the evaluation down to a nested tree. So gen-merge asks
+whether such a type DECLARES a gen nesting type as an element, at any depth, through its
+`nestedTypes` or its functor payload (`interface.declaresNesting`). That walk has a fuel of 32 (the
+same `importedTypeWalkFuel` as the type-merge guard). A self-referential element, such as nixpkgs'
+`types.json` shape, cannot be told from a deep one, so at exhaustion the walk **refuses by name**
+(ruled 2026-09-27, S2 arm (i)). The message names three remedies:
+
+- wrap the element in a recognised container;
+- declare no gen nesting element;
+- state the answer yourself with the **declared opt-out**:
+
+```nix
+types.uniq valueType // { declaresNesting = false; }   # the container…
+types.uniq (valueType // { declaresNesting = false; }) # …or the self-referential element
+```
+
+The walk reads the field on every type before it descends. A type carrying `false` answers `false`
+with no walk and no fuel. **The price, taken by name:** a marked type that DOES forward to a gen
+nesting type becomes a silent standalone evaluation through the exported `merge` (OQ11 (d)'s
+stated price). Only `false` is accepted. `declaresNesting = true`, or any non-boolean, is refused by
+name at `mkOptionType` and wherever the walk meets it, since a declared `true` is not a way to opt
+in. Pinned by `ci/tests/nesting-declaration.nix` and `ci/tests-error.nix`
+(`nesting-declaration.*`).
+
 ## Compat mode
 
 The `types` argument is an injection seam, so it can point at nixpkgs' own `lib.types` and run the

@@ -126,6 +126,8 @@ let
         "carries"
         "mergeDefs"
         "recarry"
+        # den-hoag-n6dh7 U2.1, a declared gain: a container's element positions (`split`)
+        "split"
         "substructure"
         "typeMergeRel"
         "whenEmpty"
@@ -164,8 +166,12 @@ let
         "_protoLeafMerge"
         "admits"
         "carries"
+        # den-hoag-n6dh7 U2.1, a declared gain: the union's member choice (`choose`)
+        "choose"
         "mergeDefs"
         "recarry"
+        # den-hoag-n6dh7 U2.1, a declared gain: its one member position (`split`)
+        "split"
         "substructure"
         "typeMergeRel"
       ];
@@ -185,6 +191,8 @@ let
         "admits"
         "carries"
         "mergeDefs"
+        # den-hoag-n6dh7 U2.1, a declared gain: the nested tree stated as data (`nests`)
+        "nests"
         "recarry"
         "specialArgs"
         "substructure"

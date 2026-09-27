@@ -260,6 +260,16 @@ let
   # because the answer depends on which vocabulary the element states it in.
   carriesSub = interface.importedRebuilds;
 
+  # ── THE SPLIT: a container's element positions, stated ONCE (den-hoag-n6dh7 item 5) ────────────
+  # `split : loc -> defs -> [ { step; loc; defs; type; } ]` — the per-element definitions the
+  # container's fold computes, each with its POSITION segments (`step`: `[ k ]` for an attribute
+  # container, `[ d i ]` for `listOf`, `[ ]` for `nullOr` and `either`), the `loc` its element is
+  # folded at, and the element type. The container's own value fold reads it, and so does the
+  # nested-tree key walk, so the positions a walk keys and the positions a fold reads are one
+  # binding's answer, never two copies that can drift. Each element folds through the engine's
+  # CALLED fold, as every container's did before the split existed.
+  foldElement = e: mergeDefs e.loc e.type e.defs;
+
   # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
   # `name` is injected by the two `evalModuleTree` calls below; `config`, `options` and `prefix` are
   # injected by the engine itself at BOTH strata — `lib/modules.nix` `declArgs` (declaration) and
@@ -335,6 +345,30 @@ let
         else
           mkSubmodule (args // a) mods;
       inherit admits;
+      # THE NESTED TREE, STATED AS DATA (den-hoag-n6dh7 item 1): the module set and arguments this
+      # type's nested evaluation takes, so an evaluation can mint the tree as a node of its own
+      # instead of calling it. Each field is today's call's, field for field: `mergeDefs` below
+      # (`entry` is one definition read as `defsAsModules true` reads it), `whenEmpty` (`empty`), and
+      # the `{ carried; inherited; }` pair the CALLED form evaluates in (`calledMode`): the public
+      # `evalModuleTree`'s, which is `evalModuleTreeWith true false`.
+      nests = {
+        modules = mods;
+        specialArgs = args;
+        check = true;
+        coreShortCircuit = false;
+        entry = d: head (defsAsModules true [ d ]);
+        empty = {
+          prefix = [ ];
+          specialArgs = args // {
+            name = "‹name›";
+          };
+          check = true;
+        };
+        calledMode = {
+          carried = true;
+          inherited = false;
+        };
+      };
       # With no surviving definition the value is the module set evaluated over NO definitions, as
       # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
       # with the documentation placeholder as `name`, so its defaults read as they would there and an
@@ -452,6 +486,32 @@ let
       # this type cannot consume — the domain, stated where the type is built and bound once: the
       # fold's domain check reads this same binding and refuses the definition by name.
       admits = isList;
+      split =
+        loc: defs:
+        concatLists (
+          imap0 (
+            d: def:
+            concatLists (
+              imap0 (
+                i: v:
+                optional (isDefinedValue v) {
+                  step = [
+                    d
+                    i
+                  ];
+                  loc = loc ++ [ (toString i) ];
+                  defs = [
+                    {
+                      inherit (def) file;
+                      value = v;
+                    }
+                  ];
+                  type = element;
+                }
+              ) def.value
+            )
+          ) defs
+        );
     in
     defineType {
       name = "listOf";
@@ -472,25 +532,12 @@ let
       # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
       # loc (and a submodule element's `name`) is its source position whatever an earlier sibling's
       # condition says.
-      mergeDefs = refusingOutside "listOf" admits (
-        loc: defs:
-        concatMap (
-          d:
-          concatLists (
-            imap0 (
-              i: v:
-              optional (isDefinedValue v) (
-                mergeDefs (loc ++ [ (toString i) ]) element [
-                  {
-                    inherit (d) file;
-                    value = v;
-                  }
-                ]
-              )
-            ) d.value
-          )
-        ) defs
-      );
+      #
+      # ★ THE STEP IS `[ d i ]`, NOT THE LOC. `loc` indexes within ONE definition, so two definitions
+      # of one element each both place an element at `"0"`; a position keyed on it would name the two
+      # elements once. The step adds the definition's ordinal `d` among the position's definitions.
+      inherit split;
+      mergeDefs = refusingOutside "listOf" admits (loc: defs: map foldElement (split loc defs));
     };
 
   # attrsOf / lazyAttrsOf — per-key merge through the element type. They differ where nixpkgs' do: a
@@ -503,6 +550,36 @@ let
       # definition that is not an attrset is one this type cannot consume. Bound once: the fold's
       # domain check reads this same binding and refuses the definition by name.
       admits = isAttrs;
+      defsAt =
+        defs: k:
+        concatMap (
+          d:
+          optional (d.value ? ${k}) {
+            inherit (d) file;
+            value = d.value.${k};
+          }
+        ) defs;
+      at = loc: k: ds: {
+        step = [ k ];
+        loc = loc ++ [ k ];
+        defs = ds;
+        type = element;
+      };
+      # Selected ONCE, when the type is built, and not per call. `attrsOf` keeps only a key some
+      # definition still defines after discharge (its key set forces each definition to WHNF);
+      # `lazyAttrsOf` keeps every key. The key union is an attrset fold: a list `unique` is O(k²).
+      split =
+        if tyName == "attrsOf" then
+          loc: defs:
+          concatMap (
+            k:
+            let
+              ds = defsAt defs k;
+            in
+            optional (isDefinedBy ds) (at loc k ds)
+          ) (attrNames (foldl' (acc: d: acc // d.value) { } defs))
+        else
+          loc: defs: map (k: at loc k (defsAt defs k)) (attrNames (foldl' (acc: d: acc // d.value) { } defs));
     in
     defineType {
       name = tyName;
@@ -522,29 +599,26 @@ let
         modules = (subOf element).modules;
         rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
       };
-      # The fold is selected ONCE, when the type is built, and not per call: the lazy fold's text is
-      # the hub bench's `wideFreeform` hot path, whose allocation bound has no headroom for a test
-      # inside it. The domain check wraps whichever fold was selected, so the selection stays here.
+      inherit split;
+      # `attrsOf`'s fold is the split's elements, each folded through the element type and placed at
+      # its key.
+      #
+      # ★ `lazyAttrsOf`'S FOLD IS THE SPLIT'S TWIN, NOT ITS READER, and that is measured, not chosen:
+      # it is the hub bench's `wideFreeform` hot path, whose thunk band and allocation bound have no
+      # headroom, and reading the split there costs a record per key (measured at 92dec6e + this
+      # split: thunks 1.096 -> 1.166 over the 1.096 band, alloc 0.805 -> 0.856 over 0.806, rc 6).
+      # So its text is the fold it was, selected once at construction, and it agrees with the split
+      # by a cell (`ci/tests/nesting-declaration.nix`, `lazy-fold-is-the-split's`) rather than by
+      # sharing a binding. A nesting element never reaches this fold once the threaded half lands:
+      # its option folds through the threaded twin, which reads the split.
       mergeDefs = refusingOutside tyName admits (
         if tyName == "attrsOf" then
           loc: defs:
           listToAttrs (
-            concatMap (
-              k:
-              let
-                ds = concatMap (
-                  d:
-                  optional (d.value ? ${k}) {
-                    inherit (d) file;
-                    value = d.value.${k};
-                  }
-                ) defs;
-              in
-              optional (isDefinedBy ds) {
-                name = k;
-                value = mergeDefs (loc ++ [ k ]) element ds;
-              }
-            ) (attrNames (foldl' (acc: d: acc // d.value) { } defs))
+            map (e: {
+              name = head e.step;
+              value = foldElement e;
+            }) (split loc defs)
           )
         else
           loc: defs:
@@ -735,6 +809,21 @@ let
   # merge through the element type (leaf verify or ref/submodule merge, via mergeDefs).
   nullOr =
     element:
+    let
+      # One element position, adding no step, over the non-null definitions; none when every
+      # definition is null.
+      split =
+        loc: defs:
+        let
+          nonNull = filter (d: d.value != null) defs;
+        in
+        optional (nonNull != [ ]) {
+          step = [ ];
+          inherit loc;
+          defs = nonNull;
+          type = element;
+        };
+    in
     defineType {
       name = "nullOr";
       # A nullable option nobody defined IS null. Distinct from the containers only in which empty
@@ -754,12 +843,13 @@ let
         rebuild = m: nullOr (if carriesSub element then (subOf element).rebuild m else element);
       };
       admits = v: v == null || isValid element v;
+      inherit split;
       mergeDefs =
         loc: defs:
         let
-          nonNull = filter (d: d.value != null) defs;
+          elements = split loc defs;
         in
-        if nonNull == [ ] then null else mergeDefs loc element nonNull;
+        if elements == [ ] then null else foldElement (head elements);
     };
   option = nullOr;
 
@@ -768,6 +858,34 @@ let
   # is total).
   either =
     a: b:
+    let
+      # THE MEMBER CHOICE, stated ONCE (den-hoag-n6dh7 item 2): the member that accepts every
+      # definition, `null` when neither does (the fold's refusal). With no definitions there is
+      # nothing to place and nothing to refuse, and the member decides only which empty value the
+      # fold goes on to ask for. It ignores `loc`; the argument is the shape every union's choice
+      # takes, since a union keyed on its position reads it.
+      choose =
+        _loc: defs:
+        let
+          accepts = t: all (d: isValid t d.value) defs;
+        in
+        if defs == [ ] then
+          b
+        else if accepts a then
+          a
+        else if accepts b then
+          b
+        else
+          null;
+      # One member position, adding no step: the definitions whole, under the member `choose` picks.
+      split = loc: defs: [
+        {
+          step = [ ];
+          inherit loc defs;
+          type = choose loc defs;
+        }
+      ];
+    in
     defineType {
       name = "either";
       # The members are carried POSITIONALLY, not as a set — `either str int` and `either int str`
@@ -821,31 +939,21 @@ let
       # set it cannot merge and the refusal could never fire. A member that genuinely accepts
       # anything (`raw`, `anything`, and a consumer type declaring so on purpose) still does, and is
       # still chosen first.
+      inherit choose split;
       mergeDefs =
         loc: defs:
         let
-          accepts = t: all (d: isValid t d.value) defs;
-          # With no definitions there is nothing to place and nothing to refuse, and the member
-          # decides only which empty value the fold goes on to ask for.
-          chosen =
-            if defs == [ ] then
-              b
-            else if accepts a then
-              a
-            else if accepts b then
-              b
-            else
-              null;
+          e = head (split loc defs);
           # Per member, the definitions IT could not take. Neither list is empty at the refusal — a
           # member rejecting nothing would have been chosen — and between them they name every
           # definition the author has to reconcile, which is more than the one pair the interpreter
           # would have collided on.
           rejects = t: map (d: toString (d.file or "<def>")) (filter (d: !(isValid t d.value)) defs);
         in
-        if chosen == null then
+        if e.type == null then
           throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (`${nameOf a}' rejects ${concatStringsSep ", " (rejects a)}; `${nameOf b}' rejects ${concatStringsSep ", " (rejects b)})"
         else
-          mergeDefs loc chosen defs;
+          foldElement e;
     };
 
   # oneOf [t1 t2 …] — n-ary either (right-nested). One use on the surface (schema either-chains).

@@ -116,6 +116,58 @@ let
         }
       ];
 
+  # ── dischargePropertiesAt : the same discharge, each result carrying the PATH it was reached by ──
+  # `[{ value; priority; path; }]`, where `path` is the steps from the definition value to `value`:
+  # `"contents"` and the index for an `mkMerge`, `"content"` for an `mkIf` or an `mkOverride`. Every
+  # step names a sub-value of the one before, so a path is an ADDRESS into the definition (the
+  # nested-tree key walk's seeds, den-hoag-n6dh7 item 2), in the attribute-name / list-index steps
+  # gen-scope's `walkAddress` reads.
+  #
+  # ★ A TWIN, NOT A GENERALISATION. `dischargeProperties` above stays byte-unchanged on the value
+  # path: one more binding in the value fold is a thunk on every definition, and the hub bench's
+  # `wideFreeform` row has no headroom for it. The two agree on values by a cell
+  # (`ci/tests/nesting-declaration.nix`, `discharge-twin`), not by sharing text.
+  dischargePropertiesAt =
+    let
+      bare = path: v: [
+        {
+          priority = defaultPriority;
+          value = v;
+          inherit path;
+        }
+      ];
+      go =
+        path: v:
+        if !(isProperty v) then
+          bare path v
+        else if v._type == "merge" then
+          prelude.concatLists (
+            prelude.imap0 (
+              i:
+              go (
+                path
+                ++ [
+                  "contents"
+                  i
+                ]
+              )
+            ) v.contents
+          )
+        else if v._type == "if" then
+          (if v.condition then go (path ++ [ "content" ]) v.content else [ ])
+        else if v._type == "override" then
+          [
+            {
+              inherit (v) priority;
+              value = v.content;
+              path = path ++ [ "content" ];
+            }
+          ]
+        else
+          bare path v;
+    in
+    go [ ];
+
   # ── filterOverrides : keep only the defs of minimum priority-number (highest precedence) ──
   # nixpkgs' override pass. Ties (equal min priority) are all kept and merged downstream, in
   # stable list order (the order pass is intentionally omitted — spec §7).
@@ -262,6 +314,7 @@ in
     isProperty
     isOrderMarker
     dischargeProperties
+    dischargePropertiesAt
     filterOverrides
     filterOverridesRich
     sortProperties
