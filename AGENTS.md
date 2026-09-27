@@ -219,6 +219,23 @@ substructure; covered by `test-substSubModules-rebuilds`), `coalesceUnmatched`'s
 
 <!-- gen-citations:end -->
 
+## The declared opt-out `declaresNesting = false`
+
+The import walk `interface.declaresNesting` asks whether a foreign type declares a gen nesting type
+as an element, at any depth. It is bounded by `importedTypeWalkFuel` (32). At exhaustion it
+**refuses by name** (S2 (i), den-hoag-n6dh7), which is what happens to a self-referential element
+such as nixpkgs' `types.json` shape. The message names three remedies:
+
+- wrap the element in a recognised container (`attrsOf`, `lazyAttrsOf`, `listOf`, `nullOr`,
+  `either`, `oneOf`);
+- declare no gen nesting element;
+- or state `type // { declaresNesting = false; }` on the container or on the element.
+
+The marker answers `false` with no walk. Its price: a marked type that does forward to a gen nesting
+type evaluates it standalone through the exported `merge`, silently. Only `false` is accepted: `true`
+or a non-boolean is refused by name at `mkOptionType` and by the walk. Cells:
+`ci/tests/nesting-declaration.nix`, `ci/tests-error.nix` `nesting-declaration.*`.
+
 ## Theory
 
 `README.md` states its claims as one flat **Theoretical foundations** list (no Implements /

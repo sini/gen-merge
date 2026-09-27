@@ -1450,6 +1450,39 @@ let
       inherit prov undeclared;
     };
 
+  # ── A NESTED POSITION, AND THE REPORT MODE IT CARRIES (den-hoag-n6dh7 items 1, 2; gate C2) ─────
+  # One record per nested tree a declared option's value holds: its `key` (the position path within
+  # the option), the `address` of its seed definitions, the `loc` the placing fold receives, and its
+  # `mode`. The mode is a property of the SITE, decided from the fact the rich fold dispatches on: a
+  # tree typed directly on the option (`key == [ ]`) whose type states `.reported`, in an evaluation
+  # whose report is carried, evaluates REPORTED, inheriting the host's strictness —
+  # `mergeDefsRichWith`'s `mode.carried && type ? mergeDefs.reported` arm. Everywhere else (every
+  # container element, every freeform-plane position) it is `"called"`: the child evaluates in the
+  # CALLED mode of the member it evaluates under (`nests.calledMode`), as each nesting type's called
+  # form does. So each position is reached in exactly one mode, and it is the mode its fold reads.
+  nestedPosition =
+    hostMode: type:
+    {
+      key,
+      address,
+      loc,
+    }:
+    {
+      inherit key address loc;
+      mode =
+        if key == [ ] && hostMode.carried && type ? mergeDefs.reported then
+          {
+            carried = true;
+            inherited = hostMode.strict;
+          }
+        else
+          "called";
+    };
+  # The `{ carried; inherited; }` pair a position's child evaluates in, under the member it
+  # evaluates as (at a union position, the member the union's choice returns).
+  positionChildMode =
+    member: position: if position.mode == "called" then member.nests.calledMode else position.mode;
+
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
   # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
   mergeLeaf =
@@ -3064,6 +3097,22 @@ let
           mergeDefs = nestingFold;
           whenEmpty = emptyTree;
           admits = isModuleValue;
+          # The nested tree AS DATA (den-hoag-n6dh7 item 1): what `nested` above evaluates, field for
+          # field — `entry` is one definition read as `defsAsModules false` reads it, `empty` is
+          # `emptyTree`'s arguments, and `calledMode` is the pair the CALLED fold runs `nested` in.
+          nests = {
+            modules = modList;
+            inherit specialArgs check coreShortCircuit;
+            entry = d: head (defsAsModules false [ d ]);
+            empty = {
+              prefix = [ ];
+              inherit specialArgs check;
+            };
+            calledMode = {
+              carried = false;
+              inherited = false;
+            };
+          };
 
           # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
           # the reason, so a consumer that finds it needs no other document to know what to do.
@@ -3160,6 +3209,10 @@ in
     mergeTypes
     # The same relation answering with its REASON — for a caller that reports rather than dispatches.
     mergeTypesReason
+    # A nested tree's position record and the report mode its child evaluates in (den-hoag-n6dh7),
+    # on the internal seam for the key walk that mints the children.
+    nestedPosition
+    positionChildMode
     # The nixpkgs `optionType` PROTOCOL BOUNDARY (lib/interface.nix), reached through this seam by
     # everything above it — the type vocabulary exports through it, this engine reads foreign types
     # through it, and the public surface stamps through it. ONE binding, so the library cannot hold

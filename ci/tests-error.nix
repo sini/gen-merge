@@ -4512,6 +4512,55 @@ in
         };
       };
 
+    # den-hoag-n6dh7 Unit 2.1: the nesting declaration's two refusals. `declaresNesting` at fuel
+    # exhaustion (S2, RULED (i)) names the fuel and the remedy, on nixpkgs' `types.json` shape; a
+    # `declaresNesting` marker other than `false` is refused at `mkOptionType`, naming the field.
+    # `ci/tests/nesting-declaration.nix` pins that each is catchable and holds the opt-out's arm.
+    flake.testsError.nesting-declaration =
+      let
+        np = nixpkgsLib.types;
+        valueType = np.nullOr (
+          np.oneOf [
+            np.str
+            (np.attrsOf valueType)
+            (np.listOf valueType)
+          ]
+        );
+      in
+      {
+        test-a-self-referential-element-is-refused-naming-the-fuel-and-the-remedy = {
+          expr = interface.declaresNesting (np.uniq valueType);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: cannot decide whether the option type `unique' declares a gen nesting type as an element: its type structure nests deeper than the walk's fuel [(]32[)], as a self-referential element does[.] Wrap the element in a recognised container [(]attrsOf, lazyAttrsOf, listOf, nullOr, either, oneOf[)], declare no gen nesting element, or state the answer with `declaresNesting = false' on the type$";
+          };
+        };
+        test-a-true-marker-is-refused-at-mk-option-type = {
+          expr = force (
+            gm.mkOptionType {
+              name = "marked";
+              declaresNesting = true;
+            }
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option type `marked' states `declaresNesting' as `true'; the field is a declared opt-out and takes only `false'[.] A type that wraps a gen nesting type states it by carrying that type as its element, not by this field$";
+          };
+        };
+        test-a-non-boolean-marker-is-refused-at-mk-option-type = {
+          expr = force (
+            gm.mkOptionType {
+              name = "marked";
+              declaresNesting = "no";
+            }
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option type `marked' states `declaresNesting' as a string; the field is a declared opt-out and takes only `false'[.] A type that wraps a gen nesting type states it by carrying that type as its element, not by this field$";
+          };
+        };
+      };
+
     # den-hoag-7gp66 P1: which message fires for gen-merge's three closed doors — evalModuleTree
     # (mixed), lint (record), mkCoreValue (record) — now that each routes through gen-prelude's
     # shared `checkOptions` / `checkRequired` (R6: names the door first, the construct last).
