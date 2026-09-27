@@ -870,8 +870,7 @@ Two rules that look like details and are not:
 - **A completed parametric leaf merges only the SAME construction, or two same-named `enum`s.** Its
   identity is minted over its construction, so two textually-identical constructions merge. Where two
   differ, the relation reads both constructions through gen-types' certifying `payloadOf` (the
-  construction payload, read-only and never identity; owner ruling on
-  `den-hoag-parametric-merge-unlock-6wb87`), and one law applies: two `enum`s under one name merge to
+  construction payload, read-only and never identity), and one law applies: two `enum`s under one name merge to
   the enum of their ordered union, nixpkgs' own `enum` functor `binOp` (`unique (a ++ b)`, left
   operand first). Every other differing pair refuses by name, saying whether no law exists for the two
   constructions (`struct`, two enum names) or a payload could not be read (a sealed or foreign
