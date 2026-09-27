@@ -62,6 +62,7 @@ let
     ;
   inherit (priority)
     dischargeProperties
+    dischargePropertiesAt
     filterOverrides
     filterOverridesRich
     sortProperties
@@ -1503,10 +1504,11 @@ let
   # injected where its called form injects one (`nests.named`: `submodule`'s `argsAt` does, the
   # tree record's `nested` does not). It is the export BRIDGE's child (item 7, OQ11 (d)), and, until
   # the tree is a child of the one evaluation (Unit 2.4), the engine accessor's too: one root
-  # evaluation per nested tree, exactly as many as the called form makes.
+  # evaluation per nested tree, exactly as many as the called form makes. Like the called form's, it
+  # is driven on the plain knot, so it mints nothing (see the minting knot below).
   nestedTreeAt =
     m: site:
-    evalModuleTreeWith m.carried m.inherited {
+    evalModuleTreeWith knotNested m.carried m.inherited {
       modules = site.nests.modules ++ map site.nests.entry site.defs;
       prefix = site.loc;
       specialArgs =
@@ -1534,6 +1536,233 @@ let
   mergeDefsThreaded =
     ev: loc: type:
     mergeDefs loc (threadedAs ev (interface.homedAt "evalModuleTree" loc type));
+
+  # ── THE KEY WALK (den-hoag-n6dh7 item 2; OQ9 (M′); S1 RULED (ii) for class (b), (iii) for (a)) ──
+  # Which positions of an option's value are nested trees, each with the ADDRESSES of the
+  # definitions its fold receives. The walk reads the containers' own `split` (the binding their
+  # value folds read, so the positions it keys are the positions a fold reads), and at each element
+  # takes the fold's own passes over the element's definitions — discharge, priority, order — in
+  # their path-carrying form, so each surviving definition keeps the path that reaches it.
+  #
+  # A definition here is `{ file; value; at; }`: `at` is its path from the addressed group's list
+  # (`[ i "value" … ]`). `split` builds each element's definitions from its input's, keeping `file`,
+  # so the walk hands it definitions whose `file` is the whole record and reads the address back
+  # off each element's; an element adds the step that selects it from that definition's value
+  # (`listOf`'s step is `[ d i ]`, whose `d` selects the DEFINITION, so its value step is `i`).
+  addressedDefs =
+    defs:
+    let
+      discharged = concatMap (
+        d:
+        map (x: {
+          inherit (d) file;
+          inherit (x) value priority;
+          at = d.at ++ x.path;
+        }) (dischargePropertiesAt d.value)
+      ) defs;
+      winners = filterOverrides discharged;
+    in
+    if any (w: isOrderMarker w.value) winners then
+      sortProperties (
+        map (w: if isOrderMarker w.value then w // { at = w.at ++ [ "content" ]; } else w) winners
+      )
+    else
+      winners;
+
+  # The class (a) refusal (S1, RULED (iii)): a container that keys its elements by reading their
+  # definitions, holding nested trees, under a container whose key set does not read them.
+  nestingUnderLazyRefusal =
+    group: lazy: t:
+    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v";
+
+  # `under`: `null` where every enclosing container keys EXACTLY (`attrsOf`, `listOf`, `nullOr`,
+  # whose key sets already read each element's definitions to WHNF), else the name of the enclosing
+  # container that OVER-APPROXIMATES (`lazyAttrsOf`, and every other container: a freeform root,
+  # gen-aspects' root). The answer is a list of `{ key; type; loc; defs; }`.
+  #   · a nesting type, or a union with a nesting member (`choose`, S1 (ii)), IS a key: the walk
+  #     never applies `choose`, so a union's member is decided where the child is read;
+  #   · a container is walked through its `split`, where it keys exactly;
+  #   · under an over-approximating container, `nullOr` adds no step and is looked through, and a
+  #     container that keys exactly is refused (class (a)): its key set is its elements' data.
+  # Only an EXACT container's elements have their definitions forced to key them, as that
+  # container's own fold forces them; an over-approximated position's definitions are a thunk,
+  # read when its seed is.
+  keyWalk =
+    under: group: t: pos: loc: defs:
+    if !(isAttrs t) || !(interface.canNest t) then
+      [ ]
+    else if interface.isNesting t || t ? choose then
+      [
+        {
+          key = pos;
+          type = t;
+          inherit loc defs;
+        }
+      ]
+    else if !(t ? split) then
+      [ ]
+    else if under != null then
+      (
+        if (t.name or null) == "nullOr" then
+          keyWalk under group (interface.homedAt "evalModuleTree" loc t.carries.element) pos loc (
+            filter (d: d.value != null) defs
+          )
+        else
+          throw (nestingUnderLazyRefusal group under t)
+      )
+    else
+      let
+        name = t.name or null;
+        exact = name == "attrsOf" || name == "listOf" || name == "nullOr";
+      in
+      concatMap (
+        e:
+        keyWalk (if exact then null else name) group (interface.homedAt "evalModuleTree" e.loc e.type)
+          (pos ++ e.step)
+          e.loc
+          (
+            addressedDefs (
+              map (d: {
+                inherit (d.file) file;
+                inherit (d) value;
+                at = d.file.at ++ (if name == "listOf" then [ (prelude.last e.step) ] else e.step);
+              }) e.defs
+            )
+          )
+      ) (t.split loc (map (d: d // { file = d; }) defs));
+
+  # The declared options of a tree, in declaration order, each with the definitions the realizer
+  # routes to it (`mergeTree`'s descent: each level's values pushed down, then selected by key).
+  nestedOptionLeaves =
+    opts: defs:
+    let
+      go =
+        path: opts: defs:
+        let
+          pushed = map (d: {
+            inherit (d) file;
+            attrs = pushDownProperties d.value;
+          }) defs;
+          sub =
+            k:
+            concatMap (
+              p:
+              optional (p.attrs ? ${k}) {
+                inherit (p) file;
+                value = p.attrs.${k};
+              }
+            ) pushed;
+        in
+        concatMap (
+          k:
+          if isOptLeaf opts.${k} then
+            [
+              {
+                path = path ++ [ k ];
+                opt = opts.${k};
+                defs = sub k;
+              }
+            ]
+          else
+            go (path ++ [ k ]) opts.${k} (sub k)
+        ) (attrNames opts);
+    in
+    go [ ] opts defs;
+
+  # The `nested` NTA's product for one tree: `definitions`, the host attribute every seed addresses
+  # (one list per group, by group ordinal), and per group its position records (`nestedPosition`,
+  # which decides each position's report mode) and the builder's key → seed map. A group is an
+  # option path, `toJSON`-encoded, and the freeform plane's reserved `freeform` (never a JSON list).
+  # An option group's definitions are the fold's: the routed definitions and the option's default,
+  # discharged, priority-resolved and ordered. The freeform plane's are the coalesced definitions its
+  # fold takes whole, with nothing discharged above its container.
+  nestedGroups =
+    {
+      prefix,
+      carried,
+      strict,
+      leaves,
+      normalize,
+      freeform,
+    }:
+    let
+      optionGroup = l: {
+        name = builtins.toJSON l.path;
+        loc = prefix ++ l.path;
+        type = l.opt.type or null;
+        hostMode = { inherit carried strict; };
+        definitions = map (d: { inherit (d) file value; }) (
+          addressedDefs (
+            map (d: d // { at = [ ]; }) (
+              normalize (
+                l.defs
+                ++ optional (l.opt ? default) {
+                  file = "<default>";
+                  value = mkOptionDefault l.opt.default;
+                }
+              )
+            )
+          )
+        );
+      };
+      groups = map optionGroup leaves ++ [
+        {
+          name = "freeform";
+          loc = prefix;
+          inherit (freeform) type;
+          # Every freeform-plane position folds by the CALLED form.
+          hostMode = {
+            carried = false;
+            inherit strict;
+          };
+          definitions = map (d: { inherit (d) file value; }) freeform.defs;
+        }
+      ];
+      positionsOf =
+        j: g:
+        map
+          (
+            r:
+            nestedPosition g.hostMode r.type {
+              inherit (r) key loc;
+              address = map (d: {
+                attr = "definitions";
+                def = j;
+                inherit (d) at;
+              }) r.defs;
+            }
+          )
+          (
+            keyWalk null g.loc (interface.homedAt "evalModuleTree" g.loc g.type) [ ] g.loc (
+              prelude.imap0 (
+                i: d:
+                d
+                // {
+                  at = [
+                    i
+                    "value"
+                  ];
+                }
+              ) g.definitions
+            )
+          );
+      positions = listToAttrs (
+        prelude.imap0 (j: g: {
+          inherit (g) name;
+          value = listToAttrs (
+            map (p: {
+              name = builtins.toJSON p.key;
+              value = p;
+            }) (positionsOf j g)
+          );
+        }) groups
+      );
+    in
+    {
+      definitions = map (g: g.definitions) groups;
+      inherit positions;
+      product = mapAttrs (_: mapAttrs (_: p: p.address)) positions;
+    };
 
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
   # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
@@ -1947,6 +2176,34 @@ let
     importGraph = scope.empty;
     decls.${knotId} = { };
   };
+  #
+  # ── THE MINTING KNOT (den-hoag-n6dh7 item 2) ─────────────────────────────────────────────────────
+  # A ROOT evaluation's knot is a node of the kind `module-tree`, which declares ONE `nta`, `nested`:
+  # its children are the nested trees its option values hold, one per nesting POSITION, minted by
+  # the key walk below with Unit 1's identifier (`mintNtaId host "nested" group key`). The builder
+  # reads the product the walk computes inside `result`; the seeds address the host attribute
+  # `definitions`, one list of definitions per group. The registry and the scope are constants.
+  #
+  # ★ WHAT MINTS IN THIS STATE, AND WHAT DOES NOT. The key walk and the minting are built; the
+  # nested trees are still EVALUATED by their types' called folds (a nested evaluation of its own,
+  # which carries no `nta`, so its own nested positions are not minted). A minted child therefore
+  # has an identity, a seed and a record, and no `result`: reading one is refused by name, since
+  # its value is its host's option value. Carrying the `nta` costs a constant per `scope.eval`
+  # (the registry crossing the door), which is why only a ROOT evaluation carries it.
+  knotKindName = "module-tree";
+  knotScopeMinting = scope.buildRoots {
+    parentGraph = scope.vertex knotId;
+    importGraph = scope.empty;
+    decls.${knotId} = { };
+    types.${knotId} = knotKindName;
+    kinds = scope.mkKinds [
+      (scope.mkKind {
+        name = knotKindName;
+        # A minted child is not evaluated in this state, so it grows no children of its own.
+        nta.nested = self: id: if id == knotId then (self.get id knotAttr)._nested.product else { };
+      })
+    ];
+  };
   driveKnot =
     f:
     (scope.eval {
@@ -1959,6 +2216,46 @@ let
     }).get
       knotId
       knotAttr;
+  # `exposes`: the gen-scope evaluation itself rides the result as `_evaluation`, for this
+  # library's own suites (its `allNodeIds` holds the minted children). Never the published door's.
+  driveKnotMinting =
+    exposes: f:
+    let
+      evaluation = scope.eval {
+        scope = knotScopeMinting;
+        attributes = {
+          children = _: _: { };
+          imports = _: _: [ ];
+          ${knotAttr} =
+            self: id:
+            if id == knotId then
+              f (self.get id knotAttr)
+            else
+              throw "gen-merge: nta: the nested tree `${id}' is minted and not evaluated as a child: its value is its host's option value, read through the host's fold";
+          definitions = self: id: (self.get id knotAttr)._nested.definitions;
+        };
+      };
+      r = evaluation.get knotId knotAttr;
+    in
+    if exposes then r // { _evaluation = evaluation; } else r;
+  # The three knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a
+  # call pays no argument for the choice: a nested evaluation's (the plain knot), a root's (the
+  # minting knot), and a root's whose evaluation is exposed to this library's suites.
+  knotNested = {
+    mints = false;
+    exposes = false;
+    drive = driveKnot;
+  };
+  knotRoot = {
+    mints = true;
+    exposes = false;
+    drive = driveKnotMinting false;
+  };
+  knotExposed = {
+    mints = true;
+    exposes = true;
+    drive = driveKnotMinting true;
+  };
 
   # ── evalModuleTree — one call = one `evalModules`, one knot on the one evaluator ──────
   # `carried`: whether this evaluation's `undeclared` report is read. `inherited`: whether a tree
@@ -1966,8 +2263,10 @@ let
   # as the nested tree that owns them (`_orphanCheck`). The public binding is
   # `evalModuleTreeWith true false`; only a nesting seam passes anything else: its strict fold
   # `false false`, its reporting fold `true <the carrying evaluation's effective strictness>`.
+  # `knot`: which knot the evaluation is driven on (above): a root evaluation mints its nested
+  # positions, and a nested evaluation made by a type's called fold does not.
   evalModuleTreeWith =
-    carried: inherited:
+    knot: carried: inherited:
     {
       modules,
       specialArgs ? { },
@@ -2202,7 +2501,7 @@ let
           }).options
         ) null;
 
-      result = driveKnot (
+      result = knot.drive (
         result:
         let
           # The same refusal as at `declArgs`, spelled inline for the same reason.
@@ -2978,6 +3277,7 @@ let
                 # Lazy, and read only inside the refusal — see gen-memo's note on the same argument.
                 remerged = attrNames warmDecision.remerged;
               };
+
         in
         {
           inherit
@@ -2994,6 +3294,33 @@ let
             ;
           options = allOptions;
         }
+        # THE NESTED POSITIONS OF THIS TREE (den-hoag-n6dh7 item 2): one group per declared option,
+        # in declaration order, and one for the freeform plane, last. Built only on an evaluation that
+        # mints, and read by the minting knot alone; inline, so a nested evaluation pays no binding.
+        // (
+          if knot.mints then
+            {
+              _nested = nestedGroups {
+                inherit prefix carried strict;
+                leaves = nestedOptionLeaves allOptions topDefs;
+                normalize =
+                  if coreShortCircuit then
+                    map (d: if isCoreValue d.value then d // { value = d.value.values; } else d)
+                  else
+                    defs: defs;
+                freeform = {
+                  type = freeform;
+                  defs =
+                    if freeform == null || realized.unmatched == [ ] then
+                      [ ]
+                    else
+                      coalesceUnmatched (length topDefs) realized.unmatched;
+                };
+              };
+            }
+          else
+            { }
+        )
       );
     in
     {
@@ -3086,7 +3413,7 @@ let
           # since it refuses by its own functor.
           nested =
             carried: inherited: loc: defs:
-            evalModuleTreeWith carried inherited {
+            evalModuleTreeWith knotNested carried inherited {
               inherit specialArgs check coreShortCircuit;
               prefix = loc;
               # Every DEFINITION is a MODULE, as the reference `(evalModules …).type` reads it
@@ -3210,8 +3537,15 @@ let
           # the reason, so a consumer that finds it needs no other document to know what to do.
           nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
         };
-    };
-  evalModuleTreeUnchecked = evalModuleTreeWith true false;
+    }
+    // (if knot.exposes then { inherit (result) _evaluation; } else { });
+  # The published door's engine: a ROOT evaluation, which mints its nested positions.
+  evalModuleTreeUnchecked = evalModuleTreeWith knotRoot true false;
+  # The same, with the gen-scope evaluation on the result as `_evaluation` (this library's suites).
+  evalModuleTreeExposed = evalModuleTreeWith knotExposed true false;
+  # A NESTED evaluation, made by a nesting type's called fold (`lib/types.nix` `submodule`): it
+  # mints nothing, because its tree is a position of the evaluation that holds it.
+  evalModuleTreeNested = evalModuleTreeWith knotNested true false;
 
   # The published door is MIXED (§v1.2): `modules` required, the rest closed options. It takes the
   # record whole rather than as native formals, whose refusal of an unknown or missing field Nix
@@ -3243,9 +3577,12 @@ in
 {
   inherit
     evalModuleTree
-    # The engine behind the door, for this library's own call sites (lib/types.nix): each builds
-    # its record literally here, so the door's caller check has nothing to decide. Not published.
+    # The engine behind the door (a root evaluation), and the nested evaluation a nesting type's
+    # called fold makes (lib/types.nix): each builds its record literally, so the door's caller check
+    # has nothing to decide. Not published.
     evalModuleTreeUnchecked
+    evalModuleTreeNested
+    evalModuleTreeExposed
     # Stratum 1 on its own — the declaration fold, published so a consumer wanting declarations
     # without values drives no fixpoint at all. Public (see lib/default.nix); it is also the fold
     # `evalModuleTree`'s declaration GUARD runs, so the two can never answer differently about
