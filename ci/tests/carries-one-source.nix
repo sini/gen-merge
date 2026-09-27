@@ -379,39 +379,56 @@ in
     # is a warm read that is total and equals cold. The controls state their position (a gen wrapper,
     # a raw nixpkgs wrapper, a refinement over a gen base, which keeps the base's `recarry`) and are
     # walked as before.
-    test-the-identity-walk-stops-where-no-position-is-stated = {
-      expr = {
-        refinedNpNullOr = hold (refinedLike (t.nullOr idSub)) { spool = "silk"; };
-        refinedNpUniq = hold (refinedLike (t.uniq idSub)) { spool = "silk"; };
-        spindle = hold (spindle idSub) { spool = "silk"; };
-        importedNpNullOr = hold (imp (t.nullOr idSub)) { spool = "silk"; };
-        importedNpUniq = hold (imp (t.uniq idSub)) { spool = "silk"; };
-        refinedNpAttrsOf = hold (refinedLike (t.attrsOf idSub)) { a.spool = "silk"; };
-        bobbin = hold (bobbin idSub) { a.spool = "silk"; };
-        ctlGenNullOr = hold (gt.nullOr idSub) { spool = "silk"; };
-        ctlNpNullOr = hold (t.nullOr idSub) { spool = "silk"; };
-        ctlRefinedGenNullOr = hold (refinedLike (gt.nullOr idSub)) { spool = "silk"; };
-        ctlGenAttrsOf = hold (gt.attrsOf idSub) { a.spool = "silk"; };
-        # the walk is live: a moved identity under the gen controls is refused warm
-        armedGenNullOr = moveRefused (gt.nullOr idSub) { spool = "silk"; } { spool = "satin"; };
-        armedGenAttrsOf = moveRefused (gt.attrsOf idSub) { a.spool = "silk"; } { a.spool = "satin"; };
+    #
+    # `idSub` is a gen `submodule`, a NESTING type, and each foreign or hand-rolled wrapper over it
+    # through `mkOptionType` is refused at construction by the import refusal (den-hoag-n6dh7 OQ11
+    # (d)), which `nesting-threaded` tests. So each row states the ruled escape hatch, `optedOut`
+    # (`declaresNesting = false`), and is exercised through it in-suite: on the wrapper where the row
+    # hands `mkOptionType` a record, on the element where the wrapper is built inside a helper.
+    test-the-identity-walk-stops-where-no-position-is-stated =
+      let
+        optedOut = ty: ty // { declaresNesting = false; };
+      in
+      {
+        expr = {
+          # opted out on the wrapper: the refusal fires without it
+          refinedNpNullOr = hold (refinedLike (optedOut (t.nullOr idSub))) { spool = "silk"; };
+          # opted out on the wrapper: the refusal fires without it
+          refinedNpUniq = hold (refinedLike (optedOut (t.uniq idSub))) { spool = "silk"; };
+          # opted out on the element: `spindle` declares it by `nestedTypes`
+          spindle = hold (spindle (optedOut idSub)) { spool = "silk"; };
+          importedNpNullOr = hold (imp (t.nullOr idSub)) { spool = "silk"; };
+          # opted out on the wrapper: nixpkgs' `uniq` is outside the six and declares its element
+          importedNpUniq = hold (imp (optedOut (t.uniq idSub))) { spool = "silk"; };
+          # opted out on the wrapper: the refusal fires without it
+          refinedNpAttrsOf = hold (refinedLike (optedOut (t.attrsOf idSub))) { a.spool = "silk"; };
+          # opted out on the element: `bobbin` declares it by `nestedTypes` and payload
+          bobbin = hold (bobbin (optedOut idSub)) { a.spool = "silk"; };
+          ctlGenNullOr = hold (gt.nullOr idSub) { spool = "silk"; };
+          ctlNpNullOr = hold (t.nullOr idSub) { spool = "silk"; };
+          # opted out on the wrapper: a record copy of gen's `nullOr` declares its element
+          ctlRefinedGenNullOr = hold (refinedLike (optedOut (gt.nullOr idSub))) { spool = "silk"; };
+          ctlGenAttrsOf = hold (gt.attrsOf idSub) { a.spool = "silk"; };
+          # the walk is live: a moved identity under the gen controls is refused warm
+          armedGenNullOr = moveRefused (gt.nullOr idSub) { spool = "silk"; } { spool = "satin"; };
+          armedGenAttrsOf = moveRefused (gt.attrsOf idSub) { a.spool = "silk"; } { a.spool = "satin"; };
+        };
+        expected = {
+          refinedNpNullOr = true;
+          refinedNpUniq = true;
+          spindle = true;
+          importedNpNullOr = true;
+          importedNpUniq = true;
+          refinedNpAttrsOf = true;
+          bobbin = true;
+          ctlGenNullOr = true;
+          ctlNpNullOr = true;
+          ctlRefinedGenNullOr = true;
+          ctlGenAttrsOf = true;
+          armedGenNullOr = true;
+          armedGenAttrsOf = true;
+        };
       };
-      expected = {
-        refinedNpNullOr = true;
-        refinedNpUniq = true;
-        spindle = true;
-        importedNpNullOr = true;
-        importedNpUniq = true;
-        refinedNpAttrsOf = true;
-        bobbin = true;
-        ctlGenNullOr = true;
-        ctlNpNullOr = true;
-        ctlRefinedGenNullOr = true;
-        ctlGenAttrsOf = true;
-        armedGenNullOr = true;
-        armedGenAttrsOf = true;
-      };
-    };
 
     # A TAG IS NOT A ROLE: `attrTag`'s `nestedTypes` is its tag set, option records, so a tag NAMED
     # `elemType` (or `left` and `right`) states no element or union, the record reads exactly as its

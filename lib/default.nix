@@ -129,7 +129,12 @@ let
   # is no state in which `gen-merge.lib` exists and its evaluator has not been checked.
   core = builtins.seq checkedScope (
     import ./modules.nix {
-      inherit prelude priority memo;
+      inherit
+        prelude
+        priority
+        memo
+        strategies
+        ;
       scope = checkedScope;
     }
   );

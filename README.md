@@ -1317,6 +1317,23 @@ name at `mkOptionType` and wherever the walk meets it, since a declared `true` i
 in. Pinned by `ci/tests/nesting-declaration.nix` and `ci/tests-error.nix`
 (`nesting-declaration.*`).
 
+**Where the refusal fires, and re-homing.** A type is HOMED where it is bound to a position: at a
+declared option (`evalModuleTree`), and when a record crosses whole through `mkOptionType`. One of
+the six stock foreign containers whose element may nest is folded as gen-merge's own container, so
+`nixpkgs.lib.types.attrsOf (submodule …)` threads like gen's. A stock container over no nesting
+element keeps its own fold. A foreign type outside the six that declares a gen nesting element
+(a hand-rolled `mkOptionType` stating `nestedTypes.elemType` or `functor.payload.elemType`,
+`coercedTo`, `attrsWith` with a non-default `placeholder`, …) is **refused by name** at that door,
+before any fold runs. The message names the door (`mkOptionType`, or `evalModuleTree` with the
+option), the type, what declared the element, and the ways out, the opt-out above among them.
+**Two prices, stated:** a stock container whose `merge` was overridden (`attrsOf t // { merge = …; }`)
+cannot be told from the stock one and is re-homed silently, losing the override; and a foreign type
+that forwards to a gen nesting type it does NOT declare evaluates that tree standalone through the
+exported `merge`. Each nesting and container fold also carries a `threaded` sibling, reading its
+nested trees through the evaluation's accessor, and a gen type's exported `merge` folds through it
+with a bridge that evaluates each tree once, standalone, as before. Pinned by
+`ci/tests/nesting-threaded.nix` and `ci/tests-error.nix` (`nesting-threaded.*`).
+
 ## Compat mode
 
 The `types` argument is an injection seam, so it can point at nixpkgs' own `lib.types` and run the

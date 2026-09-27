@@ -2368,14 +2368,19 @@ in
 
         # WHAT THE FENCE DOES NOT REACH, pinned so a change to either is a decision on the record.
         #
-        # A FOREIGN container over a gen union reads the union's published face whichever eval hosts
-        # it: gen's own eval over nixpkgs `attrsOf (either T str)` refuses, where nixpkgs over its own
-        # types gives `{ k = { a = 5; }; }`. Unchanged by the tree answering `admits`.
-        test-a-foreign-container-over-a-gen-union-refuses-in-gen = {
-          expr = family.gen (nixpkgsLib.types.attrsOf (t.either T t.str)) { k.a = 5; };
+        # A foreign container over a gen union holding the tree: the STOCK one (nixpkgs `attrsOf`) is
+        # re-homed in gen's eval as gen's own and folds (`ci/tests/nesting-threaded.nix`,
+        # `nesting-threaded-fence`; den-hoag-n6dh7 F2 elaboration, OQ11 (d)). An UNRECOGNISED one — a
+        # non-default `placeholder` puts nixpkgs' `attrsWith` outside the six — cannot thread the
+        # evaluation to the tree, and is refused by name before any fold is taken.
+        test-an-unrecognised-foreign-container-over-a-gen-union-refuses-in-gen = {
+          expr = family.gen (nixpkgsLib.types.attrsWith {
+            elemType = t.either T t.str;
+            placeholder = "host";
+          }) { k.a = 5; };
           expectedError = {
             type = "ThrownError";
-            msg = treeRefusal "check";
+            msg = "^gen-merge: `evalModuleTree' at option `s': the option type `attrsOf' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot thread the evaluation to a nested tree[.] Write it as gen-merge's container, or do not declare the element, or state `declaresNesting = false' on the type, and take the stated price: a nested tree it forwards to is then evaluated standalone$";
           };
         };
         # A caller fold closing over a union LEXICALLY carries no member, so no face of it is
@@ -4557,6 +4562,133 @@ in
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: the option type `marked' states `declaresNesting' as a string; the field is a declared opt-out and takes only `false'[.] A type that wraps a gen nesting type states it by carrying that type as its element, not by this field$";
+          };
+        };
+      };
+
+    # den-hoag-n6dh7 Unit 2.2: the import refusal (OQ11 (d)) at both of its doors, and S2 (i)'s fuel
+    # refusal at the engine's. The engine's names `evalModuleTree` and the option; `mkOptionType`'s
+    # names that door. Each names the container and what in it declared the element.
+    # `ci/tests/nesting-threaded.nix` pins that each is catchable. The one `submodule` row of U2-o
+    # (a lax tree inside a `submodule`, whose child evaluates in the submodule's called mode) keeps
+    # today's literal, and the `$` is load-bearing: a message with a suffix fails it.
+    flake.testsError.nesting-threaded =
+      let
+        np = nixpkgsLib.types;
+        sub = t.submodule { options.x = gm.mkOption { type = t.int; }; };
+        opt =
+          type: def:
+          force
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.h = gm.mkOption { inherit type; };
+                  config.h = def;
+                }
+              ];
+            }).config.h;
+        protocol = {
+          inherit (sub) getSubOptions getSubModules;
+          substSubModules = _: sub;
+        };
+        valueType = np.nullOr (
+          np.oneOf [
+            np.str
+            (np.attrsOf valueType)
+            (np.listOf valueType)
+          ]
+        );
+        rule = "and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot thread the evaluation to a nested tree[.] Write it as gen-merge's container, or do not declare the element, or state `declaresNesting = false' on the type, and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+      in
+      {
+        test-a-placeholder-attrs-with-is-refused-at-the-engine = {
+          expr = opt (np.attrsWith {
+            elemType = sub;
+            placeholder = "host";
+          }) { a.x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `attrsOf' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
+          };
+        };
+        test-a-coerced-to-over-a-nesting-type-is-refused-at-the-engine = {
+          expr = opt (np.coercedTo np.int (x: { inherit x; }) sub) 7;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+          };
+        };
+        test-a-hand-rolled-container-declaring-by-nested-types-is-refused-at-construction = {
+          expr = force (
+            gm.mkOptionType (
+              {
+                name = "fwd";
+                merge = loc: defs: sub.merge loc defs;
+                nestedTypes.elemType = sub;
+              }
+              // protocol
+            )
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `mkOptionType': the option type `fwd' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
+          };
+        };
+        test-a-hand-rolled-container-declaring-by-payload-is-refused-at-construction = {
+          expr = force (
+            gm.mkOptionType (
+              {
+                name = "fwd";
+                merge = loc: defs: sub.merge loc defs;
+                functor = {
+                  name = "fwd";
+                  payload.elemType = sub;
+                  binOp = _: _: null;
+                  type = _: null;
+                  wrapped = null;
+                };
+              }
+              // protocol
+            )
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `mkOptionType': the option type `fwd' declares a gen nesting type as an element [(]its functor payload's `elemType'[)], ${rule}";
+          };
+        };
+        test-an-unmarked-self-referential-element-is-refused-at-the-engine = {
+          expr = opt (np.uniq valueType) "x";
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: cannot decide whether the option type `unique' declares a gen nesting type as an element: its type structure nests deeper than the walk's fuel [(]32[)], as a self-referential element does[.] Wrap the element in a recognised container [(]attrsOf, lazyAttrsOf, listOf, nullOr, either, oneOf[)], declare no gen nesting element, or state the answer with `declaresNesting = false' on the type$";
+          };
+        };
+        test-a-lax-tree-inside-a-submodule-refuses-its-finding-as-today = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.s = gm.mkOption {
+                    type = t.submodule {
+                      options.t = gm.mkOption {
+                        type =
+                          (gm.evalModuleTree {
+                            modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
+                            check = false;
+                          }).type;
+                      };
+                    };
+                  };
+                  config.s.t = {
+                    x = 1;
+                    bogus = 2;
+                  };
+                }
+              ];
+            }).config.s.t.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `s[.]t[.]bogus' is not declared by the nested tree that owns it$";
           };
         };
       };
