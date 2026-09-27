@@ -568,6 +568,181 @@ let
     in
     go importedTypeWalkFuel;
 
+  # ── NESTING-NESS, AND THE TWO PREDICATES THAT READ IT (den-hoag-n6dh7 item 1, item 5) ─────────
+  # A NESTING TYPE is one whose value is a nested module tree: it states that tree as data (`nests`,
+  # the module set and arguments its nested evaluation takes) and folds through the evaluation's
+  # accessor (`mergeDefs.threaded`, the sibling of its called fold). ONE binding, and every reader of
+  # "is this a nesting type" reads it. A record carrying `nests` WITHOUT the sibling is not one,
+  # whatever it copied: gen-schema's `refined` over a submodule keeps `nests` and loses the sibling,
+  # and its fold is the copied exported `merge`. Presence only, so it forces nothing.
+  isNesting = t: t ? nests && t ? mergeDefs.threaded;
+
+  # MAY this type nest? The dispatch and key-walk predicate: a type that is nesting, or wraps one
+  # at any depth, through what it carries in either vocabulary (`importedWrapped`). Bounded by the
+  # same fuel as `importedDecidable`, and `true` AT EXHAUSTION: a wrong `true` costs a walk over
+  # types that carry no nesting (each falls back to its own fold), where a wrong `false` would send a
+  # nesting option down the called path, whose nesting element refuses. Of the two, `true` is the
+  # answer whose failure is visible. It is NOT the import refusal's predicate (`declaresNesting`,
+  # below), which answers the same question with the opposite posture at exhaustion.
+  canNest =
+    let
+      go =
+        fuel: t:
+        if !(isAttrs t) then
+          false
+        else if isNesting t then
+          true
+        else
+          let
+            wrapped = importedWrapped t;
+          in
+          wrapped != [ ] && (fuel <= 0 || prelude.any (go (fuel - 1)) wrapped);
+    in
+    go importedTypeWalkFuel;
+
+  # What a record DECLARES it wraps, read by the readers that already exist and never a new copy:
+  # its roles in either vocabulary (`importedWrapped`: `carries`, else every `nestedTypes` value, so
+  # `coercedTo`'s `finalType` counts), and, where it states none there, the element or members its
+  # functor payload carries (`payloadRole`). The payload is read only in that gap, so a record stating
+  # both spellings is walked once, not twice per level. A `nonMountable` record's `functor` is a
+  # refusal, and it wraps no type, so it is not read.
+  declaredWrapped =
+    t:
+    let
+      wrapped = importedWrapped t;
+      payload = (t.functor or { }).payload or null;
+      role = payloadRole payload;
+    in
+    if wrapped != [ ] || t ? carries || t ? nonMountable then
+      wrapped
+    else if role == "element" then
+      [ payload.elemType ]
+    else if role == "alternatives" then
+      payload.elemType
+    else
+      [ ];
+
+  # ★ THE DECLARED OPT-OUT (S2, RULED (i) with the escape hatch, den-hoag-n6dh7 2026-09-27; the
+  # pattern is ADR-0023's "declared opt-out as the interim"). An author states the answer the walk
+  # below cannot reach by setting `declaresNesting = false` on the foreign type — the container or
+  # the self-referential element, either one. It is taken at its word: that type answers `false`
+  # with no walk and no fuel. THE PRICE, stated beside it: a marked type that DOES forward to a gen
+  # nesting type becomes a silent standalone evaluation through the exported `merge` (OQ11 (d)'s
+  # stated price, now taken by name). Only `false` is a door; any other value is refused by name
+  # (a declared `true` is not an opt-in, *defaulted, reversible*). ONE text, read by `importType`
+  # at construction and by the walk wherever it meets the field.
+  declaresNestingMarkerRefusal =
+    t:
+    if !(t ? declaresNesting) || t.declaresNesting == false then
+      null
+    else
+      "gen-merge: the option type `${nameOf t}' states `declaresNesting' as "
+      + (if t.declaresNesting == true then "`true'" else "a ${builtins.typeOf t.declaresNesting}")
+      + "; the field is a declared opt-out and takes only `false'. A type that wraps a gen nesting "
+      + "type states it by carrying that type as its element, not by this field";
+
+  # DOES this type declare a gen nesting type as an element? The IMPORT REFUSAL's predicate (OQ11
+  # (d)): a foreign container outside the recognised six that declares one cannot thread the
+  # evaluation to a nested tree. Transitive over what each type declares, presence only, bounded by
+  # `importedTypeWalkFuel`. The marker above is read on every type BEFORE the walk descends.
+  #
+  # ★ AT EXHAUSTION IT REFUSES BY NAME (S2, RULED (i)). Whether a cyclic type graph reaches a nesting
+  # type is only semi-decidable, and Nix has no reference equality to find the cycle: nixpkgs'
+  # `types.json` shape (`valueType = nullOr (oneOf [ str (attrsOf valueType) (listOf valueType) ])`)
+  # cannot be told from a deep one. THE PRICE, stated: a recursive or fuel-deep element under an
+  # unrecognised container (`uniq`, `coercedTo`, `functionTo`, …) is refused even where it would not
+  # nest. The refusal names the remedy — the same three the README and AGENTS.md sections carry.
+  # Depth-first with `any`, so the first exhausted path refuses and a cyclic type costs one walk of
+  # the fuel, never the whole unfolded tree.
+  declaresNesting =
+    root:
+    let
+      go =
+        fuel: t:
+        let
+          marker = declaresNestingMarkerRefusal t;
+          wrapped = declaredWrapped t;
+        in
+        if !(isAttrs t) then
+          false
+        else if t ? declaresNesting then
+          (if marker == null then false else throw marker)
+        else if isNesting t then
+          true
+        else if wrapped == [ ] then
+          false
+        else if fuel <= 0 then
+          throw (
+            "gen-merge: cannot decide whether the option type `${nameOf root}' declares a gen nesting "
+            + "type as an element: its type structure nests deeper than the walk's fuel ("
+            + toString importedTypeWalkFuel
+            + "), as a self-referential element does. Wrap the element in a recognised container "
+            + "(attrsOf, lazyAttrsOf, listOf, nullOr, either, oneOf), declare no gen nesting element, "
+            + "or state the answer with `declaresNesting = false' on the type"
+          )
+        else
+          prelude.any (go (fuel - 1)) wrapped;
+    in
+    go importedTypeWalkFuel root;
+
+  # ── RE-HOMING: A STOCK FOREIGN CONTAINER, RECOGNISED (F2 elaboration, RULED "take (i)") ───────
+  # Which of gen's own containers a foreign record IS, as `{ container; element; }` (or `{ container
+  # = "either"; alternatives; }`), or `null` when it is none of the six. Keyed on the functor NAME
+  # and the payload's KEY SET, as nixpkgs spells them: `attrsOf` and `lazyAttrsOf` are one
+  # `attrsWith` discriminated by `lazy`, and `oneOf` is `either`s nested to the LEFT (nixpkgs folds
+  # it with `foldl'`). A non-default `placeholder` is unrecognised, because gen's container has none
+  # and would silently change what introspection reports (*defaulted, reversible*). The constructors
+  # live above this unit, so this answers the recognition and the rebuild over gen's own
+  # constructor happens where they are in scope.
+  #
+  # ★ THE STATED PRICE (owner, 2026-09-25, den-hoag-n6dh7): a stock container whose `merge` was
+  # overridden (`attrsOf t // { merge = …; }`) cannot be told from the stock one — Nix cannot compare
+  # functions — and is re-homed silently, losing the override. The byte-mode parity suite is the
+  # divergence check.
+  importedRehome =
+    t:
+    let
+      f = t.functor or { };
+      payload = f.payload or null;
+      keys = if isAttrs payload then attrNames payload else [ ];
+      name = f.name or null;
+    in
+    if !(isAttrs t) || t ? carries || t ? nonMountable then
+      null
+    else if
+      name == "attrsWith"
+      &&
+        keys == [
+          "elemType"
+          "lazy"
+          "placeholder"
+        ]
+      && payload.placeholder == "name"
+    then
+      {
+        container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
+        element = payload.elemType;
+      }
+    else if
+      (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && !(isList payload.elemType)
+    then
+      {
+        container = name;
+        element = payload.elemType;
+      }
+    else if
+      name == "either"
+      && keys == [ "elemType" ]
+      && isList payload.elemType
+      && length payload.elemType == 2
+    then
+      {
+        container = "either";
+        alternatives = payload.elemType;
+      }
+    else
+      null;
+
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner
   # has no gen relation and never will, so the question "do these two merge?" is asked in the
   # protocol's own terms: the first type's `typeMerge` applied to the second's functor.
@@ -1054,6 +1229,8 @@ let
       {
         refused = "gen-merge: cannot import `${concatStringsSep ", " (attrNames t)}' as an option type; it answers neither this library's vocabulary nor any field of the foreign protocol";
       }
+    else if declaresNestingMarkerRefusal t != null then
+      { refused = declaresNestingMarkerRefusal t; }
     else if carrierRefusal t != null then
       { refused = carrierRefusal t; }
     else if functorRefusal t != null then
@@ -1445,6 +1622,10 @@ in
     importDescriptor
     importType
     importedAdmits
+    importedRehome
+    isNesting
+    canNest
+    declaresNesting
     importedCarried
     importedOffered
     importedDecidable
