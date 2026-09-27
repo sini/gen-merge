@@ -43,7 +43,7 @@ let
   # nixpkgs' functor-aware parity is gen-merge's own P2 unit's change, with its cells.
   inherit (builtins) isFunction;
   inherit (core)
-    evalModuleTreeUnchecked
+    evalModuleTreeNested
     mergeDefs
     mergeDefsThreaded
     mergeLeaf
@@ -342,8 +342,8 @@ let
       # instead of calling it. Each field is today's call's, field for field: `mergeDefs` below
       # (`entry` is one definition read as `defsAsModules true` reads it, and `named` is `argsAt`'s
       # `name`), `whenEmpty` (`empty`), and the `{ carried; inherited; }` pair the CALLED form
-      # evaluates in (`calledMode`): the public `evalModuleTree`'s, which is `evalModuleTreeWith true
-      # false`.
+      # evaluates in (`calledMode`): the public `evalModuleTree`'s, `{ carried = true; inherited =
+      # false; }`.
       nests = {
         modules = mods;
         specialArgs = args;
@@ -365,7 +365,7 @@ let
       };
       called = refusingOutside "submodule" admits (
         loc: defs:
-        (evalModuleTreeUnchecked {
+        (evalModuleTreeNested {
           modules = mods ++ defsAsModules true defs;
           prefix = loc;
           specialArgs = argsAt loc;
@@ -401,7 +401,7 @@ let
       # with the documentation placeholder as `name`, so its defaults read as they would there and an
       # undefined sub-option refuses by name.
       whenEmpty.value =
-        (evalModuleTreeUnchecked {
+        (evalModuleTreeNested {
           modules = mods;
           prefix = [ ];
           specialArgs = args // {
@@ -473,7 +473,7 @@ let
         # value is forced.
         declares =
           prefix:
-          (evalModuleTreeUnchecked {
+          (evalModuleTreeNested {
             modules = mods;
             inherit prefix;
             specialArgs = argsAt prefix;
