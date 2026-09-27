@@ -4512,12 +4512,12 @@ in
         };
       };
 
-    # den-hoag-7gp66 P1: which message fires for gen-merge's closed record doors — lint,
-    # mkCoreValue — now that each routes through gen-prelude's shared `checkOptions` /
-    # `checkRequired` (R6: names the door first, the construct last). `evalModuleTree`'s own
-    # wiring is deferred (perf-bench regression; see the evalModuleTree hunk report) so it is not
-    # pinned here. `ci/tests/door-checks.nix` pins that each refusal is catchable and that a
-    # record door still admits an extra field; this suite pins the exact wording.
+    # den-hoag-7gp66 P1: which message fires for gen-merge's three closed doors — evalModuleTree
+    # (mixed), lint (record), mkCoreValue (record) — now that each routes through gen-prelude's
+    # shared `checkOptions` / `checkRequired` (R6: names the door first, the construct last).
+    # `ci/tests/door-checks.nix` pins that each refusal is catchable and that a record door still
+    # admits an extra field; this suite pins the exact wording. evalModuleTree's cells force only
+    # the application, since the door refuses there.
     flake.testsError.door-checks =
       let
         pin = door: msg: {
@@ -4526,6 +4526,21 @@ in
         };
       in
       {
+        test-eval-module-tree-unknown-option-named = {
+          expr = builtins.seq (gm.evalModuleTree {
+            modules = [ ];
+            notAnOption = 1;
+          }) null;
+          expectedError = pin "gen-merge[.]evalModuleTree" "'notAnOption' is not an option of this door; the options are closed [(]accepted: 'modules', 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
+        };
+        test-eval-module-tree-missing-modules-named = {
+          expr = builtins.seq (gm.evalModuleTree { }) null;
+          expectedError = pin "gen-merge[.]evalModuleTree" "required field 'modules' is missing [(]required: 'modules'[)] [(]in prelude[.]checkRequired[)]";
+        };
+        test-eval-module-tree-non-set-named = {
+          expr = builtins.seq (gm.evalModuleTree "modules") null;
+          expectedError = pin "gen-merge[.]evalModuleTree" "the argument must be an attrset, not a string [(]required: 'modules'[)] [(]in prelude[.]checkRequired[)]";
+        };
         test-lint-missing-modules-named = {
           expr = force (gm.lint { });
           expectedError = pin "gen-merge[.]lint" "required field 'modules' is missing [(]required: 'modules'[)] [(]in prelude[.]checkRequired[)]";

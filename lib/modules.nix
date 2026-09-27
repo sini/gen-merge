@@ -3065,11 +3065,41 @@ let
           nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
         };
     };
-  evalModuleTree = evalModuleTreeWith true false;
+  evalModuleTreeUnchecked = evalModuleTreeWith true false;
+
+  # The published door is MIXED (§v1.2): `modules` required, the rest closed options. It takes the
+  # record whole rather than as native formals, whose refusal of an unknown or missing field Nix
+  # raises past `tryEval`, and refuses through gen-prelude's `checkOptions` over `checkRequired`
+  # so the text is the shared one. The admitted record is decided first by a test that allocates
+  # no list and creates no thunk — `removeAttrs` against the hoisted name set leaves nothing — and
+  # the prelude composition runs only on the record that test rejects, where it throws by name.
+  # The nesting seam calls `evalModuleTreeWith` directly: its record is built here, not a caller's.
+  evalModuleTreeOptions = [
+    "modules"
+    "specialArgs"
+    "check"
+    "prefix"
+    "coreShortCircuit"
+    "warmFrom"
+    "editedModules"
+  ];
+  evalModuleTree =
+    args:
+    if isAttrs args && args ? modules && builtins.removeAttrs args evalModuleTreeOptions == { } then
+      evalModuleTreeUnchecked args
+    else
+      evalModuleTreeUnchecked (
+        prelude.checkOptions "gen-merge.evalModuleTree" evalModuleTreeOptions (
+          prelude.checkRequired "gen-merge.evalModuleTree" [ "modules" ] args
+        )
+      );
 in
 {
   inherit
     evalModuleTree
+    # The engine behind the door, for this library's own call sites (lib/types.nix): each builds
+    # its record literally here, so the door's caller check has nothing to decide. Not published.
+    evalModuleTreeUnchecked
     # Stratum 1 on its own — the declaration fold, published so a consumer wanting declarations
     # without values drives no fixpoint at all. Public (see lib/default.nix); it is also the fold
     # `evalModuleTree`'s declaration GUARD runs, so the two can never answer differently about

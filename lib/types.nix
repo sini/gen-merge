@@ -39,7 +39,7 @@ let
     imap0
     ;
   inherit (core)
-    evalModuleTree
+    evalModuleTreeUnchecked
     mergeDefs
     mergeLeaf
     slotsDiffer
@@ -340,7 +340,7 @@ let
       # with the documentation placeholder as `name`, so its defaults read as they would there and an
       # undefined sub-option refuses by name.
       whenEmpty.value =
-        (evalModuleTree {
+        (evalModuleTreeUnchecked {
           modules = mods;
           prefix = [ ];
           specialArgs = args // {
@@ -412,7 +412,7 @@ let
         # value is forced.
         declares =
           prefix:
-          (evalModuleTree {
+          (evalModuleTreeUnchecked {
             modules = mods;
             inherit prefix;
             specialArgs = argsAt prefix;
@@ -430,7 +430,7 @@ let
       # module reader would refuse it without either (`refusingOutside`).
       mergeDefs = refusingOutside "submodule" admits (
         loc: defs:
-        (evalModuleTree {
+        (evalModuleTreeUnchecked {
           modules = mods ++ defsAsModules true defs;
           prefix = loc;
           specialArgs = argsAt loc;
