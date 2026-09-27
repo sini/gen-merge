@@ -236,6 +236,17 @@ type evaluates it standalone through the exported `merge`, silently. Only `false
 or a non-boolean is refused by name at `mkOptionType` and by the walk. Cells:
 `ci/tests/nesting-declaration.nix`, `ci/tests-error.nix` `nesting-declaration.*`.
 
+The refusal fires where a type is HOMED (`interface.homedAt`): at a declared option
+(`evalModuleTree`, naming the option) and at `mkOptionType` (`importType`). One of the six stock
+containers whose element may nest (`canNest`) is re-homed as gen-merge's own. Its stated price: an
+overridden `merge` on it is lost silently. A type outside the six that declares a nesting element is
+refused, and one that forwards without declaring evaluates its tree standalone (OQ11 (d)'s price).
+A record that is itself a nesting type (a `refined`-style copy) is not refused: its copied fold is the
+price. The nesting and container folds carry `mergeDefs.threaded`, and the exported `merge` folds
+through it with `interface.bridge`, one standalone evaluation per tree. Until Unit 2.4 the engine
+still folds by the called fold. Cells: `ci/tests/nesting-threaded.nix`, `ci/tests-error.nix`
+`nesting-threaded.*`.
+
 ## Theory
 
 `README.md` states its claims as one flat **Theoretical foundations** list (no Implements /

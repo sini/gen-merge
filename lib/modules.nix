@@ -30,6 +30,11 @@
   priority,
   memo,
   scope,
+  # The type vocabulary built OVER this engine (`lib/types.nix`'s result), for the one question
+  # that needs gen's own constructors here: re-homing a recognised foreign container as the gen
+  # container it is (den-hoag-n6dh7 item 5). A KNOT, tied lazily by every caller (`lib/default.nix`,
+  # `ci/flake.nix`): nothing reads it while the vocabulary is still being built.
+  strategies,
 }:
 let
   inherit (prelude)
@@ -95,13 +100,20 @@ let
   # than a knot: the boundary needs only the prelude, this file's loc and conflict renderers, and the
   # constructor's default fold (`mergeDescriptorDefault`, below), and both of its consumers reach it
   # through the same binding, so their views of the foreign protocol cannot drift apart.
+  #
+  # ★ Two arguments close a loop back over this engine, both for the nested-tree crossing
+  # (den-hoag-n6dh7 items 5, 7) and both read lazily: gen's own containers, which re-homing rebuilds
+  # a recognised foreign container as, and the nested tree's door, through which the export bridge
+  # evaluates a nesting type's tree.
   interface = import ./interface.nix {
     inherit
       prelude
       showOption
       showConflict
       mergeDescriptorDefault
+      nestedTreeAt
       ;
+    constructors = strategies;
   };
 
   reverse =
@@ -1483,6 +1495,46 @@ let
   positionChildMode =
     member: position: if position.mode == "called" then member.nests.calledMode else position.mode;
 
+  # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
+  # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
+  # in the mode `m` (`{ carried; inherited; }`). It is the call the nesting type's called form makes,
+  # field for field, built from what the type states as data: its module set plus one entry per
+  # seed definition, the placing fold's `loc` as the prefix, and its own arguments, with `name`
+  # injected where its called form injects one (`nests.named`: `submodule`'s `argsAt` does, the
+  # tree record's `nested` does not). It is the export BRIDGE's child (item 7, OQ11 (d)), and, until
+  # the tree is a child of the one evaluation (Unit 2.4), the engine accessor's too: one root
+  # evaluation per nested tree, exactly as many as the called form makes.
+  nestedTreeAt =
+    m: site:
+    evalModuleTreeWith m.carried m.inherited {
+      modules = site.nests.modules ++ map site.nests.entry site.defs;
+      prefix = site.loc;
+      specialArgs =
+        if site.nests.named then
+          site.nests.specialArgs // { name = if site.loc == [ ] then "" else prelude.last site.loc; }
+        else
+          site.nests.specialArgs;
+      inherit (site.nests) check coreShortCircuit;
+    };
+
+  # ── THE ENGINE'S THREADED TWIN (den-hoag-n6dh7 item 5) ───────────────────────────────────────────
+  # The CALLED fold over the type whose fold is its threaded form, bound to the evaluation's accessor
+  # `ev` (`{ position; child; }`). So the discharge, priority, order and `verify` spine is the called
+  # fold's own — one text, not a second copy that could drift from it — and a type carrying no
+  # sibling (a leaf, a foreign fold, a fold nothing nests under) folds exactly as it does called:
+  # that is the twin's PRESENCE ARM (gate C3). The type is first HOMED, where it is bound to its
+  # position (`interface.homedAt`): a recognised foreign container becomes gen's own, and an
+  # unrecognised one declaring a gen nesting element is refused before any fold is taken.
+  threadedAs =
+    ev: type:
+    if isAttrs type && type ? mergeDefs.threaded then
+      type // { mergeDefs = type.mergeDefs.threaded ev; }
+    else
+      type;
+  mergeDefsThreaded =
+    ev: loc: type:
+    mergeDefs loc (threadedAs ev (interface.homedAt "evalModuleTree" loc type));
+
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
   # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
   mergeLeaf =
@@ -1667,11 +1719,21 @@ let
         else
           # An ABSENT `type` is the untyped option; a `type` STATED as `null` is a value in type
           # position, refused where the fold forces it, like any other non-type.
+          #
+          # Every other type is folded as HOMED where it is bound to its position (den-hoag-n6dh7
+          # item 5, gate C9): a recognised foreign container that may nest is folded as gen's own,
+          # and an unrecognised one declaring a gen nesting element is refused by name before any
+          # fold is taken. A gen leaf checker (`verify`) and a gen container (`carries`) are their
+          # own home and are answered here, inside the argument's one thunk, so a gen option pays a
+          # presence test and not a call (ez1yq C2 `leaf-cost`). The fold stays the CALLED one until
+          # the switch (Unit 2.4).
           mergeDefsRichWith mode loc (
             if optDecl ? type && optDecl.type == null then
               throw (declaredTypeRefusal loc null)
+            else if (optDecl.type or null) ? verify || (optDecl.type or null) ? carries then
+              optDecl.type
             else
-              optDecl.type or null
+              interface.homedAt "evalModuleTree" loc (optDecl.type or null)
           ) withDefault;
     in
     if !hasApply && !readOnly then
@@ -3044,29 +3106,37 @@ let
           # (`refusingOutside`, as every structural fold does). The guard wraps each arm, never the
           # record: wrapped whole, the record stops being a functor carrying `.reported`, and the
           # rich fold, which selects on `.reported`, silently drops the undeclared report.
+          #
+          # `threaded` and `threadedReported` are the same two folds reading the tree through the
+          # evaluation's accessor instead of evaluating it here (den-hoag-n6dh7 item 1, α's sibling):
+          # the site names this tree's `nests`, the fold's `loc` and its `defs`, and the accessor
+          # decides where the tree is evaluated. Each answers off ONE read, as its twin does.
+          strictValue =
+            loc: n:
+            if n.undeclared == [ ] then
+              n.config
+            else
+              throw (
+                "gen-merge: "
+                + concatStringsSep "; " (
+                  map (
+                    u:
+                    "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
+                  ) n.undeclared
+                )
+                + "; "
+                + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
+                + " is merged where no undeclared report is carried"
+              );
+          site = ev: loc: defs: {
+            inherit (ev) position;
+            inherit nests loc defs;
+          };
           nestingFold = {
             __functor =
               _:
               refusingOutside "moduleTree" isModuleValue (
-                loc: defs:
-                let
-                  n = nested false false loc defs;
-                in
-                if n.undeclared == [ ] then
-                  n.config
-                else
-                  throw (
-                    "gen-merge: "
-                    + concatStringsSep "; " (
-                      map (
-                        u:
-                        "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
-                      ) n.undeclared
-                    )
-                    + "; "
-                    + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
-                    + " is merged where no undeclared report is carried"
-                  )
+                loc: defs: strictValue loc (nested false false loc defs)
               );
             reported =
               strict:
@@ -3080,6 +3150,43 @@ let
                   inherit (n) undeclared;
                 }
               );
+            threaded =
+              ev:
+              refusingOutside "moduleTree" isModuleValue (
+                loc: defs: strictValue loc (ev.child (site ev loc defs))
+              );
+            # `strict` is the child's `mode.inherited` by construction (both are the carrying
+            # evaluation's strictness); it is kept so the signature stays `.reported`'s.
+            threadedReported =
+              ev: _strict:
+              refusingOutside "moduleTree" isModuleValue (
+                loc: defs:
+                let
+                  n = ev.child (site ev loc defs);
+                in
+                {
+                  value = n.config;
+                  inherit (n) undeclared;
+                }
+              );
+          };
+          # The nested tree AS DATA (den-hoag-n6dh7 item 1): what `nested` above evaluates, field for
+          # field — `entry` is one definition read as `defsAsModules false` reads it, `empty` is
+          # `emptyTree`'s arguments, `calledMode` is the pair the CALLED fold runs `nested` in, and
+          # `named` is `false` because `nested` injects no `name`.
+          nests = {
+            modules = modList;
+            inherit specialArgs check coreShortCircuit;
+            entry = d: head (defsAsModules false [ d ]);
+            empty = {
+              prefix = [ ];
+              inherit specialArgs check;
+            };
+            calledMode = {
+              carried = false;
+              inherited = false;
+            };
+            named = false;
           };
           # The fold over no definitions, CALLED: a site reading `whenEmpty` carries no report (a
           # value-path empty: an element, a freeform plane), so it is the strict call. The one
@@ -3097,22 +3204,7 @@ let
           mergeDefs = nestingFold;
           whenEmpty = emptyTree;
           admits = isModuleValue;
-          # The nested tree AS DATA (den-hoag-n6dh7 item 1): what `nested` above evaluates, field for
-          # field — `entry` is one definition read as `defsAsModules false` reads it, `empty` is
-          # `emptyTree`'s arguments, and `calledMode` is the pair the CALLED fold runs `nested` in.
-          nests = {
-            modules = modList;
-            inherit specialArgs check coreShortCircuit;
-            entry = d: head (defsAsModules false [ d ]);
-            empty = {
-              prefix = [ ];
-              inherit specialArgs check;
-            };
-            calledMode = {
-              carried = false;
-              inherited = false;
-            };
-          };
+          inherit nests;
 
           # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
           # the reason, so a consumer that finds it needs no other document to know what to do.
@@ -3213,6 +3305,10 @@ in
     # on the internal seam for the key walk that mints the children.
     nestedPosition
     positionChildMode
+    # The nested tree's door and the engine's threaded twin (den-hoag-n6dh7 items 4, 5, 7): the
+    # containers in `./types.nix` fold each element through the twin, and the suites read the door.
+    nestedTreeAt
+    mergeDefsThreaded
     # The nixpkgs `optionType` PROTOCOL BOUNDARY (lib/interface.nix), reached through this seam by
     # everything above it — the type vocabulary exports through it, this engine reads foreign types
     # through it, and the public surface stamps through it. ONE binding, so the library cannot hold

@@ -83,6 +83,8 @@
         priority = import ../lib/priority.nix { inherit prelude; };
         memo = genMemo;
         scope = genScope;
+        # The vocabulary over this core: the knot `lib/default.nix` ties, tied the same way here.
+        strategies = genMergeVocab;
       };
       # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
       # boundary is reached through the core rather than re-imported, so the suite reads the same

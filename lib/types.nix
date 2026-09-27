@@ -41,6 +41,7 @@ let
   inherit (core)
     evalModuleTreeUnchecked
     mergeDefs
+    mergeDefsThreaded
     mergeLeaf
     slotsDiffer
     isDefinedValue
@@ -215,7 +216,13 @@ let
         imported // { typeMergeRel = imported.typeMergeRel or (sealedRel exported); }
       );
     in
-    if answer ? refused then throw answer.refused else exported;
+    if answer ? refused then
+      throw answer.refused
+    # A stock foreign container crosses as gen's own, already built (den-hoag-n6dh7 item 5).
+    else if answer ? rehomed then
+      answer.rehomed
+    else
+      exported;
 
   # Merge two ELEMENT types — the element stratum's name for `core.mergeTypes` (lib/modules.nix),
   # which is guarded on both halves and stated there. It is the SAME binding the DECLARATION stratum
@@ -269,6 +276,11 @@ let
   # binding's answer, never two copies that can drift. Each element folds through the engine's
   # CALLED fold, as every container's did before the split existed.
   foldElement = e: mergeDefs e.loc e.type e.defs;
+  # The same element through the engine's THREADED twin (den-hoag-n6dh7 item 5): the evaluation's
+  # accessor `ev` goes with it, its position extended by the element's `step`, so the tree a nesting
+  # element reads is the one at that position. It is the called fold's call with `ev` added.
+  threadElement =
+    ev: e: mergeDefsThreaded (ev // { position = ev.position ++ e.step; }) e.loc e.type e.defs;
 
   # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
   # `name` is injected by the two `evalModuleTree` calls below; `config`, `options` and `prefix` are
@@ -321,6 +333,41 @@ let
       # nixpkgs `submoduleWith`'s `isAttrs x || isFunction x || path.check x`, as at `deferredModule`.
       # Bound once: the fold's domain check below reads this same binding.
       admits = isModuleValue;
+      # THE NESTED TREE, STATED AS DATA (den-hoag-n6dh7 item 1): the module set and arguments this
+      # type's nested evaluation takes, so an evaluation can mint the tree as a node of its own
+      # instead of calling it. Each field is today's call's, field for field: `mergeDefs` below
+      # (`entry` is one definition read as `defsAsModules true` reads it, and `named` is `argsAt`'s
+      # `name`), `whenEmpty` (`empty`), and the `{ carried; inherited; }` pair the CALLED form
+      # evaluates in (`calledMode`): the public `evalModuleTree`'s, which is `evalModuleTreeWith true
+      # false`.
+      nests = {
+        modules = mods;
+        specialArgs = args;
+        check = true;
+        coreShortCircuit = false;
+        entry = d: head (defsAsModules true [ d ]);
+        empty = {
+          prefix = [ ];
+          specialArgs = args // {
+            name = "‹name›";
+          };
+          check = true;
+        };
+        calledMode = {
+          carried = true;
+          inherited = false;
+        };
+        named = true;
+      };
+      called = refusingOutside "submodule" admits (
+        loc: defs:
+        (evalModuleTreeUnchecked {
+          modules = mods ++ defsAsModules true defs;
+          prefix = loc;
+          specialArgs = argsAt loc;
+          check = true;
+        }).config
+      );
     in
     defineType {
       name = "submodule";
@@ -344,31 +391,7 @@ let
           )
         else
           mkSubmodule (args // a) mods;
-      inherit admits;
-      # THE NESTED TREE, STATED AS DATA (den-hoag-n6dh7 item 1): the module set and arguments this
-      # type's nested evaluation takes, so an evaluation can mint the tree as a node of its own
-      # instead of calling it. Each field is today's call's, field for field: `mergeDefs` below
-      # (`entry` is one definition read as `defsAsModules true` reads it), `whenEmpty` (`empty`), and
-      # the `{ carried; inherited; }` pair the CALLED form evaluates in (`calledMode`): the public
-      # `evalModuleTree`'s, which is `evalModuleTreeWith true false`.
-      nests = {
-        modules = mods;
-        specialArgs = args;
-        check = true;
-        coreShortCircuit = false;
-        entry = d: head (defsAsModules true [ d ]);
-        empty = {
-          prefix = [ ];
-          specialArgs = args // {
-            name = "‹name›";
-          };
-          check = true;
-        };
-        calledMode = {
-          carried = true;
-          inherited = false;
-        };
-      };
+      inherit admits nests;
       # With no surviving definition the value is the module set evaluated over NO definitions, as
       # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
       # with the documentation placeholder as `name`, so its defaults read as they would there and an
@@ -462,15 +485,23 @@ let
       };
       # A definition outside `admits` is refused here, naming the option and the file, before the
       # module reader would refuse it without either (`refusingOutside`).
-      mergeDefs = refusingOutside "submodule" admits (
-        loc: defs:
-        (evalModuleTreeUnchecked {
-          modules = mods ++ defsAsModules true defs;
-          prefix = loc;
-          specialArgs = argsAt loc;
-          check = true;
-        }).config
-      );
+      #
+      # `threaded` is the same fold reading the tree through the evaluation's accessor instead of
+      # evaluating it here (den-hoag-n6dh7 item 1, α's sibling): the site names this tree's `nests`,
+      # the fold's `loc` and its `defs`. It tests no `undeclared`, as the called form does not: the
+      # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
+      mergeDefs = {
+        __functor = _: called;
+        threaded =
+          ev:
+          refusingOutside "submodule" admits (
+            loc: defs:
+            (ev.child {
+              inherit (ev) position;
+              inherit nests loc defs;
+            }).config
+          );
+      };
     };
 
   # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
@@ -512,6 +543,7 @@ let
             )
           ) defs
         );
+      called = refusingOutside "listOf" admits (loc: defs: map foldElement (split loc defs));
     in
     defineType {
       name = "listOf";
@@ -537,7 +569,11 @@ let
       # of one element each both place an element at `"0"`; a position keyed on it would name the two
       # elements once. The step adds the definition's ordinal `d` among the position's definitions.
       inherit split;
-      mergeDefs = refusingOutside "listOf" admits (loc: defs: map foldElement (split loc defs));
+      # `threaded` folds the same elements through the engine's threaded twin (den-hoag-n6dh7 item 5).
+      mergeDefs = {
+        __functor = _: called;
+        threaded = ev: refusingOutside "listOf" admits (loc: defs: map (threadElement ev) (split loc defs));
+      };
     };
 
   # attrsOf / lazyAttrsOf — per-key merge through the element type. They differ where nixpkgs' do: a
@@ -580,6 +616,50 @@ let
           ) (attrNames (foldl' (acc: d: acc // d.value) { } defs))
         else
           loc: defs: map (k: at loc k (defsAt defs k)) (attrNames (foldl' (acc: d: acc // d.value) { } defs));
+      # Both containers' THREADED fold reads the split (den-hoag-n6dh7 item 5): the lazy one's key
+      # set is every key, so its values stay unforced until read, as its called fold's are.
+      threaded =
+        ev:
+        refusingOutside tyName admits (
+          loc: defs:
+          listToAttrs (
+            map (e: {
+              name = head e.step;
+              value = threadElement ev e;
+            }) (split loc defs)
+          )
+        );
+      # The CALLED fold, selected once when the type is built (below).
+      called = refusingOutside tyName admits (
+        if tyName == "attrsOf" then
+          loc: defs:
+          listToAttrs (
+            map (e: {
+              name = head e.step;
+              value = foldElement e;
+            }) (split loc defs)
+          )
+        else
+          loc: defs:
+          let
+            # key union via attrset fold — a list `unique` is O(k²) in key count
+            keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
+          in
+          listToAttrs (
+            map (k: {
+              name = k;
+              value = mergeDefs (loc ++ [ k ]) element (
+                concatMap (
+                  d:
+                  optional (d.value ? ${k}) {
+                    inherit (d) file;
+                    value = d.value.${k};
+                  }
+                ) defs
+              );
+            }) keys
+          )
+      );
     in
     defineType {
       name = tyName;
@@ -611,37 +691,12 @@ let
       # by a cell (`ci/tests/nesting-declaration.nix`, `lazy-fold-is-the-split's`) rather than by
       # sharing a binding. A nesting element never reaches this fold once the threaded half lands:
       # its option folds through the threaded twin, which reads the split.
-      mergeDefs = refusingOutside tyName admits (
-        if tyName == "attrsOf" then
-          loc: defs:
-          listToAttrs (
-            map (e: {
-              name = head e.step;
-              value = foldElement e;
-            }) (split loc defs)
-          )
-        else
-          loc: defs:
-          let
-            # key union via attrset fold — a list `unique` is O(k²) in key count
-            keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
-          in
-          listToAttrs (
-            map (k: {
-              name = k;
-              value = mergeDefs (loc ++ [ k ]) element (
-                concatMap (
-                  d:
-                  optional (d.value ? ${k}) {
-                    inherit (d) file;
-                    value = d.value.${k};
-                  }
-                ) defs
-              );
-            }) keys
-          )
-      );
+      mergeDefs = {
+        __functor = _: called;
+        inherit threaded;
+      };
     };
+
   attrsOf = attrsOfWith "attrsOf";
   lazyAttrsOf = attrsOfWith "lazyAttrsOf";
 
@@ -823,6 +878,13 @@ let
           defs = nonNull;
           type = element;
         };
+      foldWith =
+        foldE: loc: defs:
+        let
+          elements = split loc defs;
+        in
+        if elements == [ ] then null else foldE (head elements);
+      called = foldWith foldElement;
     in
     defineType {
       name = "nullOr";
@@ -844,12 +906,11 @@ let
       };
       admits = v: v == null || isValid element v;
       inherit split;
-      mergeDefs =
-        loc: defs:
-        let
-          elements = split loc defs;
-        in
-        if elements == [ ] then null else foldElement (head elements);
+      # One fold over its element's, called or threaded (den-hoag-n6dh7 item 5).
+      mergeDefs = {
+        __functor = _: called;
+        threaded = ev: foldWith (threadElement ev);
+      };
     };
   option = nullOr;
 
@@ -885,6 +946,21 @@ let
           type = choose loc defs;
         }
       ];
+      foldWith =
+        foldE: loc: defs:
+        let
+          e = head (split loc defs);
+          # Per member, the definitions IT could not take. Neither list is empty at the refusal — a
+          # member rejecting nothing would have been chosen — and between them they name every
+          # definition the author has to reconcile, which is more than the one pair the interpreter
+          # would have collided on.
+          rejects = t: map (d: toString (d.file or "<def>")) (filter (d: !(isValid t d.value)) defs);
+        in
+        if e.type == null then
+          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (`${nameOf a}' rejects ${concatStringsSep ", " (rejects a)}; `${nameOf b}' rejects ${concatStringsSep ", " (rejects b)})"
+        else
+          foldE e;
+      called = foldWith foldElement;
     in
     defineType {
       name = "either";
@@ -940,20 +1016,11 @@ let
       # anything (`raw`, `anything`, and a consumer type declaring so on purpose) still does, and is
       # still chosen first.
       inherit choose split;
-      mergeDefs =
-        loc: defs:
-        let
-          e = head (split loc defs);
-          # Per member, the definitions IT could not take. Neither list is empty at the refusal — a
-          # member rejecting nothing would have been chosen — and between them they name every
-          # definition the author has to reconcile, which is more than the one pair the interpreter
-          # would have collided on.
-          rejects = t: map (d: toString (d.file or "<def>")) (filter (d: !(isValid t d.value)) defs);
-        in
-        if e.type == null then
-          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (`${nameOf a}' rejects ${concatStringsSep ", " (rejects a)}; `${nameOf b}' rejects ${concatStringsSep ", " (rejects b)})"
-        else
-          foldElement e;
+      # One fold over its chosen member's, called or threaded (den-hoag-n6dh7 item 5).
+      mergeDefs = {
+        __functor = _: called;
+        threaded = ev: foldWith (threadElement ev);
+      };
     };
 
   # oneOf [t1 t2 …] — n-ary either (right-nested). One use on the surface (schema either-chains).

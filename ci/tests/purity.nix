@@ -199,6 +199,8 @@ in
     expr = liveReads;
     expected = [
       "lib/default.nix"
+      # The import refusal names the door the caller invoked, `mkOptionType` (den-hoag-n6dh7 item 5).
+      "lib/interface.nix"
       "lib/modules.nix"
       "lib/priority.nix"
       "lib/types.nix"
