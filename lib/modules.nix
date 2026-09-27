@@ -259,7 +259,12 @@ let
     let
       checked = prelude.checkRequired "gen-merge.mkCoreValue" [ "digest" "values" ] args;
     in
-    {
+    # `seq checked` (den-hoag-7gp66 P1 lazy-doors fix): `__coreValue = true` is a literal, so the
+    # return's own WHNF forced neither `digest` nor `values` -- `isCoreValue`'s `.__coreValue or
+    # false` read is exactly the consumer pattern that would never touch `checked` either, admitting
+    # a bad record at the marker's own construction. Same idiom gen-settings' door fix (0474486)
+    # and gen-class's applyCoreFixed already use.
+    builtins.seq checked {
       __coreValue = true;
       inherit (checked) digest values;
     };
