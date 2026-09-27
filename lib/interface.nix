@@ -60,6 +60,10 @@
   showOption,
   showConflict,
   mergeDescriptorDefault,
+  # The nested tree's door and gen's own containers (den-hoag-n6dh7 items 5, 7), each read lazily:
+  # the engine above supplies both, closing a loop this unit otherwise keeps a chain.
+  nestedTreeAt,
+  constructors,
 }:
 let
   inherit (prelude)
@@ -743,6 +747,86 @@ let
     else
       null;
 
+  # ── HOMING: WHAT A TYPE BOUND TO A POSITION FOLDS AS (den-hoag-n6dh7 item 5; gate C9) ──────────
+  # The type itself when it is gen's own — it states `carries`, is a nesting type, or is a checker
+  # stating `verify` — and gen's own container when it is one of the six stock foreign containers
+  # (`importedRehome` above) and MAY nest (a stock container over no nesting element keeps its own
+  # fold: re-homing buys a tree to thread to and nothing else, *defaulted, reversible*), rebuilt over
+  # gen's constructor with its elements homed in turn, lazily,
+  # so a self-referential stock type is unfolded only as deep as a fold reaches. Otherwise the type
+  # itself — UNLESS IT DECLARES A GEN NESTING ELEMENT, which is THE IMPORT REFUSAL (OQ11 (d)): a
+  # container outside the six cannot thread the evaluation to a nested tree, so it is refused by
+  # name before any fold is taken. `door` names what the caller invoked (7gp66 R6): `evalModuleTree`
+  # at the engine's sites, which also carry the option's `loc`, and `mkOptionType` at `importType`.
+  #
+  # ★ THE STATED PRICE OF OQ11 (d) (owner, 2026-09-25, den-hoag-n6dh7): a foreign container that
+  # forwards to a gen nesting type it does NOT declare is unobservable, and becomes a silent
+  # standalone evaluation through the bridge (`bridge`, below). So does a type carrying the declared
+  # opt-out `declaresNesting = false`, by name.
+  homedAt =
+    door: loc: t:
+    if !(isAttrs t) || t ? verify || t ? carries || isNesting t || !(statesWrapped t) then
+      t
+    else
+      let
+        r = importedRehome t;
+      in
+      if r != null && canNest t then
+        (
+          if r.container == "either" then
+            constructors.either (homedAt door loc (elemAt r.alternatives 0)) (
+              homedAt door loc (elemAt r.alternatives 1)
+            )
+          else
+            constructors.${r.container} (homedAt door loc r.element)
+        )
+      else if declaresNesting t then
+        throw (nestingImportRefusal door loc t)
+      else
+        t;
+
+  # Whether a record states an element or members AT ALL, in either vocabulary: `carries`, a
+  # non-empty `nestedTypes`, or a functor payload stating `elemType` (the only payload key a
+  # container or a union states its element by; a `nonMountable` record's `functor` is a refusal,
+  # and it wraps nothing). Presence only, read before any walk: a record stating none can be neither
+  # re-homed nor refused, and most records crossing a door state none, so this is what keeps the
+  # nested-tree crossing's price off every leaf and every `mkOptionType` descriptor.
+  statesWrapped =
+    t:
+    t ? carries
+    || (t.nestedTypes or { }) != { }
+    || (!(t ? nonMountable) && ((t.functor or { }).payload or null) ? elemType);
+
+  # The import refusal's text: the door, the option where there is one, the container, what in it
+  # declared the element, and the rule with its two ways out.
+  nestingImportRefusal =
+    door: loc: t:
+    let
+      nested = t.nestedTypes or { };
+      keys = filter (k: declaresNesting nested.${k}) (attrNames nested);
+    in
+    "gen-merge: `${door}'${
+      if loc == null then "" else " at option `${showOption loc}'"
+    }: the option type `${nameOf t}' declares a gen nesting type as an element (${
+      if keys != [ ] then "its `nestedTypes.${head keys}'" else "its functor payload's `elemType'"
+    }), and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot "
+    + "thread the evaluation to a nested tree. Write it as gen-merge's container, or do not declare "
+    + "the element, or state `declaresNesting = false' on the type, and take the stated price: a "
+    + "nested tree it forwards to is then evaluated standalone";
+
+  # THE BRIDGE (item 7, OQ11 (d)): the evaluation's accessor where there is no gen evaluation — a
+  # foreign engine folding a gen type through its exported `merge`. Its child is ONE root evaluation
+  # of the nested tree, in the type's own CALLED mode, as the exported fold made it before the
+  # sibling existed; a foreign engine carries no gen report.
+  bridge = {
+    position = [ ];
+    child = site: nestedTreeAt site.nests.calledMode site;
+  };
+  # A fold as the foreign protocol publishes it: through the bridge where it carries the sibling,
+  # and itself where it does not (a foreign fold, or a fold nothing nests under) — the export's
+  # presence arm (gate C3).
+  bridged = f: if f ? threaded then f.threaded bridge else f;
+
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner
   # has no gen relation and never will, so the question "do these two merge?" is asked in the
   # protocol's own terms: the first type's `typeMerge` applied to the second's functor.
@@ -1231,6 +1315,29 @@ let
       }
     else if declaresNestingMarkerRefusal t != null then
       { refused = declaresNestingMarkerRefusal t; }
+    # A record crossing WHOLE is homed as a record bound to a position is (den-hoag-n6dh7 item 5):
+    # one of the six stock containers is gen's own container, and a record declaring a gen nesting
+    # element that is none of them is refused at construction, since `mkOptionType` is this door.
+    #
+    # ★ ONLY WHERE IT MAY NEST (`canNest`), which is what re-homing buys: a tree to thread to. A stock
+    # container over no nesting element keeps its own fold, and with it any override its author
+    # stated, since the stated price of re-homing buys nothing there (*defaulted, reversible*).
+    #
+    # A record that is ITSELF a nesting type declares nothing by crossing: it is a record copy, whose
+    # fold this import replaces with the copied exported one — the stated price (gen-schema's
+    # `refined` over a `submodule`), not a declaration.
+    else if !(isNesting t) && statesWrapped t && importedRehome t != null && canNest t then
+      (
+        let
+          rehomed = homedAt "mkOptionType" null t;
+        in
+        {
+          imported = rehomed;
+          inherit rehomed;
+        }
+      )
+    else if !(isNesting t) && statesWrapped t && declaresNesting t then
+      { refused = nestingImportRefusal "mkOptionType" null t; }
     else if carrierRefusal t != null then
       { refused = carrierRefusal t; }
     else if functorRefusal t != null then
@@ -1502,13 +1609,17 @@ let
             )
           else
             (_: true);
+        # Through the bridge where the fold carries the sibling (den-hoag-n6dh7 item 7, OQ11 (d)):
+        # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
+        # each element through its one `split`, so the forward mount keeps working without a third
+        # fold form. Every other fold publishes as it did (`bridged`'s presence arm).
         merge =
           if !(t ? mergeDefs) then
             leafFold
           else if t ? carries && t ? recarry && !(t.carries ? moduleSet) then
-            (foreignFace t).mergeDefs
+            bridged (foreignFace t).mergeDefs
           else
-            t.mergeDefs;
+            bridged t.mergeDefs;
         emptyValue = t.whenEmpty or { };
         nestedTypes = if role == null then { } else spelling.nested carried;
         getSubOptions = if sub == null then (_prefix: { }) else sub.declares;
@@ -1626,6 +1737,8 @@ in
     isNesting
     canNest
     declaresNesting
+    homedAt
+    bridge
     importedCarried
     importedOffered
     importedDecidable

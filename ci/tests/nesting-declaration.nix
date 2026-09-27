@@ -532,8 +532,9 @@ in
         notARecord = false;
       };
     };
-    # Until the threaded half lands, gen's own nesting types state their tree and carry no sibling.
-    test-the-nesting-types-state-their-tree-before-the-sibling-lands = {
+    # gen's own nesting types state their tree and, since the threaded half (Unit 2.2), carry the
+    # sibling: both are nesting types.
+    test-the-nesting-types-state-their-tree-and-the-sibling = {
       expr = {
         subNests = sub ? nests;
         treeNests = tree ? nests;
@@ -543,8 +544,8 @@ in
       expected = {
         subNests = true;
         treeNests = true;
-        sub = false;
-        tree = false;
+        sub = true;
+        tree = true;
       };
     };
     # MAY nest: through what each container carries, in either vocabulary, and `true` at exhaustion.
