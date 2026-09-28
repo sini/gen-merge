@@ -4740,6 +4740,29 @@ in
           msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it [(]den-hoag-9d80v[)]$";
         };
       };
+      # den-hoag-i4c0n C1's guard arm: the child of an undefined, default-less union with a nesting
+      # member refuses as a candidate, never with the merge record's "used but not defined", which
+      # reading the fold's `typeDefs` off that record unguarded raises.
+      test-an-undefined-union-childs-read-refuses-as-a-candidate = {
+        expr =
+          let
+            r = genMergeCore.evalModuleTreeExposed {
+              modules = [
+                {
+                  options.o = gm.mkOption {
+                    type = t.either (t.submodule { options.x = gm.mkOption { type = t.int; }; }) t.str;
+                  };
+                }
+              ];
+            };
+          in
+          force
+            (r._evaluation.get (genScope.mintNtaId "module-tree" "nested" "[\"o\"]" "[]") "result").config;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `evalModuleTree': option `o': the fold of the tree holding it did not select a nested tree at this position [(]it folds as `string'[)], so this nested tree is a candidate and is never evaluated$";
+        };
+      };
     };
 
     # den-hoag-n6dh7 Unit 2.4, placement: the refusals a nested tree's placement adds, each anchored

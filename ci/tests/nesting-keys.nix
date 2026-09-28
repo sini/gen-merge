@@ -434,4 +434,69 @@ in
       expected."[\"o\"]" = [ "[\"j\",\"k\"]" ];
     };
   };
+
+  # ONE DISCHARGE (den-hoag-i4c0n C1, with L5f's freeform half): the walk reads the fold's own
+  # `typeDefs` off the option's merge record, except where forcing that record would meet the "used
+  # but not defined" guard. `testsError.nesting-keys` pins the message the guard arm keeps.
+  flake.tests.nesting-keys-one-discharge =
+    let
+      unionUndef = evalExposed [ { options.o = gm.mkOption { type = t.either sub t.str; }; } ];
+    in
+    {
+      # An undefined, default-less union with a nesting member: its child's read refuses (the
+      # message is pinned in `testsError`).
+      test-an-undefined-union-childs-read-is-refused = {
+        expr = refused (
+          (unionUndef._evaluation.get (genScope.mintNtaId "module-tree" "nested" "[\"o\"]" "[]") "result")
+          .config
+        );
+        expected = true;
+      };
+      # The root's product has no `freeform` group where the tree declares no freeform type; before
+      # L5f's freeform half it carried `freeform = [ ]`.
+      test-a-tree-with-no-freeform-type-mints-no-freeform-group = {
+        expr = builtins.mapAttrs (
+          _: builtins.attrNames
+        ) (unionUndef._evaluation.get "module-tree" "nta-children").nested;
+        expected."[\"o\"]" = [ "[]" ];
+      };
+      # A sibling whose declared TYPE reads `config` through a nested child: the group set is not a
+      # function of any option's type, so crossing into `a` does not force `b`'s. A `canNest` filter
+      # over the option groups recurses here without end.
+      test-a-sibling-typed-through-config-reads-its-nested-child = {
+        expr =
+          let
+            r = evalExposed [
+              {
+                options.a = gm.mkOption {
+                  type = t.submodule {
+                    options.x = gm.mkOption {
+                      type = t.bool;
+                      default = true;
+                    };
+                  };
+                };
+              }
+              (
+                { config, ... }:
+                {
+                  options.b = gm.mkOption {
+                    type = if config.a.x then t.int else t.str;
+                    default = 1;
+                  };
+                }
+              )
+              { config.a = { }; }
+            ];
+          in
+          {
+            inherit (r.config) b;
+            ax = r.config.a.x;
+          };
+        expected = {
+          ax = true;
+          b = 1;
+        };
+      };
+    };
 }
