@@ -456,17 +456,24 @@ in
       };
       childA =
         modules:
-        (evalExposed modules)._evaluation.get (genScope.mintNtaId "module-tree" "nested" "[\"a\"]"
-          "[]"
-        ) "result";
+        (evalExposed modules)._evaluation.get (genScope.mintNtaId {
+          host = "module-tree";
+          name = "nested";
+          group = "[\"a\"]";
+          key = "[]";
+        }) "result";
     in
     {
       # An undefined, default-less union with a nesting member: its child's read refuses (the
       # message is pinned in `testsError`).
       test-an-undefined-union-childs-read-is-refused = {
         expr = refused (
-          (unionUndef._evaluation.get (genScope.mintNtaId "module-tree" "nested" "[\"o\"]" "[]") "result")
-          .config
+          (unionUndef._evaluation.get (genScope.mintNtaId {
+            host = "module-tree";
+            name = "nested";
+            group = "[\"o\"]";
+            key = "[]";
+          }) "result").config
         );
         expected = true;
       };
