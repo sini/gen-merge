@@ -69,12 +69,16 @@ let
     filter
     head
     isAttrs
-    isFunction
     isList
     length
     all
     map
     ;
+  # The two readers are the BUILTINS, stated rather than taken from gen-prelude: gen-prelude's
+  # `isFunction`/`functionArgs` became nixpkgs' functor-aware readers (den-hoag-7gp66 P2-OQ15 arm
+  # (i)), and every site here keeps the meaning it had, a functor read as an attrset. Adopting
+  # nixpkgs' functor-aware parity is gen-merge's own P2 unit's change, with its cells.
+  inherit (builtins) isFunction;
 
   # ── THE EXPORT ENVIRONMENT'S NAMES ──────────────────────────────────────────────────────────────
   # The fourteen names nixpkgs' module system reads off every option type. They are the foreign

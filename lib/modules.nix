@@ -35,8 +35,6 @@ let
   inherit (prelude)
     isAttrs
     isList
-    isFunction
-    functionArgs
     concatMap
     concatLists
     foldl'
@@ -55,6 +53,11 @@ let
     all
     any
     ;
+  # The two readers are the BUILTINS, stated rather than taken from gen-prelude: gen-prelude's
+  # `isFunction`/`functionArgs` became nixpkgs' functor-aware readers (den-hoag-7gp66 P2-OQ15 arm
+  # (i)), and every site here keeps the meaning it had, a functor read as an attrset. Adopting
+  # nixpkgs' functor-aware parity is gen-merge's own P2 unit's change, with its cells.
+  inherit (builtins) isFunction functionArgs;
   inherit (priority)
     dischargeProperties
     filterOverrides
