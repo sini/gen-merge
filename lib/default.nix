@@ -314,6 +314,20 @@ in
   # outside the byte-mode surface, so the byte-identity claim is mechanically verifiable.
   inherit (lintLib) lint;
 
+  # The module-classification key lists `configOf`/`moduleSyntaxChecked` (lib/modules.nix) enforce,
+  # published as plain data so a consumer's structured/shorthand guard reads the rule this engine
+  # enforces instead of restating it (den-hoag-4kh.53.55; ADR-0014 — a list of strings crosses, never
+  # a predicate; den-hoag-1n12c). No alias to nixpkgs' `lib.modules` `unifyModuleSyntax` locals: this
+  # is a source comment, not a name equivalence. `structured` corresponds to its `attrsToRemove`,
+  # `shorthandMeta` to its `shorthandAttrsToRemove` (plus this engine's `_module`/`__pureModule` on
+  # both, and `structuring` to the `config`/`options` test that chooses between them — nixpkgs has no
+  # published list for that arm).
+  moduleSyntax = {
+    structuring = core.structuringKeys;
+    structured = core.structuredKeys;
+    shorthandMeta = core.shorthandMetaKeys;
+  };
+
   # The comparison subject of a value that can carry a type record, for a relation outside this
   # library deciding "one construction" over one (gen-schema's `constructionRelation`) — the same
   # subject `mkOptionType`'s own relation decides by (lib/interface.nix, den-hoag-bfc0k).

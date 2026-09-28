@@ -708,6 +708,13 @@ let
     "_module"
     "__pureModule"
   ];
+  # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
+  # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
+  # restating it (den-hoag-4kh.53.55; den-hoag-1n12c).
+  structuringKeys = [
+    "config"
+    "options"
+  ];
   isStructured = m: m ? config || m ? options;
   configOf =
     e:
@@ -3149,6 +3156,12 @@ in
     # DRIFT from the engine's. This group is EXACTLY what the lint consumes, and none of it is on the
     # public `lib/default.nix` surface.
     isOptLeaf
+    # The module-classification key lists themselves (den-hoag-1n12c) — published on `core` so the
+    # public `moduleSyntax` record (lib/default.nix) can be built from the SAME bindings `configOf`
+    # enforces with, never a second spelling of them.
+    structuringKeys
+    structuredKeys
+    shorthandMetaKeys
     configOf
     moduleSyntaxChecked
     notAModule
