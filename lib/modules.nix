@@ -1938,13 +1938,14 @@ let
         hostMode = { inherit carried strict; };
         # ONE DISCHARGE (den-hoag-i4c0n C1; item 2, gate P2): the fold's own `typeDefs`, read off the
         # option's merge record. The first arm is where forcing `m` would meet `mergeOptionWith`'s
-        # "used but not defined" guard, and there the walk below answers `[ ]` too. The last arm
-        # runs the passes wherever `m` carries no `typeDefs` (a warm-reused leaf, an `apply` or
-        # `readOnly` re-wrap).
+        # "used but not defined" guard, and there the walk below answers `[ ]` too. An option that
+        # declares `readOnly` or `apply` is tested by KEY: forcing `m` would force the `readOnly`
+        # value, which the walk never reads, and its re-wrapped `m` carries no `typeDefs` anyway.
+        # The last arm runs the passes wherever `m` carries no `typeDefs` (also a warm-reused leaf).
         definitions =
           if l.defs == [ ] && !(l.opt ? default) then
             [ ]
-          else if l.m ? typeDefs then
+          else if !(l.opt ? readOnly) && !(l.opt ? apply) && l.m ? typeDefs then
             l.m.typeDefs
           else
             map (d: { inherit (d) file value; }) (
@@ -1961,12 +1962,14 @@ let
               )
             );
       };
-      # No freeform group where the tree declares no freeform type (L5f, its freeform half). The
-      # `canNest` filter over the option groups is NOT taken: it makes the group set a function of
-      # every declared option's type, so a sibling typed through `config` recurses without end.
+      # No freeform group where the tree declares no freeform type (L5f, its freeform half), decided
+      # by KEY presence (`freeform.declared`), never by the type's value: every group's read forces
+      # this list's spine, so a value test would force a freeform type written through `config` on
+      # every child read. The `canNest` filter over the option groups is NOT taken, for the same
+      # reason: it makes the group set a function of every declared option's type.
       groups =
         map optionGroup leaves
-        ++ optional (freeform.type != null) {
+        ++ optional freeform.declared {
           name = "freeform";
           loc = prefix;
           inherit (freeform) type;
@@ -3172,16 +3175,17 @@ let
           #
           # The one-winner path attempts no merge: it keeps its current cost and its current type
           # IDENTITY, which is what `strict.nix`'s throw-on-unknown default depends on.
+          # The freeform declarations by KEY, value unforced: the candidates below, and the
+          # `nested` product's test for a freeform group (den-hoag-i4c0n), which must not force a type.
+          freeformDeclared =
+            map (e: {
+              inherit (e) _file;
+              type = topFreeformOf e.content;
+            }) (filter (e: e.content ? freeformType) flat)
+            ++ moduleFreeforms;
           freeform =
             let
-              candidates =
-                filter (c: c.type != null) (
-                  map (e: {
-                    inherit (e) _file;
-                    type = topFreeformOf e.content;
-                  }) flat
-                )
-                ++ moduleFreeforms;
+              candidates = filter (c: c.type != null) freeformDeclared;
               # `dischargeProperties` is shared with the value-path def folds (`mergeDefsWith`,
               # `mergeDefsRichWith`) and emits `{ priority; value; }`, so the originating file is
               # paired back on HERE rather than grown as a field there.
@@ -3764,6 +3768,7 @@ let
                   else
                     defs: defs;
                 freeform = {
+                  declared = freeformDeclared != [ ];
                   type = freeform;
                   defs =
                     if freeform == null || realized.unmatched == [ ] then
