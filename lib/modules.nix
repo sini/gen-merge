@@ -1816,42 +1816,26 @@ let
     "gen-merge: `evalModuleTree': option `${showOption loc}' holds a nested tree with no definition inside ${toString interface.importedTypeWalkFuel} enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of ${toString interface.importedTypeWalkFuel} rather than hang. Define the position, or reach the recursion through a container whose keys are data (`attrsOf', `listOf')";
 
   # The declared options of a tree, in declaration order, each with the definitions the realizer
-  # routes to it (`mergeTree`'s descent: each level's values pushed down, then selected by key).
-  nestedOptionLeaves =
-    opts: defs:
-    let
-      go =
-        path: opts: defs:
-        let
-          pushed = map (d: {
-            inherit (d) file;
-            attrs = pushDownProperties d.value;
-          }) defs;
-          sub =
-            k:
-            concatMap (
-              p:
-              optional (p.attrs ? ${k}) {
-                inherit (p) file;
-                value = p.attrs.${k};
-              }
-            ) pushed;
-        in
-        concatMap (
-          k:
-          if isOptLeaf opts.${k} then
-            [
-              {
-                path = path ++ [ k ];
-                opt = opts.${k};
-                defs = sub k;
-              }
-            ]
-          else
-            go (path ++ [ k ]) opts.${k} (sub k)
-        ) (attrNames opts);
-    in
-    go [ ] opts defs;
+  # routed to it. ONE ROUTING (den-hoag-n6dh7 L5c): `mergeTree` already ran this descent once to
+  # build `declaredConfig`, so this reads its result's exposed `declaredPairs` / `subDefs` / `opts`
+  # / `loc` instead of re-running `pushDownProperties` and the key walk a second time. `r` is a
+  # `mergeTree` result record; a declared GROUP's own result (`x.m`) carries the same shape, so the
+  # recursion below is the same walk `mergeTree` already performed, read rather than repeated.
+  realizedLeaves =
+    r:
+    concatMap (
+      x:
+      if x ? group then
+        realizedLeaves x.m
+      else
+        [
+          {
+            path = r.loc ++ [ x.name ];
+            opt = r.opts.${x.name};
+            defs = r.subDefs x.name;
+          }
+        ]
+    ) r.declaredPairs;
 
   # The `nested` NTA's product for one tree: `definitions`, the host attribute every seed addresses
   # (one list per group, by group ordinal), and per group its position records (`nestedPosition`,
@@ -2725,6 +2709,17 @@ let
           # the pair's kind where the group/leaf branch was taken, so the walk reads a marker rather
           # than re-deriving leafness.
           unmatched = ownUnmatched ++ concatMap (x: if x ? group then x.m.unmatched else [ ]) declaredPairs;
+          # ROUTED-LEAVES EXPOSURE (den-hoag-n6dh7 L5c, "one routing"): `declaredPairs`, `subDefs`,
+          # `opts` and `loc` are the descent this walk already ran to route each def to its declared
+          # name. Exposing them by `inherit` binds an attribute directly to the existing thunk (no
+          # new allocation); `realizedLeaves` reads them to derive `_nested`'s leaf list instead of
+          # re-running `pushDownProperties` and the key walk a second time.
+          inherit
+            declaredPairs
+            subDefs
+            opts
+            loc
+            ;
           reported = concatMap (
             x:
             if x ? group then
@@ -3605,7 +3600,7 @@ let
                 inherit prefix carried strict;
                 # A child's own run is on its position record; a root counts `0` (item 4).
                 emptyRun = if knot.inner then (self.getHostAt "positions").emptyRun else 0;
-                leaves = nestedOptionLeaves allOptions topDefs;
+                leaves = realizedLeaves realized;
                 normalize =
                   if coreShortCircuit then
                     map (d: if isCoreValue d.value then d // { value = d.value.values; } else d)
