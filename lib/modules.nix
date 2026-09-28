@@ -2534,7 +2534,8 @@ let
   # enumerates: a per-node reader of `result` over an enumeration reads it only for a selected child.
   #
   # A CONTAINER NODE (S1 arm (v), den-hoag-9d80v) is the one child that is not a tree: its position
-  # is marked `mode = "container"` (`containerAt`), its seed is the position's definitions, its own
+  # is marked `mode = "container"` (`containerAt`), its seed addresses the position's definitions,
+  # which it reads off the host's position record as a tree does (arm (B)), its own
   # `container` group keys the positions its member's walk reaches over those definitions only
   # (`under = null`, so exactly), and its `result` is `{ value; _nested; }`: the member's threaded
   # fold at the host's `loc`, reading its trees as its own children. A reader of `result` checks the
@@ -2544,11 +2545,8 @@ let
     self: id:
     let
       p = self.getHostAt "positions";
-      seed = (self.node id).decls.seed;
-      defs = prelude.imap0 (i: s: {
-        inherit (prelude.elemAt p.defs i) file;
-        inherit (s) value;
-      }) seed;
+      # Its definitions off the host's position record, as a tree's (`childTree`, arm (B)).
+      defs = map (d: { inherit (d) file value; }) p.defs;
       records = keyWalk null p.loc p.member [ ] p.loc (
         prelude.imap0 (
           i: d:
