@@ -24,36 +24,29 @@
     # Pinned to the n6dh7-u2-pub publish branch while Unit 2 is in flight; re-pin to their default
     # branch once it publishes to main.
     #
-    # UNLIKE nixpkgs/gen-differential/gen-algebra, gen-schema and gen-aspects are NOT dependency-free
-    # — each declares its own gen-prelude/gen-merge/gen-identity/gen-graph/gen-algebra(/gen-schema for
-    # aspects), and `nix flake lock` resolves an input's WHOLE transitive graph whether or not its
-    # `.lib` output is ever forced. Left unfollowed this measured as `lock-agreement.test-ci-lock-
-    # resolves-one-gen-types` going 1 -> 4 (four distinct gen-types nodes reachable from `.root`,
-    # `ci/tests/lock-agreement.nix`'s own invariant) — the exact hazard that suite exists to catch,
-    # self-inflicted by this addition. `follows` collapses every one of those onto the single node
-    # already resolved here, the same way `gen-graph.inputs.gen-prelude.follows` does inside
-    # gen-schema's own flake; `gen-scope/gen-identity` and `gen-scope/gen-graph` name the nodes
-    # `tests-process.nix` already reads off gen-scope's own inputs, not fresh ones.
+    # `flake = false`, UNLIKE nixpkgs/gen-differential/gen-algebra below: gen-schema and gen-aspects
+    # are NOT dependency-free (each declares its own gen-prelude/gen-merge/gen-identity/gen-graph/
+    # gen-algebra, and gen-aspects also gen-schema), and only `${genSchemaSrc}`/`${genAspectsSrc}`
+    # (the raw source path, `import "${...}/lib" { ... explicit args ... }`) is ever read —
+    # `inputs.gen-schema.lib`/`.gen-aspects.lib` are never forced. Tried first as ordinary flake
+    # inputs: `nix flake lock` still resolves an unforced input's WHOLE transitive graph, which
+    # measured two separate defects in the same run — `lock-agreement.test-ci-lock-resolves-one-
+    # gen-types` (1 -> 4, `ci/tests/lock-agreement.nix`'s own invariant) and, after a `follows` chain
+    # collapsed that, gen-harness's `ci-self-input` check (both libraries' own unfollowed `gen-merge`
+    # input resolving straight back to `sini/gen-merge` — this repository, published, in its own
+    # closure — CI red on all three evaluators; `follows = "self"` is not valid flake syntax for
+    # this, confirmed: `error: input '.../gen-merge' follows a non-existent input 'self'`). `flake =
+    # false` is the third repair `ci-self-input`'s own header names, and it is the correct one here
+    # independent of that check: it stops nix resolving either library's `inputs` at all, so neither
+    # hazard's precondition (a transitive gen-types/gen-merge dependency existing to duplicate) can
+    # arise, which a `follows` chain only ever plugs one named hole in.
     gen-schema = {
       url = "github:sini/gen-schema/n6dh7-u2-pub";
-      inputs.gen-prelude.follows = "gen-prelude";
-      inputs.gen-algebra.follows = "gen-algebra";
-      inputs.gen-identity.follows = "gen-scope/gen-identity";
-      inputs.gen-graph.follows = "gen-scope/gen-graph";
-      inputs.gen-merge.inputs.gen-prelude.follows = "gen-prelude";
-      inputs.gen-merge.inputs.gen-types.follows = "gen-types";
-      inputs.gen-merge.inputs.gen-memo.follows = "gen-memo";
-      inputs.gen-merge.inputs.gen-scope.follows = "gen-scope";
+      flake = false;
     };
     gen-aspects = {
       url = "github:sini/gen-aspects/n6dh7-u2-pub";
-      inputs.gen-prelude.follows = "gen-prelude";
-      inputs.gen-identity.follows = "gen-scope/gen-identity";
-      inputs.gen-schema.follows = "gen-schema";
-      inputs.gen-merge.inputs.gen-prelude.follows = "gen-prelude";
-      inputs.gen-merge.inputs.gen-types.follows = "gen-types";
-      inputs.gen-merge.inputs.gen-memo.follows = "gen-memo";
-      inputs.gen-merge.inputs.gen-scope.follows = "gen-scope";
+      flake = false;
     };
     # Dependency-free (zero `inputs`, owner-ruled 2026-08-20 den-hoag-soa1) — same precedent as
     # gen-differential above, so pinning it adds exactly one node.
