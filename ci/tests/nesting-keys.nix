@@ -441,6 +441,17 @@ in
   flake.tests.nesting-keys-one-discharge =
     let
       unionUndef = evalExposed [ { options.o = gm.mkOption { type = t.either sub t.str; }; } ];
+      subX = t.submodule {
+        options.x = gm.mkOption {
+          type = t.bool;
+          default = true;
+        };
+      };
+      childA =
+        modules:
+        (evalExposed modules)._evaluation.get (genScope.mintNtaId "module-tree" "nested" "[\"a\"]"
+          "[]"
+        ) "result";
     in
     {
       # An undefined, default-less union with a nesting member: its child's read refuses (the
@@ -497,6 +508,40 @@ in
           ax = true;
           b = 1;
         };
+      };
+      # A nesting option whose `readOnly` is read through its own child: the child's read forces no
+      # `readOnly`, as the walk before the one discharge forced none.
+      test-a-childs-read-forces-no-readonly-written-through-config = {
+        expr =
+          (childA [
+            (
+              { config, ... }:
+              {
+                options.a = gm.mkOption {
+                  type = subX;
+                  readOnly = config.a.x;
+                };
+              }
+            )
+            { config.a = { }; }
+          ]).config;
+        expected.x = true;
+      };
+      # A freeform type written through `config`: an option group's child read forces no freeform
+      # type, because the freeform group is decided by the key's presence.
+      test-a-childs-read-forces-no-freeform-type-written-through-config = {
+        expr =
+          (childA [
+            { options.a = gm.mkOption { type = subX; }; }
+            (
+              { config, ... }:
+              {
+                freeformType = if config.a.x then t.attrsOf t.int else t.attrsOf t.str;
+              }
+            )
+            { config.a = { }; }
+          ]).config;
+        expected.x = true;
       };
     };
 }
