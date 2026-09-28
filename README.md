@@ -1247,20 +1247,21 @@ over a union lexically, carrying no member, folds through gen's engine in a fore
 value. A caller composite whose `recarry` rebuilds a differently-named type is refused by name when a
 foreign eval folds it.
 
-**Its fold is one value, and where no report is carried it refuses.** `mergeDefs` is a functor. Called,
-it is the strict fold: every site that reaches it by calling it — a container element (`attrsOf`,
-`listOf`, `nullOr` of the tree), a freeform plane, the public `mergeDefs` — carries no undeclared report,
-so a key the tree's own level does not declare is refused by name when that level is read, with its
-path, its file and the element's location. The trees nested inside that level fold the same way, so each
-refuses its own level when it is read, and a level that is not read decides nothing. `mergeDefs.reported`
-is the same fold for the one caller that carries a report, the declared leaf of an evaluation: it takes
-that evaluation's effective strictness and returns `{ value; undeclared; }` from one nested evaluation.
-The finding is reported (above), and, when either the carrier or the nested tree is strict, refused by
-the nested evaluation at its own level when that level is read. To wrap a tree's fold, **replace `mergeDefs` whole**: refining it as
-`mergeDefs // { __functor = …; }` is honoured at an element site and ignored at the reporting site, which
-still reads the unwrapped `.reported`. The same holds for a foreign type imported with a `check`, whose
-`mergeDefs` is a functor carrying its unchecked fold as `.unchecked` for the freeformType site: a whole
-replacement governs at every site, a refined `__functor` is ignored at the freeformType site
+**Its fold is one value, and where no report is carried it refuses.** The tree is a child of the one
+evaluation that holds it (below), so the fold READS it rather than evaluating it. `mergeDefs.threaded`
+is the strict fold: every site that carries no undeclared report — a container element (`attrsOf`,
+`listOf`, `nullOr` of the tree), a freeform plane — refuses a key the tree's own level does not declare
+by name when that level is read, with its path, its file and the element's location. The trees nested
+inside that level fold the same way, so each refuses its own level when it is read, and a level that
+is not read decides nothing. `mergeDefs.threadedReported` is the same fold for the one caller that
+carries a report, the declared leaf of an evaluation: it returns `{ value; undeclared; }` off one read
+of the child, which inherits that evaluation's effective strictness. The finding is reported (above),
+and, when either the carrier or the nested tree is strict, refused by the child at its own level when
+that level is read. The CALLED forms (`mergeDefs` applied, `.reported`, and `whenEmpty.value`) refuse
+by name: no second evaluation is made for a tree. To wrap a tree's fold, **replace `mergeDefs` whole**.
+The same holds for a foreign type imported with a `check`, whose `mergeDefs` is a functor carrying its
+unchecked fold as `.unchecked` for the freeformType site: a whole replacement governs at every site, a
+refined `__functor` is ignored at the freeformType site
 (`test-replaced-mergeDefs-governs-at-the-freeformType-site`).
 
 `mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
@@ -1285,8 +1286,9 @@ live controls: a completed leaf still mounts, and a tree still nests.
 
 ### A foreign type that declares a nested tree, and the declared opt-out
 
-A nested tree (`submodule`, `(evalModuleTree …).type`) is becoming a node of the one evaluation
-rather than a second evaluation called from inside a fold (den-hoag-n6dh7). Each nesting type now
+A nested tree (`submodule`, `(evalModuleTree …).type`) is a node of the one evaluation rather than a
+second evaluation called from inside a fold (den-hoag-n6dh7; see "Nested trees are children of the
+one evaluation" below). Each nesting type
 states its tree as data (`nests`: the module set, arguments, definition entry and the mode its
 called form evaluates in), and each container states its element positions once (`split`), which
 its own fold reads. `lazyAttrsOf` is the one exception: its fold is the split's twin, held equal
@@ -1333,6 +1335,37 @@ exported `merge`. Each nesting and container fold also carries a `threaded` sibl
 nested trees through the evaluation's accessor, and a gen type's exported `merge` folds through it
 with a bridge that evaluates each tree once, standalone, as before. Pinned by
 `ci/tests/nesting-threaded.nix` and `ci/tests-error.nix` (`nesting-threaded.*`).
+
+### Nested trees are children of the one evaluation
+
+`evalModuleTree` is ONE gen-scope evaluation (ADR-0006; ADR-0008 §1 retires the per-tree second
+engine). Its knot is a node of the kind `module-tree`, which declares one non-terminal attribute
+(Vogt, Swierstra & Kuiper 1989 §3), `nested`: each nested tree the value holds is a child of that
+node, minted at its POSITION (the option's path and the position below it), and a child's own nested
+trees are its children. A child's `result` is its tree's evaluation, read from its own record (its
+seed: the addresses of the definitions its fold receives) and from its host's position record at its
+own coordinates (`getHostAt "positions"`: its `loc`, report mode and member), the host's equation for
+that child (Söderberg & Hedin 2013 §2.3, §4.1). The fold reads a child through the node's own record
+(`getNta`), never by identifier. Values are unchanged; the evaluation count is 1
+(`ci/tests-process.nix`, `one-eval-*`).
+
+- **Which positions are children.** A nesting type is one; a container is walked through its `split`,
+  exactly where its key set already reads its definitions (`attrsOf`, `listOf`, `nullOr`) and
+  over-approximately where it does not (`lazyAttrsOf`, a freeform plane). A union is walked member by
+  member at its own position; a container member counts only where every definition has its shape.
+  A strict container of trees under a lazy one — bare or as a union member — is refused by name
+  (S1 class (a)).
+- **Candidates.** An over-approximated child the fold never selected (a union position under a lazy
+  container whose `choose` picks a non-nesting member) is enumerated, and reading its `result` refuses
+  by name before any of its member's modules is applied.
+- **Growth over empty seeds** refuses past `importedTypeWalkFuel` (32) by name: a nesting type that
+  holds itself, on an option left undefined, would otherwise grow undefined trees without end.
+  **The price:** an undefined chain of 32 or more directly typed nesting levels is refused even where
+  it is finite, since recursion and depth cannot be told apart (OQ15 (c), *defaulted, reversible*).
+- **Enumeration** (`allNodeIds`) evaluates every child's definitions to find its own children, and at
+  gen-scope `d62b595` it grows exponentially with nesting depth. Read values through the fold.
+
+Pinned by `ci/tests/nesting-placement.nix` and `ci/tests-error.nix` (`nesting-placement.*`).
 
 ## Compat mode
 

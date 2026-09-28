@@ -227,11 +227,89 @@ let
 in
 {
   # U2.2-a: through the bridge, each nesting shape's `threaded` fold gives its called fold's value
-  # byte for byte, over the fixtures above.
+  # byte for byte, over the fixtures above. The called fold refuses since the switch (Unit 2.4, item
+  # 1), so its values are pinned as the literals it gave at the switch's parent (gen-merge 193a18d).
   flake.tests.nesting-threaded-bridge = {
     test-threaded-through-the-bridge-is-the-called-fold = {
       expr = builtins.mapAttrs (_: threadedOf) fixtures;
-      expected = builtins.mapAttrs (_: calledOf) fixtures;
+      expected = {
+        attrs = {
+          a = {
+            n = "a";
+            x = 1;
+          };
+          b = {
+            n = "b";
+            x = 2;
+          };
+        };
+        either-member = {
+          n = "e";
+          x = 6;
+        };
+        either-str = "s";
+        lazy-attrs = {
+          a = {
+            n = "a";
+            x = 1;
+          };
+          b = {
+            n = "b";
+            x = 0;
+          };
+        };
+        list-dropped = [
+          {
+            n = "1";
+            x = 1;
+          }
+        ];
+        list-two-defs = [
+          {
+            n = "0";
+            x = 1;
+          }
+          {
+            n = "0";
+            x = 2;
+          }
+        ];
+        nested = {
+          a = [
+            {
+              n = "0";
+              x = 1;
+            }
+          ];
+        };
+        null-or = {
+          n = "o";
+          x = 5;
+        };
+        null-or-null = null;
+        one-of = {
+          n = "e";
+          x = 7;
+        };
+        sub = {
+          n = "a";
+          x = 1;
+        };
+        sub-at-root = {
+          n = "";
+          x = 2;
+        };
+        sub-two-defs = {
+          n = "set";
+          x = 1;
+        };
+        sub-with-args = {
+          v = "w-k";
+        };
+        tree = {
+          x = 1;
+        };
+      };
     };
     # The fixtures reach every constructor that nests, and the names they read moved nowhere.
     test-the-fixtures-read-their-loc = {
@@ -366,7 +444,9 @@ in
     test-the-tree-record-reports-through-threaded-as-through-reported = {
       expr = {
         threaded = paths (tree.mergeDefs.threadedReported reportedEv false [ ] bogusDefs);
-        reported = paths (tree.mergeDefs.reported false [ ] bogusDefs);
+        # The called `.reported` refuses since the switch (Unit 2.4, item 1); its value at the
+        # switch's parent was `threaded`'s, below.
+        reported = refused (tree.mergeDefs.reported false [ ] bogusDefs);
         called = refused (tree.mergeDefs.threaded interface.bridge [ ] bogusDefs);
       };
       expected = {
@@ -374,10 +454,7 @@ in
           value.x = 1;
           undeclared = [ [ "bogus" ] ];
         };
-        reported = {
-          value.x = 1;
-          undeclared = [ [ "bogus" ] ];
-        };
+        reported = true;
         called = true;
       };
     };

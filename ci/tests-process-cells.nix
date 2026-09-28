@@ -17,6 +17,9 @@
   genTypesSrc,
   genMemoSrc,
   genScopeSrc,
+  # A trace label generated fresh per run by the runner, which counts its lines on stderr.
+  label ? "",
+  nixpkgsSrc ? null,
 }:
 let
   prelude = import "${genPreludeSrc}/lib";
@@ -38,7 +41,105 @@ let
   };
   eval = modules: m.evalModuleTree { inherit modules; };
 
+  # THE SPY (den-hoag-n6dh7 U2-g): the same library over an evaluator whose `eval` traces `label`,
+  # so the label's count on stderr is the number of independent gen-scope evaluations.
+  scope = import "${genScopeSrc}/lib" { inherit graph identity prelude; };
+  spied = import libSrc {
+    inherit prelude;
+    types = import "${genTypesSrc}/lib" { inherit identity prelude; };
+    memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
+    scope = scope // {
+      eval = a: builtins.trace label (scope.eval a);
+    };
+  };
+  st = spied.types;
+  sub = st.submodule { options.x = spied.mkOption { type = st.int; }; };
+  spiedAt =
+    type: defs:
+    (spied.evalModuleTree {
+      modules = [ { options.o = spied.mkOption { inherit type; }; } ] ++ map (d: { config.o = d; }) defs;
+    }).config.o;
+  # U2-l: a module that traces `label` each time it is APPLIED, in a member's shared module set.
+  tracedSub = st.submodule (
+    _:
+    builtins.trace label {
+      options.x = spied.mkOption { type = st.int; };
+    }
+  );
+  spiedCore = import "${libSrc}/modules.nix" {
+    inherit prelude;
+    priority = import "${libSrc}/priority.nix" { inherit prelude; };
+    memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
+    inherit scope;
+    strategies = ct;
+  };
+  # The core seam's own vocabulary, tied to it as `ci/flake.nix` ties `genMergeVocab`.
+  ct = import "${libSrc}/types.nix" {
+    inherit prelude;
+    core = spiedCore;
+  };
+  lazyUnionAt =
+    defs:
+    spiedCore.evalModuleTreeExposed {
+      modules = [
+        { options.o = spied.mkOption { type = ct.lazyAttrsOf (ct.either tracedSub st.str); }; }
+      ]
+      ++ map (d: { config.o = d; }) defs;
+    };
+  childResult =
+    r: key: (r._evaluation.get (scope.mintNtaId "module-tree" "nested" "[\"o\"]" key) "result").config;
+
   cells = {
+    # U2-g: ONE evaluation, however many nested trees the value holds (each reads 1).
+    one-eval-flat =
+      (spied.evalModuleTree {
+        modules = [
+          {
+            options.a = spied.mkOption { type = st.int; };
+            config.a = 1;
+          }
+        ];
+      }).config.a;
+    one-eval-sub-one = spiedAt sub [ { x = 2; } ];
+    one-eval-attrs-two = spiedAt (st.attrsOf sub) [
+      {
+        a.x = 1;
+        b.x = 2;
+      }
+    ];
+    one-eval-list-two = spiedAt (st.listOf sub) [
+      [
+        { x = 1; }
+        { x = 2; }
+      ]
+    ];
+    one-eval-sub-empty = spiedAt (st.submodule {
+      options.x = spied.mkOption {
+        type = st.int;
+        default = 0;
+      };
+    }) [ ];
+    one-eval-deep =
+      spiedAt (st.attrsOf (st.submodule { options.i = spied.mkOption { type = st.attrsOf sub; }; }))
+        [
+          { a.i.b.x = 5; }
+        ];
+    # U2-i: a stock nixpkgs `attrsOf` over a gen tree is re-homed where it is bound, so its elements
+    # are children of the one evaluation too.
+    one-eval-np-attrs = spiedAt ((import "${nixpkgsSrc}/lib").types.attrsOf sub) [
+      {
+        a.x = 1;
+        b.x = 2;
+      }
+    ];
+    # The spy's live control: two root evaluations read 2.
+    one-eval-control-two-roots = (spiedAt sub [ { x = 1; } ]).x + (spiedAt sub [ { x = 2; } ]).x;
+    # U2-l (gate O1): a candidate's `result` refuses before its member's modules are applied, so the
+    # traced module is applied 0 times. The evaluation holds no SELECTED child of that member.
+    candidate-modules =
+      (builtins.tryEval (childResult (lazyUnionAt [ { foo = "s"; } ]) "[\"foo\"]")).success;
+    # Its live control, a separate evaluation: the same member in a selected child applies it.
+    candidate-modules-control = (childResult (lazyUnionAt [ { bar.x = 1; } ]) "[\"bar\"]").x;
     # THE OUTER FIXPOINT (den-hoag-xzchx, C3). A PLAIN attrset — no formals, no `imports`, no
     # `__functor` — whose option KEY SET under `a` reads the evaluation's own `options` through
     # the lexical binding `r`. That is ADR-0033's in-flight clause read literally, reached through
