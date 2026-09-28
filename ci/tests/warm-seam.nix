@@ -7,7 +7,7 @@
 # the outcome under that regression, which is exactly what these two cells are built to catch.
 #
 # `genMergeWithMemo`'s substitute matches `gen-memo`'s own `warmDecision` SIGNATURE
-# (`{ accessor; prior }: seeds: { isClean; reusable; identitiesHeld; }` — `lib/warm.nix`) so the seam
+# (`accessor: prior: seeds: { isClean; reusable; identitiesHeld; }` — `lib/warm.nix`) so the seam
 # is exercised at the real call shape gen-merge uses, not a private bypass. `reusable` is never read
 # by gen-merge's own consumption, so a constant stub is sound there. `identitiesHeld` IS read on every
 # warm re-compose, and it is stubbed permissively here on purpose: this file's subject is the splice
