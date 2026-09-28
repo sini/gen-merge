@@ -1735,6 +1735,19 @@ in
             ) (builtins.attrNames shapes)
           ) (builtins.attrNames hand);
           cells = builtins.length family.cells;
+          # The three differing constructions are the ruled REFUSAL on the gen side, not some other
+          # value (Unit 2 landing gate, P4); `ci/tests-error.nix` `tree-union-parity-refusals`
+          # anchors each one's text.
+          refused = map (c: try (family.gen c.gen c.value)) (
+            builtins.filter (
+              c:
+              builtins.elem "${c.construction}/${c.definition}" [
+                "lazyAttrsOf.attrsOf/module"
+                "lazyAttrsOf.lazyAttrsOf/module"
+                "lazyAttrsOf.listOf/module"
+              ]
+            ) family.cells
+          );
         };
         # Three constructions differ, each REFUSED by name here where nixpkgs answers a value: a
         # container of trees under `lazyAttrsOf`. `attrsOf` and `listOf` there are S1 class (a),
@@ -1751,6 +1764,11 @@ in
           ];
           hand = [ ];
           cells = 180;
+          refused = [
+            "REFUSED"
+            "REFUSED"
+            "REFUSED"
+          ];
         };
       };
 

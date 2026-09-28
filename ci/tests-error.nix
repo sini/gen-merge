@@ -4903,6 +4903,44 @@ in
         };
       };
 
+    # The three constructions `ci/tests/nixpkgs-protocol.nix`'s tree-union parity cell finds
+    # differing from nixpkgs, each anchored on the ruled refusal it meets (Unit 2 landing gate, P4):
+    # a container of trees under `lazyAttrsOf` is S1 class (a), RULED (iii), for `attrsOf` and
+    # `listOf`, and the orchestrator's defaulted, reversible extension for `lazyAttrsOf`.
+    flake.testsError.tree-union-parity-refusals =
+      let
+        family = import ./tests/_fixtures/tree-union-family.nix {
+          genMerge = gm;
+          inherit nixpkgsLib;
+        };
+        cellOf =
+          name: builtins.head (builtins.filter (c: "${c.construction}/${c.definition}" == name) family.cells);
+        refusal = name: force (family.gen (cellOf name).gen (cellOf name).value);
+      in
+      {
+        test-attrsof-under-lazyattrsof-refuses-by-name = {
+          expr = refusal "lazyAttrsOf.attrsOf/module";
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: nta: option `s' declares `attrsOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+          };
+        };
+        test-listof-under-lazyattrsof-refuses-by-name = {
+          expr = refusal "lazyAttrsOf.listOf/module";
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: nta: option `s' declares `listOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+          };
+        };
+        test-lazyattrsof-under-lazyattrsof-refuses-by-name = {
+          expr = refusal "lazyAttrsOf.lazyAttrsOf/module";
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: nta: option `s' declares `lazyAttrsOf' of nested trees under `lazyAttrsOf': the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf'; the intermediate host node that admits this shape is den-hoag-9d80v$";
+          };
+        };
+      };
+
     # den-hoag-7gp66 P1: which message fires for gen-merge's three closed doors — evalModuleTree
     # (mixed), lint (record), mkCoreValue (record) — now that each routes through gen-prelude's
     # shared `checkOptions` / `checkRequired` (R6: names the door first, the construct last).
