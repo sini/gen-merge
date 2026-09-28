@@ -20,6 +20,17 @@ let
   refused = v: !(builtins.tryEval (builtins.deepSeq v v)).success;
 
   evalExposed = modules: genMergeCore.evalModuleTreeExposed { inherit modules; };
+  # The ROOT's own nested children, as `childrenOf` reads them, off the root's own product rather than
+  # the whole node set: since placement (Unit 2.4) a child is a host in turn, so enumerating every
+  # node evaluates every child's definitions to find its own children. A group with no key is absent.
+  rootChildrenOf =
+    r:
+    let
+      groups = (r._evaluation.get "module-tree" "nta-children").nested;
+    in
+    builtins.mapAttrs (_: builtins.attrNames) (
+      builtins.removeAttrs groups (builtins.filter (g: groups.${g} == { }) (builtins.attrNames groups))
+    );
   # The minted children of a root evaluation, as `{ <group> = [ <key> … ]; }`, read off its node set
   # and decoded. Enumerating is what forces every group's key set.
   childrenOf =
@@ -307,15 +318,15 @@ in
     };
   };
 
-  # U2-k's forcing arms, at the built rev, with the key set of every group FORCED (the evaluation's
-  # node set enumerated) before the value is read. A sibling definition that would abort if forced
+  # U2-k's forcing arms, at the built rev, with the key set of every group of the host FORCED (its
+  # own children enumerated) before the value is read. A sibling definition that would abort if forced
   # is the trace: the walk over a LAZY container keys every position without reading it, and the
   # union's member is never chosen there (S1 (ii)); under `attrsOf` the key set already reads it.
   flake.tests.nesting-keys-forcing =
     let
       enumerated =
         r:
-        builtins.seq (builtins.length r._evaluation.allNodeIds) builtins.deepSeq r.config.o.foo
+        builtins.seq (builtins.deepSeq (rootChildrenOf r) null) builtins.deepSeq r.config.o.foo
           r.config.o.foo;
       sibling =
         type:
@@ -358,7 +369,7 @@ in
         expected.x = 5;
       };
       test-a-nullable-tree-under-a-lazy-container-is-keyed-without-reading-it = {
-        expr = childrenOf (sibling (t.lazyAttrsOf (t.nullOr sub)));
+        expr = rootChildrenOf (sibling (t.lazyAttrsOf (t.nullOr sub)));
         expected."[\"o\"]" = [
           "[\"bar\"]"
           "[\"foo\"]"

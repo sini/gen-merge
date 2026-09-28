@@ -688,7 +688,8 @@ in
       };
     };
     # Field for field: the tree `nests` states, evaluated through the published door, is the value
-    # the called fold gives today.
+    # the called fold gave. The called fold refuses since the switch (Unit 2.4, item 1), so its value
+    # is pinned as the literal it gave at the switch's parent (gen-merge 193a18d).
     test-a-submodule-tree-from-nests-equals-the-called-fold = {
       expr =
         let
@@ -706,13 +707,10 @@ in
           };
           inherit (n) check;
         }).config;
-      expected =
-        sub.mergeDefs
-          [
-            "o"
-            "k"
-          ]
-          [ entryDef ];
+      expected = {
+        n = "k";
+        x = 3;
+      };
     };
     test-the-empty-arguments-are-the-when-empty-call = {
       expr = {

@@ -41,6 +41,7 @@
   genTypesFlake,
   genLinkset,
   genMergeCompat,
+  genScope,
   ...
 }:
 let
@@ -2325,10 +2326,16 @@ in
             msg = doorRefusal "listOf";
           };
         };
+        # In gen's own eval the same composite folds its element by the "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it [(]den-hoag-n6dh7[)]$" fold, since it carries
+        # no `threaded` sibling, and the tree refuses: OQ2 α (den-hoag-n6dh7), "A container that
+        # does not thread it is REFUSED BY NAME — never a silent standalone evaluation". It yielded
+        # `{ a = 5; }` before the switch. What carries it forward is a composite that threads the
+        # sibling: `mergeDefs = { __functor = …; threaded = ev: …; }`, folding its element through `ev`.
         test-a-recarry-rebuilding-another-type-still-folds-in-gen = {
-          expr = family.gen (bad (t.either T t.str)) { a = 5; };
-          expected = {
-            a = 5;
+          expr = force (family.gen (bad (t.either T t.str)) { a = 5; });
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it [(]den-hoag-n6dh7[)]$";
           };
         };
         test-a-lawful-caller-composite-meets-the-trees-refusal-abroad = {
@@ -2385,15 +2392,22 @@ in
           };
         };
         # A caller fold closing over a union LEXICALLY carries no member, so no face of it is
-        # rebuilt: folding through gen's engine, it yields a value abroad.
+        # rebuilt, and it calls the union's "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it [(]den-hoag-n6dh7[)]$" fold, whose tree member refuses by name: the
+        # called fold of a nesting type does not evaluate its tree (den-hoag-n6dh7 Unit 2.4, item 1).
+        # It yielded `{ a = 5; }` before the switch. What carries the capability forward is the
+        # threaded route: a caller fold states `mergeDefs.threaded = ev: …` and folds its union
+        # through `ev` (the engine's threaded twin), so its tree is a child of the evaluation.
         test-a-lexical-closure-over-a-union-folds-abroad = {
-          expr = family.foreign (t.defineType {
-            name = "w";
-            admits = _: true;
-            mergeDefs = loc: defs: gm.mergeDefs loc (t.either T t.str) defs;
-          }) { a = 5; };
-          expected = {
-            a = 5;
+          expr = force (
+            family.foreign (t.defineType {
+              name = "w";
+              admits = _: true;
+              mergeDefs = loc: defs: gm.mergeDefs loc (t.either T t.str) defs;
+            }) { a = 5; }
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it [(]den-hoag-n6dh7[)]$";
           };
         };
         # Control, same run: the same closure calling the union's PUBLISHED fold is refused.
@@ -4720,6 +4734,174 @@ in
         };
       };
     };
+
+    # den-hoag-n6dh7 Unit 2.4, placement: the refusals a nested tree's placement adds, each anchored
+    # `^…$`. `ci/tests/nesting-placement.nix` pins that each is catchable where it fires.
+    flake.testsError.nesting-placement =
+      let
+        sub = t.submodule { options.x = gm.mkOption { type = t.int; }; };
+        host =
+          type: defs:
+          [
+            { options.o = gm.mkOption { inherit type; }; }
+          ]
+          ++ map (d: { config.o = d; }) defs;
+        tree =
+          (gm.evalModuleTree {
+            modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
+          }).type;
+        laxTree =
+          (gm.evalModuleTree {
+            check = false;
+            modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
+          }).type;
+        recsub = t.submodule {
+          options.x = gm.mkOption { type = recsub; };
+          options.v = gm.mkOption {
+            type = t.int;
+            default = 7;
+          };
+        };
+        down = d: v: if d == 0 then v else down (d - 1) v.x;
+        called =
+          type: field: loc:
+          "^gen-merge: `${type}'${
+            if loc == null then "" else " at option `${loc}'"
+          }: its called `${field}' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it [(]den-hoag-n6dh7[)]$";
+      in
+      {
+        # U2-l: a candidate's `result`, read by its identifier.
+        test-a-candidates-result-names-the-door-and-its-loc = {
+          expr =
+            let
+              r = genMergeCore.evalModuleTreeExposed {
+                modules = host (t.lazyAttrsOf (t.either sub t.str)) [ { foo = "s"; } ];
+              };
+            in
+            force
+              (r._evaluation.get (genScope.mintNtaId "module-tree" "nested" "[\"o\"]" "[\"foo\"]") "result")
+              .config;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree': option `o[.]foo': the fold of the tree holding it did not select a nested tree at this position [(]it folds as `string'[)], so this nested tree is a candidate and is never evaluated$";
+          };
+        };
+        # U2-r: a union's container member under a lazy container, S1 class (a), RULED (iii).
+        test-a-unions-strict-container-under-a-lazy-one-names-the-union-and-its-position = {
+          expr =
+            force
+              (gm.evalModuleTree {
+                modules = host (t.lazyAttrsOf (t.either (t.attrsOf sub) t.str)) [ { p.a.x = 1; } ];
+              }).config.o.p;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: nta: option `o' declares `either' at position \\[\"p\"\\], whose member `attrsOf' holds nested trees, under `lazyAttrsOf': the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the member outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+          };
+        };
+        # S1 class (a) with a LAZY inner container: refused on (iii)'s own ground, *defaulted,
+        # reversible* (orchestrator ruling, den-hoag-n6dh7); the text does not call it strict, and
+        # names arm (v), the intermediate host node (den-hoag-9d80v). And `listOf` under a lazy one.
+        test-a-lazy-container-of-trees-under-a-lazy-one-is-refused-without-calling-it-strict = {
+          expr =
+            force
+              (gm.evalModuleTree {
+                modules = host (t.lazyAttrsOf (t.lazyAttrsOf sub)) [ { j.k.x = 1; } ];
+              }).config.o.j;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: nta: option `o' declares `lazyAttrsOf' of nested trees under `lazyAttrsOf': the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf'; the intermediate host node that admits this shape is den-hoag-9d80v$";
+          };
+        };
+        test-a-list-of-trees-under-a-lazy-container-is-refused = {
+          expr =
+            force
+              (gm.evalModuleTree {
+                modules = host (t.lazyAttrsOf (t.listOf sub)) [ { j = [ { x = 1; } ]; } ];
+              }).config.o.j;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: nta: option `o' declares `listOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+          };
+        };
+        # U2-s: growth over empty seeds past the fuel.
+        test-growth-over-empty-seeds-names-the-fuel-and-the-remedy = {
+          expr = force (down 32 (gm.evalModuleTree { modules = host recsub [ ]; }).config.o);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree': option `x' holds a nested tree with no definition inside 32 enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of 32 rather than hang[.] Define the position, or reach the recursion through a container whose keys are data [(]`attrsOf', `listOf'[)]$";
+          };
+        };
+        # Item 1: every evaluating field of a nesting type refuses where it is CALLED.
+        test-a-submodules-called-fold-refuses = {
+          expr = force (
+            gm.mergeDefs [ "o" ] sub [
+              {
+                file = "/f";
+                value.x = 1;
+              }
+            ]
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = called "submodule" "mergeDefs" "o";
+          };
+        };
+        test-a-submodules-called-empty-value-refuses = {
+          expr = force sub.whenEmpty.value;
+          expectedError = {
+            type = "ThrownError";
+            msg = called "submodule" "whenEmpty" null;
+          };
+        };
+        test-the-tree-records-called-fold-refuses = {
+          expr = force (
+            gm.mergeDefs [ "o" ] tree [
+              {
+                file = "/f";
+                value.x = 1;
+              }
+            ]
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = called "moduleTree" "mergeDefs" "o";
+          };
+        };
+        test-the-tree-records-called-empty-value-refuses = {
+          expr = force tree.whenEmpty.value;
+          expectedError = {
+            type = "ThrownError";
+            msg = called "moduleTree" "whenEmpty" null;
+          };
+        };
+        # U2-o's `submodule` row (v7, gate v1 K2): a lax tree inside a `submodule` evaluates in the
+        # submodule's called mode, `{ true; false; }`, so the finding is today's, byte for byte. The
+        # `$` is load-bearing: v6's mode gives a message carrying this one as its prefix.
+        test-a-lax-tree-inside-a-submodule-refuses-with-todays-message = {
+          expr =
+            force
+              (gm.evalModuleTree {
+                modules = [
+                  {
+                    options.s = gm.mkOption {
+                      type = t.submodule { options.t = gm.mkOption { type = laxTree; }; };
+                    };
+                  }
+                  {
+                    _file = "/r1";
+                    config.s.t = {
+                      x = 1;
+                      bogus = 2;
+                    };
+                  }
+                ];
+              }).config.s.t;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `s[.]t[.]bogus' is not declared by the nested tree that owns it$";
+          };
+        };
+      };
 
     # den-hoag-7gp66 P1: which message fires for gen-merge's three closed doors — evalModuleTree
     # (mixed), lint (record), mkCoreValue (record) — now that each routes through gen-prelude's
