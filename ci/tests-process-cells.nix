@@ -8,6 +8,12 @@
 # Wiring: each dependency through its own `lib/` entry with explicit arguments, the way
 # `../lib/default.nix`'s formals name them. Sources arrive as ARGUMENTS rather than through
 # `fetchTree` because the runner evaluates inside the build sandbox, where fetching is impossible.
+#
+# den-hoag-3jyxf's two ADMITTED-AS-nta-CHILDREN cells (`nta-extra-modules`, `nta-aspect-module`)
+# relocated to gen-aspects' own `ci/` (den-hoag-n6dh7 SCC build, ADR-0037): they drove gen-schema
+# and gen-aspects as CI-only VALUES here, which closed a cycle in the test graph once Unit 2
+# published gen-aspects to main. gen-aspects' graph already carries gen-merge and gen-schema, so
+# they keep their coverage there with no CI-only pin at all.
 {
   arm,
   libSrc,
@@ -20,12 +26,6 @@
   # A trace label generated fresh per run by the runner, which counts its lines on stderr.
   label ? "",
   nixpkgsSrc ? null,
-  # den-hoag-3jyxf: gen-schema/gen-aspects/gen-algebra as CI-only VALUES (never a `lib/` dep — same
-  # precedent as `nixpkgsSrc` above), so the two ADMITTED-AS-nta-CHILDREN constructions can be driven
-  # through this file's own spy without those consumers growing their own spy wiring.
-  genSchemaSrc ? null,
-  genAspectsSrc ? null,
-  genAlgebraSrc ? null,
 }:
 let
   prelude = import "${genPreludeSrc}/lib";
@@ -106,30 +106,6 @@ let
     };
   childResult =
     r: key: (r._evaluation.get (scope.mintNtaId "module-tree" "nested" "[\"o\"]" key) "result").config;
-
-  # den-hoag-3jyxf: the two same-mechanism constructions the 09-15 relocation ruling excluded and
-  # the 09-25 sitting admitted AS nta CHILDREN (an outer-tree `config` read flowing into an inner
-  # submodule's `imports`). Built over `spied` so every scope.eval any of the three libraries makes
-  # counts, and its `evalModuleTree` wrapped a second time so an explicit ROOT call also traces
-  # `<label>-door` (U2-h's door count) — the bridge price is `evals - doors`.
-  algebra = import "${genAlgebraSrc}/lib";
-  spiedDoored = spied // {
-    evalModuleTree = a: builtins.trace "${label}-door" (spied.evalModuleTree a);
-  };
-  gs = import "${genSchemaSrc}/lib" {
-    inherit
-      prelude
-      algebra
-      identity
-      graph
-      ;
-    merge = spiedDoored;
-  };
-  ga = import "${genAspectsSrc}/lib" {
-    inherit prelude identity;
-    merge = spiedDoored;
-    schema = gs;
-  };
 
   cells = {
     # U2-g: ONE evaluation, however many nested trees the value holds (each reads 1).
@@ -230,90 +206,6 @@ let
         ];
       in
       r.config.x;
-
-    # den-hoag-3jyxf cell 1: a config-decided extraModules list (gen-schema mkInstanceRegistry) —
-    # ADMITTED AS an nta CHILD. `evals - doors` is the ruled bridge price (U2-h, one bridge at
-    # `schema`); `plain` is 0 when the construction threads as a proper child rather than firing a
-    # standalone declaration-only evaluation.
-    nta-extra-modules =
-      let
-        ntaSchema = gs.evalSchema {
-          modules = [ { config.schema.host.options.addr = spiedDoored.mkOption { type = st.str; }; } ];
-        };
-        run =
-          knob:
-          (spiedDoored.evalModuleTree {
-            modules = [
-              (
-                { config, ... }:
-                {
-                  options.knob = spiedDoored.mkOption {
-                    type = st.bool;
-                    default = false;
-                  };
-                  options.hosts = gs.mkInstanceRegistry ntaSchema.host {
-                    extraModules =
-                      if config.knob then
-                        [
-                          {
-                            options.tag = spiedDoored.mkOption {
-                              type = st.str;
-                              default = "on";
-                            };
-                          }
-                        ]
-                      else
-                        [
-                          {
-                            options.tag = spiedDoored.mkOption {
-                              type = st.str;
-                              default = "off";
-                            };
-                          }
-                        ];
-                  };
-                  config.knob = knob;
-                  config.hosts.igloo.addr = "10.0.1.1";
-                }
-              )
-            ];
-          }).config.hosts.igloo.tag;
-      in
-      [
-        (run true)
-        (run false)
-      ];
-
-    # den-hoag-3jyxf cell 2: gen-aspects mkAspectModule (the inner type computed from
-    # `config.schema.aspect.__defsModule`) — ADMITTED AS an nta CHILD, same shape as cell 1.
-    nta-aspect-module =
-      let
-        ntaSchema = ga.mkAspectSchema {
-          keySemantics = {
-            classOne.category = "class";
-          };
-        };
-        c = spiedDoored.evalModuleTree {
-          modules = [
-            { options.schema = ntaSchema.schemaOption; }
-            (ntaSchema.mkAspectModule { })
-            {
-              config.schema.aspect.options.priority = spiedDoored.mkOption {
-                type = st.int;
-                default = 50;
-              };
-            }
-            {
-              config.aspects.networking.priority = 10;
-              config.aspects.desktop = { };
-            }
-          ];
-        };
-      in
-      [
-        c.config.aspects.networking.priority
-        c.config.aspects.desktop.priority
-      ];
   };
 in
 cells.${arm}

@@ -18,39 +18,6 @@
     # library flake's inputs, and a `../lib` constructed BY PATH reaches no flake output, so every
     # construction below has to supply `scope` itself.
     gen-scope.url = "github:sini/gen-scope";
-    # den-hoag-3jyxf: the two ADMITTED-AS-nta-CHILDREN constructions live in gen-schema and
-    # gen-aspects, entering here as CI-only VALUES for `tests-process.nix` (never a `lib/` dep, same
-    # precedent as `nixpkgs` below) so the two cells can drive them through this file's own spy.
-    # Pinned to the n6dh7-u2-pub publish branch while Unit 2 is in flight; re-pin to their default
-    # branch once it publishes to main.
-    #
-    # `flake = false`, UNLIKE nixpkgs/gen-differential/gen-algebra below: gen-schema and gen-aspects
-    # are NOT dependency-free (each declares its own gen-prelude/gen-merge/gen-identity/gen-graph/
-    # gen-algebra, and gen-aspects also gen-schema), and only `${genSchemaSrc}`/`${genAspectsSrc}`
-    # (the raw source path, `import "${...}/lib" { ... explicit args ... }`) is ever read —
-    # `inputs.gen-schema.lib`/`.gen-aspects.lib` are never forced. Tried first as ordinary flake
-    # inputs: `nix flake lock` still resolves an unforced input's WHOLE transitive graph, which
-    # measured two separate defects in the same run — `lock-agreement.test-ci-lock-resolves-one-
-    # gen-types` (1 -> 4, `ci/tests/lock-agreement.nix`'s own invariant) and, after a `follows` chain
-    # collapsed that, gen-harness's `ci-self-input` check (both libraries' own unfollowed `gen-merge`
-    # input resolving straight back to `sini/gen-merge` — this repository, published, in its own
-    # closure — CI red on all three evaluators; `follows = "self"` is not valid flake syntax for
-    # this, confirmed: `error: input '.../gen-merge' follows a non-existent input 'self'`). `flake =
-    # false` is the third repair `ci-self-input`'s own header names, and it is the correct one here
-    # independent of that check: it stops nix resolving either library's `inputs` at all, so neither
-    # hazard's precondition (a transitive gen-types/gen-merge dependency existing to duplicate) can
-    # arise, which a `follows` chain only ever plugs one named hole in.
-    gen-schema = {
-      url = "github:sini/gen-schema/n6dh7-u2-pub";
-      flake = false;
-    };
-    gen-aspects = {
-      url = "github:sini/gen-aspects/n6dh7-u2-pub";
-      flake = false;
-    };
-    # Dependency-free (zero `inputs`, owner-ruled 2026-08-20 den-hoag-soa1) — same precedent as
-    # gen-differential above, so pinning it adds exactly one node.
-    gen-algebra.url = "github:sini/gen-algebra";
     # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
     # test modules use — including the evalModules-equivalence ORACLE's reference side (spec §3).
     # The library itself (../lib) is nixpkgs-lib-free (ci/tests/purity.nix enforces this).
