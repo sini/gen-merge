@@ -1287,8 +1287,8 @@ live controls: a completed leaf still mounts, and a tree still nests.
 ### A foreign type that declares a nested tree, and the declared opt-out
 
 A nested tree (`submodule`, `(evalModuleTree …).type`) is a node of the one evaluation rather than a
-second evaluation called from inside a fold (den-hoag-n6dh7; see "Nested trees are children of the
-one evaluation" below). Each nesting type
+second evaluation called from inside a fold (see "Nested trees are children of the one evaluation"
+below). Each nesting type
 states its tree as data (`nests`: the module set, arguments, definition entry and the mode its
 called form evaluates in), and each container states its element positions once (`split`), which
 its own fold reads. `lazyAttrsOf` is the one exception: its fold is the split's twin, held equal
@@ -1338,8 +1338,8 @@ with a bridge that evaluates each tree once, standalone, as before. Pinned by
 
 ### Nested trees are children of the one evaluation
 
-`evalModuleTree` is ONE gen-scope evaluation (ADR-0006; ADR-0008 §1 retires the per-tree second
-engine). Its knot is a node of the kind `module-tree`, which declares one non-terminal attribute
+`evalModuleTree` is ONE gen-scope evaluation, with no second engine evaluating each nested tree on
+its own. Its knot is a node of the kind `module-tree`, which declares one non-terminal attribute
 (Vogt, Swierstra & Kuiper 1989 §3), `nested`: each nested tree the value holds is a child of that
 node, minted at its POSITION (the option's path and the position below it), and a child's own nested
 trees are its children. A child's `result` is its tree's evaluation, read from its host's position
@@ -1355,7 +1355,7 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   over-approximately where it does not (`lazyAttrsOf`, a freeform plane). A union is walked member by
   member at its own position; a container member counts only where every definition has its shape.
   A container of trees under `lazyAttrsOf` — bare, or as a union member — is S1 class (a): its
-  position is a **container node** (arm (v), den-hoag-9d80v), a child whose own `container` group
+  position is a **container node**, a child whose own `container` group
   keys the inner trees over that position's definitions only, so no sibling is forced to key them,
   and whose `result` is `{ value; _nested; }`, the inner container's fold, not a tree's evaluation.
   Under any other over-approximating container — a split container whose fold sets no mark
