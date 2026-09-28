@@ -159,6 +159,50 @@
         "type": "github"
       }
     },
+    "gen-algebra": {
+      "locked": {
+        "lastModified": 1790487874,
+        "narHash": "sha256-At/zCKVQKrEqnGrdMyQHB7NQ2HavkwERmnUyFhKCj9o=",
+        "owner": "sini",
+        "repo": "gen-algebra",
+        "rev": "d6fa371eff115e9a17cc5847b46f6ab5831b0d10",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen-algebra",
+        "type": "github"
+      }
+    },
+    "gen-aspects": {
+      "inputs": {
+        "gen-identity": [
+          "gen-scope",
+          "gen-identity"
+        ],
+        "gen-merge": "gen-merge",
+        "gen-prelude": [
+          "gen-prelude"
+        ],
+        "gen-schema": [
+          "gen-schema"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790566127,
+        "narHash": "sha256-J6ib4Ke61TiS1up9MFupGqWGHitrCy2BZ1Z+gHJWs9E=",
+        "owner": "sini",
+        "repo": "gen-aspects",
+        "rev": "21e093c58c68b8639b6ddede6fd1dc0a0da35fc8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "ref": "n6dh7-u2-pub",
+        "repo": "gen-aspects",
+        "type": "github"
+      }
+    },
     "gen-differential": {
       "locked": {
         "lastModified": 1790359068,
@@ -287,6 +331,64 @@
         "type": "github"
       }
     },
+    "gen-merge": {
+      "inputs": {
+        "gen-memo": [
+          "gen-memo"
+        ],
+        "gen-prelude": [
+          "gen-prelude"
+        ],
+        "gen-scope": [
+          "gen-scope"
+        ],
+        "gen-types": [
+          "gen-types"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790565996,
+        "narHash": "sha256-LifKdNRunGPZuPKRHZ0ZITqD65AdRQViH9uL47sxR/s=",
+        "owner": "sini",
+        "repo": "gen-merge",
+        "rev": "3f44256221da832187dd78450f9f2809fa5bd676",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen-merge",
+        "type": "github"
+      }
+    },
+    "gen-merge_2": {
+      "inputs": {
+        "gen-memo": [
+          "gen-memo"
+        ],
+        "gen-prelude": [
+          "gen-prelude"
+        ],
+        "gen-scope": [
+          "gen-scope"
+        ],
+        "gen-types": [
+          "gen-types"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790565996,
+        "narHash": "sha256-LifKdNRunGPZuPKRHZ0ZITqD65AdRQViH9uL47sxR/s=",
+        "owner": "sini",
+        "repo": "gen-merge",
+        "rev": "3f44256221da832187dd78450f9f2809fa5bd676",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen-merge",
+        "type": "github"
+      }
+    },
     "gen-prelude": {
       "locked": {
         "lastModified": 1790613800,
@@ -374,6 +476,39 @@
       "original": {
         "owner": "sini",
         "repo": "gen-prelude",
+        "type": "github"
+      }
+    },
+    "gen-schema": {
+      "inputs": {
+        "gen-algebra": [
+          "gen-algebra"
+        ],
+        "gen-graph": [
+          "gen-scope",
+          "gen-graph"
+        ],
+        "gen-identity": [
+          "gen-scope",
+          "gen-identity"
+        ],
+        "gen-merge": "gen-merge_2",
+        "gen-prelude": [
+          "gen-prelude"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790566042,
+        "narHash": "sha256-Ox/fn1n+IFl750yeKu0t+e0nZVW8YY3mmMMkHiaT+SI=",
+        "owner": "sini",
+        "repo": "gen-schema",
+        "rev": "28ecab68cdbb71b359b6d496e7cb06e176c60d9c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "ref": "n6dh7-u2-pub",
+        "repo": "gen-schema",
         "type": "github"
       }
     },
@@ -879,10 +1014,13 @@
     },
     "root": {
       "inputs": {
+        "gen-algebra": "gen-algebra",
+        "gen-aspects": "gen-aspects",
         "gen-differential": "gen-differential",
         "gen-harness": "gen-harness",
         "gen-memo": "gen-memo",
         "gen-prelude": "gen-prelude_3",
+        "gen-schema": "gen-schema",
         "gen-scope": "gen-scope",
         "gen-types": "gen-types",
         "nixpkgs": "nixpkgs_6"
