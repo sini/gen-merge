@@ -261,13 +261,19 @@ A child's `result` reads its seed from its own record and its `loc`, report mode
 - An over-approximated child the host fold never selected (a union position under a lazy
   container) is a CANDIDATE: enumerated, and its `result` alone refuses, before any module is applied.
 - A union over a container (`either (attrsOf sub) str`) is keyed member by member, a container member
-  only where every definition has its shape; under a lazy container it is S1 class (a), refused.
+  only where every definition has its shape; under a lazy container it is S1 class (a).
+- S1 class (a) under `lazyAttrsOf` is a CONTAINER NODE (arm (v), den-hoag-9d80v): its position is
+  marked `mode = "container"` (`containerAt`, read by the walk and the threaded fold alike), and its
+  `result` is `{ value; _nested; }`, never a tree. ★ A reader of `result` by identifier checks the
+  host position's `mode` first: `.config` on a container node is a missing attribute, which
+  `tryEval` does not catch. Under another over-approximating container the shape is refused.
 - Growth over empty seeds past `importedTypeWalkFuel` refuses by name (OQ15 (c), *defaulted,
   reversible*). Its price: an undefined chain that deep refuses even where it is finite.
 - Enumerating a deep node set (`allNodeIds`) is gen-scope's, and it grows exponentially with nesting
   depth at gen-scope `d62b595`; read values through the fold, not by enumerating.
 
-Cells: `ci/tests/nesting-placement.nix`, `ci/tests-error.nix` `nesting-placement.*`, and the
+Cells: `ci/tests/nesting-placement.nix` (`nesting-placement-containers`: the mode-first reader),
+`ci/tests/nesting-keys.nix` `nesting-keys-lazy-over-strict`, `ci/tests-error.nix` `nesting-placement.*`, and the
 process cells `one-eval-*` and `candidate-modules*` (`ci/tests-process.nix`).
 
 ## Theory

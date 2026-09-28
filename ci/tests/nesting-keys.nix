@@ -377,12 +377,56 @@ in
       };
     };
 
-  # S1 class (a), RULED (iii): a container that keys its elements by reading them, holding nested
-  # trees, under a lazy container, is refused by name where its positions are keyed. Catchable;
-  # the message is `ci/tests-error.nix`'s. A lazy container under an exact one is keyed.
+  # S1 class (a), arm (v) (den-hoag-9d80v): a container that keys its elements by reading them,
+  # holding nested trees, under `lazyAttrsOf`, is a CONTAINER NODE at the lazy position, whose own
+  # `container` group keys its elements over its own definitions only, so no sibling is read to key
+  # it. Under another over-approximating container it is refused by name, catchably; the message is
+  # `ci/tests-error.nix`'s. A lazy container under an exact one is keyed.
   flake.tests.nesting-keys-lazy-over-strict = {
-    test-a-strict-container-of-trees-under-a-lazy-one-is-refused = {
-      expr = refused (childrenOf (evalExposed (host (t.lazyAttrsOf (t.attrsOf sub)) [ { j.k.x = 1; } ])));
+    test-a-strict-container-of-trees-under-a-lazy-one-is-a-container-node = {
+      expr = childrenOf (evalExposed (host (t.lazyAttrsOf (t.attrsOf sub)) [ { j.k.x = 1; } ]));
+      expected = {
+        "[\"o\"]" = [ "[\"j\"]" ];
+        container = [ "[\"k\"]" ];
+      };
+    };
+    test-a-container-node-keys-without-forcing-its-sibling = {
+      expr =
+        let
+          r = evalExposed (
+            host (t.lazyAttrsOf (t.attrsOf sub)) [
+              {
+                foo.a.x = 1;
+                bar = throw "sibling forced";
+              }
+            ]
+          );
+        in
+        builtins.seq (builtins.deepSeq (rootChildrenOf r) null) r.config.o.foo;
+      expected.a.x = 1;
+    };
+    # The control: under an exact container the sibling is read to key it.
+    test-a-strict-container-of-trees-under-a-strict-one-forces-its-sibling = {
+      expr = refused (
+        rootChildrenOf (
+          evalExposed (
+            host (t.attrsOf (t.attrsOf sub)) [
+              {
+                foo.a.x = 1;
+                bar = throw "sibling forced";
+              }
+            ]
+          )
+        )
+      );
+      expected = true;
+    };
+    test-a-strict-container-of-trees-under-another-over-approximating-one-is-refused = {
+      expr = refused (
+        childrenOf (
+          evalExposed (host (t.lazyAttrsOf (t.attrsOf sub) // { name = "overRoot"; }) [ { j.k.x = 1; } ])
+        )
+      );
       expected = true;
     };
     test-a-lazy-container-of-trees-under-a-strict-one-is-keyed = {

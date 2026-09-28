@@ -606,14 +606,23 @@ let
           loc: defs: map (k: at loc k (defsAt defs k)) (attrNames (foldl' (acc: d: acc // d.value) { } defs));
       # Both containers' THREADED fold reads the split (den-hoag-n6dh7 item 5): the lazy one's key
       # set is every key, so its values stay unforced until read, as its called fold's are.
+      #
+      # The lazy fold MARKS its elements `under` (S1 arm (v), den-hoag-9d80v), once per fold call: an
+      # element whose position the key walk made a container node is read off that node rather than
+      # folded inline (`mergeDefsThreaded`). An element that nests directly is never a container
+      # node, so that fold sets no mark (decided once, when the type is built).
+      marks = tyName == "lazyAttrsOf" && !(interface.isNesting element);
       threaded =
         ev:
         refusingOutside tyName admits (
           loc: defs:
+          let
+            ev' = if marks then ev // { under = true; } else ev;
+          in
           listToAttrs (
             map (e: {
               name = head e.step;
-              value = threadElement ev e;
+              value = threadElement ev' e;
             }) (split loc defs)
           )
         );

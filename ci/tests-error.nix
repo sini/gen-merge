@@ -55,6 +55,10 @@ let
   # tree's `.type.description` does (door-checks.nix), so a plain `deepSeq` of their result reads
   # the door-check refusal directly.
   force = v: builtins.deepSeq v null;
+  # `lazyAttrsOf` under another name, for the S1 class (a) refusals (den-hoag-9d80v): the key walk
+  # reads an over-approximating container by its name, so this one stands for every one but
+  # `lazyAttrsOf`, whose positions are container nodes.
+  overRoot = e: t.lazyAttrsOf e // { name = "overRoot"; };
 
   # ── the refusal pair and its control share one skeleton ────────────────────────────────────
   # `rack.slot` is declared; `rack.stray` is not. The three fixtures differ in exactly one module,
@@ -4709,18 +4713,20 @@ in
       };
 
     # den-hoag-n6dh7 Unit 2.4: S1 class (a), RULED (iii). A container that keys its elements by
-    # reading their definitions, holding nested trees, under a lazy container, is refused by name
-    # where its positions are keyed, naming the option, both containers and the upgrade path.
-    # `ci/tests/nesting-keys.nix` pins that it is catchable.
+    # reading their definitions, holding nested trees, under an over-approximating container other
+    # than `lazyAttrsOf` (under `lazyAttrsOf` it is a container node, den-hoag-9d80v), is refused by
+    # name where its positions are keyed, naming the option, both containers and the upgrade path.
+    # `overRoot` is `lazyAttrsOf` under another name: the walk reads a container by its name, so it
+    # stands for every other over-approximating container (a freeform root, gen-aspects' root).
     flake.testsError.nesting-keys = {
-      test-a-strict-container-of-trees-under-a-lazy-one-names-both-containers = {
+      test-a-strict-container-of-trees-under-another-over-approximating-one-names-both-containers = {
         expr =
           let
             r = genMergeCore.evalModuleTreeExposed {
               modules = [
                 {
                   options.o = gm.mkOption {
-                    type = t.lazyAttrsOf (t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }));
+                    type = overRoot (t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }));
                   };
                   config.o.j.k.x = 1;
                 }
@@ -4730,7 +4736,7 @@ in
           force r._evaluation.allNodeIds;
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+          msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it [(]den-hoag-9d80v[)]$";
         };
       };
     };
@@ -4786,41 +4792,42 @@ in
             msg = "^gen-merge: `evalModuleTree': option `o[.]foo': the fold of the tree holding it did not select a nested tree at this position [(]it folds as `string'[)], so this nested tree is a candidate and is never evaluated$";
           };
         };
-        # U2-r: a union's container member under a lazy container, S1 class (a), RULED (iii).
-        test-a-unions-strict-container-under-a-lazy-one-names-the-union-and-its-position = {
+        # U2-r: a union's container member under an over-approximating container other than
+        # `lazyAttrsOf`, S1 class (a), RULED (iii).
+        test-a-unions-strict-container-under-another-over-approximating-one-names-the-union-and-its-position = {
           expr =
             force
-              (gm.evalModuleTree {
-                modules = host (t.lazyAttrsOf (t.either (t.attrsOf sub) t.str)) [ { p.a.x = 1; } ];
-              }).config.o.p;
+              (genMergeCore.evalModuleTreeExposed {
+                modules = host (overRoot (t.either (t.attrsOf sub) t.str)) [ { p.a.x = 1; } ];
+              })._evaluation.allNodeIds;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: nta: option `o' declares `either' at position \\[\"p\"\\], whose member `attrsOf' holds nested trees, under `lazyAttrsOf': the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the member outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+            msg = "^gen-merge: nta: option `o' declares `either' at position \\[\"p\"\\], whose member `attrsOf' holds nested trees, under `overRoot': the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the member outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it [(]den-hoag-9d80v[)]$";
           };
         };
         # S1 class (a) with a LAZY inner container: refused on (iii)'s own ground, *defaulted,
         # reversible* (orchestrator ruling, den-hoag-n6dh7); the text does not call it strict, and
-        # names arm (v), the intermediate host node (den-hoag-9d80v). And `listOf` under a lazy one.
-        test-a-lazy-container-of-trees-under-a-lazy-one-is-refused-without-calling-it-strict = {
+        # names arm (v), the container node (den-hoag-9d80v). And `listOf` under the same container.
+        test-a-lazy-container-of-trees-under-another-over-approximating-one-is-refused-without-calling-it-strict = {
           expr =
             force
-              (gm.evalModuleTree {
-                modules = host (t.lazyAttrsOf (t.lazyAttrsOf sub)) [ { j.k.x = 1; } ];
-              }).config.o.j;
+              (genMergeCore.evalModuleTreeExposed {
+                modules = host (overRoot (t.lazyAttrsOf sub)) [ { j.k.x = 1; } ];
+              })._evaluation.allNodeIds;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: nta: option `o' declares `lazyAttrsOf' of nested trees under `lazyAttrsOf': the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf'; the intermediate host node that admits this shape is den-hoag-9d80v$";
+            msg = "^gen-merge: nta: option `o' declares `lazyAttrsOf' of nested trees under `overRoot': the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot'; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it [(]den-hoag-9d80v[)]$";
           };
         };
-        test-a-list-of-trees-under-a-lazy-container-is-refused = {
+        test-a-list-of-trees-under-another-over-approximating-container-is-refused = {
           expr =
             force
-              (gm.evalModuleTree {
-                modules = host (t.lazyAttrsOf (t.listOf sub)) [ { j = [ { x = 1; } ]; } ];
-              }).config.o.j;
+              (genMergeCore.evalModuleTreeExposed {
+                modules = host (overRoot (t.listOf sub)) [ { j = [ { x = 1; } ]; } ];
+              })._evaluation.allNodeIds;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: nta: option `o' declares `listOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
+            msg = "^gen-merge: nta: option `o' declares `listOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it [(]den-hoag-9d80v[)]$";
           };
         };
         # U2-s: growth over empty seeds past the fuel.
@@ -4899,44 +4906,6 @@ in
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: option `s[.]t[.]bogus' is not declared by the nested tree that owns it$";
-          };
-        };
-      };
-
-    # The three constructions `ci/tests/nixpkgs-protocol.nix`'s tree-union parity cell finds
-    # differing from nixpkgs, each anchored on the ruled refusal it meets (Unit 2 landing gate, P4):
-    # a container of trees under `lazyAttrsOf` is S1 class (a), RULED (iii), for `attrsOf` and
-    # `listOf`, and the orchestrator's defaulted, reversible extension for `lazyAttrsOf`.
-    flake.testsError.tree-union-parity-refusals =
-      let
-        family = import ./tests/_fixtures/tree-union-family.nix {
-          genMerge = gm;
-          inherit nixpkgsLib;
-        };
-        cellOf =
-          name: builtins.head (builtins.filter (c: "${c.construction}/${c.definition}" == name) family.cells);
-        refusal = name: force (family.gen (cellOf name).gen (cellOf name).value);
-      in
-      {
-        test-attrsof-under-lazyattrsof-refuses-by-name = {
-          expr = refusal "lazyAttrsOf.attrsOf/module";
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: nta: option `s' declares `attrsOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
-          };
-        };
-        test-listof-under-lazyattrsof-refuses-by-name = {
-          expr = refusal "lazyAttrsOf.listOf/module";
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: nta: option `s' declares `listOf' of nested trees under `lazyAttrsOf': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v$";
-          };
-        };
-        test-lazyattrsof-under-lazyattrsof-refuses-by-name = {
-          expr = refusal "lazyAttrsOf.lazyAttrsOf/module";
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: nta: option `s' declares `lazyAttrsOf' of nested trees under `lazyAttrsOf': the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `lazyAttrsOf'; the intermediate host node that admits this shape is den-hoag-9d80v$";
           };
         };
       };
