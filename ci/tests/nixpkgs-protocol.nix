@@ -787,14 +787,26 @@ in
       };
     };
 
-    # gen-types HELPERS must pass through uncompleted. `mkValidator name pred message` returns
+    # gen-types HELPERS must pass through uncompleted. `mkValidator { name; pred; message; }` returns
     # `{ message; name; pred; }` — it carries `name` but NOT `verify`, so a completion keyed on the
     # top-level rule (`? verify || ? name`) would stamp `_type = "option-type"` onto a validator and make
     # `isOptionType` lie about it. The parametric arm keys on `verify` alone for exactly this reason.
     test-parametric-completion-skips-helpers = {
       expr = {
-        mkValidatorKeys = builtins.attrNames (gmT.mkValidator "n" (_: true) "msg");
-        mkValidatorIsNotAType = (gmT.mkValidator "n" (_: true) "msg") ? _type;
+        mkValidatorKeys = builtins.attrNames (
+          gmT.mkValidator {
+            name = "n";
+            pred = _: true;
+            message = "msg";
+          }
+        );
+        mkValidatorIsNotAType =
+          (gmT.mkValidator {
+            name = "n";
+            pred = _: true;
+            message = "msg";
+          })
+            ? _type;
         formatErrorsType = builtins.typeOf (gmT.formatErrors [ ]);
         refinementsKeys = builtins.attrNames gmT.refinements;
       };
