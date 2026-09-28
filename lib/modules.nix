@@ -1661,7 +1661,8 @@ let
   # ruling): its key set is also its definitions' data, so keying one child still forces every
   # sibling's definition. Under `lazyAttrsOf` the shape is a container node instead (arm (v),
   # den-hoag-9d80v, `containerAt`), so these refuse only under an over-approximating container whose
-  # fold sets no mark (a freeform root, gen-aspects' root). `nullOr` has no keys and is looked through.
+  # fold sets no mark (gen-aspects' `aspectsRoot`, or a freeform plane typed by one). `nullOr` has no
+  # keys and is looked through.
   classAReason =
     lazy: t:
     if (t.name or null) == "attrsOf" || (t.name or null) == "listOf" then
@@ -1744,8 +1745,9 @@ let
 
   # `under`: `null` where every enclosing container keys EXACTLY (`attrsOf`, `listOf`, `nullOr`,
   # whose key sets already read each element's definitions to WHNF), else the name of the enclosing
-  # container that OVER-APPROXIMATES (`lazyAttrsOf`, and every other container: a freeform root,
-  # gen-aspects' root). The answer is a list of `{ key; type; member; loc; defs; }`, where `member`
+  # container that OVER-APPROXIMATES (`lazyAttrsOf`, and every other split container whose fold sets
+  # no mark: gen-aspects' `aspectsRoot`, or a freeform plane typed by one). The answer is a list of
+  # `{ key; type; member; loc; defs; }`, where `member`
   # is the type the child evaluates under, forced only when the child's `result` reads it.
   #   · a nesting type IS a key, and its own member;
   #   · a UNION (`choose`) is walked member by member at its own position (below); the walk never

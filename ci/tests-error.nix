@@ -4717,7 +4717,8 @@ in
     # than `lazyAttrsOf` (under `lazyAttrsOf` it is a container node, den-hoag-9d80v), is refused by
     # name where its positions are keyed, naming the option, both containers and the upgrade path.
     # `overRoot` is `lazyAttrsOf` under another name: the walk reads a container by its name, so it
-    # stands for every other over-approximating container (a freeform root, gen-aspects' root).
+    # stands for every other split container whose fold sets no mark (gen-aspects' `aspectsRoot`, or
+    # a freeform plane typed by one).
     flake.testsError.nesting-keys = {
       test-a-strict-container-of-trees-under-another-over-approximating-one-names-both-containers = {
         expr =
