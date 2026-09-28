@@ -1399,12 +1399,25 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   the application's `//` swaps its operands, and the hub perf-bench reads the copying form's thunk
   and allocation bounds.
 
-- **Two structurally equal CYCLIC values at a shared key abort uncatchably**, a known boundary.
-  Nix `==` is not total: `{ a = r; }`,`{ a = r'; }` with `r` and `r'` separate bindings of
-  `{ s = r; n = 1; }` under a check-only `mkOptionType` exits
-  `stack overflow; max-call-depth exceeded`, which `tryEval` does not catch, where nixpkgs returns
-  `{ a = …; }`. 6a508e3 aborts on the same input, so this is a boundary the fold inherits, not one
-  it introduced.
+- **Two structurally equal CYCLIC values abort uncatchably, an ADR-0025 item 1 declared exception
+  (*defaulted, reversible*).** Nix `==` is not total, and it recurses without bound on a pair of
+  pointer-distinct, structurally equal cyclic values — `{ a = r; }`,`{ a = r'; }` with `r` and `r'`
+  separate bindings of `{ s = r; n = 1; }` — or on any pair whose lockstep `==` reaches a back edge
+  before a difference. The class has three members, all exiting
+  `stack overflow; max-call-depth exceeded`, which `tryEval` does not catch: the check-only
+  `mkOptionType` default's shared-key compare (`mergeDescriptorDefault`/`sharedKeyDiffers`, above),
+  the no-fold leaf combine (`mergeLeaf`), and its exported twin (`leafFold`). 6a508e3 aborts on the
+  same input at all three sites, so this is a boundary the fold inherits, not one it introduced.
+  `mergeLeaf` and `leafFold` are byte-parity with nixpkgs: its own `mergeEqualOption` aborts
+  uncatchably on the identical input. `mergeDescriptorDefault` is the one departure — nixpkgs' `//`
+  never compares the shared key, so it silently keeps the last file's cyclic value where this fold
+  aborts. The exception is argued, not merely declared: no pure-Nix observation (`typeOf`, attribute
+  names, selection, `==` on non-container leaves) tells a cyclic binding shared by both definitions
+  apart from two freshly built, structurally identical cycles — both unfold to the same infinite
+  tree, so a bounded pre-flight that refuses the latter also refuses the former, which nixpkgs
+  accepts and this fold accepts today, and one that instead accepts on exhaustion is a silent drop
+  past its bound. Every construction changes an answer this fold gives today without deciding the
+  input that aborts, so the abort stands as the exception rather than behind a door.
 
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict
