@@ -32,6 +32,10 @@
           export genMemoSrc=${inputs.gen-memo} genScopeSrc=${inputs.gen-scope}
           # nixpkgs as a VALUE, for the one cell folding a stock nixpkgs container (never a lib dep).
           export nixpkgsSrc=${inputs.nixpkgs}
+          # den-hoag-3jyxf: gen-schema/gen-aspects/gen-algebra as VALUES, for the two nta-admission
+          # cells (never a lib dep).
+          export genSchemaSrc=${inputs.gen-schema} genAspectsSrc=${inputs.gen-aspects}
+          export genAlgebraSrc=${inputs.gen-algebra}
           # A fresh working directory per run, as gen-scope's runner needs (den-hoag-jutgv).
           TMPDIR=$(mktemp -d) out=$(mktemp)
           export TMPDIR out
@@ -69,8 +73,15 @@
               --argstr genScopeSrc "$genScopeSrc" \
               --argstr label "$label" \
               --argstr nixpkgsSrc "$nixpkgsSrc" \
+              --argstr genSchemaSrc "$genSchemaSrc" \
+              --argstr genAspectsSrc "$genAspectsSrc" \
+              --argstr genAlgebraSrc "$genAlgebraSrc" \
               "$cells" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
+          }
+          # tracedSuffix <suffix>: the number of lines on stderr carrying "$label-<suffix>".
+          tracedSuffix() {
+            grep -c "trace: $label-$1\$" "$TMPDIR/err" || true
           }
 
           # den-hoag-xzchx C3 — the outer fixpoint reading the evaluation's own `options` from a
@@ -115,9 +126,30 @@
           n=$(traced)
           [ "$n" -ge 1 ] || die candidate-modules-control "expected the selected child to apply the module, counted $n"
 
+          # den-hoag-3jyxf: the two same-mechanism constructions ADMITTED AS nta CHILDREN at the
+          # 09-25 sitting. `evals - doors` is the ruled bridge price (U2-h: one bridge at `schema`);
+          # `plain` (a declaration-only evaluation, no `definitions`/`positions`) is 0 exactly when
+          # the construction threads as a proper nta child rather than firing a standalone
+          # evaluation. Pinned to the price this file's landing gate already measured and ruled.
+          evalArm nta-extra-modules
+          [ "$rc" -eq 0 ] || die nta-extra-modules "expected exit 0, got $rc"
+          [ "$val" = '[ "on" "off" ]' ] || die nta-extra-modules "expected [ \"on\" \"off\" ], got '$val'"
+          n=$(traced); nd=$(tracedSuffix door); np=$(tracedSuffix plain)
+          [ "$n" = "5" ] || die nta-extra-modules "expected 5 evaluations (the ruled bridge price), counted $n"
+          [ "$nd" = "4" ] || die nta-extra-modules "expected 4 doors, counted $nd"
+          [ "$np" = "0" ] || die nta-extra-modules "expected 0 declaration-only evaluations (an nta child, not a standalone evaluation), counted $np"
+
+          evalArm nta-aspect-module
+          [ "$rc" -eq 0 ] || die nta-aspect-module "expected exit 0, got $rc"
+          [ "$val" = '[ 10 50 ]' ] || die nta-aspect-module "expected [ 10 50 ], got '$val'"
+          n=$(traced); nd=$(tracedSuffix door); np=$(tracedSuffix plain)
+          [ "$n" = "2" ] || die nta-aspect-module "expected 2 evaluations (the ruled bridge price), counted $n"
+          [ "$nd" = "1" ] || die nta-aspect-module "expected 1 door, counted $nd"
+          [ "$np" = "0" ] || die nta-aspect-module "expected 0 declaration-only evaluations (an nta child, not a standalone evaluation), counted $np"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "13" ] || die runner "expected 13 evaluations, ran $ran"
-          echo "tests-process: 13 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "15" ] || die runner "expected 15 evaluations, ran $ran"
+          echo "tests-process: 15 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
