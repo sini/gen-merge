@@ -1342,10 +1342,11 @@ with a bridge that evaluates each tree once, standalone, as before. Pinned by
 engine). Its knot is a node of the kind `module-tree`, which declares one non-terminal attribute
 (Vogt, Swierstra & Kuiper 1989 §3), `nested`: each nested tree the value holds is a child of that
 node, minted at its POSITION (the option's path and the position below it), and a child's own nested
-trees are its children. A child's `result` is its tree's evaluation, read from its own record (its
-seed: the addresses of the definitions its fold receives) and from its host's position record at its
-own coordinates (`getHostAt "positions"`: its `loc`, report mode and member), the host's equation for
-that child (Söderberg & Hedin 2013 §2.3, §4.1). The fold reads a child through the node's own record
+trees are its children. A child's `result` is its tree's evaluation, read from its host's position
+record at its own coordinates (`getHostAt "positions"`: its definitions, `loc`, report mode and
+member), the host's equation for that child (Söderberg & Hedin 2013 §2.3, §4.1). Its own record
+carries its seed, the addresses of those definitions, which the evaluation does not resolve (owner
+ruling 2026-09-28, arm (B)). The fold reads a child through the node's own record
 (`getNta`), never by identifier. Values are unchanged; the evaluation count is 1
 (`ci/tests-process.nix`, `one-eval-*`).
 

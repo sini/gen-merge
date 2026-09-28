@@ -1896,10 +1896,9 @@ let
               throw (emptyRunRefusal r.loc)
             else
               # `nestedPosition`'s record, and what the child's own evaluation reads besides (the v10
-              # amendment): the `member` it evaluates under (the walk's `split` chain, lazy), its
-              # seed's definitions in seed order, from which it reads each one's file (a seed element
-              # is an address and a value, and the file is its host definition's), and `emptyRun`
-              # (item 4, OQ15 (c)).
+              # amendment): the `member` it evaluates under (the walk's `split` chain, lazy), the
+              # definitions its seed addresses, in seed order, which it evaluates (arm (B), owner
+              # ruling 2026-09-28), and `emptyRun` (item 4, OQ15 (c)).
               {
                 inherit (r)
                   key
@@ -2376,10 +2375,11 @@ let
   # own nested trees are its children in turn: `evalModuleTree` is ONE `scope.eval`, and every
   # nested tree is a node of it (ADR-0006, ADR-0008 §1). The registry and the scope are constants.
   #
-  # A child's `result` is its tree's evaluation, read off its own record and its host's position
-  # record, never off a closure: the seed from its record, and its `loc`, report mode and member
-  # from the host's `positions` at its own coordinates (`getHostAt`, the host's equation for this
-  # child: Söderberg & Hedin 2013 §2.3, §4.1). Carrying the `nta` costs a constant per `scope.eval`
+  # A child's `result` is its tree's evaluation, read off its host's position record, never off a
+  # closure: its definitions, `loc`, report mode and member from the host's `positions` at its own
+  # coordinates (`getHostAt`, the host's equation for this child: Söderberg & Hedin 2013 §2.3, §4.1).
+  # Its record carries the seed, the addresses of those definitions, unread by the evaluation (arm
+  # (B), `childTree`). Carrying the `nta` costs a constant per `scope.eval`
   # (the registry crossing the door); a root pays it once for every tree it holds.
   knotKindName = "module-tree";
   knotScopeMinting = scope.buildRoots {
@@ -2438,11 +2438,17 @@ let
 
   # ── A CHILD'S EVALUATION (den-hoag-n6dh7 item 4) ─────────────────────────────────────────────────
   # The call a nesting type's called form made, field for field, with each field read from the
-  # child's record and its position: its member's module set plus one entry per seed definition,
-  # the placing fold's `loc` as the prefix, the member's own arguments (with `name` where the member
-  # injects one), in the report mode its site decides. An EMPTY seed evaluates with the member's
-  # `empty` arguments, as its `whenEmpty` did. The warm path stays cold at a child, the documented
-  # boundary (`evalModuleTreeWith`'s `warmFrom` note).
+  # host's position record at the child's coordinates: its member's module set plus one entry per
+  # definition the position holds, the placing fold's `loc` as the prefix, the member's own arguments
+  # (with `name` where the member injects one), in the report mode its site decides. An EMPTY
+  # position evaluates with the member's `empty` arguments, as its `whenEmpty` did. The warm path
+  # stays cold at a child, the documented boundary (`evalModuleTreeWith`'s `warmFrom` note).
+  #
+  # The definitions come off the host's equation, not through the seed (owner ruling 2026-09-28,
+  # arm (B), amending v8 item 4 and OQ3 (a-ii)): the seed stays minted on the child's record as the
+  # addresses of those same definitions, the constructed descent that is the termination ground,
+  # and the evaluation does not resolve it: resolving each address through Unit 1's `readAddress`
+  # would re-read, at a price per tree, values the position record already holds.
   #
   # A CANDIDATE (an over-approximated child the host's fold never selected, item 2) refuses here,
   # on `result` alone, before any of its member's modules is applied: its member is the one the
@@ -2456,7 +2462,6 @@ let
       member = p.member;
       n = member.nests;
       m = if p.mode == "called" then n.calledMode else p.mode;
-      seed = (self.node id).decls.seed;
     in
     if !(interface.isNesting member) then
       throw "gen-merge: `evalModuleTree': option `${showOption p.loc}': the fold of the tree holding it did not select a nested tree at this position${
@@ -2464,22 +2469,14 @@ let
       }, so this nested tree is a candidate and is never evaluated"
     else
       evalModuleTreeWith knotChild m.carried m.inherited (
-        if seed == [ ] then
+        if p.defs == [ ] then
           {
             inherit (n) modules coreShortCircuit;
             inherit (n.empty) prefix specialArgs check;
           }
         else
           {
-            modules =
-              n.modules
-              ++ prelude.imap0 (
-                i: s:
-                n.entry {
-                  inherit (prelude.elemAt p.defs i) file;
-                  inherit (s) value;
-                }
-              ) seed;
+            modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
             prefix = p.loc;
             specialArgs =
               if n.named then

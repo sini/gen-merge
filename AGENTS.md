@@ -252,8 +252,9 @@ through it with `interface.bridge`, one standalone evaluation per tree. Cells:
 an `nta` child `nested` of the root evaluation, and a child's own nested trees are its children. The
 engine folds every option that may nest (`canNest`), and the freeform plane, through the fold's
 `threaded` sibling, reading the child through the node's own record (`getNta`), never by identifier.
-A child's `result` reads its seed from its own record and its `loc`, report mode, member and
-`emptyRun` from its host's `positions` (`getHostAt`).
+A child's `result` reads its definitions, `loc`, report mode, member and `emptyRun` from its host's
+`positions` (`getHostAt`); the seed on its own record (the definitions' addresses) stays minted and
+is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
 
 - The CALLED fold of a nesting type (`mergeDefs`, `submodule`'s `whenEmpty.value`, the tree
   record's `emptyTree`) **refuses by name**. So does any container that does not thread the
