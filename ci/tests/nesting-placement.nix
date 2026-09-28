@@ -418,6 +418,14 @@ in
         expr = refused (down 32 r.config.o);
         expected = true;
       };
+      # The enumeration clause: enumerating the node set reaches the refusal and is refused within a
+      # bounded time, rather than growing without end (it needs gen-scope's per-level host
+      # resolution, `c93a5c0`, to reach depth 33 at all).
+      test-enumerating-the-growth-refuses = {
+        expr =
+          (builtins.tryEval (builtins.length (evalExposed (host recsub [ ]))._evaluation.allNodeIds)).success;
+        expected = false;
+      };
       # The control: an undefined two-level nesting that does not recurse enumerates.
       test-an-undefined-nesting-that-does-not-recurse-enumerates = {
         expr =
