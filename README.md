@@ -1399,8 +1399,8 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   the application's `//` swaps its operands, and the hub perf-bench reads the copying form's thunk
   and allocation bounds.
 
-- **Two structurally equal CYCLIC values abort uncatchably, an ADR-0025 item 1 declared exception
-  (*defaulted, reversible*).** Nix `==` is not total, and it recurses without bound on a pair of
+- **Two structurally equal CYCLIC values abort uncatchably, a declared exception to the rule that
+  every refusal is catchable.** Nix `==` is not total, and it recurses without bound on a pair of
   pointer-distinct, structurally equal cyclic values — `{ a = r; }`,`{ a = r'; }` with `r` and `r'`
   separate bindings of `{ s = r; n = 1; }` — or on any pair whose lockstep `==` reaches a back edge
   before a difference. The class has three members, all exiting
