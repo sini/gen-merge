@@ -1467,7 +1467,10 @@ let
           )
         else
           checked;
-      inherit prov undeclared;
+      # `typeDefs` is carried so the `nested` walk reads the fold's own discharged definitions
+      # instead of re-running the passes (den-hoag-i4c0n C1). THE STATED PRICE: one attribute slot
+      # on every rich record, and no thunk: it binds the fold's existing `typeDefs`.
+      inherit prov undeclared typeDefs;
     };
 
   # ── A NESTED POSITION, AND THE REPORT MODE IT CARRIES (den-hoag-n6dh7 items 1, 2; gate C2) ─────
@@ -1905,6 +1908,7 @@ let
             path = r.loc ++ [ x.name ];
             opt = r.opts.${x.name};
             defs = r.subDefs x.name;
+            inherit (x) m;
           }
         ]
     ) r.declaredPairs;
@@ -1932,22 +1936,37 @@ let
         loc = prefix ++ l.path;
         type = l.opt.type or null;
         hostMode = { inherit carried strict; };
-        definitions = map (d: { inherit (d) file value; }) (
-          addressedDefs (
-            map (d: d // { at = [ ]; }) (
-              normalize (
-                l.defs
-                ++ optional (l.opt ? default) {
-                  file = "<default>";
-                  value = mkOptionDefault l.opt.default;
-                }
+        # ONE DISCHARGE (den-hoag-i4c0n C1; item 2, gate P2): the fold's own `typeDefs`, read off the
+        # option's merge record. The first arm is where forcing `m` would meet `mergeOptionWith`'s
+        # "used but not defined" guard, and there the walk below answers `[ ]` too. The last arm
+        # runs the passes wherever `m` carries no `typeDefs` (a warm-reused leaf, an `apply` or
+        # `readOnly` re-wrap).
+        definitions =
+          if l.defs == [ ] && !(l.opt ? default) then
+            [ ]
+          else if l.m ? typeDefs then
+            l.m.typeDefs
+          else
+            map (d: { inherit (d) file value; }) (
+              addressedDefs (
+                map (d: d // { at = [ ]; }) (
+                  normalize (
+                    l.defs
+                    ++ optional (l.opt ? default) {
+                      file = "<default>";
+                      value = mkOptionDefault l.opt.default;
+                    }
+                  )
+                )
               )
-            )
-          )
-        );
+            );
       };
-      groups = map optionGroup leaves ++ [
-        {
+      # No freeform group where the tree declares no freeform type (L5f, its freeform half). The
+      # `canNest` filter over the option groups is NOT taken: it makes the group set a function of
+      # every declared option's type, so a sibling typed through `config` recurses without end.
+      groups =
+        map optionGroup leaves
+        ++ optional (freeform.type != null) {
           name = "freeform";
           loc = prefix;
           inherit (freeform) type;
@@ -1957,8 +1976,7 @@ let
             inherit strict;
           };
           definitions = map (d: { inherit (d) file value; }) freeform.defs;
-        }
-      ];
+        };
       positionsOf =
         j: g:
         map
