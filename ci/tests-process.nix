@@ -30,6 +30,8 @@
           export genPreludeSrc=${inputs.gen-prelude} genIdentitySrc=${inputs.gen-scope.inputs.gen-identity}
           export genGraphSrc=${inputs.gen-scope.inputs.gen-graph} genTypesSrc=${inputs.gen-types}
           export genMemoSrc=${inputs.gen-memo} genScopeSrc=${inputs.gen-scope}
+          # nixpkgs as a VALUE, for the one cell folding a stock nixpkgs container (never a lib dep).
+          export nixpkgsSrc=${inputs.nixpkgs}
           # A fresh working directory per run, as gen-scope's runner needs (den-hoag-jutgv).
           TMPDIR=$(mktemp -d) out=$(mktemp)
           export TMPDIR out
@@ -41,6 +43,13 @@
         + ''
           export NIX_STATE_DIR=$TMPDIR/nix-state NIX_LOG_DIR=$TMPDIR/nix-log
           ran=0
+          # The spy's trace label, generated fresh per run and never written down, so no text a cell
+          # or a document carries can be mistaken for a firing.
+          label="spy-$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+          # traced <arm>: the number of lines on stderr carrying this run's label.
+          traced() {
+            grep -c "trace: $label\$" "$TMPDIR/err" || true
+          }
           die() {
             echo "tests-process: FAILED at cell $1: $2" >&2
             exit 1
@@ -58,6 +67,8 @@
               --argstr genTypesSrc "$genTypesSrc" \
               --argstr genMemoSrc "$genMemoSrc" \
               --argstr genScopeSrc "$genScopeSrc" \
+              --argstr label "$label" \
+              --argstr nixpkgsSrc "$nixpkgsSrc" \
               "$cells" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
           }
@@ -77,9 +88,36 @@
           [ "$rc" -eq 0 ] || die outer-default-read "expected exit 0, got $rc"
           [ "$val" = '"on"' ] || die outer-default-read "expected value \"on\", got '$val'"
 
+          # den-hoag-n6dh7 U2-g: ONE gen-scope evaluation per `evalModuleTree`, however many nested
+          # trees its value holds. The spy counts `scope.eval` calls; its live control reads 2.
+          for arm in one-eval-flat one-eval-sub-one one-eval-attrs-two one-eval-list-two one-eval-sub-empty one-eval-deep one-eval-np-attrs; do
+            evalArm "$arm"
+            [ "$rc" -eq 0 ] || die "$arm" "expected exit 0, got $rc"
+            n=$(traced)
+            [ "$n" = "1" ] || die "$arm" "expected 1 evaluation, the spy counted $n"
+          done
+          evalArm one-eval-control-two-roots
+          [ "$rc" -eq 0 ] || die one-eval-control-two-roots "expected exit 0, got $rc"
+          [ "$val" = "3" ] || die one-eval-control-two-roots "expected value 3, got '$val'"
+          n=$(traced)
+          [ "$n" = "2" ] || die one-eval-control-two-roots "the spy's control expected 2 evaluations, counted $n"
+
+          # den-hoag-n6dh7 U2-l (gate O1): a candidate's `result` refuses before its member's modules
+          # are applied — the traced module is applied 0 times — and a selected child applies it.
+          evalArm candidate-modules
+          [ "$rc" -eq 0 ] || die candidate-modules "expected exit 0, got $rc"
+          [ "$val" = "false" ] || die candidate-modules "expected the candidate's result to refuse, got '$val'"
+          n=$(traced)
+          [ "$n" = "0" ] || die candidate-modules "expected 0 applications of the candidate member's modules, counted $n"
+          evalArm candidate-modules-control
+          [ "$rc" -eq 0 ] || die candidate-modules-control "expected exit 0, got $rc"
+          [ "$val" = "1" ] || die candidate-modules-control "expected value 1, got '$val'"
+          n=$(traced)
+          [ "$n" -ge 1 ] || die candidate-modules-control "expected the selected child to apply the module, counted $n"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "3" ] || die runner "expected 3 evaluations, ran $ran"
-          echo "tests-process: 3 cells, every exit read unpiped, every death on its named channel" > $out
+          [ "$ran" = "13" ] || die runner "expected 13 evaluations, ran $ran"
+          echo "tests-process: 13 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

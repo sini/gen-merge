@@ -1620,7 +1620,10 @@ let
             bridged (foreignFace t).mergeDefs
           else
             bridged t.mergeDefs;
-        emptyValue = t.whenEmpty or { };
+        # A nesting type's empty value is its tree over no definitions, through the same bridge: its
+        # called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
+        emptyValue =
+          if isNesting t then { value = t.mergeDefs.threaded bridge [ ] [ ]; } else t.whenEmpty or { };
         nestedTypes = if role == null then { } else spelling.nested carried;
         getSubOptions = if sub == null then (_prefix: { }) else sub.declares;
         getSubModules = if sub == null then null else sub.modules;

@@ -1736,8 +1736,19 @@ in
           ) (builtins.attrNames hand);
           cells = builtins.length family.cells;
         };
+        # Three constructions differ, each REFUSED by name here where nixpkgs answers a value: a
+        # container of trees under `lazyAttrsOf`. `attrsOf` and `listOf` there are S1 class (a),
+        # RULED (iii) (den-hoag-n6dh7); `lazyAttrsOf` there is the same refusal extended on (iii)'s
+        # own ground, *defaulted, reversible* (orchestrator ruling, den-hoag-n6dh7): an inner lazy
+        # container's key set is also its definitions' data. Arm (v), the intermediate host node
+        # (den-hoag-9d80v), carries the shape forward. The texts are pinned in `ci/tests-error.nix`
+        # (`nesting-keys`, `nesting-placement`).
         expected = {
-          family = [ ];
+          family = [
+            "lazyAttrsOf.attrsOf/module"
+            "lazyAttrsOf.lazyAttrsOf/module"
+            "lazyAttrsOf.listOf/module"
+          ];
           hand = [ ];
           cells = 180;
         };

@@ -1482,42 +1482,63 @@ let
     }:
     {
       inherit key address loc;
-      mode =
-        if key == [ ] && hostMode.carried && type ? mergeDefs.reported then
-          {
-            carried = true;
-            inherited = hostMode.strict;
-          }
-        else
-          "called";
+      mode = positionMode hostMode type key;
     };
+  positionMode =
+    hostMode: type: key:
+    if key == [ ] && hostMode.carried && type ? mergeDefs.reported then
+      {
+        carried = true;
+        inherited = hostMode.strict;
+      }
+    else
+      "called";
   # The `{ carried; inherited; }` pair a position's child evaluates in, under the member it
   # evaluates as (at a union position, the member the union's choice returns).
   positionChildMode =
     member: position: if position.mode == "called" then member.nests.calledMode else position.mode;
 
+  # ── THE CALLED FOLD REFUSES (den-hoag-n6dh7 item 1) ─────────────────────────────────────────────
+  # A nesting type declares its tree; it does not evaluate it. Every evaluating field is a named
+  # refusal where it is CALLED (the 2-arity `mergeDefs`, `submodule`'s `whenEmpty.value`, the tree
+  # record's `emptyTree`), naming the field and the loc: the tree is a child of the one evaluation
+  # that holds it, and an evaluation reads it through the fold's threaded sibling. The exported
+  # foreign `merge` does not refuse; it bridges (item 7).
+  calledNestingRefusal =
+    type: field: loc:
+    "gen-merge: `${type}'${
+      if loc == null then "" else " at option `${showOption loc}'"
+    }: its called `${field}' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it (`evalModuleTree'), read through its fold's threaded sibling, and no second evaluation is made for it (den-hoag-n6dh7)";
+
   # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
   # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
-  # in the mode `m` (`{ carried; inherited; }`). It is the call the nesting type's called form makes,
+  # in the mode `m` (`{ carried; inherited; }`). It is the call a nesting type's called form made,
   # field for field, built from what the type states as data: its module set plus one entry per
   # seed definition, the placing fold's `loc` as the prefix, and its own arguments, with `name`
-  # injected where its called form injects one (`nests.named`: `submodule`'s `argsAt` does, the
-  # tree record's `nested` does not). It is the export BRIDGE's child (item 7, OQ11 (d)), and, until
-  # the tree is a child of the one evaluation (Unit 2.4), the engine accessor's too: one root
-  # evaluation per nested tree, exactly as many as the called form makes. Like the called form's, it
-  # is driven on the plain knot, so it mints nothing (see the minting knot below).
+  # injected where the type injects one (`nests.named`: `submodule` does, the tree record does not).
+  # It is the export BRIDGE's child (item 7, OQ11 (d)), where no gen evaluation holds the tree: one
+  # root evaluation per nested tree, as many as the called form made. With no definition it is the tree over none, with `nests.empty`'s arguments, as a child with an
+  # empty seed is (item 4). It is a ROOT evaluation, so the trees it holds are its own children.
   nestedTreeAt =
     m: site:
-    evalModuleTreeWith knotNested m.carried m.inherited {
-      modules = site.nests.modules ++ map site.nests.entry site.defs;
-      prefix = site.loc;
-      specialArgs =
-        if site.nests.named then
-          site.nests.specialArgs // { name = if site.loc == [ ] then "" else prelude.last site.loc; }
-        else
-          site.nests.specialArgs;
-      inherit (site.nests) check coreShortCircuit;
-    };
+    evalModuleTreeWith knotRoot m.carried m.inherited (
+      if site.defs == [ ] then
+        {
+          inherit (site.nests) modules coreShortCircuit;
+          inherit (site.nests.empty) prefix specialArgs check;
+        }
+      else
+        {
+          modules = site.nests.modules ++ map site.nests.entry site.defs;
+          prefix = site.loc;
+          specialArgs =
+            if site.nests.named then
+              site.nests.specialArgs // { name = if site.loc == [ ] then "" else prelude.last site.loc; }
+            else
+              site.nests.specialArgs;
+          inherit (site.nests) check coreShortCircuit;
+        }
+    );
 
   # ── THE ENGINE'S THREADED TWIN (den-hoag-n6dh7 item 5) ───────────────────────────────────────────
   # The CALLED fold over the type whose fold is its threaded form, bound to the evaluation's accessor
@@ -1527,15 +1548,54 @@ let
   # that is the twin's PRESENCE ARM (gate C3). The type is first HOMED, where it is bound to its
   # position (`interface.homedAt`): a recognised foreign container becomes gen's own, and an
   # unrecognised one declaring a gen nesting element is refused before any fold is taken.
+  #
+  # The bound record states exactly what the spine reads of a type that brings a fold: the fold,
+  # the empty value and `verify` (the rest is read only where no fold is brought), so binding it
+  # copies none of the type's other fields. A nesting type's reporting twin rides beside its
+  # threaded fold (`.reported`, which the rich fold selects on), and its EMPTY value is its threaded
+  # fold over no definitions: the child at this position with an empty seed. Its called `whenEmpty`
+  # refuses (item 1).
   threadedAs =
     ev: type:
     if isAttrs type && type ? mergeDefs.threaded then
-      type // { mergeDefs = type.mergeDefs.threaded ev; }
+      let
+        mergeDefs =
+          if type.mergeDefs ? threadedReported then
+            {
+              __functor = _: type.mergeDefs.threaded ev;
+              reported = type.mergeDefs.threadedReported ev;
+            }
+          else
+            type.mergeDefs.threaded ev;
+        whenEmpty =
+          if type ? nests then { value = type.mergeDefs.threaded ev [ ] [ ]; } else whenEmptyOf type;
+      in
+      if type ? verify then
+        {
+          inherit mergeDefs whenEmpty;
+          inherit (type) verify;
+        }
+      else
+        { inherit mergeDefs whenEmpty; }
     else
       type;
   mergeDefsThreaded =
     ev: loc: type:
     mergeDefs loc (threadedAs ev (interface.homedAt "evalModuleTree" loc type));
+
+  # The evaluation's accessor at one group of a node of the one evaluation (den-hoag-n6dh7 item 5,
+  # v8): a nested tree is read through the reading node's own record, as its `nested` child at the
+  # group and the fold's position, never through an identifier.
+  evAt = reader: group: {
+    position = [ ];
+    child = site: reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
+  };
+  # A type bound at a declared option or at the freeform plane, threaded where it may nest and the
+  # evaluation reads its nested trees as children (`mode.reader`). The public `mergeOption` carries
+  # no reader, so a nesting type there folds CALLED, and refuses.
+  threadedIn =
+    mode: group: type:
+    if mode ? reader && interface.canNest type then threadedAs (evAt mode.reader group) type else type;
 
   # ── THE KEY WALK (den-hoag-n6dh7 item 2; OQ9 (M′); S1 RULED (ii) for class (b), (iii) for (a)) ──
   # Which positions of an option's value are nested trees, each with the ADDRESSES of the
@@ -1549,38 +1609,97 @@ let
   # so the walk hands it definitions whose `file` is the whole record and reads the address back
   # off each element's; an element adds the step that selects it from that definition's value
   # (`listOf`'s step is `[ d i ]`, whose `d` selects the DEFINITION, so its value step is `i`).
+  # A list of property-free definitions is its own answer (every pass is the identity on it: one
+  # bare definition each, all at the default priority, none an order marker), so it is returned
+  # whole, as `dischargeProperties`' own `isProperty` fast path does per value.
   addressedDefs =
     defs:
-    let
-      discharged = concatMap (
-        d:
-        map (x: {
-          inherit (d) file;
-          inherit (x) value priority;
-          at = d.at ++ x.path;
-        }) (dischargePropertiesAt d.value)
-      ) defs;
-      winners = filterOverrides discharged;
-    in
-    if any (w: isOrderMarker w.value) winners then
-      sortProperties (
-        map (w: if isOrderMarker w.value then w // { at = w.at ++ [ "content" ]; } else w) winners
-      )
+    if all (d: !(isAttrs d.value && d.value ? _type)) defs then
+      defs
     else
-      winners;
+      let
+        discharged = concatMap (
+          d:
+          map (x: {
+            inherit (d) file;
+            inherit (x) value priority;
+            at = d.at ++ x.path;
+          }) (dischargePropertiesAt d.value)
+        ) defs;
+        winners = filterOverrides discharged;
+      in
+      if any (w: isOrderMarker w.value) winners then
+        sortProperties (
+          map (w: if isOrderMarker w.value then w // { at = w.at ++ [ "content" ]; } else w) winners
+        )
+      else
+        winners;
 
   # The class (a) refusal (S1, RULED (iii)): a container that keys its elements by reading their
-  # definitions, holding nested trees, under a container whose key set does not read them.
+  # definitions, holding nested trees, under a container whose key set does not read them. An inner
+  # LAZY container is refused on the same ground, *defaulted, reversible* (den-hoag-n6dh7, orchestrator
+  # ruling): its key set is also its definitions' data, so keying one child still forces every
+  # sibling's definition; nixpkgs answers the shape, and arm (v), the intermediate host node
+  # (den-hoag-9d80v), carries it forward. `nullOr` has no keys and is looked through. `via` names the
+  # union whose member it is, where it is one (v10), with the union's position.
+  classAReason =
+    lazy: t:
+    if (t.name or null) == "attrsOf" || (t.name or null) == "listOf" then
+      "the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}', or make it lazy"
+    else
+      "the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}'";
   nestingUnderLazyRefusal =
     group: lazy: t:
-    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}', or make it lazy; the intermediate host node that admits this shape is den-hoag-9d80v";
+    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': ${classAReason lazy t}; the intermediate host node that admits this shape is den-hoag-9d80v";
+  unionUnderLazyRefusal =
+    group: lazy: u: pos: t:
+    "gen-merge: nta: option `${showOption group}' declares `${u.name or "<union>"}' at position ${builtins.toJSON pos}, whose member `${t.name or "<container>"}' holds nested trees, under `${lazy}': ${
+      if (t.name or null) == "attrsOf" || (t.name or null) == "listOf" then
+        "the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}', or make it lazy"
+      else
+        "the member's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}'"
+    }; the intermediate host node that admits this shape is den-hoag-9d80v";
+
+  # A definition list as a fold reads it, without the walk's addresses.
+  plainDefs = map (d: {
+    inherit (d) file value;
+  });
+
+  # THE MEMBER A POSITION'S CHILD EVALUATES UNDER (den-hoag-n6dh7 item 2, v10): the type the host
+  # fold's own `split` chain reaches at the child's position `rel`, replayed from a union's position
+  # with each union's `choose` applied over that position's `loc` and definitions, and each
+  # element's definitions passed through the fold's own passes first. The chain reads the bindings
+  # the fold reads, so the fold's selection and the child's admission cannot disagree. `null` where
+  # the chain does not reach the position: the candidate refusal.
+  memberChain =
+    t: rel: loc: defs:
+    if !(isAttrs t) then
+      null
+    else if t ? choose then
+      memberChain (interface.homedAt "evalModuleTree" loc (t.choose loc (plainDefs defs))) rel loc defs
+    else if interface.isNesting t || !(t ? split) then
+      (if rel == [ ] then t else null)
+    else
+      let
+        # `nullOr`'s element adds no step, so it continues the chain at the same position.
+        es = filter (e: take (length e.step) rel == e.step) (t.split loc (plainDefs defs));
+        e = head es;
+      in
+      if es == [ ] then
+        (if rel == [ ] then t else null)
+      else
+        memberChain (interface.homedAt "evalModuleTree" e.loc e.type) (drop (length e.step) rel) e.loc (
+          addressedDefs (map (d: d // { at = [ ]; }) e.defs)
+        );
 
   # `under`: `null` where every enclosing container keys EXACTLY (`attrsOf`, `listOf`, `nullOr`,
   # whose key sets already read each element's definitions to WHNF), else the name of the enclosing
   # container that OVER-APPROXIMATES (`lazyAttrsOf`, and every other container: a freeform root,
-  # gen-aspects' root). The answer is a list of `{ key; type; loc; defs; }`.
-  #   · a nesting type, or a union with a nesting member (`choose`, S1 (ii)), IS a key: the walk
-  #     never applies `choose`, so a union's member is decided where the child is read;
+  # gen-aspects' root). The answer is a list of `{ key; type; member; loc; defs; }`, where `member`
+  # is the type the child evaluates under, forced only when the child's `result` reads it.
+  #   · a nesting type IS a key, and its own member;
+  #   · a UNION (`choose`) is walked member by member at its own position (below); the walk never
+  #     applies `choose`, so a union's member is decided where the child is read;
   #   · a container is walked through its `split`, where it keys exactly;
   #   · under an over-approximating container, `nullOr` adds no step and is looked through, and a
   #     container that keys exactly is refused (class (a)): its key set is its elements' data.
@@ -1591,14 +1710,24 @@ let
     under: group: t: pos: loc: defs:
     if !(isAttrs t) || !(interface.canNest t) then
       [ ]
-    else if interface.isNesting t || t ? choose then
+    else if interface.isNesting t then
       [
         {
           key = pos;
           type = t;
+          member = t;
           inherit loc defs;
         }
       ]
+    else if t ? choose then
+      map (
+        r:
+        r
+        // {
+          type = t;
+          member = memberChain t (drop (length pos) r.key) loc defs;
+        }
+      ) (unionKeys under group t pos loc defs t)
     else if !(t ? split) then
       [ ]
     else if under != null then
@@ -1630,6 +1759,61 @@ let
             )
           )
       ) (t.split loc (map (d: d // { file = d; }) defs));
+
+  # A UNION's keys (v10, S1 RULED (ii)): each member that may nest, in order, at the union's own
+  # position, which a union's members add no step to. A nesting member contributes that position; a
+  # union member is walked by this same rule; a container member contributes the keys of its own
+  # walk, taken ONLY WHEN every definition at the position has its shape at WHNF (its own `admits`),
+  # since the union's `choose` takes the member that accepts every definition, so a container whose
+  # shape fails on one cannot be the fold's choice. The filter never applies `choose`, and it reads
+  # nothing the enclosing exact container's key set has not already forced (*defaulted,
+  # reversible*). A position two members key is ONE key (`listToAttrs` keeps the first). Under an
+  # over-approximating container nothing is read: a container member that keys exactly is class
+  # (a), refused naming the union's position.
+  unionKeys =
+    under: group: u: pos: loc: defs: t:
+    concatMap (
+      mt0:
+      let
+        mt = interface.homedAt "evalModuleTree" loc mt0;
+      in
+      if !(isAttrs mt) || !(interface.canNest mt) then
+        [ ]
+      else if interface.isNesting mt then
+        [
+          {
+            key = pos;
+            inherit loc defs;
+          }
+        ]
+      else if mt ? choose then
+        unionKeys under group u pos loc defs mt
+      else if !(mt ? split) then
+        [ ]
+      else if (mt.name or null) == "nullOr" then
+        unionKeys under group u pos loc (if under == null then filter (d: d.value != null) defs else defs) {
+          carries.alternatives = [ mt.carries.element ];
+        }
+      else if under != null then
+        throw (unionUnderLazyRefusal group under u pos mt)
+      else if mt ? admits && all (d: mt.admits d.value) defs then
+        keyWalk null group mt pos loc defs
+      else
+        [ ]
+    ) (t.carries.alternatives or [ ]);
+
+  # ★ GROWTH OVER EMPTY SEEDS, REFUSED BY NAME (den-hoag-n6dh7 item 4; OQ15's default (c),
+  # *defaulted, reversible*). A child with an empty seed whose own walk keys an empty-seed position
+  # adds a generation grown by the TYPE alone, and a recursive nesting type grows such generations
+  # without end: enumeration would hang, with no abort and no refusal. A position record counts the
+  # run as `emptyRun`: `0` where the seed is non-empty, else its host's own `emptyRun` plus one (a
+  # root counts `0`). Where it would exceed `importedTypeWalkFuel` (the S2 walk's bound), the walk
+  # refuses at that key. THE STATED PRICE: an undefined chain of `importedTypeWalkFuel` or more
+  # directly typed nesting levels is refused even where it is finite; Nix has no reference equality,
+  # so recursion and depth cannot be told apart, and the fuel is the bound S2 already prices.
+  emptyRunRefusal =
+    loc:
+    "gen-merge: `evalModuleTree': option `${showOption loc}' holds a nested tree with no definition inside ${toString interface.importedTypeWalkFuel} enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of ${toString interface.importedTypeWalkFuel} rather than hang. Define the position, or reach the recursion through a container whose keys are data (`attrsOf', `listOf')";
 
   # The declared options of a tree, in declaration order, each with the definitions the realizer
   # routes to it (`mergeTree`'s descent: each level's values pushed down, then selected by key).
@@ -1684,6 +1868,7 @@ let
       leaves,
       normalize,
       freeform,
+      emptyRun,
     }:
     let
       optionGroup = l: {
@@ -1723,14 +1908,29 @@ let
         map
           (
             r:
-            nestedPosition g.hostMode r.type {
-              inherit (r) key loc;
-              address = map (d: {
-                attr = "definitions";
-                def = j;
-                inherit (d) at;
-              }) r.defs;
-            }
+            if emptyRun >= interface.importedTypeWalkFuel && r.defs == [ ] then
+              throw (emptyRunRefusal r.loc)
+            else
+              # `nestedPosition`'s record, and what the child's own evaluation reads besides (the v10
+              # amendment): the `member` it evaluates under (the walk's `split` chain, lazy), its
+              # seed's definitions in seed order, from which it reads each one's file (a seed element
+              # is an address and a value, and the file is its host definition's), and `emptyRun`
+              # (item 4, OQ15 (c)).
+              {
+                inherit (r)
+                  key
+                  loc
+                  member
+                  defs
+                  ;
+                address = map (d: {
+                  attr = "definitions";
+                  def = j;
+                  inherit (d) at;
+                }) r.defs;
+                mode = positionMode g.hostMode r.type r.key;
+                emptyRun = if r.defs == [ ] then emptyRun + 1 else 0;
+              }
           )
           (
             keyWalk null g.loc (interface.homedAt "evalModuleTree" g.loc g.type) [ ] g.loc (
@@ -1954,15 +2154,21 @@ let
           # and an unrecognised one declaring a gen nesting element is refused by name before any
           # fold is taken. A gen leaf checker (`verify`) and a gen container (`carries`) are their
           # own home and are answered here, inside the argument's one thunk, so a gen option pays a
-          # presence test and not a call (ez1yq C2 `leaf-cost`). The fold stays the CALLED one until
-          # the switch (Unit 2.4).
+          # presence test and not a call (ez1yq C2 `leaf-cost`). A type that may nest is folded
+          # THREADED (den-hoag-n6dh7 item 5): its nested trees are children of this evaluation,
+          # read at the group this option's path names, relative to the tree's prefix.
           mergeDefsRichWith mode loc (
             if optDecl ? type && optDecl.type == null then
               throw (declaredTypeRefusal loc null)
-            else if (optDecl.type or null) ? verify || (optDecl.type or null) ? carries then
+            else if (optDecl.type or null) ? verify then
               optDecl.type
             else
-              interface.homedAt "evalModuleTree" loc (optDecl.type or null)
+              threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) (
+                if (optDecl.type or null) ? carries then
+                  optDecl.type
+                else
+                  interface.homedAt "evalModuleTree" loc (optDecl.type or null)
+              )
           ) withDefault;
     in
     if !hasApply && !readOnly then
@@ -2177,19 +2383,20 @@ let
     decls.${knotId} = { };
   };
   #
-  # ── THE MINTING KNOT (den-hoag-n6dh7 item 2) ─────────────────────────────────────────────────────
+  # ── THE MINTING KNOT (den-hoag-n6dh7 items 2, 4) ─────────────────────────────────────────────────
   # A ROOT evaluation's knot is a node of the kind `module-tree`, which declares ONE `nta`, `nested`:
   # its children are the nested trees its option values hold, one per nesting POSITION, minted by
   # the key walk below with Unit 1's identifier (`mintNtaId host "nested" group key`). The builder
   # reads the product the walk computes inside `result`; the seeds address the host attribute
-  # `definitions`, one list of definitions per group. The registry and the scope are constants.
+  # `definitions`, one list of definitions per group. A child is a node of the same kind, so its
+  # own nested trees are its children in turn: `evalModuleTree` is ONE `scope.eval`, and every
+  # nested tree is a node of it (ADR-0006, ADR-0008 §1). The registry and the scope are constants.
   #
-  # ★ WHAT MINTS IN THIS STATE, AND WHAT DOES NOT. The key walk and the minting are built; the
-  # nested trees are still EVALUATED by their types' called folds (a nested evaluation of its own,
-  # which carries no `nta`, so its own nested positions are not minted). A minted child therefore
-  # has an identity, a seed and a record, and no `result`: reading one is refused by name, since
-  # its value is its host's option value. Carrying the `nta` costs a constant per `scope.eval`
-  # (the registry crossing the door), which is why only a ROOT evaluation carries it.
+  # A child's `result` is its tree's evaluation, read off its own record and its host's position
+  # record, never off a closure: the seed from its record, and its `loc`, report mode and member
+  # from the host's `positions` at its own coordinates (`getHostAt`, the host's equation for this
+  # child: Söderberg & Hedin 2013 §2.3, §4.1). Carrying the `nta` costs a constant per `scope.eval`
+  # (the registry crossing the door); a root pays it once for every tree it holds.
   knotKindName = "module-tree";
   knotScopeMinting = scope.buildRoots {
     parentGraph = scope.vertex knotId;
@@ -2199,19 +2406,29 @@ let
     kinds = scope.mkKinds [
       (scope.mkKind {
         name = knotKindName;
-        # A minted child is not evaluated in this state, so it grows no children of its own.
-        nta.nested = self: id: if id == knotId then (self.get id knotAttr)._nested.product else { };
+        # A CANDIDATE (`childTree`) holds no nested tree of its own: its record answers as a
+        # selected child's does, and only its `result` refuses, so an enumeration never meets it.
+        nta.nested =
+          self: id:
+          if id == knotId || interface.isNesting (self.getHostAt "positions").member then
+            (self.get id knotAttr)._nested.product
+          else
+            { };
       })
     ];
   };
+  knotNoChildren = _: _: { };
+  knotNoImports = _: _: [ ];
+  knotDefinitions = self: id: (self.get id knotAttr)._nested.definitions;
+  knotPositions = self: id: { nested = (self.get id knotAttr)._nested.positions; };
   driveKnot =
     f:
     (scope.eval {
       scope = knotScope;
       attributes = {
-        children = _: _: { };
-        imports = _: _: [ ];
-        ${knotAttr} = self: id: f (self.get id knotAttr);
+        children = knotNoChildren;
+        imports = knotNoImports;
+        ${knotAttr} = self: id: f self (self.get id knotAttr);
       };
     }).get
       knotId
@@ -2224,36 +2441,97 @@ let
       evaluation = scope.eval {
         scope = knotScopeMinting;
         attributes = {
-          children = _: _: { };
-          imports = _: _: [ ];
-          ${knotAttr} =
-            self: id:
-            if id == knotId then
-              f (self.get id knotAttr)
-            else
-              throw "gen-merge: nta: the nested tree `${id}' is minted and not evaluated as a child: its value is its host's option value, read through the host's fold";
-          definitions = self: id: (self.get id knotAttr)._nested.definitions;
+          children = knotNoChildren;
+          imports = knotNoImports;
+          ${knotAttr} = self: id: if id == knotId then f self (self.get id knotAttr) else childTree self id;
+          definitions = knotDefinitions;
+          positions = knotPositions;
         };
       };
       r = evaluation.get knotId knotAttr;
     in
     if exposes then r // { _evaluation = evaluation; } else r;
-  # The three knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a
-  # call pays no argument for the choice: a nested evaluation's (the plain knot), a root's (the
-  # minting knot), and a root's whose evaluation is exposed to this library's suites.
+
+  # ── A CHILD'S EVALUATION (den-hoag-n6dh7 item 4) ─────────────────────────────────────────────────
+  # The call a nesting type's called form made, field for field, with each field read from the
+  # child's record and its position: its member's module set plus one entry per seed definition,
+  # the placing fold's `loc` as the prefix, the member's own arguments (with `name` where the member
+  # injects one), in the report mode its site decides. An EMPTY seed evaluates with the member's
+  # `empty` arguments, as its `whenEmpty` did. The warm path stays cold at a child, the documented
+  # boundary (`evalModuleTreeWith`'s `warmFrom` note).
+  #
+  # A CANDIDATE (an over-approximated child the host's fold never selected, item 2) refuses here,
+  # on `result` alone, before any of its member's modules is applied: its member is the one the
+  # host fold's own `split` chain reaches, `choose` included, and a member that is not a nesting
+  # type means the fold did not select a nested tree at this position. The rule, for a reader that
+  # enumerates: a per-node reader of `result` over an enumeration reads it only for a selected child.
+  childTree =
+    self: id:
+    let
+      p = self.getHostAt "positions";
+      member = p.member;
+      n = member.nests;
+      m = if p.mode == "called" then n.calledMode else p.mode;
+      seed = (self.node id).decls.seed;
+    in
+    if !(interface.isNesting member) then
+      throw "gen-merge: `evalModuleTree': option `${showOption p.loc}': the fold of the tree holding it did not select a nested tree at this position${
+        if isAttrs member then " (it folds as `${member.name or "<unnamed>"}')" else ""
+      }, so this nested tree is a candidate and is never evaluated"
+    else
+      evalModuleTreeWith knotChild m.carried m.inherited (
+        if seed == [ ] then
+          {
+            inherit (n) modules coreShortCircuit;
+            inherit (n.empty) prefix specialArgs check;
+          }
+        else
+          {
+            modules =
+              n.modules
+              ++ prelude.imap0 (
+                i: s:
+                n.entry {
+                  inherit (prelude.elemAt p.defs i) file;
+                  inherit (s) value;
+                }
+              ) seed;
+            prefix = p.loc;
+            specialArgs =
+              if n.named then
+                n.specialArgs // { name = if p.loc == [ ] then "" else prelude.last p.loc; }
+              else
+                n.specialArgs;
+            inherit (n) check coreShortCircuit;
+          }
+      ) self (self.get id knotAttr);
+
+  # The knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a call
+  # pays no argument for the choice: a root's (the minting knot), a root's whose evaluation is
+  # exposed to this library's suites, and the declaration-only plain knot a type's `declares` reads
+  # (it folds no value, so it holds no child). A child's knot is its own node (`childTree`).
+  knotChild = {
+    mints = true;
+    exposes = false;
+    inner = true;
+    drive = null;
+  };
   knotNested = {
     mints = false;
     exposes = false;
+    inner = false;
     drive = driveKnot;
   };
   knotRoot = {
     mints = true;
     exposes = false;
+    inner = false;
     drive = driveKnotMinting false;
   };
   knotExposed = {
     mints = true;
     exposes = true;
+    inner = false;
     drive = driveKnotMinting true;
   };
 
@@ -2295,11 +2573,8 @@ let
     }:
     let
       modList = if isList modules then modules else [ modules ];
-      # Rich option merge (`{ value; prov }`) — the realizer reads BOTH the value tree and the
-      # provenance tree from one shared discharge/priority pass per declared leaf.
       # This evaluation's effective strictness: its own `check`, or a carrying tree's.
       strict = check || inherited;
-      localMergeOptionRich = mergeOptionWith { inherit coreShortCircuit carried strict; };
 
       # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
       # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
@@ -2390,7 +2665,7 @@ let
               else
                 {
                   name = k;
-                  m = localMergeOptionRich abs opts.${k} (subDefs k);
+                  m = warm.mergeOption abs opts.${k} (subDefs k);
                 }
             else
               {
@@ -2501,8 +2776,10 @@ let
           }).options
         ) null;
 
-      result = knot.drive (
-        result:
+      # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
+      # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
+      body = (
+        self: result:
         let
           # The same refusal as at `declArgs`, spelled inline for the same reason.
           baseArgs =
@@ -2664,9 +2941,27 @@ let
                 # the leaf's type carries `mergeDefs.reported` (see there). Its paths are absolute, the
                 # frame of `mergeTree`'s `reported` channel, so the reader passes them through as is.
                 prevUndeclared = warmFrom.undeclared;
+                inherit mergeOption;
               }
             else
-              { active = false; };
+              {
+                active = false;
+                inherit mergeOption;
+              };
+          # The rich option merge (`{ value; prov }`): the realizer reads BOTH the value tree and the
+          # provenance tree from one shared discharge/priority pass per declared leaf. It rides the
+          # descent's context, with this node's `reader`, through which a declared option that may
+          # nest reads its nested trees as this node's `nested` children (den-hoag-n6dh7 item 5);
+          # `prefix` makes the option's group its path within the tree.
+          mergeOption = mergeOptionWith {
+            inherit
+              coreShortCircuit
+              carried
+              strict
+              prefix
+              ;
+            reader = self;
+          };
           # Reuse the WHOLE prev freeform layer iff the coarse flag holds (§2, soundness-forced: a
           # single edited freeformType flips every freeform loc). Else re-merge cold. Byte-identical
           # either way when the flag holds; the flag exists to keep the SKIP sound.
@@ -2869,7 +3164,12 @@ let
                 if prefix == [ ] then "" else " at `${showOption prefix}'"
               } ${interface.typeDefect freeform}"
             else
-              (rawFold freeform) prefix (coalesceUnmatched (length topDefs) realized.unmatched);
+              rawFold (
+                if interface.canNest freeform then
+                  threadedAs (evAt self "freeform") (interface.homedAt "evalModuleTree" prefix freeform)
+                else
+                  freeform
+              ) prefix (coalesceUnmatched (length topDefs) realized.unmatched);
           # Warm: reuse prev's whole freeform layer (byte-identical when `reuseFreeform`), skipping the
           # freeform fold's re-run; else the cold layer. The cold thunk stays unforced under reuse.
           freeformConfig = if reuseFreeform then warmFrom.freeformConfig else freeformConfigCold;
@@ -3296,15 +3596,15 @@ let
             warmDecision
             ;
           options = allOptions;
-        }
-        # THE NESTED POSITIONS OF THIS TREE (den-hoag-n6dh7 item 2): one group per declared option,
-        # in declaration order, and one for the freeform plane, last. Built only on an evaluation that
-        # mints, and read by the minting knot alone; inline, so a nested evaluation pays no binding.
-        // (
-          if knot.mints then
-            {
-              _nested = nestedGroups {
+          # THE NESTED POSITIONS OF THIS TREE (den-hoag-n6dh7 item 2): one group per declared
+          # option, in declaration order, and one for the freeform plane, last. Read by the minting
+          # knot alone, and built only on an evaluation that mints.
+          _nested =
+            if knot.mints then
+              nestedGroups {
                 inherit prefix carried strict;
+                # A child's own run is on its position record; a root counts `0` (item 4).
+                emptyRun = if knot.inner then (self.getHostAt "positions").emptyRun else 0;
                 leaves = nestedOptionLeaves allOptions topDefs;
                 normalize =
                   if coreShortCircuit then
@@ -3319,229 +3619,201 @@ let
                     else
                       coalesceUnmatched (length topDefs) realized.unmatched;
                 };
-              };
-            }
-          else
-            { }
-        )
-      );
-    in
-    {
-      # ── the refusal's ONE forcing site ────────────────────────────────────────────────────────
-      # Interposed on the EXPORTED config, never on `result.config`. The two are the same value, and
-      # the difference is who reads which: modules inside the fixpoint see `result.moduleConfig`,
-      # which is built FROM `result.config`, so seq-ing the identity verdict onto the inner binding
-      # would make a module's ordinary `config.x` read force a walk over the config that read is
-      # helping to produce — infinite recursion, not a refusal. Out here nothing in the fixpoint can
-      # reach it, and every consumer of a warm re-compose goes through this attribute.
-      #
-      # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
-      config = builtins.seq result.identityHeld result.config;
-      inherit (result)
-        options
-        provenance
-        # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
-        # `check` does not gate it (see above) — empty whenever a freeformType absorbed them, and empty
-        # for a fully-declared config.
-        undeclared
-        # The declared options of this eval whose TYPE carries a `deprecationMessage`, each with the
-        # message, the type's name and the files that declared the option — empty when no declared
-        # type is deprecated, which is the ordinary case.
-        deprecations
-        # Freeform layers exposed as internal memo fields (public surface = the five above):
-        # a CHAINED warm re-eval reuses `warmFrom.freeformConfig`/`freeformProv` directly (spec §2).
-        freeformConfig
-        freeformProv
-        # The memoization decision trace (spec §4); `mode = "cold"` on a plain compose (no warmFrom).
-        warmDecision
-        ;
-      # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform). Nested
-      # evals are always COLD (no `warmFrom` threaded) — a documented boundary, like provenance's.
-      #
-      # ── NON-MOUNTABLE, AND IT SAYS SO ────────────────────────────────────────────────────────────
-      # This is a NESTING SEAM, not an `optionType`. It answers two of the fourteen protocol fields,
-      # and they are the two that make a value LOOK like an option type — a name and a merge is what
-      # a reader checks by eye. They are NOT the fields a foreign engine reads first: measured, the
-      # first protocol field a real `lib.evalModules` forces is `getSubModules` (`fixupOptionType`),
-      # and neither `name` nor `merge` is forced before the abort. So the shape invites a mount it
-      # cannot serve: handed to a real `lib.evalModules` it used to die inside the CONSUMER on a
-      # missing attribute — an interpreter error naming a nixpkgs line, uncatchable by the caller.
-      #
-      # Completing the protocol is the wrong repair. The boundary is the EVAL, not the repo
-      # (ADR-0014), and what crosses a gen boundary is plain data (ADR-0023) — a mounted option type
-      # is neither, so completion would build the bridge the law removes. Every unimplemented field
-      # therefore RETURNS A NAMED REFUSAL rather than an interpreter error, and the mount is refused
-      # at the consumer's first real read of the protocol instead of aborting inside it. Making the
-      # tree mountable for real is CROSSING work, and it belongs on that chain, not here; nothing is
-      # deleted meanwhile, because the nesting seam below is a shipped capability.
-      #
-      # Each of the twelve unanswered fields is DISPOSED OF EXPLICITLY — a missing attribute is a
-      # decision no one wrote down, and it is what made the abort unnamed. The disposition itself is
-      # the BOUNDARY'S (`lib/interface.nix` `refuseMount`), because stating what a foreign protocol
-      # asks for, even in order to refuse it, is exactly the knowledge that unit exists to hold. What
-      # stays here is the gen half — a name, a fold, and the mark:
-      #
-      #   * THREE ARE ANSWERED TRUTHFULLY, and they are the answers this engine's own readers take:
-      #     a tree is not deprecated, it supplies its own fold over no definitions when a nesting
-      #     option goes undefined (`emptyTree`, the one binding both faces publish), and it wraps
-      #     no element TYPE.
-      #     Supplying them opens no mount: they are answers, not capabilities. The deprecation answer
-      #     additionally closes the consumer's one remaining DIRECT (non-`or`) read of this type — the
-      #     read that would abort UNCATCHABLY rather than refuse. The refusal does not depend on it:
-      #     with the field removed the mount still refuses catchably, because the field a foreign
-      #     engine forces first is the module-set read, which it takes through `or`.
-      #   * THE GEN DOMAIN IS ANSWERED TOO — `admits`, a gen field and not one of the fourteen: the
-      #     module-value domain, exactly the reference `(evalModules …).type`'s `check`. A gen
-      #     union (`either`, `oneOf`, `nullOr`) asks its members `admits` before `check`, so inside
-      #     this engine's own eval the tree is a union member as nixpkgs' is — membership, not
-      #     mounting. The foreign face strips it (`lib/interface.nix` `foreignFace`), so a foreign
-      #     eval reaching the tree through a gen union still meets the refused `check` below.
-      #   * EIGHT REFUSE BY NAME. None is read by this engine's own folds on a declared leaf's type,
-      #     so the refusals are reachable only through a foreign fold — a foreign engine's, or a
-      #     foreign container's hosted in this eval; the type-merge pair is additionally fenced at
-      #     `mergeTypes` above, which owes a value, and the warm identity walk (`identityMapOf`'s
-      #     `below`) stops on the mark before it asks what the type carries.
-      #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
-      #     consumer that ASKS whether this is an option type reads it through `or null` and gets a
-      #     correct `false` today; a throwing tombstone would turn the one working negative answer
-      #     into an abort. Absence is the answer here, and `nonMountable` is what states it.
-      type =
-        let
-          # ONE fixpoint definition, read by the one fold value below — its `.config` is the value,
-          # its `.undeclared` the report (ADR-0025 item 1: the def that `.config` drops is exactly
-          # what `.undeclared` names, off the SAME nested eval rather than a second,
-          # independently-authored one that could drift from it). `carried` is whether that eval's
-          # own report is read, so its own nested trees fold strictly when it is not. `inherited` is
-          # whether the evaluation carrying that report is strict; the strict fold passes `false`,
-          # since it refuses by its own functor.
-          nested =
-            carried: inherited: loc: defs:
-            evalModuleTreeWith knotNested carried inherited {
-              inherit specialArgs check coreShortCircuit;
-              prefix = loc;
-              # Every DEFINITION is a MODULE, as the reference `(evalModules …).type` reads it
-              # (`submoduleWith`'s `shorthandOnlyDefinesConfig` defaults to false).
-              modules = modList ++ defsAsModules false defs;
-            };
-          # ONE fold value. Called, it is the STRICT fold: every site that reaches it by calling it
-          # (a container element, a freeform plane, the public `mergeDefs`) carries no undeclared
-          # report, so its nested eval runs with none either — its own tree leaves fold strictly
-          # too, and its `.undeclared` is its OWN level's — and a finding there is refused by name,
-          # at this level's WHNF, as nixpkgs refuses per level. `.reported` is the same fold for the
-          # one caller that carries a report (the rich realizer fold): the value and the report from
-          # one nested eval. It takes the carrying evaluation's effective strictness first, which the
-          # nested eval inherits, so a strict carrier's finding is refused by the nested tree that
-          # owns it when that tree's value is read. A caller replacing `mergeDefs` replaces both at once.
-          # Each arm refuses a definition outside `admits` before its nested eval runs
-          # (`refusingOutside`, as every structural fold does). The guard wraps each arm, never the
-          # record: wrapped whole, the record stops being a functor carrying `.reported`, and the
-          # rich fold, which selects on `.reported`, silently drops the undeclared report.
-          #
-          # `threaded` and `threadedReported` are the same two folds reading the tree through the
-          # evaluation's accessor instead of evaluating it here (den-hoag-n6dh7 item 1, α's sibling):
-          # the site names this tree's `nests`, the fold's `loc` and its `defs`, and the accessor
-          # decides where the tree is evaluated. Each answers off ONE read, as its twin does.
-          strictValue =
-            loc: n:
-            if n.undeclared == [ ] then
-              n.config
+              }
             else
-              throw (
-                "gen-merge: "
-                + concatStringsSep "; " (
-                  map (
-                    u:
-                    "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
-                  ) n.undeclared
-                )
-                + "; "
-                + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
-                + " is merged where no undeclared report is carried"
-              );
-          site = ev: loc: defs: {
-            inherit (ev) position;
-            inherit nests loc defs;
-          };
-          nestingFold = {
-            __functor =
-              _:
-              refusingOutside "moduleTree" isModuleValue (
-                loc: defs: strictValue loc (nested false false loc defs)
-              );
-            reported =
-              strict:
-              refusingOutside "moduleTree" isModuleValue (
-                loc: defs:
-                let
-                  n = nested true strict loc defs;
-                in
-                {
-                  value = n.config;
-                  inherit (n) undeclared;
-                }
-              );
-            threaded =
-              ev:
-              refusingOutside "moduleTree" isModuleValue (
-                loc: defs: strictValue loc (ev.child (site ev loc defs))
-              );
-            # `strict` is the child's `mode.inherited` by construction (both are the carrying
-            # evaluation's strictness); it is kept so the signature stays `.reported`'s.
-            threadedReported =
-              ev: _strict:
-              refusingOutside "moduleTree" isModuleValue (
-                loc: defs:
-                let
-                  n = ev.child (site ev loc defs);
-                in
-                {
-                  value = n.config;
-                  inherit (n) undeclared;
-                }
-              );
-          };
-          # The nested tree AS DATA (den-hoag-n6dh7 item 1): what `nested` above evaluates, field for
-          # field — `entry` is one definition read as `defsAsModules false` reads it, `empty` is
-          # `emptyTree`'s arguments, `calledMode` is the pair the CALLED fold runs `nested` in, and
-          # `named` is `false` because `nested` injects no `name`.
-          nests = {
-            modules = modList;
-            inherit specialArgs check coreShortCircuit;
-            entry = d: head (defsAsModules false [ d ]);
-            empty = {
-              prefix = [ ];
-              inherit specialArgs check;
-            };
-            calledMode = {
-              carried = false;
-              inherited = false;
-            };
-            named = false;
-          };
-          # The fold over no definitions, CALLED: a site reading `whenEmpty` carries no report (a
-          # value-path empty: an element, a freeform plane), so it is the strict call. The one
-          # reporting site, the rich fold, never reads it: it applies `.reported` to the empty list.
-          emptyTree.value = nestingFold [ ] [ ];
-        in
-        interface.refuseMount {
-          name = "moduleTree";
-          reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data)";
-          fold = nestingFold;
-          whenEmpty = emptyTree;
+              null;
         }
-        // {
-          name = "moduleTree";
-          mergeDefs = nestingFold;
-          whenEmpty = emptyTree;
-          admits = isModuleValue;
-          inherit nests;
+      );
+      result = knot.drive body;
+    in
+    # A CHILD of the one evaluation is its knot's own node, so its evaluation is the BODY, which the
+    # child applies to its reader and its own attribute (`childTree`): the evaluation that holds it
+    # reads `config` and `undeclared` off that record, and nothing reads the rest of the published one.
+    if knot.inner then
+      body
+    else
+      {
+        # ── the refusal's ONE forcing site ────────────────────────────────────────────────────────
+        # Interposed on the EXPORTED config, never on `result.config`. The two are the same value, and
+        # the difference is who reads which: modules inside the fixpoint see `result.moduleConfig`,
+        # which is built FROM `result.config`, so seq-ing the identity verdict onto the inner binding
+        # would make a module's ordinary `config.x` read force a walk over the config that read is
+        # helping to produce — infinite recursion, not a refusal. Out here nothing in the fixpoint can
+        # reach it, and every consumer of a warm re-compose goes through this attribute.
+        #
+        # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
+        config = builtins.seq result.identityHeld result.config;
+        inherit (result)
+          options
+          provenance
+          # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
+          # `check` does not gate it (see above) — empty whenever a freeformType absorbed them, and empty
+          # for a fully-declared config.
+          undeclared
+          # The declared options of this eval whose TYPE carries a `deprecationMessage`, each with the
+          # message, the type's name and the files that declared the option — empty when no declared
+          # type is deprecated, which is the ordinary case.
+          deprecations
+          # Freeform layers exposed as internal memo fields (public surface = the five above):
+          # a CHAINED warm re-eval reuses `warmFrom.freeformConfig`/`freeformProv` directly (spec §2).
+          freeformConfig
+          freeformProv
+          # The memoization decision trace (spec §4); `mode = "cold"` on a plain compose (no warmFrom).
+          warmDecision
+          ;
+        # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform). Nested
+        # evals are always COLD (no `warmFrom` threaded) — a documented boundary, like provenance's.
+        #
+        # ── NON-MOUNTABLE, AND IT SAYS SO ────────────────────────────────────────────────────────────
+        # This is a NESTING SEAM, not an `optionType`. It answers two of the fourteen protocol fields,
+        # and they are the two that make a value LOOK like an option type — a name and a merge is what
+        # a reader checks by eye. They are NOT the fields a foreign engine reads first: measured, the
+        # first protocol field a real `lib.evalModules` forces is `getSubModules` (`fixupOptionType`),
+        # and neither `name` nor `merge` is forced before the abort. So the shape invites a mount it
+        # cannot serve: handed to a real `lib.evalModules` it used to die inside the CONSUMER on a
+        # missing attribute — an interpreter error naming a nixpkgs line, uncatchable by the caller.
+        #
+        # Completing the protocol is the wrong repair. The boundary is the EVAL, not the repo
+        # (ADR-0014), and what crosses a gen boundary is plain data (ADR-0023) — a mounted option type
+        # is neither, so completion would build the bridge the law removes. Every unimplemented field
+        # therefore RETURNS A NAMED REFUSAL rather than an interpreter error, and the mount is refused
+        # at the consumer's first real read of the protocol instead of aborting inside it. Making the
+        # tree mountable for real is CROSSING work, and it belongs on that chain, not here; nothing is
+        # deleted meanwhile, because the nesting seam below is a shipped capability.
+        #
+        # Each of the twelve unanswered fields is DISPOSED OF EXPLICITLY — a missing attribute is a
+        # decision no one wrote down, and it is what made the abort unnamed. The disposition itself is
+        # the BOUNDARY'S (`lib/interface.nix` `refuseMount`), because stating what a foreign protocol
+        # asks for, even in order to refuse it, is exactly the knowledge that unit exists to hold. What
+        # stays here is the gen half — a name, a fold, and the mark:
+        #
+        #   * THREE ARE ANSWERED TRUTHFULLY, and they are the answers this engine's own readers take:
+        #     a tree is not deprecated, it supplies its own fold over no definitions when a nesting
+        #     option goes undefined (`emptyTree`, the one binding both faces publish), and it wraps
+        #     no element TYPE.
+        #     Supplying them opens no mount: they are answers, not capabilities. The deprecation answer
+        #     additionally closes the consumer's one remaining DIRECT (non-`or`) read of this type — the
+        #     read that would abort UNCATCHABLY rather than refuse. The refusal does not depend on it:
+        #     with the field removed the mount still refuses catchably, because the field a foreign
+        #     engine forces first is the module-set read, which it takes through `or`.
+        #   * THE GEN DOMAIN IS ANSWERED TOO — `admits`, a gen field and not one of the fourteen: the
+        #     module-value domain, exactly the reference `(evalModules …).type`'s `check`. A gen
+        #     union (`either`, `oneOf`, `nullOr`) asks its members `admits` before `check`, so inside
+        #     this engine's own eval the tree is a union member as nixpkgs' is — membership, not
+        #     mounting. The foreign face strips it (`lib/interface.nix` `foreignFace`), so a foreign
+        #     eval reaching the tree through a gen union still meets the refused `check` below.
+        #   * EIGHT REFUSE BY NAME. None is read by this engine's own folds on a declared leaf's type,
+        #     so the refusals are reachable only through a foreign fold — a foreign engine's, or a
+        #     foreign container's hosted in this eval; the type-merge pair is additionally fenced at
+        #     `mergeTypes` above, which owes a value, and the warm identity walk (`identityMapOf`'s
+        #     `below`) stops on the mark before it asks what the type carries.
+        #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
+        #     consumer that ASKS whether this is an option type reads it through `or null` and gets a
+        #     correct `false` today; a throwing tombstone would turn the one working negative answer
+        #     into an abort. Absence is the answer here, and `nonMountable` is what states it.
+        type =
+          let
+            # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
+            # (den-hoag-n6dh7 items 1, 4, 5). The tree is a child of the one evaluation that holds it,
+            # and `threaded` / `threadedReported` read it through that evaluation's accessor: the site
+            # names this tree's `nests`, the fold's `loc` and its `defs`. `threaded` is the STRICT fold,
+            # for every site that carries no undeclared report (a container element, a freeform plane):
+            # a finding in the child is refused by name when this value is read, as nixpkgs refuses per
+            # level. `threadedReported` is the one reporting caller's (the rich realizer fold): the
+            # value and the report off ONE read (ADR-0025 item 1). Its child inherits the carrying
+            # evaluation's strictness on its position record, so a strict carrier's finding is refused
+            # by the tree that owns it. Each refuses a definition outside `admits` before the read
+            # (`refusingOutside`). The CALLED forms (`__functor`, `.reported`) refuse by name (item 1).
+            strictValue =
+              loc: n:
+              if n.undeclared == [ ] then
+                n.config
+              else
+                throw (
+                  "gen-merge: "
+                  + concatStringsSep "; " (
+                    map (
+                      u:
+                      "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
+                    ) n.undeclared
+                  )
+                  + "; "
+                  + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
+                  + " is merged where no undeclared report is carried"
+                );
+            site = ev: loc: defs: {
+              inherit (ev) position;
+              inherit nests loc defs;
+            };
+            nestingFold = {
+              __functor =
+                _: loc: _:
+                throw (calledNestingRefusal "moduleTree" "mergeDefs" loc);
+              reported =
+                _: loc: _:
+                throw (calledNestingRefusal "moduleTree" "mergeDefs.reported" loc);
+              threaded =
+                ev:
+                refusingOutside "moduleTree" isModuleValue (
+                  loc: defs: strictValue loc (ev.child (site ev loc defs))
+                );
+              # `strict` is the child's `mode.inherited` by construction (both are the carrying
+              # evaluation's strictness); it is kept so the signature stays `.reported`'s.
+              threadedReported =
+                ev: _strict:
+                refusingOutside "moduleTree" isModuleValue (
+                  loc: defs:
+                  let
+                    n = ev.child (site ev loc defs);
+                  in
+                  {
+                    value = n.config;
+                    inherit (n) undeclared;
+                  }
+                );
+            };
+            # The nested tree AS DATA (den-hoag-n6dh7 item 1): what its child evaluates, field for
+            # field: `entry` is one definition read as `defsAsModules false` reads it (every definition
+            # is a module, as the reference `(evalModules …).type` reads it), `empty` is the arguments
+            # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
+            # and `named` is `false` because the tree injects no `name`.
+            nests = {
+              modules = modList;
+              inherit specialArgs check coreShortCircuit;
+              entry = d: head (defsAsModules false [ d ]);
+              empty = {
+                prefix = [ ];
+                inherit specialArgs check;
+              };
+              calledMode = {
+                carried = false;
+                inherited = false;
+              };
+              named = false;
+            };
+            # The fold over no definitions, CALLED, refuses (item 1): an undefined tree is the child
+            # with an empty seed, which the threaded fold reads (`threadedAs`).
+            emptyTree.value = throw (calledNestingRefusal "moduleTree" "whenEmpty" null);
+          in
+          interface.refuseMount {
+            name = "moduleTree";
+            reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data)";
+            fold = nestingFold;
+            whenEmpty = emptyTree;
+          }
+          // {
+            name = "moduleTree";
+            mergeDefs = nestingFold;
+            whenEmpty = emptyTree;
+            admits = isModuleValue;
+            inherit nests;
 
-          # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
-          # the reason, so a consumer that finds it needs no other document to know what to do.
-          nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
-        };
-    }
-    // (if knot.exposes then { inherit (result) _evaluation; } else { });
+            # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
+            # the reason, so a consumer that finds it needs no other document to know what to do.
+            nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
+          };
+      }
+      // (if knot.exposes then { inherit (result) _evaluation; } else { });
   # The published door's engine: a ROOT evaluation, which mints its nested positions.
   evalModuleTreeUnchecked = evalModuleTreeWith knotRoot true false;
   # The same, with the gen-scope evaluation on the result as `_evaluation` (this library's suites).
@@ -3649,6 +3921,7 @@ in
     # containers in `./types.nix` fold each element through the twin, and the suites read the door.
     nestedTreeAt
     mergeDefsThreaded
+    calledNestingRefusal
     # The nixpkgs `optionType` PROTOCOL BOUNDARY (lib/interface.nix), reached through this seam by
     # everything above it — the type vocabulary exports through it, this engine reads foreign types
     # through it, and the public surface stamps through it. ONE binding, so the library cannot hold

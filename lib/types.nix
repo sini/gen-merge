@@ -44,6 +44,7 @@ let
   inherit (builtins) isFunction;
   inherit (core)
     evalModuleTreeNested
+    calledNestingRefusal
     mergeDefs
     mergeDefsThreaded
     mergeLeaf
@@ -363,15 +364,9 @@ let
         };
         named = true;
       };
-      called = refusingOutside "submodule" admits (
-        loc: defs:
-        (evalModuleTreeNested {
-          modules = mods ++ defsAsModules true defs;
-          prefix = loc;
-          specialArgs = argsAt loc;
-          check = true;
-        }).config
-      );
+      # The CALLED fold refuses by name (den-hoag-n6dh7 item 1): the tree is a child of the one
+      # evaluation that holds it, read through `threaded` below.
+      called = loc: _: throw (calledNestingRefusal "submodule" "mergeDefs" loc);
     in
     defineType {
       name = "submodule";
@@ -398,17 +393,10 @@ let
       inherit admits nests;
       # With no surviving definition the value is the module set evaluated over NO definitions, as
       # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
-      # with the documentation placeholder as `name`, so its defaults read as they would there and an
-      # undefined sub-option refuses by name.
-      whenEmpty.value =
-        (evalModuleTreeNested {
-          modules = mods;
-          prefix = [ ];
-          specialArgs = args // {
-            name = "‹name›";
-          };
-          check = true;
-        }).config;
+      # with the documentation placeholder as `name` (`nests.empty`), so its defaults read as they
+      # would there and an undefined sub-option refuses by name. That evaluation is the child with an
+      # empty seed, read through the threaded fold; called, it refuses (den-hoag-n6dh7 item 1).
+      whenEmpty.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
       # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
       # relation unions rather than merges: an option declared as a submodule in two modules ends up
       # declaring the union of what they declare. On a nullary relation the second declaration would
