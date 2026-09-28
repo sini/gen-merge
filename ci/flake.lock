@@ -159,38 +159,6 @@
         "type": "github"
       }
     },
-    "gen-algebra": {
-      "locked": {
-        "lastModified": 1790623328,
-        "narHash": "sha256-LdiR3vmQX2BUzT14jmGD9Gz2SQ0WatQpObBstxNckws=",
-        "owner": "sini",
-        "repo": "gen-algebra",
-        "rev": "9418d9b4e572c1aa84eff2a596fb1e1cf7a0ca3c",
-        "type": "github"
-      },
-      "original": {
-        "owner": "sini",
-        "repo": "gen-algebra",
-        "type": "github"
-      }
-    },
-    "gen-aspects": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1790573992,
-        "narHash": "sha256-nIx9BN0LGnxgjj8v/0Ug1CEERkSVgKQYVsN8zSgIP/w=",
-        "owner": "sini",
-        "repo": "gen-aspects",
-        "rev": "888d181d4116654389f526dee3d6ee3bb4c812cb",
-        "type": "github"
-      },
-      "original": {
-        "owner": "sini",
-        "ref": "n6dh7-u2-pub",
-        "repo": "gen-aspects",
-        "type": "github"
-      }
-    },
     "gen-differential": {
       "locked": {
         "lastModified": 1790619151,
@@ -406,23 +374,6 @@
       "original": {
         "owner": "sini",
         "repo": "gen-prelude",
-        "type": "github"
-      }
-    },
-    "gen-schema": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1790573928,
-        "narHash": "sha256-BqR0sMF/wnh419aUTNz0zAK4f94wwHWnpC5gsQkbw4w=",
-        "owner": "sini",
-        "repo": "gen-schema",
-        "rev": "8d39a1887f0e454febbbe7babf3c263f8632e88b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "sini",
-        "ref": "n6dh7-u2-pub",
-        "repo": "gen-schema",
         "type": "github"
       }
     },
@@ -928,13 +879,10 @@
     },
     "root": {
       "inputs": {
-        "gen-algebra": "gen-algebra",
-        "gen-aspects": "gen-aspects",
         "gen-differential": "gen-differential",
         "gen-harness": "gen-harness",
         "gen-memo": "gen-memo",
         "gen-prelude": "gen-prelude_3",
-        "gen-schema": "gen-schema",
         "gen-scope": "gen-scope",
         "gen-types": "gen-types",
         "nixpkgs": "nixpkgs_6"
