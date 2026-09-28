@@ -27,7 +27,13 @@ let
     builtins.mapAttrs (_: builtins.attrNames) (
       builtins.removeAttrs groups (builtins.filter (g: groups.${g} == { }) (builtins.attrNames groups))
     );
-  childId = genScope.mintNtaId "module-tree" "nested";
+  childId =
+    group: key:
+    genScope.mintNtaId {
+      host = "module-tree";
+      name = "nested";
+      inherit group key;
+    };
 
   sub = t.submodule { options.x = gm.mkOption { type = t.int; }; };
   named = t.submodule (
@@ -132,9 +138,12 @@ in
         in
         {
           value = r.config.o;
-          grandchild = builtins.elem (genScope.mintNtaId child "nested" "[\"i\"]"
-            "[\"b\"]"
-          ) r._evaluation.allNodeIds;
+          grandchild = builtins.elem (genScope.mintNtaId {
+            host = child;
+            name = "nested";
+            group = "[\"i\"]";
+            key = "[\"b\"]";
+          }) r._evaluation.allNodeIds;
         };
       expected = {
         value.a.i.b.x = 5;
@@ -296,10 +305,19 @@ in
       test-a-container-nodes-trees-are-its-own-children = {
         expr = {
           children = builtins.mapAttrs (_: builtins.attrNames) (r._evaluation.get cid "nta-children").nested;
-          enumerated = builtins.elem (genScope.mintNtaId cid "nested" "container"
-            "[\"a\"]"
-          ) r._evaluation.allNodeIds;
-          tree = (r._evaluation.get (genScope.mintNtaId cid "nested" "container" "[\"a\"]") "result").config;
+          enumerated = builtins.elem (genScope.mintNtaId {
+            host = cid;
+            name = "nested";
+            group = "container";
+            key = "[\"a\"]";
+          }) r._evaluation.allNodeIds;
+          tree =
+            (r._evaluation.get (genScope.mintNtaId {
+              host = cid;
+              name = "nested";
+              group = "container";
+              key = "[\"a\"]";
+            }) "result").config;
           value = r.config.o;
         };
         expected = {

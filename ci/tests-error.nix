@@ -4809,8 +4809,12 @@ in
               };
             in
             force
-              (r._evaluation.get (genScope.mintNtaId "module-tree" "nested" "[\"o\"]" "[\"foo\"]") "result")
-              .config;
+              (r._evaluation.get (genScope.mintNtaId {
+                host = "module-tree";
+                name = "nested";
+                group = "[\"o\"]";
+                key = "[\"foo\"]";
+              }) "result").config;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: `evalModuleTree': option `o[.]foo': the fold of the tree holding it did not select a nested tree at this position [(]it folds as `string'[)], so this nested tree is a candidate and is never evaluated$";

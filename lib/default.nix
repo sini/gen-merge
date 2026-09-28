@@ -80,7 +80,9 @@ let
           "vertex"
         ];
         missing = builtins.filter (n: !(s ? ${n})) (applied ++ [ "empty" ]);
-        unapplicable = builtins.filter (n: !builtins.isFunction s.${n}) applied;
+        # `buildRoots` and `eval` are gen-scope DOORS (functors, den-hoag-7gp66 P2), which
+        # `builtins.isFunction` reads as `false`; the prelude's reader is the functor-aware one.
+        unapplicable = builtins.filter (n: !prelude.isFunction s.${n}) applied;
       in
       if missing != [ ] then
         "declares a `scope' with no ${builtins.concatStringsSep ", " missing} — the evaluator terms this engine drives the module-tree knot through"

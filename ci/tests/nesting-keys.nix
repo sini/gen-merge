@@ -41,7 +41,14 @@ let
     builtins.mapAttrs (_: ds: map (d: d.key) ds) (builtins.groupBy (d: d.group) decoded);
   seedOf =
     r: group: key:
-    (r._evaluation.node (genScope.mintNtaId "module-tree" "nested" group key)).decls.seed;
+    (r._evaluation.node (
+      genScope.mintNtaId {
+        host = "module-tree";
+        name = "nested";
+        group = group;
+        key = key;
+      }
+    )).decls.seed;
   addressesOf =
     r: group: key:
     map (e: e.address.at) (seedOf r group key);
@@ -222,7 +229,7 @@ in
             let
               d = genScope.decodeNta i;
             in
-            genScope.mintNtaId d.host d.name d.group d.key == i
+            genScope.mintNtaId d == i
           ) ids;
         };
       expected = {
