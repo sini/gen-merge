@@ -227,10 +227,26 @@ in
         keys."[\"o\"]" = [ "[\"p\",\"a\"]" ];
       };
     };
-    # Under a lazy container a union's container member is S1's class (a), RULED (iii): refused.
-    test-a-union-over-a-strict-container-under-a-lazy-one-is-refused = {
-      expr = refused (row (t.lazyAttrsOf (t.either (t.attrsOf sub) t.str)) [ { p.a.x = 1; } ]);
-      expected = true;
+    # Under a lazy container a union with a container member is S1's class (a): its position is a
+    # container node (arm (v), den-hoag-9d80v), whose own walk takes the union rule above over its
+    # definitions only, so a sibling of another shape keys nothing and is not read.
+    test-a-union-over-a-strict-container-under-a-lazy-one-is-a-container-node = {
+      expr = row (t.lazyAttrsOf (t.either (t.attrsOf sub) t.str)) [
+        {
+          p.a.x = 1;
+          q = "s";
+        }
+      ];
+      expected = {
+        value = {
+          p.a.x = 1;
+          q = "s";
+        };
+        keys."[\"o\"]" = [
+          "[\"p\"]"
+          "[\"q\"]"
+        ];
+      };
     };
     # The control: a nesting member keys the union's own position.
     test-a-union-over-a-tree-keys-its-own-position = {
@@ -255,6 +271,45 @@ in
       };
     };
   };
+
+  # S1 arm (v) (den-hoag-9d80v): a container node is a child whose `result` is a VALUE, not a tree's
+  # evaluation, so a reader by identifier reads the position's `mode` before `result`: `.config` on a
+  # container node is a missing attribute, which `tryEval` does not catch, so `refused` cannot guard
+  # it. The node's own trees are its children, keyed relative to it in its `container` group.
+  flake.tests.nesting-placement-containers =
+    let
+      r = evalExposed (host (t.lazyAttrsOf (t.attrsOf sub)) [ { foo.a.x = 1; } ]);
+      cid = childId "[\"o\"]" "[\"foo\"]";
+      modeAt = group: key: (r._evaluation.get "module-tree" "positions").nested.${group}.${key}.mode;
+      readAt =
+        group: key: id:
+        if modeAt group key == "container" then
+          { container = (r._evaluation.get id "result").value; }
+        else
+          { tree = (r._evaluation.get id "result").config; };
+    in
+    {
+      test-a-container-node-is-read-through-its-mode = {
+        expr = readAt "[\"o\"]" "[\"foo\"]" cid;
+        expected.container.a.x = 1;
+      };
+      test-a-container-nodes-trees-are-its-own-children = {
+        expr = {
+          children = builtins.mapAttrs (_: builtins.attrNames) (r._evaluation.get cid "nta-children").nested;
+          enumerated = builtins.elem (genScope.mintNtaId cid "nested" "container"
+            "[\"a\"]"
+          ) r._evaluation.allNodeIds;
+          tree = (r._evaluation.get (genScope.mintNtaId cid "nested" "container" "[\"a\"]") "result").config;
+          value = r.config.o;
+        };
+        expected = {
+          children.container = [ "[\"a\"]" ];
+          enumerated = true;
+          tree.x = 1;
+          value.foo.a.x = 1;
+        };
+      };
+    };
 
   # U2-l: an over-approximated child the host's fold never SELECTED is a CANDIDATE. It is a node of
   # the evaluation, and only its `result` refuses, by name, before any of its member's modules is

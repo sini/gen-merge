@@ -1354,8 +1354,12 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   exactly where its key set already reads its definitions (`attrsOf`, `listOf`, `nullOr`) and
   over-approximately where it does not (`lazyAttrsOf`, a freeform plane). A union is walked member by
   member at its own position; a container member counts only where every definition has its shape.
-  A strict container of trees under a lazy one — bare or as a union member — is refused by name
-  (S1 class (a)).
+  A container of trees under `lazyAttrsOf` — bare, or as a union member — is S1 class (a): its
+  position is a **container node** (arm (v), den-hoag-9d80v), a child whose own `container` group
+  keys the inner trees over that position's definitions only, so no sibling is forced to key them,
+  and whose `result` is `{ value; _nested; }`, the inner container's fold, not a tree's evaluation.
+  Under any other over-approximating container (a freeform root, gen-aspects' root) the shape is
+  refused by name.
 - **Candidates.** An over-approximated child the fold never selected (a union position under a lazy
   container whose `choose` picks a non-nesting member) is enumerated, and reading its `result` refuses
   by name before any of its member's modules is applied.

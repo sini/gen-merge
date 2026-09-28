@@ -1735,40 +1735,13 @@ in
             ) (builtins.attrNames shapes)
           ) (builtins.attrNames hand);
           cells = builtins.length family.cells;
-          # The three differing constructions are the ruled REFUSAL on the gen side, not some other
-          # value (Unit 2 landing gate, P4); `ci/tests-error.nix` `tree-union-parity-refusals`
-          # anchors each one's text.
-          refused = map (c: try (family.gen c.gen c.value)) (
-            builtins.filter (
-              c:
-              builtins.elem "${c.construction}/${c.definition}" [
-                "lazyAttrsOf.attrsOf/module"
-                "lazyAttrsOf.lazyAttrsOf/module"
-                "lazyAttrsOf.listOf/module"
-              ]
-            ) family.cells
-          );
         };
-        # Three constructions differ, each REFUSED by name here where nixpkgs answers a value: a
-        # container of trees under `lazyAttrsOf`. `attrsOf` and `listOf` there are S1 class (a),
-        # RULED (iii) (den-hoag-n6dh7); `lazyAttrsOf` there is the same refusal extended on (iii)'s
-        # own ground, *defaulted, reversible* (orchestrator ruling, den-hoag-n6dh7): an inner lazy
-        # container's key set is also its definitions' data. Arm (v), the intermediate host node
-        # (den-hoag-9d80v), carries the shape forward. The texts are pinned in `ci/tests-error.nix`
-        # (`nesting-keys`, `nesting-placement`).
+        # No construction differs. A container of trees under `lazyAttrsOf` (S1 class (a)) answers
+        # as nixpkgs does: its position is a container node (arm (v), den-hoag-9d80v).
         expected = {
-          family = [
-            "lazyAttrsOf.attrsOf/module"
-            "lazyAttrsOf.lazyAttrsOf/module"
-            "lazyAttrsOf.listOf/module"
-          ];
+          family = [ ];
           hand = [ ];
           cells = 180;
-          refused = [
-            "REFUSED"
-            "REFUSED"
-            "REFUSED"
-          ];
         };
       };
 

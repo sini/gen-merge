@@ -1579,9 +1579,29 @@ let
         { inherit mergeDefs whenEmpty; }
     else
       type;
+  # Under `lazyAttrsOf`'s fold (`ev.under`, set by that fold alone), a position the key walk made a
+  # CONTAINER NODE (`containerAt`, den-hoag-9d80v) is not folded inline: it is read off that node,
+  # whose own fold is this one at the same `loc`, over the same definitions.
   mergeDefsThreaded =
     ev: loc: type:
-    mergeDefs loc (threadedAs ev (interface.homedAt "evalModuleTree" loc type));
+    mergeDefs loc (
+      if ev.under or false then
+        threadedUnder ev loc (interface.homedAt "evalModuleTree" loc type)
+      else
+        threadedAs ev (interface.homedAt "evalModuleTree" loc type)
+    );
+  threadedUnder =
+    ev: loc: t:
+    if containerAt loc t then
+      let
+        read = (ev.child { inherit (ev) position; }).value;
+      in
+      {
+        mergeDefs = _: _: read;
+        whenEmpty.value = read;
+      }
+    else
+      threadedAs ev t;
 
   # The evaluation's accessor at one group of a node of the one evaluation (den-hoag-n6dh7 item 5,
   # v8): a nested tree is read through the reading node's own record, as its `nested` child at the
@@ -1639,9 +1659,9 @@ let
   # definitions, holding nested trees, under a container whose key set does not read them. An inner
   # LAZY container is refused on the same ground, *defaulted, reversible* (den-hoag-n6dh7, orchestrator
   # ruling): its key set is also its definitions' data, so keying one child still forces every
-  # sibling's definition; nixpkgs answers the shape, and arm (v), the intermediate host node
-  # (den-hoag-9d80v), carries it forward. `nullOr` has no keys and is looked through. `via` names the
-  # union whose member it is, where it is one (v10), with the union's position.
+  # sibling's definition. Under `lazyAttrsOf` the shape is a container node instead (arm (v),
+  # den-hoag-9d80v, `containerAt`), so these refuse only under an over-approximating container whose
+  # fold sets no mark (a freeform root, gen-aspects' root). `nullOr` has no keys and is looked through.
   classAReason =
     lazy: t:
     if (t.name or null) == "attrsOf" || (t.name or null) == "listOf" then
@@ -1650,7 +1670,7 @@ let
       "the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}'";
   nestingUnderLazyRefusal =
     group: lazy: t:
-    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': ${classAReason lazy t}; the intermediate host node that admits this shape is den-hoag-9d80v";
+    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': ${classAReason lazy t}; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it (den-hoag-9d80v)";
   unionUnderLazyRefusal =
     group: lazy: u: pos: t:
     "gen-merge: nta: option `${showOption group}' declares `${u.name or "<union>"}' at position ${builtins.toJSON pos}, whose member `${t.name or "<container>"}' holds nested trees, under `${lazy}': ${
@@ -1658,7 +1678,37 @@ let
         "the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}', or make it lazy"
       else
         "the member's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}'"
-    }; the intermediate host node that admits this shape is den-hoag-9d80v";
+    }; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it (den-hoag-9d80v)";
+
+  # ── THE CONTAINER NODE's POSITION (S1 arm (v), den-hoag-9d80v) ──────────────────────────────────
+  # Under `lazyAttrsOf`, a position whose type keys its nested trees by reading their definitions —
+  # a container that is not itself a nested tree, or a union with such a member (looked through
+  # `nullOr` and nested unions, as `unionKeys` walks them) — is promoted to a node of its own: the
+  # node's key walk runs over its definitions only, exactly (`under = null`), so keying one of its
+  # trees forces no sibling's. The one predicate is read by the walk (`keyWalk`) and by the fold
+  # (`mergeDefsThreaded`), so a node the walk mints is the node the fold reads. `nullOr` at the
+  # position itself adds no step and is looked through by both, never promoted. Other
+  # over-approximating containers set no mark in their fold and keep the class (a) refusal.
+  containerAt =
+    loc: t:
+    isAttrs t
+    && !(interface.isNesting t)
+    && interface.canNest t
+    && (
+      if t ? choose then
+        any (containerMemberAt loc) (t.carries.alternatives or [ ])
+      else
+        (t.name or null) != "nullOr" && t ? split
+    );
+  containerMemberAt =
+    loc: t0:
+    let
+      m = interface.homedAt "evalModuleTree" loc t0;
+    in
+    if isAttrs m && (m.name or null) == "nullOr" then
+      containerMemberAt loc m.carries.element
+    else
+      containerAt loc m;
 
   # A definition list as a fold reads it, without the walk's addresses.
   plainDefs = map (d: {
@@ -1701,8 +1751,10 @@ let
   #   · a UNION (`choose`) is walked member by member at its own position (below); the walk never
   #     applies `choose`, so a union's member is decided where the child is read;
   #   · a container is walked through its `split`, where it keys exactly;
-  #   · under an over-approximating container, `nullOr` adds no step and is looked through, and a
-  #     container that keys exactly is refused (class (a)): its key set is its elements' data.
+  #   · under `lazyAttrsOf`, a position `containerAt` holds is a CONTAINER NODE (arm (v)): one
+  #     record, marked `container`, whose own walk keys it over its own definitions (`containerNode`);
+  #   · under another over-approximating container, `nullOr` adds no step and is looked through, and
+  #     a container that keys exactly is refused (class (a)): its key set is its elements' data.
   # Only an EXACT container's elements have their definitions forced to key them, as that
   # container's own fold forces them; an over-approximated position's definitions are a thunk,
   # read when its seed is.
@@ -1716,6 +1768,16 @@ let
           key = pos;
           type = t;
           member = t;
+          inherit loc defs;
+        }
+      ]
+    else if under == "lazyAttrsOf" && containerAt loc t then
+      [
+        {
+          key = pos;
+          type = t;
+          member = t;
+          container = true;
           inherit loc defs;
         }
       ]
@@ -1769,7 +1831,8 @@ let
   # nothing the enclosing exact container's key set has not already forced (*defaulted,
   # reversible*). A position two members key is ONE key (`listToAttrs` keeps the first). Under an
   # over-approximating container nothing is read: a container member that keys exactly is class
-  # (a), refused naming the union's position.
+  # (a), refused naming the union's position (under `lazyAttrsOf` that position is a container node
+  # instead, `containerAt`, whose own walk takes this rule with `under = null`).
   unionKeys =
     under: group: u: pos: loc: defs: t:
     concatMap (
@@ -1911,7 +1974,7 @@ let
                   def = j;
                   inherit (d) at;
                 }) r.defs;
-                mode = positionMode g.hostMode r.type r.key;
+                mode = if r ? container then "container" else positionMode g.hostMode r.type r.key;
                 emptyRun = if r.defs == [ ] then emptyRun + 1 else 0;
               }
           )
@@ -2391,10 +2454,15 @@ let
       (scope.mkKind {
         name = knotKindName;
         # A CANDIDATE (`childTree`) holds no nested tree of its own: its record answers as a
-        # selected child's does, and only its `result` refuses, so an enumeration never meets it.
+        # selected child's does, and only its `result` refuses, so an enumeration never meets it. A
+        # CONTAINER NODE holds its elements' trees (`containerNode`).
         nta.nested =
           self: id:
-          if id == knotId || interface.isNesting (self.getHostAt "positions").member then
+          if
+            id == knotId
+            || interface.isNesting (self.getHostAt "positions").member
+            || (self.getHostAt "positions").mode == "container"
+          then
             (self.get id knotAttr)._nested.product
           else
             { };
@@ -2455,6 +2523,71 @@ let
   # host fold's own `split` chain reaches, `choose` included, and a member that is not a nesting
   # type means the fold did not select a nested tree at this position. The rule, for a reader that
   # enumerates: a per-node reader of `result` over an enumeration reads it only for a selected child.
+  #
+  # A CONTAINER NODE (S1 arm (v), den-hoag-9d80v) is the one child that is not a tree: its position
+  # is marked `mode = "container"` (`containerAt`), its seed is the position's definitions, its own
+  # `container` group keys the positions its member's walk reaches over those definitions only
+  # (`under = null`, so exactly), and its `result` is `{ value; _nested; }`: the member's threaded
+  # fold at the host's `loc`, reading its trees as its own children. A reader of `result` checks the
+  # position's `mode` first: `.config` on a container node is a missing attribute, which `tryEval`
+  # does not catch.
+  containerNode =
+    self: id:
+    let
+      p = self.getHostAt "positions";
+      seed = (self.node id).decls.seed;
+      defs = prelude.imap0 (i: s: {
+        inherit (prelude.elemAt p.defs i) file;
+        inherit (s) value;
+      }) seed;
+      records = keyWalk null p.loc p.member [ ] p.loc (
+        prelude.imap0 (
+          i: d:
+          d
+          // {
+            at = [
+              i
+              "value"
+            ];
+          }
+        ) defs
+      );
+      positions.container = listToAttrs (
+        map (r: {
+          name = builtins.toJSON r.key;
+          value = {
+            inherit (r)
+              key
+              loc
+              member
+              defs
+              ;
+            address = map (d: {
+              attr = "definitions";
+              def = 0;
+              inherit (d) at;
+            }) r.defs;
+            mode =
+              if r ? container then
+                "container"
+              else
+                positionMode {
+                  carried = false;
+                  strict = false;
+                } r.type r.key;
+            emptyRun = if r.defs == [ ] then p.emptyRun + 1 else 0;
+          };
+        }) records
+      );
+    in
+    {
+      value = mergeDefsThreaded (evAt self "container") p.loc p.member defs;
+      _nested = {
+        definitions = [ defs ];
+        inherit positions;
+        product = mapAttrs (_: mapAttrs (_: q: q.address)) positions;
+      };
+    };
   childTree =
     self: id:
     let
@@ -2463,7 +2596,9 @@ let
       n = member.nests;
       m = if p.mode == "called" then n.calledMode else p.mode;
     in
-    if !(interface.isNesting member) then
+    if !(interface.isNesting member) && p.mode == "container" then
+      containerNode self id
+    else if !(interface.isNesting member) then
       throw "gen-merge: `evalModuleTree': option `${showOption p.loc}': the fold of the tree holding it did not select a nested tree at this position${
         if isAttrs member then " (it folds as `${member.name or "<unnamed>"}')" else ""
       }, so this nested tree is a candidate and is never evaluated"
