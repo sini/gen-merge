@@ -1109,10 +1109,7 @@ let
       # `prior = warmFrom` is never forced on the cold path: this whole `verdict` binding stays an
       # unforced thunk chain unless `.isClean` is read, and the cold path never reads it
       # (`warmActive`'s `&&` short-circuits on `warmFrom == null` before `decision` is touched).
-      verdict = memo.warmDecision {
-        inherit accessor;
-        prior = warmFrom;
-      } seeds;
+      verdict = memo.warmDecision accessor warmFrom seeds;
     in
     {
       inherit
@@ -2875,17 +2872,20 @@ let
             if !warmActive then
               [ ]
             else
-              decision.identitiesHeld {
-                # EACH CONFIG IS WALKED WITH ITS OWN TREE. `warmFrom` is a prior result record and
-                # this one exports `options = allOptions`, so the prior tree is already in hand.
-                # Using `allOptions` for both would be wrong and silently so: a decl-side edit that
-                # ADDS an option is the discrimination the warm path exists to make, and one that
-                # REMOVES an option leaves the next tree under-describing the prior config.
-                priorIdentities = identityMapOf warmFrom.options warmFrom.config;
-                nextIdentities = identityMapOf allOptions config;
-                # Lazy, and read only inside the refusal — see gen-memo's note on the same argument.
-                remerged = attrNames warmDecision.remerged;
-              };
+              decision.identitiesHeld
+                {
+                  # Lazy, and read only inside the refusal — see gen-memo's note on the same argument.
+                  remerged = attrNames warmDecision.remerged;
+                }
+                {
+                  # EACH CONFIG IS WALKED WITH ITS OWN TREE. `warmFrom` is a prior result record and
+                  # this one exports `options = allOptions`, so the prior tree is already in hand.
+                  # Using `allOptions` for both would be wrong and silently so: a decl-side edit that
+                  # ADDS an option is the discrimination the warm path exists to make, and one that
+                  # REMOVES an option leaves the next tree under-describing the prior config.
+                  priorIdentities = identityMapOf warmFrom.options warmFrom.config;
+                  nextIdentities = identityMapOf allOptions config;
+                };
         in
         {
           inherit

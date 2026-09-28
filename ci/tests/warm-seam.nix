@@ -23,7 +23,7 @@
 { genMergeWithMemo, ... }:
 let
   forcesBothMaps =
-    a:
+    _opts: a:
     builtins.seq (builtins.toJSON a.priorIdentities) (
       builtins.seq (builtins.toJSON a.nextIdentities) [ ]
     );
@@ -33,13 +33,11 @@ let
   # construction (the merge is deterministic), but with an EMPTY `reused` set rather than whatever
   # the real footprint would have allowed.
   alwaysDirty = {
-    warmDecision =
-      { accessor, prior }:
-      seeds: {
-        isClean = _nid: false;
-        reusable = null;
-        identitiesHeld = forcesBothMaps;
-      };
+    warmDecision = _accessor: _prior: seeds: {
+      isClean = _nid: false;
+      reusable = null;
+      identitiesHeld = forcesBothMaps;
+    };
   };
   # Arm 2 — a plane that answers "everything is clean", unconditionally, even a location an edit
   # just touched. If the splice gate really asks this plane, the EDITED leaf still gets spliced from
@@ -47,13 +45,11 @@ let
   # a landing that ignored the plane and kept its own (correct) local dirtiness check would instead
   # report the freshly edited value here, which is precisely the regression this arm catches.
   alwaysClean = {
-    warmDecision =
-      { accessor, prior }:
-      seeds: {
-        isClean = _nid: true;
-        reusable = null;
-        identitiesHeld = forcesBothMaps;
-      };
+    warmDecision = _accessor: _prior: seeds: {
+      isClean = _nid: true;
+      reusable = null;
+      identitiesHeld = forcesBothMaps;
+    };
   };
 
   gmDirty = genMergeWithMemo alwaysDirty;
