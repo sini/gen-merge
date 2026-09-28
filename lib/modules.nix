@@ -2461,7 +2461,6 @@ let
     types.${knotId} = knotKindName;
     kinds = scope.mkKinds [
       (scope.mkKind {
-        name = knotKindName;
         # A CANDIDATE (`childTree`) holds no nested tree of its own: its record answers as a
         # selected child's does, and only its `result` refuses, so an enumeration never meets it. A
         # CONTAINER NODE holds its elements' trees (`containerNode`).
@@ -2475,7 +2474,7 @@ let
             (self.get id knotAttr)._nested.product
           else
             { };
-      })
+      } knotKindName)
     ];
   };
   knotNoChildren = _: _: { };
@@ -2484,14 +2483,11 @@ let
   knotPositions = self: id: { nested = (self.get id knotAttr)._nested.positions; };
   driveKnot =
     f:
-    (scope.eval {
-      scope = knotScope;
-      attributes = {
-        children = knotNoChildren;
-        imports = knotNoImports;
-        ${knotAttr} = self: id: f self (self.get id knotAttr);
-      };
-    }).get
+    (scope.eval { } {
+      children = knotNoChildren;
+      imports = knotNoImports;
+      ${knotAttr} = self: id: f self (self.get id knotAttr);
+    } knotScope).get
       knotId
       knotAttr;
   # `exposes`: the gen-scope evaluation itself rides the result as `_evaluation`, for this
@@ -2499,16 +2495,13 @@ let
   driveKnotMinting =
     exposes: f:
     let
-      evaluation = scope.eval {
-        scope = knotScopeMinting;
-        attributes = {
-          children = knotNoChildren;
-          imports = knotNoImports;
-          ${knotAttr} = self: id: if id == knotId then f self (self.get id knotAttr) else childTree self id;
-          definitions = knotDefinitions;
-          positions = knotPositions;
-        };
-      };
+      evaluation = scope.eval { } {
+        children = knotNoChildren;
+        imports = knotNoImports;
+        ${knotAttr} = self: id: if id == knotId then f self (self.get id knotAttr) else childTree self id;
+        definitions = knotDefinitions;
+        positions = knotPositions;
+      } knotScopeMinting;
       r = evaluation.get knotId knotAttr;
     in
     if exposes then r // { _evaluation = evaluation; } else r;

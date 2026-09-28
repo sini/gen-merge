@@ -61,12 +61,12 @@ let
       # landing gate's own fixture, already draws). Additive: the bare `label` trace every existing
       # cell's `traced()` counts still fires exactly once per call, unconditionally.
       eval =
-        a:
+        o: attributes: s:
         builtins.trace label (
-          if a.attributes ? definitions || a.attributes ? positions then
-            scope.eval a
+          if attributes ? definitions || attributes ? positions then
+            scope.eval o attributes s
           else
-            builtins.trace "${label}-plain" (scope.eval a)
+            builtins.trace "${label}-plain" (scope.eval o attributes s)
         );
     };
   };
@@ -105,7 +105,13 @@ let
       ++ map (d: { config.o = d; }) defs;
     };
   childResult =
-    r: key: (r._evaluation.get (scope.mintNtaId "module-tree" "nested" "[\"o\"]" key) "result").config;
+    r: key:
+    (r._evaluation.get (scope.mintNtaId {
+      host = "module-tree";
+      name = "nested";
+      group = "[\"o\"]";
+      key = key;
+    }) "result").config;
 
   # den-hoag-3jyxf: the two same-mechanism constructions the 09-15 relocation ruling excluded and
   # the 09-25 sitting admitted AS nta CHILDREN (an outer-tree `config` read flowing into an inner
