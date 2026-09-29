@@ -23,6 +23,24 @@ let
   imp = gm.mkOptionType;
 
   keysOf = x: if builtins.isAttrs x then builtins.attrNames x else [ ];
+  # Whether a gen nesting record over `nested` imports refused, or "throws" where deciding it throws.
+  nestingDecided =
+    nested:
+    let
+      e = builtins.tryEval (
+        interface.importType (
+          base
+          // {
+            name = "box";
+            nests = true;
+            mergeDefs.threaded = true;
+            nestedTypes = nested;
+          }
+        )
+        ? refused
+      );
+    in
+    if e.success then e.value else "throws";
   ok = e: (builtins.tryEval (builtins.deepSeq e e)).success;
   read =
     d:
@@ -633,6 +651,41 @@ in
           };
         };
       };
+
+    # A NESTING RECORD'S `nestedTypes` IS NOT FORCED TO DECIDE ITS IMPORT. Attrset `==` forces the
+    # LEFT operand's `type` (its isDerivation test), so the unroled split compares `{ } == …`: a
+    # `type` key an author named is not read to answer. Control: the same record over an ordinary
+    # unroled key.
+    test-a-nesting-records-nestedTypes-type-key-is-not-forced =
+      let
+        tag = nixpkgsLib.mkOption { type = t.str; };
+      in
+      {
+        expr = {
+          typeKeyPlant = nestingDecided {
+            type = throw "gen-merge test: a nesting record's nestedTypes.type was forced";
+            foo = tag;
+          };
+          ctlOrdinaryKey = nestingDecided { foo = tag; };
+        };
+        expected = {
+          typeKeyPlant = false;
+          ctlOrdinaryKey = false;
+        };
+      };
+
+    # The same guard for a nesting record whose `nestedTypes` is no set at all: its import is decided
+    # without comparing it, as it was before the unroled split. Control: an empty `nestedTypes`.
+    test-a-nesting-records-non-set-nestedTypes-is-not-compared = {
+      expr = {
+        notASet = nestingDecided "str";
+        ctlEmpty = nestingDecided { };
+      };
+      expected = {
+        notASet = false;
+        ctlEmpty = false;
+      };
+    };
 
     # A `nestedTypes` KEY NAMING NO GEN ROLE CROSSES VERBATIM, as a nixpkgs type keeps it: an imported
     # record re-publishes every key its roles did not consume, beside the role's own spelling, and

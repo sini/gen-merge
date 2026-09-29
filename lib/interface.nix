@@ -1105,7 +1105,7 @@ let
       spelled = attrNames (roleSpelling.${role}.nested roles.${role});
       clash = filter (k: builtins.elem k spelled) (attrNames unroled);
     in
-    if unroled == { } || roles == { } || clash == [ ] then
+    if roles == { } || { } == unroled || clash == [ ] then
       null
     else
       "gen-merge: the option type `${nameOf t}' states its ${role} in its top-level spelling, and its "
@@ -1319,13 +1319,15 @@ let
 
   # `read` is bound ONCE per import and shared by every refusal and the record: `importType` runs per
   # instance, so each re-reading is paid once per declared position (perf-bench `schemaHosts`). An
-  # empty `nestedTypes` states no unroled key, so it is not re-read for one.
+  # empty `nestedTypes` states no unroled key, so it is not re-read for one. `{ }` is the LEFT operand
+  # of that test and of `unroledCollisionRefusal`'s: attrset `==` forces the left side's `type`, and a
+  # nesting record's `nestedTypes` is not otherwise read to decide its import.
   importType =
     t:
     let
       read = readRoles t;
       roles = read.roles;
-      unroled = if (t.nestedTypes or { }) == { } then { } else unroledNested t read;
+      unroled = if { } == (t.nestedTypes or { }) then { } else unroledNested t read;
     in
     if !(isAttrs t) then
       {
