@@ -773,7 +773,9 @@ let
   # never the records whole: `==` on two distinct type records forces every attribute, and a
   # self-referential `description` (nixpkgs' `types.json` shape) then recurses uncatchably; a
   # compared record's `type` would be forced as well. `closuresOf` is not used here: it filters the
-  # export fields by `isFunction`, which forces that same `description`.
+  # export fields by `isFunction`, which forces that same `description`. A `nonMountable` record's
+  # `check` is a refusal when forced (`refuseMount`), so where either side is one only `merge` is
+  # compared: the tree answers its fold, and one tree offered and stated is still one closure.
   rehomeAgreed =
     door: loc: t: r:
     let
@@ -783,7 +785,14 @@ let
           check = null;
           merge = null;
         } x;
-      same = a: b: isAttrs a && isAttrs b && slots a == slots b;
+      mergeSlot = x: builtins.intersectAttrs { merge = null; } x;
+      same =
+        a: b:
+        isAttrs a
+        && isAttrs b
+        && (
+          if a ? nonMountable || b ? nonMountable then mergeSlot a == mergeSlot b else slots a == slots b
+        );
       offered = t.functor.payload.elemType;
     in
     if
