@@ -1473,8 +1473,11 @@ let
     if type == null then
       null
     # A fold of its own is folded under a `check` a foreign wrapper rewrote over it, which the
-    # import half answers (`interface.carriedFold`, den-hoag-4ifgb).
-    else if type ? mergeDefs && !(interface.rewritesCheck type) then
+    # import half answers (`interface.carriedFold`, den-hoag-4ifgb). `interface.rewritesCheck` is
+    # restated inline: a call here is an environment on every fold.
+    else if
+      type ? mergeDefs && !(type ? _checkWitness && type ? check && type.check != type._checkWitness)
+    then
       type.mergeDefs
     else
       interface.importedFold type;
@@ -1847,7 +1850,7 @@ let
             }
           # A `check` a foreign wrapper rewrote is carried onto the threaded fold HERE, before the
           # record is re-bound to the fields below, which do not include it (den-hoag-4ifgb).
-          else if interface.rewritesCheck type then
+          else if type ? _checkWitness && type ? check && type.check != type._checkWitness then
             interface.carriedFold type (type.mergeDefs.threaded ev)
           else
             type.mergeDefs.threaded ev;

@@ -851,12 +851,16 @@ let
   #
   # A `check` a foreign wrapper rewrote over a gen member is asked too (den-hoag-4ifgb): nixpkgs'
   # union reads its members' `check`, so a member it refines away is not chosen.
+  # The ownership test is `interface.rewritesCheck`, restated inline: a call is an environment on
+  # every member asked.
   isValid =
     t: v:
     if t ? verify then
-      t.verify v == null && interface.admitsCarried t v
+      t.verify v == null
+      && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
     else if t ? admits then
-      t.admits v && interface.admitsCarried t v
+      t.admits v
+      && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
     else
       let
         foreign = interface.importedAdmits t;
