@@ -1671,6 +1671,41 @@ in
       expected = placeServed;
     };
 
+    # THE SAME READ AS A GEN CONTAINER'S ELEMENT. gen's `attrsOf`/`listOf` expand a foreign element's
+    # declaration once, at the placeholder, and hand it to every entry; an element forwarding its set
+    # one level further down (a stock `coercedTo` over `listOf`, a stripped `listOf`) holds no
+    # instance at the entry, so the entries are not walked and warm equals cold on the hold and the
+    # move. Without the read there, each entry, a list, was read as an instance and refused warm
+    # where cold serves. A nixpkgs submodule as the element sits at the entry and is still walked.
+    test-a-gen-container-over-a-forwarding-foreign-element-is-served-warm = {
+      expr =
+        let
+          np = nixpkgsLib.types;
+        in
+        {
+          attrsOfCoercedListOf = placeRow {
+            ty = t.attrsOf (np.coercedTo np.str (s: [ { spool = s; } ]) (np.listOf npSub));
+            a.p = "silk";
+            b.p = "satin";
+          };
+          listOfStrippedListOf = placeRow {
+            ty = t.listOf (strip (np.listOf npSub));
+            a = [ [ silk ] ];
+            b = [ [ satin ] ];
+          };
+          attrsOfSubmodule = placeRow {
+            ty = t.attrsOf npSub;
+            a.p = silk;
+            b.p = satin;
+          };
+        };
+      expected = {
+        attrsOfCoercedListOf = bothServed;
+        listOfStrippedListOf = bothServed;
+        attrsOfSubmodule = placeWalked;
+      };
+    };
+
     # A MODULE SET HELD AT ITS POSITION IS STILL WALKED, and the move refused: nixpkgs' `submodule`,
     # an `attrTag` tag, `coercedTo` over a submodule, a stripped `nullOr` (a wrapper places its set at
     # its position), and a hand-written `getSubOptions` whose records carry the `loc` the protocol
