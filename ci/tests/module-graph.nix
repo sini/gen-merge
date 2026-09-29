@@ -296,6 +296,66 @@ in
       };
     };
 
+    # THE AGREEMENT CHECK: a graph reader pairs the merge path's entries with the identity-keyed
+    # closure by index, so every index is checked first. Two collections of the same modules in a
+    # different order refuse; the same order passes (the control).
+    test-the-graph-refuses-a-collection-in-another-order =
+      let
+        a = {
+          m0 = {
+            l = [ "a" ];
+          };
+          key = "a:0";
+        };
+        b = {
+          m0 = {
+            imports = [ ];
+          };
+          key = "a:1";
+        };
+        flatOf = map (x: {
+          inherit (x) m0;
+          content = x.m0;
+        });
+        refuses =
+          f: g: !(builtins.tryEval (builtins.deepSeq (genMergeCore.alignedGraph "t" f g) null)).success;
+      in
+      {
+        expr = {
+          swapped =
+            refuses
+              (flatOf [
+                a
+                b
+              ])
+              [
+                b
+                a
+              ];
+          aligned =
+            refuses
+              (flatOf [
+                a
+                b
+              ])
+              [
+                a
+                b
+              ];
+          keyed = refuses (flatOf [ { m0 = leaf; } ]) [
+            {
+              m0 = leaf;
+              key = "k/elsewhere.nix";
+            }
+          ];
+        };
+        expected = {
+          swapped = true;
+          aligned = false;
+          keyed = true;
+        };
+      };
+
     # THE FAMILY: the diamond's leaf is ONE minted `modules` node with two import edges into it, and
     # every edge lands on a minted node.
     test-the-diamond-leaf-is-one-node-with-two-importers = {
@@ -322,12 +382,15 @@ in
           edges = builtins.concatMap (i: ev.get i "imports") ids;
         in
         {
+          # the node's content is the module the tree collected at that node
+          leafContent = (ev.get leafId "result").content.l;
           nodes = builtins.length ids - 1;
           leafNodes = builtins.length (builtins.filter (i: i == leafId) ids);
           intoLeaf = builtins.length (builtins.filter (e: e == leafId) edges);
           edgesResolve = builtins.all (e: builtins.elem e ids) edges;
         };
       expected = {
+        leafContent = [ "leaf" ];
         nodes = 4;
         leafNodes = 1;
         intoLeaf = 2;

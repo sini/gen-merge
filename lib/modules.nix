@@ -1050,10 +1050,46 @@ let
   # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
   srcClassOf = e: e.srcClass or (classifyModule e.m0);
 
+  # THE TWO COLLECTIONS AGREE, checked node by node where the graph is read (never on a merge):
+  # `flat` (the merge path's level walk) and the identity-keyed `genericClosure` are argued to be the
+  # same nodes in the same order, and a graph reader pairs them by index, so every index is checked
+  # before it is paired: the same group, the same node key on the key group, and the same source
+  # shape (a path's string, an attrset's names, else its type). `alignedGraph` returns the graph or
+  # refuses by name, naming the first index that disagrees.
+  moduleShape =
+    m0:
+    if builtins.isPath m0 || isPathString m0 then
+      "p" + builtins.unsafeDiscardStringContext (toString m0)
+    else if isAttrs m0 then
+      "a" + concatStringsSep "," (attrNames m0)
+    else
+      builtins.typeOf m0;
+  alignedGraph =
+    what: flat: graph:
+    let
+      n = length flat;
+      agrees =
+        i:
+        let
+          e = builtins.elemAt flat i;
+          g = builtins.elemAt graph i;
+          k = nodeKeyOf e;
+        in
+        (if k == null then builtins.substring 0 1 g.key == "a" else k == g.key)
+        && moduleShape e.m0 == moduleShape g.m0;
+      bad = filter (i: !(agrees i)) (prelude.genList (i: i) n);
+    in
+    if length graph != n then
+      throw "gen-merge: ${what} reads ${toString (length graph)} module nodes where the tree collected ${toString n}; the two collections of one module set disagree"
+    else if bad != [ ] then
+      throw "gen-merge: ${what} pairs module node ${toString (head bad)} with a different module than the tree collected there; the two collections of one module set disagree"
+    else
+      graph;
+
   # THE FAMILY a minting tree publishes (`nta.modules`): one child per closure entry, grouped by
   # namespace, minted only when the family is read. Its ids come from the identity-keyed closure
-  # (`moduleTop`), which is in the merge path's order by construction and is checked to agree with
-  # it; its content is the merge path's own entry, shared rather than applied again. Each seed
+  # (`moduleTop`), paired with the merge path's entries by index after `alignedGraph` has checked
+  # every index; its content is the merge path's own entry, shared rather than applied again. Each seed
   # addresses its entry's `m0` in the host attribute `definitions`, whose last list is the tree's
   # closure (`knotDefinitions`, after the nested family's lists); each position record
   # discriminates the node by data (`mode = "module"`, den-hoag-9d80v) and carries what the node
@@ -1061,23 +1097,19 @@ let
   moduleFamily =
     treeId: defIndex: flat: top:
     let
-      graph = closeModules top.roots;
+      graph = alignedGraph "the module family of `${treeId}'" flat (closeModules top.roots);
       n = length flat;
-      indexed =
-        if length graph != n then
-          throw "gen-merge: the module family of `${treeId}' reads ${toString (length graph)} nodes where the tree collected ${toString n}; the two collections of one module set disagree"
-        else
-          prelude.genList (
-            i:
-            let
-              g = builtins.elemAt graph i;
-            in
-            {
-              inherit i g;
-              e = builtins.elemAt flat i;
-              c = moduleCoords treeId g;
-            }
-          ) n;
+      indexed = prelude.genList (
+        i:
+        let
+          g = builtins.elemAt graph i;
+        in
+        {
+          inherit i g;
+          e = builtins.elemAt flat i;
+          c = moduleCoords treeId g;
+        }
+      ) n;
       groupOf =
         grp: f:
         listToAttrs (
@@ -3297,11 +3329,11 @@ let
           # the declaration guard. Hanging it on `allOptions` alone is NOT enough and that is
           # measured rather than reasoned — the VALUE path reaches `flat`'s own `imports` expansion
           # before it reaches `allOptions`, so an `imports` reading `config` recursed uncatchably
-          # while the guard sat unforced one binding away. The guard sits on the closure's start set,
-          # which the warm path's origin split reads as well as `flat`.
+          # while the guard sat unforced one binding away.
           #
-          # `flat` IS the tree's module closure (`moduleClosure`), in closure order: the fold below and
-          # the minted `modules` family read one list.
+          # `flat` IS the tree's module collection (`moduleClosure`), in closure order: the fold below
+          # reads it, and the minted `modules` family pairs it with the identity-keyed closure after
+          # `alignedGraph` has checked every node.
           flat = builtins.seq declarationGuard (moduleClosure callM modList);
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
@@ -3372,12 +3404,8 @@ let
               top = moduleTop callM modList;
               graph = closeModules top.roots;
               roots = top.roots;
-              keyAt =
-                i:
-                if length graph != length flat then
-                  throw "gen-merge: the warm origin split reads ${toString (length graph)} module nodes where the tree collected ${toString (length flat)}; the two collections of one module set disagree"
-                else
-                  (builtins.elemAt graph i).key;
+              aligned = alignedGraph "the warm origin split" flat graph;
+              keyAt = i: (builtins.elemAt aligned i).key;
               editKeys = map (e: e.key) (closeModules (drop baseLen roots));
               baseKeys = listToAttrs (
                 map (e: {
@@ -4448,12 +4476,14 @@ in
     # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
     # entry as `srcClass`; shared with the warm re-eval path and the classify suite.
     classifyModule
-    # Warm re-eval decision layer (design spec §§1-2) — `moduleClosure` (the module graph's closure,
-    # which the warm path partitions by origin) + the pure `warmDecide` predicate and its footprint
+    # Warm re-eval decision layer (design spec §§1-2) — `moduleClosure` (the merge path's module
+    # collection; the warm path partitions it by origin over the identity-keyed closure) + the pure `warmDecide` predicate and its footprint
     # helpers, and `moduleKeyOf`, the identity rule the lint shares. On the internal core seam only;
     # the splice EXECUTION rides `evalModuleTree`.
     moduleClosure
     moduleKeyOf
+    # the graph-read path's node-by-node agreement check, for its own cell (`module-graph.nix`)
+    alignedGraph
     warmDecide
     declLeafPaths
     moduleDefFootprint

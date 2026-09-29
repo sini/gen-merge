@@ -60,8 +60,10 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 2. **freeformType** — `lazyAttrsOf` / `attrsOf` routing of undeclared keys.
 3. **per-key `name` + `_module.args`** binding under keyed collections.
 4. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
-5. **`imports` as graph edges** — each tree's modules are nodes keyed by nixpkgs' key rule, collected
-   breadth-first by one closure; a diamond or a repeated key is one node (`ci/tests/module-graph.nix`).
+5. **`imports` as graph edges** — each tree's modules are nodes keyed by nixpkgs' key rule; a diamond or
+   a repeated key is one node (`ci/tests/module-graph.nix`). A merge collects them by a breadth-first
+   level walk that keys only keyed and path modules. The identity-keyed `genericClosure` is the graph's,
+   built only when the graph is read, and checked node by node against the merge's list first.
 6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`. A
    descriptor stating `name` and no fold takes nixpkgs' constructor default (see
    [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-interim-exported-beside-mergeleaf)).
@@ -452,9 +454,10 @@ forced, every leaf takes the cold merge, freeform re-merges cold (the `coreShort
 an opt-in knob with a documented firing contract). Warm is the reverse-cone reuse of adios's
 `mkOverride`, but sound under gen-merge's config *fixpoint* (adios has none).
 
-**Firing.** The engine takes the EDITED entries from its OWN module closure (`moduleClosure`, never a
-caller count, since `imports` expansion is config-dependent): they are the nodes the edited roots
-reach. The closure is breadth-first, so an appended module's imports are no tail of the full closure,
+**Firing.** The engine takes the EDITED entries from its OWN identity-keyed closure (`closeModules`
+over the tree's top-level elements, never a caller count, since `imports` expansion is
+config-dependent): they are the nodes the edited roots reach, paired with the merge's list after a
+node-by-node agreement check. A list that imports nothing keeps its edited entries as its tail. The closure is breadth-first, so an appended module's imports are no tail of the full closure,
 and the entries are partitioned by ORIGIN. Warm is REFUSED (cold fallback, `reason = "an edited module reaches a module node the base also reaches (warm refused)"`) when a node is reached from both a base
 root and an edited root, since it has no single origin. Warm is also REFUSED (cold fallback, stated in the
 trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
