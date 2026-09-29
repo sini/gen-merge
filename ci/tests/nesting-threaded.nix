@@ -656,6 +656,51 @@ in
     };
   };
 
+  # THE STOCK SIX OVER THE BARE TREE (den-hoag-4ifgb M0). A stock nixpkgs container over the tree
+  # record is re-homed as gen's own, and the agreement test compares only `merge` where an element is
+  # `nonMountable`: comparing `check` too forces the tree's refusing one, and the six then refused
+  # with the tombstone where nixpkgs over its own types gives each value below. The disagreement
+  # that test exists for is still refused (`ci/tests-error.nix`, `nesting-threaded`, the tree cells).
+  flake.tests.nesting-threaded-stock-six-over-tree =
+    let
+      strictTree =
+        (gm.evalModuleTree {
+          modules = [
+            {
+              options.a = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+            }
+          ];
+        }).type;
+    in
+    {
+      test-the-stock-six-over-the-tree-give-values = {
+        expr = {
+          attrsOf = opt (np.attrsOf strictTree) { k.a = 5; };
+          lazyAttrsOf = opt (np.lazyAttrsOf strictTree) { k.a = 5; };
+          listOf = opt (np.listOf strictTree) [ { a = 5; } ];
+          listOfEmpty = opt (np.listOf strictTree) [ ];
+          nullOr = opt (np.nullOr strictTree) { a = 5; };
+          either = opt (np.either strictTree np.int) { a = 5; };
+          oneOf = opt (np.oneOf [
+            strictTree
+            np.int
+          ]) { a = 5; };
+        };
+        expected = {
+          attrsOf.k.a = 5;
+          lazyAttrsOf.k.a = 5;
+          listOf = [ { a = 5; } ];
+          listOfEmpty = [ ];
+          nullOr.a = 5;
+          either.a = 5;
+          oneOf.a = 5;
+        };
+      };
+    };
+
   # U2-q: S2 (i) at the engine's site. An unmarked self-referential element under an unrecognised
   # container is refused at import (its text is `ci/tests-error.nix`'s); the declared opt-out takes
   # the type at its word and restores the standalone evaluation, its stated price.

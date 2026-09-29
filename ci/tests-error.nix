@@ -4670,6 +4670,12 @@ in
             );
           in
           v;
+        # A strict tree record, built once per call: two calls are two distinct constructions.
+        tree =
+          _:
+          (gm.evalModuleTree {
+            modules = [ { options.a = gm.mkOption { type = t.int; }; } ];
+          }).type;
       in
       {
         test-a-placeholder-attrs-with-is-refused-at-the-engine = {
@@ -4777,6 +4783,23 @@ in
           expectedError = {
             type = "ThrownError";
             msg = disagrees "either" "members";
+          };
+        };
+        # A tree is compared by its `merge` alone, since its `check` refuses when forced
+        # (den-hoag-4ifgb M0), and a disagreement over it is still this refusal, not the tree's
+        # tombstone: a tree stated over another element offered, and two trees constructed apart.
+        test-a-container-stating-a-tree-and-offering-another-element-is-refused-at-the-engine = {
+          expr = opt (np.listOf np.str // { nestedTypes.elemType = tree 1; }) [ "a" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "listOf" "element";
+          };
+        };
+        test-two-constructions-of-a-tree-disagree-by-name = {
+          expr = opt (np.listOf (tree 1) // { nestedTypes.elemType = tree 2; }) [ { } ];
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "listOf" "element";
           };
         };
         # The disagreement is judged whether or not the record would be re-homed: a container over
