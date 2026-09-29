@@ -358,7 +358,7 @@ let
   # `check` is a function (`addCheck`'s `x: t.check x && p x`) or another record's, and compares
   # unequal. A record with no witness (a `nonMountable` tree, a foreign descriptor) is not asked,
   # so the tree's refusing `check` is never forced here; a check rewritten over the bare tree is
-  # therefore not detected, and nixpkgs erases it there too (the enumerated residue, README "Two
+  # therefore not detected, and nixpkgs erases it there too (the enumerated residue, README "The
   # prices, stated"). A record re-bound by selection (`t // { inherit (t) check; }`) keeps the same
   # record and reads as its own on every evaluator.
   rewritesCheck = t: t ? _checkWitness && t ? check && t.check != t._checkWitness;
@@ -947,7 +947,7 @@ let
           # record's check is carried on every re-home, where it can be evaluated here, and gen's
           # own fold applies it as a rewritten check (`carriedFold`). A stock `either`/`nullOr`
           # whose members reach the bare tree states a check that cannot be evaluated here and
-          # cannot be detected, so it is rebuilt without it: the enumerated residue, README "Two
+          # cannot be detected, so it is rebuilt without it: the enumerated residue, README "The
           # prices, stated".
           if checkReadsTree t then rebuilt else rebuilt // { inherit (t) check; }
         )

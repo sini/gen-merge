@@ -1350,7 +1350,7 @@ tree), only `merge` is compared, since the tree's `check` refuses when forced; s
 and a type folding by another `merge`, are still told apart, but a tree whose `check` alone was
 rewritten is not (the price below). Every one of these messages names the door (`mkOptionType`, or `evalModuleTree` with the
 option), the type, what declared the element, and the ways out, the opt-out above among them.
-**Two prices, stated:** a stock container whose `merge` was overridden (`attrsOf t // { merge = …; }`)
+**The prices, stated:** a stock container whose `merge` was overridden (`attrsOf t // { merge = …; }`)
 cannot be told from the stock one and is re-homed silently, losing the override; and a foreign type
 that forwards to a gen nesting type it does NOT declare evaluates that tree standalone through the
 exported `merge`.
@@ -1382,8 +1382,8 @@ reading*): a check that reads the bare tree can be neither carried nor detected,
 and is lost silently. The class is a check over the bare tree itself (the tree has no witness, and
 nixpkgs erases it too), a stock container stating the tree with only its `check` rewritten against
 the tree it offers (`np.listOf tree // { nestedTypes.elemType = addCheck tree p; }`: the two agree on
-`merge`, the only slot a tree can be compared on, so the check is lost where it was refused with the
-tombstone before M0), and a stock container whose stock check reads a `nonMountable` member,
+`merge`, the only slot a tree can be compared on, so the check is lost where gen-merge once refused
+it with the tombstone), and a stock container whose stock check reads a `nonMountable` member,
 `either`/`oneOf`/`nullOr` over the bare tree (`addCheck (either tree str) p` is served where nixpkgs
 refuses; over `nullOr` nixpkgs erases it too). Refusing every re-home of those would revert the
 stock six over the tree. The gen-types composites, which read a member's `verify` and never its
