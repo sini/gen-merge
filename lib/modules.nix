@@ -1472,7 +1472,9 @@ let
     type:
     if type == null then
       null
-    else if type ? mergeDefs then
+    # A fold of its own is folded under a `check` a foreign wrapper rewrote over it, which the
+    # import half answers (`interface.carriedFold`, den-hoag-4ifgb).
+    else if type ? mergeDefs && !(interface.rewritesCheck type) then
       type.mergeDefs
     else
       interface.importedFold type;
@@ -1843,6 +1845,10 @@ let
               __functor = _: type.mergeDefs.threaded ev;
               reported = type.mergeDefs.threadedReported ev;
             }
+          # A `check` a foreign wrapper rewrote is carried onto the threaded fold HERE, before the
+          # record is re-bound to the fields below, which do not include it (den-hoag-4ifgb).
+          else if interface.rewritesCheck type then
+            interface.carriedFold type (type.mergeDefs.threaded ev)
           else
             type.mergeDefs.threaded ev;
         whenEmpty =

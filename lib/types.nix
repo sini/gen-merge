@@ -848,12 +848,15 @@ let
   # a disjunction over its members, so ONE member answering "yes" to everything makes the whole union
   # unable to refuse anything, and the definition the member cannot consume reaches the interpreter
   # instead (`either`, below).
+  #
+  # A `check` a foreign wrapper rewrote over a gen member is asked too (den-hoag-4ifgb): nixpkgs'
+  # union reads its members' `check`, so a member it refines away is not chosen.
   isValid =
     t: v:
     if t ? verify then
-      t.verify v == null
+      t.verify v == null && interface.admitsCarried t v
     else if t ? admits then
-      t.admits v
+      t.admits v && interface.admitsCarried t v
     else
       let
         foreign = interface.importedAdmits t;

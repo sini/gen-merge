@@ -94,9 +94,10 @@ let
   # of, and a source that moved unnoticed is the shape this whole seam exists to make visible.
   #
   # ★ IT IS NOT ALL SUBSTRATE, AND SAYING SO WOULD BE WRONG IN THE DIRECTION THAT MISLEADS. Every
-  # class below includes `_protoLeafMerge`, which the boundary MINTS (`interface.nix`,
-  # `_protoLeafMerge = !(t ? mergeDefs)`) and is never handed — a reader told this set is "what the
-  # boundary is handed" would conclude `mkType` stamps the marker, which it does not. The rest of each
+  # class below includes `_protoLeafMerge` and `_checkWitness` (den-hoag-4ifgb), which the boundary
+  # MINTS (`interface.nix`, `_protoLeafMerge = !(t ? mergeDefs)`) and is never handed — a reader
+  # told this set is "what the boundary is handed" would conclude `mkType` stamps the marker, which
+  # it does not. The rest of each
   # list IS gen's own record, and `test-the-fourteen-are-minted-at-the-boundary-and-nowhere-else`
   # (ci/tests/interface.nix) is where the handed-versus-minted split is asserted rather than described.
   substrateKeys =
@@ -112,6 +113,7 @@ let
         "__name"
         "__nameWithin"
         "__payload"
+        "_checkWitness"
         "_protoLeafMerge"
         "substructure"
         "typeMergeRel"
@@ -121,6 +123,7 @@ let
       # A type parameterised by one thing: what it carries, how to rebuild it over another, its own
       # domain, its own fold, its own relation.
       wrapper = [
+        "_checkWitness"
         "_protoLeafMerge"
         "admits"
         "carries"
@@ -138,15 +141,18 @@ let
       int = leaf;
       bool = leaf;
       raw = [
+        "_checkWitness"
         "_protoLeafMerge"
         "typeMergeRel"
       ];
       anything = [
+        "_checkWitness"
         "_protoLeafMerge"
         "mergeDefs"
         "typeMergeRel"
       ];
       custom = [
+        "_checkWitness"
         "_protoLeafMerge"
         "admits"
         "mergeDefs"
@@ -156,6 +162,7 @@ let
       ];
       # No empty value: an undefined option of this type is a mistake, not an empty container.
       deferredModule = [
+        "_checkWitness"
         "_protoLeafMerge"
         "admits"
         "mergeDefs"
@@ -163,6 +170,7 @@ let
         "typeMergeRel"
       ];
       either = [
+        "_checkWitness"
         "_protoLeafMerge"
         "admits"
         "carries"
@@ -187,6 +195,7 @@ let
       # partner's become readable from the relation. `withArgs` is the method that states them.
       # Both are gen's own words; neither is a protocol field, which is why they land in this half.
       submodule = [
+        "_checkWitness"
         "_protoLeafMerge"
         "admits"
         "carries"
