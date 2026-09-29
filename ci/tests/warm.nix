@@ -343,7 +343,8 @@ let
   ];
   # nixpkgs' own submodule, declaring `id_hash` through nixpkgs' options, so the foreign wrappers
   # hold a foreign instance.
-  npSub = nixpkgsLib.types.submodule (
+  npSub = nixpkgsLib.types.submodule npIdMod;
+  npIdMod =
     { config, ... }:
     {
       options.id_hash = nixpkgsLib.mkOption { type = nixpkgsLib.types.str; };
@@ -352,8 +353,99 @@ let
         default = "";
       };
       config.id_hash = "thimble:" + builtins.hashString "sha256" config.spool;
+    };
+
+  # ══ drxbc fixtures — WHERE A FOREIGN MODULE SET SITS ═══════════════════════════════════════════
+  #
+  # `getSubModules` says which module set a type is built from, never where its instances sit. The
+  # walk reads the placement off the `loc` the foreign protocol stamps on the options `getSubOptions`
+  # hands back. `anchored` puts a minted instance in the BASE (`reel.a`), so the prior map is
+  # non-empty and the NEXT walk is forced (gen-memo's `movedIdentities` reads the next map only under
+  # a prior key); `h` is the position under test. A row is `{ hold; move; }`, each a warm/cold pair
+  # read through `view` under `tryEval`: `hold` edits an unrelated option, `move` replaces `h`.
+  anchor = [
+    { options.reel = mkOption { type = t.attrsOf hostSub; }; }
+    {
+      _file = "anchor";
+      config.reel.a.spool = "anchor";
     }
-  );
+  ];
+  anchored =
+    ty: v:
+    anchor
+    ++ [
+      { options.h = mkOption { type = ty; }; }
+      {
+        _file = "place-base";
+        config.h = v;
+      }
+    ];
+  placeOther = [
+    {
+      _file = "o";
+      options.other = mkOption { type = t.str; };
+      config.other = "o";
+    }
+  ];
+  placePair =
+    view: base: edit:
+    let
+      tryOk = e: builtins.tryEval (builtins.deepSeq e e);
+      w = tryOk (view (warmOf base edit).config);
+      c = tryOk (view (coldOf (base ++ edit)).config);
+    in
+    {
+      warm = w.success;
+      cold = c.success;
+      eq = w.success && c.success && jsonEq w.value c.value;
+    };
+  placeRow =
+    {
+      ty,
+      a,
+      b,
+      view ? (c: c),
+    }:
+    {
+      hold = placePair view (anchored ty a) placeOther;
+      move = placePair view (anchored ty a) [
+        {
+          _file = "place-edit";
+          config.h = mkForce b;
+        }
+      ];
+    };
+  placeServed = {
+    warm = true;
+    cold = true;
+    eq = true;
+  };
+  bothServed = {
+    hold = placeServed;
+    move = placeServed;
+  };
+  # walked: the hold re-composes, the move is refused (by gen-memo, a throw `tryEval` contains)
+  placeWalked = {
+    hold = placeServed;
+    move = {
+      warm = false;
+      cold = true;
+      eq = false;
+    };
+  };
+  strip = ty: ty // { nestedTypes = { }; };
+  silk.spool = "silk";
+  satin.spool = "satin";
+  # the value a `deferredModuleWith` holds is a MODULE, whose `imports` holds `npIdMod`, a function
+  # with no JSON form: compared by its count
+  deferredView = c: c // { h = builtins.length c.h.imports; };
+  deferredStatic = nixpkgsLib.types.deferredModuleWith { staticModules = [ npIdMod ]; };
+  # a `getSubOptions` that is a functor set, not a lambda: callable, as nixpkgs' own reader calls it
+  functorSub = npSub // {
+    getSubOptions = {
+      __functor = _self: prefix: npSub.getSubOptions prefix;
+    };
+  };
 in
 {
   flake.tests.warm = {
@@ -1421,6 +1513,230 @@ in
           };
       };
 
+    # A FOREIGN CONTAINER FORWARDING ITS ELEMENT'S MODULE SET HOLDS NO INSTANCE AT ITS POSITION. With
+    # `nestedTypes` stripped, a nixpkgs `listOf`/`attrsOf`/`functionTo` states nothing but the
+    # `getSubModules` it forwards; the options its `getSubOptions` hands back sit one placeholder
+    # segment below (`*`, `<name>`, `<function body>`), so the walk does not read the container as an
+    # instance, and warm equals cold on the hold and the move. Before, the walk read `.id_hash` off
+    # the container, an abort `tryEval` does not contain. `idKey` names an entry `id_hash`: the
+    # misread there does not abort at `v ? id_hash` and reads a set as the identity, so only the
+    # placement read serves it.
+    test-a-foreign-container-forwarding-its-module-set-is-served-warm = {
+      expr =
+        let
+          np = nixpkgsLib.types;
+        in
+        {
+          listOf = placeRow {
+            ty = strip (np.listOf npSub);
+            a = [ silk ];
+            b = [ satin ];
+          };
+          attrsOf = placeRow {
+            ty = strip (np.attrsOf npSub);
+            a.p = silk;
+            b.p = satin;
+          };
+          functionTo = placeRow {
+            ty = strip (np.functionTo npSub);
+            a = _: silk;
+            b = _: satin;
+            view = c: c // { h = c.h null; };
+          };
+          listOfListOf = placeRow {
+            ty = strip (np.listOf (np.listOf npSub));
+            a = [ [ silk ] ];
+            b = [ [ satin ] ];
+          };
+          idKey = placeRow {
+            ty = strip (np.attrsOf npSub);
+            a.id_hash = silk;
+            b.id_hash = satin;
+          };
+        };
+      expected = {
+        listOf = bothServed;
+        attrsOf = bothServed;
+        functionTo = bothServed;
+        listOfListOf = bothServed;
+        idKey = bothServed;
+      };
+    };
+
+    # A STOCK `coercedTo` OVER A FOREIGN CONTAINER, nothing stripped: its `nestedTypes` are
+    # `coercedType`/`finalType`, neither a gen role, and it forwards its final type's module set,
+    # which sits one placeholder below. Served warm, equal to cold, where it aborted.
+    test-a-stock-coercedTo-over-a-foreign-container-is-served-warm = {
+      expr =
+        let
+          np = nixpkgsLib.types;
+          coerced = final: f: {
+            ty = np.coercedTo np.str f final;
+            a = "silk";
+            b = "satin";
+          };
+        in
+        {
+          listOf = placeRow (coerced (np.listOf npSub) (s: [ { spool = s; } ]));
+          attrsOf = placeRow (
+            coerced (np.attrsOf npSub) (s: {
+              p.spool = s;
+            })
+          );
+          attrListOf = placeRow (coerced (np.attrListOf npSub) (s: [ { p.spool = s; } ]));
+        };
+      expected = {
+        listOf = bothServed;
+        attrsOf = bothServed;
+        attrListOf = bothServed;
+      };
+    };
+
+    # `getSubOptions` IS READ ONLY WHEN IT CAN BE CALLED. A set that is not a functor states no
+    # declaration: the position is not walked and warm equals cold, where calling it aborted. A
+    # functor set IS callable, as nixpkgs' own reader calls it: under nixpkgs' submodule the instance
+    # is still walked (the move refused), and gen's `listOf` over it still declares the element's
+    # options at its placeholder, the plain submodule's the control.
+    test-a-getSubOptions-is-read-only-when-it-can-be-called = {
+      expr = {
+        notCallable = placeRow {
+          ty = strip (nixpkgsLib.types.nullOr npSub) // {
+            getSubOptions = { };
+          };
+          a = silk;
+          b = satin;
+        };
+        functor = placeRow {
+          ty = functorSub;
+          a = silk;
+          b = satin;
+        };
+        functorDeclares = builtins.attrNames ((t.listOf functorSub).getSubOptions [ "x" ]);
+        plainDeclares = builtins.attrNames ((t.listOf npSub).getSubOptions [ "x" ]);
+      };
+      expected = {
+        notCallable = bothServed;
+        functor = placeWalked;
+        functorDeclares = [
+          "_module"
+          "id_hash"
+          "spool"
+        ];
+        plainDeclares = [
+          "_module"
+          "id_hash"
+          "spool"
+        ];
+      };
+    };
+
+    # A MODULE WHERE THE DECLARATION PLACES AN INSTANCE IS REFUSED WARM, BY NAME. nixpkgs'
+    # `deferredModuleWith` places its static modules' options at its position, so its declaration
+    # declares `id_hash` there; the value is a module, which no declaration field says. The walk does
+    # not decide instance-hood by the value (ADR-0034, den-hoag-72izy), so the read the declaration
+    # claims is refused: warm is refused on the hold and the move, cold serves. The message is pinned
+    # on `flake.testsError.warm` (`test-a-deferred-module-where-an-instance-is-declared-refuses-by-name`).
+    test-a-deferred-module-where-an-instance-is-declared-is-refused-warm = {
+      expr = placeRow {
+        ty = deferredStatic;
+        a = silk;
+        b = satin;
+        view = deferredView;
+      };
+      expected =
+        let
+          refused = {
+            warm = false;
+            cold = true;
+            eq = false;
+          };
+        in
+        {
+          hold = refused;
+          move = refused;
+        };
+    };
+
+    # THE REFUSAL FIRES ONLY WHERE THE MISREAD WAS FORCED. An edit that DECLARES and defines the
+    # deferred position is served warm, equal to cold: the prior map has no `h`, and gen-memo forces a
+    # new position's key, never its value, so the refusal sits in the value, where `v.id_hash` sat.
+    test-a-deferred-module-the-edit-declares-is-served-warm = {
+      expr = placePair deferredView (anchor ++ placeOther) [
+        { options.h = mkOption { type = deferredStatic; }; }
+        {
+          _file = "place-base";
+          config.h = silk;
+        }
+      ];
+      expected = placeServed;
+    };
+
+    # A MODULE SET HELD AT ITS POSITION IS STILL WALKED, and the move refused: nixpkgs' `submodule`,
+    # an `attrTag` tag, `coercedTo` over a submodule, a stripped `nullOr` (a wrapper places its set at
+    # its position), and a hand-written `getSubOptions` whose records carry the `loc` the protocol
+    # stamps. Stock `listOf`/`attrsOf` stay served (`test-the-walk-reads-no-raw-payload`). A
+    # hand-written `getSubOptions` whose records state no `loc` states no placement: served, warm
+    # equal to cold, which is where the refusal given up would have fired.
+    test-a-foreign-module-set-held-at-its-position-is-still-walked = {
+      expr =
+        let
+          np = nixpkgsLib.types;
+          at =
+            ty:
+            placeRow {
+              inherit ty;
+              a = silk;
+              b = satin;
+            };
+          hand =
+            stamp:
+            npSub
+            // {
+              getSubOptions = prefix: {
+                id_hash =
+                  nixpkgsLib.mkOption { type = np.str; }
+                  // (if stamp then { loc = prefix ++ [ "id_hash" ]; } else { });
+              };
+            };
+        in
+        {
+          submodule = at npSub;
+          attrTag = placeRow {
+            ty = np.attrTag { a = nixpkgsLib.mkOption { type = npSub; }; };
+            a.a = silk;
+            b.a = satin;
+          };
+          coercedTo = placeRow {
+            ty = np.coercedTo np.str (s: { spool = s; }) npSub;
+            a = "silk";
+            b = "satin";
+          };
+          strippedNullOr = at (strip (np.nullOr npSub));
+          handLoc = at (hand true);
+          handNoLoc = at (hand false);
+          listOf = placeRow {
+            ty = np.listOf npSub;
+            a = [ silk ];
+            b = [ satin ];
+          };
+          attrsOf = placeRow {
+            ty = np.attrsOf npSub;
+            a.p = silk;
+            b.p = satin;
+          };
+        };
+      expected = {
+        submodule = placeWalked;
+        attrTag = placeWalked;
+        coercedTo = placeWalked;
+        strippedNullOr = placeWalked;
+        handLoc = placeWalked;
+        handNoLoc = bothServed;
+        listOf = bothServed;
+        attrsOf = bothServed;
+      };
+    };
+
     # A REUSED `moduleTree` LEAF REPORTS ITS DROPPED DEFS, as the cold merge does (ADR-0025 item 1 on
     # the incremental plane). `nest` must be in `reused`: without it this cell measures the cold
     # branch and passes on a warm splice that answers `[ ]`. The report is asserted against the COLD
@@ -1846,6 +2162,18 @@ in
       expectedError = {
         type = "ThrownError";
         msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'h' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: h, 1 instance\\(s\\) moved\\)$";
+      };
+    };
+
+    # A MODULE WHERE THE DECLARATION PLACES AN INSTANCE — the refusal's own words, on an unrelated
+    # edit's warm `.config` read: the door and the option, what the declaration claims, and the shape
+    # of the value that contradicts it. The pair is on `flake.tests.warm`
+    # (`test-a-deferred-module-where-an-instance-is-declared-is-refused-warm`).
+    test-a-deferred-module-where-an-instance-is-declared-refuses-by-name = {
+      expr = (warmOf (anchored deferredStatic silk) placeOther).config.other;
+      expectedError = {
+        type = "ThrownError";
+        msg = "^gen-merge: `evalModuleTree' at option `h': the warm identity walk reads the option as an instance \\(its declaration declares `id_hash'\\), and the value there is a set without `id_hash': the type declared there holds its module set somewhere its declaration does not say$";
       };
     };
   };

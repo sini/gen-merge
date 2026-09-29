@@ -538,7 +538,15 @@ payload is what it offers to merge on, and the walk does not read a payload to l
 carries. A moved identity there re-composes warm, equal to cold, rather than being refused: the refusal
 given up would have fired only where warm already equals cold. A raw record carrying a module set
 (nixpkgs' `submodule`, and `addCheck`/`coercedTo` over one) states it in `getSubModules` and is walked
-at its own position. A nesting seam (a tree type) is not walked either, as a leaf or as a container's
+at its own position when its declaration places that set at its position: some option record its
+`getSubOptions` hands back is stamped with a `loc` equal to the position followed by its own path.
+`getSubModules` says which set a type is built from, not where its instances sit, so a container
+forwarding its element's set (`listOf`, `attrsOf`, `attrListOf`, `functionTo`, and `coercedTo` over
+one, stock or with `nestedTypes` stripped) is served warm, equal to cold, and so is a hand-written
+`getSubOptions` whose records state no `loc`. A `getSubOptions` that is neither a function nor a
+functor states no declaration. nixpkgs' `deferredModuleWith` whose static modules declare `id_hash`
+places them at its position, yet holds a module there, which no declaration field says: the warm read
+refuses it by name (`` gen-merge: `evalModuleTree' at option `…': the warm identity walk reads the option as an instance … ``) where cold serves. A nesting seam (a tree type) is not walked either, as a leaf or as a container's
 element. The byte oracle still compares those values; the refusal does not see them. A gen wrapper
 that adds no path level (`nullOr`) holds its instance at its own position. Pinned by
 `test-identity-outside-the-declaration-stratum-is-not-a-minted-identity`,
