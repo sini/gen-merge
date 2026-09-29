@@ -1094,6 +1094,28 @@ let
       + " but states no merge relation for it; state one in `functor.binOp' (with `functor.name' and "
       + "`functor.type'), since a type that carries something answers for how two of it merge";
 
+  # unroledCollisionRefusal — a key `nestedTypes` states that names no role, where the role's own
+  # spelling would publish the SAME key. An unroled key crosses verbatim and the role's spelling is
+  # derived beside it at export, so both cannot be kept: one of the two would be replaced without a
+  # word. The one reachable shape is a record stating its element at the top-level `elemType` while
+  # its `nestedTypes.elemType` holds something that is not a type (an `attrTag` tag an author named
+  # `elemType`). Refused here, by name, rather than resolved by an order nobody chose.
+  unroledCollisionRefusal =
+    t:
+    let
+      roles = statedRoles t;
+      role = head (attrNames roles);
+      spelled = attrNames (roleSpelling.${role}.nested roles.${role});
+      clash = filter (k: builtins.elem k spelled) (attrNames (unroledNested t));
+    in
+    if roles == { } || clash == [ ] then
+      null
+    else
+      "gen-merge: the option type `${nameOf t}' states its ${role} in its top-level spelling, and its "
+      + "`nestedTypes' holds ${concatStringsSep ", " (map (k: "`${k}'") clash)} as something that "
+      + "is not that ${role}; a crossing publishes the ${role} under that key, so one of the two would "
+      + "be lost. Rename the `nestedTypes' key, or state the ${role} there";
+
   # The role a foreign payload is stating, or null when it states none. `elemType` is the protocol's
   # key for BOTH a single wrapped type and a union's positional member list, and the two are told
   # apart by the only thing that distinguishes them: a member list is a LIST, a wrapped type is a
@@ -1341,6 +1363,8 @@ let
       { refused = relationRefusal t; }
     else if relationOwedRefusal t != null then
       { refused = relationOwedRefusal t; }
+    else if unroledCollisionRefusal t != null then
+      { refused = unroledCollisionRefusal t; }
     else
       {
         imported =

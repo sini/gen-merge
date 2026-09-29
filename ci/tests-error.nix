@@ -1820,6 +1820,33 @@ in
           msg = "^gen-merge: the structural type `boxOf' carries an element type but states no merge relation for it; state one in `functor\\.binOp' \\(with `functor\\.name' and `functor\\.type'\\), since a type that carries something answers for how two of it merge$";
         };
       };
+      # An unroled `nestedTypes` key the role's own spelling would publish: the element stated at
+      # the top level, `nestedTypes.elemType` holding an option record. One of the two would be lost
+      # at export, so the import refuses by name.
+      test-an-unroled-key-the-role-would-publish-is-refused-by-name = {
+        expr = gm.mkOptionType {
+          name = "boxOf";
+          check = _: true;
+          elemType = t.int;
+          nestedTypes.elemType = {
+            _type = "option";
+            type = t.str;
+          };
+          getSubOptions = _p: { };
+          getSubModules = null;
+          substSubModules = _m: null;
+          functor = {
+            name = "boxOf";
+            payload = null;
+            binOp = _a: _b: null;
+            type = _p: null;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option type `boxOf' states its element in its top-level spelling, and its `nestedTypes' holds `elemType' as something that is not that element; a crossing publishes the element under that key, so one of the two would be lost\. Rename the `nestedTypes' key, or state the element there$";
+        };
+      };
       # ★★★ THE OTHER HALF OF THE PARTITION, AND IT IS A HAZARD THE RETENTION ITSELF CREATED. A
       # retained relation is applied through the protocol's own default, which reads `name' and `type'
       # off the author's functor and APPLIES `type' to the merged parameter. Nothing in the foreign

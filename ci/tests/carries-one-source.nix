@@ -522,6 +522,22 @@ in
           attrListWith = served (t.attrListWith { elemType = npIdSub; }) { p = a; } { p = b; };
           # a gen container over a raw wrapper: walked to the wrapper, which stops
           genAttrsOfNullOr = served (gt.attrsOf (t.nullOr npIdSub)) { p = a; } { p = b; };
+          # an identity inside an instance (the instance's own gen `listOf` of instances) is not
+          # walked: the walk stops at the outer instance's `id_hash` (README, Known boundaries)
+          innerInstance =
+            served
+              (gt.submodule {
+                imports = [ idMod ];
+                options.inner = mkOption { type = gt.listOf idSub; };
+              })
+              {
+                spool = "o";
+                inner = [ a ];
+              }
+              {
+                spool = "o";
+                inner = [ b ];
+              };
           armedGenNullOr = moveRefused (gt.nullOr npIdSub) a b;
           armedGenListOf = moveRefused (gt.listOf npIdSub) [ a ] [ b ];
           armedNpSubmodule = moveRefused npIdSub a b;
@@ -542,11 +558,79 @@ in
           attrListOf = true;
           attrListWith = true;
           genAttrsOfNullOr = true;
+          innerInstance = true;
           armedGenNullOr = true;
           armedGenListOf = true;
           armedNpSubmodule = true;
           armedNpAddCheck = true;
           armedNpCoercedTo = true;
+        };
+      };
+
+    # AN UNROLED KEY THE ROLE'S OWN SPELLING WOULD PUBLISH IS REFUSED BY NAME, catchably: a record
+    # stating its element at the top-level `elemType` while `nestedTypes.elemType` holds an option
+    # record would lose one of the two at export. Controls: the two spellings agreeing, each alone,
+    # and the refusal caught by `tryEval` through the public constructor.
+    test-an-unroled-key-the-role-would-publish-is-refused =
+      let
+        tag = nixpkgsLib.mkOption { type = t.str; };
+        box =
+          extra:
+          base
+          // sub3
+          // {
+            name = "box";
+            functor = rel // {
+              payload = null;
+            };
+          }
+          // extra;
+        clash = box {
+          elemType = gt.int;
+          nestedTypes.elemType = tag;
+        };
+      in
+      {
+        expr = {
+          clash = read clash;
+          caught = (builtins.tryEval (builtins.seq (imp clash).name null)).success;
+          ctlAgree = read (box {
+            elemType = gt.int;
+            nestedTypes.elemType = gt.int;
+          });
+          ctlTopOnly = read (box {
+            elemType = gt.int;
+          });
+          ctlTagOnly = read (box {
+            nestedTypes.elemType = tag;
+          });
+          ctlTopBesideOtherKey = read (box {
+            elemType = gt.int;
+            nestedTypes.weft = tag;
+          });
+        };
+        expected = {
+          clash = "refused";
+          caught = false;
+          ctlAgree = {
+            carries = [ "element" ];
+            nestedTypes = [ "elemType" ];
+          };
+          ctlTopOnly = {
+            carries = [ "element" ];
+            nestedTypes = [ "elemType" ];
+          };
+          ctlTagOnly = {
+            carries = [ ];
+            nestedTypes = [ "elemType" ];
+          };
+          ctlTopBesideOtherKey = {
+            carries = [ "element" ];
+            nestedTypes = [
+              "elemType"
+              "weft"
+            ];
+          };
         };
       };
 

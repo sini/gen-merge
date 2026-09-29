@@ -1593,12 +1593,22 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   An imported record keeps every key its roles did not consume (`freeformType`,
   `coercedType`/`finalType`, an `attrTag`'s tags, an author's own key) as `unroledNested`, and
   `exportType` re-publishes it beside the role's spelling, so the type reads as nixpkgs' own does
-  (`test-a-nestedTypes-key-naming-no-role-crosses-verbatim`). No role is assigned to such a key, so
+  (`test-a-nestedTypes-key-naming-no-role-crosses-verbatim`). A key the role's spelling would itself
+  publish cannot be kept beside it, so that record is refused by name at import rather than losing
+  one of the two: the element stated at the top-level `elemType` while `nestedTypes.elemType` holds
+  an option record (`test-an-unroled-key-the-role-would-publish-is-refused`). No role is assigned to such a key, so
   nothing on this side reads it: a join does not judge over it (the bullet above), and the identity
   walk never descends through it — below such a record the walk sees only what the record's module
   set states (`getSubModules`/`getSubOptions`; an `attrTag`'s tags and a `coercedTo`'s `finalType`
   state theirs there). An identity reachable only through such a key is compared by the byte oracle
   and not tracked by the warm refusal.
+
+- **An identity inside an instance is not walked.** The identity walk stops at an instance (a
+  position whose declaration declares `id_hash`) and reads only that instance's `id_hash`, never its
+  other options. A second minted identity held in one of them (an instance's own `listOf` of
+  instances, say) is compared by the byte oracle and not tracked by the warm refusal: an edit moving
+  it re-composes warm, equal to cold, whatever container holds it. Only the outermost instance on a
+  path is a tracked identity (`test-the-walk-reads-no-raw-payload`, row `innerInstance`).
 
 - **A `mkOptionType` stating no relation merges with one construction and refuses two of one name.**
   Its check is a caller's function, so the name cannot say two of them are one type; the relation
