@@ -589,7 +589,7 @@ let
     # there is paid per instance. A record with `carries` or a non-empty `nestedTypes` answers
     # `importedWrapped` whole. Past that, the one carrying spelling `statedRoles` can still reach is
     # a top-level `elemType`, so only a record stating one pays for the reading.
-    if t ? carries || t ? nonMountable || (t.nestedTypes or { }) != { } then
+    if t ? carries || t ? nonMountable || { } != (t.nestedTypes or { }) then
       importedWrapped t
     else if t ? elemType then
       [ (statedRoles t).element ]
