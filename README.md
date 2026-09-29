@@ -1305,8 +1305,10 @@ by a cell, because it is the `wideFreeform` hot path.
 
 A foreign container outside the six gen-merge recognises (`attrsOf`, `lazyAttrsOf`, `listOf`,
 `nullOr`, `either`, `oneOf`) cannot pass the evaluation down to a nested tree. So gen-merge asks
-whether such a type DECLARES a gen nesting type as an element, at any depth, through its
-`nestedTypes` or its functor payload (`interface.declaresNesting`). That walk has a fuel of 32 (the
+whether such a type DECLARES a gen nesting type as an element, at any depth, through the carrying
+spellings: its `nestedTypes` or a top-level `elemType` (`interface.declaresNesting`). A functor
+payload says what a type MERGES on, not what it carries, so it declares nothing (ruled 2026-09-25).
+That walk has a fuel of 32 (the
 same `importedTypeWalkFuel` as the type-merge guard). A self-referential element, such as nixpkgs'
 `types.json` shape, cannot be told from a deep one, so at exhaustion the walk **refuses by name**
 (ruled 2026-09-27, S2 arm (i)). The message names three remedies:
@@ -1332,10 +1334,16 @@ in. Pinned by `ci/tests/nesting-declaration.nix` and `ci/tests-error.nix`
 declared option (`evalModuleTree`), and when a record crosses whole through `mkOptionType`. One of
 the six stock foreign containers whose element may nest is folded as gen-merge's own container, so
 `nixpkgs.lib.types.attrsOf (submodule …)` threads like gen's. A stock container over no nesting
-element keeps its own fold. A foreign type outside the six that declares a gen nesting element
-(a hand-rolled `mkOptionType` stating `nestedTypes.elemType` or `functor.payload.elemType`,
-`coercedTo`, `attrsWith` with a non-default `placeholder`, …) is **refused by name** at that door,
-before any fold runs. The message names the door (`mkOptionType`, or `evalModuleTree` with the
+element keeps its own fold. The six are recognised by their functor, the relation they merge by,
+and rebuilt over the element their carrying spellings state, never over their payload's. A foreign
+type outside the six that declares a gen nesting element (a hand-rolled `mkOptionType` stating
+`nestedTypes.elemType` or a top-level `elemType`, `coercedTo`, `attrsWith` with a non-default
+`placeholder`, …) is **refused by name** at that door, before any fold runs. Two more records are
+refused by name (*defaulted, reversible*): one that states no element but whose functor payload
+OFFERS a type declaring a gen nesting type (a hand-rolled `functor.payload.elemType`, or a stock
+container with its `nestedTypes` removed), since its own fold would evaluate that tree standalone
+and nothing in it says so; and a recognised container whose payload offers a different element
+than it states, since re-homing over either would silently drop the other. The message names the door (`mkOptionType`, or `evalModuleTree` with the
 option), the type, what declared the element, and the ways out, the opt-out above among them.
 **Two prices, stated:** a stock container whose `merge` was overridden (`attrsOf t // { merge = …; }`)
 cannot be told from the stock one and is re-homed silently, losing the override; and a foreign type

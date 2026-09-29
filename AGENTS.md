@@ -223,7 +223,7 @@ substructure; covered by `test-substSubModules-rebuilds`), `coalesceUnmatched`'s
 ## The declared opt-out `declaresNesting = false`
 
 The import walk `interface.declaresNesting` asks whether a foreign type declares a gen nesting type
-as an element, at any depth. It is bounded by `importedTypeWalkFuel` (32). At exhaustion it
+as an element, at any depth, in its carrying spellings and never its functor payload. It is bounded by `importedTypeWalkFuel` (32). At exhaustion it
 **refuses by name** (S2 (i), den-hoag-n6dh7), which is what happens to a self-referential element
 such as nixpkgs' `types.json` shape. The message names three remedies:
 
@@ -239,9 +239,13 @@ or a non-boolean is refused by name at `mkOptionType` and by the walk. Cells:
 
 The refusal fires where a type is HOMED (`interface.homedAt`): at a declared option
 (`evalModuleTree`, naming the option) and at `mkOptionType` (`importType`). One of the six stock
-containers whose element may nest (`canNest`) is re-homed as gen-merge's own. Its stated price: an
-overridden `merge` on it is lost silently. A type outside the six that declares a nesting element is
-refused, and one that forwards without declaring evaluates its tree standalone (OQ11 (d)'s price).
+containers whose element may nest (`canNest`) is re-homed as gen-merge's own, recognised by its
+functor and rebuilt over the element its carrying spellings (`nestedTypes`, a top-level `elemType`)
+state, never its functor payload's. Its stated price: an overridden `merge` on it is lost silently. A
+type outside the six that declares a nesting element is refused, and one that forwards without
+declaring evaluates its tree standalone (OQ11 (d)'s price). Refused by name too: a record stating no
+element whose payload OFFERS one declaring a nesting type (`nestingOfferRefusal`), and a recognised
+container whose payload element differs from its stated one (`rehomeDisagreementRefusal`).
 A record that is itself a nesting type (a `refined`-style copy) is not refused: its copied fold is the
 price. The nesting and container folds carry `mergeDefs.threaded`, and the exported `merge` folds
 through it with `interface.bridge`, one standalone evaluation per tree. Cells:

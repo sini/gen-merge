@@ -719,7 +719,10 @@ in
           topOnlyHomed = (interface.homedAt "probe" null topOnly).name;
           topOnlyValue = value topOnly [ { x = 1; } ];
           stripped = shape (interface.importedRehome (t.listOf sub // { nestedTypes = { }; }));
-          disagree = ok (interface.importedRehome (t.listOf t.str // { nestedTypes.elemType = sub; }));
+          # Shallow: `ok`'s `deepSeq` would throw inside the rehomed element's own record either way.
+          disagree =
+            (builtins.tryEval (interface.importedRehome (t.listOf t.str // { nestedTypes.elemType = sub; })))
+            .success;
           ctlSub = shape (interface.importedRehome (t.listOf sub));
           ctlSubRehomed = (interface.importType (t.listOf sub)) ? rehomed;
           ctlStrRehomed = (interface.importType (t.listOf t.str)) ? rehomed;
