@@ -1042,18 +1042,19 @@ let
         keys = [ ];
       }
     else
-      {
-        roles = { };
-        keys = [ ];
-      };
+      noRoles;
+  # Shared, so the common answer allocates nothing per read.
+  noRoles = {
+    roles = { };
+    keys = [ ];
+  };
   statedRoles = t: (readRoles t).roles;
-  unroledNested = t: builtins.removeAttrs (t.nestedTypes or { }) (readRoles t).keys;
+  unroledNested = t: read: builtins.removeAttrs (t.nestedTypes or { }) read.keys;
 
   carrierRefusal =
-    t:
+    t: roles:
     let
       name = nameOf t;
-      roles = statedRoles t;
       missing = filter (f: !(t ? ${f})) subProtocol;
     in
     # A union's members introduce no path level, so a leaf's three answers are ITS answers; the
@@ -1075,10 +1076,7 @@ let
   # gen's constructor and be refused there in a word its author never wrote. The refusal belongs here,
   # in the author's vocabulary, for the reason `carrierRefusal` does.
   relationOwedRefusal =
-    t:
-    let
-      roles = statedRoles t;
-    in
+    t: roles:
     if roles == { } || statesRelation t || t ? recarry then
       null
     else
@@ -1101,14 +1099,13 @@ let
   # its `nestedTypes.elemType` holds something that is not a type (an `attrTag` tag an author named
   # `elemType`). Refused here, by name, rather than resolved by an order nobody chose.
   unroledCollisionRefusal =
-    t:
+    t: roles: unroled:
     let
-      roles = statedRoles t;
       role = head (attrNames roles);
       spelled = attrNames (roleSpelling.${role}.nested roles.${role});
-      clash = filter (k: builtins.elem k spelled) (attrNames (unroledNested t));
+      clash = filter (k: builtins.elem k spelled) (attrNames unroled);
     in
-    if roles == { } || clash == [ ] then
+    if unroled == { } || roles == { } || clash == [ ] then
       null
     else
       "gen-merge: the option type `${nameOf t}' states its ${role} in its top-level spelling, and its "
@@ -1320,8 +1317,16 @@ let
     else
       importType d;
 
+  # `read` is bound ONCE per import and shared by every refusal and the record: `importType` runs per
+  # instance, so each re-reading is paid once per declared position (perf-bench `schemaHosts`). An
+  # empty `nestedTypes` states no unroled key, so it is not re-read for one.
   importType =
     t:
+    let
+      read = readRoles t;
+      roles = read.roles;
+      unroled = if (t.nestedTypes or { }) == { } then { } else unroledNested t read;
+    in
     if !(isAttrs t) then
       {
         refused = "gen-merge: cannot import an option type from a ${builtins.typeOf t}; the boundary translates records, not values";
@@ -1355,16 +1360,16 @@ let
       )
     else if !(isNesting t) && statesWrapped t && declaresNesting t then
       { refused = nestingImportRefusal "mkOptionType" null t; }
-    else if carrierRefusal t != null then
-      { refused = carrierRefusal t; }
+    else if carrierRefusal t roles != null then
+      { refused = carrierRefusal t roles; }
     else if functorRefusal t != null then
       { refused = functorRefusal t; }
     else if relationRefusal t != null then
       { refused = relationRefusal t; }
-    else if relationOwedRefusal t != null then
-      { refused = relationOwedRefusal t; }
-    else if unroledCollisionRefusal t != null then
-      { refused = unroledCollisionRefusal t; }
+    else if relationOwedRefusal t roles != null then
+      { refused = relationOwedRefusal t roles; }
+    else if unroledCollisionRefusal t roles unroled != null then
+      { refused = unroledCollisionRefusal t roles unroled; }
     else
       {
         imported =
@@ -1377,8 +1382,6 @@ let
             checked = isV2 t || checksDefs t;
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
-            roles = statedRoles t;
-            unroled = unroledNested t;
           in
           # WHAT THE FOREIGN PROTOCOL DID NOT SAY SURVIVES UNTOUCHED. Only the protocol's own names
           # are consumed here; a descriptor's other fields are the author's and are none of this
