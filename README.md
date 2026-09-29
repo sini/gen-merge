@@ -60,7 +60,8 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 2. **freeformType** — `lazyAttrsOf` / `attrsOf` routing of undeclared keys.
 3. **per-key `name` + `_module.args`** binding under keyed collections.
 4. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
-5. **`imports` merging** — recursive collect/flatten, imports before own config.
+5. **`imports` as graph edges** — each tree's modules are nodes keyed by nixpkgs' key rule, collected
+   breadth-first by one closure; a diamond or a repeated key is one node (`ci/tests/module-graph.nix`).
 6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`. A
    descriptor stating `name` and no fold takes nixpkgs' constructor default (see
    [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-interim-exported-beside-mergeleaf)).
@@ -451,9 +452,11 @@ forced, every leaf takes the cold merge, freeform re-merges cold (the `coreShort
 an opt-in knob with a documented firing contract). Warm is the reverse-cone reuse of adios's
 `mkOverride`, but sound under gen-merge's config *fixpoint* (adios has none).
 
-**Firing.** The engine flattens `editedModules` with its OWN `collectModules` — the EDITED entries are
-the tail-k of the full flatten (k = `length (collectModules callM editedModules)`, never a caller
-count, since `imports` expansion is config-dependent). Warm is REFUSED (cold fallback, stated in the
+**Firing.** The engine takes the EDITED entries from its OWN module closure (`moduleClosure`, never a
+caller count, since `imports` expansion is config-dependent): they are the nodes the edited roots
+reach. The closure is breadth-first, so an appended module's imports are no tail of the full closure,
+and the entries are partitioned by ORIGIN. Warm is REFUSED (cold fallback, `reason = "an edited module reaches a module node the base also reaches (warm refused)"`) when a node is reached from both a base
+root and an edited root, since it has no single origin. Warm is also REFUSED (cold fallback, stated in the
 trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
 to the footprint) — defence only; unreachable through `evalModuleTree` while module removal is
 refused, since the module reader refuses `disabledModules` by presence on its first read, before any
@@ -1424,6 +1427,23 @@ nixpkgs-faithful kernel; the structural mode later swaps a confluent-join kernel
 engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 
 ## Known byte-mode boundaries (deliberate)
+
+- **An explicit `key` spelled like an anonymous module's never meets it.** Module imports are graph
+  edges and a module is a node, identified by nixpkgs' key rule: an explicit `key` or a path module's
+  path in one namespace, an anonymous module (`<importer>:anon-<n>`) in another. nixpkgs keeps the
+  two in one string namespace, so a module with `key = ":anon-2"` merges there with the second
+  anonymous top-level module (`[ { l = [ "a" ]; } { key = ":anon-2"; l = [ "b" ]; } ]` after a
+  declaring module reads `[ "a" ]` in nixpkgs); here they are two nodes and read `[ "b" "a" ]`
+  (`ci/tests/module-graph.nix`, `test-a1-…`). Everywhere else the module set and its order are
+  nixpkgs': a diamond or a repeated key is one node, the closure is breadth-first, and the first
+  occurrence reached wins, taking its own imports.
+
+- **An import cycle terminates.** A keyed or path cycle (`a` imports `b` imports `a`, or a module
+  importing itself) closes over its finite set of node ids and each module contributes once
+  (`test-c1-…` to `test-c4-…`). nixpkgs overflows the stack on the same modules, uncatchably, so the
+  engine is more defined than the reference here. Data minting fresh keys without bound (a function
+  module returning `key = "k${toString (n + 1)}"` and importing its successor) is non-well-founded
+  and still diverges.
 
 - **A check-only `mkOptionType` refuses where nixpkgs' default merge is silent.** Two definitions
   that are attrsets sharing a key whose values are not `==`, or that are functions, are refused by

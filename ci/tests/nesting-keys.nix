@@ -31,12 +31,16 @@ let
     builtins.mapAttrs (_: builtins.attrNames) (
       builtins.removeAttrs groups (builtins.filter (g: groups.${g} == { }) (builtins.attrNames groups))
     );
-  # The minted children of a root evaluation, as `{ <group> = [ <key> … ]; }`, read off its node set
-  # and decoded. Enumerating is what forces every group's key set.
+  # The minted NESTED children of a root evaluation, as `{ <group> = [ <key> … ]; }`, read off its node
+  # set and decoded. Enumerating is what forces every group's key set. Scoped to the `nested` family:
+  # every tree also mints its module graph (`modules`, den-hoag-470xp), which is not this suite's
+  # subject.
   childrenOf =
     r:
     let
-      decoded = builtins.filter (d: d != null) (map genScope.decodeNta r._evaluation.allNodeIds);
+      decoded = builtins.filter (d: d != null && d.name == "nested") (
+        map genScope.decodeNta r._evaluation.allNodeIds
+      );
     in
     builtins.mapAttrs (_: ds: map (d: d.key) ds) (builtins.groupBy (d: d.group) decoded);
   seedOf =
@@ -223,7 +227,9 @@ in
           ids = builtins.filter (i: genScope.decodeNta i != null) r._evaluation.allNodeIds;
         in
         {
-          count = builtins.length ids;
+          # the two families counted apart, so a regression in either shows on its own
+          nested = builtins.length (builtins.filter (i: (genScope.decodeNta i).name == "nested") ids);
+          modules = builtins.length (builtins.filter (i: (genScope.decodeNta i).name == "modules") ids);
           roundTrips = builtins.all (
             i:
             let
@@ -233,7 +239,10 @@ in
           ) ids;
         };
       expected = {
-        count = 2;
+        nested = 2;
+        # two per tree: the root's declaration and definition, and in each nested tree `a` and `b`
+        # the submodule's module and the one definition it receives
+        modules = 6;
         roundTrips = true;
       };
     };

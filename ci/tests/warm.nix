@@ -26,7 +26,7 @@ let
     ;
   inherit (genMergeCore)
     warmDecide
-    collectModules
+    moduleClosure
     ;
   t = gm.types;
 
@@ -39,7 +39,7 @@ let
     d = opt;
   };
 
-  # ── flat-entry constructors (the `collectModules` output shape { _file; content; srcClass }) ──
+  # ── flat-entry constructors (the `moduleClosure` entry fields `warmDecide` reads { _file; content; srcClass }) ──
   clean = file: content: {
     _file = file;
     inherit content;
@@ -56,7 +56,7 @@ let
     srcClass = "dirty";
   };
 
-  # identity callM — the `warmDecide`/`collectModules` fixtures are all plain attrset modules.
+  # identity callM — the `warmDecide`/`moduleClosure` fixtures are all plain attrset modules.
   idCallM = m: m;
 
   # ── the byte oracle (design spec §6 / the standing A2 tooth) ─────────────────────────────────────
@@ -519,10 +519,10 @@ in
       expected = false;
     };
 
-    # EDITED-tail identity: the engine flattens `editedModules` itself (imports included), and tail-k of
-    # the FULL flatten equals the edited flatten — collectModules is concatMap, flatten distributes over
-    # ++, the appended list is a strict suffix. An imports-carrying appended module flattens to
-    # [ import…, own ] (imports BEFORE own content, nixpkgs order).
+    # EDITED entries by ORIGIN: the module closure is breadth-first (den-hoag-470xp), so an appended
+    # module's imports follow the whole level before them and are NOT a tail of the full closure; the
+    # engine takes the edited entries as the closure of the edited roots instead. Re-pinned from the
+    # depth-first flatten, which read `[ "base1" "imp" "edit" ]` and `[ "imp" "edit" ]`.
     test-edited-tail-identity-with-imports = {
       expr =
         let
@@ -543,7 +543,7 @@ in
               config.c = 3;
             }
           ];
-          files = ms: map (e: e._file) (collectModules idCallM ms);
+          files = ms: map (e: e._file) (moduleClosure "module-tree" idCallM ms);
         in
         {
           full = files (base ++ edited);
@@ -552,12 +552,12 @@ in
       expected = {
         full = [
           "base1"
-          "imp"
           "edit"
+          "imp"
         ];
         editedFlat = [
-          "imp"
           "edit"
+          "imp"
         ];
       };
     };

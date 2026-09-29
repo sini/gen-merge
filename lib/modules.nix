@@ -847,47 +847,152 @@ let
     __functor = self: f;
   };
 
-  # ── module collection (import-expanding), shared by the fixpoint + the warm edited-tail count ──────
-  # Flatten a module (function / __functor / attrset / path), applying it via the caller's `callM`, and
-  # recurse into `imports` (spec §1 item 5). Returns [{ _file; content; srcClass }] with imports BEFORE
-  # own content (own defs win at equal priority / append last — nixpkgs order). `srcClass` is decided on
-  # the PRE-application `m0` (design spec §3) and stays LAZY (the cold path never forces it). Hoisted to
-  # module scope so `evalModuleTree` can flatten `editedModules` with the SAME machinery it flattens the
-  # full list with — the warm path derives the EDITED tail-count from `length (collectModules callM
-  # editedModules)`, never trusting a caller-supplied count (imports expansion is config-dependent).
+  # ── THE MODULE GRAPH (den-hoag-470xp, arm F) ────────────────────────────────────────────────────
+  # Module imports are graph edges and a module is a node; a diamond is two edges into one node, so a
+  # module imported twice contributes once by construction. Node identity is nixpkgs' key rule, split
+  # into two namespaces: an explicit `key` and a path module's path share the group `key` (a key that
+  # spells a path IS that path's module), and an anonymous module is the group `anon`, keyed
+  # `<importer's id>:anon-<n>` (1-based; the importer is the tree itself at the top level). The anon
+  # rule is compositional, since an anonymous module under a shared node is itself shared, and
+  # injective, since a minted id is length-prefixed. An explicit key spelled like an anonymous one
+  # stays apart from it, where nixpkgs merges the two: a named byte-mode boundary (README).
   #
-  # `_file` is an INHERITED attribute of the import tree (Knuth 1968): `parentFile` is the importer's
-  # resolved file flowing down, and a node's own attribution overrides it. Precedence, most specific
-  # first: a raw path leaf's own path string (nixpkgs-parity error location; `isPath` is guarded first so
-  # a non-attrset is never `._file`-selected), then the entry's own `_file` (pre-application `m0`, then
-  # the applied `m`), then the importer's file, then `"<gen-merge>"` at the root. So content passed
-  # through an unattributed wrapper (`setDefaultModuleLocation F m` = `{ _file = F; imports = [ m ]; }`)
-  # is attributed to its IMPORT site `F` rather than to the fallback, as nixpkgs'
-  # `collectStructuredModules` threads `parentFile`. That equivalence is of the IMPORT-site reading only:
-  # a path module whose content names its own `_file` is named by its path here and by the declared
-  # `_file` in nixpkgs, a pre-existing precedence difference this threading passes on to its
-  # children unchanged. `self._file` stays a thunk: the parent's `m` is already in WHNF (its `imports`
-  # were read), and a child's file is forced only when a file surface is read, never by `.config`.
-  collectModulesFrom =
-    parentFile: callM: mods:
-    concatMap (
-      m0:
+  # A path module is identified BEFORE application; any other module by its applied result's `key`.
+  # A lambda carries no identity (ADR-0034).
+  moduleIdOf =
+    treeId: group: key:
+    scope.mintNtaId {
+      host = treeId;
+      name = "modules";
+      inherit group key;
+    };
+  moduleGroupKey =
+    importerId: i: m0: m:
+    if builtins.isPath m0 || isPathString m0 then
+      {
+        group = "key";
+        key = toString m0;
+      }
+    else if isAttrs m && m ? key then
+      {
+        group = "key";
+        key = toString m.key;
+      }
+    else
+      {
+        group = "anon";
+        key = "${importerId}:anon-${toString (i + 1)}";
+      };
+
+  # One level of the closure: the modules one importer names, each applied once through the caller's
+  # `callM`, as the element the closure keys by its minted id. The element's `content` is shared by
+  # the closure's operator (`next`, its imports' elements) and the fold, so a module is applied once.
+  # `srcClass` is decided on the PRE-application `m0` (design spec §3) and stays LAZY.
+  #
+  # `_file` is an INHERITED attribute along the import edge that reached the node FIRST (Knuth 1968):
+  # the importer's resolved file flows down, and a node's own attribution overrides it. Precedence,
+  # most specific first: a raw path leaf's own path string (nixpkgs-parity error location; `isPath` is
+  # guarded first so a non-attrset is never `._file`-selected), then the entry's own `_file`
+  # (pre-application `m0`, then the applied `m`), then the importer's file, then `"<gen-merge>"` at the
+  # root. So content passed through an unattributed wrapper (`setDefaultModuleLocation F m` =
+  # `{ _file = F; imports = [ m ]; }`) is attributed to its IMPORT site `F`, as nixpkgs'
+  # `collectStructuredModules` threads `parentFile`. That equivalence is of the IMPORT-site reading
+  # only: a path module whose content names its own `_file` is named by its path here and by the
+  # declared `_file` in nixpkgs. `_file` stays a thunk, forced only when a file surface is read.
+  moduleLevel =
+    treeId: callM: importer: mods:
+    prelude.imap0 (
+      i: m0:
       let
         m = callM m0;
+        gk = moduleGroupKey importer.key i m0 m;
         self = {
+          key = moduleIdOf treeId gk.group gk.key;
+          inherit (gk) group;
+          ntaKey = gk.key;
+          inherit m0;
           _file =
             if builtins.isPath m0 || isPathString m0 then
               toString m0
             else
-              (m0._file or (m._file or parentFile));
+              (m0._file or (m._file or importer._file));
           content = m;
           srcClass = classifyModule m0;
+          next = moduleLevel treeId callM self (importsOf m);
         };
-        imported = collectModulesFrom self._file callM (importsOf m);
       in
-      imported ++ [ self ]
+      self
     ) mods;
-  collectModules = collectModulesFrom "<gen-merge>";
+  # A tree's own module list, as the closure's start set.
+  moduleRoots =
+    treeId: callM:
+    moduleLevel treeId callM {
+      key = treeId;
+      _file = "<gen-merge>";
+    };
+  # The closure from a start set: ONE `genericClosure`, a FIFO work list, so it is breadth-first,
+  # imports are yielded in declaration order and the first occurrence reached wins, as nixpkgs'
+  # `filterModules`. A losing occurrence takes its imports with it. The done-set is the finite set of
+  # minted ids, so a keyed or path import cycle closes (nixpkgs overflows there: a named byte-mode
+  # boundary). Data that mints fresh keys without bound is non-well-founded and still diverges.
+  closeModules =
+    startSet:
+    builtins.genericClosure {
+      inherit startSet;
+      operator = e: e.next;
+    };
+  # `moduleClosure treeId callM mods` — every module a tree reaches, one element per node, in
+  # closure order. `flat` IS this list, so the module set folded equals the node set minted.
+  moduleClosure =
+    treeId: callM: mods:
+    closeModules (moduleRoots treeId callM mods);
+
+  # THE FAMILY a minting tree publishes (`nta.modules`): one child per closure element, grouped by
+  # namespace. Each seed addresses its element's `m0` in the host attribute `moduleEntries`; each
+  # position record discriminates the node by data (`mode = "module"`, den-hoag-9d80v) and carries
+  # what the node answers, off the host's record: its entry and the ids its imports identify to.
+  moduleFamily =
+    roots: entries:
+    let
+      indexed = prelude.imap0 (i: e: { inherit i e; }) entries;
+      groupOf =
+        g: f:
+        listToAttrs (
+          concatMap (
+            x:
+            if x.e.group == g then
+              [
+                {
+                  name = x.e.ntaKey;
+                  value = f x;
+                }
+              ]
+            else
+              [ ]
+          ) indexed
+        );
+      byGroup = f: {
+        key = groupOf "key" f;
+        anon = groupOf "anon" f;
+      };
+    in
+    {
+      inherit entries;
+      roots = map (e: e.key) roots;
+      product = byGroup (x: [
+        {
+          attr = "moduleEntries";
+          def = x.i;
+          at = [ "m0" ];
+        }
+      ]);
+      positions = byGroup (x: {
+        mode = "module";
+        member = null;
+        inherit (x.e) _file content srcClass;
+        imports = map (c: c.key) x.e.next;
+      });
+    };
 
   # ── warm re-eval decision layer (design spec §§1-2) ─────────────────────────
   # The opt-in warm path reuses the previous eval's declared-leaf values/provenance for locs PROVABLY
@@ -2399,7 +2504,7 @@ let
         else
           notAModule m;
 
-      flat = collectModules callD modules;
+      flat = moduleClosure knotId callD modules;
       declEntries = prelude.imap0 (i: e: {
         idx = i;
         file = e._file;
@@ -2495,19 +2600,55 @@ let
             (self.get id knotAttr)._nested.product
           else
             { };
+        # ITS MODULE GRAPH (den-hoag-470xp): every tree, the root and each nested one, mints the
+        # modules it reaches as ONE identity-keyed family, so identity never crosses trees. A module
+        # node hosts no children: its position's `member` is not nesting and its `mode` is not
+        # `container`, which both builders read.
+        nta.modules =
+          self: id:
+          if id == knotId || interface.isNesting (self.getHostAt "positions").member then
+            (self.get id knotAttr)._modules.product
+          else
+            { };
       } knotKindName)
     ];
   };
   knotNoChildren = _: _: { };
   knotNoImports = _: _: [ ];
+  # IMPORT EDGES, gen-scope's `imports` reference attribute (Hedin 2000): a module node names the ids
+  # its imports identify to, a tree the ids of its own module list, anything else none. A diamond is
+  # two edges into one id, and `queryReverse` answers a module's importers.
+  knotImports =
+    self: id:
+    if id == knotId then
+      (self.get id knotAttr)._modules.roots
+    else
+      let
+        p = self.getHostAt "positions";
+      in
+      if p.mode == "module" then
+        p.imports
+      else if interface.isNesting p.member then
+        (self.get id knotAttr)._modules.roots
+      else
+        [ ];
   knotDefinitions = self: id: (self.get id knotAttr)._nested.definitions;
-  knotPositions = self: id: { nested = (self.get id knotAttr)._nested.positions; };
+  knotModuleEntries = self: id: (self.get id knotAttr)._modules.entries;
+  knotPositions =
+    self: id:
+    let
+      r = self.get id knotAttr;
+    in
+    {
+      nested = r._nested.positions;
+      modules = r._modules.positions or { };
+    };
   driveKnot =
     f:
     (scope.eval { } {
       children = knotNoChildren;
       imports = knotNoImports;
-      ${knotAttr} = self: id: f self (self.get id knotAttr);
+      ${knotAttr} = self: id: f self id (self.get id knotAttr);
     } knotScope).get
       knotId
       knotAttr;
@@ -2518,9 +2659,11 @@ let
     let
       evaluation = scope.eval { } {
         children = knotNoChildren;
-        imports = knotNoImports;
-        ${knotAttr} = self: id: if id == knotId then f self (self.get id knotAttr) else childTree self id;
+        imports = knotImports;
+        ${knotAttr} =
+          self: id: if id == knotId then f self id (self.get id knotAttr) else childTree self id;
         definitions = knotDefinitions;
+        moduleEntries = knotModuleEntries;
         positions = knotPositions;
       } knotScopeMinting;
       r = evaluation.get knotId knotAttr;
@@ -2617,7 +2760,13 @@ let
       n = member.nests;
       m = if p.mode == "called" then n.calledMode else p.mode;
     in
-    if !(interface.isNesting member) && p.mode == "container" then
+    # A MODULE NODE (den-hoag-470xp) answers its closure entry off the host's position record, as a
+    # container node reads its definitions (arm (B)), and never a tree evaluation.
+    if p.mode == "module" then
+      {
+        inherit (p) _file content srcClass;
+      }
+    else if !(interface.isNesting member) && p.mode == "container" then
       containerNode self id
     else if !(interface.isNesting member) then
       throw "gen-merge: `evalModuleTree': option `${showOption p.loc}': the fold of the tree holding it did not select a nested tree at this position${
@@ -2641,7 +2790,7 @@ let
                 n.specialArgs;
             inherit (n) check coreShortCircuit;
           }
-      ) self (self.get id knotAttr);
+      ) self id (self.get id knotAttr);
 
   # The knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a call
   # pays no argument for the choice: a root's (the minting knot), a root's whose evaluation is
@@ -2927,7 +3076,7 @@ let
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
       body = (
-        self: result:
+        self: treeId: result:
         let
           # The same refusal as at `declArgs`, spelled inline for the same reason.
           baseArgs =
@@ -3007,8 +3156,13 @@ let
           # the declaration guard. Hanging it on `allOptions` alone is NOT enough and that is
           # measured rather than reasoned — the VALUE path reaches `flat`'s own `imports` expansion
           # before it reaches `allOptions`, so an `imports` reading `config` recursed uncatchably
-          # while the guard sat unforced one binding away.
-          flat = builtins.seq declarationGuard (collectModules callM modList);
+          # while the guard sat unforced one binding away. The guard sits on the closure's start set,
+          # which the warm path's origin split reads as well as `flat`.
+          #
+          # `flat` IS the tree's module closure (`moduleClosure`), in closure order: the fold below and
+          # the minted `modules` family read one list.
+          roots = builtins.seq declarationGuard (moduleRoots treeId callM modList);
+          flat = closeModules roots;
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
           # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
@@ -3047,8 +3201,12 @@ let
           ) { } declEntries;
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────
-          # EDITED tail-count from the engine's OWN flatten of `editedModules` (imports expansion is
-          # config-dependent, so a caller count is untrusted). `decision` is LAZY — the eval PATH is
+          # EDITED entries by ORIGIN, from the engine's OWN closure (imports expansion is
+          # config-dependent, so a caller count is untrusted): the closure is breadth-first, so an
+          # appended module's imports interleave with the base's and are no tail of `flat`. The edited
+          # nodes are the closure of the edited roots, moved to the tail `warmDecide` reads. A node
+          # reached from both a base root and an edited root has no single origin, so warm is REFUSED
+          # (cold fallback, reason stated). `decision` is LAZY — the eval PATH is
           # zero-cost when the knob is off: the cold path (`warmFrom == null`) never forces `decision`
           # (`warmActive` short-circuits on the null check), so no classification/footprint runs. (An
           # explicit read of `.warmDecision.modules` on a cold result DOES force classification — the
@@ -3067,17 +3225,47 @@ let
           # at the top). A nested owner's own strictness changing underneath is covered by the
           # plane's standing premises: a dirty declaring module re-merges, and `specialArgs` are
           # unchanged between evaluations.
-          editedCount = if editedModules == [ ] then 0 else length (collectModules callM editedModules);
+          origin =
+            let
+              baseLen = length modList - length editedModules;
+              editKeys = map (e: e.key) (closeModules (drop baseLen roots));
+              baseKeys = listToAttrs (
+                map (e: {
+                  name = e.key;
+                  value = true;
+                }) (closeModules (take baseLen roots))
+              );
+              editSet = listToAttrs (
+                map (k: {
+                  name = k;
+                  value = true;
+                }) editKeys
+              );
+            in
+            if editedModules == [ ] then
+              {
+                inherit flat;
+                editedCount = 0;
+                collision = false;
+              }
+            else
+              {
+                flat = filter (e: !(editSet ? ${e.key})) flat ++ filter (e: editSet ? ${e.key}) flat;
+                editedCount = length editKeys;
+                collision = prelude.any (k: baseKeys ? ${k}) editKeys;
+              };
           decision = warmDecide {
+            inherit (origin) flat editedCount;
             inherit
-              flat
-              editedCount
               allOptions
               warmFrom
               ;
           };
           warmActive =
-            warmFrom != null && warmFrom.warmDecision.strict or null == strict && !decision.disabledRefusal;
+            warmFrom != null
+            && warmFrom.warmDecision.strict or null == strict
+            && !decision.disabledRefusal
+            && !origin.collision;
           warmCtx =
             if warmActive then
               {
@@ -3499,6 +3687,8 @@ let
                   "check differs from warmFrom's (warm refused)"
                 else if decision.disabledRefusal then
                   "disabledModules on an edited module (warm refused)"
+                else if origin.collision then
+                  "an edited module reaches a module node the base also reaches (warm refused)"
                 else
                   null;
               inherit strict;
@@ -3748,6 +3938,9 @@ let
           # THE NESTED POSITIONS OF THIS TREE (den-hoag-n6dh7 item 2): one group per declared
           # option, in declaration order, and one for the freeform plane, last. Read by the minting
           # knot alone, and built only on an evaluation that mints.
+          # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the family `nta.modules` mints, one node per
+          # closure entry. Read by the minting knot alone, and built only on an evaluation that mints.
+          _modules = if knot.mints then moduleFamily roots flat else null;
           _nested =
             if knot.mints then
               nestedGroups {
@@ -4086,10 +4279,13 @@ in
     # `classifyModule` (design spec §3) — the source-class predicate threaded onto every collected
     # entry as `srcClass`; shared with the warm re-eval path and the classify suite.
     classifyModule
-    # Warm re-eval decision layer (design spec §§1-2) — `collectModules` (the import-expanding flatten,
-    # hoisted so `editedModules` flattens with the same machinery) + the pure `warmDecide` predicate and
-    # its footprint helpers. On the internal core seam only; the splice EXECUTION rides `evalModuleTree`.
-    collectModules
+    # Warm re-eval decision layer (design spec §§1-2) — `moduleClosure` (the module graph's closure,
+    # which the warm path partitions by origin) + the pure `warmDecide` predicate and its footprint
+    # helpers, and `moduleGroupKey`, the identity rule the lint shares. On the internal core seam only;
+    # the splice EXECUTION rides `evalModuleTree`.
+    moduleClosure
+    moduleGroupKey
+    moduleIdOf
     warmDecide
     declLeafPaths
     moduleDefFootprint

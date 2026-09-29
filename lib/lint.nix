@@ -98,6 +98,8 @@ let
     isPathString
     notAModule
     importsOf
+    moduleIdOf
+    moduleGroupKey
     mergeOptionDecls
     ;
 
@@ -110,51 +112,52 @@ let
       detail
       ;
   };
-  # ── module collection (import-expanding, function-OPAQUE), _file tracked as core.collectModules ──
-  # Path leaves (a path, or a string naming an absolute path, as the engine's loader reads them) are
-  # `import`ed (pure); an attrset module contributes its `imports` recursively; a function (or
-  # `__functor`) module is an OPAQUE leaf; any other value is refused by the engine's own refusal, as
-  # `callM` refuses it. `file` mirrors `collectModulesFrom`'s inherited `_file` rule exactly (a path's
-  # provenance IS its path string, else the module's `_file`, else the importer's resolved
-  # `parentFile`, else the engine fallback at the root).
+  # ── module collection (the engine's module graph, function-OPAQUE), _file as the engine's ─────────
+  # The engine's identity rule and breadth-first closure (`moduleGroupKey`, `lib/modules.nix`), so a
+  # diamond is linted once, in the engine's order. Path leaves (a path, or a string naming an absolute
+  # path, as the engine's loader reads them) are `import`ed (pure); an attrset module contributes its
+  # `imports`; a function (or `__functor`) module is an OPAQUE leaf; any other value is refused by the
+  # engine's own refusal, as `callM` refuses it. `file` mirrors the engine's inherited `_file` rule (a
+  # path's provenance IS its path string, else the module's `_file`, else the file of the importer
+  # that reached it first, else the engine fallback at the root).
+  # RESIDUE: the lint applies no module, so a non-path function module whose `key` exists only after
+  # application is an anonymous node here and a keyed one to the engine.
   collect =
     parentFile: mods:
-    concatMap (
-      m0:
-      let
-        loaded = builtins.isPath m0 || isPathString m0;
-        m = if loaded then import m0 else m0;
-        file = if loaded then toString m0 else (m0._file or (m._file or parentFile));
-      in
-      if isFunction m then
-        [
-          {
-            fn = true;
-            module = m;
-            inherit file;
-          }
-        ]
-      else if isAttrs m then
-        if m ? __functor then
-          [
-            {
-              fn = true;
+    let
+      level =
+        importer: ms:
+        prelude.imap0 (
+          i: m0:
+          let
+            loaded = builtins.isPath m0 || isPathString m0;
+            m = if loaded then import m0 else m0;
+            fn = isFunction m || (isAttrs m && m ? __functor);
+            gk = moduleGroupKey importer.key i m0 m;
+            self = {
+              key = moduleIdOf "<lint>" gk.group gk.key;
+              inherit fn;
               module = m;
-              inherit file;
-            }
-          ]
-        else
-          [
-            {
-              fn = false;
-              module = m;
-              inherit file;
-            }
-          ]
-          ++ collect file (importsOf m)
-      else
-        notAModule m
-    ) mods;
+              file = if loaded then toString m0 else (m0._file or (m._file or importer.file));
+              next =
+                if fn then
+                  [ ]
+                else if isAttrs m then
+                  level self (importsOf m)
+                else
+                  notAModule m;
+            };
+          in
+          self
+        ) ms;
+    in
+    builtins.genericClosure {
+      startSet = level {
+        key = "<lint>";
+        file = parentFile;
+      } mods;
+      operator = e: e.next;
+    };
 
   # ── option-decl leaves of one module (loc + descriptor), via the engine's `isOptLeaf` ──
   optionLeaves =

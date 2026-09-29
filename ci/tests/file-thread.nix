@@ -279,7 +279,9 @@ in
     };
     # C — `.config` does not depend on `_file`: wrappers, a function child, an `mkOverride`
     # conflict, own content plus imports, and a nested tree. Priority and merge order key on the
-    # module INSTANCE, never on the file; a change to the flatten ORDER moves this digest.
+    # module INSTANCE, never on the file; a change to the collection ORDER moves this digest. Re-pinned
+    # for the breadth-first module closure (den-hoag-470xp): `q` reads `[ "b" "a" "own" ]`, nixpkgs
+    # 26.11's value on the same modules, where the depth-first flatten read `[ "own" "b" "a" ]`.
     test-config-digest-unmoved-by-file-threading = {
       expr = builtins.hashString "sha256" (
         builtins.toJSON
@@ -312,7 +314,7 @@ in
             ];
           }).config
       );
-      expected = "50408482045a0ad4c0f25031ea5a9cf0e500a659ce8d8b9b6d4b8dc8fbbb5a64";
+      expected = "d1ff1d5864fdc673ce5f713279d566830959c29f3fc1db8c803277a10d133c27";
     };
     # Z1 — the threaded parent file is a THUNK: reading `.config` through a wrapper whose `_file`
     # throws does not force it. An eager thread reads `false` here.

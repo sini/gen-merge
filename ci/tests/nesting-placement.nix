@@ -512,7 +512,10 @@ in
             r2 = evalExposed (host (t.submodule { options.b = gm.mkOption { type = leafB; }; }) [ ]);
           in
           {
-            nodes = builtins.length r2._evaluation.allNodeIds;
+            # the tree nodes: the module graph each tree mints (`modules`, den-hoag-470xp) is not counted
+            nodes = builtins.length (
+              builtins.filter (i: (genScope.decodeNta i).name or null != "modules") r2._evaluation.allNodeIds
+            );
             w = r2.config.o.b.w;
           };
         expected = {
