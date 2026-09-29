@@ -136,7 +136,7 @@ in
     };
 
     # THE RESIDUE (README "Two prices, stated"): a check over the bare tree, which has no witness
-    # (member A), and a stock `either`/`oneOf`/`nullOr` over the bare tree, whose stock check reads
+    # (member A), the same stated against the bare tree a container offers (M0), and a stock `either`/`oneOf`/`nullOr` over the bare tree, whose stock check reads
     # the tree and so can be neither carried nor detected (member B). Each is served, as pinned here.
     test-the-residue-is-served = {
       expr = {
@@ -147,12 +147,16 @@ in
           np.str
         ]) no) m;
         nullOrTree = opt (ac (np.nullOr tree) no) m;
+        # A tree stated with only its `check` rewritten against the tree offered: the two agree on
+        # `merge`, the one slot a tree is compared on (M0 gate F3).
+        statedCheckOverOfferedTree = opt (np.listOf tree // { nestedTypes.elemType = ac tree no; }) [ m ];
       };
       expected = {
         bareTree = m;
         eitherTree = m;
         oneOfTree = m;
         nullOrTree = m;
+        statedCheckOverOfferedTree = [ m ];
       };
     };
   };
