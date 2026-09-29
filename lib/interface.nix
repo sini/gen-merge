@@ -554,7 +554,8 @@ let
   isNesting = t: t ? nests && t ? mergeDefs.threaded;
 
   # MAY this type nest? The dispatch and key-walk predicate: a type that is nesting, or wraps one
-  # at any depth, through what it carries in either vocabulary (`importedWrapped`). Bounded by the
+  # at any depth, through what it declares it wraps (`declaredWrapped`, the one reading the import
+  # refusal's walk takes too, so the two predicates never disagree on what a record wraps). Bounded by the
   # same fuel as `importedDecidable`, and `true` AT EXHAUSTION: a wrong `true` costs a walk over
   # types that carry no nesting (each falls back to its own fold), where a wrong `false` would send a
   # nesting option down the called path, whose nesting element refuses. Of the two, `true` is the
@@ -570,7 +571,7 @@ let
           true
         else
           let
-            wrapped = importedWrapped t;
+            wrapped = declaredWrapped t;
           in
           wrapped != [ ] && (fuel <= 0 || prelude.any (go (fuel - 1)) wrapped);
     in
@@ -578,19 +579,38 @@ let
 
   # What a record DECLARES it wraps, read by the readers that already exist and never a new copy:
   # its roles in either vocabulary (`importedWrapped`: `carries`, else every `nestedTypes` value, so
-  # `coercedTo`'s `finalType` counts), and, where it states none there, the element or members its
-  # functor payload carries (`payloadRole`). The payload is read only in that gap, so a record stating
-  # both spellings is walked once, not twice per level. A `nonMountable` record's `functor` is a
-  # refusal, and it wraps no type, so it is not read.
+  # `coercedTo`'s `finalType` counts), and, where it states none there, the element or members the
+  # carrying spellings state (`statedRoles`, which there reaches only a top-level `elemType`). Never
+  # its functor payload: a payload is what a type offers to MERGE on (`payloadOffered` below), not
+  # what it carries. A `nonMountable` record wraps no type.
   declaredWrapped =
     t:
     let
       wrapped = importedWrapped t;
-      payload = (t.functor or { }).payload or null;
-      role = payloadRole payload;
+      roles = statedRoles t;
     in
     if wrapped != [ ] || t ? carries || t ? nonMountable then
       wrapped
+    else if roles ? element then
+      [ roles.element ]
+    else if roles ? alternatives then
+      roles.alternatives
+    else
+      [ ];
+
+  # What a record's functor payload OFFERS to merge on as an element or members; `[ ]` for a record
+  # with `carries` or a `nonMountable` one. Read only where `declaredWrapped` is empty, and only to
+  # JUDGE the offer: the walk below refuses a record offering a type that declares a gen nesting type
+  # while stating none (OQ1 arm (ii-a), *defaulted, reversible*), and never takes the offer as a
+  # declaration.
+  payloadOffered =
+    t:
+    let
+      payload = (t.functor or { }).payload or null;
+      role = payloadRole payload;
+    in
+    if t ? carries || t ? nonMountable then
+      [ ]
     else if role == "element" then
       [ payload.elemType ]
     else if role == "alternatives" then
@@ -630,6 +650,11 @@ let
   # nest. The refusal names the remedy — the same three the README and AGENTS.md sections carry.
   # Depth-first with `any`, so the first exhausted path refuses and a cyclic type costs one walk of
   # the fuel, never the whole unfolded tree.
+  #
+  # ★ A RECORD THAT DECLARES NOTHING BUT WHOSE PAYLOAD OFFERS A NESTING ELEMENT IS REFUSED BY NAME
+  # (`nestingOfferRefusal`, OQ1 arm (ii-a), *defaulted, reversible*). Its payload answers only what it
+  # merges on (the 2026-09-25 ruling), so it declares nothing; its own fold would then evaluate the
+  # nested tree standalone, and nothing in the record says so.
   declaresNesting =
     root:
     let
@@ -646,7 +671,7 @@ let
         else if isNesting t then
           true
         else if wrapped == [ ] then
-          false
+          (if prelude.any (go (fuel - 1)) (payloadOffered t) then throw (nestingOfferRefusal t) else false)
         else if fuel <= 0 then
           throw (
             "gen-merge: cannot decide whether the option type `${nameOf root}' declares a gen nesting "
@@ -663,7 +688,9 @@ let
 
   # ── RE-HOMING: A STOCK FOREIGN CONTAINER, RECOGNISED (F2 elaboration, RULED "take (i)") ───────
   # Which of gen's own containers a foreign record IS, as `{ container; element; }` (or `{ container
-  # = "either"; alternatives; }`), or `null` when it is none of the six. Keyed on the functor NAME
+  # = "either"; alternatives; }`), or `null` when it is none of the six. RECOGNISED on the functor,
+  # the relation the record merges by; its element or members read from the carrying spellings
+  # (`statedRoles`), never from the payload, and a record stating none is not recognised. Keyed on the functor NAME
   # and the payload's KEY SET, as nixpkgs spells them: `attrsOf` and `lazyAttrsOf` are one
   # `attrsWith` discriminated by `lazy`, and `oneOf` is `either`s nested to the LEFT (nixpkgs folds
   # it with `foldl'`). A non-default `placeholder` is unrecognised, because gen's container has none
@@ -675,6 +702,11 @@ let
   # overridden (`attrsOf t // { merge = …; }`) cannot be told from the stock one — Nix cannot compare
   # functions — and is re-homed silently, losing the override. The byte-mode parity suite is the
   # divergence check.
+  #
+  # ★ A RECOGNISED RECORD WHOSE PAYLOAD OFFERS A DIFFERENT ELEMENT THAN IT STATES IS REFUSED BY NAME
+  # (`rehomeDisagreementRefusal`, OQ2 arm (b), *defaulted, reversible*): its own fold merges on the
+  # payload's, and re-homing over either one would silently drop the other. `==` is pointer-true
+  # for a stock record, which states the one value in both places.
   importedRehome =
     t:
     let
@@ -682,6 +714,30 @@ let
       payload = f.payload or null;
       keys = if isAttrs payload then attrNames payload else [ ];
       name = f.name or null;
+      roles = statedRoles t;
+      # Compared through the slots that hold them (`intersectAttrs` / `attrValues` keep each slot's
+      # value), never as two freshly selected types: `==` forces every attribute of a type it cannot
+      # tell by slot, and a self-referential `description` then recurses forever.
+      nested = t.nestedTypes or { };
+      agreed =
+        r:
+        if
+          (
+            if r ? alternatives then
+              payload.elemType == builtins.attrValues (
+                builtins.intersectAttrs {
+                  left = null;
+                  right = null;
+                } nested
+              )
+            else
+              builtins.intersectAttrs { elemType = null; } payload
+              == builtins.intersectAttrs { elemType = null; } (if (readRoles t).keys != [ ] then nested else t)
+          )
+        then
+          r
+        else
+          throw (rehomeDisagreementRefusal t);
     in
     if !(isAttrs t) || t ? carries || t ? nonMountable then
       null
@@ -694,30 +750,33 @@ let
           "placeholder"
         ]
       && payload.placeholder == "name"
+      && roles ? element
     then
-      {
+      agreed {
         container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
-        element = payload.elemType;
+        inherit (roles) element;
       }
-    else if
-      (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && !(isList payload.elemType)
-    then
-      {
+    else if (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && roles ? element then
+      agreed {
         container = name;
-        element = payload.elemType;
+        inherit (roles) element;
       }
-    else if
-      name == "either"
-      && keys == [ "elemType" ]
-      && isList payload.elemType
-      && length payload.elemType == 2
-    then
-      {
+    else if name == "either" && keys == [ "elemType" ] && roles ? alternatives then
+      agreed {
         container = "either";
-        alternatives = payload.elemType;
+        inherit (roles) alternatives;
       }
     else
       null;
+
+  # The re-homing disagreement's text (OQ2 arm (b)): the record, both statements, and the way out.
+  rehomeDisagreementRefusal =
+    t:
+    "gen-merge: the option type `${nameOf t}' states "
+    + (if (statedRoles t) ? alternatives then "its members" else "its element")
+    + " in a carrying spelling and offers a different one to merge on in its functor payload's "
+    + "`elemType'; its own fold merges on the payload's, so re-homing it over either would silently "
+    + "drop the other. State the same type in both";
 
   # ── HOMING: WHAT A TYPE BOUND TO A POSITION FOLDS AS (den-hoag-n6dh7 item 5; gate C9) ──────────
   # The type itself when it is gen's own — it states `carries`, is a nesting type, or is a checker
@@ -757,17 +816,18 @@ let
       else
         t;
 
-  # Whether a record states an element or members AT ALL, in either vocabulary: `carries`, a
-  # non-empty `nestedTypes`, or a functor payload stating `elemType` (the only payload key a
-  # container or a union states its element by; a `nonMountable` record's `functor` is a refusal,
-  # and it wraps nothing). Presence only, read before any walk: a record stating none can be neither
-  # re-homed nor refused, and most records crossing a door state none, so this is what keeps the
-  # nested-tree crossing's price off every leaf and every `mkOptionType` descriptor.
+  # Whether a record states an element or members AT ALL, in any carrying spelling (`carries`, a
+  # non-empty `nestedTypes`, a top-level `elemType`), or OFFERS one to merge on in its functor
+  # payload's `elemType` (read only so the walk can judge the offer, `payloadOffered`; a
+  # `nonMountable` record's `functor` is a refusal, and it wraps nothing). Presence only, read before
+  # any walk: a record doing neither can be neither re-homed nor refused, and most records crossing a
+  # door do neither, so this is what keeps the nested-tree crossing's price off every leaf and every
+  # `mkOptionType` descriptor.
   statesWrapped =
     t:
     t ? carries
     || (t.nestedTypes or { }) != { }
-    || (!(t ? nonMountable) && ((t.functor or { }).payload or null) ? elemType);
+    || (!(t ? nonMountable) && (t ? elemType || ((t.functor or { }).payload or null) ? elemType));
 
   # The import refusal's text: the door, the option where there is one, the container, what in it
   # declared the element, and the rule with its two ways out.
@@ -780,11 +840,21 @@ let
     "gen-merge: `${door}'${
       if loc == null then "" else " at option `${showOption loc}'"
     }: the option type `${nameOf t}' declares a gen nesting type as an element (${
-      if keys != [ ] then "its `nestedTypes.${head keys}'" else "its functor payload's `elemType'"
+      if keys != [ ] then "its `nestedTypes.${head keys}'" else "its `elemType'"
     }), and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot "
     + "thread the evaluation to a nested tree. Write it as gen-merge's container, or do not declare "
     + "the element, or state `declaresNesting = false' on the type, and take the stated price: a "
     + "nested tree it forwards to is then evaluated standalone";
+
+  # The offer refusal's text (OQ1 arm (ii-a)): a record stating no element whose functor payload
+  # offers one that declares a gen nesting type. Raised inside the walk, which knows no door.
+  nestingOfferRefusal =
+    t:
+    "gen-merge: the option type `${nameOf t}' offers a type declaring a gen nesting type to merge on "
+    + "(its functor payload's `elemType') but states no element it carries; a payload says what a "
+    + "type merges on, not what it carries, so its fold would evaluate the nested tree standalone "
+    + "and nothing would say so. State the element in `nestedTypes.elemType' or a top-level "
+    + "`elemType', or state `declaresNesting = false' on the type and take that stated price";
 
   # THE BRIDGE (item 7, OQ11 (d)): the evaluation's accessor where there is no gen evaluation — a
   # foreign engine folding a gen type through its exported `merge`. Its child is ONE root evaluation
@@ -1118,10 +1188,10 @@ let
   # apart by the only thing that distinguishes them: a member list is a LIST, a wrapped type is a
   # record.
   #
-  # ★ ONE DEFINITION, read twice — by the import below to populate `carries`, and by the refusal
-  # above it to decide whether the payload was read AT ALL. A second copy of this decision would let
-  # the boundary learn a spelling and go on refusing it, which is the drift the refusal exists to
-  # prevent.
+  # ★ ONE DEFINITION, read twice, and both reads are of what a payload OFFERS: by `importedOffered`
+  # (what a type merges on) and by `payloadOffered` (the nesting walk judging an offer no carrying
+  # spelling states). Neither reads it for what a type carries (`statedRoles` answers that). A second
+  # copy of this decision would let the two disagree about what one payload offers.
   payloadRole =
     payload:
     if payload == null then

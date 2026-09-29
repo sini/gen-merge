@@ -687,6 +687,55 @@ in
       };
     };
 
+    # THE NESTING PLANE READS WHAT A TYPE CARRIES FROM THE CARRYING SPELLINGS, NEVER FROM ITS PAYLOAD:
+    # a stock `listOf` stating its element only at the top-level `elemType` is re-homed as gen's
+    # `listOf`, the same container with its `nestedTypes` stripped is not recognised (its payload
+    # alone states nothing), and one whose payload offers another element than it states is refused
+    # by name (OQ2 arm (b)). Controls: the stock containers, untouched.
+    test-the-nesting-plane-reads-no-payload =
+      let
+        sub = gt.submodule {
+          options.x = mkOption {
+            type = gt.int;
+            default = 0;
+          };
+        };
+        topOnly = (builtins.removeAttrs (t.listOf sub) [ "nestedTypes" ]) // {
+          elemType = sub;
+        };
+        shape = r: if r == null then null else "${r.container}:${r.element.name}";
+        value =
+          ty: v:
+          (evalModuleTree {
+            modules = [
+              { options.h = mkOption { type = ty; }; }
+              { config.h = v; }
+            ];
+          }).config.h;
+      in
+      {
+        expr = {
+          topOnlyRehomed = (interface.importType topOnly) ? rehomed;
+          topOnlyHomed = (interface.homedAt "probe" null topOnly).name;
+          topOnlyValue = value topOnly [ { x = 1; } ];
+          stripped = shape (interface.importedRehome (t.listOf sub // { nestedTypes = { }; }));
+          disagree = ok (interface.importedRehome (t.listOf t.str // { nestedTypes.elemType = sub; }));
+          ctlSub = shape (interface.importedRehome (t.listOf sub));
+          ctlSubRehomed = (interface.importType (t.listOf sub)) ? rehomed;
+          ctlStrRehomed = (interface.importType (t.listOf t.str)) ? rehomed;
+        };
+        expected = {
+          topOnlyRehomed = true;
+          topOnlyHomed = "listOf";
+          topOnlyValue = [ { x = 1; } ];
+          stripped = null;
+          disagree = false;
+          ctlSub = "listOf:submodule";
+          ctlSubRehomed = true;
+          ctlStrRehomed = false;
+        };
+      };
+
     # A `nestedTypes` KEY NAMING NO GEN ROLE CROSSES VERBATIM, as a nixpkgs type keeps it: an imported
     # record re-publishes every key its roles did not consume, beside the role's own spelling, and
     # its roles are unchanged. The identity walk is blind inside those keys (README, Known

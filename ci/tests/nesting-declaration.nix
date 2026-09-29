@@ -589,16 +589,38 @@ in
         coerced = true;
       };
     };
-    # A payload stating an element where no role does is read in the payload's own spelling.
-    test-a-payload-element-is-declared = {
-      expr = interface.declaresNesting {
-        name = "handrolled";
-        functor = {
-          name = "handrolled";
-          payload.elemType = standIn;
+    # A payload answers only what a type merges on, so a payload stating an element where no carrying
+    # spelling does declares nothing. Where the element it OFFERS declares a nesting type, the walk
+    # refuses the record by name (OQ1 arm (ii-a)), at the top and one level down; a flat offer is
+    # `false`. `ci/tests-error.nix` pins the text.
+    test-a-payload-offering-a-nesting-element-is-refused = {
+      expr =
+        let
+          handrolled = elemType: {
+            name = "handrolled";
+            functor = {
+              name = "handrolled";
+              payload = { inherit elemType; };
+            };
+          };
+        in
+        {
+          offered = refused (interface.declaresNesting (handrolled standIn));
+          below = refused (interface.declaresNesting (np.uniq (handrolled standIn)));
+          members = refused (
+            interface.declaresNesting (handrolled [
+              np.str
+              standIn
+            ])
+          );
+          flat = interface.declaresNesting (handrolled np.str);
         };
+      expected = {
+        offered = true;
+        below = true;
+        members = true;
+        flat = false;
       };
-      expected = true;
     };
     # At exhaustion the walk REFUSES (S2 (i)): `types.json`'s shape cannot be told from a deep one.
     test-a-self-referential-element-is-refused-at-exhaustion = {

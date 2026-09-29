@@ -4645,6 +4645,14 @@ in
           ]
         );
         rule = "and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot thread the evaluation to a nested tree[.] Write it as gen-merge's container, or do not declare the element, or state `declaresNesting = false' on the type, and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+        # OQ1 arm (ii-a): the walk's offer refusal, which knows no door.
+        offered =
+          name:
+          "^gen-merge: the option type `${name}' offers a type declaring a gen nesting type to merge on [(]its functor payload's `elemType'[)] but states no element it carries; a payload says what a type merges on, not what it carries, so its fold would evaluate the nested tree standalone and nothing would say so[.] State the element in `nestedTypes[.]elemType' or a top-level `elemType', or state `declaresNesting = false' on the type and take that stated price$";
+        # OQ2 arm (b): the re-homing disagreement.
+        disagrees =
+          name: what:
+          "^gen-merge: the option type `${name}' states its ${what} in a carrying spelling and offers a different one to merge on in its functor payload's `elemType'; its own fold merges on the payload's, so re-homing it over either would silently drop the other[.] State the same type in both$";
       in
       {
         test-a-placeholder-attrs-with-is-refused-at-the-engine = {
@@ -4680,7 +4688,10 @@ in
             msg = "^gen-merge: `mkOptionType': the option type `fwd' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
           };
         };
-        test-a-hand-rolled-container-declaring-by-payload-is-refused-at-construction = {
+        # The payload answers only what a type merges on (the 2026-09-25 ruling), so a record whose
+        # payload is its only statement declares nothing; offering a nesting element there is
+        # refused by name (OQ1 arm (ii-a)), at construction and at the engine alike.
+        test-a-hand-rolled-container-offering-by-payload-is-refused-at-construction = {
           expr = force (
             gm.mkOptionType (
               {
@@ -4699,7 +4710,56 @@ in
           );
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `mkOptionType': the option type `fwd' declares a gen nesting type as an element [(]its functor payload's `elemType'[)], ${rule}";
+            msg = offered "fwd";
+          };
+        };
+        test-a-stock-container-stripped-of-its-nested-types-is-refused-at-the-engine = {
+          expr = opt (np.listOf sub // { nestedTypes = { }; }) [ { x = 1; } ];
+          expectedError = {
+            type = "ThrownError";
+            msg = offered "listOf";
+          };
+        };
+        # The top-level `elemType` is a carrying spelling `statedRoles` reads, so a record stating
+        # its element only there declares it.
+        test-a-hand-rolled-container-declaring-by-top-level-elemType-is-refused-at-construction = {
+          expr = force (
+            gm.mkOptionType (
+              {
+                name = "fwd";
+                merge = loc: defs: sub.merge loc defs;
+                elemType = sub;
+              }
+              // protocol
+            )
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `mkOptionType': the option type `fwd' declares a gen nesting type as an element [(]its `elemType'[)], ${rule}";
+          };
+        };
+        # OQ2 arm (b): a stock container whose payload offers one element and whose `nestedTypes`
+        # states another is refused, never re-homed over either.
+        test-a-container-whose-two-elements-disagree-is-refused-at-the-engine = {
+          expr = opt (np.listOf np.str // { nestedTypes.elemType = sub; }) [ "a" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "listOf" "element";
+          };
+        };
+        test-a-union-whose-two-member-lists-disagree-is-refused-at-the-engine = {
+          expr = opt (
+            np.either np.int np.str
+            // {
+              nestedTypes = {
+                left = sub;
+                right = np.str;
+              };
+            }
+          ) "a";
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "either" "members";
           };
         };
         test-an-unmarked-self-referential-element-is-refused-at-the-engine = {
