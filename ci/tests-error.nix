@@ -4795,6 +4795,15 @@ in
             msg = disagrees "listOf" "element";
           };
         };
+        # The guard is symmetric: a tree OFFERED against another element stated is refused by name
+        # too, and does not fall back to comparing the tree's refusing `check` (M0 gate C2).
+        test-a-container-offering-a-tree-and-stating-another-element-is-refused-at-the-engine = {
+          expr = opt (np.listOf (tree 1) // { nestedTypes.elemType = np.str; }) [ { } ];
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "listOf" "element";
+          };
+        };
         test-two-constructions-of-a-tree-disagree-by-name = {
           expr = opt (np.listOf (tree 1) // { nestedTypes.elemType = tree 2; }) [ { } ];
           expectedError = {

@@ -246,7 +246,8 @@ type outside the six that declares a nesting element is refused, and one that fo
 declaring evaluates its tree standalone (OQ11 (d)'s price). Refused by name too: a record stating no
 element whose payload OFFERS one declaring a nesting type (`nestingOfferRefusal`), and a recognised
 container whose payload element differs from its stated one, nesting or not
-(`rehomeDisagreementRefusal`; same means the same `check` and `merge` closures). Both THROW,
+(`rehomeDisagreementRefusal`; same means the same `check` and `merge` closures, and `merge` alone
+where either element is `nonMountable`, whose `check` refuses when forced). Both THROW,
 catchably, opened with the door and option as `nestingImportRefusal` is; neither is a
 `{ refused }` answer.
 A record that is itself a nesting type (a `refined`-style copy) is not refused: its copied fold is the
