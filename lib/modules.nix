@@ -906,23 +906,11 @@ let
     in
     moduleIdOf treeId c.group c.key;
 
-  # One level of the closure: the modules one importer names, each applied once through the caller's
-  # `callM`, as the element the closure keys (`moduleKeyOf`). The element's `content` is shared by
-  # the closure's operator (`next`, its imports' elements) and the fold, so a module is applied once.
-  # `importer` and `i` locate the element for its minted id, and cost no thunk: both are bound
-  # values. Its source class is decided on the PRE-application `m0` (design spec §3) where it is
-  # read (`srcClassOf`), so collecting a module pays nothing for it.
-  #
-  # `_file` is an INHERITED attribute along the import edge that reached the node FIRST (Knuth 1968):
-  # the importer's resolved file flows down, and a node's own attribution overrides it. Precedence,
-  # most specific first: a raw path leaf's own path string (nixpkgs-parity error location; `isPath` is
-  # guarded first so a non-attrset is never `._file`-selected), then the entry's own `_file`
-  # (pre-application `m0`, then the applied `m`), then the importer's file, then `"<gen-merge>"` at the
-  # root. So content passed through an unattributed wrapper (`setDefaultModuleLocation F m` =
-  # `{ _file = F; imports = [ m ]; }`) is attributed to its IMPORT site `F`, as nixpkgs'
-  # `collectStructuredModules` threads `parentFile`. That equivalence is of the IMPORT-site reading
-  # only: a path module whose content names its own `_file` is named by its path here and by the
-  # declared `_file` in nixpkgs. `_file` stays a thunk, forced only when a file surface is read.
+  # THE IDENTITY-KEYED CLOSURE, the graph's own: one level of it is the modules one importer names,
+  # each applied through the caller's `callM`, as the element the closure keys (`moduleKeyOf`).
+  # `importer` and `i` locate the element for its minted id; `next` is its imports' elements. It is
+  # built only where the graph is read (the family) or where the warm path needs a node's origin; the
+  # merge path collects by `moduleClosure` below, which keeps the same order and the same nodes.
   moduleLevel =
     callM: importer: mods:
     prelude.imap0 (
@@ -932,19 +920,22 @@ let
         self = {
           key = moduleKeyOf importer i m0 m;
           inherit importer i m0;
-          _file =
-            if builtins.isPath m0 || isPathString m0 then
-              toString m0
-            else
-              (m0._file or (m._file or importer._file));
-          content = m;
           next = moduleLevel callM self (importsOf m);
         };
       in
       self
     ) mods;
-  # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
-  srcClassOf = e: e.srcClass or (classifyModule e.m0);
+  # A tree's closure's top: the tree as importer, holding the tree's own module list (`roots`, its
+  # import edges, a module named twice included).
+  moduleTop =
+    callM: mods:
+    let
+      top = {
+        key = "";
+        roots = moduleLevel callM top mods;
+      };
+    in
+    top;
   # The closure from a start set: ONE `genericClosure`, a FIFO work list, so it is breadth-first,
   # imports are yielded in declaration order and the first occurrence reached wins, as nixpkgs'
   # `filterModules`. A losing occurrence takes its imports with it. The done-set is the finite set of
@@ -956,17 +947,33 @@ let
       inherit startSet;
       operator = e: e.next;
     };
-  # `moduleClosure callM mods` — every module a tree reaches, one element per node, in closure order.
-  # `flat` IS this list, so the module set folded equals the node set minted.
+
+  # ── THE MERGE PATH'S COLLECTION: the same closure, over entries ──────────────────────────────────
+  # `moduleClosure callM mods` — every module a tree reaches, one entry `{ m0; _file; content; }` per
+  # node, in the closure's order: breadth-first, the first occurrence reached winning. `flat` IS this
+  # list, so the module set folded equals the node set minted.
   #
-  # A PLAIN LIST IS ITS OWN CLOSURE, and most trees are one (a submodule's own module and its
-  # definitions): no module is a path, and none names `imports`, `require` or `key`. Nothing is
-  # imported, so the closure is the list in order, and no two modules share a node, since an
-  # anonymous module's identity is its position. Such a list is collected as its entries alone, with
-  # no key and no closure. Its modules are applied once, by the test that decides it; any other list
-  # takes the closure.
-  modulePlain =
-    callM:
+  # An anonymous module never shares a node: its identity is its importer's and its position, and an
+  # importer is expanded once. So the only occurrences that can lose are keyed and path ones, and
+  # the merge path spells a node key for those alone (`nodeKeyOf`, the key group of `moduleKeyOf`),
+  # strictly, where a level holds one. A level with none keeps every entry. A PLAIN LIST, with no
+  # path and no module naming `imports`, `require` or `key`, is its own closure, and most trees are
+  # one (a submodule's own module and its definitions): it is collected as its entries alone.
+  #
+  # `_file` is an INHERITED attribute along the import edge that reached the node FIRST (Knuth 1968):
+  # the importer's resolved file flows down, and a node's own attribution overrides it. Precedence,
+  # most specific first: a raw path leaf's own path string (nixpkgs-parity error location; `isPath` is
+  # guarded first so a non-attrset is never `._file`-selected), then the entry's own `_file`
+  # (pre-application `m0`, then the applied `m`), then the importer's file, then `"<gen-merge>"` at the
+  # root. So content passed through an unattributed wrapper (`setDefaultModuleLocation F m` =
+  # `{ _file = F; imports = [ m ]; }`) is attributed to its IMPORT site `F`, as nixpkgs'
+  # `collectStructuredModules` threads `parentFile`. That equivalence is of the IMPORT-site reading
+  # only: a path module whose content names its own `_file` is named by its path here and by the
+  # declared `_file` in nixpkgs. `_file` stays a thunk, forced only when a file surface is read. An
+  # entry's source class is decided on the PRE-application `m0` (design spec §3) where it is read
+  # (`srcClassOf`), so collecting a module pays nothing for it.
+  moduleEntries =
+    callM: importerFile: mods:
     map (
       m0:
       let
@@ -978,31 +985,60 @@ let
           if builtins.isPath m0 || isPathString m0 then
             toString m0
           else
-            (m0._file or (m._file or "<gen-merge>"));
+            (m0._file or (m._file or importerFile));
         content = m;
       }
-    );
-  # The closure's start set over those entries, so a list that is not plain is not applied twice.
-  # Its importer is the tree (`top`), which also holds the tree's own module list (`roots`, its
-  # import edges, a module named twice included) for the family.
-  rootsOfPlain =
-    callM: top:
-    prelude.imap0 (
-      i: e:
+    ) mods;
+  # A node key is an attribute name, which may carry no string context: a path module's store path
+  # names its node, and the context is not part of the name.
+  nodeKeyOf =
+    { m0, content, ... }:
+    if builtins.isPath m0 || isPathString m0 then
+      "k" + builtins.unsafeDiscardStringContext (toString m0)
+    else if isAttrs content && content ? key then
+      "k" + builtins.unsafeDiscardStringContext (toString content.key)
+    else
+      null;
+  moduleLevels =
+    callM: seen: level:
+    if level == [ ] then
+      [ ]
+    else
       let
-        self = e // {
-          key = moduleKeyOf top i e.m0 e.content;
-          importer = top;
-          inherit i;
-          next = moduleLevel callM self (importsOf e.content);
-        };
+        keyed = any (e: nodeKeyOf e != null) level;
+        at = prelude.imap0 (p: e: {
+          inherit p e;
+          k = nodeKeyOf e;
+        }) level;
+        # `listToAttrs` keeps a name's FIRST occurrence: the level's first position per node key
+        first = listToAttrs (
+          concatMap (
+            x:
+            if x.k == null then
+              [ ]
+            else
+              [
+                {
+                  name = x.k;
+                  value = x.p;
+                }
+              ]
+          ) at
+        );
+        kept =
+          if keyed then
+            map (x: x.e) (filter (x: x.k == null || (!(seen ? ${x.k}) && first.${x.k} == x.p)) at)
+          else
+            level;
       in
-      self
-    );
+      kept
+      ++ moduleLevels callM (if keyed then seen // first else seen) (
+        concatMap ({ content, _file, ... }: moduleEntries callM _file (importsOf content)) kept
+      );
   moduleClosure =
     callM: mods:
     let
-      plain = modulePlain callM mods;
+      plain = moduleEntries callM "<gen-merge>" mods;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -1010,43 +1046,44 @@ let
     then
       plain
     else
-      let
-        top = {
-          key = "";
-          _file = "<gen-merge>";
-          roots = rootsOfPlain callM top plain;
-        };
-      in
-      closeModules top.roots;
+      moduleLevels callM { } plain;
+  # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
+  srcClassOf = e: e.srcClass or (classifyModule e.m0);
 
-  # THE FAMILY a minting tree publishes (`nta.modules`): one child per closure element, grouped by
-  # namespace, minted from the element's coordinates only when the family is read. Each seed
-  # addresses its element's `m0` in the host attribute `definitions`, whose last list is the tree's
+  # THE FAMILY a minting tree publishes (`nta.modules`): one child per closure entry, grouped by
+  # namespace, minted only when the family is read. Its ids come from the identity-keyed closure
+  # (`moduleTop`), which is in the merge path's order by construction and is checked to agree with
+  # it; its content is the merge path's own entry, shared rather than applied again. Each seed
+  # addresses its entry's `m0` in the host attribute `definitions`, whose last list is the tree's
   # closure (`knotDefinitions`, after the nested family's lists); each position record
   # discriminates the node by data (`mode = "module"`, den-hoag-9d80v) and carries what the node
   # answers, off the host's record: its entry and the ids its imports identify to.
   moduleFamily =
-    treeId: defIndex: entries:
+    treeId: defIndex: flat: top:
     let
-      # a plain list's entries (`moduleClosure`) are its top-level anonymous modules, in order
-      plain = entries == [ ] || !((head entries) ? key);
-      indexed = prelude.imap0 (i: e: {
-        inherit i e;
-        c =
-          if plain then
+      graph = closeModules top.roots;
+      n = length flat;
+      indexed =
+        if length graph != n then
+          throw "gen-merge: the module family of `${treeId}' reads ${toString (length graph)} nodes where the tree collected ${toString n}; the two collections of one module set disagree"
+        else
+          prelude.genList (
+            i:
+            let
+              g = builtins.elemAt graph i;
+            in
             {
-              group = "anon";
-              key = "${treeId}:anon-${toString (i + 1)}";
+              inherit i g;
+              e = builtins.elemAt flat i;
+              c = moduleCoords treeId g;
             }
-          else
-            moduleCoords treeId e;
-      }) entries;
+          ) n;
       groupOf =
-        g: f:
+        grp: f:
         listToAttrs (
           concatMap (
             x:
-            if x.c.group == g then
+            if x.c.group == grp then
               [
                 {
                   name = x.c.key;
@@ -1063,12 +1100,7 @@ let
       };
     in
     {
-      inherit entries;
-      roots =
-        if plain then
-          map (x: moduleIdOf treeId x.c.group x.c.key) indexed
-        else
-          map (moduleNodeId treeId) (head entries).importer.roots;
+      roots = map (moduleNodeId treeId) top.roots;
       product = byGroup (x: [
         {
           attr = "definitions";
@@ -1084,7 +1116,7 @@ let
         member = null;
         inherit (x.e) _file content;
         srcClass = srcClassOf x.e;
-        imports = if plain then [ ] else map (moduleNodeId treeId) x.e.next;
+        imports = map (moduleNodeId treeId) x.g.next;
       });
     };
 
@@ -2738,7 +2770,7 @@ let
     let
       r = self.get id knotAttr;
     in
-    moduleFamily id (length r._nested.definitions) r._flat;
+    moduleFamily id (length r._nested.definitions) r._flat (moduleTop r._callM r._modList);
   knotDefinitions =
     self: id:
     let
@@ -3336,8 +3368,16 @@ let
           origin =
             let
               baseLen = length modList - length editedModules;
-              # the tree's own module list, off the closure's top (`moduleClosure`)
-              roots = (head flat).importer.roots;
+              # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
+              top = moduleTop callM modList;
+              graph = closeModules top.roots;
+              roots = top.roots;
+              keyAt =
+                i:
+                if length graph != length flat then
+                  throw "gen-merge: the warm origin split reads ${toString (length graph)} module nodes where the tree collected ${toString (length flat)}; the two collections of one module set disagree"
+                else
+                  (builtins.elemAt graph i).key;
               editKeys = map (e: e.key) (closeModules (drop baseLen roots));
               baseKeys = listToAttrs (
                 map (e: {
@@ -3358,8 +3398,11 @@ let
                 editedCount = 0;
                 collision = false;
               }
-            # a plain list imports nothing, so its edited entries are its tail
-            else if flat == [ ] || !((head flat) ? key) then
+            # a list that imports nothing and shares no node keeps every module in order, so its
+            # edited entries are its tail
+            else if
+              length flat == length modList && all (e: !(e.content ? imports || e.content ? require)) flat
+            then
               {
                 inherit flat;
                 editedCount = length editedModules;
@@ -3367,7 +3410,14 @@ let
               }
             else
               {
-                flat = filter (e: !(editSet ? ${e.key})) flat ++ filter (e: editSet ? ${e.key}) flat;
+                flat =
+                  let
+                    at = prelude.imap0 (i: e: {
+                      inherit e;
+                      k = keyAt i;
+                    }) flat;
+                  in
+                  map (x: x.e) (filter (x: !(editSet ? ${x.k})) at ++ filter (x: editSet ? ${x.k}) at);
                 editedCount = length editKeys;
                 collision = prelude.any (k: baseKeys ? ${k}) editKeys;
               };
@@ -4058,6 +4108,8 @@ let
           # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the closure the family `nta.modules` mints
           # from, one node per entry, and only when the family is read (`knotModules`).
           _flat = flat;
+          _modList = modList;
+          _callM = callM;
           _nested =
             if knot.mints then
               nestedGroups {
