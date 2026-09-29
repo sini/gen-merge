@@ -3955,10 +3955,11 @@ let
           # `nonMountable` tree type, whose nested eval is always cold), and the whole freeform
           # layer, and a foreign module set its declaration does not place at the position
           # (`importedHeldAt`: a container forwarding its element's `getSubModules`, or option records
-          # stating no `loc`). A position whose declaration places an instance there and whose value
-          # is not one (nixpkgs' `deferredModuleWith` holds a module) is refused by name, never
-          # skipped: no declaration field says so. The refusal domain is the MINTED instances of this
-          # option tree, which is what the bound above names; a value carried into an untyped slot is
+          # stating no `loc`), at a declared position and as a gen container's element alike. A
+          # position whose declaration places an instance there and whose value is not one (nixpkgs'
+          # `deferredModuleWith` holds a module) is refused by name, never skipped: no declaration
+          # field says so. The refusal domain is the MINTED instances of this option tree, which is
+          # what the bound above names; a value carried into an untyped slot is
           # compared by the byte oracle and not by this fact. A self-referential value at a typed
           # STRUCTURAL position is still reachable in principle, since the value's own keys guide that
           # arm — it is a strictly smaller residual than a cycle guard's, and neither a derivation nor
@@ -4079,7 +4080,11 @@ let
                     # element is not ITSELF a container: a nested container's expansion would append
                     # a second placeholder and answer for the element's element, one level below the
                     # keys this arm is walking. That case keeps the descriptor and re-hoists at its
-                    # own level.
+                    # own level. A foreign element is asked where its module set sits, as the
+                    # module-set arm below asks, at the placeholder coordinate its declaration was
+                    # stamped at: one forwarding its set to a level further down (a `coercedTo` over
+                    # a `listOf`, a stripped `listOf`) holds no instance at the entry, and its entries
+                    # are not walked.
                     let
                       edAt =
                         ph:
@@ -4089,7 +4094,10 @@ let
                         if interface.importedCarried "element" element != null || elemSub.modules == null then
                           elemDecl element
                         else
-                          elemSub.declares (loc ++ [ ph ]);
+                          let
+                            d = elemSub.declares (loc ++ [ ph ]);
+                          in
+                          if element ? substructure || interface.importedHeldAt (loc ++ [ ph ]) d then d else { };
                     in
                     if isAttrs v then
                       let

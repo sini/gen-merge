@@ -546,8 +546,9 @@ one, stock or with `nestedTypes` stripped) is served warm, equal to cold, and so
 `getSubOptions` whose records state no `loc`. A `getSubOptions` that is neither a function nor a
 functor states no declaration. nixpkgs' `deferredModuleWith` whose static modules declare `id_hash`
 places them at its position, yet holds a module there, which no declaration field says: the warm read
-refuses it by name (`` gen-merge: `evalModuleTree' at option `…': the warm identity walk reads the option as an instance … ``) where cold serves. A nesting seam (a tree type) is not walked either, as a leaf or as a container's
-element. The byte oracle still compares those values; the refusal does not see them. A gen wrapper
+refuses it by name (`the warm identity walk reads the option as an instance …`, at the door and the
+option) where cold serves. A nesting seam (a tree type) is not walked either, as a leaf or as a
+container's element. The byte oracle still compares those values; the refusal does not see them. A gen wrapper
 that adds no path level (`nullOr`) holds its instance at its own position. Pinned by
 `test-identity-outside-the-declaration-stratum-is-not-a-minted-identity`,
 `test-identity-wrapper-without-a-path-level-holds-its-instance-in-place`,
