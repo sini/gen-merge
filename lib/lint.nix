@@ -98,8 +98,7 @@ let
     isPathString
     notAModule
     importsOf
-    moduleIdOf
-    moduleGroupKey
+    moduleKeyOf
     mergeOptionDecls
     ;
 
@@ -113,7 +112,7 @@ let
       ;
   };
   # ── module collection (the engine's module graph, function-OPAQUE), _file as the engine's ─────────
-  # The engine's identity rule and breadth-first closure (`moduleGroupKey`, `lib/modules.nix`), so a
+  # The engine's identity rule and breadth-first closure (`moduleKeyOf`, `lib/modules.nix`), so a
   # diamond is linted once, in the engine's order. Path leaves (a path, or a string naming an absolute
   # path, as the engine's loader reads them) are `import`ed (pure); an attrset module contributes its
   # `imports`; a function (or `__functor`) module is an OPAQUE leaf; any other value is refused by the
@@ -133,9 +132,8 @@ let
             loaded = builtins.isPath m0 || isPathString m0;
             m = if loaded then import m0 else m0;
             fn = isFunction m || (isAttrs m && m ? __functor);
-            gk = moduleGroupKey importer.key i m0 m;
             self = {
-              key = moduleIdOf "<lint>" gk.group gk.key;
+              key = moduleKeyOf importer.key i m0 m;
               inherit fn;
               module = m;
               file = if loaded then toString m0 else (m0._file or (m._file or importer.file));
@@ -153,7 +151,7 @@ let
     in
     builtins.genericClosure {
       startSet = level {
-        key = "<lint>";
+        key = "";
         file = parentFile;
       } mods;
       operator = e: e.next;
