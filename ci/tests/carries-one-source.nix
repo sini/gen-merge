@@ -674,6 +674,44 @@ in
         };
       };
 
+    # A FOREIGN RECORD'S `nestedTypes` IS NOT FORCED BY THE PRESENCE TEST EITHER (`statesWrapped`):
+    # `{ }` is its left operand, so a `type` key an author named is not read. The record carries the
+    # declared opt-out, so no walk reads the key's value either. Control: the same record over an
+    # ordinary unroled key.
+    test-a-foreign-records-nestedTypes-type-key-is-not-forced-by-the-presence-test =
+      let
+        tag = nixpkgsLib.mkOption { type = t.str; };
+        imports =
+          nested:
+          let
+            e = builtins.tryEval (
+              interface.importType (
+                base
+                // {
+                  name = "box";
+                  declaresNesting = false;
+                  nestedTypes = nested;
+                }
+              )
+              ? imported
+            );
+          in
+          if e.success then e.value else "throws";
+      in
+      {
+        expr = {
+          typeKeyPlant = imports {
+            type = throw "gen-merge test: a foreign record's nestedTypes.type was forced";
+            foo = tag;
+          };
+          ctlOrdinaryKey = imports { foo = tag; };
+        };
+        expected = {
+          typeKeyPlant = true;
+          ctlOrdinaryKey = true;
+        };
+      };
+
     # The same guard for a nesting record whose `nestedTypes` is no set at all: its import is decided
     # without comparing it, as it was before the unroled split. Control: an empty `nestedTypes`.
     test-a-nesting-records-non-set-nestedTypes-is-not-compared = {

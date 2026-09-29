@@ -245,7 +245,10 @@ state, never its functor payload's. Its stated price: an overridden `merge` on i
 type outside the six that declares a nesting element is refused, and one that forwards without
 declaring evaluates its tree standalone (OQ11 (d)'s price). Refused by name too: a record stating no
 element whose payload OFFERS one declaring a nesting type (`nestingOfferRefusal`), and a recognised
-container whose payload element differs from its stated one (`rehomeDisagreementRefusal`).
+container whose payload element differs from its stated one, nesting or not
+(`rehomeDisagreementRefusal`; same means the same `check` and `merge` closures). Both THROW,
+catchably, opened with the door and option as `nestingImportRefusal` is; neither is a
+`{ refused }` answer.
 A record that is itself a nesting type (a `refined`-style copy) is not refused: its copied fold is the
 price. The nesting and container folds carry `mergeDefs.threaded`, and the exported `merge` folds
 through it with `interface.bridge`, one standalone evaluation per tree. Cells:

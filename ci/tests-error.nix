@@ -4645,14 +4645,31 @@ in
           ]
         );
         rule = "and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot thread the evaluation to a nested tree[.] Write it as gen-merge's container, or do not declare the element, or state `declaresNesting = false' on the type, and take the stated price: a nested tree it forwards to is then evaluated standalone$";
-        # OQ1 arm (ii-a): the walk's offer refusal, which knows no door.
+        # The door and the option, as the caller named them.
+        atEngine = "`evalModuleTree' at option `h': ";
+        atImport = "`mkOptionType': ";
+        # OQ1 arm (ii-a): the walk's offer refusal, opened with the caller's door.
         offered =
-          name:
-          "^gen-merge: the option type `${name}' offers a type declaring a gen nesting type to merge on [(]its functor payload's `elemType'[)] but states no element it carries; a payload says what a type merges on, not what it carries, so its fold would evaluate the nested tree standalone and nothing would say so[.] State the element in `nestedTypes[.]elemType' or a top-level `elemType', or state `declaresNesting = false' on the type and take that stated price$";
-        # OQ2 arm (b): the re-homing disagreement.
+          door: name:
+          "^gen-merge: ${door}the option type `${name}' offers a type declaring a gen nesting type to merge on [(]its functor payload's `elemType'[)] but states no element it carries; a payload says what a type merges on, not what it carries, so its fold would evaluate the nested tree standalone and nothing would say so[.] State the element in `nestedTypes[.]elemType' or a top-level `elemType', or state `declaresNesting = false' on the type and take that stated price$";
+        # OQ2 arm (b): the disagreement between what a record carries and what it merges on.
         disagrees =
           name: what:
-          "^gen-merge: the option type `${name}' states its ${what} in a carrying spelling and offers a different one to merge on in its functor payload's `elemType'; its own fold merges on the payload's, so re-homing it over either would silently drop the other[.] State the same type in both$";
+          "^gen-merge: ${atEngine}the option type `${name}' states its ${what} in a carrying spelling and offers a different one to merge on in its functor payload's `elemType'; it would carry one type and merge on another, so no reading of it is the type it states[.] State the same type in both$";
+        # nixpkgs' `types.json` shape, built once per call: two calls are two distinct constructions
+        # of one shape, each with a self-referential `description`.
+        json =
+          _:
+          let
+            v = np.nullOr (
+              np.oneOf [
+                np.str
+                (np.attrsOf v)
+                (np.listOf v)
+              ]
+            );
+          in
+          v;
       in
       {
         test-a-placeholder-attrs-with-is-refused-at-the-engine = {
@@ -4710,14 +4727,14 @@ in
           );
           expectedError = {
             type = "ThrownError";
-            msg = offered "fwd";
+            msg = offered atImport "fwd";
           };
         };
         test-a-stock-container-stripped-of-its-nested-types-is-refused-at-the-engine = {
           expr = opt (np.listOf sub // { nestedTypes = { }; }) [ { x = 1; } ];
           expectedError = {
             type = "ThrownError";
-            msg = offered "listOf";
+            msg = offered atEngine "listOf";
           };
         };
         # The top-level `elemType` is a carrying spelling `statedRoles` reads, so a record stating
@@ -4760,6 +4777,53 @@ in
           expectedError = {
             type = "ThrownError";
             msg = disagrees "either" "members";
+          };
+        };
+        # The disagreement is judged whether or not the record would be re-homed: a container over
+        # no nesting element whose two statements differ is refused with the same reason.
+        test-a-non-nesting-container-whose-two-elements-disagree-is-refused-at-the-engine = {
+          expr = opt (np.listOf np.str // { nestedTypes.elemType = np.int; }) [ "a" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "listOf" "element";
+          };
+        };
+        # Two separate constructions of a self-referential type are two elements: compared by their
+        # `check` and `merge` closures, never whole, the disagreement is the named refusal and not an
+        # uncatchable recursion through `description`.
+        test-two-constructions-of-a-self-referential-element-disagree-by-name = {
+          expr = opt (np.listOf (json 1) // { nestedTypes.elemType = json 2; }) [ "x" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "listOf" "element";
+          };
+        };
+        test-two-constructions-of-a-self-referential-member-disagree-by-name = {
+          expr = opt (
+            np.either (json 1) np.str
+            // {
+              nestedTypes = {
+                left = json 2;
+                right = np.str;
+              };
+            }
+          ) "x";
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "either" "members";
+          };
+        };
+        # The payload-side element is not compared whole, so a `type` it carries is never read.
+        test-a-payload-element-s-type-is-not-read-to-judge-a-disagreement = {
+          expr = opt (
+            np.listOf (np.str // { type = throw "gen-merge test: the payload element's type was read"; })
+            // {
+              nestedTypes.elemType = np.int;
+            }
+          ) [ "a" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "listOf" "element";
           };
         };
         test-an-unmarked-self-referential-element-is-refused-at-the-engine = {

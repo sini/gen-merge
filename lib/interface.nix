@@ -653,8 +653,8 @@ let
   # (`nestingOfferRefusal`, OQ1 arm (ii-a), *defaulted, reversible*). Its payload answers only what it
   # merges on (the 2026-09-25 ruling), so it declares nothing; its own fold would then evaluate the
   # nested tree standalone, and nothing in the record says so.
-  declaresNesting =
-    root:
+  declaresNestingAt =
+    door: loc: root:
     let
       go =
         fuel: t:
@@ -675,7 +675,7 @@ let
             if
               ((t.functor or { }).payload or null) ? elemType && prelude.any (go (fuel - 1)) (payloadOffered t)
             then
-              throw (nestingOfferRefusal t)
+              throw (nestingOfferRefusal door loc t)
             else
               false
           )
@@ -692,6 +692,7 @@ let
           prelude.any (go (fuel - 1)) wrapped;
     in
     go importedTypeWalkFuel root;
+  declaresNesting = declaresNestingAt null null;
 
   # ── RE-HOMING: A STOCK FOREIGN CONTAINER, RECOGNISED (F2 elaboration, RULED "take (i)") ───────
   # Which of gen's own containers a foreign record IS, as `{ container; element; }` (or `{ container
@@ -711,11 +712,12 @@ let
   # divergence check.
   #
   # ★ A RECOGNISED RECORD WHOSE PAYLOAD OFFERS A DIFFERENT ELEMENT THAN IT STATES IS REFUSED BY NAME
-  # (`rehomeDisagreementRefusal`, OQ2 arm (b), *defaulted, reversible*): its own fold merges on the
-  # payload's, and re-homing over either one would silently drop the other. `==` is pointer-true
-  # for a stock record, which states the one value in both places.
-  importedRehome =
-    t:
+  # (`rehomeDisagreementRefusal`, OQ2 arm (b), *defaulted, reversible*): it would carry one type and
+  # merge on another, whether or not it is then re-homed, so it is refused before `canNest` is asked
+  # (asking `canNest` first would let a record stating `str` over a nesting payload fold standalone,
+  # silently). A stock record states one value in both places (`rehomeAgreed`).
+  importedRehomeAt =
+    door: loc: t:
     let
       f = t.functor or { };
       payload = f.payload or null;
@@ -746,58 +748,76 @@ let
         && payload.placeholder == "name"
         && roles ? element
       then
-        rehomeAgreed t {
+        rehomeAgreed door loc t {
           container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
           inherit (roles) element;
         }
       else if (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && roles ? element then
-        rehomeAgreed t {
+        rehomeAgreed door loc t {
           container = name;
           inherit (roles) element;
         }
       else if name == "either" && keys == [ "elemType" ] && roles ? alternatives then
-        rehomeAgreed t {
+        rehomeAgreed door loc t {
           container = "either";
           inherit (roles) alternatives;
         }
       else
         null;
+  importedRehome = importedRehomeAt null null;
 
   # A recognition `r` of `t`, or the disagreement refusal where its payload offers another element
-  # than the carrying spelling states. Compared through the slots that hold them (`intersectAttrs`
-  # and `attrValues` keep each slot's value), never as two freshly selected types: `==` forces every
-  # attribute of a type it cannot tell by slot, and a self-referential `description` then recurses
-  # forever.
+  # than the carrying spelling states. Two elements are the same type when their `check` and `merge`
+  # are the same closures: a stock record states one value in both places, so the two are
+  # pointer-equal there, and two separate constructions differ. Only those two slots are compared,
+  # never the records whole: `==` on two distinct type records forces every attribute, and a
+  # self-referential `description` (nixpkgs' `types.json` shape) then recurses uncatchably; a
+  # compared record's `type` would be forced as well. `closuresOf` is not used here: it filters the
+  # export fields by `isFunction`, which forces that same `description`.
   rehomeAgreed =
-    t: r:
+    door: loc: t: r:
+    let
+      slots =
+        x:
+        builtins.intersectAttrs {
+          check = null;
+          merge = null;
+        } x;
+      same = a: b: isAttrs a && isAttrs b && slots a == slots b;
+      offered = t.functor.payload.elemType;
+    in
     if
       (
         if r ? alternatives then
-          t.functor.payload.elemType == builtins.attrValues (
-            builtins.intersectAttrs {
-              left = null;
-              right = null;
-            } t.nestedTypes
-          )
+          isList offered
+          && length offered == 2
+          && same (elemAt offered 0) (elemAt r.alternatives 0)
+          && same (elemAt offered 1) (elemAt r.alternatives 1)
         else
-          builtins.intersectAttrs { elemType = null; } t.functor.payload
-          == builtins.intersectAttrs { elemType = null; } (
-            if (readRoles t).keys != [ ] then t.nestedTypes else t
-          )
+          same offered r.element
       )
     then
       r
     else
-      throw (rehomeDisagreementRefusal t);
+      throw (rehomeDisagreementRefusal door loc t);
 
   # The re-homing disagreement's text (OQ2 arm (b)): the record, both statements, and the way out.
   rehomeDisagreementRefusal =
-    t:
-    "gen-merge: the option type `${nameOf t}' states "
+    door: loc: t:
+    "${doorAt door loc}the option type `${nameOf t}' states "
     + (if (statedRoles t) ? alternatives then "its members" else "its element")
     + " in a carrying spelling and offers a different one to merge on in its functor payload's "
-    + "`elemType'; its own fold merges on the payload's, so re-homing it over either would silently "
-    + "drop the other. State the same type in both";
+    + "`elemType'; it would carry one type and merge on another, so no reading of it is the type it "
+    + "states. State the same type in both";
+
+  # A refusal's opening: the door and the option where the caller named them (7gp66 R6), as
+  # `nestingImportRefusal` opens; bare where it asked the interface directly.
+  doorAt =
+    door: loc:
+    if door == null then
+      "gen-merge: "
+    else
+      "gen-merge: `${door}'${if loc == null then "" else " at option `${showOption loc}'"}: ";
 
   # ── HOMING: WHAT A TYPE BOUND TO A POSITION FOLDS AS (den-hoag-n6dh7 item 5; gate C9) ──────────
   # The type itself when it is gen's own — it states `carries`, is a nesting type, or is a checker
@@ -821,7 +841,7 @@ let
       t
     else
       let
-        r = importedRehome t;
+        r = importedRehomeAt door loc t;
       in
       if r != null && canNest t then
         (
@@ -832,7 +852,7 @@ let
           else
             constructors.${r.container} (homedAt door loc r.element)
         )
-      else if declaresNesting t then
+      else if declaresNestingAt door loc t then
         throw (nestingImportRefusal door loc t)
       else
         t;
@@ -847,7 +867,7 @@ let
   statesWrapped =
     t:
     t ? carries
-    || (t.nestedTypes or { }) != { }
+    || { } != (t.nestedTypes or { })
     || (!(t ? nonMountable) && (t ? elemType || ((t.functor or { }).payload or null) ? elemType));
 
   # The import refusal's text: the door, the option where there is one, the container, what in it
@@ -856,7 +876,7 @@ let
     door: loc: t:
     let
       nested = t.nestedTypes or { };
-      keys = filter (k: declaresNesting nested.${k}) (attrNames nested);
+      keys = filter (k: declaresNestingAt door loc nested.${k}) (attrNames nested);
     in
     "gen-merge: `${door}'${
       if loc == null then "" else " at option `${showOption loc}'"
@@ -868,10 +888,10 @@ let
     + "nested tree it forwards to is then evaluated standalone";
 
   # The offer refusal's text (OQ1 arm (ii-a)): a record stating no element whose functor payload
-  # offers one that declares a gen nesting type. Raised inside the walk, which knows no door.
+  # offers one that declares a gen nesting type, raised inside the walk with its caller's door.
   nestingOfferRefusal =
-    t:
-    "gen-merge: the option type `${nameOf t}' offers a type declaring a gen nesting type to merge on "
+    door: loc: t:
+    "${doorAt door loc}the option type `${nameOf t}' offers a type declaring a gen nesting type to merge on "
     + "(its functor payload's `elemType') but states no element it carries; a payload says what a "
     + "type merges on, not what it carries, so its fold would evaluate the nested tree standalone "
     + "and nothing would say so. State the element in `nestedTypes.elemType' or a top-level "
@@ -1441,7 +1461,9 @@ let
     # A record that is ITSELF a nesting type declares nothing by crossing: it is a record copy, whose
     # fold this import replaces with the copied exported one — the stated price (gen-schema's
     # `refined` over a `submodule`), not a declaration.
-    else if !(isNesting t) && statesWrapped t && importedRehome t != null && canNest t then
+    else if
+      !(isNesting t) && statesWrapped t && importedRehomeAt "mkOptionType" null t != null && canNest t
+    then
       (
         let
           rehomed = homedAt "mkOptionType" null t;
@@ -1451,7 +1473,7 @@ let
           inherit rehomed;
         }
       )
-    else if !(isNesting t) && statesWrapped t && declaresNesting t then
+    else if !(isNesting t) && statesWrapped t && declaresNestingAt "mkOptionType" null t then
       { refused = nestingImportRefusal "mkOptionType" null t; }
     else if carrierRefusal t roles != null then
       { refused = carrierRefusal t roles; }
