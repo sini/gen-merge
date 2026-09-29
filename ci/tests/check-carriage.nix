@@ -156,7 +156,7 @@ in
       };
     };
 
-    # THE RESIDUE (README "Two prices, stated"): a check over the bare tree, which has no witness
+    # THE RESIDUE (README "The prices, stated"): a check over the bare tree, which has no witness
     # (member A), the same stated against the bare tree a container offers (M0), and a stock `either`/`oneOf`/`nullOr` over the bare tree, whose stock check reads
     # the tree and so can be neither carried nor detected (member B). Each is served, as pinned here.
     test-the-residue-is-served = {
