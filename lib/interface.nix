@@ -585,16 +585,14 @@ let
   # what it carries. A `nonMountable` record wraps no type.
   declaredWrapped =
     t:
-    let
-      wrapped = importedWrapped t;
-      roles = statedRoles t;
-    in
-    if wrapped != [ ] || t ? carries || t ? nonMountable then
-      wrapped
-    else if roles ? element then
-      [ roles.element ]
-    else if roles ? alternatives then
-      roles.alternatives
+    # No binding on the common path: `canNest` asks this of every option the engine folds, so one
+    # there is paid per instance. A record with `carries` or a non-empty `nestedTypes` answers
+    # `importedWrapped` whole. Past that, the one carrying spelling `statedRoles` can still reach is
+    # a top-level `elemType`, so only a record stating one pays for the reading.
+    if t ? carries || t ? nonMountable || (t.nestedTypes or { }) != { } then
+      importedWrapped t
+    else if t ? elemType then
+      [ (statedRoles t).element ]
     else
       [ ];
 
@@ -671,7 +669,16 @@ let
         else if isNesting t then
           true
         else if wrapped == [ ] then
-          (if prelude.any (go (fuel - 1)) (payloadOffered t) then throw (nestingOfferRefusal t) else false)
+          # presence first, inline: the walk ends at every leaf here, and the judging is paid only
+          # where a payload offers an element at all
+          (
+            if
+              ((t.functor or { }).payload or null) ? elemType && prelude.any (go (fuel - 1)) (payloadOffered t)
+            then
+              throw (nestingOfferRefusal t)
+            else
+              false
+          )
         else if fuel <= 0 then
           throw (
             "gen-merge: cannot decide whether the option type `${nameOf root}' declares a gen nesting "
@@ -714,60 +721,74 @@ let
       payload = f.payload or null;
       keys = if isAttrs payload then attrNames payload else [ ];
       name = f.name or null;
-      roles = statedRoles t;
-      # Compared through the slots that hold them (`intersectAttrs` / `attrValues` keep each slot's
-      # value), never as two freshly selected types: `==` forces every attribute of a type it cannot
-      # tell by slot, and a self-referential `description` then recurses forever.
-      nested = t.nestedTypes or { };
-      agreed =
-        r:
-        if
-          (
-            if r ? alternatives then
-              payload.elemType == builtins.attrValues (
-                builtins.intersectAttrs {
-                  left = null;
-                  right = null;
-                } nested
-              )
-            else
-              builtins.intersectAttrs { elemType = null; } payload
-              == builtins.intersectAttrs { elemType = null; } (if (readRoles t).keys != [ ] then nested else t)
-          )
-        then
-          r
-        else
-          throw (rehomeDisagreementRefusal t);
     in
-    if !(isAttrs t) || t ? carries || t ? nonMountable then
-      null
-    else if
-      name == "attrsWith"
-      &&
-        keys == [
-          "elemType"
-          "lazy"
-          "placeholder"
-        ]
-      && payload.placeholder == "name"
-      && roles ? element
+    # `roles` is bound only past the functor-name test: a door asks this of every foreign record
+    # stating an element, so a binding ahead of it is paid per instance
+    if
+      !(isAttrs t)
+      || t ? carries
+      || t ? nonMountable
+      || !(name == "attrsWith" || name == "listOf" || name == "nullOr" || name == "either")
     then
-      agreed {
-        container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
-        inherit (roles) element;
-      }
-    else if (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && roles ? element then
-      agreed {
-        container = name;
-        inherit (roles) element;
-      }
-    else if name == "either" && keys == [ "elemType" ] && roles ? alternatives then
-      agreed {
-        container = "either";
-        inherit (roles) alternatives;
-      }
+      null
     else
-      null;
+      let
+        roles = statedRoles t;
+      in
+      if
+        name == "attrsWith"
+        &&
+          keys == [
+            "elemType"
+            "lazy"
+            "placeholder"
+          ]
+        && payload.placeholder == "name"
+        && roles ? element
+      then
+        rehomeAgreed t {
+          container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
+          inherit (roles) element;
+        }
+      else if (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && roles ? element then
+        rehomeAgreed t {
+          container = name;
+          inherit (roles) element;
+        }
+      else if name == "either" && keys == [ "elemType" ] && roles ? alternatives then
+        rehomeAgreed t {
+          container = "either";
+          inherit (roles) alternatives;
+        }
+      else
+        null;
+
+  # A recognition `r` of `t`, or the disagreement refusal where its payload offers another element
+  # than the carrying spelling states. Compared through the slots that hold them (`intersectAttrs`
+  # and `attrValues` keep each slot's value), never as two freshly selected types: `==` forces every
+  # attribute of a type it cannot tell by slot, and a self-referential `description` then recurses
+  # forever.
+  rehomeAgreed =
+    t: r:
+    if
+      (
+        if r ? alternatives then
+          t.functor.payload.elemType == builtins.attrValues (
+            builtins.intersectAttrs {
+              left = null;
+              right = null;
+            } t.nestedTypes
+          )
+        else
+          builtins.intersectAttrs { elemType = null; } t.functor.payload
+          == builtins.intersectAttrs { elemType = null; } (
+            if (readRoles t).keys != [ ] then t.nestedTypes else t
+          )
+      )
+    then
+      r
+    else
+      throw (rehomeDisagreementRefusal t);
 
   # The re-homing disagreement's text (OQ2 arm (b)): the record, both statements, and the way out.
   rehomeDisagreementRefusal =
