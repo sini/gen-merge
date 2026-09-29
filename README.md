@@ -1507,7 +1507,9 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   (`test-c1-…` to `test-c4-…`). nixpkgs overflows the stack on the same modules, uncatchably, so the
   engine is more defined than the reference here. Data minting fresh keys without bound (a function
   module returning `key = "k${toString (n + 1)}"` and importing its successor) is non-well-founded
-  and still diverges.
+  and still diverges. So does a self-referential import chain of anonymous, unkeyed modules: an
+  anonymous module has no identity to dedupe on, so the chain overflows the stack uncatchably, as
+  nixpkgs does on the same modules.
 
 - **A check-only `mkOptionType` refuses where nixpkgs' default merge is silent.** Two definitions
   that are attrsets sharing a key whose values are not `==`, or that are functions, are refused by
