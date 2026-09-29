@@ -864,18 +864,18 @@ let
   # merge path needs identity to decide which occurrence is a node and never reads a node, so it pays
   # no minted id: `moduleKeyOf` spells the group as the first character (`k` for the key group, `a`
   # for an anonymous module) and an anonymous module as `a<importer's spelling>:<n>`, the top-level
-  # importer spelled `""`. It is injective by the same argument: the first character separates the
+  # importer spelled `""` and `<n>` 0-based. It is injective by the same argument: the first character separates the
   # groups, and an anonymous spelling reads back as its importer's spelling and `<n>` (digits after
   # the last `:`). So it is a bijection with the minted ids within one tree, and `moduleNodeId` is the
   # map, applied by the family alone (`moduleFamily`).
   moduleKeyOf =
-    importerKey: i: m0: m:
+    importer: i: m0: m:
     if builtins.isPath m0 || isPathString m0 then
       "k" + toString m0
     else if isAttrs m && m ? key then
       "k" + toString m.key
     else
-      "a" + importerKey + ":" + toString (i + 1);
+      "a" + importer.key + ":" + toString i;
   moduleIdOf =
     treeId: group: key:
     scope.mintNtaId {
@@ -910,7 +910,8 @@ let
   # `callM`, as the element the closure keys (`moduleKeyOf`). The element's `content` is shared by
   # the closure's operator (`next`, its imports' elements) and the fold, so a module is applied once.
   # `importer` and `i` locate the element for its minted id, and cost no thunk: both are bound
-  # values. `srcClass` is decided on the PRE-application `m0` (design spec §3) and stays LAZY.
+  # values. Its source class is decided on the PRE-application `m0` (design spec §3) where it is
+  # read (`srcClassOf`), so collecting a module pays nothing for it.
   #
   # `_file` is an INHERITED attribute along the import edge that reached the node FIRST (Knuth 1968):
   # the importer's resolved file flows down, and a node's own attribution overrides it. Precedence,
@@ -929,7 +930,7 @@ let
       let
         m = callM m0;
         self = {
-          key = moduleKeyOf importer.key i m0 m;
+          key = moduleKeyOf importer i m0 m;
           inherit importer i m0;
           _file =
             if builtins.isPath m0 || isPathString m0 then
@@ -937,19 +938,13 @@ let
             else
               (m0._file or (m._file or importer._file));
           content = m;
-          srcClass = classifyModule m0;
           next = moduleLevel callM self (importsOf m);
         };
       in
       self
     ) mods;
-  # A tree's own module list, as the closure's start set.
-  moduleRoots =
-    callM:
-    moduleLevel callM {
-      key = "";
-      _file = "<gen-merge>";
-    };
+  # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
+  srcClassOf = e: e.srcClass or (classifyModule e.m0);
   # The closure from a start set: ONE `genericClosure`, a FIFO work list, so it is breadth-first,
   # imports are yielded in declaration order and the first occurrence reached wins, as nixpkgs'
   # `filterModules`. A losing occurrence takes its imports with it. The done-set is the finite set of
@@ -963,19 +958,88 @@ let
     };
   # `moduleClosure callM mods` — every module a tree reaches, one element per node, in closure order.
   # `flat` IS this list, so the module set folded equals the node set minted.
-  moduleClosure = callM: mods: closeModules (moduleRoots callM mods);
+  #
+  # A PLAIN LIST IS ITS OWN CLOSURE, and most trees are one (a submodule's own module and its
+  # definitions): no module is a path, and none names `imports`, `require` or `key`. Nothing is
+  # imported, so the closure is the list in order, and no two modules share a node, since an
+  # anonymous module's identity is its position. Such a list is collected as its entries alone, with
+  # no key and no closure. Its modules are applied once, by the test that decides it; any other list
+  # takes the closure.
+  modulePlain =
+    callM:
+    map (
+      m0:
+      let
+        m = callM m0;
+      in
+      {
+        inherit m0;
+        _file =
+          if builtins.isPath m0 || isPathString m0 then
+            toString m0
+          else
+            (m0._file or (m._file or "<gen-merge>"));
+        content = m;
+      }
+    );
+  # The closure's start set over those entries, so a list that is not plain is not applied twice.
+  # Its importer is the tree (`top`), which also holds the tree's own module list (`roots`, its
+  # import edges, a module named twice included) for the family.
+  rootsOfPlain =
+    callM: top:
+    prelude.imap0 (
+      i: e:
+      let
+        self = e // {
+          key = moduleKeyOf top i e.m0 e.content;
+          importer = top;
+          inherit i;
+          next = moduleLevel callM self (importsOf e.content);
+        };
+      in
+      self
+    );
+  moduleClosure =
+    callM: mods:
+    let
+      plain = modulePlain callM mods;
+    in
+    if
+      all (m0: !(builtins.isPath m0 || isPathString m0)) mods
+      && all (e: !(e.content ? imports || e.content ? require || e.content ? key)) plain
+    then
+      plain
+    else
+      let
+        top = {
+          key = "";
+          _file = "<gen-merge>";
+          roots = rootsOfPlain callM top plain;
+        };
+      in
+      closeModules top.roots;
 
   # THE FAMILY a minting tree publishes (`nta.modules`): one child per closure element, grouped by
   # namespace, minted from the element's coordinates only when the family is read. Each seed
-  # addresses its element's `m0` in the host attribute `moduleEntries`; each position record
+  # addresses its element's `m0` in the host attribute `definitions`, whose last list is the tree's
+  # closure (`knotDefinitions`, after the nested family's lists); each position record
   # discriminates the node by data (`mode = "module"`, den-hoag-9d80v) and carries what the node
   # answers, off the host's record: its entry and the ids its imports identify to.
   moduleFamily =
-    treeId: roots: entries:
+    treeId: defIndex: entries:
     let
+      # a plain list's entries (`moduleClosure`) are its top-level anonymous modules, in order
+      plain = entries == [ ] || !((head entries) ? key);
       indexed = prelude.imap0 (i: e: {
         inherit i e;
-        c = moduleCoords treeId e;
+        c =
+          if plain then
+            {
+              group = "anon";
+              key = "${treeId}:anon-${toString (i + 1)}";
+            }
+          else
+            moduleCoords treeId e;
       }) entries;
       groupOf =
         g: f:
@@ -1000,19 +1064,27 @@ let
     in
     {
       inherit entries;
-      roots = map (moduleNodeId treeId) roots;
+      roots =
+        if plain then
+          map (x: moduleIdOf treeId x.c.group x.c.key) indexed
+        else
+          map (moduleNodeId treeId) (head entries).importer.roots;
       product = byGroup (x: [
         {
-          attr = "moduleEntries";
-          def = x.i;
-          at = [ "m0" ];
+          attr = "definitions";
+          def = defIndex;
+          at = [
+            x.i
+            "m0"
+          ];
         }
       ]);
       positions = byGroup (x: {
         mode = "module";
         member = null;
-        inherit (x.e) _file content srcClass;
-        imports = map (moduleNodeId treeId) x.e.next;
+        inherit (x.e) _file content;
+        srcClass = srcClassOf x.e;
+        imports = if plain then [ ] else map (moduleNodeId treeId) x.e.next;
       });
     };
 
@@ -1159,7 +1231,12 @@ let
       headLen = if n > editedCount then n - editedCount else 0;
       editedEntries = drop headLen flat;
       nonEdited = take headLen flat;
-      isCleanEntry = e: e.srcClass == "attrset" || e.srcClass == "marked-pure";
+      isCleanEntry =
+        e:
+        let
+          c = srcClassOf e;
+        in
+        c == "attrset" || c == "marked-pure";
       cleanEntries = filter isCleanEntry nonEdited;
       dirtyEntries = filter (e: !(isCleanEntry e)) nonEdited;
 
@@ -2629,7 +2706,7 @@ let
         nta.modules =
           self: id:
           if id == knotId || interface.isNesting (self.getHostAt "positions").member then
-            (self.get id knotAttr)._modules.product
+            (knotModules self id).product
           else
             { };
       } knotKindName)
@@ -2643,7 +2720,7 @@ let
   knotImports =
     self: id:
     if id == knotId then
-      (self.get id knotAttr)._modules.roots
+      (knotModules self id).roots
     else
       let
         p = self.getHostAt "positions";
@@ -2651,11 +2728,23 @@ let
       if p.mode == "module" then
         p.imports
       else if interface.isNesting p.member then
-        (self.get id knotAttr)._modules.roots
+        (knotModules self id).roots
       else
         [ ];
-  knotDefinitions = self: id: (self.get id knotAttr)._nested.definitions;
-  knotModuleEntries = self: id: (self.get id knotAttr)._modules.entries;
+  # A tree's module family, off its closure; its seeds address the closure as the last list of the
+  # tree's `definitions`, after the nested family's own.
+  knotModules =
+    self: id:
+    let
+      r = self.get id knotAttr;
+    in
+    moduleFamily id (length r._nested.definitions) r._flat;
+  knotDefinitions =
+    self: id:
+    let
+      r = self.get id knotAttr;
+    in
+    if r ? _flat then r._nested.definitions ++ [ r._flat ] else r._nested.definitions;
   knotPositions =
     self: id:
     let
@@ -2663,14 +2752,14 @@ let
     in
     {
       nested = r._nested.positions;
-      modules = r._modules.positions or { };
+      modules = if r ? _flat then (knotModules self id).positions else { };
     };
   driveKnot =
     f:
     (scope.eval { } {
       children = knotNoChildren;
       imports = knotNoImports;
-      ${knotAttr} = self: id: f self id (self.get id knotAttr);
+      ${knotAttr} = self: id: f self (self.get id knotAttr);
     } knotScope).get
       knotId
       knotAttr;
@@ -2682,10 +2771,8 @@ let
       evaluation = scope.eval { } {
         children = knotNoChildren;
         imports = knotImports;
-        ${knotAttr} =
-          self: id: if id == knotId then f self id (self.get id knotAttr) else childTree self id;
+        ${knotAttr} = self: id: if id == knotId then f self (self.get id knotAttr) else childTree self id;
         definitions = knotDefinitions;
-        moduleEntries = knotModuleEntries;
         positions = knotPositions;
       } knotScopeMinting;
       r = evaluation.get knotId knotAttr;
@@ -2812,7 +2899,7 @@ let
                 n.specialArgs;
             inherit (n) check coreShortCircuit;
           }
-      ) self id (self.get id knotAttr);
+      ) self (self.get id knotAttr);
 
   # The knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a call
   # pays no argument for the choice: a root's (the minting knot), a root's whose evaluation is
@@ -3098,7 +3185,7 @@ let
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
       body = (
-        self: treeId: result:
+        self: result:
         let
           # The same refusal as at `declArgs`, spelled inline for the same reason.
           baseArgs =
@@ -3183,8 +3270,7 @@ let
           #
           # `flat` IS the tree's module closure (`moduleClosure`), in closure order: the fold below and
           # the minted `modules` family read one list.
-          roots = builtins.seq declarationGuard (moduleRoots callM modList);
-          flat = closeModules roots;
+          flat = builtins.seq declarationGuard (moduleClosure callM modList);
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
           # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
@@ -3250,6 +3336,8 @@ let
           origin =
             let
               baseLen = length modList - length editedModules;
+              # the tree's own module list, off the closure's top (`moduleClosure`)
+              roots = (head flat).importer.roots;
               editKeys = map (e: e.key) (closeModules (drop baseLen roots));
               baseKeys = listToAttrs (
                 map (e: {
@@ -3268,6 +3356,13 @@ let
               {
                 inherit flat;
                 editedCount = 0;
+                collision = false;
+              }
+            # a plain list imports nothing, so its edited entries are its tail
+            else if flat == [ ] || !((head flat) ? key) then
+              {
+                inherit flat;
+                editedCount = length editedModules;
                 collision = false;
               }
             else
@@ -3960,9 +4055,9 @@ let
           # THE NESTED POSITIONS OF THIS TREE (den-hoag-n6dh7 item 2): one group per declared
           # option, in declaration order, and one for the freeform plane, last. Read by the minting
           # knot alone, and built only on an evaluation that mints.
-          # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the family `nta.modules` mints, one node per
-          # closure entry. Read by the minting knot alone, and built only on an evaluation that mints.
-          _modules = if knot.mints then moduleFamily treeId roots flat else null;
+          # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the closure the family `nta.modules` mints
+          # from, one node per entry, and only when the family is read (`knotModules`).
+          _flat = flat;
           _nested =
             if knot.mints then
               nestedGroups {

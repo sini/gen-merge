@@ -133,7 +133,7 @@ let
             m = if loaded then import m0 else m0;
             fn = isFunction m || (isAttrs m && m ? __functor);
             self = {
-              key = moduleKeyOf importer.key i m0 m;
+              key = moduleKeyOf importer i m0 m;
               inherit fn;
               module = m;
               file = if loaded then toString m0 else (m0._file or (m._file or importer.file));
