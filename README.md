@@ -1355,11 +1355,16 @@ cannot be told from the stock one and is re-homed silently, losing the override;
 that forwards to a gen nesting type it does NOT declare evaluates that tree standalone through the
 exported `merge`.
 
-**A check a wrapper states is carried** (den-hoag-4ifgb, den-hoag-q3yjf). nixpkgs refines a domain
+**A check a wrapper states is carried.** nixpkgs refines a domain
 on the descriptor's `check` (`addCheck t p`, `t // { check = …; }`, and `nonEmptyListOf`, which is
-`addCheck` over `listOf`). Over a gen record, the rewritten `check` is detected by construction:
-`exportType` binds its `check` once and publishes it beside the `_checkWitness` marker holding the
-same value, and a record whose `check` no longer shares it was rewritten. Its fold then applies that
+`addCheck` over `listOf`). **The `check` of a gen record is a callable record**, `{ __functor; … }`,
+the kind nixpkgs already publishes for its own v2 checks: apply it as a function, and ask its kind
+with `lib.isFunction` (functor-aware), never `builtins.isFunction`, which answers `false` for it
+(`builtins.typeOf` is `"set"`, and `builtins.functionArgs` aborts on it). Over a gen record, the
+rewritten `check` is detected by construction: the witness is the `check` record itself. `exportType`
+publishes that one record twice, as `check` and as the `_checkWitness` marker, and a record whose
+`check` is no longer the witness was rewritten; `==` meets one set of bindings there and allocates
+nothing, so the test is paid on every fold at no cost per fold. Its fold then applies that
 check to every definition (`checkedFold`, the same verdict as nixpkgs' `checkDefsForError`), at the
 option, at an element, in the threaded fold, at a union's member choice and at the `mkOptionType`
 door. gen reads it as a refinement: the gen domain (`verify`/`admits`) still applies, so a widening
@@ -1368,12 +1373,12 @@ rebuild, since a functor rebuilds the container and its element and not a refine
 Where the check reads a nested tree's foreign face (a union or nullable holding the bare tree) it
 cannot be evaluated in gen's eval: over a gen record it is **refused by name**, a passing one
 included, and the remedy is to state the check on a member that holds no tree or inside the
-submodule. Evaluators split on one shape: a record re-bound by selection
-(`t // { inherit (t) check; }`) reads as rewritten on Nix and Determinate and as its own on Lix,
-and carrying its own check gives its own verdict. Pinned by `ci/tests/check-carriage.nix` and
+submodule. A record re-bound by selection (`t // { inherit (t) check; }`), rebuilt by
+`inherit`, or passed through `mapAttrs` keeps the same `check` record and reads as its own on Nix,
+Determinate and Lix. Pinned by `ci/tests/check-carriage.nix` and
 `ci/tests-error.nix` (`check-carriage.*`).
 **The price extended to a lost `check`, as the DEFAULT** (*defaulted, reversible, pending the owner's
-reading, den-hoag-4ifgb OQ1*): a check that reads the bare tree can be neither carried nor detected,
+reading*): a check that reads the bare tree can be neither carried nor detected,
 and is lost silently. The class is a check over the bare tree itself (the tree has no witness, and
 nixpkgs erases it too), a stock container stating the tree with only its `check` rewritten against
 the tree it offers (`np.listOf tree // { nestedTypes.elemType = addCheck tree p; }`: the two agree on

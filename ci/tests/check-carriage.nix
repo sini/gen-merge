@@ -46,6 +46,7 @@ let
   ];
   tree = (gm.evalModuleTree { modules = treeMods; }).type;
   sub = gt.submodule { imports = treeMods; };
+  eitherTree = gt.either tree gt.str;
   m = {
     a = 5;
   };
@@ -99,6 +100,26 @@ in
     test-the-gen-domain-still-refuses-under-a-rewritten-check = {
       expr = accepted (ac gt.int (_: true)) "x";
       expected = false;
+    };
+    # The published `check` is a callable record, and the witness is that record, so a record that
+    # keeps it (re-bound by selection, rebuilt by `inherit`, passed through `mapAttrs`) is its own on
+    # every evaluator. Over `either tree str` a rewritten check is refused by name, so a value here
+    # is the reading "own".
+    test-a-record-keeping-its-check-record-is-its-own = {
+      expr = {
+        kind = nixpkgsLib.isFunction eitherTree.check;
+        builtinKind = builtins.isFunction eitherTree.check;
+        rebound = opt (eitherTree // { inherit (eitherTree) check; }) "s";
+        inheritRebuilt = opt (eitherTree // { inherit (eitherTree) check _checkWitness; }) "s";
+        mapAttrsIdentity = opt (builtins.mapAttrs (_: v: v) eitherTree) "s";
+      };
+      expected = {
+        kind = true;
+        builtinKind = false;
+        rebound = "s";
+        inheritRebuilt = "s";
+        mapAttrsIdentity = "s";
+      };
     };
 
     # MEMBER B: a stock container re-homed over a nesting element carries its own check.
