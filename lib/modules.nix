@@ -3953,12 +3953,16 @@ let
           # container of one (`attrsOf raw`), a member of a union (`either` declares nothing of its
           # own, so which member a value is cannot be read off the declaration), a nesting seam (a
           # `nonMountable` tree type, whose nested eval is always cold), and the whole freeform
-          # layer. The refusal domain is the MINTED instances of this option tree, which is what the
-          # bound above names; a value carried into an untyped slot is compared by the byte oracle
-          # and not by this fact. A self-referential value at a typed STRUCTURAL position is still
-          # reachable in principle, since the value's own keys guide that arm — it is a strictly
-          # smaller residual than a cycle guard's, and neither a derivation nor a completed type can
-          # occupy one.
+          # layer, and a foreign module set its declaration does not place at the position
+          # (`importedHeldAt`: a container forwarding its element's `getSubModules`, or option records
+          # stating no `loc`). A position whose declaration places an instance there and whose value
+          # is not one (nixpkgs' `deferredModuleWith` holds a module) is refused by name, never
+          # skipped: no declaration field says so. The refusal domain is the MINTED instances of this
+          # option tree, which is what the bound above names; a value carried into an untyped slot is
+          # compared by the byte oracle and not by this fact. A self-referential value at a typed
+          # STRUCTURAL position is still reachable in principle, since the value's own keys guide that
+          # arm — it is a strictly smaller residual than a cycle guard's, and neither a derivation nor
+          # a completed type can occupy one.
           identityMapOf =
             declTree: cfg:
             let
@@ -3972,7 +3976,23 @@ let
                 if isOptLeaf d then
                   below loc (d.type or null) v
                 else if isAttrs d && d ? id_hash && isOptLeaf d.id_hash then
-                  (if v == null then { } else { ${showOption loc} = v.id_hash; })
+                  # The value contradicting its declaration is refused by name, in the VALUE position
+                  # so the refusal fires exactly where `v.id_hash` was forced: gen-memo forces a new
+                  # position's key, never its value.
+                  (
+                    if v == null then
+                      { }
+                    else
+                      {
+                        ${showOption loc} =
+                          if isAttrs v && v ? id_hash then
+                            v.id_hash
+                          else
+                            throw "gen-merge: `evalModuleTree' at option `${showOption loc}': the warm identity walk reads the option as an instance (its declaration declares `id_hash'), and the value there is ${
+                              if isAttrs v then "a set without `id_hash'" else "a ${builtins.typeOf v}"
+                            }: the type declared there holds its module set somewhere its declaration does not say";
+                      }
+                  )
                 else if isAttrs d && isAttrs v then
                   foldl' (acc: k: acc // go (loc ++ [ k ]) d.${k} (v.${k} or null)) { } (attrNames d)
                 else
@@ -4091,7 +4111,15 @@ let
                     # descent at the same loc. `substructure.declares` runs a nested `evalModuleTree`
                     # with no defs supplied, so the expansion is a declaration-side spine eval and no
                     # instance-authored value is forced.
-                    if sub.modules == null then { } else go loc (sub.declares loc) v;
+                    if sub.modules == null then
+                      { }
+                    else
+                      let
+                        decl = sub.declares loc;
+                      in
+                      # A gen record states its module set by its own construction; a foreign one is
+                      # asked where the set sits, and one holding it below its position is not walked.
+                      if ty ? substructure || interface.importedHeldAt loc decl then go loc decl v else { };
             in
             go [ ] declTree cfg;
 
