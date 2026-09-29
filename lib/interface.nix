@@ -269,7 +269,9 @@ let
   # silent erasure is the one answer this side does not reproduce (`adHocFold`).
   importedFold =
     t:
-    if t._protoLeafMerge or false then
+    if rewritesCheck t then
+      carriedFold t (t.mergeDefs or leafFold)
+    else if t._protoLeafMerge or false then
       null
     else if isV2 t && !(t.check.isV2MergeCoherent or false) then
       adHocFold t
@@ -285,7 +287,9 @@ let
   # freeformType site. `checkedFold` wraps it; `v2Fold` reads the same `merge` value's `v2` half.
   importedRawFold =
     t:
-    if t._protoLeafMerge or false then
+    if rewritesCheck t then
+      t.mergeDefs.unchecked or t.mergeDefs or leafFold
+    else if t._protoLeafMerge or false then
       null
     else if checksDefs t || isV2 t then
       t.merge or t.mergeDefs or leafFold
@@ -338,6 +342,75 @@ let
       throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe t}', in ${
         concatStringsSep ", " (map (d: "`${d.file}'") bad)
       }";
+
+  # ── A CHECK A FOREIGN WRAPPER STATED OVER A GEN RECORD (den-hoag-4ifgb) ─────────────────────────
+  # On this side a type's domain is a gen datum (`verify` | `admits`) and the published `check` is
+  # derived from it; nixpkgs refines a domain on the descriptor (`addCheck t p`, `t // { check }`),
+  # so a gen record so wrapped states its domain twice and the two disagree. `exportType` binds its
+  # `check` once and publishes it beside `_checkWitness`, which holds the same value, so a rewritten
+  # `check` is detected BY CONSTRUCTION, never by comparing functions: `//` and `inherit` keep the
+  # value's pointer, and the comparison is `rehomeAgreed`'s fixed slot. A record with no witness (a
+  # `nonMountable` tree, a foreign descriptor) is not asked, so the tree's refusing `check` is never
+  # forced here; a check rewritten over the bare tree is therefore not detected, and nixpkgs erases
+  # it there too (the enumerated residue, README "Two prices, stated"). A record re-bound by
+  # selection (`t // { inherit (t) check; }`) reads as rewritten on Nix and Determinate and as its
+  # own on Lix; carried, its own check gives its own verdict.
+  checkSlot = {
+    check = null;
+  };
+  rewritesCheck =
+    t: t ? _checkWitness && t ? check && builtins.intersectAttrs checkSlot t != t._checkWitness;
+
+  # Whether a record's published `check` reads a `nonMountable` record's, which refuses when forced.
+  # A union's `check` reads its members and a nullable's its element, in gen's vocabulary and in
+  # nixpkgs'; a container's (`listOf`, `attrsOf`, `submodule`) reads only the value's shape (nixpkgs
+  # 7a0f122: `isList`, `isAttrs`), so it never reaches what it holds. Keyed on the name, as a stock
+  # record is recognised (`importedRehomeAt`), and bounded by the walk's fuel.
+  checkReadsTree =
+    let
+      go =
+        fuel: t:
+        isAttrs t
+        && (
+          t ? nonMountable
+          || (
+            fuel > 0
+            && (
+              if nameOf t == "either" then
+                (
+                  let
+                    members = importedCarried "alternatives" t;
+                  in
+                  isList members && prelude.any (go (fuel - 1)) members
+                )
+              else if nameOf t == "nullOr" then
+                go (fuel - 1) (importedCarried "element" t)
+              else
+                false
+            )
+          )
+        );
+    in
+    go importedTypeWalkFuel;
+
+  # The fold a record with a rewritten `check` folds by: `fold` under that check, as nixpkgs'
+  # `checkDefsForError` applies it (the same verdict), or, where the check reads a nested tree's
+  # foreign face and so cannot be evaluated in this eval, a refusal by name. Dropping it silently is
+  # the one answer this side does not give (ADR-0025 item 1).
+  carriedFold =
+    t: fold:
+    if checkReadsTree t then
+      (
+        loc: _defs:
+        throw "gen-merge: the option `${showOption loc}' has a type `${nameOf t}' whose `check' a foreign wrapper rewrote (`addCheck', or `// { check = ...; }') over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped. State the check on a member that holds no tree, or inside the submodule"
+      )
+    else
+      checkedFold t fold;
+
+  # Whether a value is inside a record's rewritten `check` as well as its gen domain: the member
+  # choice of a union asks both (`types.isValid`). A check that cannot be evaluated is not asked,
+  # and the member's fold refuses it by name (`carriedFold`).
+  admitsCarried = t: v: !(rewritesCheck t) || checkReadsTree t || t.check v;
 
   # What value does this type supply when nothing defined it? `{ }` is "it declares none" and is a
   # different fact from `{ value = null; }`, which is a declared null.
@@ -854,12 +927,25 @@ let
       in
       if r != null && canNest t then
         (
-          if r.container == "either" then
-            constructors.either (homedAt door loc (elemAt r.alternatives 0)) (
-              homedAt door loc (elemAt r.alternatives 1)
-            )
-          else
-            constructors.${r.container} (homedAt door loc r.element)
+          let
+            rebuilt =
+              if r.container == "either" then
+                constructors.either (homedAt door loc (elemAt r.alternatives 0)) (
+                  homedAt door loc (elemAt r.alternatives 1)
+                )
+              else
+                constructors.${r.container} (homedAt door loc r.element);
+          in
+          # ★ THE RECORD'S OWN `check` RIDES ON THE REBUILD (den-hoag-4ifgb M-B): a functor rebuilds
+          # the container and its element, and a refinement `{ x : F e | p x }` is not part of the
+          # functor, so `addCheck` over a stock container is rebuilt away unless carried. A foreign
+          # record has no witness, so a rewritten check cannot be told from the stock one; the
+          # record's check is carried on every re-home, where it can be evaluated here, and gen's
+          # own fold applies it as a rewritten check (`carriedFold`). A stock `either`/`nullOr`
+          # whose members reach the bare tree states a check that cannot be evaluated here and
+          # cannot be detected, so it is rebuilt without it: the enumerated residue, README "Two
+          # prices, stated".
+          if checkReadsTree t then rebuilt else rebuilt // { inherit (t) check; }
         )
       else if declaresNestingAt door loc t then
         throw (nestingImportRefusal door loc t)
@@ -1503,14 +1589,22 @@ let
             # Where the fold is CHECKED, the unchecked one it guards rides ON it, for the one site that
             # merges without checking (the freeformType); a caller replacing `mergeDefs` whole replaces
             # both at once, as with `mergeDefs.reported`.
-            checked = isV2 t || checksDefs t;
+            # A gen record whose `check` a wrapper rewrote crosses with that check as its checked fold
+            # (`carriedFold`), never stripped with the protocol's names (den-hoag-4ifgb).
+            checked = isV2 t || checksDefs t || rewritesCheck t;
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
           in
           # WHAT THE FOREIGN PROTOCOL DID NOT SAY SURVIVES UNTOUCHED. Only the protocol's own names
           # are consumed here; a descriptor's other fields are the author's and are none of this
           # boundary's business, so they cross unread rather than being enumerated and lost.
-          builtins.removeAttrs t (exportFields ++ [ "_protoLeafMerge" ])
+          builtins.removeAttrs t (
+            exportFields
+            ++ [
+              "_protoLeafMerge"
+              "_checkWitness"
+            ]
+          )
           // {
             inherit name;
             whenEmpty = importedEmpty t;
@@ -1714,6 +1808,29 @@ let
       # and the only inversion needed, because the role is fixed by the type rather than guessed.
       recarried = p: t.recarry { ${role} = p.${spelling.payloadKey}; };
 
+      # Bound once and published twice, as `check` and inside `_checkWitness`, so a `check` a wrapper
+      # rewrote is the one slot that no longer shares the witness's value (`rewritesCheck`). Nix
+      # forces both slots before it compares their pointers, so forcing it must not compute the
+      # foreign face, which gen's own eval never reads: the face is bound unforced behind the
+      # function, and computed at its first application, by a foreign engine.
+      check =
+        if t ? verify then
+          (v: t.verify v == null)
+        else if t ? admits then
+          (
+            if t ? carries && t ? recarry && !(t.carries ? moduleSet) then
+              (
+                let
+                  face = foreignFace t;
+                in
+                v: face.admits v
+              )
+            else
+              t.admits
+          )
+        else
+          (_: true);
+
       # `typeMerge` and `functor` are ONE derivation from ONE gen datum. The relation is row-free —
       # it takes the other TYPE — so the outbound half recovers a type from whatever functor arrives
       # and the inbound half publishes a functor a foreign engine can recover THIS type from.
@@ -1750,15 +1867,12 @@ let
         functor = t.retainedRelation.functor or functor;
         description = t.description or name;
         deprecationMessage = t.deprecated or null;
-        check =
-          if t ? verify then
-            (v: t.verify v == null)
-          else if t ? admits then
-            (
-              if t ? carries && t ? recarry && !(t.carries ? moduleSet) then (foreignFace t).admits else t.admits
-            )
-          else
-            (_: true);
+        inherit check;
+        # Not a fifteenth protocol field: gen's own record of which `check` it published
+        # (den-hoag-4ifgb), read only by `rewritesCheck`.
+        _checkWitness = {
+          inherit check;
+        };
         # Through the bridge where the fold carries the sibling (den-hoag-n6dh7 item 7, OQ11 (d)):
         # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
         # each element through its one `split`, so the forward mount keeps working without a third
@@ -1879,6 +1993,8 @@ let
 in
 {
   inherit
+    admitsCarried
+    carriedFold
     closuresFirst
     exportClasses
     exportFields
@@ -1912,6 +2028,7 @@ in
     importedWrapped
     isOptionType
     refuseMount
+    rewritesCheck
     typeDefect
     ;
 }
