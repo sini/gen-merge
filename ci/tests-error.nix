@@ -5117,6 +5117,73 @@ in
         };
       };
 
+    # A CHECK A FOREIGN WRAPPER STATES OVER A GEN RECORD (den-hoag-4ifgb; `../tests/check-carriage.nix`
+    # holds the values). Carried, its refusal is the checked fold's, naming the option and the file.
+    # Over a member holding the nested tree the rewritten check reads the tree's foreign face, so it
+    # is refused by name, a passing one included: the stated price of carrying rather than dropping.
+    flake.testsError.check-carriage =
+      let
+        np = nixpkgsLib.types;
+        no = _: false;
+        tree =
+          (gm.evalModuleTree {
+            modules = [
+              {
+                options.a = gm.mkOption {
+                  type = t.int;
+                  default = 0;
+                };
+              }
+            ];
+          }).type;
+        sub = t.submodule { options.a = gm.mkOption { type = t.int; }; };
+        opt =
+          T: V:
+          realize {
+            modules = [
+              { options.s = gm.mkOption { type = T; }; }
+              {
+                _file = "def.nix";
+                s = V;
+              }
+            ];
+          };
+        carried = name: {
+          type = "ThrownError";
+          msg = "^gen-merge: a definition for option `s' is not of type `${name}', in `def[.]nix'$";
+        };
+        unread = loc: name: {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `${loc}' has a type `${name}' whose `check' a foreign wrapper rewrote [(]`addCheck', or `// [{] check = [.][.][.]; [}]'[)] over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped[.] State the check on a member that holds no tree, or inside the submodule$";
+        };
+      in
+      {
+        test-a-rewritten-leaf-check-refuses-as-the-checked-fold = {
+          expr = opt (np.addCheck t.int no) 5;
+          expectedError = carried "int";
+        };
+        test-a-re-homed-non-empty-list-refuses-as-the-checked-fold = {
+          expr = opt (np.nonEmptyListOf sub) [ ];
+          expectedError = carried "listOf";
+        };
+        test-a-rewritten-check-over-a-union-holding-the-tree-is-refused-by-name = {
+          expr = opt (np.addCheck (t.either tree t.str) no) { a = 5; };
+          expectedError = unread "s" "either";
+        };
+        test-a-passing-rewritten-check-over-a-union-holding-the-tree-is-refused-by-name = {
+          expr = opt (np.addCheck (t.either tree t.str) (_: true)) { a = 5; };
+          expectedError = unread "s" "either";
+        };
+        test-a-rewritten-check-over-a-nullable-tree-is-refused-by-name = {
+          expr = opt (np.addCheck (t.nullOr tree) no) { a = 5; };
+          expectedError = unread "s" "nullOr";
+        };
+        test-a-rewritten-check-over-a-union-member-holding-the-tree-is-refused-by-name = {
+          expr = opt (t.listOf (np.addCheck (t.either tree t.str) no)) [ { a = 5; } ];
+          expectedError = unread "s[.]0" "either";
+        };
+      };
+
     # den-hoag-7gp66 P1: which message fires for gen-merge's three closed doors — evalModuleTree
     # (mixed), lint (record), mkCoreValue (record) — now that each routes through gen-prelude's
     # shared `checkOptions` / `checkRequired` (R6: names the door first, the construct last).
