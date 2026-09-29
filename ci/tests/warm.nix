@@ -1338,12 +1338,13 @@ in
         };
       };
 
-    # A WRAPPER THAT ADDS NO PATH LEVEL HOLDS ITS INSTANCE AT ITS OWN POSITION, in both vocabularies:
+    # A WRAPPER THAT ADDS NO PATH LEVEL HOLDS ITS INSTANCE AT ITS OWN POSITION: under gen's `nullOr`
     # an unrelated edit re-composes warm, byte-identical to cold, and an edit moving the instance is
     # refused (`tryEval` contains the refusal, a throw). A walk that iterated the instance's own keys
-    # as container entries aborts on every row here, uncatchably. `absent` is a nullable left null.
-    # `foreignContainer` is nixpkgs' `attrsOf`, whose payload states more than its element: its
-    # entries are not walked (den-hoag-tn3qf's reach), and its warm read does not abort.
+    # as container entries aborts here, uncatchably. `absent` is a nullable left null.
+    # nixpkgs' `nullOr`/`uniq`/`unique` and `attrsOf` (`foreignContainer`) are RAW foreign records:
+    # they state no position for their element, and the walk does not read their functor payload to
+    # find one, so it stops there — the moved instance is SERVED warm, byte-identical to cold.
     test-identity-wrapper-without-a-path-level-holds-its-instance-in-place =
       let
         ok = e: (builtins.tryEval (builtins.deepSeq e e)).success;
@@ -1358,6 +1359,21 @@ in
         arm = ty: {
           held = jsonEq (warmOf (wrapped ty) other).config (coldOf (wrapped ty ++ other)).config;
           moveRefused = !(ok (warmOf (wrapped ty) wrappedMoves).config);
+        };
+        # the move replaces the whole value, so `uniq`/`unique` see one definition after priority
+        wholeMove = [
+          {
+            _file = "wrap-edit";
+            config.h = mkForce { spool = "satin"; };
+          }
+        ];
+        served = ty: {
+          held = jsonEq (warmOf (wrapped ty) other).config (coldOf (wrapped ty ++ other)).config;
+          moveServed =
+            let
+              w = (warmOf (wrapped ty) wholeMove).config;
+            in
+            ok w && jsonEq w (coldOf (wrapped ty ++ wholeMove)).config;
         };
         absent = [
           {
@@ -1378,9 +1394,9 @@ in
       {
         expr = {
           nullOr = arm (t.nullOr hostSub);
-          npNullOr = arm (np.nullOr npSub);
-          npUniq = arm (np.uniq npSub);
-          npUnique = arm (np.unique { message = "72izy"; } npSub);
+          npNullOr = served (np.nullOr npSub);
+          npUniq = served (np.uniq npSub);
+          npUnique = served (np.unique { message = "72izy"; } npSub);
           absent = jsonEq (warmOf absent other).config (coldOf (absent ++ other)).config;
           foreignContainer = jsonEq (warmOf foreignReg other).config (coldOf (foreignReg ++ other)).config;
         };
@@ -1390,12 +1406,16 @@ in
               held = true;
               moveRefused = true;
             };
+            servedBoth = {
+              held = true;
+              moveServed = true;
+            };
           in
           {
             nullOr = both;
-            npNullOr = both;
-            npUniq = both;
-            npUnique = both;
+            npNullOr = servedBoth;
+            npUniq = servedBoth;
+            npUnique = servedBoth;
             absent = true;
             foreignContainer = true;
           };

@@ -4017,22 +4017,21 @@ let
                     && (interface.importedSubstructure element).modules == null
                   then
                     { }
-                  # A WRAPPER THAT ADDS NO PATH LEVEL (`nullOr`, nixpkgs' `uniq`/`unique`, any type
-                  # whose `declares` hands its element the same prefix) holds its element's value AT
+                  # A WRAPPER THAT ADDS NO PATH LEVEL (gen's `nullOr`, any type whose `declares`
+                  # hands its element the same prefix) holds its element's value AT
                   # this position, so it is re-entered here with the element type rather than
                   # iterated: the value's keys are the element's own options, not entries.
                   else if element != null && elementAt == loc then
                     below loc element v
-                  # A CONTAINER WHOSE ELEMENT THE BOUNDARY DOES NOT READ (a foreign payload stating
-                  # more than the element — den-hoag-tn3qf's reach): its entries are not walked. The
-                  # module-set arm below would hand the ELEMENT's declarations to the container's
-                  # value at the container's own loc, and read an entry name as an instance.
-                  else if element == null && elementAt != null && elementAt != loc then
-                    { }
                   # AN ELEMENT WHOSE POSITION THE TYPE DOES NOT STATE: the type carries an element but
-                  # has no rebuild to ask where it sits (a record that crossed stating its own relation
-                  # owes no `recarry`). Wrapper and container cannot be told apart, and either guess
-                  # reads the wrong level, so its entries are not walked — the mirror of the stop above.
+                  # has no rebuild to ask where it sits — a raw foreign record (nixpkgs' `listOf`,
+                  # `nullOr`, `uniq`, …), or one that crossed stating its own relation and so owes no
+                  # `recarry`. Wrapper and container cannot be told apart, and either guess reads the
+                  # wrong level; the functor payload would answer only by being read for what the type
+                  # carries, which it does not state. So its entries are not walked: a moved identity
+                  # there is served warm, equal to cold. The module-set arm below is not a fallback
+                  # either: it would hand the ELEMENT's declarations to the container's value at the
+                  # container's own loc, and read an entry name as an instance.
                   else if element != null && elementAt == null then
                     { }
                   else if element != null then

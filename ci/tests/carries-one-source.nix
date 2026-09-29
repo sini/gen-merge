@@ -376,9 +376,9 @@ in
     # THE IDENTITY WALK IS TOTAL WHERE A TYPE CARRIES AN ELEMENT BUT STATES NO POSITION FOR IT. A
     # record that crossed stating its own relation owes no `recarry`, so nothing says whether it adds
     # a path level; the walk stops there rather than guess. Wrappers and containers alike: every row
-    # is a warm read that is total and equals cold. The controls state their position (a gen wrapper,
-    # a raw nixpkgs wrapper, a refinement over a gen base, which keeps the base's `recarry`) and are
-    # walked as before.
+    # is a warm read that is total and equals cold. The walked controls state their position (a gen
+    # wrapper, a refinement over a gen base, which keeps the base's `recarry`); a raw nixpkgs wrapper
+    # states none either, and stops (`test-the-walk-reads-no-raw-payload` below).
     #
     # `idSub` is a gen `submodule`, a NESTING type, and each foreign or hand-rolled wrapper over it
     # through `mkOptionType` is refused at construction by the import refusal (den-hoag-n6dh7 OQ11
@@ -460,6 +460,184 @@ in
           elemTypeTagMoveRefused = true;
           ctlATag = [ "moduleSet" ];
           ctlATagMoveRefused = true;
+        };
+      };
+
+    # THE WALK READS NO RAW PAYLOAD. A raw nixpkgs record carrying an identity submodule states its
+    # element (`statedRoles`) but no position for it: only a gen `recarry` says where an element sits,
+    # and the functor payload is what the record offers to MERGE on, not what it carries. So the walk
+    # stops at every raw carrying constructor, and a MOVED identity there is SERVED warm,
+    # byte-identical to cold, rather than refused. `functionTo`/`attrListOf`/`attrListWith` were
+    # walked by a payload rebuild that met the value at the wrong level and aborted uncatchably. The
+    # element is nixpkgs' own submodule: gen's is a nesting type, refused by name inside most foreign
+    # containers. Live controls: the move IS refused under gen's containers, and under a raw nixpkgs
+    # record carrying a MODULE SET (`submodule`, and `addCheck`/`coercedTo` over one), which states
+    # it in `getSubModules` and is walked at its own position, with no payload read.
+    test-the-walk-reads-no-raw-payload =
+      let
+        npIdSub = t.submodule idMod;
+        a = {
+          spool = "silk";
+        };
+        b = {
+          spool = "satin";
+        };
+        # the edit MOVES the held identity: warm is total and equals cold. `read` applies a
+        # `functionTo` value, which has no JSON form.
+        moveServed =
+          read: ty: v: v':
+          let
+            base = anchor ++ [
+              { options.h = mkOption { type = ty; }; }
+              {
+                _file = "sb";
+                config.h = v;
+              }
+            ];
+            edit = [
+              {
+                _file = "sm";
+                config.h = mkForce v';
+              }
+            ];
+            w = read (warmOf base edit).config;
+          in
+          ok w && builtins.toJSON w == builtins.toJSON (read (coldOf (base ++ edit)).config);
+        served = moveServed (c: c);
+        applied = moveServed (c: c // { h = c.h null; });
+      in
+      {
+        expr = {
+          listOf = served (t.listOf npIdSub) [ a ] [ b ];
+          nonEmptyListOf = served (t.nonEmptyListOf npIdSub) [ a ] [ b ];
+          nullOr = served (t.nullOr npIdSub) a b;
+          uniq = served (t.uniq npIdSub) a b;
+          unique = served (t.unique { message = "u"; } npIdSub) a b;
+          addCheckNullOr = served (t.addCheck (t.nullOr npIdSub) (_: true)) a b;
+          attrsOf = served (t.attrsOf npIdSub) { p = a; } { p = b; };
+          lazyAttrsOf = served (t.lazyAttrsOf npIdSub) { p = a; } { p = b; };
+          attrsWith = served (t.attrsWith { elemType = npIdSub; }) { p = a; } { p = b; };
+          functionTo = applied (t.functionTo npIdSub) (_: a) (_: b);
+          attrListOf = served (t.attrListOf npIdSub) { p = a; } { p = b; };
+          attrListWith = served (t.attrListWith { elemType = npIdSub; }) { p = a; } { p = b; };
+          # a gen container over a raw wrapper: walked to the wrapper, which stops
+          genAttrsOfNullOr = served (gt.attrsOf (t.nullOr npIdSub)) { p = a; } { p = b; };
+          armedGenNullOr = moveRefused (gt.nullOr npIdSub) a b;
+          armedGenListOf = moveRefused (gt.listOf npIdSub) [ a ] [ b ];
+          armedNpSubmodule = moveRefused npIdSub a b;
+          armedNpAddCheck = moveRefused (t.addCheck npIdSub (_: true)) a b;
+          armedNpCoercedTo = moveRefused (t.coercedTo t.str (s: { spool = s; }) npIdSub) "silk" "satin";
+        };
+        expected = {
+          listOf = true;
+          nonEmptyListOf = true;
+          nullOr = true;
+          uniq = true;
+          unique = true;
+          addCheckNullOr = true;
+          attrsOf = true;
+          lazyAttrsOf = true;
+          attrsWith = true;
+          functionTo = true;
+          attrListOf = true;
+          attrListWith = true;
+          genAttrsOfNullOr = true;
+          armedGenNullOr = true;
+          armedGenListOf = true;
+          armedNpSubmodule = true;
+          armedNpAddCheck = true;
+          armedNpCoercedTo = true;
+        };
+      };
+
+    # A `nestedTypes` KEY NAMING NO GEN ROLE CROSSES VERBATIM, as a nixpkgs type keeps it: an imported
+    # record re-publishes every key its roles did not consume, beside the role's own spelling, and
+    # its roles are unchanged. The identity walk is blind inside those keys (README, Known
+    # boundaries).
+    test-a-nestedTypes-key-naming-no-role-crosses-verbatim =
+      let
+        crossed =
+          d:
+          let
+            e = imp d;
+          in
+          {
+            nestedTypes = keysOf e.nestedTypes;
+            verbatim = builtins.all (
+              k:
+              (e.nestedTypes.${k}.type or e.nestedTypes.${k}).name
+              == (d.nestedTypes.${k}.type or d.nestedTypes.${k}).name
+            ) (keysOf d.nestedTypes);
+            carries = keysOf (e.carries or { });
+          };
+      in
+      {
+        expr = {
+          coercedTo = crossed (t.coercedTo t.int toString t.str);
+          coercedToSub = crossed (t.coercedTo t.str (s: { spool = s; }) (t.submodule idMod));
+          freeform = crossed (t.submodule { freeformType = t.attrsOf t.str; });
+          attrTag = crossed (t.attrTag { a = nixpkgsLib.mkOption { type = t.str; }; });
+          attrTagElemType = crossed (t.attrTag { elemType = nixpkgsLib.mkOption { type = t.str; }; });
+          authored = crossed (
+            nixpkgsLib.mkOptionType {
+              name = "loom";
+              check = _: true;
+              nestedTypes.weft = t.str;
+            }
+          );
+          ctlListOf = crossed (t.listOf t.str);
+          ctlEither = crossed (t.either t.str t.int);
+        };
+        expected = {
+          coercedTo = {
+            nestedTypes = [
+              "coercedType"
+              "finalType"
+            ];
+            verbatim = true;
+            carries = [ ];
+          };
+          coercedToSub = {
+            nestedTypes = [
+              "coercedType"
+              "finalType"
+            ];
+            verbatim = true;
+            carries = [ "moduleSet" ];
+          };
+          freeform = {
+            nestedTypes = [ "freeformType" ];
+            verbatim = true;
+            carries = [ "moduleSet" ];
+          };
+          attrTag = {
+            nestedTypes = [ "a" ];
+            verbatim = true;
+            carries = [ ];
+          };
+          attrTagElemType = {
+            nestedTypes = [ "elemType" ];
+            verbatim = true;
+            carries = [ ];
+          };
+          authored = {
+            nestedTypes = [ "weft" ];
+            verbatim = true;
+            carries = [ ];
+          };
+          ctlListOf = {
+            nestedTypes = [ "elemType" ];
+            verbatim = true;
+            carries = [ "element" ];
+          };
+          ctlEither = {
+            nestedTypes = [
+              "left"
+              "right"
+            ];
+            verbatim = true;
+            carries = [ "alternatives" ];
+          };
         };
       };
   };

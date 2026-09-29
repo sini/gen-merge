@@ -526,21 +526,24 @@ instance is a position whose declaration declares an `id_hash` option, and only 
 forced, so an undefined or throwing leaf nobody reads stays unread warm, as cold. **A minted instance
 must sit at a position whose declared type carries identity; an identity in an untyped slot is not
 tracked by the warm plane** — an `id_hash` value at a `raw`/`anything` leaf, as an element of
-`attrsOf raw`, as a member of an `either`, below a terminal leaf, in the freeform layer, or inside a
-foreign container whose payload the boundary does not read (nixpkgs' `attrsOf`/`lazyAttrsOf`, even over
-a submodule declaring `id_hash`; a known boundary). **A typed position the walk cannot place is not
-tracked either**, and that is a boundary of its own, not a member of the untyped list: below a type that
-carries an element but states no position for it (a record that crossed stating its own merge relation
-and no rebuild, such as a refinement over a nixpkgs wrapper or container), nothing says whether the type
-adds a path level, so the walk stops rather than guess. A moved identity there re-composes warm, equal to
-cold, rather than being refused; the slot's declared type does carry identity, so this is a known loss,
-kept until the walk has a position datum to read. A nesting seam (a tree type) is not walked either,
-as a leaf or as a container's element. The byte
-oracle still compares those values; the refusal does not see them. A wrapper that adds no path level
-(`nullOr`, nixpkgs' `uniq`/`unique`) holds its instance at its own position. Pinned by
+`attrsOf raw`, as a member of an `either`, below a terminal leaf, or in the freeform layer. **A typed
+position the walk cannot place is not tracked either**, and that is a boundary of its own, not a member
+of the untyped list: below a type that carries an element but states no position for it, nothing says
+whether the type adds a path level, so the walk stops rather than guess. Only a gen type's `recarry`
+states that position. Two kinds of record state none: a record that crossed stating its own merge
+relation and no rebuild (a refinement over a nixpkgs wrapper or container), and **every raw nixpkgs
+record carrying an element** (`listOf`, `nonEmptyListOf`, `attrsOf`/`lazyAttrsOf`/`attrsWith`,
+`attrListOf`, `nullOr`, `uniq`, `unique`, `addCheck` over one of those, `functionTo`), because its functor
+payload is what it offers to merge on, and the walk does not read a payload to learn what a type
+carries. A moved identity there re-composes warm, equal to cold, rather than being refused: the refusal
+given up would have fired only where warm already equals cold. A raw record carrying a module set
+(nixpkgs' `submodule`, and `addCheck`/`coercedTo` over one) states it in `getSubModules` and is walked
+at its own position. A nesting seam (a tree type) is not walked either, as a leaf or as a container's
+element. The byte oracle still compares those values; the refusal does not see them. A gen wrapper
+that adds no path level (`nullOr`) holds its instance at its own position. Pinned by
 `test-identity-outside-the-declaration-stratum-is-not-a-minted-identity`,
-`test-identity-wrapper-without-a-path-level-holds-its-instance-in-place` and
-`test-72izy-warm-config-read-forces-no-undeclared-identity`.
+`test-identity-wrapper-without-a-path-level-holds-its-instance-in-place`,
+`test-72izy-warm-config-read-forces-no-undeclared-identity` and `test-the-walk-reads-no-raw-payload`.
 
 **The decision trace.** Every result carries `.warmDecision` (always-on data; `mode = "cold"` on a
 plain compose):
@@ -616,6 +619,7 @@ The two vocabularies, kept apart on purpose:
 | `mergeDefs`           | definition fold, `loc -> defs -> value`                               | `merge`                                             |
 | `whenEmpty`           | what it is worth when nobody defined it                               | `emptyValue`                                        |
 | `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another               | `nestedTypes`, `getSubModules`                      |
+| `unroledNested`       | an imported record's `nestedTypes` keys that name no role, verbatim   | `nestedTypes`                                       |
 | `substructure`        | `{ declares; modules; rebuild; }`                                     | `getSubOptions`, `getSubModules`, `substSubModules` |
 | `typeMergeRel`        | the **row-free** type-merge relation                                  | `typeMerge`, `functor`                              |
 | `deprecated`          | the deprecation message, if any                                       | `deprecationMessage`                                |
@@ -812,9 +816,8 @@ The missing declaration is the design choice; making the field required makes it
 than off any measurement. What a type carries has one source: the same reading (`statedRoles`) decides
 this refusal's domain and fills the imported record's `carries`. A functor payload is what a type
 offers to **merge** on, never what it carries: the container relations read a partner's payload, whole
-and in its role's shape. The one exception is the identity walk's reading of a raw foreign record
-(`importedCarried` and `importedElementPrefix`), which still takes the element and its position from the
-payload, because nothing else such a record states gives the element's position. A record that carries
+and in its role's shape, and nothing else reads it — the identity walk included, which reads a raw
+foreign record's element through `statedRoles` and finds no position for it there. A record that carries
 something and states no merge relation (`functor.binOp`) is refused by name at import. Two ways a
 descriptor says it carries something:
 
@@ -1585,6 +1588,17 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   key `nestedTypes` states that names no role this boundary carries (`freeformType`,
   `coercedType`/`finalType`, an `attrTag`'s tags): it is not in gen's vocabulary, so a join is not
   judged over it.
+
+- **A `nestedTypes` key that names no gen role crosses verbatim, and gen-merge is blind inside it.**
+  An imported record keeps every key its roles did not consume (`freeformType`,
+  `coercedType`/`finalType`, an `attrTag`'s tags, an author's own key) as `unroledNested`, and
+  `exportType` re-publishes it beside the role's spelling, so the type reads as nixpkgs' own does
+  (`test-a-nestedTypes-key-naming-no-role-crosses-verbatim`). No role is assigned to such a key, so
+  nothing on this side reads it: a join does not judge over it (the bullet above), and the identity
+  walk never descends through it — below such a record the walk sees only what the record's module
+  set states (`getSubModules`/`getSubOptions`; an `attrTag`'s tags and a `coercedTo`'s `finalType`
+  state theirs there). An identity reachable only through such a key is compared by the byte oracle
+  and not tracked by the warm refusal.
 
 - **A `mkOptionType` stating no relation merges with one construction and refuses two of one name.**
   Its check is a caller's function, so the name cannot say two of them are one type; the relation

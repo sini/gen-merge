@@ -124,7 +124,7 @@ let
       check = "verify | admits";
       merge = "mergeDefs";
       emptyValue = "whenEmpty";
-      nestedTypes = "carries";
+      nestedTypes = "carries | unroledNested";
       deprecationMessage = "deprecated";
       getSubOptions = "substructure";
       getSubModules = "substructure";
@@ -357,28 +357,11 @@ let
       null;
 
   # What this type wraps AT A GIVEN ROLE, whichever spelling it uses to say so. A gen type answers
-  # from its own `carries`; a foreign one answers from its functor payload, which is the only place
-  # the foreign protocol states a parameter it is willing to merge on.
-  #
-  # ★★ A FOREIGN PAYLOAD IS READ ONLY WHERE IT IS READ WHOLE, and this is the guard that keeps a
-  # merge from truncating one. That payload is a ROW, and a row may state MORE than the one
-  # parameter this side has a place for: nixpkgs' submodule carries `class`, `specialArgs`,
-  # `shorthandOnlyDefinesConfig` and a description beside its modules, and its attribute container
-  # carries laziness and a placeholder beside its element. Lifting just the key this side knows would
-  # build a gen type out of a partner it did not understand and drop the rest with no diagnostic — so
-  # a payload naming anything beyond the role's own key answers "nothing to merge on" instead. The
-  # answer for a foreign container whose payload IS just the element is unchanged, which is what
-  # keeps the two engines' one-parameter containers mutually legible.
+  # from its own `carries`; a foreign one from the carrying spellings `statedRoles` reads, the one
+  # source the import fills `carries` from. Never from its functor payload: a payload is what a type
+  # offers to MERGE on (`importedOffered` below), not what it carries.
   importedCarried =
-    role: t:
-    if t ? carries then
-      t.carries.${role} or null
-    else
-      let
-        payload = (t.functor or { }).payload or null;
-        key = roleSpelling.${role}.payloadKey;
-      in
-      if payload == null || attrNames payload != [ key ] then null else payload.${key};
+    role: t: if t ? carries then t.carries.${role} or null else (statedRoles t).${role} or null;
 
   # What this type OFFERS TO MERGE ON at a given role: the parameter of the relation it merges by.
   # A gen type's relation is derived from its `carries`, so it offers what it carries; a type that
@@ -409,19 +392,18 @@ let
   # prefix it was asked at, so the type's own `declares` states the path segment it adds: `attrsOf`
   # answers `prefix ++ [ "<name>" ]`, `listOf` `prefix ++ [ "*" ]`, a nullable `prefix` itself. No
   # name is consulted, so a wrapper this unit has never heard of answers for itself. `null` when the
-  # type carries no single element or cannot be rebuilt over another in either vocabulary.
+  # type carries no single element or states no rebuild.
   #
-  # A foreign payload stating MORE than the element (nixpkgs' attribute container carries laziness
-  # and a placeholder beside it) is handed back to its own constructor WHOLE, with only the element
-  # swapped. That reads no parameter this side has no place for — nothing is merged or dropped — so
-  # `importedCarried`'s read-whole guard is not crossed: the answer is a location, not a type.
+  # ★ ONLY A GEN RECORD'S `recarry` REBUILDS IT. A raw foreign record states no rebuild, and its
+  # functor payload is what it offers to MERGE on: handing that back to its constructor with the
+  # element swapped would read the payload to learn where the record carries, which the payload does
+  # not say (`importedCarried`). Such a record answers `null`, a position it does not state.
   #
-  # THE PROBE IS NOT A TYPE RECORD: it has no `_type`, `name`, `check` or `merge`. A foreign
-  # constructor that reads its element when it is BUILT (rather than when it merges) throws here, and
-  # the warm read that asked throws with it where cold serves. None of gen's or nixpkgs' element
-  # carriers probed does (den-hoag-72izy). The cost is one type rebuild and one `declares` call per ask, paid by the identity
-  # walk once per declared container position (per entry inside a registry element); a leaf never
-  # reaches it.
+  # THE PROBE IS NOT A TYPE RECORD: it has no `_type`, `name`, `check` or `merge`. A `recarry` that
+  # reads its element when it is BUILT (rather than when it merges) throws here, and the warm read
+  # that asked throws with it where cold serves. None of gen's element carriers does. The cost is
+  # one type rebuild and one `declares` call per ask, paid by the identity walk once per declared
+  # container position (per entry inside a registry element); a leaf never reaches it.
   importedElementPrefix =
     t: prefix:
     let
@@ -433,18 +415,8 @@ let
         };
         getSubOptions = p: p;
       };
-      key = roleSpelling.element.payloadKey;
-      f = t.functor or { };
-      payload = f.payload or null;
       rebuilt =
-        if t ? carries then
-          (if t.carries ? element && t ? recarry then t.recarry { element = probe; } else null)
-        else if
-          isAttrs payload && payload ? ${key} && !(isList payload.${key}) && isFunction (f.type or null)
-        then
-          f.type (payload // { ${key} = probe; })
-        else
-          null;
+        if t ? carries && t.carries ? element && t ? recarry then t.recarry { element = probe; } else null;
     in
     if rebuilt == null then null else (importedSubstructure rebuilt).declares prefix;
 
@@ -1024,35 +996,58 @@ let
     "getSubModules"
     "substSubModules"
   ];
-  # ★ ONE DEFINITION, read twice — by the refusal below to decide its domain, and by the import to
-  # populate `carries`. The roles are read in each role's own introspection spelling
+  # ★ ONE DEFINITION, read three times — by the refusal below to decide its domain, by the import to
+  # populate `carries`, and by the identity walk to learn what a raw foreign record carries
+  # (`importedCarried`). The roles are read in each role's own introspection spelling
   # (`roleSpelling.<role>.nested`'s keys) or, for a module set, the sub-protocol slot that states it.
   # The order is load-bearing: a container's module set IS its element's, so the module-set arm is
   # reached only by a record stating no element, and reading it first would force the element type
   # at construction. A role key holding an OPTION record states no role: `attrTag`'s `nestedTypes`
   # is its tag set (see `joinRenames`), so a tag an author NAMED `elemType`, `left` or `right` is a
   # tag, and read as a role it would stop the identity walk on a slot whose type carries identity.
-  statedRoles =
+  #
+  # `keys` are the `nestedTypes` keys the reading consumed as a role. Every other key the record
+  # states (`freeformType`, `coercedType`/`finalType`, an `attrTag`'s tags, an author's own) names no
+  # gen role and crosses VERBATIM (`unroledNested`, re-published by `exportType`).
+  readRoles =
     t:
     let
       nested = t.nestedTypes or { };
       isOption = v: isAttrs v && (v._type or null) == "option";
     in
     if nested ? elemType && !(isOption nested.elemType) then
-      { element = nested.elemType; }
+      {
+        roles.element = nested.elemType;
+        keys = [ "elemType" ];
+      }
     else if t ? elemType then
-      { element = t.elemType; }
+      {
+        roles.element = t.elemType;
+        keys = [ ];
+      }
     else if nested ? left && nested ? right && !(isOption nested.left) && !(isOption nested.right) then
       {
-        alternatives = [
+        roles.alternatives = [
           nested.left
           nested.right
         ];
+        keys = [
+          "left"
+          "right"
+        ];
       }
     else if (t.getSubModules or null) != null then
-      { moduleSet = t.getSubModules; }
+      {
+        roles.moduleSet = t.getSubModules;
+        keys = [ ];
+      }
     else
-      { };
+      {
+        roles = { };
+        keys = [ ];
+      };
+  statedRoles = t: (readRoles t).roles;
+  unroledNested = t: builtins.removeAttrs (t.nestedTypes or { }) (readRoles t).keys;
 
   carrierRefusal =
     t:
@@ -1359,6 +1354,7 @@ let
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
             roles = statedRoles t;
+            unroled = unroledNested t;
           in
           # WHAT THE FOREIGN PROTOCOL DID NOT SAY SURVIVES UNTOUCHED. Only the protocol's own names
           # are consumed here; a descriptor's other fields are the author's and are none of this
@@ -1387,6 +1383,9 @@ let
           // (if deprecated == null then { } else { inherit deprecated; })
           // (if t ? description then { inherit (t) description; } else { })
           // (if roles == { } then { } else { carries = roles; })
+          # What `nestedTypes` states beyond the roles crosses VERBATIM and is re-published at export,
+          # as a nixpkgs type keeps it. It names no gen role, so nothing on this side reads it.
+          // (if attrNames unroled == [ ] then { } else { unroledNested = unroled; })
           # ★★ THE AUTHOR'S RELATION IS RETAINED UNDER A GEN NAME, NOT UNDER THE PROTOCOL'S. What the
           # author stated about how this type merges is not the protocol's to take back — stripped
           # with the rest, the record has no relation and the vocabulary supplies its nullary one,
@@ -1529,7 +1528,7 @@ let
   # ── THE PARTITION, AND IT IS TOTAL OVER THE FOURTEEN ────────────────────────────────────────────
   # DERIVED (10) — a real translation from a differently-named gen datum:
   #   check <- verify | admits · merge <- mergeDefs · emptyValue <- whenEmpty ·
-  #   nestedTypes <- carries · deprecationMessage <- deprecated ·
+  #   nestedTypes <- carries | unroledNested · deprecationMessage <- deprecated ·
   #   getSubOptions / getSubModules / substSubModules <- substructure ·
   #   typeMerge + functor <- typeMergeRel | retainedRelation
   # FOREIGN CONSTANT (2) — no counterpart exists on this side, and that is the point:
@@ -1624,7 +1623,7 @@ let
         # called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
         emptyValue =
           if isNesting t then { value = t.mergeDefs.threaded bridge [ ] [ ]; } else t.whenEmpty or { };
-        nestedTypes = if role == null then { } else spelling.nested carried;
+        nestedTypes = (t.unroledNested or { }) // (if role == null then { } else spelling.nested carried);
         getSubOptions = if sub == null then (_prefix: { }) else sub.declares;
         getSubModules = if sub == null then null else sub.modules;
         substSubModules = if sub == null then (_m: null) else sub.rebuild;
