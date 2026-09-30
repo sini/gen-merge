@@ -15,7 +15,6 @@
 # Each value below is one the LATER declaration's check accepts, so a last-wins merge reds the cell.
 {
   genMerge,
-  genMergeCompat,
   ...
 }:
 let
@@ -81,16 +80,6 @@ in
           })
         ] 5;
         backEdgeUnderDescription = ev [ (described 1) (described 1) ] 5;
-        compatEngine = verdict genMergeCompat [
-          (genMergeCompat.mkOptionType {
-            name = "gauge";
-            check = lt10;
-          })
-          (genMergeCompat.mkOptionType {
-            name = "gauge";
-            check = gt100;
-          })
-        ] 500;
       };
       expected = {
         lt10ThenGt100 = "REFUSED";
@@ -100,7 +89,6 @@ in
         namedLikeALeaf = "REFUSED";
         leafThenNamedLikeIt = "REFUSED";
         backEdgeUnderDescription = "REFUSED";
-        compatEngine = "REFUSED";
       };
     };
 

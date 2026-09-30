@@ -70,6 +70,7 @@ let
     priority = import ../../lib/priority.nix { inherit prelude; };
     memo = genMemo;
     scope = genScope;
+    types = genTypes;
   };
   gm = import ../../lib {
     inherit prelude;

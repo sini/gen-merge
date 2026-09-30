@@ -851,8 +851,9 @@ let
   #
   # A `check` a foreign wrapper rewrote over a gen member is asked too (den-hoag-4ifgb): nixpkgs'
   # union reads its members' `check`, so a member it refines away is not chosen.
-  # The ownership test is `interface.rewritesCheck`, restated inline: a call is an environment on
-  # every member asked.
+  # The ownership test is gen-types' `rewritesCheck`, restated inline for cost, negated: a call is an
+  # environment on every member asked. The construction door holds this spelling to the protocol
+  # (`lib/default.nix`).
   isValid =
     t: v:
     if t ? verify then

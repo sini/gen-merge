@@ -12,7 +12,7 @@
 #
 # ★★ THE DEFECT WAS INVISIBLE TO EVERY OTHER CELL IN THIS SUITE, WHICH IS THE REASON FOR A FILE
 # RATHER THAN A LINE. Measured: `ci#tests` 450/450 and `ci#testsError` 61/61, exit 0 on both, with
-# the broken default live. Every construction here — `genMerge`, `genMergeCompat`, `genMergeWith`,
+# the broken default live. Every construction here — `genMerge`, `genMergeWith`,
 # `genMergeWithMemo` (ci/flake.nix), the root shim (`default.nix`) and the flake output — supplies
 # `types` explicitly, so the DEFAULT is the one path the suite never took. A convention nothing
 # exercises is prose, and prose does not red.

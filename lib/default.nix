@@ -18,16 +18,25 @@
 #             CALL SITE naming `types`. Every construction in this repo and every by-path consumer
 #             already passes it explicitly, swept (den-hoag-qsrcp). The checker contract is
 #             `verify : v -> null|err`.
+#             It is the gen-types LIBRARY, bound by its roster key, and not a pluggable leaf
+#             vocabulary: the core builds every exported type through gen-types' check-witness
+#             protocol (`witnessedCheck`, `rewritesCheck`), so a `types` without it is refused by
+#             name at construction (den-hoag-ydro3, owner-ruled). A nixpkgs `lib.types` value is
+#             still accepted wherever a type is, as a FOREIGN VALUE through the protocol boundary
+#             (`lib/interface.nix`); it is never the vocabulary. The foreign-vocabulary mode this
+#             formal once documented is withdrawn, and a consumer needing one gets a parameter of
+#             its own rather than this slot.
 #             WHAT THE ASSEMBLY CHECKS OF IT, and no more: that it is an untagged attribute set
 #             (`vocabularyDefect` below — a null, a list, or a tagged value such as a flake's
-#             outputs refuses by name), that each type-shaped member imports through the refusing
-#             import environment (`importLeaf`), and that every name it shares with this library's
-#             strategies is declared in `types-allowlist.nix`. A vocabulary meeting those publishes
-#             whatever subset of names it carries; a name it shares UNdeclared with the
-#             strategies refuses, by name, when demanded, and every other name still publishes
-#             (nixpkgs' whole `lib.types` refuses at nine names and publishes the rest).
-#             Members that are neither a type record nor a function pass through unexamined, and a
-#             function member is examined only when applied (den-hoag-ltnf7).
+#             outputs refuses by name), that it carries the check-witness protocol and that the
+#             protocol agrees with the test this library restates inline (the same door), that
+#             each type-shaped member imports through the refusing import environment
+#             (`importLeaf`), and that every name it shares with this library's strategies is
+#             declared in `types-allowlist.nix`. Beyond the protocol, which names it carries is
+#             not judged: a name it shares UNdeclared with the strategies refuses, by name, when
+#             demanded, and every other name still publishes. Members that are neither a type
+#             record nor a function pass through unexamined, and a function member is examined
+#             only when applied (den-hoag-ltnf7).
 #   memo    : gen-memo.lib (ADR-0008 item 2 — the ONE incremental plane's reuse DECISION,
 #             `warmDecision`). REQUIRED, no default: gen-merge computes the bipartite
 #             contribution-relation FACT (design spec §2.1) and hands it to gen-memo, which decides
@@ -101,8 +110,20 @@ let
   # before the per-member import: that it is a RECORD OF NAMES. A non-attrset aborted `mapAttrs`
   # uncatchably. A TAGGED attrset is a value, not a namespace — `_type` is how Nix marks one, and a
   # flake's outputs carry `_type = "flake"` — and admitting one published `narHash`/`inputs`/… as types,
-  # so the consumer's `types.str` aborted uncatchably instead. Which names a vocabulary carries is the
-  # caller's business and is not judged here.
+  # so the consumer's `types.str` aborted uncatchably instead.
+  #
+  # ★ THE LAST CLAUSE IS THE CHECK-WITNESS PROTOCOL, AND IT IS WHAT THE `types` FORMAL MEANS. gen-types
+  # owns the protocol (`witnessedCheck` builds the published `check` and its witness, `rewritesCheck`
+  # is the test), and this library's core builds every exported type through it and reads every
+  # fold's witness by it, its own strategies included, so a `types` without it leaves the core with
+  # no way to publish a type at all. The formal is the gen-types library, bound by its roster key
+  # (den-hoag-ydro3, owner-ruled): a leaf vocabulary of another origin is not what it takes, and a
+  # default for a missing protocol would publish unwitnessed exports, whose rewritten `check` is
+  # then dropped without a word. Which other names the library carries is not judged here.
+  protocolNames = [
+    "rewritesCheck"
+    "witnessedCheck"
+  ];
   vocabularyDefect =
     t:
     if !builtins.isAttrs t then
@@ -113,6 +134,67 @@ let
       in
       "declares a `types' that is a tagged `${tag}' value rather than a leaf vocabulary record"
       + (if tag == "flake" then " — a flake's outputs; its vocabulary is the flake's `lib'" else "")
+    else
+      let
+        missing = builtins.filter (n: !(t ? ${n})) protocolNames;
+        unapplicable = builtins.filter (n: !prelude.isFunction t.${n}) protocolNames;
+      in
+      if missing != [ ] then
+        "declares a `types' with no ${
+          builtins.concatStringsSep ", " (map (n: "`${n}'") missing)
+        } — the `types' formal is the gen-types library, whose check-witness protocol every type this library exports is built and read through"
+      else if unapplicable != [ ] then
+        "declares a `types' whose ${
+          builtins.concatStringsSep ", " (map (n: "`${n}'") unapplicable)
+        } cannot be applied — the check-witness protocol every type this library exports is built and read through"
+      else
+        witnessDisagreement t;
+
+  # ── THE AGREEMENT DOOR — the protocol's test against the spelling this library restates ────────
+  # Four per-fold sites restate `rewritesCheck` inline rather than call it, because a call is an
+  # environment on every fold and the fold's allocation ratchets have no headroom for one:
+  # `interface.importedFold`, `modules.nix` `ownFold` and `threadedAs`, and `types.nix` `isValid`,
+  # which asks it negated. So the protocol has two spellings, gen-types' and this one, and a change to
+  # what gen-types' witness holds would leave the inline one reading every record wrong: a renamed
+  # field reads every rewritten `check` as the type's own, and a field holding something else reads
+  # every own `check` as rewritten. Either can keep verdicts green. This door asks both spellings, and
+  # the exported test, about the two records the protocol itself makes — the pair `witnessedCheck`
+  # builds, and that pair with its `check` replaced as a wrapper replaces it — and refuses, by name,
+  # a protocol any of them answers against. It costs one small record per construction.
+  witnessDisagreement =
+    t:
+    let
+      own = t.witnessedCheck (_: true);
+      rewritten = own // {
+        check = _: true;
+      };
+      # The inline test, spelled as the sites spell it: positively, and as `isValid` asks it.
+      inline = r: r ? _checkWitness && r ? check && r.check != r._checkWitness;
+      inlineOwn = r: !(r ? _checkWitness && r ? check) || r.check == r._checkWitness;
+      readers = {
+        "gen-types' `rewritesCheck'" = t.rewritesCheck;
+        "the inline test" = inline;
+        "the inline test's negation" = r: !(inlineOwn r);
+      };
+      wrong = builtins.concatLists (
+        builtins.attrValues (
+          builtins.mapAttrs (
+            reader: rewrites:
+            (if rewrites own then [ "${reader} reads the pair `witnessedCheck' built as rewritten" ] else [ ])
+            ++ (
+              if rewrites rewritten then
+                [ ]
+              else
+                [ "${reader} reads that pair with its `check' replaced as its own" ]
+            )
+          ) readers
+        )
+      );
+    in
+    if !builtins.isAttrs own then
+      "declares a `types' whose `witnessedCheck' builds a ${builtins.typeOf own} rather than the record carrying `check' and its witness"
+    else if wrong != [ ] then
+      "declares a `types' whose check-witness protocol disagrees with the test this library restates inline at its per-fold sites: ${builtins.concatStringsSep "; " wrong}. The two spellings must say the same thing, so a gen-types whose witness changed needs a gen-merge restating the changed test"
     else
       null;
 
@@ -129,23 +211,29 @@ let
   # which is the shape the door exists to replace. Hung here, every member derived from `core`
   # raises it at the construction instead, and `flake.nix`'s surface force reaches all of them: there
   # is no state in which `gen-merge.lib` exists and its evaluator has not been checked.
+  # The vocabulary door is forced the same way and for the same reason: the core builds every export
+  # through `types`' check-witness protocol, so there is no state in which the library exists over a
+  # `types` without that protocol, or with one its inline test disagrees with.
   core = builtins.seq checkedScope (
-    import ./modules.nix {
-      inherit
-        prelude
-        priority
-        memo
-        strategies
-        ;
-      scope = checkedScope;
-    }
+    builtins.seq checkedTypes (
+      import ./modules.nix {
+        inherit
+          prelude
+          priority
+          memo
+          strategies
+          ;
+        scope = checkedScope;
+        types = checkedTypes;
+      }
+    )
   );
   strategies = import ./types.nix { inherit prelude core; };
   lintLib = import ./lint.nix { inherit prelude priority core; };
   linkset = import ./linkset.nix { inherit prelude; };
 
-  # A leaf vocabulary arrives from OUTSIDE this library — gen-types in the shipped wiring, and in compat mode a
-  # foreign one — so entering the published namespace is an inbound crossing followed by an outbound
+  # A leaf vocabulary arrives from OUTSIDE this library — gen-types, a library of its own — so
+  # entering the published namespace is an inbound crossing followed by an outbound
   # one: the record is read through the boundary's import environment and rebuilt as a gen type, which
   # is then expressed in the foreign protocol like every other type this library publishes.
   #

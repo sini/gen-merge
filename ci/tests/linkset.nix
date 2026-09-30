@@ -12,7 +12,6 @@
 # not a precondition.
 {
   genLinkset,
-  genMergeCompat,
   genMergeWith,
   genTypes,
   nixpkgsLib,
@@ -25,9 +24,14 @@ let
   # The allowlist the library reads, by the same path — not a second copy of it.
   allowlist = import ../../lib/types-allowlist.nix;
 
-  # A vocabulary gen-merge never saw, lacking every allowlist name.
+  # A vocabulary gen-merge never saw, lacking every allowlist name. It carries gen-types'
+  # check-witness protocol, which the `types` formal requires (the door refuses one without it,
+  # tests-error.nix), and nothing else of gen-types', so every other name it holds is the caller's.
   np = nixpkgsLib.types;
-  V = { inherit (np) str int bool; };
+  protocol = { inherit (genTypes) rewritesCheck witnessedCheck; };
+  V = protocol // {
+    inherit (np) str int bool;
+  };
   overV = genMergeWith V;
   readV =
     v:
@@ -222,7 +226,7 @@ in
   flake.tests.linkset.test-undeclared-collision-refuses-per-name = {
     expr =
       let
-        W = genMergeWith { inherit (np) str nullOr; };
+        W = genMergeWith (protocol // { inherit (np) str nullOr; });
         read =
           type: v:
           (W.evalModuleTree {
@@ -256,8 +260,10 @@ in
         "oneOf"
         "option"
         "raw"
+        "rewritesCheck"
         "str"
         "submodule"
+        "witnessedCheck"
       ];
       str = "sateen";
       listOf = [ "sateen" ];
@@ -266,29 +272,21 @@ in
     };
   };
 
-  # ...AND OVER NIXPKGS' WHOLE `lib.types`, THE REFUSING SET IS EXACTLY THE OLD WHOLE-NAMESPACE ONE:
-  # the nine undeclared names, each refusing on its own, and every other name a value. No refusal
-  # was lost to the per-name binding, and none was added.
-  flake.tests.linkset.test-compat-namespace-refuses-exactly-its-undeclared-names = {
+  # ...AND NIXPKGS' WHOLE `lib.types` IS NOT A VOCABULARY AT ALL. It carries no check-witness
+  # protocol, so the library refuses it at construction, before any name is assembled, and the
+  # refusal reaches a demand that never touches `types` too. The message is asserted in
+  # tests-error.nix; the pair here is the control that the same vocabulary with the protocol added
+  # does assemble, so the refusal is the protocol's and not the vocabulary's shape.
+  flake.tests.linkset.test-nixpkgs-types-as-the-vocabulary-is-refused = {
     expr = {
-      count = builtins.length (builtins.attrNames genMergeCompat.types);
-      refusing = builtins.filter (n: refuses genMergeCompat.types.${n}) (
-        builtins.attrNames genMergeCompat.types
-      );
+      namespace = refuses (builtins.attrNames (genMergeWith np).types);
+      engine = refuses (genMergeWith np).evalModuleTree;
+      withProtocol = ok (builtins.attrNames (genMergeWith (np // protocol)).types);
     };
     expected = {
-      count = 71;
-      refusing = [
-        "anything"
-        "deferredModule"
-        "either"
-        "lazyAttrsOf"
-        "mkOptionType"
-        "nullOr"
-        "oneOf"
-        "raw"
-        "submodule"
-      ];
+      namespace = true;
+      engine = true;
+      withProtocol = true;
     };
   };
 
@@ -354,8 +352,9 @@ in
   };
 
   # A VOCABULARY LACKING EVERY ALLOWLIST NAME PUBLISHES its own names beside the strategies. Scoped:
-  # this holds for a vocabulary whose overlap with the strategies is allowlisted; nixpkgs' whole
-  # `lib.types` shares nine undeclared names, and each refuses by name (tests-error.nix).
+  # this holds for a vocabulary whose overlap with the strategies is allowlisted; a name shared
+  # undeclared refuses by name (the cell above), and a vocabulary without the check-witness protocol
+  # is refused whole (tests-error.nix).
   flake.tests.linkset.test-foreign-vocabulary-without-allowlist-names-publishes = {
     expr = builtins.attrNames overV.types;
     expected = [
@@ -376,8 +375,10 @@ in
       "oneOf"
       "option"
       "raw"
+      "rewritesCheck"
       "str"
       "submodule"
+      "witnessedCheck"
     ];
   };
 

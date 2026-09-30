@@ -1,21 +1,23 @@
-# Compat-mode suite — nixpkgs `lib.types` on the byte-mode engine (the supported escape hatch).
+# Compat suite — nixpkgs `lib.types` values on the byte-mode engine.
 #
 # gen-merge's `(loc, defs)` dispatch (`mergeDefs` calls `type.merge loc defs` when a `.merge` exists;
 # a nixpkgs type carries no `.verify`, so gen-merge's post-merge verify is skipped) is exactly the
 # contract a nixpkgs `mkOptionType` satisfies — and nixpkgs' property tags (`_type =
 # "override"/"merge"/"if"`, with the same `priority`/`content`/`contents`/`condition` fields) are
-# byte-compatible with gen-merge's priority pass (lib/priority.nix). So `import ../lib` with
-# `types = nixpkgsLib.types` yields a `genMergeCompat` engine that runs UNMODIFIED nixpkgs types.
+# byte-compatible with gen-merge's priority pass (lib/priority.nix). So the shipped engine runs
+# UNMODIFIED nixpkgs types as FOREIGN VALUES at its options. They are never its `types` vocabulary:
+# that formal is the gen-types library, and the foreign-vocabulary mode that once built a second
+# engine over `nixpkgsLib.types` is withdrawn (den-hoag-ydro3). The engine never read the vocabulary
+# to run these modules, so every cell here measures what it measured over that engine.
 #
 # nixpkgs enters here as an INJECTED VALUE (specialArgs), never a `lib/` dependency (purity.nix); the
 # one-way boundary is deliberate — nixpkgs types plug INTO the engine (they carry `.merge`), but
 # gen-types checkers do NOT run inside `lib.evalModules` (they carry no `.merge`). This suite pins the
-# seam: nixpkgs leaves + property constructors + structural types through `genMergeCompat`, byte-equal
+# seam: nixpkgs leaves + property constructors + structural types through the engine, byte-equal
 # to `nixpkgsLib.evalModules` AND (where the shape is engine-agnostic) to the gen-types-typed engine,
 # plus the throw-teeth that fire through a nixpkgs type's OWN merge/check path.
 {
   genMerge,
-  genMergeCompat,
   nixpkgsLib,
   ...
 }:
@@ -51,7 +53,7 @@ let
   };
 
   stripModule = c: builtins.removeAttrs c [ "_module" ];
-  compatCfg = mods: stripModule (genMergeCompat.evalModuleTree { modules = mods; }).config;
+  compatCfg = mods: stripModule (genMerge.evalModuleTree { modules = mods; }).config;
   npCfg = mods: stripModule (npLib.evalModules { modules = mods; }).config;
   gmCfg = mods: stripModule (genMerge.evalModuleTree { modules = mods; }).config;
 
@@ -157,9 +159,9 @@ let
   # identical OUTPUT on a valid value.
   mixedMods = [
     {
-      options.tags = genMergeCompat.mkOption {
+      options.tags = genMerge.mkOption {
         default = { };
-        type = genMergeCompat.attrsOf npT.str;
+        type = genMerge.attrsOf npT.str;
       };
     }
     { tags.a = "x"; }

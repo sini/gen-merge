@@ -15,6 +15,7 @@
 {
   genMerge,
   genMergeWith,
+  genTypes,
   nixpkgsLib,
   ...
 }:
@@ -187,10 +188,14 @@ let
     merge = _loc: defs: builtins.concatLists (map (d: d.value) defs);
   };
 
-  # A foreign leaf vocabulary injected as `types`. Not the whole of nixpkgs' `lib.types`: that
-  # overlaps gen-merge's own exports and the namespace assembly refuses it by name, which would make
-  # every cell below read "refused" whatever the fold did.
+  # Foreign leaves assembled into the namespace through `types`, so they reach the fold through
+  # `importType`. The vocabulary carries gen-types' check-witness protocol, which the formal requires
+  # (without it the library refuses at construction, tests-error.nix `check-witness-protocol`), and
+  # nothing else of gen-types', so every leaf below is nixpkgs'. Not the whole of nixpkgs'
+  # `lib.types`: that overlaps gen-merge's own exports at undeclared names, which would make every
+  # cell below read "refused" whatever the fold did.
   compat = genMergeWith {
+    inherit (genTypes) rewritesCheck witnessedCheck;
     inherit (t)
       str
       int
@@ -419,8 +424,8 @@ in
       };
     };
 
-    # Compat mode: nixpkgs' `lib.types` injected as the leaf vocabulary reaches the fold through
-    # `importType`, the second route into `importedFold`.
+    # nixpkgs leaves assembled into the namespace reach the fold through `importType`, the second
+    # route into `importedFold`.
     test-compat-vocabulary-str-refuses-a-bad-value = {
       expr = {
         str = compatRun compat.types.str 1;

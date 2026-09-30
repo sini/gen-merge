@@ -48,7 +48,6 @@
 {
   lib,
   genMerge,
-  genMergeCompat,
   differential,
   ...
 }:
@@ -137,13 +136,11 @@ let
   # `.merge` the `(loc, defs)` dispatch calls. It is the sharpest form of the promise: a consumer
   # changes one call and nothing else.
   #
-  # ★ THE VOCABULARY HERE IS DELIBERATELY NIXPKGS', AND REACHING FOR `genMergeCompat.types` INSTEAD
-  # IS A MEASURED REFUSAL RATHER THAN A STYLE CHOICE. That namespace merges nixpkgs leaf checkers
-  # with gen-merge's structural strategies through the linkset, and the two overlap at nine
-  # undeclared names (`submodule`, `nullOr`, `either`, `oneOf`, `raw`, `anything`, `lazyAttrsOf`,
-  # `deferredModule`, `mkOptionType`), each of which refuses by name when demanded — Cardelli 1997's
-  # disjointness precondition, enforced per name. The compat mode's vocabulary IS nixpkgs' `lib.types`, and
-  # this seam says so structurally rather than in a comment somewhere else.
+  # ★ THE VOCABULARY HERE IS DELIBERATELY NIXPKGS', read as FOREIGN VALUES by the shipped engine.
+  # There is no nixpkgs-vocabulary engine to reach for instead: gen-merge's `types` formal is the
+  # gen-types library, and a nixpkgs `lib.types` handed to it is refused by name at construction
+  # (den-hoag-ydro3). The engine never read its vocabulary to evaluate these modules, so this seam
+  # measures what it measured when it ran over that second engine.
   installEvaluator =
     body:
     d.mkArm {
@@ -351,7 +348,7 @@ let
     reference = referenceArm;
     candidate = installEvaluator {
       name = "gen-merge+nixpkgs-leaves";
-      evalModules = genMergeCompat.evalModuleTree;
+      evalModules = genMerge.evalModuleTree;
     };
     seam = evaluatorSeam;
     claim = claimB;

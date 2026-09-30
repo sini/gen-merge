@@ -35,6 +35,11 @@
   # container it is (den-hoag-n6dh7 item 5). A KNOT, tied lazily by every caller (`lib/default.nix`,
   # `ci/flake.nix`): nothing reads it while the vocabulary is still being built.
   strategies,
+  # gen-types' library (the roster's `types`), for the one thing this engine takes from it: the
+  # check-witness protocol gen-types owns, which the boundary builds every export through and reads
+  # every fold's witness by (den-hoag-ydro3). `lib/default.nix` has refused a `types` without it,
+  # and one whose protocol disagrees with this engine's inline test, before this is imported.
+  types,
 }:
 let
   inherit (prelude)
@@ -116,6 +121,7 @@ let
       showConflict
       mergeDescriptorDefault
       nestedTreeAt
+      types
       ;
     constructors = strategies;
   };
@@ -1473,8 +1479,9 @@ let
     if type == null then
       null
     # A fold of its own is folded under a `check` a foreign wrapper rewrote over it, which the
-    # import half answers (`interface.carriedFold`, den-hoag-4ifgb). `interface.rewritesCheck` is
-    # restated inline: a call here is an environment on every fold.
+    # import half answers (`interface.carriedFold`, den-hoag-4ifgb). gen-types' `rewritesCheck` is
+    # restated inline for cost: a call here is an environment on every fold. The construction door
+    # holds this spelling to the protocol (`lib/default.nix`).
     else if
       type ? mergeDefs && !(type ? _checkWitness && type ? check && type.check != type._checkWitness)
     then
@@ -1850,6 +1857,8 @@ let
             }
           # A `check` a foreign wrapper rewrote is carried onto the threaded fold HERE, before the
           # record is re-bound to the fields below, which do not include it (den-hoag-4ifgb).
+          # gen-types' `rewritesCheck`, restated inline for cost; the construction door holds the
+          # spelling to the protocol (`lib/default.nix`).
           else if type ? _checkWitness && type ? check && type.check != type._checkWitness then
             interface.carriedFold type (type.mergeDefs.threaded ev)
           else

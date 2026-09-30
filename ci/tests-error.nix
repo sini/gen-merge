@@ -40,7 +40,6 @@
   genTypes,
   genTypesFlake,
   genLinkset,
-  genMergeCompat,
   genScope,
   ...
 }:
@@ -4220,7 +4219,9 @@ in
       # The undeclared refusal names the supplied vocabulary neutrally — this library cannot know
       # whose it is — and names the one name demanded, not the namespace's whole undecided set.
       test-undeclared-collision-names-the-supplied-vocabulary = {
-        expr = genMergeCompat.types.submodule;
+        expr =
+          (genMergeWith (nixpkgsLib.types // { inherit (genTypes) rewritesCheck witnessedCheck; }))
+          .types.submodule;
         expectedError = {
           type = "ThrownError";
           msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at name 'submodule'\\.";
@@ -4229,13 +4230,102 @@ in
       # The per-name refusal is a named, catchable refusal at the name, over a vocabulary that
       # shares only that name undeclared; `tests/linkset.nix` pins that the rest publishes.
       test-undeclared-collision-refuses-at-its-name = {
-        expr = (genMergeWith { inherit (nixpkgsLib.types) str nullOr; }).types.nullOr;
+        expr =
+          (genMergeWith {
+            inherit (nixpkgsLib.types) str nullOr;
+            inherit (genTypes) rewritesCheck witnessedCheck;
+          }).types.nullOr;
         expectedError = {
           type = "ThrownError";
           msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at name 'nullOr'\\.";
         };
       };
     };
+
+    # THE `types` FORMAL IS THE gen-types LIBRARY, AND THE DOOR SAYS SO (den-hoag-ydro3). The core
+    # builds every export through gen-types' check-witness protocol, so a `types` without it, or with
+    # one the per-fold sites' inline test disagrees with, is refused at construction: each cell
+    # demands `evalModuleTree`, which never touches the namespace, so the refusal is the core's. The
+    # live control is every other cell in this repository, built over the shipped gen-types.
+    flake.testsError.check-witness-protocol =
+      let
+        withoutProtocol =
+          n:
+          "^gen-merge: declares a `types' with no ${n} — the `types' formal is the gen-types library, whose check-witness protocol every type this library exports is built and read through$";
+        disagrees =
+          what:
+          "^gen-merge: declares a `types' whose check-witness protocol disagrees with the test this library restates inline at its per-fold sites: ${what}\\. The two spellings must say the same thing, so a gen-types whose witness changed needs a gen-merge restating the changed test$";
+        record = fn: {
+          __functor = self: self._fn;
+          _fn = fn;
+        };
+        # DRIFT 1, a renamed field: gen-types' two functions agree with each other on a witness field
+        # the inline test does not read, so the inline test would read every rewritten `check' as
+        # the type's own.
+        renamed = genTypes // {
+          witnessedCheck =
+            fn:
+            let
+              check = record fn;
+            in
+            {
+              inherit check;
+              _checkWitnessMoved = check;
+            };
+          rewritesCheck = t: t ? _checkWitnessMoved && t ? check && t.check != t._checkWitnessMoved;
+        };
+        # DRIFT 2, the same field holding something else: the inline test would read every own
+        # `check' as rewritten.
+        reshaped = genTypes // {
+          witnessedCheck =
+            fn:
+            let
+              check = record fn;
+            in
+            {
+              inherit check;
+              _checkWitness = { inherit check; };
+            };
+          rewritesCheck = t: t ? _checkWitness && t ? check && t.check != t._checkWitness.check;
+        };
+      in
+      {
+        test-nixpkgs-types-as-the-vocabulary-refuses-by-name = {
+          expr = (genMergeWith nixpkgsLib.types).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = withoutProtocol "`rewritesCheck', `witnessedCheck'";
+          };
+        };
+        test-a-vocabulary-missing-one-protocol-name-names-it = {
+          expr = (genMergeWith (removeAttrs genTypes [ "witnessedCheck" ])).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = withoutProtocol "`witnessedCheck'";
+          };
+        };
+        test-a-protocol-name-that-cannot-be-applied-is-refused = {
+          expr = (genMergeWith (genTypes // { rewritesCheck = true; })).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: declares a `types' whose `rewritesCheck' cannot be applied — the check-witness protocol every type this library exports is built and read through$";
+          };
+        };
+        test-a-renamed-witness-field-is-refused-by-the-agreement-door = {
+          expr = (genMergeWith renamed).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "the inline test reads that pair with its `check' replaced as its own; the inline test's negation reads that pair with its `check' replaced as its own";
+          };
+        };
+        test-a-witness-field-holding-something-else-is-refused-by-the-agreement-door = {
+          expr = (genMergeWith reshaped).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = disagrees "the inline test reads the pair `witnessedCheck' built as rewritten; the inline test's negation reads the pair `witnessedCheck' built as rewritten";
+          };
+        };
+      };
 
     # A DECLARED `type` THAT IS NOT A TYPE IS REFUSED BY NAME WHERE THE FOLD DEMANDS IT (ADR-0025
     # item 1; `interface.typeDefect`). Each vocabulary member below publishes — the namespace judges
