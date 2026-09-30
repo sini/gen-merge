@@ -103,6 +103,13 @@ let
     result = c1;
   };
   files = rec': map (w: w.file) rec'.winners;
+  conflicting = gm.evalModuleTree {
+    modules = [
+      { options.x = gm.mkOption { type = t.str; }; }
+      { x = "a"; }
+      { x = "b"; }
+    ];
+  };
 in
 {
   flake.tests.bands = {
@@ -284,6 +291,27 @@ in
         }).x.band;
       expected = "set";
     };
+
+    # The band read never forces the merged value: `x` defined twice at one priority has a band and a
+    # priority, while its value refuses (../tests-error.nix
+    # `test-a-conflicting-leaf-value-refuses-where-its-band-reads`).
+    test-a-conflicting-leaf-bands-without-forcing-its-value =
+      let
+        b =
+          (gm.bandedLeaves {
+            scope = "r";
+            result = conflicting;
+          }).x;
+      in
+      {
+        expr = {
+          inherit (b) band priority;
+        };
+        expected = {
+          band = "set";
+          priority = 100;
+        };
+      };
 
     # `scope` is the caller's and every other field is this result's own (the U2/U3 gate's P1): with
     # each contributor's modules carrying its own `_file`, an honest pairing's winners name only its

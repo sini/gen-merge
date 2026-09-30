@@ -3733,6 +3733,22 @@ in
             msg = "^USER-ERROR$";
           };
         };
+        # The control for `test-a-conflicting-leaf-bands-without-forcing-its-value`: the same leaf's
+        # value refuses, so a band read that forced it would refuse too.
+        test-a-conflicting-leaf-value-refuses-where-its-band-reads = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                decl
+                { x = "a"; }
+                { x = "b"; }
+              ];
+            }).config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `x' has conflicting definitions:";
+          };
+        };
         # The control for `test-every-unset-reason`: the planted default the band never forces.
         test-the-planted-default-fires-when-the-value-is-read = {
           expr = planted.config.x;
