@@ -1414,9 +1414,10 @@ name; and a `witnessRecord` whose record is not shaped as the one `witnessedChec
 (`ci/tests-error.nix` `check-witness-protocol.*`). Its claim is scoped to those records: a
 `rewritesCheck` that departs only on a record of some other shape passes it, which is sound because
 every fold meets only records of these shapes or witness-less ones, which both spellings read
-`false`. It asks the evaluator it runs on, so a `check` published as a bare lambda again is refused
-on Nix and Determinate and admitted on Lix, where `f == f` holds and the two spellings really do
-agree. Its fold then applies that
+`false`. A `check` published as a bare lambda again is refused on every evaluator: on Nix and
+Determinate by the inline test, since `f == f` is false there, and on Lix, where it is true and the
+two spellings agree on `witnessedCheck`'s pair, because the pair `exportType` spells from
+`witnessRecord` is then not that pair. Its fold then applies that
 check to every definition (`checkedFold`, the same verdict as nixpkgs' `checkDefsForError`), at the
 option, at an element, in the threaded fold, at a union's member choice and at the `mkOptionType`
 door. gen reads it as a refinement: the gen domain (`verify`/`admits`) still applies, so a widening
