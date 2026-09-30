@@ -605,18 +605,19 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 
 **The `types` argument is the gen-types library**, bound by its roster key, and not a pluggable leaf
 vocabulary. The core builds every exported type through gen-types' check-witness protocol
-(`witnessedCheck`) and reads every fold's witness by it (`rewritesCheck`), so a `types` without the
-protocol is refused by name at construction:
+(`witnessRecord`, held to `witnessedCheck`) and reads every fold's witness by it (`rewritesCheck`),
+so a `types` without the protocol is refused by name at construction:
 
 ```
-gen-merge: declares a `types' with no `rewritesCheck', `witnessedCheck' — the `types' formal is the
-gen-types library, whose check-witness protocol every type this library exports is built and read through
+gen-merge: declares a `types' with no `rewritesCheck', `witnessRecord', `witnessedCheck' — the `types'
+formal is the gen-types library, whose check-witness protocol every type this library exports is built
+and read through (a gen-types older than that protocol lacks them)
 ```
 
 A nixpkgs `lib.types` value is still accepted wherever a type is, as a foreign value at an option
 (below). It is never the vocabulary: the foreign-vocabulary mode `types` once documented is
 withdrawn, and a consumer that needs one gets a parameter of its own, not this slot (owner-ruled,
-den-hoag-ydro3). The namespace carries the two protocol names beside the leaves.
+den-hoag-ydro3). The namespace carries the three protocol names beside the leaves.
 
 ## The protocol boundary — `lib/interface.nix`
 
@@ -1394,18 +1395,28 @@ publishes that one record twice, as `check` and as `_checkWitness`, and a record
 longer the witness was rewritten; `==` meets one set of bindings there and allocates nothing, so the
 test is paid on every fold at no cost per fold. **The protocol is gen-types'** (owner-ruled,
 den-hoag-ydro3 OQ-A arm (ii); gen-types' README is its first record and this is the second):
-`exportType` builds the pair with gen-types' `witnessedCheck`, and the test is gen-types'
-`rewritesCheck`, so `_checkWitness` and the functor's `_fn` are gen-types protocol fields, and
-gen-merge defines neither the layout nor the test. Four per-fold sites restate the test inline, for
+`exportType` builds the one record with gen-types' `witnessRecord` and publishes it under both fields
+itself, and the test is gen-types' `rewritesCheck`, so `_checkWitness` and the functor's `_fn` are
+gen-types protocol fields, and gen-merge defines neither the record nor the test. It spells the pair
+rather than take `witnessedCheck`'s, because that two-field result would cost every exported type a
+set to read or copy, a slope per aspect (owner-ruled, den-hoag-ydro3 arm (c)); `witnessedCheck`'s
+output is the layout the spelling is held to, by the door below, not by construction. Four per-fold sites restate the test inline, for
 cost, because a call there is an environment on every fold and the fold's allocation ratchets have
 no headroom for it: `interface.importedFold`, `modules.nix` `ownFold` and `threadedAs`, and
 `types.nix` `isValid`, which asks it negated. What holds those copies to gen-types' test is a
 construction-time **agreement door** (`lib/default.nix` `witnessDisagreement`): it asks both inline
 spellings, and gen-types' own `rewritesCheck`, about the pair `witnessedCheck` builds and that pair
-with its `check` replaced, and refuses by name a gen-types whose witness no longer reads as the
-inline test reads it, whether the field was renamed or now holds something else, and a pair
-carrying any field beyond `check` and `_checkWitness`, which `exportType` re-publishes by name
-(`ci/tests-error.nix` `check-witness-protocol.*`). Its fold then applies that
+with its `check` replaced, and about the pair `exportType` spells from `witnessRecord` and that pair
+rewritten. It refuses by name a gen-types whose test answers other than a boolean, or reads either
+pair otherwise than the inline test does, whether the field was renamed or now holds something
+else; a pair carrying any field beyond `check` and `_checkWitness`, which `exportType` publishes by
+name; and a `witnessRecord` whose record is not shaped as the one `witnessedCheck` publishes
+(`ci/tests-error.nix` `check-witness-protocol.*`). Its claim is scoped to those records: a
+`rewritesCheck` that departs only on a record of some other shape passes it, which is sound because
+every fold meets only records of these shapes or witness-less ones, which both spellings read
+`false`. It asks the evaluator it runs on, so a `check` published as a bare lambda again is refused
+on Nix and Determinate and admitted on Lix, where `f == f` holds and the two spellings really do
+agree. Its fold then applies that
 check to every definition (`checkedFold`, the same verdict as nixpkgs' `checkDefsForError`), at the
 option, at an element, in the threaded fold, at a union's member choice and at the `mkOptionType`
 door. gen reads it as a refinement: the gen domain (`verify`/`admits`) still applies, so a widening
@@ -1434,7 +1445,8 @@ a gen-types parametric leaf and once with the same leaf under `addCheck` (`union
 `addCheck (union [ int ]) (x: x > 0)`), in either order, merges by the two records' shared digest
 (`completeParametric`'s relation), and the added check is lost. The relation cannot read the
 witness there: a `//` copies the relation, so it is bound to its base and cannot tell its own
-wrapped record declared twice, which must merge, from a wrapped partner, which must not. Closing it
+wrapped record declared twice, which must merge (and then, like any `addCheck` keeping its base's
+name, loses the check: nixpkgs loses it too), from a wrapped partner, which must not. Closing it
 belongs to the redeclaration's caller, which sees both operands (den-hoag-4ifgb OQ3).
 
 Each nesting and container fold also carries a `threaded` sibling, reading its
