@@ -4288,6 +4288,22 @@ in
             };
           rewritesCheck = t: t ? _checkWitness && t ? check && t.check != t._checkWitness.check;
         };
+        # DRIFT 3, a field beyond the two: both tests still agree on the pair, but gen-merge
+        # re-publishes the pair by its two names, so every exported type would lose the third and
+        # gen-types' own test would read each as its own.
+        widened = genTypes // {
+          witnessedCheck =
+            fn:
+            let
+              check = record fn;
+            in
+            {
+              inherit check;
+              _checkWitness = check;
+              _witnessTag = true;
+            };
+          rewritesCheck = t: t ? _witnessTag && t ? _checkWitness && t ? check && t.check != t._checkWitness;
+        };
       in
       {
         test-nixpkgs-types-as-the-vocabulary-refuses-by-name = {
@@ -4323,6 +4339,13 @@ in
           expectedError = {
             type = "ThrownError";
             msg = disagrees "the inline test reads the pair `witnessedCheck' built as rewritten; the inline test's negation reads the pair `witnessedCheck' built as rewritten";
+          };
+        };
+        test-a-witness-pair-with-a-field-beyond-the-two-is-refused = {
+          expr = (genMergeWith widened).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: declares a `types' whose `witnessedCheck' builds the fields `_checkWitness', `_witnessTag', `check' rather than exactly `check' and `_checkWitness', the two this library publishes on every exported type, so a field beyond them would be lost from each$";
           };
         };
       };

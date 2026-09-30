@@ -160,7 +160,10 @@ let
   # every own `check` as rewritten. Either can keep verdicts green. This door asks both spellings, and
   # the exported test, about the two records the protocol itself makes — the pair `witnessedCheck`
   # builds, and that pair with its `check` replaced as a wrapper replaces it — and refuses, by name,
-  # a protocol any of them answers against. It costs one small record per construction.
+  # a protocol any of them answers against. `exportType` also re-publishes the pair by its two field
+  # names, so a pair carrying any other field would lose it on every exported type, and gen-types'
+  # own test would then misread those types where gen-merge does not restate it; the door refuses a
+  # pair whose fields are not exactly those two. It costs one small record per construction.
   witnessDisagreement =
     t:
     let
@@ -195,6 +198,15 @@ let
       "declares a `types' whose `witnessedCheck' builds a ${builtins.typeOf own} rather than the record carrying `check' and its witness"
     else if wrong != [ ] then
       "declares a `types' whose check-witness protocol disagrees with the test this library restates inline at its per-fold sites: ${builtins.concatStringsSep "; " wrong}. The two spellings must say the same thing, so a gen-types whose witness changed needs a gen-merge restating the changed test"
+    else if
+      builtins.attrNames own != [
+        "_checkWitness"
+        "check"
+      ]
+    then
+      "declares a `types' whose `witnessedCheck' builds the fields ${
+        builtins.concatStringsSep ", " (map (n: "`${n}'") (builtins.attrNames own))
+      } rather than exactly `check' and `_checkWitness', the two this library publishes on every exported type, so a field beyond them would be lost from each"
     else
       null;
 
