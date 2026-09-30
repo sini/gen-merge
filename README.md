@@ -603,6 +603,21 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
+**The `types` argument is the gen-types library**, bound by its roster key, and not a pluggable leaf
+vocabulary. The core builds every exported type through gen-types' check-witness protocol
+(`witnessedCheck`) and reads every fold's witness by it (`rewritesCheck`), so a `types` without the
+protocol is refused by name at construction:
+
+```
+gen-merge: declares a `types' with no `rewritesCheck', `witnessedCheck' — the `types' formal is the
+gen-types library, whose check-witness protocol every type this library exports is built and read through
+```
+
+A nixpkgs `lib.types` value is still accepted wherever a type is, as a foreign value at an option
+(below). It is never the vocabulary: the foreign-vocabulary mode `types` once documented is
+withdrawn, and a consumer that needs one gets a parameter of its own, not this slot (owner-ruled,
+den-hoag-ydro3). The namespace carries the two protocol names beside the leaves.
+
 ## The protocol boundary — `lib/interface.nix`
 
 **A type says what it is in gen's own words. The nixpkgs `optionType` protocol is spoken in exactly
@@ -679,21 +694,25 @@ injected leaf vocabulary. Swallowing it there published a protocol-incomplete re
 uncatchable, unnamed abort that `refuseMount` exists to convert into a refusal. A computed refusal
 thrown away is worse than one never computed.
 
-The `types` parameter is this library's **uncontrolled input** — a consumer may inject any leaf
-vocabulary, and compat mode injects nixpkgs' — so "the shipped roster does not trip it" is not a
-reason to swallow. Being total over that input is the whole reason the import environment refuses
+The `types` parameter is this library's **uncontrolled input** — it means the gen-types library, and
+a caller may hand it any record carrying the check-witness protocol — so "the shipped roster does not
+trip it" is not a reason to swallow. Being total over that input is the whole reason the import environment refuses
 rather than doing its best. Refusal is **per name**: the namespace is lazy, so a bad entry refuses
 when forced and every other name still publishes.
 
 What the assembly checks of the vocabulary, and no more: that it is an untagged attribute set (a
-null, a list, or a tagged value such as a flake's outputs refuses by name), that each type-shaped
-member imports as above, and that every name it shares with gen-merge's strategies is declared in
-`lib/types-allowlist.nix`. A vocabulary whose overlap with the strategies is allowlisted publishes
-whatever subset of names it carries — `{ inherit (lib.types) str int bool; }` publishes its three
-beside the strategies. A name it shares undeclared with the strategies refuses **per name** too: it
-answers with the linkset's named refusal when demanded, and every other name still publishes, so
-`{ inherit (lib.types) str nullOr; }` publishes `str` and `listOf` and refuses at `nullOr`, and nixpkgs'
-entire `lib.types` refuses at nine names. The allowlist is gen-merge's own declaration, so an entry is stale
+null, a list, or a tagged value such as a flake's outputs refuses by name), that it carries gen-types'
+check-witness protocol and that the protocol agrees with the test gen-merge restates inline (both at
+construction; the agreement door is stated with the witness, below), that each
+type-shaped member imports as above, and that every name it shares with gen-merge's strategies is
+declared in `lib/types-allowlist.nix`. Beyond the protocol, which names it carries is not judged: a
+record whose overlap with the strategies is allowlisted publishes whatever subset of names it carries
+— the protocol plus `{ inherit (lib.types) str int bool; }` publishes those three beside the
+strategies (`ci/tests/linkset.nix`, a fixture of the assembly's totality, not a supported wiring).
+A name it shares undeclared with the strategies refuses **per name** too: it answers with the
+linkset's named refusal when demanded, and every other name still publishes, so the protocol plus
+`{ inherit (lib.types) str nullOr; }` publishes `str` and `listOf` and refuses at `nullOr`. nixpkgs'
+entire `lib.types`, which carries no protocol, is refused whole at construction. The allowlist is gen-merge's own declaration, so an entry is stale
 only when it names nothing gen-merge exports; an entry naming a name the vocabulary lacks is
 inapplicable, and whether the shipped gen-types still collides at each entry is a CI cell.
 
@@ -1371,9 +1390,22 @@ the kind nixpkgs already publishes for its own v2 checks: apply it as a function
 with `lib.isFunction` (functor-aware), never `builtins.isFunction`, which answers `false` for it
 (`builtins.typeOf` is `"set"`, and `builtins.functionArgs` aborts on it). Over a gen record, the
 rewritten `check` is detected by construction: the witness is the `check` record itself. `exportType`
-publishes that one record twice, as `check` and as the `_checkWitness` marker, and a record whose
-`check` is no longer the witness was rewritten; `==` meets one set of bindings there and allocates
-nothing, so the test is paid on every fold at no cost per fold. Its fold then applies that
+publishes that one record twice, as `check` and as `_checkWitness`, and a record whose `check` is no
+longer the witness was rewritten; `==` meets one set of bindings there and allocates nothing, so the
+test is paid on every fold at no cost per fold. **The protocol is gen-types'** (owner-ruled,
+den-hoag-ydro3 OQ-A arm (ii); gen-types' README is its first record and this is the second):
+`exportType` builds the pair with gen-types' `witnessedCheck`, and the test is gen-types'
+`rewritesCheck`, so `_checkWitness` and the functor's `_fn` are gen-types protocol fields, and
+gen-merge defines neither the layout nor the test. Four per-fold sites restate the test inline, for
+cost, because a call there is an environment on every fold and the fold's allocation ratchets have
+no headroom for it: `interface.importedFold`, `modules.nix` `ownFold` and `threadedAs`, and
+`types.nix` `isValid`, which asks it negated. What holds those copies to gen-types' test is a
+construction-time **agreement door** (`lib/default.nix` `witnessDisagreement`): it asks both inline
+spellings, and gen-types' own `rewritesCheck`, about the pair `witnessedCheck` builds and that pair
+with its `check` replaced, and refuses by name a gen-types whose witness no longer reads as the
+inline test reads it, whether the field was renamed or now holds something else, and a pair
+carrying any field beyond `check` and `_checkWitness`, which `exportType` re-publishes by name
+(`ci/tests-error.nix` `check-witness-protocol.*`). Its fold then applies that
 check to every definition (`checkedFold`, the same verdict as nixpkgs' `checkDefsForError`), at the
 option, at an element, in the threaded fold, at a union's member choice and at the `mkOptionType`
 door. gen reads it as a refinement: the gen domain (`verify`/`admits`) still applies, so a widening
@@ -1386,17 +1418,24 @@ submodule. A record re-bound by selection (`t // { inherit (t) check; }`), rebui
 `inherit`, or passed through `mapAttrs` keeps the same `check` record and reads as its own on Nix,
 Determinate and Lix. Pinned by `ci/tests/check-carriage.nix` and
 `ci/tests-error.nix` (`check-carriage.*`).
-**The price extended to a lost `check`, as the DEFAULT** (*defaulted, reversible, pending the owner's
-reading*): a check that reads the bare tree can be neither carried nor detected,
-and is lost silently. The class is a check over the bare tree itself (the tree has no witness, and
+**The price extended to a lost `check`** (owner-ruled, den-hoag-4ifgb OQ1 arm (a)): a check that
+reads the bare tree can be neither carried nor detected, and is lost silently. The class is a check over the bare tree itself (the tree has no witness, and
 nixpkgs erases it too), a stock container stating the tree with only its `check` rewritten against
 the tree it offers (`np.listOf tree // { nestedTypes.elemType = addCheck tree p; }`: the two agree on
 `merge`, the only slot a tree can be compared on, so the check is lost where gen-merge once refused
 it with the tombstone), and a stock container whose stock check reads a `nonMountable` member,
 `either`/`oneOf`/`nullOr` over the bare tree (`addCheck (either tree str) p` is served where nixpkgs
 refuses; over `nullOr` nixpkgs erases it too). Refusing every re-home of those would revert the
-stock six over the tree. The gen-types composites, which read a member's `verify` and never its
-`check` (`ts.refined (addCheck ts.int p) …`), are the same silence in another library.
+stock six over the tree. The gen-types composites (`ts.refined (addCheck ts.int p) …`) read the
+witness through the same protocol and carry or refuse such a member; what stays silent there is a
+bare gen-types checker with its `check` rewritten, which has no witness (gen-types' residue R1).
+**And a parametric leaf redeclared with a wrapped twin** (residue R2): an option declared once with
+a gen-types parametric leaf and once with the same leaf under `addCheck` (`union [ int ]` beside
+`addCheck (union [ int ]) (x: x > 0)`), in either order, merges by the two records' shared digest
+(`completeParametric`'s relation), and the added check is lost. The relation cannot read the
+witness there: a `//` copies the relation, so it is bound to its base and cannot tell its own
+wrapped record declared twice, which must merge, from a wrapped partner, which must not. Closing it
+belongs to the redeclaration's caller, which sees both operands (den-hoag-4ifgb OQ3).
 
 Each nesting and container fold also carries a `threaded` sibling, reading its
 nested trees through the evaluation's accessor, and a gen type's exported `merge` folds through it
@@ -1439,16 +1478,18 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
 
 Pinned by `ci/tests/nesting-placement.nix` and `ci/tests-error.nix` (`nesting-placement.*`).
 
-## Compat mode
+## nixpkgs types on the engine
 
-The `types` argument is an injection seam, so it can point at nixpkgs' own `lib.types` and run the
-**same byte-mode engine** over unmodified nixpkgs option types — zero adapter code:
+nixpkgs option types run on the **same byte-mode engine** as FOREIGN VALUES at its options, unmodified
+and with zero adapter code:
 
 ```nix
-genMergeCompat = import (fetchGit "https://github.com/sini/gen-merge").outPath {
-  prelude = genPrelude;
-  types = (import "${nixpkgs}/lib").types;   # nixpkgs leaf/structural types, verbatim
-};
+genMerge.evalModuleTree {
+  modules = [
+    { options.name = lib.mkOption { type = lib.types.str; default = "d"; }; }
+    { name = lib.mkForce "x"; }
+  ];
+}
 ```
 
 nixpkgs option types already speak the `(loc, defs)` merge contract `mergeDefs` dispatches on — a
@@ -1457,11 +1498,16 @@ post-merge verify is skipped) — and nixpkgs property tags (`_type = "override"
 byte-compatible with gen-merge's priority pass, so `mkDefault`/`mkForce`/`mkIf`/`mkMerge` from nixpkgs
 discharge identically. (Pinned by `ci/tests/compat-nixpkgs-types.nix`.)
 
+**Not through `types`.** This was once "compat mode", a second engine built with `types = nixpkgs.lib.types`. That mode is withdrawn: `types` is the gen-types library, and nixpkgs'
+`lib.types` handed to it is refused by name at construction ([The `types`
+namespace](#the-types-namespace)). The engine never read its vocabulary to evaluate a module, so
+every module that ran on that engine runs on this one unchanged.
+
 **When to use it** — a migration on-ramp: bring a custom nixpkgs `mkOptionType` (or an odd leaf type)
 along while porting a config onto the pure-gen module system, instead of rewriting it up front. An
 escape hatch, **not** the fast path.
 
-**Cost profile** (measured — [gen hub `BENCHMARKS.md`](https://github.com/sini/gen/blob/main/BENCHMARKS.md#compat-mode)):
+**Cost profile** (cited — [gen hub `BENCHMARKS.md`](https://github.com/sini/gen/blob/main/BENCHMARKS.md#compat-mode)):
 
 - **leaf-type shims are free** — a nixpkgs leaf's `.merge` is trivial, so the engine keeps the full
   speedup: hybrid **0.62×** of nixpkgs cpu, vs pure gen-merge's **0.63×**, at `scalar` n=16000.
@@ -1469,17 +1515,16 @@ escape hatch, **not** the fast path.
   instance, dragging the nixpkgs engine into every subtree: hybrid **0.96×**, vs pure **0.44×**, at
   `registry` (`attrsOf submodule`) n=2000.
 
-So keep den-hoag's hot registry/aspect paths on gen-merge's structural strategies; reserve compat
-mode for the leaf/custom-type edges of a port.
+So keep den-hoag's hot registry/aspect paths on gen-merge's structural strategies; reserve nixpkgs
+types for the leaf/custom-type edges of a port.
 
 **One-way boundary** — types flow nixpkgs → engine, not the reverse. A nixpkgs type plugs INTO
 gen-merge because it carries `.merge`; a gen-types checker does **not** run inside nixpkgs'
-`lib.evalModules`, because it is verify-only (no `.merge`). Compat mode injects nixpkgs types into the
-gen-merge engine — it does not export gen-types checkers into `lib.evalModules`.
+`lib.evalModules`, because it is verify-only (no `.merge`).
 
-**Purity** — nixpkgs enters here as an injected VALUE (the `types` argument), exactly as gen-types
-does; `lib/` never gains a nixpkgs dependency (enforced by `ci/tests/purity.nix`) — the same
-value-injection philosophy as [gen-flake](https://github.com/sini/gen-flake).
+**Purity** — nixpkgs enters here as a VALUE at an option; `lib/` never gains a nixpkgs dependency
+(enforced by `ci/tests/purity.nix`) — the same value-injection philosophy as
+[gen-flake](https://github.com/sini/gen-flake).
 
 ## Byte-mode scope (and the deferred structural seam)
 
@@ -1673,7 +1718,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 - **A `mkOptionType` stating no relation merges with one construction and refuses two of one name.**
   Its check is a caller's function, so the name cannot say two of them are one type; the relation
   compares the reified records under Nix `==` over `closuresFirst`'s subject, which terminates on
-  two constructions (`ci/tests/samename-relation.nix`, `compatEngine` included). Three departures,
+  two constructions (`ci/tests/samename-relation.nix`). Three departures,
   stated:
 
   - *One value declared twice merges and keeps its check* (`[g, g]`), where nixpkgs refuses the
