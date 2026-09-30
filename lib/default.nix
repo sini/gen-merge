@@ -67,7 +67,7 @@ let
   scopeDefect =
     s:
     if s == null then
-      "declares no `scope' — the module tree is evaluated on the one universal graph evaluator (ADR-0006), and there is no second driver to fall back to"
+      "declares no `scope' — the module tree is evaluated on the one universal graph evaluator, and there is no second driver to fall back to"
     else if !builtins.isAttrs s then
       "declares a `scope' that is a ${builtins.typeOf s} rather than the gen-scope library record"
     else

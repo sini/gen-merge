@@ -1786,7 +1786,7 @@ let
     type: field: loc:
     "gen-merge: `${type}'${
       if loc == null then "" else " at option `${showOption loc}'"
-    }: its called `${field}' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it (`evalModuleTree'), read through its fold's threaded sibling, and no second evaluation is made for it (den-hoag-n6dh7)";
+    }: its called `${field}' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it (`evalModuleTree'), read through its fold's threaded sibling, and no second evaluation is made for it";
 
   # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
   # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
@@ -1949,7 +1949,7 @@ let
       "the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}'";
   nestingUnderLazyRefusal =
     group: lazy: t:
-    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': ${classAReason lazy t}; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it (den-hoag-9d80v)";
+    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': ${classAReason lazy t}; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it";
   unionUnderLazyRefusal =
     group: lazy: u: pos: t:
     "gen-merge: nta: option `${showOption group}' declares `${u.name or "<union>"}' at position ${builtins.toJSON pos}, whose member `${t.name or "<container>"}' holds nested trees, under `${lazy}': ${
@@ -1957,7 +1957,7 @@ let
         "the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}', or make it lazy"
       else
         "the member's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}'"
-    }; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it (den-hoag-9d80v)";
+    }; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it";
 
   # ── THE CONTAINER NODE's POSITION (S1 arm (v), den-hoag-9d80v) ──────────────────────────────────
   # Under `lazyAttrsOf`, a position whose type keys its nested trees by reading their definitions —
@@ -2600,7 +2600,7 @@ let
     let
       inadmissible =
         subject: demand:
-        throw "gen-merge: a module ${demand} while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output (ADR-0033: nothing consumes its own stratum's in-flight output; the option key set is unconditional). Declare the option unconditionally and gate its `config' instead${
+        throw "gen-merge: a module ${demand} while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output (nothing consumes its own stratum's in-flight output, so the option key set is unconditional). Declare the option unconditionally and gate its `config' instead${
           if subject == "options" then
             ""
           else
@@ -4336,7 +4336,7 @@ let
           in
           interface.refuseMount {
             name = "moduleTree";
-            reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (ADR-0014: the boundary is the eval; ADR-0023: what crosses is plain data)";
+            reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (the boundary is the evaluation, and what crosses it is plain data)";
             fold = nestingFold;
             whenEmpty = emptyTree;
           }
@@ -4349,7 +4349,7 @@ let
 
             # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
             # the reason, so a consumer that finds it needs no other document to know what to do.
-            nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (ADR-0014, ADR-0023), not a gap in this type";
+            nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (the boundary is the evaluation, and what crosses it is plain data), not a gap in this type";
           };
       }
       // (if knot.exposes then { inherit (result) _evaluation; } else { });
