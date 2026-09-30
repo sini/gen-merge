@@ -299,9 +299,115 @@ let
         }) bNames
       )
     );
+
+  # ── THE BAND A CONTRIBUTOR'S OWN EVALUATION RESOLVED A LEAF AT (den-hoag-zakjg U1, ADR-0029) ──
+  # Contributor-local resolution: each contributor resolves its own leaves, and a leaf MOVES only
+  # at the band its own priority pass selected. The thresholds are the owner's ruling verbatim, on
+  # the number line above: force < 100 ≤ set < 1000 ≤ default < 1500 ≤ unset. `unset` moves nothing:
+  # at 1500 and above the only surviving definitions are option defaults (`mkOptionDefault`, a
+  # declared `default =`), which the receiver's own declaration supplies.
+  priorityBand =
+    p:
+    if !builtins.isInt p then
+      throw "gen-merge.priorityBand: the priority is a ${builtins.typeOf p}, not an override number"
+    else if p < 100 then
+      "force"
+    else if p < 1000 then
+      "set"
+    else if p < 1500 then
+      "default"
+    else
+      "unset";
+
+  # `bandedLeaves { scope; result; }`: per leaf of one `evalModuleTree` result, the record its
+  # contributor moves or the record of why it moves nothing. An attrset mirroring `provenance`, so it
+  # is LAZY PER LOC: the walk decides leafness from the declaration (`result.options`) and never
+  # forces a declared leaf's record to build the tree. Reading one leaf costs what reading its
+  # `provenance` costs: one discharge and one priority pass over that leaf's definitions, forced to
+  # WHNF. It never forces the merged value, and a `value` field is read only when it is demanded.
+  # The key set costs what `provenance`'s own does.
+  #
+  # CLASSIFIED BEFORE THE PRIORITY IS READ, because two states carry `priority = null`:
+  #   · a leaf with no declaration is freeform (the freeform plane has no priority pass) ⇒ unset;
+  #   · `defs = [ ]` is a declared leaf nobody defined, with or without an empty value ⇒ unset;
+  #   · otherwise the priority is a number, and `priorityBand` decides.
+  # An error raised while a leaf's definitions are collected PROPAGATES from its record. It is never
+  # read as "no definition": the engine publishes a record for an undefined leaf, so no `tryEval`
+  # stands between the two (lib/modules.nix `mergeOptionWith`).
+  #
+  # `scope` IS THE CALLER'S. An `evalModuleTree` result carries no contributor identity, so the
+  # scope is stamped here, once per call, onto every record. Every other field of a record is read
+  # from THIS `result` alone (`priority`, `winners` and `defaulted` from its `provenance`, `value`
+  # from its `config`), so a record never mixes two evaluations. Whether `scope` names the
+  # contributor that `result` was evaluated for is decided where the caller pairs them, and nothing
+  # here can see that pairing.
+  #
+  # `loc` is the path within `config` (and within `provenance`), relative to any `prefix`.
+  bandedLeaves =
+    { scope, result }:
+    let
+      freeformLeaf = loc: {
+        inherit scope loc;
+        reason = "unset: freeform";
+      };
+      # Never classified through `winners`: its order pass forces each winning VALUE to WHNF
+      # (`isOrderMarker`), so a declared `default = throw …` would fire. `defs` and `priority` force
+      # only the definitions' wrappers.
+      leaf =
+        loc: p:
+        if p.defs == [ ] then
+          {
+            inherit scope loc;
+            reason = "unset: no definition";
+          }
+        else
+          let
+            band = priorityBand p.priority;
+          in
+          if band == "unset" then
+            {
+              inherit scope loc;
+              reason = "unset: default-only";
+              inherit (p) priority defaulted;
+            }
+          else
+            {
+              inherit scope loc band;
+              inherit (p) priority winners;
+              value = prelude.getAttrByPath loc result.config;
+            };
+      # A declared node is a leaf iff its declaration is; a node with no declaration is freeform,
+      # where a leaf record is the one whose `winners` is `null` (a freeform GROUP holding a key
+      # named `winners` holds an attrset there, never null).
+      walk =
+        opts: loc:
+        mapAttrs (
+          n: p:
+          let
+            at = loc ++ [ n ];
+            decl = opts.${n} or null;
+          in
+          if decl != null && (decl._type or null) == "option" then
+            leaf at p
+          else if decl == null && (p.winners or { }) == null then
+            freeformLeaf at
+          else
+            walk (if decl == null then { } else decl) at p
+        );
+    in
+    if !builtins.isString scope then
+      throw "gen-merge.bandedLeaves: `scope' is a ${builtins.typeOf scope}, not the contributor's scope id"
+    else if
+      !(builtins.isAttrs result && result ? options && result ? provenance && result ? config)
+    then
+      throw "gen-merge.bandedLeaves: `result' is not an `evalModuleTree' result (it needs `options', `provenance' and `config')"
+    else
+      walk result.options [ ] result.provenance;
 in
 {
   inherit
+    priorityBand
+    bandedLeaves
     mkOverride
     mkOptionDefault
     mkDefault

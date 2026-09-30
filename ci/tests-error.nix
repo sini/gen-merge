@@ -3657,6 +3657,137 @@ in
           };
         };
       };
+    # den-hoag-zakjg U1 — `bandedLeaves`' refusals, and the values its records never force. The
+    # value cells are ./tests/bands.nix.
+    flake.testsError.bands =
+      let
+        decl = {
+          options.x = gm.mkOption { type = t.str; };
+        };
+        undefined = gm.evalModuleTree { modules = [ decl ]; };
+        # `x` IS defined by the third module; the second module's own error is raised while `x`'s
+        # definitions are collected.
+        userError = gm.evalModuleTree {
+          modules = [
+            decl
+            { config = throw "USER-ERROR"; }
+            { x = "v"; }
+          ];
+        };
+        planted = gm.evalModuleTree {
+          modules = [
+            {
+              options.x = gm.mkOption {
+                type = t.str;
+                default = throw "PLANTED";
+              };
+            }
+          ];
+        };
+      in
+      {
+        # The provenance record became total; the value did not.
+        test-an-undefined-leaf-value-still-refuses = {
+          expr = undefined.config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `x' is used but not defined$";
+          };
+        };
+        test-a-user-error-reads-as-itself-in-the-value = {
+          expr = userError.config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^USER-ERROR$";
+          };
+        };
+        # ...and in the band: the defined leaf is never recorded as "unset: no definition".
+        test-a-user-error-propagates-from-the-band-never-reads-as-unset = {
+          expr =
+            (gm.bandedLeaves {
+              scope = "u";
+              result = userError;
+            }).x.reason;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^USER-ERROR$";
+          };
+        };
+        # The error above fires where the provenance KEY SET is computed, before any leaf is
+        # classified. This one is local to `x`'s own definition: the key set reads, and only the
+        # classification of `x` meets it, which is where a `tryEval` would have read "no definition".
+        test-a-user-error-in-the-leafs-own-definition-propagates-from-its-band = {
+          expr =
+            (gm.bandedLeaves {
+              scope = "u";
+              result = gm.evalModuleTree {
+                modules = [
+                  decl
+                  { x = gm.mkIf (throw "USER-ERROR") "v"; }
+                ];
+              };
+            }).x.reason;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^USER-ERROR$";
+          };
+        };
+        # The control for `test-a-conflicting-leaf-bands-without-forcing-its-value`: the same leaf's
+        # value refuses, so a band read that forced it would refuse too.
+        test-a-conflicting-leaf-value-refuses-where-its-band-reads = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                decl
+                { x = "a"; }
+                { x = "b"; }
+              ];
+            }).config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `x' has conflicting definitions:";
+          };
+        };
+        # The control for `test-every-unset-reason`: the planted default the band never forces.
+        test-the-planted-default-fires-when-the-value-is-read = {
+          expr = planted.config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^PLANTED$";
+          };
+        };
+        test-a-freeform-priority-is-no-band = {
+          expr = gm.priorityBand null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge[.]priorityBand: the priority is a null, not an override number$";
+          };
+        };
+        test-a-scope-that-is-not-a-string-is-refused = {
+          expr = builtins.attrNames (
+            gm.bandedLeaves {
+              scope = null;
+              result = undefined;
+            }
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge[.]bandedLeaves: `scope' is a null, not the contributor's scope id$";
+          };
+        };
+        test-a-result-that-is-not-an-evaluation-is-refused = {
+          expr = builtins.attrNames (
+            gm.bandedLeaves {
+              scope = "u";
+              result = undefined.config;
+            }
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge[.]bandedLeaves: `result' is not an `evalModuleTree' result [(]it needs `options', `provenance' and `config'[)]$";
+          };
+        };
+      };
     # 0s6zi — a tree merged as a container element carries no undeclared report, so it refuses a
     # key its own level does not declare, by name, with the element's location and the def's file.
     flake.testsError.container-element =

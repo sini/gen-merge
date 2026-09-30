@@ -585,6 +585,11 @@ in
     mkAfter
     ;
 
+  # The band each contributor's own evaluation resolved a leaf at, and per leaf the record it moves
+  # or the reason it moves nothing (den-hoag-zakjg U1; `lib/priority.nix`). gen-view's
+  # `headPositions` places the moved records and `joinedTrace` joins them back.
+  inherit (priority) priorityBand bandedLeaves;
+
   # Structural strategies (spec §2/§4) also surfaced at the top level.
   inherit (strategies)
     mkOption

@@ -1611,6 +1611,9 @@ let
   # structural `.merge` / leaf `verify` / `apply` live on the value path (`checked`), never reached by a
   # prov read. So provenance forces WHO-defined-what to WHNF, never the resolved value. (Weaker than
   # nixpkgs `definitionsWithLocations`, which forces nothing — byte-mode discharges eagerly for priority.)
+  # `winners` alone reads further: the order pass (`sorted`) asks `isOrderMarker` of each winning
+  # VALUE, so it forces the values to WHNF, and a `default = throw …` fires on a `.winners` read
+  # where `defs`/`priority`/`defaulted` leave it unforced (den-hoag-zakjg U1).
   #   • defs      — every contributing def post property-discharge, pre priority pass (a property tag
   #                 keeps its originating file; a false-`mkIf` sub-def has already dropped in discharge).
   #                 Per-def `priority` = its `mkOverride` wrapper's number, else the default override 100.
@@ -2505,8 +2508,27 @@ let
         # An empty-able type is NOT an error when undefined — fall through to the fold, whose
         # `winners == [ ]` arm is the single place `emptyValue` is consulted (nixpkgs answers both
         # arrivals at one site too). Only a type with no `emptyValue.value` short-circuits to the throw.
+        #
+        # The throw is the VALUE's, not the record's. Provenance answers who defined the option, and
+        # for a leaf nobody defined that answer is a record: the one an empty-able type with no
+        # definitions already publishes, and nixpkgs' `definitionsWithLocations = [ ]`. A record that
+        # threw instead would leave a reader (`bandedLeaves`) only `tryEval` to learn "undefined",
+        # and `tryEval` cannot tell this refusal from a module's own error raised while these same
+        # definitions are collected, so a DEFINED leaf would read as undefined (den-hoag-zakjg U1).
         if rawDefs == [ ] && !(optDecl ? default) && !(hasEmptyValue (optDecl.type or null)) then
-          throw "gen-merge: the option `${showOption loc}' is used but not defined"
+          let
+            undefined = throw "gen-merge: the option `${showOption loc}' is used but not defined";
+          in
+          {
+            value = undefined;
+            undeclared = undefined;
+            prov = {
+              defs = [ ];
+              winners = [ ];
+              priority = null;
+              defaulted = false;
+            };
+          }
         else
           # An ABSENT `type` is the untyped option; a `type` STATED as `null` is a value in type
           # position, refused where the fold forces it, like any other non-type.
