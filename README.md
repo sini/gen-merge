@@ -655,8 +655,7 @@ and read through (a gen-types older than that protocol lacks them)
 
 A nixpkgs `lib.types` value is still accepted wherever a type is, as a foreign value at an option
 (below). It is never the vocabulary: the foreign-vocabulary mode `types` once documented is
-withdrawn, and a consumer that needs one gets a parameter of its own, not this slot (owner-ruled,
-den-hoag-ydro3). The namespace carries the three protocol names beside the leaves.
+withdrawn, and a consumer that needs one gets a parameter of its own, not this slot. The namespace carries the three protocol names beside the leaves.
 
 ## The protocol boundary — `lib/interface.nix`
 
@@ -1432,13 +1431,13 @@ with `lib.isFunction` (functor-aware), never `builtins.isFunction`, which answer
 rewritten `check` is detected by construction: the witness is the `check` record itself. `exportType`
 publishes that one record twice, as `check` and as `_checkWitness`, and a record whose `check` is no
 longer the witness was rewritten; `==` meets one set of bindings there and allocates nothing, so the
-test is paid on every fold at no cost per fold. **The protocol is gen-types'** (owner-ruled,
-den-hoag-ydro3 OQ-A arm (ii); gen-types' README is its first record and this is the second):
+test is paid on every fold at no cost per fold. **The protocol is gen-types'** (gen-types' README is its first record and this is the
+second):
 `exportType` builds the one record with gen-types' `witnessRecord` and publishes it under both fields
 itself, and the test is gen-types' `rewritesCheck`, so `_checkWitness` and the functor's `_fn` are
 gen-types protocol fields, and gen-merge defines neither the record nor the test. It spells the pair
 rather than take `witnessedCheck`'s, because that two-field result would cost every exported type a
-set to read or copy, a slope per aspect (owner-ruled, den-hoag-ydro3 arm (c)); `witnessedCheck`'s
+set to read or copy, a slope per aspect; `witnessedCheck`'s
 output is the layout the spelling is held to, by the door below, not by construction. Four per-fold sites restate the test inline, for
 cost, because a call there is an environment on every fold and the fold's allocation ratchets have
 no headroom for it: `interface.importedFold`, `modules.nix` `ownFold` and `threadedAs`, and
@@ -1451,9 +1450,10 @@ pair otherwise than the inline test does, whether the field was renamed or now h
 else; a pair carrying any field beyond `check` and `_checkWitness`, which `exportType` publishes by
 name; and a `witnessRecord` whose record is not shaped as the one `witnessedCheck` publishes
 (`ci/tests-error.nix` `check-witness-protocol.*`). Its claim is scoped to those records: a
-`rewritesCheck` that departs only on a record of some other shape passes it, which is sound because
-every fold meets only records of these shapes or witness-less ones, which both spellings read
-`false`. A `check` published as a bare lambda again is refused on every evaluator: on Nix and
+`rewritesCheck` that departs only on a record of some other shape passes it. Every fold meets only
+records of these shapes or witness-less ones; the door never asks about a witness-less record. The
+inline spellings read one `false` by their `?` guards, and that gen-types' own test does too is held
+by gen-types' suite, not by this door. A `check` published as a bare lambda again is refused on every evaluator: on Nix and
 Determinate by the inline test, since `f == f` is false there, and on Lix, where it is true and the
 two spellings agree on `witnessedCheck`'s pair, because the pair `exportType` spells from
 `witnessRecord` is then not that pair. Its fold then applies that
@@ -1469,7 +1469,7 @@ submodule. A record re-bound by selection (`t // { inherit (t) check; }`), rebui
 `inherit`, or passed through `mapAttrs` keeps the same `check` record and reads as its own on Nix,
 Determinate and Lix. Pinned by `ci/tests/check-carriage.nix` and
 `ci/tests-error.nix` (`check-carriage.*`).
-**The price extended to a lost `check`** (owner-ruled, den-hoag-4ifgb OQ1 arm (a)): a check that
+**The price extended to a lost `check`**: a check that
 reads the bare tree can be neither carried nor detected, and is lost silently. The class is a check over the bare tree itself (the tree has no witness, and
 nixpkgs erases it too), a stock container stating the tree with only its `check` rewritten against
 the tree it offers (`np.listOf tree // { nestedTypes.elemType = addCheck tree p; }`: the two agree on
@@ -1487,7 +1487,7 @@ a gen-types parametric leaf and once with the same leaf under `addCheck` (`union
 witness there: a `//` copies the relation, so it is bound to its base and cannot tell its own
 wrapped record declared twice, which must merge (and then, like any `addCheck` keeping its base's
 name, loses the check: nixpkgs loses it too), from a wrapped partner, which must not. Closing it
-belongs to the redeclaration's caller, which sees both operands (den-hoag-4ifgb OQ3).
+belongs to the redeclaration's caller, which sees both operands.
 
 Each nesting and container fold also carries a `threaded` sibling, reading its
 nested trees through the evaluation's accessor, and a gen type's exported `merge` folds through it

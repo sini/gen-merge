@@ -161,8 +161,8 @@ let
   # every own `check` as rewritten. Either can keep verdicts green. This door asks both spellings, and
   # the exported test, about the two records the protocol itself makes — the pair `witnessedCheck`
   # builds, and that pair with its `check` replaced as a wrapper replaces it — and refuses, by name,
-  # a protocol any of them answers against, or answers other than a boolean (an `if` over a
-  # non-boolean aborts uncatchably at the first fold that asks).
+  # a protocol any of them answers against, or answers other than a boolean about them (an `if` over
+  # a non-boolean aborts uncatchably at the first fold that asks).
   #
   # `exportType` restates the PAIR too: it publishes the one record `witnessRecord` builds under
   # both field names itself, because taking `witnessedCheck`'s two-field result costs every exported
@@ -171,8 +171,10 @@ let
   # exactly the two `exportType` spells (a field beyond them would be lost from every exported type),
   # a `witnessRecord` whose record is not shaped as the one `witnessedCheck` publishes, and a
   # protocol whose readers read the spelled pair otherwise than `witnessedCheck`'s. Its claim is
-  # scoped to those records: every fold meets only records of these shapes, or witness-less ones
-  # both spellings read `false` by their `?` guards. It costs a few small records per construction.
+  # scoped to those records: every fold meets only records of these shapes, or witness-less ones,
+  # which it never asks about. The inline spellings read a witness-less record `false` by their `?`
+  # guards; that `rewritesCheck` does too (and answers a boolean there) is held by gen-types' own
+  # suite, not by this door. It costs a few small records per construction.
   witnessDisagreement =
     t:
     let
@@ -257,7 +259,7 @@ let
     else if builtins.attrNames own != builtins.attrNames spelled then
       "declares a `types' whose `witnessedCheck' builds the fields ${fieldList own} rather than exactly `check' and `_checkWitness', the two this library publishes on every exported type, so a field beyond them would be lost from each"
     else if !builtins.isAttrs record then
-      "declares a `types' whose `witnessRecord' builds a ${builtins.typeOf record} rather than the record `witnessedCheck' publishes under both fields"
+      "declares a `types' whose `witnessRecord' builds a ${builtins.typeOf record}, where the check witness this library publishes under both fields of every exported type must be a record"
     else if
       !builtins.isAttrs own.check || builtins.attrNames record != builtins.attrNames own.check
     then

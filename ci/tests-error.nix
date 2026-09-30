@@ -4525,7 +4525,7 @@ in
           expr = (genMergeWith bareRecord).evalModuleTree;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: declares a `types' whose `witnessRecord' builds a lambda rather than the record `witnessedCheck' publishes under both fields$";
+            msg = "^gen-merge: declares a `types' whose `witnessRecord' builds a lambda, where the check witness this library publishes under both fields of every exported type must be a record$";
           };
         };
         test-a-spelled-pair-the-test-reads-otherwise-is-refused = {
