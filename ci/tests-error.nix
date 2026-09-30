@@ -4220,8 +4220,9 @@ in
       # whose it is — and names the one name demanded, not the namespace's whole undecided set.
       test-undeclared-collision-names-the-supplied-vocabulary = {
         expr =
-          (genMergeWith (nixpkgsLib.types // { inherit (genTypes) rewritesCheck witnessedCheck; }))
-          .types.submodule;
+          (genMergeWith (
+            nixpkgsLib.types // { inherit (genTypes) rewritesCheck witnessRecord witnessedCheck; }
+          )).types.submodule;
         expectedError = {
           type = "ThrownError";
           msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at name 'submodule'\\.";
@@ -4233,7 +4234,7 @@ in
         expr =
           (genMergeWith {
             inherit (nixpkgsLib.types) str nullOr;
-            inherit (genTypes) rewritesCheck witnessedCheck;
+            inherit (genTypes) rewritesCheck witnessRecord witnessedCheck;
           }).types.nullOr;
         expectedError = {
           type = "ThrownError";
@@ -4251,7 +4252,7 @@ in
       let
         withoutProtocol =
           n:
-          "^gen-merge: declares a `types' with no ${n} — the `types' formal is the gen-types library, whose check-witness protocol every type this library exports is built and read through$";
+          "^gen-merge: declares a `types' with no ${n} — the `types' formal is the gen-types library, whose check-witness protocol every type this library exports is built and read through \\(a gen-types older than that protocol lacks them\\)$";
         disagrees =
           what:
           "^gen-merge: declares a `types' whose check-witness protocol disagrees with the test this library restates inline at its per-fold sites: ${what}\\. The two spellings must say the same thing, so a gen-types whose witness changed needs a gen-merge restating the changed test$";
@@ -4304,13 +4305,33 @@ in
             };
           rewritesCheck = t: t ? _witnessTag && t ? _checkWitness && t ? check && t.check != t._checkWitness;
         };
+        # DRIFT 4, a test answering other than a boolean: an `if` over its answer aborts
+        # uncatchably at the first fold that asks, so the door names it first.
+        notBool = genTypes // {
+          rewritesCheck = _: null;
+        };
+        # DRIFT 5, the pair this library spells (den-hoag-ydro3 arm (c)): `witnessRecord`'s record
+        # shaped otherwise than the one `witnessedCheck` publishes, so `exportType`'s pair is not
+        # `witnessedCheck`'s.
+        reshapedRecord = genTypes // {
+          witnessRecord = fn: genTypes.witnessRecord fn // { _witnessTag = true; };
+        };
+        # ...or no record at all: a bare function, as the published `check` was before it was a record.
+        bareRecord = genTypes // {
+          witnessRecord = fn: fn;
+        };
+        # ...or shaped alike, but a record gen-types' own test does not read as a witness.
+        unrecognisedRecord = genTypes // {
+          witnessRecord = _: record null;
+          rewritesCheck = t: genTypes.rewritesCheck t || (t ? check && t.check ? _fn && t.check._fn == null);
+        };
       in
       {
         test-nixpkgs-types-as-the-vocabulary-refuses-by-name = {
           expr = (genMergeWith nixpkgsLib.types).evalModuleTree;
           expectedError = {
             type = "ThrownError";
-            msg = withoutProtocol "`rewritesCheck', `witnessedCheck'";
+            msg = withoutProtocol "`rewritesCheck', `witnessRecord', `witnessedCheck'";
           };
         };
         test-a-vocabulary-missing-one-protocol-name-names-it = {
@@ -4346,6 +4367,41 @@ in
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: declares a `types' whose `witnessedCheck' builds the fields `_checkWitness', `_witnessTag', `check' rather than exactly `check' and `_checkWitness', the two this library publishes on every exported type, so a field beyond them would be lost from each$";
+          };
+        };
+        test-a-vocabulary-without-witnessRecord-names-it = {
+          expr = (genMergeWith (removeAttrs genTypes [ "witnessRecord" ])).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = withoutProtocol "`witnessRecord'";
+          };
+        };
+        test-a-test-answering-other-than-a-boolean-is-refused-by-name = {
+          expr = (genMergeWith notBool).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: declares a `types' whose check-witness protocol answers other than a boolean: gen-types' `rewritesCheck' answers a null over the pair `witnessedCheck' built; gen-types' `rewritesCheck' answers a null over the pair `witnessedCheck' built with its `check' replaced\\. Its test is a predicate$";
+          };
+        };
+        test-a-witness-record-shaped-otherwise-is-refused = {
+          expr = (genMergeWith reshapedRecord).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: declares a `types' whose `witnessRecord' builds a record with the fields `__functor', `_fn', `_witnessTag' where the record `witnessedCheck' publishes has `__functor', `_fn', so the pair this library spells from it on every exported type is not the pair `witnessedCheck' builds$";
+          };
+        };
+        test-a-witness-record-that-is-not-a-record-is-refused = {
+          expr = (genMergeWith bareRecord).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: declares a `types' whose `witnessRecord' builds a lambda rather than the record `witnessedCheck' publishes under both fields$";
+          };
+        };
+        test-a-spelled-pair-the-test-reads-otherwise-is-refused = {
+          expr = (genMergeWith unrecognisedRecord).evalModuleTree;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: declares a `types' whose check-witness protocol reads the pair this library spells from `witnessRecord' otherwise than the pair `witnessedCheck' builds: gen-types' `rewritesCheck' reads the pair this library spells from `witnessRecord' as rewritten\\. Every exported type publishes the spelled pair, so its witness would be misread$";
           };
         };
       };

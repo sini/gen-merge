@@ -28,7 +28,7 @@ let
   # check-witness protocol, which the `types` formal requires (the door refuses one without it,
   # tests-error.nix), and nothing else of gen-types', so every other name it holds is the caller's.
   np = nixpkgsLib.types;
-  protocol = { inherit (genTypes) rewritesCheck witnessedCheck; };
+  protocol = { inherit (genTypes) rewritesCheck witnessRecord witnessedCheck; };
   V = protocol // {
     inherit (np) str int bool;
   };
@@ -263,6 +263,7 @@ in
         "rewritesCheck"
         "str"
         "submodule"
+        "witnessRecord"
         "witnessedCheck"
       ];
       str = "sateen";
@@ -378,6 +379,7 @@ in
       "rewritesCheck"
       "str"
       "submodule"
+      "witnessRecord"
       "witnessedCheck"
     ];
   };

@@ -64,7 +64,7 @@
   # the engine above supplies both, closing a loop this unit otherwise keeps a chain.
   nestedTreeAt,
   constructors,
-  # gen-types' library, for the check-witness protocol it owns (`witnessedCheck`, `rewritesCheck`):
+  # gen-types' library, for the check-witness protocol it owns (`witnessRecord`, `rewritesCheck`):
   # this unit builds and reads the witness through it and defines neither (den-hoag-ydro3).
   types,
 }:
@@ -86,7 +86,7 @@ let
   # (i)), and every site here keeps the meaning it had, a functor read as an attrset. Adopting
   # nixpkgs' functor-aware parity is gen-merge's own P2 unit's change, with its cells.
   inherit (builtins) isFunction;
-  inherit (types) rewritesCheck witnessedCheck;
+  inherit (types) rewritesCheck witnessRecord;
 
   # ── THE EXPORT ENVIRONMENT'S NAMES ──────────────────────────────────────────────────────────────
   # The fourteen names nixpkgs' module system reads off every option type. They are the foreign
@@ -1847,13 +1847,16 @@ let
       # and the only inversion needed, because the role is fixed by the type rather than guessed.
       recarried = p: t.recarry { ${role} = p.${spelling.payloadKey}; };
 
-      # Bound once and published twice, as `check` and as `_checkWitness`, by gen-types'
-      # `witnessedCheck`, so a `check` a wrapper rewrote is the one slot that no longer holds the
-      # witness (`rewritesCheck`). Nix forces the record's slots, the function among them, before it
-      # compares their pointers, so forcing the function must not compute the foreign face, which
+      # Built once by gen-types' `witnessRecord` and published twice, as `check` and as
+      # `_checkWitness` (below), so a `check` a wrapper rewrote is the one slot that no longer holds
+      # the witness (`rewritesCheck`). The pair is spelled here rather than taken from
+      # `witnessedCheck`, whose two-field result every exported type would read or copy
+      # (den-hoag-ydro3, owner-ruled arm (c)); `default.nix`'s agreement door holds this spelling to
+      # its output. Nix forces the record's slots, the function among them, before it compares their
+      # pointers, so forcing the function must not compute the foreign face, which
       # gen's own eval never reads: the face is bound unforced behind the function, and computed at
       # its first application, by a foreign engine.
-      witnessed = witnessedCheck (
+      check = witnessRecord (
         if t ? verify then
           (v: t.verify v == null)
         else if t ? admits then
@@ -1910,7 +1913,8 @@ let
         deprecationMessage = t.deprecated or null;
         # `_checkWitness` is not a fifteenth protocol field: it is gen-types' check-witness
         # protocol field, the record of which `check` was published, read only by `rewritesCheck`.
-        inherit (witnessed) check _checkWitness;
+        inherit check;
+        _checkWitness = check;
         # Through the bridge where the fold carries the sibling (den-hoag-n6dh7 item 7, OQ11 (d)):
         # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
         # each element through its one `split`, so the forward mount keeps working without a third

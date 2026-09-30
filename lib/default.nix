@@ -20,7 +20,7 @@
 #             `verify : v -> null|err`.
 #             It is the gen-types LIBRARY, bound by its roster key, and not a pluggable leaf
 #             vocabulary: the core builds every exported type through gen-types' check-witness
-#             protocol (`witnessedCheck`, `rewritesCheck`), so a `types` without it is refused by
+#             protocol (`witnessRecord`, `witnessedCheck`, `rewritesCheck`), so a `types` without it is refused by
 #             name at construction (den-hoag-ydro3, owner-ruled). A nixpkgs `lib.types` value is
 #             still accepted wherever a type is, as a FOREIGN VALUE through the protocol boundary
 #             (`lib/interface.nix`); it is never the vocabulary. The foreign-vocabulary mode this
@@ -113,8 +113,8 @@ let
   # so the consumer's `types.str` aborted uncatchably instead.
   #
   # ★ THE LAST CLAUSE IS THE CHECK-WITNESS PROTOCOL, AND IT IS WHAT THE `types` FORMAL MEANS. gen-types
-  # owns the protocol (`witnessedCheck` builds the published `check` and its witness, `rewritesCheck`
-  # is the test), and this library's core builds every exported type through it and reads every
+  # owns the protocol (`witnessRecord` builds the published `check`, which is also its witness,
+  # `witnessedCheck` the pair's layout, `rewritesCheck` the test), and this library's core builds every exported type through it and reads every
   # fold's witness by it, its own strategies included, so a `types` without it leaves the core with
   # no way to publish a type at all. The formal is the gen-types library, bound by its roster key
   # (den-hoag-ydro3, owner-ruled): a leaf vocabulary of another origin is not what it takes, and a
@@ -122,6 +122,7 @@ let
   # then dropped without a word. Which other names the library carries is not judged here.
   protocolNames = [
     "rewritesCheck"
+    "witnessRecord"
     "witnessedCheck"
   ];
   vocabularyDefect =
@@ -142,7 +143,7 @@ let
       if missing != [ ] then
         "declares a `types' with no ${
           builtins.concatStringsSep ", " (map (n: "`${n}'") missing)
-        } — the `types' formal is the gen-types library, whose check-witness protocol every type this library exports is built and read through"
+        } — the `types' formal is the gen-types library, whose check-witness protocol every type this library exports is built and read through (a gen-types older than that protocol lacks them)"
       else if unapplicable != [ ] then
         "declares a `types' whose ${
           builtins.concatStringsSep ", " (map (n: "`${n}'") unapplicable)
@@ -150,7 +151,7 @@ let
       else
         witnessDisagreement t;
 
-  # ── THE AGREEMENT DOOR — the protocol's test against the spelling this library restates ────────
+  # ── THE AGREEMENT DOOR — the protocol's test against the spellings this library restates ───────
   # Four per-fold sites restate `rewritesCheck` inline rather than call it, because a call is an
   # environment on every fold and the fold's allocation ratchets have no headroom for one:
   # `interface.importedFold`, `modules.nix` `ownFold` and `threadedAs`, and `types.nix` `isValid`,
@@ -160,16 +161,27 @@ let
   # every own `check` as rewritten. Either can keep verdicts green. This door asks both spellings, and
   # the exported test, about the two records the protocol itself makes — the pair `witnessedCheck`
   # builds, and that pair with its `check` replaced as a wrapper replaces it — and refuses, by name,
-  # a protocol any of them answers against. `exportType` also re-publishes the pair by its two field
-  # names, so a pair carrying any other field would lose it on every exported type, and gen-types'
-  # own test would then misread those types where gen-merge does not restate it; the door refuses a
-  # pair whose fields are not exactly those two. It costs one small record per construction.
+  # a protocol any of them answers against, or answers other than a boolean (an `if` over a
+  # non-boolean aborts uncatchably at the first fold that asks).
+  #
+  # `exportType` restates the PAIR too: it publishes the one record `witnessRecord` builds under
+  # both field names itself, because taking `witnessedCheck`'s two-field result costs every exported
+  # type a set it must then read or copy (den-hoag-ydro3, owner-ruled arm (c)). So `witnessedCheck`'s
+  # output is the layout that spelling is held to: the door refuses a pair whose fields are not
+  # exactly the two `exportType` spells (a field beyond them would be lost from every exported type),
+  # a `witnessRecord` whose record is not shaped as the one `witnessedCheck` publishes, and a
+  # protocol whose readers read the spelled pair otherwise than `witnessedCheck`'s. Its claim is
+  # scoped to those records: every fold meets only records of these shapes, or witness-less ones
+  # both spellings read `false` by their `?` guards. It costs a few small records per construction.
   witnessDisagreement =
     t:
     let
       own = t.witnessedCheck (_: true);
-      rewritten = own // {
-        check = _: true;
+      # `exportType`'s spelling, restated: `witnessRecord`'s one record under both fields.
+      record = t.witnessRecord (_: true);
+      spelled = {
+        check = record;
+        _checkWitness = record;
       };
       # The inline test, spelled as the sites spell it: positively, and as `isValid` asks it.
       inline = r: r ? _checkWitness && r ? check && r.check != r._checkWitness;
@@ -179,34 +191,86 @@ let
         "the inline test" = inline;
         "the inline test's negation" = r: !(inlineOwn r);
       };
-      wrong = builtins.concatLists (
-        builtins.attrValues (
-          builtins.mapAttrs (
-            reader: rewrites:
-            (if rewrites own then [ "${reader} reads the pair `witnessedCheck' built as rewritten" ] else [ ])
-            ++ (
-              if rewrites rewritten then
-                [ ]
-              else
-                [ "${reader} reads that pair with its `check' replaced as its own" ]
+      # Each reader's answers over `pair` and over `pair` with its `check` replaced. A non-boolean
+      # answer is named before any answer is compared.
+      readPair =
+        pair: what:
+        let
+          replaced = pair // {
+            check = _: true;
+          };
+          answers = builtins.mapAttrs (_: rewrites: {
+            own = rewrites pair;
+            replaced = rewrites replaced;
+          }) readers;
+          notBool = builtins.concatLists (
+            builtins.attrValues (
+              builtins.mapAttrs (
+                reader: a:
+                builtins.concatMap
+                  (
+                    n:
+                    if builtins.isBool a.${n} then
+                      [ ]
+                    else
+                      [
+                        "${reader} answers a ${builtins.typeOf a.${n}} over ${
+                          if n == "own" then what else "${what} with its `check' replaced"
+                        }"
+                      ]
+                  )
+                  [
+                    "own"
+                    "replaced"
+                  ]
+              ) answers
             )
-          ) readers
-        )
-      );
+          );
+          wrong = builtins.concatLists (
+            builtins.attrValues (
+              builtins.mapAttrs (
+                reader: a:
+                (if a.own then [ "${reader} reads ${what} as rewritten" ] else [ ])
+                ++ (
+                  if a.replaced then [ ] else [ "${reader} reads that pair with its `check' replaced as its own" ]
+                )
+              ) answers
+            )
+          );
+        in
+        if notBool != [ ] then
+          "declares a `types' whose check-witness protocol answers other than a boolean: ${builtins.concatStringsSep "; " notBool}. Its test is a predicate"
+        else if wrong != [ ] then
+          wrong
+        else
+          null;
+      ownRead = readPair own "the pair `witnessedCheck' built";
+      spelledRead = readPair spelled "the pair this library spells from `witnessRecord'";
+      fieldList = r: builtins.concatStringsSep ", " (map (n: "`${n}'") (builtins.attrNames r));
     in
     if !builtins.isAttrs own then
       "declares a `types' whose `witnessedCheck' builds a ${builtins.typeOf own} rather than the record carrying `check' and its witness"
-    else if wrong != [ ] then
-      "declares a `types' whose check-witness protocol disagrees with the test this library restates inline at its per-fold sites: ${builtins.concatStringsSep "; " wrong}. The two spellings must say the same thing, so a gen-types whose witness changed needs a gen-merge restating the changed test"
+    else if builtins.isString ownRead then
+      ownRead
+    else if ownRead != null then
+      "declares a `types' whose check-witness protocol disagrees with the test this library restates inline at its per-fold sites: ${builtins.concatStringsSep "; " ownRead}. The two spellings must say the same thing, so a gen-types whose witness changed needs a gen-merge restating the changed test"
+    else if builtins.attrNames own != builtins.attrNames spelled then
+      "declares a `types' whose `witnessedCheck' builds the fields ${fieldList own} rather than exactly `check' and `_checkWitness', the two this library publishes on every exported type, so a field beyond them would be lost from each"
+    else if !builtins.isAttrs record then
+      "declares a `types' whose `witnessRecord' builds a ${builtins.typeOf record} rather than the record `witnessedCheck' publishes under both fields"
     else if
-      builtins.attrNames own != [
-        "_checkWitness"
-        "check"
-      ]
+      !builtins.isAttrs own.check || builtins.attrNames record != builtins.attrNames own.check
     then
-      "declares a `types' whose `witnessedCheck' builds the fields ${
-        builtins.concatStringsSep ", " (map (n: "`${n}'") (builtins.attrNames own))
-      } rather than exactly `check' and `_checkWitness', the two this library publishes on every exported type, so a field beyond them would be lost from each"
+      "declares a `types' whose `witnessRecord' builds a record with the fields ${fieldList record} where the record `witnessedCheck' publishes has ${
+        if builtins.isAttrs own.check then
+          fieldList own.check
+        else
+          "none (it is a ${builtins.typeOf own.check})"
+      }, so the pair this library spells from it on every exported type is not the pair `witnessedCheck' builds"
+    else if builtins.isString spelledRead then
+      spelledRead
+    else if spelledRead != null then
+      "declares a `types' whose check-witness protocol reads the pair this library spells from `witnessRecord' otherwise than the pair `witnessedCheck' builds: ${builtins.concatStringsSep "; " spelledRead}. Every exported type publishes the spelled pair, so its witness would be misread"
     else
       null;
 

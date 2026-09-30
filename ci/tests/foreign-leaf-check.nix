@@ -195,7 +195,7 @@ let
   # `lib.types`: that overlaps gen-merge's own exports at undeclared names, which would make every
   # cell below read "refused" whatever the fold did.
   compat = genMergeWith {
-    inherit (genTypes) rewritesCheck witnessedCheck;
+    inherit (genTypes) rewritesCheck witnessRecord witnessedCheck;
     inherit (t)
       str
       int
