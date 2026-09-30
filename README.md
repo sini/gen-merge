@@ -246,6 +246,45 @@ because the freeform pass discharges per key only inside its own `.merge`, which
 enter), with `winners` / `priority` / `defaulted` = `null`. `null` means "freeform / not observable",
 **never** "no override present".
 
+A declared loc **nobody defined** has a record too: `{ defs = [ ]; winners = [ ]; priority = null; defaulted = false; }`. That holds whether or not its type has an empty value. The refusal "used but not
+defined" belongs to the loc's VALUE and fires when `.config` reads it. This matches nixpkgs'
+`definitionsWithLocations = [ ]`. `winners` reads more than the other fields: its order pass forces each
+winning def's value to WHNF (`isOrderMarker`), so reading `winners` fires a declared
+`default = throw …`, which reading `defs`, `priority` or `defaulted` does not.
+
+## Priority bands
+
+`priorityBand p` maps an override number to the band a contributor moves it at. `bandedLeaves { scope; result; }` maps every leaf of one `evalModuleTree` result to a record.
+
+The bands follow the owner's ruling, on the numbers above:
+
+| band      | priority       | moves                                                                         |
+| --------- | -------------- | ----------------------------------------------------------------------------- |
+| `force`   | below 100      | yes                                                                           |
+| `set`     | 100 to 999     | yes                                                                           |
+| `default` | 1000 to 1499   | yes                                                                           |
+| `unset`   | 1500 and above | nothing; only option defaults survive here, and the receiver declares its own |
+
+`bandedLeaves` is an attrset mirroring `provenance`, and it is lazy per loc. Reading one leaf costs what
+reading its `provenance` record costs: one discharge and one priority pass over its defs, forced to
+WHNF. It never forces the merged value. Each leaf is one of these records:
+
+```nix
+{ scope; loc; band; priority; winners; value; }                    # moves at `band`
+{ scope; loc; reason = "unset: default-only"; priority; defaulted; } # priority 1500 or above
+{ scope; loc; reason = "unset: no definition"; }                   # a declared leaf nobody defined
+{ scope; loc; reason = "unset: freeform"; }                        # a leaf with no declaration
+```
+
+The classification happens before the priority is read, because two states carry `priority = null`. An
+error raised while a leaf's defs are collected propagates from its record, and it is never read as
+"no definition". `loc` is the path within `config`.
+
+`scope` is the caller's. A result carries no contributor identity, so `scope` is stamped once per call.
+Every other field is read from that one `result`. Whether `scope` names the contributor `result` was
+evaluated for is decided by the caller that pairs them. gen-view's `headPositions` places the moved
+records, and `joinedTrace` joins each contribution back to its record.
+
 Declared records win over freeform at shared paths (mirroring config's `recursiveUpdate freeform declared`). One boundary: a nested `moduleTree`-as-type merge (a tree nested inside a parent tree via
 `.type.merge`) surfaces its `.config` only — the inner tree's provenance is not threaded out through
 the nested merge.
@@ -1783,7 +1822,7 @@ and the run stays green. The suites: `merge` (the 7-item primitive + priority su
 `deferred` / `checking` (non-forcing + leaf verification), `oracle` (byte-identity vs
 `lib.evalModules`, with mutation-teeth assertions), `compat` (nixpkgs `lib.types` on the engine),
 `core-kernel` (the fixed-input short-circuit), `provenance` (the `.provenance` record shapes + forcing
-contract), `lint` (the portable-subset checker — accepts the whole `oracle` corpus, rejects one fixture
+contract), `bands` (`priorityBand`/`bandedLeaves` over real provenance: k1–k6, every unset reason), `lint` (the portable-subset checker — accepts the whole `oracle` corpus, rejects one fixture
 per unsupported construct), `interface` (the protocol boundary: T3, the C-1/C-2/C-3 ceremony
 predicates, and a mounted-in-real-`lib.evalModules` arm with its mutants), `type-merge-relation`
 (C-4 — the engine's dispatch basis), `linkset` (the declared-disjointness export merge), and `purity`.
