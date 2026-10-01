@@ -1800,8 +1800,8 @@ The module reader is nixpkgs' `unifyModuleSyntax`: a module is structured iff it
 `options`, a structured module admits exactly nixpkgs' `attrsToRemove` and refuses any other key by
 name (naming every surplus key and the file, whatever `check` says), and a shorthand module strips
 nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require` joins `imports`;
-`meta` on a structured module is folded into config). Both lists also carry gen-merge's engine key
-`__pureModule`, and the shorthand list carries `_module`, which a shorthand module reads as config.
+`meta` on a structured module is folded into config). Both lists also carry gen-merge's engine keys
+`__pureModule` and `__reservedKeys`, and the shorthand list carries `_module`, which a shorthand module reads as config.
 A top-level `_module` beside `config`/`options` is refused by name as an unsupported attribute, as
 nixpkgs refuses it. Its departures:
 
@@ -1839,6 +1839,30 @@ nixpkgs refuses it. Its departures:
   element, a `submodule` or `deferredModule` definition and a warm trace all refuse. The config read
   once aborted uncatchably (`expected a set but found a function`), and the declaration-only reads
   once answered silently. `lint` never applies a function module, so this arm does not reach it.
+- **`__reservedKeys` reserves names in a module's import closure**, a key nixpkgs does not have. A
+  module carrying
+  `__reservedKeys = { names = { <name> = <refusal text>; … }; exempt = [ <attribute path> … ]; }`
+  makes every module it imports refuse a top-level `<name>` with that name's text, followed by
+  `` (module `<file>') ``. The closure is every route the collector follows: nested `imports`,
+  `require`, function and functor modules (read after application), paths, and a whole-module
+  `mkIf`/`mkMerge` (read after push-down). The marked module's own top level is NOT checked, and
+  neither is an explicit `config.<name>`, which is the instance route. A module carrying every `exempt`
+  path is not checked. The content is plain data a library supplies (gen-schema and gen-aspects mark
+  a kind entry's definitions with the names they reserve, so a construction formal written in a
+  module the entry imports is refused by name rather than read as instance config); gen-merge names
+  no kind and no formal. The refusal fires at the declaration stratum's read, like the arms above.
+  Three properties are stated, not hidden:
+  - The scope is an inherited attribute along the import edge, as `_file` is, so it belongs to a
+    module's **first occurrence** in import order. A path or keyed module reached first outside any
+    scope is deduplicated before a scoped module re-imports it, and it is not checked.
+  - A nested `__reservedKeys` replaces the inherited reservation for its own closure, so an empty
+    nested one voids it. Like a hand-written exempt shape, that is a forgery, not an honest route.
+  - A malformed marker (not an attribute set, `names` not an attribute set of strings, `exempt` not a
+    list of string lists) is refused by name on the first module it scopes:
+    `` gen-merge: module `<file>' is imported under a malformed `__reservedKeys': <what is wrong>. … ``.
+    A marker on a module that imports nothing scopes nothing and is not read.
+    `lint` keeps its own collector and does not thread the scope: it is a portability report, not this
+    refusal.
 
 These boundaries are mechanically checkable — see [Portable-subset lint](#portable-subset-lint).
 
@@ -1940,6 +1964,7 @@ Two instruments sit outside the suites, because what they read is not an in-lang
 ```bash
 ./ci/bench/either-totality.sh    # an EXIT CODE: an abort that escapes `tryEval` and kills a runner
 ./ci/bench/interface-cost.sh     # `nrThunks`: what the foreign protocol costs per type instance
+./ci/bench/reserved-scope-cost.sh  # `nrThunks`: what `__reservedKeys` costs per scoped entry, against its bound
 ```
 
 Running the suites directly through the nix-unit CLI (`nix-unit --flake ./ci#tests`, or the devshell
