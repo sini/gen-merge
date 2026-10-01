@@ -492,7 +492,7 @@ in
   # enforces instead of restating it (den-hoag-4kh.53.55; ADR-0014 — a list of strings crosses, never
   # a predicate; den-hoag-1n12c). No alias to nixpkgs' `lib.modules` `unifyModuleSyntax` locals: this
   # is a source comment, not a name equivalence. `structured` corresponds to its `attrsToRemove`,
-  # `shorthandMeta` to its `shorthandAttrsToRemove` (plus this engine's `_module`/`__pureModule` on
+  # `shorthandMeta` to its `shorthandAttrsToRemove` (plus this engine's `_module`/`__pureModule`/`__reservedKeys` on
   # both, and `structuring` to the `config`/`options` test that chooses between them — nixpkgs has no
   # published list for that arm).
   moduleSyntax = {

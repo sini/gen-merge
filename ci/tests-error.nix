@@ -5531,5 +5531,161 @@ in
           expectedError = pin "gen-merge[.]mkCoreValue" "required field 'values' is missing [(]required: 'digest', 'values'[)] [(]in prelude[.]checkRequired[)]";
         };
       };
+
+    # THE RESERVATION SCOPE (`__reservedKeys`, den-hoag-8x97u): a name the marker reserves, written
+    # at the top level of any module the marked one imports, is refused with the supplier's own text
+    # and the module's attribution, through every route the collector follows. These are MESSAGE
+    # cells on purpose: before the scope existed the marker itself was undeclared config, so every
+    # scoped fixture already refused (`option `__reservedKeys' does not exist`) and a `tryEval` cell
+    # could not tell the door from its absence. Each cell first forces its LIVE CONTROL, the same
+    # route writing the unreserved `j`, which must read 1. The compose half, with the marked
+    # module's own level and the first-occurrence rule, is `ci/tests/reserved-keys.nix`.
+    flake.testsError.reserved-keys =
+      let
+        int0 = gm.mkOption {
+          type = t.int;
+          default = 0;
+        };
+        decl.options = {
+          k = int0;
+          j = int0;
+        };
+        res.names.k = "RESERVED-k";
+        scopedBy = r: child: {
+          _file = "/fx/entry.nix";
+          __reservedKeys = r;
+          imports = [ child ];
+        };
+        read =
+          r: child:
+          cfg {
+            modules = [
+              decl
+              (scopedBy r child)
+            ];
+          };
+        # route: (name -> module writing that name at its top level)
+        refuses =
+          route: withControl (read res (route "j")).j 1 (builtins.deepSeq (read res (route "k")).k null);
+        owner = file: {
+          type = "ThrownError";
+          msg = "^RESERVED-k \\(module `${file}'\\)$";
+        };
+        malformedMsg = what: {
+          type = "ThrownError";
+          msg = "^gen-merge: module `/fx/entry\\.nix' is imported under a malformed `__reservedKeys': ${what}\\. The key is .*$";
+        };
+        malformed = r: builtins.deepSeq (read r { j = 1; }).j null;
+      in
+      {
+        test-imports-route-refused-with-owner-text = {
+          expr = refuses (n: {
+            ${n} = 1;
+          });
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        test-nested-imports-route-refused = {
+          expr = refuses (n: {
+            imports = [ { ${n} = 1; } ];
+          });
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        test-function-module-route-refused-after-application = {
+          expr = refuses (n: { ... }: { ${n} = 1; });
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        test-functor-module-route-refused-after-application = {
+          expr = refuses (n: {
+            __functor = _: _: { ${n} = 1; };
+          });
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        test-let-built-imports-list-refused = {
+          expr = refuses (
+            n:
+            let
+              xs = [ { ${n} = 1; } ];
+            in
+            {
+              imports = xs;
+            }
+          );
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        test-whole-module-mkif-refused-after-push-down = {
+          expr = refuses (n: gm.mkIf true { ${n} = 1; });
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        test-whole-module-mkmerge-refused-after-push-down = {
+          expr = refuses (n: gm.mkMerge [ { ${n} = 1; } ]);
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        test-require-route-refused = {
+          expr = refuses (n: {
+            require = [ { ${n} = 1; } ];
+          });
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        # A path module is named by its path. Its control is an inline `j` write through the same
+        # scope (a second fixture file would carry nothing the inline one does not).
+        test-path-module-route-refused-naming-the-file = {
+          expr = withControl (read res { j = 1; }).j 1 (
+            builtins.deepSeq (read res ./tests/_fixtures/reserved-k.nix).k null
+          );
+          expectedError = owner "/[^']*/_fixtures/reserved-k\\.nix";
+        };
+        # The clause sits BEFORE the structured-surplus clause: a structured module carrying a
+        # reserved name gets the owner's text, not the generic "move it into `config'" remedy. Its
+        # control writes `j` through the structured module's own `config`, since a top-level `j`
+        # beside `options` is the surplus refusal itself.
+        test-structured-module-gets-owner-text-not-surplus-remedy = {
+          expr =
+            withControl
+              (read res {
+                options.other = int0;
+                config.j = 1;
+              }).j
+              1
+              (
+                builtins.deepSeq
+                  (read res {
+                    options.other = int0;
+                    k = 1;
+                  }).k
+                  null
+              );
+          expectedError = owner "/fx/entry\\.nix";
+        };
+        # A scoped module function whose result is not an attribute set keeps the reader's own
+        # named refusal: the scope reads an attrset's keys only, so it never turns that refusal into
+        # an uncatchable `attrNames` abort.
+        test-scoped-function-result-not-a-module-keeps-its-refusal = {
+          expr =
+            withControl
+              (read res (_: {
+                j = 1;
+              })).j
+              1
+              (builtins.deepSeq (read res (_: readerSelfFn)).k null);
+          expectedError = {
+            type = "ThrownError";
+            msg = fnResultMsg "/fx/entry\\.nix" "lambda";
+          };
+        };
+        # A MALFORMED MARKER IS REFUSED BY NAME, one cell per shape. Each once aborted uncatchably
+        # (a string marker; a non-string text) or read as an empty reservation (`names` a list).
+        test-malformed-marker-string-refused-by-name = {
+          expr = malformed "k";
+          expectedError = malformedMsg "it is a string";
+        };
+        test-malformed-marker-non-string-text-refused-by-name = {
+          expr = malformed { names.k = 5; };
+          expectedError = malformedMsg "its `names\\.k' is not a refusal text";
+        };
+        test-malformed-marker-names-list-refused-by-name = {
+          expr = malformed { names = [ "k" ]; };
+          expectedError = malformedMsg "its `names' is a list";
+        };
+      };
   };
 }

@@ -675,7 +675,7 @@ let
   # ── module classification: the reference's `unifyModuleSyntax`, key list for key list ─────────
   # STRUCTURED iff the module carries `config` or `options` — nothing else makes it structured. A
   # structured module admits exactly `structuredKeys` (the reference's `attrsToRemove`, verbatim, plus
-  # this engine's `_module` and `__pureModule`); any other top-level key is REFUSED BY NAME, naming
+  # this engine's `_module`, `__pureModule` and `__reservedKeys`); any other top-level key is REFUSED BY NAME, naming
   # every surplus key and the file, whatever `check` says. `meta` is folded into config as `meta`.
   # Otherwise the module is SHORTHAND: `shorthandMetaKeys` (the reference's `shorthandAttrsToRemove`,
   # verbatim, plus the same two) are metadata, `require` joins `imports` (`importsOf`), and every other
@@ -700,7 +700,9 @@ let
   #     is the engine's first read of every flattened entry: `evalModuleTree` forces it through
   #     `declarationGuard` before any config, and `declaredOptions` and `substructure.declares` read it
   #     directly. So a declaration-only read refuses exactly as a config read does, and a warm trace
-  #     over a refused module set refuses with it. `configOf` only classifies.
+  #     over a refused module set refuses with it. `configOf` only classifies. A reserved name in a
+  #     scoped module (`reservedHits`) refuses after `disabledModules` and before the surplus test,
+  #     so a structured module gets the owner's text rather than the generic surplus remedy.
   #
   # COST. The clean path pays one call per entry: `moduleSyntaxChecked` returns the ENTRY it was handed,
   # the predicate is `?` tests written inline (not a call to `isStructured`), `e._file` and the key
@@ -718,6 +720,7 @@ let
     "freeformType"
     "_module"
     "__pureModule"
+    "__reservedKeys"
   ];
   shorthandMetaKeys = [
     "_class"
@@ -729,6 +732,7 @@ let
     "freeformType"
     "_module"
     "__pureModule"
+    "__reservedKeys"
   ];
   # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
   # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
@@ -755,6 +759,7 @@ let
           || m ? freeformType
           || m ? _module
           || m ? __pureModule
+          || m ? __reservedKeys
         then
           builtins.removeAttrs m shorthandMetaKeys
         else
@@ -772,12 +777,63 @@ let
     in
     if m ? disabledModules then
       throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
+    else if e.reserved or null != null && isAttrs m && reservedHits e != [ ] then
+      throw "${e.reserved.names.${head (reservedHits e)}} (module `${e._file}')"
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
     else if isAttrs m then
       e
     else
       throw "gen-merge: module `${e._file}' is a function whose result is ${builtins.typeOf m}, not an attribute set. A module function is applied once, to the module arguments, and must return the module itself; a function that returns another function (`a: b: { … }`) is not a module.";
+  # THE RESERVATION SCOPE (`__reservedKeys`, den-hoag-8x97u). A module carrying
+  # `__reservedKeys = { names = { <name> = <refusal text>; … }; exempt = [ <attribute path> … ]; }`
+  # reserves those names in every module it IMPORTS, through every route the collector follows
+  # (nested `imports`, `require`, function and functor modules read after application, paths). The
+  # marked module's own top level is not checked: a library marking a module checks that level
+  # itself, so each write meets one door. The scope is an inherited attribute (`reserved`) along the
+  # import edge, as `_file` is, so it belongs to a module's FIRST occurrence in import order: a module
+  # already reached outside any scope is not re-checked when a scoped module imports it again. A
+  # nested `__reservedKeys` replaces the inherited one for its own closure. A module carrying every
+  # `exempt` path is not checked (gen-schema exempts the kind shape its `inherits` alias reads). The
+  # content is plain data supplied by the library that owns the names; gen-merge names no kind and no
+  # formal. A reserved name is never a module key, so one key read serves both forms; only a property
+  # root (`mkIf c { … }` as a whole module) needs the push-down. A malformed marker is refused by
+  # name on the first module it scopes, never read as an empty reservation.
+  hasAttrPath =
+    p: v: p == [ ] || (isAttrs v && v ? ${head p} && hasAttrPath (builtins.tail p) v.${head p});
+  reservedHits =
+    e:
+    let
+      m = e.content;
+      r = e.reserved;
+      names = r.names or null;
+      exempt = r.exempt or [ ];
+    in
+    if
+      isAttrs names
+      && all builtins.isString (builtins.attrValues names)
+      && builtins.isList exempt
+      && all (p: builtins.isList p && all builtins.isString p) exempt
+    then
+      (
+        if exempt != [ ] && all (p: hasAttrPath p m) exempt then
+          [ ]
+        else
+          filter (k: names ? ${k}) (attrNames (if m ? _type then pushDownProperties (configOf e) else m))
+      )
+    else
+      throw "gen-merge: module `${e._file}' is imported under a malformed `__reservedKeys': ${
+        if !(isAttrs r) then
+          "it is a ${builtins.typeOf r}"
+        else if !(isAttrs names) then
+          (if r ? names then "its `names' is a ${builtins.typeOf names}" else "it has no `names'")
+        else if !(all builtins.isString (builtins.attrValues names)) then
+          "its `names.${
+            head (filter (k: !(builtins.isString names.${k})) (attrNames names))
+          }' is not a refusal text"
+        else
+          "its `exempt' is not a list of attribute paths"
+      }. The key is { names = { <name> = <refusal text>; … }; exempt = [ <attribute path> … ]; }: `names' maps each reserved name to the text its refusal throws, and the optional `exempt' lists attribute paths (lists of strings) that exempt a module carrying them all.";
   importsOf =
     m:
     let
@@ -978,22 +1034,51 @@ let
   # declared `_file` in nixpkgs. `_file` stays a thunk, forced only when a file surface is read. An
   # entry's source class is decided on the PRE-application `m0` (design spec §3) where it is read
   # (`srcClassOf`), so collecting a module pays nothing for it.
+  #
+  # The reservation scope (`reserved`, see `reservedHits`) rides the same edge: an entry carries it
+  # only when its importer is scoped, from the importer's own `__reservedKeys` or else the importer's
+  # `reserved`. `moduleEntries` takes the importer ENTRY (null at the root) rather than its file, and
+  # an off-scope entry is the same three-field record as before, with no `reserved` field: the
+  # off-scope path allocates nothing per entry (measured on the hub perf bench, whose
+  # `deepSubmodule` alloc gate rejects one added argument or let slot here).
   moduleEntries =
-    callM: importerFile: mods:
+    callM: importer: mods:
     map (
       m0:
       let
         m = callM m0;
       in
-      {
-        inherit m0;
-        _file =
-          if builtins.isPath m0 || isPathString m0 then
-            toString m0
-          else
-            (m0._file or (m._file or importerFile));
-        content = m;
-      }
+      if importer == null then
+        {
+          inherit m0;
+          _file =
+            if builtins.isPath m0 || isPathString m0 then
+              toString m0
+            else
+              (m0._file or (m._file or "<gen-merge>"));
+          content = m;
+        }
+      else if (importer.content.__reservedKeys or (importer.reserved or null)) == null then
+        {
+          inherit m0;
+          _file =
+            if builtins.isPath m0 || isPathString m0 then
+              toString m0
+            else
+              (m0._file or (m._file or importer._file));
+          content = m;
+        }
+      else
+        {
+          inherit m0;
+          _file =
+            if builtins.isPath m0 || isPathString m0 then
+              toString m0
+            else
+              (m0._file or (m._file or importer._file));
+          content = m;
+          reserved = importer.content.__reservedKeys or importer.reserved;
+        }
     ) mods;
   # A node key is an attribute name, which may carry no string context: a path module's store path
   # names its node, and the context is not part of the name.
@@ -1039,12 +1124,12 @@ let
       in
       kept
       ++ moduleLevels callM (if keyed then seen // first else seen) (
-        concatMap ({ content, _file, ... }: moduleEntries callM _file (importsOf content)) kept
+        concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content)) kept
       );
   moduleClosure =
     callM: mods:
     let
-      plain = moduleEntries callM "<gen-merge>" mods;
+      plain = moduleEntries callM null mods;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
