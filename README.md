@@ -1420,7 +1420,14 @@ option), the type, what declared the element, and the ways out, the opt-out abov
 **The prices, stated:** a stock container whose `merge` was overridden (`attrsOf t // { merge = …; }`)
 cannot be told from the stock one and is re-homed silently, losing the override; and a foreign type
 that forwards to a gen nesting type it does NOT declare evaluates that tree standalone through the
-exported `merge`.
+exported `merge`; and a stock `either`/`oneOf`/`nullOr` re-homed over the gen module tree loses an
+`addCheck` on that container, silently (the owner-ruled extension of the first price from a lost `merge`
+to a lost `check`, since `addCheck` over `either` is an idiom and this price is paid more often than the
+first). `addCheck (either tree str) p` and the `oneOf` twin are served where nixpkgs refuses, so the price
+is visible against it; `nullOr` is silent in nixpkgs too, which erases the check at declaration. The
+`eitherTree`, `oneOfTree` and `nullOrTree` rows of `test-the-residue-is-served` in
+`ci/tests/check-carriage.nix` pin all three as served, and **The price extended to a lost `check`**
+below states the class.
 
 **A check a wrapper states is carried.** nixpkgs refines a domain
 on the descriptor's `check` (`addCheck t p`, `t // { check = …; }`, and `nonEmptyListOf`, which is
