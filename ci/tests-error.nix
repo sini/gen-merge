@@ -2409,16 +2409,15 @@ in
         # A foreign container over a gen union holding the tree: the STOCK one (nixpkgs `attrsOf`) is
         # re-homed in gen's eval as gen's own and folds (`ci/tests/nesting-threaded.nix`,
         # `nesting-threaded-fence`; den-hoag-n6dh7 F2 elaboration, OQ11 (d)). An UNRECOGNISED one — a
-        # non-default `placeholder` puts nixpkgs' `attrsWith` outside the six — cannot thread the
-        # evaluation to the tree, and is refused by name before any fold is taken.
-        test-an-unrecognised-foreign-container-over-a-gen-union-refuses-in-gen = {
+        # non-default `placeholder` puts nixpkgs' `attrsWith` outside the six — threads through its
+        # own `substSubModules` rebuild and gives nixpkgs' value (den-hoag-f8mgj arm (T)).
+        test-an-unrecognised-foreign-container-over-a-gen-union-threads-in-gen = {
           expr = family.gen (nixpkgsLib.types.attrsWith {
             elemType = t.either T t.str;
             placeholder = "host";
           }) { k.a = 5; };
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s': the option type `attrsOf' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot thread the evaluation to a nested tree[.] Write it as gen-merge's container, or do not declare the element, or state `declaresNesting = false' on the type, and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+          expected = {
+            k.a = 5;
           };
         };
         # A caller fold closing over a union LEXICALLY carries no member, so no face of it is
@@ -4944,7 +4943,42 @@ in
             (np.listOf valueType)
           ]
         );
-        rule = "and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot thread the evaluation to a nested tree[.] Write it as gen-merge's container, or do not declare the element, or state `declaresNesting = false' on the type, and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+        # The remedies are the ones that exist (den-hoag-f8mgj M6): the six, a container whose
+        # rebuild threads, and the opt-out with its price.
+        rule = "and it cannot thread the evaluation to that nested tree here[.] Use attrsOf, lazyAttrsOf, listOf, nullOr, either or oneOf; or, bound in gen's own evaluation rather than through `mkOptionType', a container whose `substSubModules' rebuild states its element and whose `check' does not read the nested tree; or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+        # The option's value applied to `null`, forced: a function-valued option's body.
+        call =
+          type: def:
+          force (
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.h = gm.mkOption { inherit type; };
+                  config.h = def;
+                }
+              ];
+            }).config.h
+              null
+          );
+        # The verdict on a refined gen element under a threaded container and under its sibling.
+        refinedElement = {
+          type = "ThrownError";
+          msg = "^gen-merge: a definition for option `h[.]a' is not of type `submodule', in `<gen-merge>'$";
+        };
+        # `carriedFold`'s text after the type's name: a rewritten check that reads the tree.
+        rewritten = "[(]`addCheck', or `// [{] check = [.][.][.]; [}]'[)] over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped[.] State the check on a member that holds no tree, or inside the submodule$";
+        # A hand-rolled forwarding container: its rebuild is `drop` where given, and otherwise
+        # forwards the module list to its element, as nixpkgs' own containers do.
+        fwdBy =
+          drop: elem:
+          nixpkgsLib.mkOptionType {
+            name = "fwd";
+            check = _: true;
+            merge = loc: defs: elem.merge loc defs;
+            nestedTypes.elemType = elem;
+            inherit (elem) getSubOptions getSubModules;
+            substSubModules = if drop != null then drop else (m: fwdBy null (elem.substSubModules m));
+          };
         # The door and the option, as the caller named them.
         atEngine = "`evalModuleTree' at option `h': ";
         atImport = "`mkOptionType': ";
@@ -4978,21 +5012,100 @@ in
           }).type;
       in
       {
-        test-a-placeholder-attrs-with-is-refused-at-the-engine = {
-          expr = opt (np.attrsWith {
+        # F2 α (M3): a rebuild that drops its argument does not state the threaded element, and would
+        # reach the tree through the bridge, so it is refused by name (one that forwards it threads:
+        # `ci/tests/nesting-threaded.nix`, `nesting-threaded-rehome`).
+        test-a-rebuild-that-drops-its-element-is-refused-by-name = {
+          expr = opt (fwdBy (_: sub) sub) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `fwd' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
+          };
+        };
+        # Condition (2) (M4): `functionTo` folds its element inside the function it returns, where its
+        # merge exposes no site, so a nested-tree read there is refused by name; a member that never
+        # reads the tree (a string definition) still answers (`nesting-threaded-rehome`).
+        test-a-tree-folded-where-the-merge-does-not-expose-it-is-refused-by-name = {
+          expr = call (np.functionTo (t.either (tree null) t.str)) (_: {
+            a = 1;
+          });
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h[.]<function body>': the option type `functionTo' folds its gen nesting element at a position its own merge does not expose when the option is merged [(]inside a value it returns, such as a function body[)], so that nested tree cannot be threaded into this evaluation[.] Declare the tree at a position the merge returns as a value, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+          };
+        };
+        # M8: the record's own `check` rides on the threaded fold, and the verdict names the
+        # container. Over `attrsWith{placeholder}` the name is `attrsOf', as on the sibling.
+        test-a-container-refinement-is-enforced-on-the-threaded-fold = {
+          expr = opt (np.addCheck (np.attrsWith {
             elemType = sub;
+            placeholder = "host";
+          }) (_: false)) { a.x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h' is not of type `attrsOf', in `<gen-merge>'$";
+          };
+        };
+        test-a-unique-refinement-is-enforced-on-the-threaded-fold = {
+          expr = opt (np.addCheck (np.uniq sub) (_: false)) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h' is not of type `unique', in `<gen-merge>'$";
+          };
+        };
+        # A detected rewrite over `unique` whose check reads the tree cannot be evaluated here, and is
+        # refused in `carriedFold`'s words (OQ17 residue (ii), decided by that construction).
+        test-a-unique-refinement-that-reads-the-tree-is-refused-by-name = {
+          expr = opt (np.addCheck (np.uniq (tree null)) (_: true)) { a = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `h' has a type `unique' whose `check' a foreign wrapper rewrote ${rewritten}";
+          };
+        };
+        # G1: a refinement on the ELEMENT under `unique` leaves a lambda in the compared slot, which is
+        # never read as stock (`==` on a lambda is evaluator-dependent), so it is refused, never served.
+        test-a-unique-over-a-refined-tree-union-is-refused = {
+          expr = opt (np.unique { message = "m"; } (np.addCheck (t.either (tree null) t.str) (_: false))) {
+            a = 1;
+          };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `h' has a type `unique' whose `check' a foreign wrapper rewrote ${rewritten}";
+          };
+        };
+        # The interim of OQ17-R: a `coercedTo` over a tree-reading element keeps the import refusal.
+        test-a-coerced-to-over-a-tree-union-keeps-the-import-refusal = {
+          expr = opt (np.coercedTo np.bool (_: null) (t.either (tree null) t.str)) { a = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+          };
+        };
+        # G2: a refinement on the threaded ELEMENT is carried as the engine's threaded site carries it,
+        # so `attrsWith{placeholder}` and `attrListOf` refuse exactly as the sibling `attrsOf` does.
+        test-an-element-refinement-is-carried-on-a-placeholder-attrs-with = {
+          expr = opt (np.attrsWith {
+            elemType = np.addCheck sub (_: false);
+            placeholder = "host";
+          }) { a.x = 1; };
+          expectedError = refinedElement;
+        };
+        test-an-element-refinement-is-carried-on-an-attr-list-of = {
+          expr = opt (np.attrListOf (np.addCheck sub (_: false))) { a.x = 1; };
+          expectedError = refinedElement;
+        };
+        test-an-element-refinement-is-carried-on-the-sibling-attrs-of = {
+          expr = opt (np.attrsOf (np.addCheck sub (_: false))) { a.x = 1; };
+          expectedError = refinedElement;
+        };
+        test-an-element-refinement-that-reads-the-tree-is-refused-by-name = {
+          expr = opt (np.attrsWith {
+            elemType = np.addCheck (t.either (tree null) t.str) (_: false);
             placeholder = "host";
           }) { a.x = 1; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `attrsOf' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
-          };
-        };
-        test-a-coerced-to-over-a-nesting-type-is-refused-at-the-engine = {
-          expr = opt (np.coercedTo np.int (x: { inherit x; }) sub) 7;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+            msg = "^gen-merge: the option `h[.]a' has a type `either' whose `check' a foreign wrapper rewrote ${rewritten}";
           };
         };
         test-a-hand-rolled-container-declaring-by-nested-types-is-refused-at-construction = {
