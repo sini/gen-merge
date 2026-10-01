@@ -1691,6 +1691,15 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   nixpkgs': a diamond or a repeated key is one node, the closure is breadth-first, and the first
   occurrence reached wins, taking its own imports.
 
+- **A keyed module may publish its key comparison, `__keyEq = { subject; decide; }`**, a key nixpkgs
+  does not have. Where a later occurrence shares the key of the one kept, and either publishes it, the
+  pair is decided rather than the later one dropped: `decide kept.subject later.subject` true is one
+  module; false, a non-boolean, or only one of the two publishing it is refused by name, the same in
+  both import orders. A throw inside `decide` propagates. Where neither publishes it, nixpkgs' rule
+  holds and the later occurrence is dropped. A path-keyed occurrence is the one file and keeps
+  nixpkgs' rule. A module publishing `__keyEq` without a `key` is refused by name. gen-schema keys a
+  kind with parents by its mark and publishes its sealed comparison here (`ci/tests/key-eq.nix`).
+
 - **An import cycle terminates.** A keyed or path cycle (`a` imports `b` imports `a`, or a module
   importing itself) closes over its finite set of node ids and each module contributes once
   (`test-c1-…` to `test-c4-…`). nixpkgs overflows the stack on the same modules, uncatchably, so the
@@ -1922,7 +1931,7 @@ The module reader is nixpkgs' `unifyModuleSyntax`: a module is structured iff it
 name (naming every surplus key and the file, whatever `check` says), and a shorthand module strips
 nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require` joins `imports`;
 `meta` on a structured module is folded into config). Both lists also carry gen-merge's engine keys
-`__pureModule` and `__reservedKeys`, and the shorthand list carries `_module`, which a shorthand module reads as config.
+`__pureModule`, `__reservedKeys` and `__keyEq`, and the shorthand list carries `_module`, which a shorthand module reads as config.
 A top-level `_module` beside `config`/`options` is refused by name as an unsupported attribute, as
 nixpkgs refuses it. Its departures:
 

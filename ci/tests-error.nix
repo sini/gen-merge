@@ -6230,6 +6230,118 @@ in
         };
       };
 
+    # THE KEY COMPARISON (`__keyEq`, den-hoag-kind-generator-collision-d4gnx): each refusal by name.
+    # Each cell first forces its LIVE CONTROL, an equal pair under the same key, which must read one
+    # module. The compose half and the catchability of every arm is `ci/tests/key-eq.nix`.
+    flake.testsError.key-eq =
+      let
+        decl.options.l = gm.mkOption {
+          type = t.listOf t.str;
+          default = [ ];
+        };
+        withEq = decide: file: v: {
+          _file = file;
+          key = "K";
+          __keyEq = {
+            subject = v;
+            inherit decide;
+          };
+          l = [ v ];
+        };
+        eq = withEq (a: b: a == b);
+        plain = file: v: {
+          _file = file;
+          key = "K";
+          l = [ v ];
+        };
+        l = mods: (cfg { modules = [ decl ] ++ mods; }).l;
+        controlled =
+          mods:
+          withControl (l [
+            (eq "/fx/a.nix" "x")
+            (eq "/fx/b.nix" "x")
+          ]) [ "x" ] (builtins.deepSeq (l mods) null);
+        unequal = {
+          type = "ThrownError";
+          msg = "^gen-merge: modules `/fx/a\\.nix' and `/fx/b\\.nix' share the key 'K' and are not equal under its key comparison \\(`__keyEq'\\)\\. One key is one declaration: .*$";
+        };
+        onlyOne = file: {
+          type = "ThrownError";
+          msg = "^gen-merge: modules `/fx/a\\.nix' and `/fx/b\\.nix' share the key 'K', and only `${file}' publishes a key comparison \\(`__keyEq'\\)\\. .*$";
+        };
+      in
+      {
+        test-unequal-pair-refused-by-name = {
+          expr = controlled [
+            (eq "/fx/a.nix" "x")
+            (eq "/fx/b.nix" "y")
+          ];
+          expectedError = unequal;
+        };
+        test-unequal-pair-other-order-refused-by-name = {
+          expr = controlled [
+            (eq "/fx/a.nix" "y")
+            (eq "/fx/b.nix" "x")
+          ];
+          expectedError = unequal;
+        };
+        # Only one publishing refuses in both orders (ADR-0022), naming the one that publishes.
+        test-kept-publishes-dropped-does-not-refused-by-name = {
+          expr = controlled [
+            (eq "/fx/a.nix" "x")
+            (plain "/fx/b.nix" "y")
+          ];
+          expectedError = onlyOne "/fx/a\\.nix";
+        };
+        test-dropped-publishes-kept-does-not-refused-by-name = {
+          expr = controlled [
+            (plain "/fx/a.nix" "y")
+            (eq "/fx/b.nix" "x")
+          ];
+          expectedError = onlyOne "/fx/b\\.nix";
+        };
+        # A non-boolean answer is refused by name, catchably, where it once aborted on `if`.
+        test-non-boolean-decide-refused-by-name = {
+          expr = controlled [
+            (withEq (_: _: "yes") "/fx/a.nix" "x")
+            (withEq (_: _: "yes") "/fx/b.nix" "x")
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the key comparison \\(`__keyEq\\.decide'\\) of key 'K' returned string, not a boolean\\. .*$";
+          };
+        };
+        # `decide`'s own refusal propagates unchanged: the publisher names its own difference.
+        test-decide-own-refusal-propagates = {
+          expr = controlled [
+            (withEq (_: _: throw "DECIDE-OWN") "/fx/a.nix" "x")
+            (withEq (_: _: throw "DECIDE-OWN") "/fx/b.nix" "x")
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^DECIDE-OWN$";
+          };
+        };
+        # `__keyEq` on a module with no `key` has nothing to decide: refused by name, where it would
+        # otherwise be stripped as a module key and silently ignored.
+        test-keyless-publisher-refused-by-name = {
+          expr = controlled [
+            {
+              _file = "/fx/c.nix";
+              __keyEq = {
+                subject = 1;
+                decide = _: _: true;
+              };
+              l = [ "z" ];
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: module `/fx/c\\.nix' publishes a key comparison \\(`__keyEq'\\) but no `key'\\. .*$";
+          };
+        };
+      };
+
     # Which declaration's added check a type merge drops, named (`mergeTypesReason`'s drop arm,
     # lib/modules.nix), and the same reason riding a container's refusal one level down (`elementRel`,
     # lib/types.nix). `ci/tests/check-family-merge.nix` pins that each pair refuses and that one shared

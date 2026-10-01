@@ -132,6 +132,15 @@ acquires these only by being exported.
 
 **`warmDecision` record**: `{ mode = "warm"|"cold"; inert = <bool>; reason = <string|null>; strict = <bool>; reused = [<loc-string>]; remerged = { <loc-string> = <reason>; }; modules = { clean; dirty; edited; }; }`.
 
+**`__` keys crossing the boundary** (R12 stated contracts; the census that reads these lines takes the
+first line of each).
+
+- `__keyEq` — writer gen-schema `mkSchemaEntryType` (`lib/entry-type.nix`, binding `keyed`), reader `keyedDrop` (`lib/modules.nix`):
+  `{ subject; decide; }` on a keyed module, the comparison gen-merge's key dedup applies when a second
+  occurrence shares the key. `decide kept.subject dropped.subject` true is one module; false, a
+  non-boolean, or only one occurrence publishing it is refused by name. Neither publishing keeps
+  nixpkgs' first-wins rule; a module publishing it without a `key` is refused by name.
+
 ## Entry points by task
 
 | Task                                                     | Reach for                                                                                                                |

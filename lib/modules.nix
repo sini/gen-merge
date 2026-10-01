@@ -730,7 +730,7 @@ let
   # ── module classification: the reference's `unifyModuleSyntax`, key list for key list ─────────
   # STRUCTURED iff the module carries `config` or `options` — nothing else makes it structured. A
   # structured module admits exactly `structuredKeys` (the reference's `attrsToRemove`, verbatim, plus
-  # this engine's `__pureModule` and `__reservedKeys`); any other top-level key is REFUSED BY NAME, naming every surplus
+  # this engine's `__pureModule`, `__reservedKeys` and `__keyEq`); any other top-level key is REFUSED BY NAME, naming every surplus
   # key and the file, whatever `check` says. `_module` is such a key, as in the reference: beside
   # `config`/`options` it is refused, because `_module` is a CONFIG path (`config._module`) and two
   # sites in one module would be two definitions with no order between them. `meta` is folded into
@@ -775,6 +775,7 @@ let
     "freeformType"
     "__pureModule"
     "__reservedKeys"
+    "__keyEq"
   ];
   shorthandMetaKeys = [
     "_class"
@@ -787,6 +788,7 @@ let
     "_module"
     "__pureModule"
     "__reservedKeys"
+    "__keyEq"
   ];
   # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
   # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
@@ -814,6 +816,7 @@ let
       || m ? _module
       || m ? __pureModule
       || m ? __reservedKeys
+      || m ? __keyEq
     then
       # A shorthand module's `_module` is config like any other key: stripped with the
       # metadata keys and restored. A structured module's top-level `_module` is refused by
@@ -861,6 +864,8 @@ let
       throw "${e.reserved.names.${head (reservedHits e)}} (module `${e._file}')"
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
+    else if m ? __keyEq && !(m ? key) then
+      throw "gen-merge: module `${e._file}' publishes a key comparison (`__keyEq') but no `key'. The comparison decides between two occurrences of one key, so a module without a key has nothing for it to decide: give the module its `key', or remove `__keyEq'."
     else if isAttrs m then
       e
     else
@@ -1170,6 +1175,34 @@ let
       "k" + builtins.unsafeDiscardStringContext (toString content.key)
     else
       null;
+  # THE KEY COMPARISON (`__keyEq = { subject; decide; }`, den-hoag-kind-generator-collision-d4gnx).
+  # `keyedDrop w x` decides an occurrence `x` whose node key the kept entry `w` already holds: `false`
+  # drops it. Where neither publishes `__keyEq`, nixpkgs' key rule holds and `x` is dropped. Where
+  # either does, the pair is decided, the same in both orders (ADR-0022): only one publishing is
+  # refused, `decide w.subject x.subject` true is the one module, and false or a non-boolean is
+  # refused by name; a throw inside `decide` propagates. A path-keyed occurrence is the one file, so
+  # it keeps nixpkgs' rule and its content is not read. Bound here, never per level: `moduleLevels`
+  # runs once per level of every tree.
+  keyedDrop =
+    w: x:
+    if builtins.isPath x.e.m0 || isPathString x.e.m0 then
+      false
+    else if !(w.e.content ? __keyEq || x.e.content ? __keyEq) then
+      false
+    else if !(w.e.content ? __keyEq && x.e.content ? __keyEq) then
+      throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${toString x.e.content.key}', and only `${
+        if w.e.content ? __keyEq then w.e._file else x.e._file
+      }' publishes a key comparison (`__keyEq'). One key is one declaration: publish the comparison on both, or give them different keys."
+    else
+      let
+        same = w.e.content.__keyEq.decide w.e.content.__keyEq.subject x.e.content.__keyEq.subject;
+      in
+      if same == true then
+        false
+      else if same == false then
+        throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${toString x.e.content.key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
+      else
+        throw "gen-merge: the key comparison (`__keyEq.decide') of key '${toString x.e.content.key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
   moduleLevels =
     callM: seen: level:
     if level == [ ] then
@@ -1181,7 +1214,7 @@ let
           inherit p e;
           k = nodeKeyOf e;
         }) level;
-        # `listToAttrs` keeps a name's FIRST occurrence: the level's first position per node key
+        # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key
         first = listToAttrs (
           concatMap (
             x:
@@ -1191,14 +1224,22 @@ let
               [
                 {
                   name = x.k;
-                  value = x.p;
+                  value = x;
                 }
               ]
           ) at
         );
         kept =
           if keyed then
-            map (x: x.e) (filter (x: x.k == null || (!(seen ? ${x.k}) && first.${x.k} == x.p)) at)
+            map (x: x.e) (
+              filter (
+                x:
+                x.k == null
+                || (
+                  if seen ? ${x.k} || first.${x.k}.p != x.p then keyedDrop (seen.${x.k} or first.${x.k}) x else true
+                )
+              ) at
+            )
           else
             level;
       in
