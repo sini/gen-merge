@@ -642,6 +642,35 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
+**`anything`'s fold.** Lists concatenate (reverse definition order). Attrsets recurse per key, and a
+conflict names the full path (`` `o.svc.k' ``). Anything else takes `mergeLeaf`, the engine's
+agree-or-refuse leaf fold, which is also `raw`'s. **An attrset carrying `__mint` is carried whole**
+when every definition carries it: it takes `mergeLeaf` too, so one definition passes through as it is,
+several pass if all are `==` to the first, and a conflict is refused at the option itself
+(`` `o' ``). `__mint` is the mark a substrate constructor writes (a gen-types checker or refined type,
+a gen-schema kind, a gen-algebra intensional value). A rebuild would keep a digest but move every
+closure into a fresh Value cell, so a value whose identity is DECIDED by `==` over its record would
+stop equalling itself on upstream Nix and Determinate. Carried whole, a transported construction is
+the same value on all three evaluators. Definitions mixing marked and plain attrsets are rebuilt.
+
+The carry fold's stated costs, all of them `mergeLeaf`'s:
+
+- **Twins are refused.** Two independent constructions of one identity (one digest, distinct
+  closures) are `==`-unequal, so defining both at one `anything` slot refuses the whole value, where
+  the rebuild returned one whose digest read cleanly. One value defined twice still folds to it.
+- **Two definitions of one sealed value split as `raw` does.** A sealed gen-types type carries
+  throwing fields, so `==` reaches a throw on upstream Nix and Determinate and short-circuits on Lix;
+  `anything` and `raw` give the same answer on every evaluator.
+- **A cyclic value overflows.** A hand-written `__mint` on a freshly built cyclic value, defined
+  twice, sends `==` round the cycle and overflows the stack uncatchably: the cyclic-value exception
+  in [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate), extended to whole
+  attrsets.
+- **Unmarked values are still rebuilt.** A value carrying no `__mint` takes the per-key rebuild, so
+  its compared parts do not survive transport: a gen-merge composite (`attrsOf int`) carried through
+  `anything` gives `typeEq` `false` on upstream Nix and Determinate (Lix `true`), and so does `==`
+  on `{ f = g; }`. This residue is enumerated, not decided: gen-merge's composites carry no
+  `__mint` yet.
+
 **The `types` argument is the gen-types library**, bound by its roster key, and not a pluggable leaf
 vocabulary. The core builds every exported type through gen-types' check-witness protocol
 (`witnessRecord`, held to `witnessedCheck`) and reads every fold's witness by it (`rewritesCheck`),

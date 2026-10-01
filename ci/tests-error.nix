@@ -1333,6 +1333,67 @@ in
       };
     };
 
+    # `anything` carries a value carrying `__mint` WHOLE, by `mergeLeaf` (lib/types.nix), so two
+    # minted definitions are agree-or-refuse over the whole value and a conflict is named AT THE
+    # OPTION. The rebuild it replaced recursed per key and refused at an inner one (`o.name`), or
+    # answered with a value.
+    #
+    # ★ ASSERTING THE MESSAGE, NOT THAT IT THREW: both cells THREW before the carry arm too, or
+    # returned a value, and a `tryEval` cell is satisfied by any throw.
+    flake.testsError.anything-carry = {
+      test-two-minted-values-refused-at-the-option = {
+        expr = realize {
+          modules = [
+            anyDecl
+            {
+              _file = "A";
+              o = t.int;
+            }
+            {
+              _file = "B";
+              o = t.str;
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': <a set>\n- In `A': <a set>$";
+        };
+      };
+      # ★★ THE TWIN COST, STATED. Two INDEPENDENT constructions of one minted type carry one digest
+      # and are one identity (the control is `ci/tests/merge.nix`
+      # `test-control-anything-twin-identity-and-one-value-twice`), but their closures are distinct,
+      # so `==` answers false and the fold refuses the WHOLE value. The rebuild handed back a value
+      # whose digest read cleanly — this cell's red. Reading only `__mint.minted` keeps the subject
+      # the fold, not a conflicting closure the rebuild would have refused on demand.
+      test-twin-minted-constructions-defined-twice-refused = {
+        expr =
+          (cfg {
+            modules = [
+              anyDecl
+              {
+                _file = "A";
+                o = t.enum "e" [
+                  "a"
+                  "b"
+                ];
+              }
+              {
+                _file = "B";
+                o = t.enum "e" [
+                  "a"
+                  "b"
+                ];
+              }
+            ];
+          }).o.__mint.minted;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `B': <a set>\n- In `A': <a set>$";
+        };
+      };
+    };
+
     # ── the leaf fold's REFUSAL half, met DIRECTLY rather than through a type's arm (den-hoag-txdgz)
     # `mergeLeaf` is agree-or-refuse, and every cell above reaches it through `anything`'s
     # non-structural arm, which is one member of the class that rides it. These are the same fold on
