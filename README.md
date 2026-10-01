@@ -1253,9 +1253,9 @@ under a container (`listOf (addCheck int p)` beside `listOf int`), and in a long
 reason naming which of the pair lost its check; under a container that reason follows the element
 refusal. The test sits in `mergeTypes`, so the declaration and freeform planes, every container's
 element relation and the published `genMerge.mergeTypes` all answer it. As above, refusing is sound
-under both readings of a redeclaration; it is the defaulted, reversible disposition, since ADR-0025
-item 1 forbids the silence without choosing the refusal, and a ruling for the join reading would
-relax this arm alone. **One wrapped value declared twice keeps its operand**: `w = addCheck int p`
+under both readings of a redeclaration. It is a default, and reversible: the rule that no check
+vanishes silently forbids serving the value, but does not itself choose a refusal over another named
+answer, so settling the reading as a join would relax this arm alone. **One wrapped value declared twice keeps its operand**: `w = addCheck int p`
 declared as `[w, w]`, or as two `listOf w`, merges to `w` and rejects what `p` rejects. **Two
 separately written wrappers refuse even over one predicate source**, because a check is a caller's
 function and two cannot be compared (`mkOptionType`'s `sealedRel` answers the same): declare the
