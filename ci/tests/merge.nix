@@ -923,6 +923,143 @@ in
     };
   };
 
+  # ── `anything` carries a value carrying `__mint` whole ─────────────────────────────────────────
+  # The attrset arm used to rebuild every attrset with `listToAttrs`, so a CONSTRUCTION came out as
+  # a different value with the same fields. A minted identity (a digest) survives that copy; a
+  # decided one does not, because it compares the reified value under `==`, and upstream Nix and
+  # Determinate equate a function only by its Value cell, which the rebuild moves. `posT` is SEALED
+  # (`__mint` tagged `unmintable`), so `typeEq` decides it by comparing the record. Before the carry
+  # arm these cells answered `false` on nix and Determinate (a SILENT wrong answer) and refused on
+  # Lix, or — the type-equals-itself cell — overflowed the stack uncatchably on Lix.
+  flake.tests.anything.test-anything-carries-a-minted-value-whole =
+    let
+      posT = t.refined t.int {
+        check = v: v > 0;
+        message = "positive";
+      };
+      via =
+        ty: v:
+        (cfg {
+          modules = [
+            { options.o = mkOption { type = ty; }; }
+            { o = v; }
+          ];
+        }).o;
+    in
+    {
+      expr = {
+        anything = t.typeEq posT (via t.anything posT);
+        attrsOf = t.typeEq posT (via (t.attrsOf t.anything) { x = posT; }).x;
+        listOf = t.typeEq posT (builtins.head (via (t.listOf t.anything) [ posT ]));
+        nested = t.typeEq posT (via t.anything { deep.x = posT; }).deep.x;
+      };
+      expected = {
+        anything = true;
+        attrsOf = true;
+        listOf = true;
+        nested = true;
+      };
+    };
+
+  # A gen-types NULLARY type through `anything` is the same value it was. Its red state on Lix is an
+  # uncatchable stack overflow, which aborts the whole run rather than failing this cell.
+  flake.tests.anything.test-anything-a-transported-type-equals-itself = {
+    expr =
+      (cfg {
+        modules = [
+          { options.o = mkOption { type = t.anything; }; }
+          { o = t.int; }
+        ];
+      }).o == t.int;
+    expected = true;
+  };
+
+  # The arm fires only when EVERY definition carries the mark: a minted value merged with a plain
+  # attrset is still rebuilt per key, and the plain definition's key is in the result.
+  flake.tests.anything.test-anything-mixed-minted-and-plain-is-rebuilt =
+    let
+      posT = t.refined t.int {
+        check = v: v > 0;
+        message = "positive";
+      };
+      r =
+        (cfg {
+          modules = [
+            { options.o = mkOption { type = t.anything; }; }
+            { o = posT; }
+            { o.extra = 1; }
+          ];
+        }).o;
+    in
+    {
+      expr = r ? extra && r ? __mint;
+      expected = true;
+    };
+
+  # Two definitions of ONE minted value fold exactly as `raw` folds them, on every evaluator. The
+  # answer itself is evaluator-split — `mergeLeaf` compares definitions with `==`, a sealed type has
+  # throwing fields, and nix and Determinate reach a throw where Lix short-circuits (the residue the
+  # README states for `mergeLeaf`) — so the cell asserts the AGREEMENT, not the answer. Before the
+  # carry arm Lix answered `false` through `anything` against `true` through `raw`.
+  flake.tests.anything.test-anything-two-minted-definitions-fold-as-raw =
+    let
+      posT = t.refined t.int {
+        check = v: v > 0;
+        message = "positive";
+      };
+      decide =
+        ty:
+        let
+          r = builtins.tryEval (
+            t.typeEq posT
+              (cfg {
+                modules = [
+                  { options.o = mkOption { type = ty; }; }
+                  { o = posT; }
+                  { o = posT; }
+                ];
+              }).o
+          );
+        in
+        if r.success then r.value else "refused";
+    in
+    {
+      expr = decide t.anything == decide t.raw;
+      expected = true;
+    };
+
+  # The controls for the twin refusal in `ci/tests-error.nix` (`anything-carry`): two INDEPENDENT
+  # constructions of one minted type ARE one identity, and one value defined twice still folds to a
+  # readable value. What refuses there is the fold demanding `==` of two distinct records, not the
+  # identity.
+  flake.tests.anything.test-control-anything-twin-identity-and-one-value-twice =
+    let
+      mkE =
+        _:
+        t.enum "e" [
+          "a"
+          "b"
+        ];
+      e = mkE 1;
+    in
+    {
+      expr = {
+        twinsAreOneIdentity = t.typeEq e (mkE 2);
+        oneValueTwice =
+          (cfg {
+            modules = [
+              { options.o = mkOption { type = t.anything; }; }
+              { o = e; }
+              { o = e; }
+            ];
+          }).o.__mint.minted == e.__mint.minted;
+      };
+      expected = {
+        twinsAreOneIdentity = true;
+        oneValueTwice = true;
+      };
+    };
+
   # ── the engine's own leaf fold: the equal-winner collapse (den-hoag-txdgz) ────────────────────
   # `mergeLeaf` (lib/modules.nix) is the fold every type with NO `.merge` of its own rides, and that
   # is a CLASS rather than one type's arm: `raw` — the only strategy in lib/types.nix that brings no

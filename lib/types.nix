@@ -1049,7 +1049,7 @@ let
   };
 
   # anything — recursive value merge (lists concat, attrsets per-key recurse, else the ENGINE'S LEAF
-  # FOLD). Used by non-strict instance freeform + niche raw-ish spots; byte-mode-adequate, not the
+  # FOLD; an attrset carrying `__mint` is carried whole by that same fold). Used by non-strict instance freeform + niche raw-ish spots; byte-mode-adequate, not the
   # full nixpkgs `types.anything` module-composition of function values.
   #
   # ★★★ THE NON-STRUCTURAL ARM IS `mergeLeaf`, NOT A SELECTION. It used to be `prelude.last vals`:
@@ -1074,23 +1074,49 @@ let
     else if all (d: isList d.value) defs then
       concatLists (map (d: d.value) defs)
     else if all (d: isAttrs d.value) defs then
-      let
-        keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
-      in
-      listToAttrs (
-        map (k: {
-          name = k;
-          value = mergeAnythingDefs (loc ++ [ k ]) (
-            concatMap (
-              d:
-              optional (d.value ? ${k}) {
-                inherit (d) file;
-                value = d.value.${k};
-              }
-            ) defs
-          );
-        }) keys
-      )
+      # ★★ A VALUE CARRYING `__mint` IS CARRIED WHOLE, NEVER REBUILT. `__mint` is the one mark a
+      # substrate constructor writes (ADR-0016 ruling 5): the value is a CONSTRUCTION, and its identity
+      # is either a digest or a decision over the reified value itself under `==` (ADR-0034). The
+      # rebuild below keeps the first and destroys the second — `listToAttrs` lands every closure in a
+      # fresh Value cell, and upstream Nix and Determinate equate a function only by that cell while
+      # Lix compares the forced object — so a rebuilt construction stopped equalling itself on two
+      # evaluators of three. When EVERY definition carries the mark this arm is exactly `raw`'s fold,
+      # and it CONSULTS `mergeLeaf` rather than restating it: one definition is carried as it is,
+      # several are carried if they are all `==` to the first and refused by name at `loc` otherwise.
+      # A mixed list (some marked, some plain) still takes the rebuild. The head is tested first so a
+      # plain value pays one attribute test per attrset node; every definition is already forced to
+      # WHNF by the arm above, so `? __mint` forces nothing new. Reading the mark decides the merge
+      # SHAPE of an untyped slot, never an identity regime, which stays the constructor's.
+      #
+      # ★ THE FOLD'S STATED COSTS, which are `mergeLeaf`'s own and not this arm's invention:
+      #   · TWINS ARE REFUSED. Two INDEPENDENT constructions of one identity (one digest, distinct
+      #     closures) are `==`-unequal, so defined twice they refuse the whole value where the
+      #     rebuild gave one. Two definitions of ONE value still fold to it.
+      #   · A hand-written `__mint` on a freshly built CYCLIC value, defined twice, sends `==` round
+      #     the cycle and overflows the stack uncatchably — the residue `mergeLeaf` already states for
+      #     a leaf, extended here to whole attrsets.
+      #   · Values carrying NO `__mint` are still rebuilt, so their compared limbs still do not survive
+      #     transport (a gen-merge composite such as `attrsOf int`, or `{ f = g; }`).
+      if (head defs).value ? __mint && all (d: d.value ? __mint) defs then
+        mergeLeaf loc defs
+      else
+        let
+          keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
+        in
+        listToAttrs (
+          map (k: {
+            name = k;
+            value = mergeAnythingDefs (loc ++ [ k ]) (
+              concatMap (
+                d:
+                optional (d.value ? ${k}) {
+                  inherit (d) file;
+                  value = d.value.${k};
+                }
+              ) defs
+            );
+          }) keys
+        )
     else
       mergeLeaf loc defs;
   anything = defineType {
