@@ -1809,8 +1809,15 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   as nixpkgs refuses it. Every other `_module.<x>` is an ordinary config path, as in nixpkgs: refused
   as an option that does not exist under `check`, listed on `.undeclared`, absorbed by a
   `freeformType`, merged by a declared `options._module.<x>`. Declaring `options._module` as a
-  single option is refused by name, as nixpkgs refuses it (it would be a parent of the engine's own
-  keys). `lint` refuses the three module-input refusals the engine fires before merging
+  single option whose type carries no sub-options is refused by name, as nixpkgs refuses it (it would
+  be a parent of the engine's own keys). A `submodule`-typed `options._module` is refused by name
+  too, where nixpkgs merges its own `_module` options into the submodule and yields a value
+  (`ci/tests-error.nix` `test-module-declared-as-a-submodule-option-refused-by-name`): honouring it
+  would need the engine's `moduleOwnKeys` declared as options inside the caller's submodule, a
+  construction this engine does not have. A declared `options._module.<k>` for an engine-owned `k`
+  is not read, because the engine owns `k`: a typed `options._module.args` is silently inert (its
+  type never runs), where nixpkgs refuses the re-declaration as already declared. That is a known
+  gap. `lint` refuses the three module-input refusals the engine fires before merging
   (`specialArgs`, `check`, a non-attrset `_module`) and reports nothing for an unknown `_module.<x>`,
   where the two engines agree.
 

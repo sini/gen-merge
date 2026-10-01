@@ -873,6 +873,25 @@ in
           msg = "^gen-merge: option `_module' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options\\._module\\.<name>' instead; declared in /g/L\\.nix$";
         };
       };
+      # A `submodule`-TYPED `_module` is the exception: nixpkgs merges its own `_module` options into
+      # the submodule and reads `_module.foo` and `_module.args.pkgs` alike. This engine has no
+      # `moduleOwnKeys` declared as options to merge into it, so it refuses the declaration by name.
+      test-module-declared-as-a-submodule-option-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/S.nix" {
+            options._module = gm.mkOption {
+              type = t.submodule { options.foo = gm.mkOption { default = 1; }; };
+              default = { };
+            };
+            config._module.foo = 2;
+            config._module.args.pkgs = "P";
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `_module' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options\\._module\\.<name>' instead; declared in /g/S\\.nix$";
+        };
+      };
       # The lint refuses what the engine refuses before merging. An unknown `_module.<x>` is no lint
       # finding (`./tests/module-key.nix`): both engines refuse or absorb it alike.
       test-module-special-args-refused-by-lint = {

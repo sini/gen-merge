@@ -3873,8 +3873,9 @@ let
           # lazily (undefined+no-default throws only on access, matching nixpkgs); groups recurse.
           # A `_module.<x>` the engine does not own meets the realizer as a config path: an empty
           # per-evaluation `_module` group makes its capture path `_module.<x>`, never `_module`, and
-          # `.options` is untouched. A `_module` declared as a single option is refused, as nixpkgs
-          # refuses it: it would be a parent of the engine's own `moduleOwnKeys`.
+          # `.options` is untouched. A `_module` declared as a single option is refused: it would be a
+          # parent of the engine's own `moduleOwnKeys`. nixpkgs refuses it too, except for a
+          # `submodule` type, into which it merges its own `_module` options.
           realized = mergeTree warmCtx [ ] (
             if allOptions ? _module then
               if isOptLeaf allOptions._module then
