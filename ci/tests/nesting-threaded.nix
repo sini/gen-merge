@@ -187,6 +187,7 @@ let
   # mode of a lax carrier (`{ true; false; }`, what the rich fold's `.reported false` evaluates in).
   reportedEv = {
     position = [ ];
+    containerNodes = false;
     child = genMergeCore.nestedTreeAt {
       carried = true;
       inherited = false;

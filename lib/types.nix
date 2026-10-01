@@ -621,14 +621,16 @@ let
       # The lazy fold MARKS its elements `under` (S1 arm (v), den-hoag-9d80v), once per fold call: an
       # element whose position the key walk made a container node is read off that node rather than
       # folded inline (`mergeDefsThreaded`). An element that nests directly is never a container
-      # node, so that fold sets no mark (decided once, when the type is built).
+      # node, so that fold sets no mark (decided once, when the type is built). A container node
+      # exists only under an accessor that states `containerNodes` (a gen evaluation's key walk);
+      # under the bridge each element folds inline, one root evaluation per nested tree.
       marks = tyName == "lazyAttrsOf" && !(interface.isNesting element);
       threaded =
         ev:
         refusingOutside tyName admits (
           loc: defs:
           let
-            ev' = if marks then ev // { under = true; } else ev;
+            ev' = if marks && ev.containerNodes then ev // { under = true; } else ev;
           in
           listToAttrs (
             map (e: {

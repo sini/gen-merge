@@ -2051,14 +2051,15 @@ let
     );
 
   # ── THE ENGINE'S THREADED TWIN (den-hoag-n6dh7 item 5) ───────────────────────────────────────────
-  # The CALLED fold over the type whose fold is its threaded form, bound to the evaluation's accessor
-  # `ev` (`{ position; child; }`). So the discharge, priority, order and `verify` spine is the called
-  # fold's own — one text, not a second copy that could drift from it — and a type carrying no
-  # sibling (a leaf, a foreign fold, a fold nothing nests under) folds exactly as it does called:
-  # that is the twin's PRESENCE ARM (gate C3). The type is first HOMED, where it is bound to its
-  # position (`interface.homedAt`): a recognised foreign container becomes gen's own, and an
-  # unrecognised one declaring a gen nesting element threads through its own `substSubModules`
-  # rebuild, or is refused by name before any fold is taken (`interface.threadedForeign`).
+  # The CALLED fold over the type whose fold is its threaded form, bound to the evaluation's
+  # accessor `ev` (`{ position; containerNodes; child; }`). So the discharge, priority, order and
+  # `verify` spine is the called fold's own — one text, not a second copy that could drift from it —
+  # and a type carrying no sibling (a leaf, a foreign fold, a fold nothing nests under) folds
+  # exactly as it does called: that is the twin's PRESENCE ARM (gate C3). The type is first HOMED,
+  # where it is bound to its position (`interface.homedAt`): a recognised foreign container becomes
+  # gen's own, and an unrecognised one declaring a gen nesting element threads through its own
+  # `substSubModules` rebuild, or is refused by name before any fold is taken
+  # (`interface.threadedForeign`).
   #
   # The bound record states exactly what the spine reads of a type that brings a fold: the fold,
   # the empty value and `verify` (the rest is read only where no fold is brought), so binding it
@@ -2125,6 +2126,7 @@ let
   # group and the fold's position, never through an identifier.
   evAt = reader: group: {
     position = [ ];
+    containerNodes = true;
     child = site: reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
   # A type bound at a declared option or at the freeform plane, threaded where it may nest and the

@@ -439,6 +439,24 @@ in
         y = "v";
       };
     };
+    # A container of submodules under `lazyAttrsOf` mounts through the bridge, which holds no
+    # container node: each tree is one root evaluation, as nixpkgs' value.
+    test-lazy-container-of-submodules-mounts = {
+      expr = {
+        attrs = mount (gmT.lazyAttrsOf (gmT.attrsOf (gmT.submodule strMod))) { k.k.y = "v"; };
+        list = mount (gmT.lazyAttrsOf (gmT.listOf (gmT.submodule strMod))) { k = [ { y = "v"; } ]; };
+        lazy = mount (gmT.lazyAttrsOf (gmT.lazyAttrsOf (gmT.submodule strMod))) { k.k.y = "v"; };
+        inner = mount (gmT.attrsOf (gmT.lazyAttrsOf (gmT.attrsOf (gmT.submodule strMod)))) {
+          k.k.k.y = "v";
+        };
+      };
+      expected = {
+        attrs.k.k.y = "v";
+        list.k = [ { y = "v"; } ];
+        lazy.k.k.y = "v";
+        inner.k.k.k.y = "v";
+      };
+    };
 
     # `getSubOptions` — the INTROSPECTION half of the protocol, previously stubbed `_prefix: { }` on every
     # type. A consumer that reads a registry's DECLARED instance surface off the option type (rather than

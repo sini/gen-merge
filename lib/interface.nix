@@ -1288,6 +1288,7 @@ let
   # sibling existed; a foreign engine carries no gen report.
   bridge = {
     position = [ ];
+    containerNodes = false;
     child = site: nestedTreeAt site.nests.calledMode site;
   };
   # A fold as the foreign protocol publishes it: through the bridge where it carries the sibling,
