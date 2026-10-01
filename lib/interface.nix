@@ -277,7 +277,7 @@ let
     # gen-types' `rewritesCheck`, restated inline for cost: a call here is an environment on every
     # leaf fold. The construction door holds this spelling to the protocol (`lib/default.nix`).
     if t ? _checkWitness && t ? check && t.check != t._checkWitness then
-      carriedFold t (t.mergeDefs or leafFold)
+      checkedFold t (t.mergeDefs or leafFold)
     else if t._protoLeafMerge or false then
       null
     else if isV2 t && !(t.check.isV2MergeCoherent or false) then
@@ -364,61 +364,16 @@ let
   # its slots, allocating nothing per test: the test is paid on every fold, so it may cost nothing
   # per fold (hub perf-bench's `wideFreeform` and `deepSubmodule` alloc ratchets). A rewritten
   # `check` is a function (`addCheck`'s `x: t.check x && p x`) or another record's, and compares
-  # unequal. A record with no witness (a `nonMountable` tree, a foreign descriptor) is not asked,
-  # so the tree's refusing `check` is never forced here; a check rewritten over the bare tree is
-  # therefore not detected, and nixpkgs erases it there too (the enumerated residue, README "The
-  # prices, stated"). A record re-bound by selection (`t // { inherit (t) check; }`) keeps the same
+  # unequal. A record with no witness (a `nonMountable` tree, a foreign descriptor) is not asked;
+  # a check rewritten over the bare tree is therefore not detected, and nixpkgs erases it there too
+  # (the enumerated residue, README "The prices, stated"). A record re-bound by selection (`t // { inherit (t) check; }`) keeps the same
   # record and reads as its own on every evaluator. Four per-fold sites restate the test inline for
   # cost (`importedFold`, `modules.nix` `ownFold` and `threadedAs`, `types.nix` `isValid`), and the
   # library's construction door holds their spelling to this test (`lib/default.nix`).
 
-  # Whether a record's published `check` reads a `nonMountable` record's, which refuses when forced.
-  # A union's `check` reads its members and a nullable's its element, in gen's vocabulary and in
-  # nixpkgs'; a container's (`listOf`, `attrsOf`, `submodule`) reads only the value's shape (nixpkgs
-  # 7a0f122: `isList`, `isAttrs`), so it never reaches what it holds. Keyed on the name, as a stock
-  # record is recognised (`importedRehomeAt`), and bounded by the walk's fuel.
-  checkReadsTree =
-    let
-      go =
-        fuel: t:
-        isAttrs t
-        && (
-          t ? nonMountable
-          || (
-            fuel > 0
-            && (
-              if nameOf t == "either" then
-                (
-                  let
-                    members = importedCarried "alternatives" t;
-                  in
-                  isList members && prelude.any (go (fuel - 1)) members
-                )
-              else if nameOf t == "nullOr" then
-                go (fuel - 1) (importedCarried "element" t)
-              else
-                false
-            )
-          )
-        );
-    in
-    go importedTypeWalkFuel;
-
-  # The fold a record with a rewritten `check` folds by: `fold` under that check, as nixpkgs'
-  # `checkDefsForError` applies it (the same verdict), or, where the check reads a nested tree's
-  # foreign face and so cannot be evaluated in this eval, a refusal by name. Dropping it silently is
-  # the one answer this side does not give (ADR-0025 item 1).
-  carriedFold =
-    t: fold:
-    if checkReadsTree t then (loc: _defs: throw (rewrittenCheckRefusal t loc)) else checkedFold t fold;
-  rewrittenCheckRefusal =
-    t: loc:
-    "gen-merge: the option `${showOption loc}' has a type `${nameOf t}' whose `check' a foreign wrapper rewrote (`addCheck', or `// { check = ...; }') over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped. State the check on a member that holds no tree, or inside the submodule";
-
   # Whether a value is inside a record's rewritten `check` as well as its gen domain: the member
-  # choice of a union asks both (`types.isValid`). A check that cannot be evaluated is not asked,
-  # and the member's fold refuses it by name (`carriedFold`).
-  admitsCarried = t: v: !(rewritesCheck t) || checkReadsTree t || t.check v;
+  # choice of a union asks both (`types.isValid`), and the member's fold applies it (`checkedFold`).
+  admitsCarried = t: v: !(rewritesCheck t) || t.check v;
 
   # What value does this type supply when nothing defined it? `{ }` is "it declares none" and is a
   # different fact from `{ value = null; }`, which is a declared null.
@@ -919,8 +874,9 @@ let
   # self-referential `description` (nixpkgs' `types.json` shape) then recurses uncatchably; a
   # compared record's `type` would be forced as well. `closuresOf` is not used here: it filters the
   # export fields by `isFunction`, which forces that same `description`. A `nonMountable` record's
-  # `check` is a refusal when forced (`refuseMount`), so where either side is one only `merge` is
-  # compared: the tree answers its fold, and one tree offered and stated is still one closure.
+  # `check` is the one module-value domain every tree publishes, so it cannot tell two trees apart:
+  # where either side is one only `merge` is compared, and one tree offered and stated is still one
+  # closure.
   rehomeAgreed =
     door: loc: t: r:
     let
@@ -1021,12 +977,10 @@ let
           # the container and its element, and a refinement `{ x : F e | p x }` is not part of the
           # functor, so `addCheck` over a stock container is rebuilt away unless carried. A foreign
           # record has no witness, so a rewritten check cannot be told from the stock one; the
-          # record's check is carried on every re-home, where it can be evaluated here, and gen's
-          # own fold applies it as a rewritten check (`carriedFold`). A stock `either`/`nullOr`
-          # whose members reach the bare tree states a check that cannot be evaluated here and
-          # cannot be detected, so it is rebuilt without it: the enumerated residue, README "The
-          # prices, stated".
-          if checkReadsTree t then rebuilt else rebuilt // { inherit (t) check; }
+          # record's check is carried on every re-home, and gen's own fold applies it as a
+          # rewritten check (`checkedFold`). One that reaches the nested tree reads the tree's
+          # `check`, its module-value domain (den-hoag-f8mgj arm Q).
+          rebuilt // { inherit (t) check; }
         )
       else if declaresNestingAt door loc t then
         threadedForeign door loc t
@@ -1118,53 +1072,16 @@ let
       # `addCheck` is `t // { check; merge; }` and keeps the base container's `substSubModules`, so
       # the rebuild returns the STOCK container and a refinement is not part of it. It is carried as
       # a checked fold around the whole threaded fold, not as a copied field, because a v2 container
-      # (`coercedTo`, `attrsWith`) folds by `merge.v2` and never reads the record's `check`. Where
-      # that check reads the element's foreign face and the element holds a nested tree (`unique`'s
-      # check is its element's, `coercedTo`'s calls `finalType.check`), it cannot be evaluated here.
-      # A stock `unique` is decided there: its check IS its element's, which the element's own
-      # threaded fold already answers in gen's words. A detected rewrite over `unique` is refused by
-      # name with `carriedFold`'s words. A `coercedTo` cannot be decided (its stock check is a fresh
-      # record), and is refused with the import refusal: the interim, as before this construction,
-      # while that reading is the owner's (OQ17-R).
+      # (`coercedTo`, `attrsWith`) folds by `merge.v2` and never reads the record's `check`. A check
+      # that reaches the nested tree (`unique`'s is its element's, `coercedTo`'s calls
+      # `finalType.check`) reads the tree's `check`, its module-value domain, which reads only the
+      # value (den-hoag-f8mgj arm Q). The verdict names the container, never its `description`,
+      # which reads the element's and so the tree's refusing one.
       nt = t.nestedTypes or { };
-      checkElem =
-        if nameOf t == "unique" then
-          nt.elemType or null
-        else if nameOf t == "coercedTo" then
-          nt.finalType or null
-        else
-          null;
-      readsTree = checkElem != null && checkReadsTree checkElem;
-      # Over the bare tree the slots cannot be compared (that forces the tombstone's `check`), so
-      # the force decides: the stock slot IS the tombstone's and refuses, a rewrite's does not.
-      # Elsewhere the slots compare by pointer, and only as records: `==` on a lambda is
-      # evaluator-dependent, so a lambda slot (a rewrite on the element) is never stock. A
-      # refinement on the bare-tree element itself is therefore read as a rewrite over `unique`.
-      stockUnique =
-        nameOf t == "unique"
-        && (
-          if checkElem ? nonMountable then
-            !(builtins.tryEval t.check).success
-          else
-            isAttrs checkElem.check
-            &&
-              builtins.intersectAttrs { check = null; } t == builtins.intersectAttrs { check = null; } checkElem
-        );
-      # the verdict names the container, never its `description`, which reads the element's and so
-      # the tree's refusing one
-      checkedThreaded =
-        fold:
-        if !readsTree then
-          checkedFold {
-            inherit (t) check;
-            description = nameOf t;
-          } fold
-        else if stockUnique then
-          fold
-        else if nameOf t == "unique" then
-          (loc: _defs: throw (rewrittenCheckRefusal t loc))
-        else
-          (loc: _defs: throw (nestingImportRefusal door loc t));
+      checkedThreaded = checkedFold {
+        inherit (t) check;
+        description = nameOf t;
+      };
       # A refinement on the ELEMENT is carried as the engine's threaded site carries it
       # (`modules.nix` `threadedAs`). The element the rebuild hands back is the record its
       # `substSubModules` closes over, from before the refinement, so the declared element is found
@@ -1177,7 +1094,7 @@ let
             d: isAttrs d && d ? _checkWitness && d._checkWitness == e._checkWitness && rewritesCheck d
           ) declared;
         in
-        if e ? _checkWitness && rewritten != [ ] then carriedFold (head rewritten) fold else fold;
+        if e ? _checkWitness && rewritten != [ ] then checkedFold (head rewritten) fold else fold;
     in
     t
     // {
@@ -1888,7 +1805,7 @@ let
             # merges without checking (the freeformType); a caller replacing `mergeDefs` whole replaces
             # both at once, as with `mergeDefs.reported`.
             # A gen record whose `check` a wrapper rewrote crosses with that check as its checked fold
-            # (`carriedFold`), never stripped with the protocol's names (den-hoag-4ifgb).
+            # (`checkedFold`), never stripped with the protocol's names (den-hoag-4ifgb).
             checked = isV2 t || checksDefs t || rewritesCheck t;
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
@@ -2022,11 +1939,11 @@ let
   #
   # The foreign face of a composite is the composite rebuilt over its members' foreign faces: the
   # functorial map `recarry` exists to perform. The tree's is the tree without its gen domain
-  # answer, so a foreign membership question reaches its refused `check`, as before the tree
-  # answered one. A leaf is its own face, and so is a type carrying a module set (`submodule`):
-  # its fold is gen's own `evalModuleTree`, the eval boundary itself, which is why a union inside a
-  # submodule mounted abroad still yields a value. For every library combinator the face of a type
-  # holding the tree is therefore the type as it stood before, byte-for-byte.
+  # answer, so a foreign membership question reaches its `check`, which answers the same
+  # module-value domain (den-hoag-f8mgj arm Q): a gen composite holding the tree folds it through
+  # `bridge` at nixpkgs' value. A leaf is its own face, and so is a type carrying a module set
+  # (`submodule`): its fold is gen's own `evalModuleTree`, the eval boundary itself, which is why a
+  # union inside a submodule mounted abroad still yields a value.
   #
   # It rests on ONE law, `mkTypeWith`'s `recarry` contract (`t.recarry c'` is `t`'s own constructor
   # over `c'`), and on nothing stronger: it rebuilds only when a direct member is the tree or a
@@ -2266,7 +2183,10 @@ let
   # are answered truthfully: such a value is not deprecated, supplies the caller's `whenEmpty` when
   # the option nesting it goes undefined, and wraps no element type. `_type` is deliberately absent —
   # a consumer that ASKS whether this is an option type reads it through `or null` and gets a correct
-  # `false`, and a throwing tombstone would turn the one working negative answer into an abort.
+  # `false`, and a throwing tombstone would turn the one working negative answer into an abort. A
+  # caller's `fields` may answer more where it holds a truthful answer: the tree answers `check`
+  # with its module-value domain (den-hoag-f8mgj arm Q). What still refuses is pending
+  # den-hoag-foreign-mount-parity-knhyg.
   #
   # ★ THE FOLD IS ANSWERED, NOT REFUSED, and that is a fourth truthful answer rather than a crack in
   # the refusal. Such a value really does combine definitions that way — it is a nesting seam, and
@@ -2319,7 +2239,7 @@ in
 {
   inherit
     admitsCarried
-    carriedFold
+    checkedFold
     closuresFirst
     exportClasses
     exportFields

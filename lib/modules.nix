@@ -1696,7 +1696,7 @@ let
     if type == null then
       null
     # A fold of its own is folded under a `check` a foreign wrapper rewrote over it, which the
-    # import half answers (`interface.carriedFold`, den-hoag-4ifgb). gen-types' `rewritesCheck` is
+    # import half answers (`interface.checkedFold`, den-hoag-4ifgb). gen-types' `rewritesCheck` is
     # restated inline for cost: a call here is an environment on every fold. The construction door
     # holds this spelling to the protocol (`lib/default.nix`).
     else if
@@ -2082,7 +2082,7 @@ let
           # gen-types' `rewritesCheck`, restated inline for cost; the construction door holds the
           # spelling to the protocol (`lib/default.nix`).
           else if type ? _checkWitness && type ? check && type.check != type._checkWitness then
-            interface.carriedFold type (type.mergeDefs.threaded ev)
+            interface.checkedFold type (type.mergeDefs.threaded ev)
           else
             type.mergeDefs.threaded ev;
         whenEmpty =
@@ -4626,17 +4626,22 @@ let
         #     read that would abort UNCATCHABLY rather than refuse. The refusal does not depend on it:
         #     with the field removed the mount still refuses catchably, because the field a foreign
         #     engine forces first is the module-set read, which it takes through `or`.
-        #   * THE GEN DOMAIN IS ANSWERED TOO — `admits`, a gen field and not one of the fourteen: the
-        #     module-value domain, exactly the reference `(evalModules …).type`'s `check`. A gen
-        #     union (`either`, `oneOf`, `nullOr`) asks its members `admits` before `check`, so inside
-        #     this engine's own eval the tree is a union member as nixpkgs' is — membership, not
-        #     mounting. The foreign face strips it (`lib/interface.nix` `foreignFace`), so a foreign
-        #     eval reaching the tree through a gen union still meets the refused `check` below.
-        #   * EIGHT REFUSE BY NAME. None is read by this engine's own folds on a declared leaf's type,
-        #     so the refusals are reachable only through a foreign fold — a foreign engine's, or a
-        #     foreign container's hosted in this eval; the type-merge pair is additionally fenced at
-        #     `mergeTypes` above, which owes a value, and the warm identity walk (`identityMapOf`'s
-        #     `below`) stops on the mark before it asks what the type carries.
+        #   * THE DOMAIN IS ANSWERED, ONCE, UNDER BOTH NAMES — `admits`, a gen field and not one of
+        #     the fourteen, and the protocol's `check`, the fourth field answered truthfully
+        #     (den-hoag-f8mgj arm Q): the module-value domain, exactly the reference
+        #     `(evalModules …).type`'s `check`, one binding published twice. It reads only the value,
+        #     never the tree. A gen union (`either`, `oneOf`, `nullOr`) asks its members `admits`
+        #     before `check`, so inside this engine's own eval the tree is a union member as nixpkgs'
+        #     is. The foreign face strips `admits` (`lib/interface.nix` `foreignFace`), and the
+        #     `check` a foreign eval then reaches answers the same domain, so a foreign eval reaching
+        #     the tree through a gen composite folds it through `bridge`, at nixpkgs' value.
+        #   * SEVEN REFUSE BY NAME, pending den-hoag-foreign-mount-parity-knhyg: `description`,
+        #     `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`
+        #     outside the threading channel, and `typeMerge`. None is read by this engine's own folds
+        #     on a declared leaf's type, so the refusals are reachable only through a foreign fold — a
+        #     foreign engine's, or a foreign container's hosted in this eval; the type-merge pair is
+        #     additionally fenced at `mergeTypes` above, which owes a value, and the warm identity walk
+        #     (`identityMapOf`'s `below`) stops on the mark before it asks what the type carries.
         #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
         #     consumer that ASKS whether this is an option type reads it through `or null` and gets a
         #     correct `false` today; a throwing tombstone would turn the one working negative answer
@@ -4735,6 +4740,7 @@ let
               mergeDefs = nestingFold;
               whenEmpty = emptyTree;
               admits = isModuleValue;
+              check = isModuleValue;
               inherit nests;
 
               # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries

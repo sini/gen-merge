@@ -2450,12 +2450,13 @@ in
     # here would pin nixpkgs' internals and go red on a bump that changed nothing about the refusal.
     # That one field name is the only part left open; every other byte of the message is anchored.
     #
-    # ── THE TREE AS A UNION MEMBER: gen's eval holds it, a foreign eval is still refused ─────────
-    # The tree answers `admits`, so a gen union in this engine's own eval holds it as nesting
-    # (`ci/tests/nixpkgs-protocol.nix` pins the parity). What a FOREIGN eval folds is each type's
-    # foreign face (`lib/interface.nix` `foreignFace`), and for every library combinator that is the
-    # type as it stood before the tree answered: the cells below pin it against the table measured
-    # there, over the same 180-cell family, one cell per mount so every refusal's message is read.
+    # ── THE TREE AS A UNION MEMBER: gen's eval holds it, a foreign eval folds it at nixpkgs' value ─
+    # The tree answers `admits` and `check` (one module-value domain), so a gen union in this
+    # engine's own eval holds it as nesting (`ci/tests/nixpkgs-protocol.nix` pins the parity). What a
+    # FOREIGN eval folds is each type's foreign face (`lib/interface.nix` `foreignFace`), whose check
+    # reaches the tree's: the cells below pin the 180-cell family one cell per mount, a SERVED cell
+    # against nixpkgs' fold of the same construction and a REFUSED one by its message. The refusals
+    # left are the docs reads (`getSubModules`) and the rider, pending den-hoag-foreign-mount-parity-knhyg.
     flake.testsError.tree-type =
       let
         family = import ./tests/_fixtures/tree-union-family.nix {
@@ -2495,10 +2496,11 @@ in
           t.submodule {
             options.s = gm.mkOption { inherit type; };
           };
-        # A construction whose MODULE definition mounts in the table folds the tree abroad (the
-        # twelve `either`/`oneOf` over a container holding the tree directly); its string definition
-        # reaches the tree's own fold, which refuses it by the domain guard before the nested eval.
-        foldsAbroad = c: builtins.isAttrs table.${c}.module || builtins.isList table.${c}.module;
+        # A construction whose MODULE definition is SERVED folds the tree abroad. Where its string
+        # definition is still REFUSED (the twelve `either`/`oneOf` over a container holding the tree
+        # directly), it reaches the tree's own fold, which refuses it by the domain guard before the
+        # nested eval.
+        foldsAbroad = c: table.${c}.module == "SERVED";
         mountCell =
           c:
           let
@@ -2511,8 +2513,8 @@ in
               expr = family.foreign c.gen c.value;
             }
             // (
-              if recorded != "REFUSED" then
-                { expected = recorded; }
+              if recorded == "SERVED" then
+                { expected = family.foreign c.reference c.value; }
               else
                 {
                   expectedError = {
@@ -2797,11 +2799,11 @@ in
             msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$";
           };
         };
-        test-a-lawful-caller-composite-meets-the-trees-refusal-abroad = {
+        test-a-lawful-caller-composite-meets-the-called-fold-refusal-abroad = {
           expr = family.foreign (good (t.either T t.str)) { a = 5; };
           expectedError = {
             type = "ThrownError";
-            msg = treeRefusal "check";
+            msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$";
           };
         };
         # Over leaves alone the face is the type itself, so the door is never reached: the fence
@@ -2868,16 +2870,16 @@ in
             msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$";
           };
         };
-        # Control, same run: the same closure calling the union's PUBLISHED fold is refused.
-        test-a-closure-over-a-unions-published-fold-is-refused-abroad = {
+        # Control, same run: the same closure calling the union's PUBLISHED fold serves, at nixpkgs'
+        # value.
+        test-a-closure-over-a-unions-published-fold-is-served-abroad = {
           expr = family.foreign (t.defineType {
             name = "w";
             admits = _: true;
             mergeDefs = loc: defs: (t.either T t.str).merge loc defs;
           }) { a = 5; };
-          expectedError = {
-            type = "ThrownError";
-            msg = treeRefusal "[a-zA-Z]+";
+          expected = {
+            a = 5;
           };
         };
       };
@@ -5394,8 +5396,6 @@ in
           type = "ThrownError";
           msg = "^gen-merge: a definition for option `h[.]a' is not of type `submodule', in `<gen-merge>'$";
         };
-        # `carriedFold`'s text after the type's name: a rewritten check that reads the tree.
-        rewritten = "[(]`addCheck', or `// [{] check = [.][.][.]; [}]'[)] over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped[.] State the check on a member that holds no tree, or inside the submodule$";
         # A hand-rolled forwarding container: its rebuild is `drop` where given, and otherwise
         # forwards the module list to its element, as nixpkgs' own containers do.
         fwdBy =
@@ -5482,13 +5482,22 @@ in
             msg = "^gen-merge: a definition for option `h' is not of type `unique', in `<gen-merge>'$";
           };
         };
-        # A detected rewrite over `unique` whose check reads the tree cannot be evaluated here, and is
-        # refused in `carriedFold`'s words (OQ17 residue (ii), decided by that construction).
-        test-a-unique-refinement-that-reads-the-tree-is-refused-by-name = {
-          expr = opt (np.addCheck (np.uniq (tree null)) (_: true)) { a = 1; };
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: the option `h' has a type `unique' whose `check' a foreign wrapper rewrote ${rewritten}";
+        # A rewrite over `unique` whose check reads the tree is evaluated on the value (the tree's
+        # `check` is its module-value domain), so a passing one serves.
+        test-a-unique-refinement-that-reads-the-tree-is-served = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.h = gm.mkOption { type = np.addCheck (np.uniq (tree null)) (_: true); };
+                  config.h = {
+                    a = 1;
+                  };
+                }
+              ];
+            }).config.h;
+          expected = {
+            a = 1;
           };
         };
         # G1: a refinement on the ELEMENT under `unique` leaves a lambda in the compared slot, which is
@@ -5499,15 +5508,24 @@ in
           };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `h' has a type `unique' whose `check' a foreign wrapper rewrote ${rewritten}";
+            msg = "^gen-merge: a definition for option `h' is not of type `unique', in `<gen-merge>'$";
           };
         };
-        # The interim of OQ17-R: a `coercedTo` over a tree-reading element keeps the import refusal.
-        test-a-coerced-to-over-a-tree-union-keeps-the-import-refusal = {
-          expr = opt (np.coercedTo np.bool (_: null) (t.either (tree null) t.str)) { a = 1; };
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+        # A `coercedTo` over a union holding the tree is served: the union's check reads only the value.
+        test-a-coerced-to-over-a-tree-union-is-served = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.h = gm.mkOption { type = np.coercedTo np.bool (_: null) (t.either (tree null) t.str); };
+                  config.h = {
+                    a = 1;
+                  };
+                }
+              ];
+            }).config.h;
+          expected = {
+            a = 1;
           };
         };
         # G2: a refinement on the threaded ELEMENT is carried as the engine's threaded site carries it,
@@ -5534,7 +5552,7 @@ in
           }) { a.x = 1; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `h[.]a' has a type `either' whose `check' a foreign wrapper rewrote ${rewritten}";
+            msg = "^gen-merge: a definition for option `h[.]a' is not of type `either', in `<gen-merge>'$";
           };
         };
         test-a-hand-rolled-container-declaring-by-nested-types-is-refused-at-construction = {
@@ -5627,8 +5645,8 @@ in
             msg = disagrees "either" "members";
           };
         };
-        # A tree is compared by its `merge` alone, since its `check` refuses when forced
-        # (den-hoag-4ifgb M0), and a disagreement over it is still this refusal, not the tree's
+        # A tree is compared by its `merge` alone, since every tree publishes the same module-value
+        # `check` (den-hoag-4ifgb M0, den-hoag-f8mgj arm Q), and a disagreement over it is still this refusal, not the tree's
         # tombstone: a tree stated over another element offered, and two trees constructed apart.
         test-a-container-stating-a-tree-and-offering-another-element-is-refused-at-the-engine = {
           expr = opt (np.listOf np.str // { nestedTypes.elemType = tree 1; }) [ "a" ];
@@ -5638,7 +5656,7 @@ in
           };
         };
         # The guard is symmetric: a tree OFFERED against another element stated is refused by name
-        # too, and does not fall back to comparing the tree's refusing `check` (M0 gate C2).
+        # too, and does not fall back to comparing the tree's `check` (M0 gate C2).
         test-a-container-offering-a-tree-and-stating-another-element-is-refused-at-the-engine = {
           expr = opt (np.listOf (tree 1) // { nestedTypes.elemType = np.str; }) [ { } ];
           expectedError = {
@@ -5970,8 +5988,8 @@ in
 
     # A CHECK A FOREIGN WRAPPER STATES OVER A GEN RECORD (den-hoag-4ifgb; `../tests/check-carriage.nix`
     # holds the values). Carried, its refusal is the checked fold's, naming the option and the file.
-    # Over a member holding the nested tree the rewritten check reads the tree's foreign face, so it
-    # is refused by name, a passing one included: the stated price of carrying rather than dropping.
+    # Over a member holding the nested tree the rewritten check is evaluated too (the tree's `check`
+    # is its module-value domain), so a failing one refuses as the checked fold and a passing one serves.
     flake.testsError.check-carriage =
       let
         np = nixpkgsLib.types;
@@ -6003,10 +6021,6 @@ in
           type = "ThrownError";
           msg = "^gen-merge: a definition for option `s' is not of type `${name}', in `def[.]nix'$";
         };
-        unread = loc: name: {
-          type = "ThrownError";
-          msg = "^gen-merge: the option `${loc}' has a type `${name}' whose `check' a foreign wrapper rewrote [(]`addCheck', or `// [{] check = [.][.][.]; [}]'[)] over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped[.] State the check on a member that holds no tree, or inside the submodule$";
-        };
       in
       {
         test-a-rewritten-leaf-check-refuses-as-the-checked-fold = {
@@ -6017,21 +6031,36 @@ in
           expr = opt (np.nonEmptyListOf sub) [ ];
           expectedError = carried "listOf";
         };
-        test-a-rewritten-check-over-a-union-holding-the-tree-is-refused-by-name = {
+        test-a-rewritten-check-over-a-union-holding-the-tree-refuses-as-the-checked-fold = {
           expr = opt (np.addCheck (t.either tree t.str) no) { a = 5; };
-          expectedError = unread "s" "either";
+          expectedError = carried "either";
         };
-        test-a-passing-rewritten-check-over-a-union-holding-the-tree-is-refused-by-name = {
-          expr = opt (np.addCheck (t.either tree t.str) (_: true)) { a = 5; };
-          expectedError = unread "s" "either";
+        test-a-passing-rewritten-check-over-a-union-holding-the-tree-is-served = {
+          expr =
+            (cfg {
+              modules = [
+                { options.s = gm.mkOption { type = np.addCheck (t.either tree t.str) (_: true); }; }
+                {
+                  s = {
+                    a = 5;
+                  };
+                }
+              ];
+            }).s;
+          expected = {
+            a = 5;
+          };
         };
-        test-a-rewritten-check-over-a-nullable-tree-is-refused-by-name = {
+        test-a-rewritten-check-over-a-nullable-tree-refuses-as-the-checked-fold = {
           expr = opt (np.addCheck (t.nullOr tree) no) { a = 5; };
-          expectedError = unread "s" "nullOr";
+          expectedError = carried "nullOr";
         };
-        test-a-rewritten-check-over-a-union-member-holding-the-tree-is-refused-by-name = {
+        test-a-rewritten-check-over-a-union-member-holding-the-tree-refuses-as-the-checked-fold = {
           expr = opt (t.listOf (np.addCheck (t.either tree t.str) no)) [ { a = 5; } ];
-          expectedError = unread "s[.]0" "either";
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `s[.]0' is not of type `either', in `def[.]nix'$";
+          };
         };
       };
 
