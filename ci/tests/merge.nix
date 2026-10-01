@@ -1149,6 +1149,64 @@ in
     expected = false;
   };
 
+  # The accepting arms of the `_module.args` same-name refusal (`../tests-error.nix`
+  # `refusal-messages`): one definition resolves, two distinct names are a union, and a priority
+  # decides a same-name pair (nixpkgs' `lazyAttrsOf raw` priority-filters before `mergeOneOption`).
+  flake.tests.moduleArgs.test-module-args-single-definition-resolves = {
+    expr = cfg {
+      modules = [
+        (
+          { pkgs, ... }:
+          {
+            options.x = mkOption { type = t.str; };
+            config.x = pkgs;
+          }
+        )
+        { config._module.args.pkgs = "a"; }
+      ];
+    };
+    expected = {
+      x = "a";
+    };
+  };
+  flake.tests.moduleArgs.test-module-args-distinct-names-union = {
+    expr = cfg {
+      modules = [
+        (
+          { pkgs, qq, ... }:
+          {
+            options.x = mkOption { type = t.str; };
+            config.x = pkgs + qq;
+          }
+        )
+        { config._module.args.pkgs = "a"; }
+        { config._module.args.qq = "q"; }
+      ];
+    };
+    expected = {
+      x = "aq";
+    };
+  };
+  flake.tests.moduleArgs.test-module-args-priority-decides-a-same-name-pair = {
+    expr = cfg {
+      modules = [
+        (
+          { pkgs, ... }:
+          {
+            options.x = mkOption { type = t.str; };
+            config.x = pkgs;
+          }
+        )
+        { config._module.args.pkgs = mkForce "f"; }
+        { config._module.args.pkgs = "a"; }
+        { config._module.args.pkgs = mkIf false "i"; }
+      ];
+    };
+    expected = {
+      x = "f";
+    };
+  };
+
   # nullOr / either / oneOf — merge-aware type combinators (gen-schema ref/union fields).
   flake.tests.combinators = {
     test-nullOr-null = {

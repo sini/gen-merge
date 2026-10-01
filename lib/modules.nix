@@ -761,7 +761,25 @@ let
           m;
     in
     if m ? _module then
-      base // { _module = recursiveUpdate m._module (base._module or { }); }
+      base
+      // {
+        # A `_module` sub-key stated at both sites is two definitions, not a pair the `config`
+        # site silently wins: it is carried as an `mkMerge`, so the `_module.args` merge refuses a
+        # same-name argument and the freeform pass sees two `freeformType` contributions.
+        _module =
+          let
+            cfgModule = base._module or { };
+          in
+          m._module
+          // cfgModule
+          // mapAttrs (
+            k: v:
+            priority.mkMerge [
+              m._module.${k}
+              v
+            ]
+          ) (builtins.intersectAttrs m._module cfgModule);
+      }
     else
       base;
   optionsOf = m: m.options or { };
@@ -3545,19 +3563,52 @@ let
             attrs = pushDownProperties (configOf e);
           }) flat;
 
-          # The `_module` pseudo-tree: deep-merge every module's `_module`, extract args.
+          # `_module.args` merges as nixpkgs' `lazyAttrsOf raw`: each module's `_module` and `args`
+          # are pushed down a level at a time (so `mkIf`/`mkMerge`/`mkOverride` around them
+          # distribute as on any option path), each argument's defs are discharged and
+          # priority-filtered, and MORE THAN ONE WINNER REFUSES BY NAME, naming the argument and every
+          # winning file in fold order. Identical values refuse too: `raw` merges with
+          # `mergeOneOption`, which compares nothing. Different argument names are a union. A
+          # last-wins `recursiveUpdate` fold stood here, and the winner of a same-name pair was
+          # whichever module came last. Lazy per argument: a value is forced only when it is read.
           #
-          # IT IS NOT THE FREEFORM FEEDER, and that is the point of the split. `recursiveUpdate`
-          # is a last-wins collapse: two modules each setting `_module.freeformType` arrive here as
-          # ONE value before the priority pass could see two defs, so the second half of the
-          # discard below had a second feeder and fixing only the selection would leave it live.
-          # `freeformType` is therefore collected PER MODULE (`moduleFreeforms`), and N
-          # contributions reach `filterOverrides` as N defs. `args` keeps the deep merge: two
-          # modules contributing different arg names is a union, not a competition.
-          moduleTree = foldl' (
-            acc: p: if p.attrs ? _module then recursiveUpdate acc p.attrs._module else acc
-          ) { } pushed;
-          moduleArgs = moduleTree.args or { };
+          # IT IS NOT THE FREEFORM FEEDER: `freeformType` is collected PER MODULE
+          # (`moduleFreeforms`), so N contributions reach `filterOverrides` as N defs.
+          moduleArgs =
+            builtins.zipAttrsWith
+              (
+                name: defs:
+                let
+                  winners = filterOverrides (
+                    concatMap (d: map (w: w // { inherit (d) _file; }) (dischargeProperties d.value)) defs
+                  );
+                  files = ws: concatStringsSep ", " (map (w: w._file) ws);
+                in
+                # One property-free definition is its own winner; skipping the discharge saves its
+                # records on every tree that sets an argument once (gen-schema's instance inlet).
+                if tail defs == [ ] && !(priority.isProperty (head defs).value) then
+                  (head defs).value
+                else if length winners == 1 then
+                  (head winners).value
+                else if winners == [ ] then
+                  throw "gen-merge: module argument `${name}' (`_module.args.${name}') is used but every definition of it is disabled; defined in ${files defs}"
+                else
+                  throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}"
+              )
+              (
+                concatMap (
+                  p:
+                  let
+                    m = if p.attrs ? _module then pushDownProperties p.attrs._module else { };
+                  in
+                  optional (m ? args) (
+                    mapAttrs (_: value: {
+                      inherit (p) _file;
+                      inherit value;
+                    }) (pushDownProperties m.args)
+                  )
+                ) pushed
+              );
           moduleFreeforms = concatMap (
             p:
             optional (p.attrs ? _module && p.attrs._module ? freeformType) {

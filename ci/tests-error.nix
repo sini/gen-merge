@@ -482,6 +482,23 @@ let
   disabledMsg =
     file:
     "^gen-merge: module `${file}' sets `disabledModules'\\. gen-merge does not implement module removal \\(it is deferred work\\): the modules it names would stay enabled here, where the reference module system removes them\\. Remove the key; it is refused by presence, an empty list included\\.$";
+  # A module reading the `pkgs` argument into `x`, and a module defining it from `file`.
+  moduleArgsReader = [
+    (
+      { pkgs, ... }:
+      {
+        options.x = gm.mkOption { type = t.str; };
+        config.x = pkgs;
+      }
+    )
+  ];
+  argAt = file: v: {
+    _file = file;
+    config._module.args.pkgs = v;
+  };
+  moduleArgsDupMsg =
+    files:
+    "^gen-merge: module argument `pkgs' \\(`_module\\.args\\.pkgs'\\) is defined multiple times, and a module argument must be unique; defined in ${files}$";
 in
 {
   config = {
@@ -551,6 +568,83 @@ in
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: the option `' has conflicting definitions:\n- In `/demo/b\\.nix': <a set>\n- In `/demo/a\\.nix': <a set>$";
+        };
+      };
+      # TWO MODULES DEFINING ONE `_module.args` ENTRY REFUSE BY NAME, in either order, naming the
+      # argument and both files, as nixpkgs' `lazyAttrsOf raw` does. The fold here was a last-wins
+      # `recursiveUpdate`, so the pair read "b" and, reversed, "a", at rc 0. Identical values refuse
+      # too (`raw` merges with `mergeOneOption`). The accepting arms are `./tests/merge.nix`
+      # `moduleArgs` (one definition, two distinct names, `mkForce` deciding a pair).
+      test-module-args-same-name-pair-names-the-arg-and-both-files = {
+        expr = realize {
+          modules = moduleArgsReader ++ [
+            (argAt "/demo/a.nix" "a")
+            (argAt "/demo/b.nix" "b")
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = moduleArgsDupMsg "/demo/a\\.nix, /demo/b\\.nix";
+        };
+      };
+      test-module-args-same-name-pair-reversed-names-the-arg-and-both-files = {
+        expr = realize {
+          modules = moduleArgsReader ++ [
+            (argAt "/demo/b.nix" "b")
+            (argAt "/demo/a.nix" "a")
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = moduleArgsDupMsg "/demo/b\\.nix, /demo/a\\.nix";
+        };
+      };
+      test-module-args-identical-pair-refuses-by-name = {
+        expr = realize {
+          modules = moduleArgsReader ++ [
+            (argAt "/demo/a.nix" "a")
+            (argAt "/demo/b.nix" "a")
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = moduleArgsDupMsg "/demo/a\\.nix, /demo/b\\.nix";
+        };
+      };
+      # One structured module stating the argument at the top-level `_module` AND under `config`
+      # is two definitions too, not a pair the `config` site silently wins.
+      test-module-args-both-sites-of-one-module-refuse-by-name = {
+        expr = realize {
+          modules = moduleArgsReader ++ [
+            {
+              _file = "/demo/both.nix";
+              _module.args.pkgs = "a";
+              config._module.args.pkgs = "b";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = moduleArgsDupMsg "/demo/both\\.nix, /demo/both\\.nix";
+        };
+      };
+      # The same holds for `freeformType`: both sites reach the freeform pass as two contributions,
+      # where the `config` site's type silently replaced the top-level one.
+      test-module-freeformtype-both-sites-of-one-module-are-two-contributions = {
+        expr = realize {
+          modules = [
+            {
+              _file = "/demo/both.nix";
+              options.x = gm.mkOption { default = 1; };
+              _module.freeformType = t.attrsOf t.int;
+              config._module.freeformType = t.lazyAttrsOf t.raw;
+              config.y = "s";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' and `lazyAttrsOf'\\); defined in /demo/both\\.nix, /demo/both\\.nix$";
         };
       };
       # A NESTED TREE'S FINDING IS REFUSED BY NAME UNDER A `freeformType` TOO. `nest.z` has an
