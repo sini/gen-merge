@@ -3560,51 +3560,58 @@ let
             builtins.zipAttrsWith
               (
                 name: defs:
-                let
-                  winners = filterOverrides (
-                    concatMap (d: map (w: w // { inherit (d) _file; }) (dischargeProperties d.value)) defs
-                  );
-                  # Each file once, in fold order; a file carrying several definitions (an `mkMerge`
-                  # inside one module) says how many.
-                  files =
-                    ws:
-                    let
-                      fs = map (w: w._file) ws;
-                    in
-                    concatStringsSep ", " (
-                      map (
-                        f:
-                        let
-                          n = length (filter (x: x == f) fs);
-                        in
-                        if n == 1 then f else "${f} (${toString n} definitions)"
-                      ) (prelude.unique fs)
-                    );
-                in
-                # One property-free definition is its own winner; skipping the discharge saves its
-                # records on every tree that sets an argument once (gen-schema's instance inlet).
+                # One property-free definition is its own winner, decided before any binding is
+                # allocated: gen-schema's instance inlet sets an argument once on every instance.
                 if tail defs == [ ] && !(priority.isProperty (head defs).value) then
                   (head defs).value
-                else if length winners == 1 then
-                  (head (sortProperties winners)).value
-                else if winners == [ ] then
-                  throw "gen-merge: module argument `${name}' (`_module.args.${name}') is used but every definition of it is disabled; defined in ${files defs}"
                 else
-                  throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}"
+                  let
+                    winners = filterOverrides (
+                      concatMap (d: map (w: w // { inherit (d) _file; }) (dischargeProperties d.value)) defs
+                    );
+                    # Each file once, in fold order; a file carrying several definitions (an `mkMerge`
+                    # inside one module) says how many.
+                    files =
+                      ws:
+                      let
+                        fs = map (w: w._file) ws;
+                      in
+                      concatStringsSep ", " (
+                        map (
+                          f:
+                          let
+                            n = length (filter (x: x == f) fs);
+                          in
+                          if n == 1 then f else "${f} (${toString n} definitions)"
+                        ) (prelude.unique fs)
+                      );
+                  in
+                  if length winners == 1 then
+                    (head (sortProperties winners)).value
+                  else if winners == [ ] then
+                    throw "gen-merge: module argument `${name}' (`_module.args.${name}') is used but every definition of it is disabled; defined in ${files defs}"
+                  else
+                    throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}"
               )
               (
+                # Pay per use: `filter` calls its predicate without allocating a thunk, so a module
+                # stating no `_module` costs nothing here, and one stating no `_module.args` costs
+                # its `m` alone (an `optional` call would thunk both of its arguments).
                 concatMap (
                   p:
                   let
-                    m = if p.attrs ? _module then pushDownProperties p.attrs._module else { };
+                    m = pushDownProperties p.attrs._module;
                   in
-                  optional (m ? args) (
-                    mapAttrs (_: value: {
-                      inherit (p) _file;
-                      inherit value;
-                    }) (pushDownProperties m.args)
-                  )
-                ) pushed
+                  if m ? args then
+                    [
+                      (mapAttrs (_: value: {
+                        inherit (p) _file;
+                        inherit value;
+                      }) (pushDownProperties m.args))
+                    ]
+                  else
+                    [ ]
+                ) (filter (p: p.attrs ? _module) pushed)
               );
           moduleFreeforms = concatMap (
             p:
