@@ -1396,17 +1396,19 @@ its own fold reads. `lazyAttrsOf` is the one exception: its fold is the split's 
 by a cell, because it is the `wideFreeform` hot path.
 
 A foreign container outside the six gen-merge recognises (`attrsOf`, `lazyAttrsOf`, `listOf`,
-`nullOr`, `either`, `oneOf`) cannot pass the evaluation down to a nested tree. So gen-merge asks
+`nullOr`, `either`, `oneOf`) passes the evaluation down to a nested tree only through its own
+`substSubModules` rebuild (below). So gen-merge asks
 whether such a type DECLARES a gen nesting type as an element, at any depth, through the carrying
 spellings: its `nestedTypes` or a top-level `elemType` (`interface.declaresNesting`). A functor
 payload says what a type MERGES on, not what it carries, so it declares nothing (ruled 2026-09-25).
 That walk has a fuel of 32 (the
 same `importedTypeWalkFuel` as the type-merge guard). A self-referential element, such as nixpkgs'
 `types.json` shape, cannot be told from a deep one, so at exhaustion the walk **refuses by name**
-(ruled 2026-09-27, S2 arm (i)). The message names three remedies:
+(ruled 2026-09-27, S2 arm (i)). The message names the remedies that exist:
 
 - wrap the element in a recognised container;
-- declare no gen nesting element;
+- in gen's own evaluation, use a container whose `substSubModules` rebuild states its element and
+  whose `check` does not read the nested tree;
 - state the answer yourself with the **declared opt-out**:
 
 ```nix
@@ -1427,10 +1429,37 @@ declared option (`evalModuleTree`), and when a record crosses whole through `mkO
 the six stock foreign containers whose element may nest is folded as gen-merge's own container, so
 `nixpkgs.lib.types.attrsOf (submodule …)` threads like gen's. A stock container over no nesting
 element keeps its own fold, unless its two statements of the element disagree (below). The six are recognised by their functor, the relation they merge by,
-and rebuilt over the element their carrying spellings state, never over their payload's. A foreign
-type outside the six that declares a gen nesting element (a hand-rolled `mkOptionType` stating
-`nestedTypes.elemType` or a top-level `elemType`, `coercedTo`, `attrsWith` with a non-default
-`placeholder`, …) is **refused by name** at that door, before any fold runs. Two more records are
+and rebuilt over the element their carrying spellings state, never over their payload's.
+
+**An unrecognised container threads through its own rebuild** (ruled 2026-09-30, arm (T)). At a
+declared option, a foreign type outside the six that declares a gen nesting element (`coercedTo`,
+`uniq`, `unique`, `functionTo`, `attrListOf`, `attrsWith` with a non-default `placeholder`, a
+hand-rolled `mkOptionType` whose rebuild forwards its argument, …) is rebuilt through its own
+`substSubModules`, handed a marker that a gen element answers with itself. The container keeps its
+own `merge` and `check` (`coercedTo` keeps its coercion), and the element under it folds as a node
+of the one evaluation, so the value is nixpkgs'. Five things are refused by name instead:
+
+- a rebuild that does not STATE the element it was handed (`nestedTypes` or a top-level
+  `elemType`): it drops its argument, and would reach the tree as a standalone evaluation;
+- a nested-tree read at a position the container's merge does not expose, such as inside the
+  function `functionTo` returns; a member that reads no tree (a string definition) still answers;
+- the container's own refinement (`addCheck`), applied on the threaded fold with nixpkgs' verdict
+  and naming the container, where it fails; where it reads the nested tree it cannot be evaluated,
+  and a detected one over `unique` is refused in the words of a rewritten check;
+- `coercedTo` over an element that holds the tree: its check reads the tree and cannot be told from
+  a refinement, so it keeps the import refusal while that reading is the owner's;
+- the same containers through `mkOptionType`, which keeps the import refusal.
+
+A stock `unique` over the tree is decided stock and served, since its check is its element's. A
+refinement on the element is carried as it is under the six. **The prices, stated:** `unique`'s
+message is lost on rebuild, as nixpkgs' own rebuild loses it; the tree's tombstone answers
+`substSubModules` inside the channel, and the element handed into a rebuild answers `check` in
+gen's words and `getSubModules` with `null`; the container's merge runs three times per option
+against nixpkgs' once. A foreign closure, the container's own merge and check, runs inside gen's
+evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
+is entered only in gen's own evaluation.
+
+Two more records are
 refused by name (*defaulted, reversible*): one that states no element but whose functor payload
 OFFERS a type declaring a gen nesting type (a hand-rolled `functor.payload.elemType`, or a stock
 container with its `nestedTypes` removed), since its own fold would evaluate that tree standalone

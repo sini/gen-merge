@@ -63,6 +63,7 @@
   # The nested tree's door and gen's own containers (den-hoag-n6dh7 items 5, 7), each read lazily:
   # the engine above supplies both, closing a loop this unit otherwise keeps a chain.
   nestedTreeAt,
+  mergeDefsThreaded,
   constructors,
   # gen-types' library, for the check-witness protocol it owns (`witnessRecord`, `rewritesCheck`):
   # this unit builds and reads the witness through it and defines neither (den-hoag-ydro3).
@@ -409,13 +410,10 @@ let
   # the one answer this side does not give (ADR-0025 item 1).
   carriedFold =
     t: fold:
-    if checkReadsTree t then
-      (
-        loc: _defs:
-        throw "gen-merge: the option `${showOption loc}' has a type `${nameOf t}' whose `check' a foreign wrapper rewrote (`addCheck', or `// { check = ...; }') over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped. State the check on a member that holds no tree, or inside the submodule"
-      )
-    else
-      checkedFold t fold;
+    if checkReadsTree t then (loc: _defs: throw (rewrittenCheckRefusal t loc)) else checkedFold t fold;
+  rewrittenCheckRefusal =
+    t: loc:
+    "gen-merge: the option `${showOption loc}' has a type `${nameOf t}' whose `check' a foreign wrapper rewrote (`addCheck', or `// { check = ...; }') over a member holding a nested module tree; the rewritten check reads that tree's foreign face, which is not an option type, so it cannot be evaluated here and is refused rather than dropped. State the check on a member that holds no tree, or inside the submodule";
 
   # Whether a value is inside a record's rewritten `check` as well as its gen domain: the member
   # choice of a union asks both (`types.isValid`). A check that cannot be evaluated is not asked,
@@ -947,10 +945,12 @@ let
   # fold: re-homing buys a tree to thread to and nothing else, *defaulted, reversible*), rebuilt over
   # gen's constructor with its elements homed in turn, lazily,
   # so a self-referential stock type is unfolded only as deep as a fold reaches. Otherwise the type
-  # itself — UNLESS IT DECLARES A GEN NESTING ELEMENT, which is THE IMPORT REFUSAL (OQ11 (d)): a
-  # container outside the six cannot thread the evaluation to a nested tree, so it is refused by
-  # name before any fold is taken. `door` names what the caller invoked (7gp66 R6): `evalModuleTree`
-  # at the engine's sites, which also carry the option's `loc`, and `mkOptionType` at `importType`.
+  # itself — UNLESS IT DECLARES A GEN NESTING ELEMENT. Then the container outside the six is
+  # rebuilt through its own `substSubModules` so the evaluation threads to the nested tree
+  # (`threadedForeign`, den-hoag-f8mgj arm (T)), and where that rebuild does not state the element it
+  # is THE IMPORT REFUSAL (OQ11 (d)), by name, before any fold is taken. `door` names what the caller
+  # invoked (7gp66 R6): `evalModuleTree` at the engine's sites, which also carry the option's `loc`,
+  # and `mkOptionType` at `importType`, which keeps the refusal (`importType`).
   #
   # ★ THE STATED PRICE OF OQ11 (d) (owner, 2026-09-25, den-hoag-n6dh7): a foreign container that
   # forwards to a gen nesting type it does NOT declare is unobservable, and becomes a silent
@@ -958,7 +958,14 @@ let
   # opt-out `declaresNesting = false`, by name.
   homedAt =
     door: loc: t:
-    if !(isAttrs t) || t ? verify || t ? carries || isNesting t || !(statesWrapped t) then
+    if
+      !(isAttrs t)
+      || t ? verify
+      || t ? carries
+      || t ? __threadedForeign
+      || isNesting t
+      || !(statesWrapped t)
+    then
       t
     else
       let
@@ -987,9 +994,205 @@ let
           if checkReadsTree t then rebuilt else rebuilt // { inherit (t) check; }
         )
       else if declaresNestingAt door loc t then
-        throw (nestingImportRefusal door loc t)
+        threadedForeign door loc t
       else
         t;
+
+  # ── AN UNRECOGNISED CONTAINER THREADS THROUGH ITS OWN REBUILD (den-hoag-f8mgj, owner-ruled arm (T)) ─
+  # A foreign container outside the six, declaring a gen nesting element, is rebuilt by its own
+  # `substSubModules`, handed a marker in place of a module list. Every stock container's rebuild
+  # calls its element's `substSubModules`, and a gen element answers the marker with itself
+  # (`exportType`, and the tree's `refuseMount`); the marker's function returns that element with its
+  # `merge` replaced, so the container keeps its own merge and check (`coercedTo` keeps its
+  # `coerceFunc`). Two rebuilds:
+  #   capture  — the element's merge RECORDS each site (loc, defs), so the container's own merge is
+  #              the split: the key walk reads which element positions exist and what defs each gets.
+  #   threaded — the element's merge is the engine's threaded twin at position ++ (eloc - loc).
+  # With no accessor (called) it refuses as the import refusal does. A rebuild that does not STATE
+  # the marked element (in `nestedTypes` or a top-level `elemType`) is refused by name, as F2 α
+  # requires: a container that drops its argument would otherwise reach the nested tree through the
+  # bridge, a silent standalone evaluation.
+  #
+  # ★ THE BOUNDARY (ADR-0014, ADR-0023): a FOREIGN closure, the container's own `merge` and `check`,
+  # runs inside gen's evaluation with a gen-threaded element fold under it. No foreign engine
+  # evaluates the tree: the channel is entered only from `homedAt` in gen's own evaluation, the
+  # marker is never handed out, and the bridge is not reached.
+  #
+  # ★ THE STATED PRICES: `unique`'s message is lost on rebuild (nixpkgs' own rebuild drops it too);
+  # the tree's tombstone answers `substSubModules` inside this channel, and an element handed into a
+  # rebuild answers `check` in gen's words and `getSubModules` with `null` where it may nest
+  # (`genFace`); the container's merge runs three times per option (the split, the steps read, the
+  # threaded fold) against nixpkgs' once. The domain is a container whose rebuild forwards its
+  # argument and whose merge does not inspect element values; the first half is refused by name
+  # above, and the second has no predicate here.
+  threadedForeign =
+    door: loc0: t:
+    let
+      via =
+        f:
+        let
+          r = t.substSubModules { __genThreadElement = e: f e // { __genThreadMark = true; }; };
+          stated =
+            if isAttrs r then
+              prelude.attrValues (r.nestedTypes or { }) ++ (if r ? elemType then [ r.elemType ] else [ ])
+            else
+              [ ];
+        in
+        if isAttrs r && r ? merge && builtins.any (e: isAttrs e && e ? __genThreadMark) stated then
+          r
+        else
+          throw (nestingImportRefusal door loc0 t);
+      # the element as the container's closure reads it: gen's own check, and no module set for an
+      # element that may nest (a nesting seam's exported face refuses both, at any depth)
+      genFace =
+        e:
+        e
+        // {
+          check =
+            if e ? verify then
+              (v: e.verify v == null)
+            else if e ? admits then
+              e.admits
+            else
+              e.check;
+          getSubModules = if canNest e then null else e.getSubModules;
+        };
+      stepOf = loc: eloc: builtins.genList (i: elemAt eloc (length loc + i)) (length eloc - length loc);
+      capture = via (
+        e:
+        genFace e
+        // {
+          merge = eloc: edefs: {
+            __genTSite = {
+              loc = eloc;
+              defs = edefs;
+              type = e;
+            };
+          };
+        }
+      );
+      sitesOf =
+        v:
+        if isAttrs v then
+          (if v ? __genTSite then [ v.__genTSite ] else prelude.concatMap sitesOf (prelude.attrValues v))
+        else if isList v then
+          prelude.concatMap sitesOf v
+        else
+          [ ];
+      # ★ THE RECORD'S OWN `check` RIDES ON THE THREADED FOLD, as on the six's re-home (4ifgb M-B):
+      # `addCheck` is `t // { check; merge; }` and keeps the base container's `substSubModules`, so
+      # the rebuild returns the STOCK container and a refinement is not part of it. It is carried as
+      # a checked fold around the whole threaded fold, not as a copied field, because a v2 container
+      # (`coercedTo`, `attrsWith`) folds by `merge.v2` and never reads the record's `check`. Where
+      # that check reads the element's foreign face and the element holds a nested tree (`unique`'s
+      # check is its element's, `coercedTo`'s calls `finalType.check`), it cannot be evaluated here.
+      # A stock `unique` is decided there: its check IS its element's, which the element's own
+      # threaded fold already answers in gen's words. A detected rewrite over `unique` is refused by
+      # name with `carriedFold`'s words. A `coercedTo` cannot be decided (its stock check is a fresh
+      # record), and is refused with the import refusal: the interim, as before this construction,
+      # while that reading is the owner's (OQ17-R).
+      nt = t.nestedTypes or { };
+      checkElem =
+        if nameOf t == "unique" then
+          nt.elemType or null
+        else if nameOf t == "coercedTo" then
+          nt.finalType or null
+        else
+          null;
+      readsTree = checkElem != null && checkReadsTree checkElem;
+      # Over the bare tree the slots cannot be compared (that forces the tombstone's `check`), so
+      # the force decides: the stock slot IS the tombstone's and refuses, a rewrite's does not.
+      # Elsewhere the slots compare by pointer, and only as records: `==` on a lambda is
+      # evaluator-dependent, so a lambda slot (a rewrite on the element) is never stock. A
+      # refinement on the bare-tree element itself is therefore read as a rewrite over `unique`.
+      stockUnique =
+        nameOf t == "unique"
+        && (
+          if checkElem ? nonMountable then
+            !(builtins.tryEval t.check).success
+          else
+            isAttrs checkElem.check
+            &&
+              builtins.intersectAttrs { check = null; } t == builtins.intersectAttrs { check = null; } checkElem
+        );
+      # the verdict names the container, never its `description`, which reads the element's and so
+      # the tree's refusing one
+      checkedThreaded =
+        fold:
+        if !readsTree then
+          checkedFold {
+            inherit (t) check;
+            description = nameOf t;
+          } fold
+        else if stockUnique then
+          fold
+        else if nameOf t == "unique" then
+          (loc: _defs: throw (rewrittenCheckRefusal t loc))
+        else
+          (loc: _defs: throw (nestingImportRefusal door loc t));
+      # A refinement on the ELEMENT is carried as the engine's threaded site carries it
+      # (`modules.nix` `threadedAs`). The element the rebuild hands back is the record its
+      # `substSubModules` closes over, from before the refinement, so the declared element is found
+      # by its witness, the one record a rewrite keeps.
+      declared = prelude.attrValues nt ++ (if t ? elemType then [ t.elemType ] else [ ]);
+      carriedElement =
+        e: fold:
+        let
+          rewritten = filter (
+            d: isAttrs d && d ? _checkWitness && d._checkWitness == e._checkWitness && rewritesCheck d
+          ) declared;
+        in
+        if e ? _checkWitness && rewritten != [ ] then carriedFold (head rewritten) fold else fold;
+    in
+    t
+    // {
+      __threadedForeign = true;
+      split =
+        loc: defs:
+        map (s: {
+          step = stepOf loc s.loc;
+          inherit (s) loc defs type;
+        }) (sitesOf ((importedFold capture) loc defs));
+      mergeDefs = {
+        __functor =
+          _: loc: _defs:
+          throw (nestingImportRefusal door loc t);
+        threaded =
+          ev: loc: defs:
+          let
+            steps = map (s: stepOf loc s.loc) (sitesOf ((importedFold capture) loc defs));
+          in
+          checkedThreaded (importedFold (
+            via (
+              e:
+              genFace e
+              // {
+                # A threaded element folded at a step the split did not capture (a value the merge
+                # returns, such as `functionTo`'s function body) keeps its fold, and its accessor's
+                # `child` refuses by name: only a nested-tree read refuses, so a member that never
+                # reads the tree still answers (ADR-0025 item 1).
+                merge = carriedElement e (
+                  eloc: edefs:
+                  mergeDefsThreaded (
+                    ev
+                    // {
+                      position = ev.position ++ stepOf loc eloc;
+                    }
+                    // (
+                      if builtins.elem (stepOf loc eloc) steps then
+                        { }
+                      else
+                        {
+                          child = _site: throw (unexposedRefusal door eloc t);
+                        }
+                    )
+                  ) eloc e edefs
+                );
+              }
+            )
+          )) loc defs;
+      };
+    };
 
   # Whether a record states an element or members AT ALL, in any carrying spelling (`carries`, a
   # non-empty `nestedTypes`, a top-level `elemType`), or OFFERS one to merge on in its functor
@@ -1005,7 +1208,9 @@ let
     || (!(t ? nonMountable) && (t ? elemType || ((t.functor or { }).payload or null) ? elemType));
 
   # The import refusal's text: the door, the option where there is one, the container, what in it
-  # declared the element, and the rule with its two ways out.
+  # declared the element, and the rule with the ways out that exist: one of the six, a container
+  # whose rebuild threads (`threadedForeign`; in gen's own evaluation only, since the `mkOptionType`
+  # door keeps this refusal), or the declared opt-out and its price.
   nestingImportRefusal =
     door: loc: t:
     let
@@ -1016,10 +1221,21 @@ let
       if loc == null then "" else " at option `${showOption loc}'"
     }: the option type `${nameOf t}' declares a gen nesting type as an element (${
       if keys != [ ] then "its `nestedTypes.${head keys}'" else "its `elemType'"
-    }), and a container outside attrsOf, lazyAttrsOf, listOf, nullOr, either and oneOf cannot "
-    + "thread the evaluation to a nested tree. Write it as gen-merge's container, or do not declare "
-    + "the element, or state `declaresNesting = false' on the type, and take the stated price: a "
-    + "nested tree it forwards to is then evaluated standalone";
+    }), and it cannot thread the evaluation to that nested tree here. Use attrsOf, lazyAttrsOf, "
+    + "listOf, nullOr, either or oneOf; or, bound in gen's own evaluation rather than through "
+    + "`mkOptionType', a container whose `substSubModules' rebuild states its element and whose "
+    + "`check' does not read the nested tree; or state `declaresNesting = false' on the type and "
+    + "take the stated price: a nested tree it forwards to is then evaluated standalone";
+
+  # The refusal at a threaded element folded where the container's merge does not expose it
+  # (`threadedForeign`), in the import refusal's form.
+  unexposedRefusal =
+    door: loc: t:
+    "${doorAt door loc}the option type `${nameOf t}' folds its gen nesting element at a position its "
+    + "own merge does not expose when the option is merged (inside a value it returns, such as a "
+    + "function body), so that nested tree cannot be threaded into this evaluation. Declare the tree "
+    + "at a position the merge returns as a value, or state `declaresNesting = false' on the type and "
+    + "take the stated price: a nested tree it forwards to is then evaluated standalone";
 
   # The offer refusal's text (OQ1 arm (ii-a)): a record stating no element whose functor payload
   # offers one that declares a gen nesting type, raised inside the walk with its caller's door.
@@ -1933,7 +2149,14 @@ let
         nestedTypes = (t.unroledNested or { }) // (if role == null then { } else spelling.nested carried);
         getSubOptions = if sub == null then (_prefix: { }) else sub.declares;
         getSubModules = if sub == null then null else sub.modules;
-        substSubModules = if sub == null then (_m: null) else sub.rebuild;
+        substSubModules =
+          m:
+          if isAttrs m && m ? __genThreadElement then
+            m.__genThreadElement exported
+          else if sub == null then
+            null
+          else
+            sub.rebuild m;
         # Derived from the gen datum only where there is no stated relation to derive it FROM.
         # Where the caller stated one, theirs is what the foreign engine must see — deriving over it
         # would shadow the relation the two clauses above went to the trouble of retaining.
@@ -2006,32 +2229,47 @@ let
   # point. It opens no mount either: the field a foreign engine forces FIRST is the module-set read,
   # which refuses before any fold is reached. The caller states it in gen's word and it is spelled in
   # the foreign protocol's here, which is the same trade every other field on this side makes.
+  #
+  # ★ ONE FIELD ANSWERS INSIDE THE THREADING CHANNEL ONLY (den-hoag-f8mgj, arm (T)): handed the
+  # channel's marker (`threadedForeign`), `substSubModules` answers with the record itself, so a
+  # foreign container rebuilt in gen's own evaluation reaches the seam as its element. Handed
+  # anything else it refuses as every other field does. A foreign engine never holds the marker, so
+  # its mount is refused exactly as before. `fields` are the caller's own, and the record answered
+  # through the channel is the whole one, with them.
   refuseMount =
     {
       name,
       reason,
       fold,
       whenEmpty,
+      fields ? { },
     }:
     let
       refuse =
         field: throw "gen-merge: `${name}' is not an option type and does not answer `${field}'; ${reason}";
-    in
-    {
-      merge = fold;
-      deprecationMessage = null;
-      emptyValue = whenEmpty;
-      nestedTypes = { };
+      record = {
+        merge = fold;
+        deprecationMessage = null;
+        emptyValue = whenEmpty;
+        nestedTypes = { };
 
-      check = refuse "check";
-      description = refuse "description";
-      descriptionClass = refuse "descriptionClass";
-      functor = refuse "functor";
-      getSubModules = refuse "getSubModules";
-      getSubOptions = refuse "getSubOptions";
-      substSubModules = refuse "substSubModules";
-      typeMerge = refuse "typeMerge";
-    };
+        check = refuse "check";
+        description = refuse "description";
+        descriptionClass = refuse "descriptionClass";
+        functor = refuse "functor";
+        getSubModules = refuse "getSubModules";
+        getSubOptions = refuse "getSubOptions";
+        substSubModules =
+          m:
+          if isAttrs m && m ? __genThreadElement then
+            m.__genThreadElement record
+          else
+            refuse "substSubModules";
+        typeMerge = refuse "typeMerge";
+      }
+      // fields;
+    in
+    record;
 in
 {
   inherit

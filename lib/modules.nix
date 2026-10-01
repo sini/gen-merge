@@ -122,6 +122,7 @@ let
       mergeDescriptorDefault
       nestedTreeAt
       types
+      mergeDefsThreaded
       ;
     constructors = strategies;
   };
@@ -1979,7 +1980,8 @@ let
   # sibling (a leaf, a foreign fold, a fold nothing nests under) folds exactly as it does called:
   # that is the twin's PRESENCE ARM (gate C3). The type is first HOMED, where it is bound to its
   # position (`interface.homedAt`): a recognised foreign container becomes gen's own, and an
-  # unrecognised one declaring a gen nesting element is refused before any fold is taken.
+  # unrecognised one declaring a gen nesting element threads through its own `substSubModules`
+  # rebuild, or is refused by name before any fold is taken (`interface.threadedForeign`).
   #
   # The bound record states exactly what the spine reads of a type that brings a fold: the fold,
   # the empty value and `verify` (the rest is read only where no fold is brought), so binding it
@@ -2674,9 +2676,10 @@ let
           #
           # Every other type is folded as HOMED where it is bound to its position (den-hoag-n6dh7
           # item 5, gate C9): a recognised foreign container that may nest is folded as gen's own,
-          # and an unrecognised one declaring a gen nesting element is refused by name before any
-          # fold is taken. A gen leaf checker (`verify`) and a gen container (`carries`) are their
-          # own home and are answered here, inside the argument's one thunk, so a gen option pays a
+          # and an unrecognised one declaring a gen nesting element threads through its own rebuild
+          # or is refused by name before any fold is taken (`interface.threadedForeign`). A gen leaf
+          # checker (`verify`) and a gen container (`carries`) are their own home and are answered
+          # here, inside the argument's one thunk, so a gen option pays a
           # presence test and not a call (ez1yq C2 `leaf-cost`). A type that may nest is folded
           # THREADED (den-hoag-n6dh7 item 5): its nested trees are children of this evaluation,
           # read at the group this option's path names, relative to the tree's prefix.
@@ -4609,17 +4612,17 @@ let
             reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (the boundary is the evaluation, and what crosses it is plain data)";
             fold = nestingFold;
             whenEmpty = emptyTree;
-          }
-          // {
-            name = "moduleTree";
-            mergeDefs = nestingFold;
-            whenEmpty = emptyTree;
-            admits = isModuleValue;
-            inherit nests;
+            fields = {
+              name = "moduleTree";
+              mergeDefs = nestingFold;
+              whenEmpty = emptyTree;
+              admits = isModuleValue;
+              inherit nests;
 
-            # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
-            # the reason, so a consumer that finds it needs no other document to know what to do.
-            nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (the boundary is the evaluation, and what crosses it is plain data), not a gap in this type";
+              # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
+              # the reason, so a consumer that finds it needs no other document to know what to do.
+              nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (the boundary is the evaluation, and what crosses it is plain data), not a gap in this type";
+            };
           };
       }
       // (if knot.exposes then { inherit (result) _evaluation; } else { });

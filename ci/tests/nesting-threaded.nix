@@ -527,20 +527,46 @@ in
         flat = false;
       };
     };
-    # The refusals are catchable; `ci/tests-error.nix` pins their text.
-    test-an-unrecognised-declaring-container-is-refused = {
+    # An unrecognised declaring container threads through its own `substSubModules` rebuild
+    # (den-hoag-f8mgj arm (T)) and gives nixpkgs' value; `coercedTo` keeps its `coerceFunc`, and a
+    # stock `unique` over the bare tree is decided stock and served. `ci/tests-error.nix` pins the
+    # refusals that remain.
+    test-an-unrecognised-declaring-container-threads = {
       expr = {
-        placeholder = refused (
-          opt (np.attrsWith {
-            elemType = sub;
-            placeholder = "host";
-          }) { a.x = 1; }
-        );
-        coerced = refused (opt (np.coercedTo np.int (x: { inherit x; }) sub) 7);
+        placeholder = opt (np.attrsWith {
+          elemType = sub;
+          placeholder = "host";
+        }) { a.x = 1; };
+        coerced = opt (np.coercedTo np.int (x: { inherit x; }) sub) 7;
+        uniq-tree = opt (np.uniq tree) { x = 1; };
+        attr-list = opt (np.attrListOf sub) { a.x = 1; };
+        # A hand-rolled container whose rebuild forwards its argument, as nixpkgs' own do (F2 α: one
+        # that drops it is refused by name, `ci/tests-error.nix`).
+        forwards =
+          let
+            fwdT =
+              elem:
+              nixpkgsLib.mkOptionType {
+                name = "fwd";
+                check = _: true;
+                merge = loc: defs: elem.merge loc defs;
+                nestedTypes.elemType = elem;
+                inherit (elem) getSubOptions getSubModules;
+                substSubModules = m: fwdT (elem.substSubModules m);
+              };
+          in
+          opt (fwdT sub) { x = 1; };
+        # `functionTo` folds its element inside the function it returns; a member that reads no
+        # tree there still answers (a tree read is refused by name, `ci/tests-error.nix`).
+        function-body-string = (opt (np.functionTo (t.either tree t.str)) (_: "s")) null;
       };
       expected = {
-        placeholder = true;
-        coerced = true;
+        placeholder.a.x = 1;
+        coerced.x = 7;
+        uniq-tree.x = 1;
+        attr-list = [ { a.x = 1; } ];
+        forwards.x = 1;
+        function-body-string = "s";
       };
     };
   };
@@ -641,8 +667,8 @@ in
   # face). The decision that moves it is the spec's F2 elaboration (OQ2 RULED α: a recognised
   # nixpkgs container is re-homed at the realizer as gen's own) and OQ11 (d): the stock container is
   # gen's `attrsOf` here, and it answers what nixpkgs over its own types answers,
-  # `{ k = { a = 5; }; }`. The refusal side of the fence stands for an UNRECOGNISED container
-  # (`ci/tests-error.nix`, `tree-type.test-an-unrecognised-foreign-container-over-a-gen-union-…`).
+  # `{ k = { a = 5; }; }`. An UNRECOGNISED container now threads through its own rebuild and gives
+  # the same value (`ci/tests-error.nix`, `tree-type.test-an-unrecognised-foreign-container-over-a-gen-union-…`).
   flake.tests.nesting-threaded-fence = {
     test-a-stock-foreign-container-over-a-gen-union-folds-in-gen = {
       expr =

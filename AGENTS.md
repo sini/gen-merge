@@ -243,8 +243,13 @@ The refusal fires where a type is HOMED (`interface.homedAt`): at a declared opt
 containers whose element may nest (`canNest`) is re-homed as gen-merge's own, recognised by its
 functor and rebuilt over the element its carrying spellings (`nestedTypes`, a top-level `elemType`)
 state, never its functor payload's. Its stated price: an overridden `merge` on it is lost silently. A
-type outside the six that declares a nesting element is refused, and one that forwards without
-declaring evaluates its tree standalone (OQ11 (d)'s price). Refused by name too: a record stating no
+type outside the six that declares a nesting element threads at a declared option through its own
+`substSubModules` rebuild (`threadedForeign`, arm (T)), and is refused by name where the rebuild
+does not state the element, where a tree is read at a position its merge does not expose
+(`unexposedRefusal`), for `coercedTo` over a tree-reading element (the interim, OQ17-R), and at
+`mkOptionType`; its own `check` rides on the threaded fold and a refined element is carried
+(`carriedFold`). One that forwards without declaring evaluates its tree standalone (OQ11 (d)'s
+price). Refused by name too: a record stating no
 element whose payload OFFERS one declaring a nesting type (`nestingOfferRefusal`), and a recognised
 container whose payload element differs from its stated one, nesting or not
 (`rehomeDisagreementRefusal`; same means the same `check` and `merge` closures, and `merge` alone
