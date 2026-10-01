@@ -536,6 +536,8 @@ let
           { }
         else if t ? carries then
           t.carries
+        else if evaluatesOwnRoles t then
+          { }
         else
           t.nestedTypes or { };
     in
@@ -649,10 +651,39 @@ let
           true
         else if fuel <= 0 then
           false
+        else if evaluatesOwnRoles t then
+          true
         else
           all (go (fuel - 1)) (importedWrapped t);
     in
     go importedTypeWalkFuel;
+
+  # ── A RECORD WHOSE `nestedTypes` IS AN OUTPUT OF ITS OWN EVALUATION (den-hoag-a0c4z) ─────────────
+  # nixpkgs' `submoduleWith` states `nestedTypes = optionalAttrs (freeformType != null) { … }` with
+  # `freeformType = base._module.freeformType`, `base` the type's own module set evaluated with NO
+  # definitions. Any read of that field, even `? elemType` or `== { }`, is a checked `evalModules` of
+  # a set complete only once the definitions and the other declarations join it, and nixpkgs never
+  # takes it: the read refuses "option does not exist" where nixpkgs yields the value. So no walk
+  # reads it. The record's one role stays the module set, read off `getSubModules` (`readRoles`), and
+  # what `nestedTypes` states crosses as `unroledNested`, an unforced thunk (`importType`).
+  #
+  # ★ THE RIDER'S ONE EXCEPTION (ADR-0014, owner-ruled 2026-10-01): the record is recognised by its
+  # payload stating `modules` (the parameter set it MERGES on is a module set, so its roles are a
+  # function of that set) AND by stating its module set in a carrying spelling (`getSubModules`), for
+  # LAZINESS ONLY. What it carries is never read off the payload. `getSubModules` is read only once
+  # the payload test holds: a container forwards it to its element, and is never asked. A gen record
+  # (`carries`) and a seam (`nonMountable`, whose `functor` refuses) never pay the read.
+  #
+  # ★ THE STATED RESIDUE: a record stating both and ALSO a static role in `nestedTypes` is served as
+  # a module set with that role unread (no test that leaves `nestedTypes` unread can separate it);
+  # one whose payload states no `modules`, or which states no `getSubModules`, is not recognised and
+  # keeps the operand-alone evaluation and its refusal.
+  evaluatesOwnRoles =
+    t:
+    !(t ? carries)
+    && !(t ? nonMountable)
+    && ((t.functor or { }).payload or null) ? modules
+    && (t.getSubModules or null) != null;
 
   # ── NESTING-NESS, AND THE TWO PREDICATES THAT READ IT (den-hoag-n6dh7 item 1, item 5) ─────────
   # A NESTING TYPE is one whose value is a nested module tree: it states that tree as data (`nests`,
@@ -699,7 +730,7 @@ let
     # there is paid per instance. A record with `carries` or a non-empty `nestedTypes` answers
     # `importedWrapped` whole. Past that, the one carrying spelling `statedRoles` can still reach is
     # a top-level `elemType`, so only a record stating one pays for the reading.
-    if t ? carries || t ? nonMountable || { } != (t.nestedTypes or { }) then
+    if t ? carries || t ? nonMountable || (!(evaluatesOwnRoles t) && { } != (t.nestedTypes or { })) then
       importedWrapped t
     else if t ? elemType then
       [ (statedRoles t).element ]
@@ -1204,7 +1235,7 @@ let
   statesWrapped =
     t:
     t ? carries
-    || { } != (t.nestedTypes or { })
+    || (!(evaluatesOwnRoles t) && { } != (t.nestedTypes or { }))
     || (!(t ? nonMountable) && (t ? elemType || ((t.functor or { }).payload or null) ? elemType));
 
   # The import refusal's text: the door, the option where there is one, the container, what in it
@@ -1317,6 +1348,8 @@ let
         x:
         if x ? carries then
           prelude.foldl' (acc: r: acc // roleSpelling.${r}.nested x.carries.${r}) { } (attrNames x.carries)
+        else if evaluatesOwnRoles x then
+          { }
         else
           # `attrTag`'s `nestedTypes` is `tags` itself — OPTION RECORDS, one per tag, not types. An
           # option record carries no `.name` (`_type = "option"` only), so comparing it directly at
@@ -1473,7 +1506,7 @@ let
   readRoles =
     t:
     let
-      nested = t.nestedTypes or { };
+      nested = if evaluatesOwnRoles t then { } else t.nestedTypes or { };
       isOption = v: isAttrs v && (v._type or null) == "option";
     in
     if nested ? elemType && !(isOption nested.elemType) then
@@ -1788,7 +1821,10 @@ let
     let
       read = readRoles t;
       roles = read.roles;
-      unroled = if { } == (t.nestedTypes or { }) then { } else unroledNested t read;
+      # A record whose `nestedTypes` is its own evaluation's output keeps its unroled keys UNFORCED:
+      # the emptiness test would be that evaluation (`evaluatesOwnRoles`).
+      unroled =
+        if !(evaluatesOwnRoles t) && { } == (t.nestedTypes or { }) then { } else unroledNested t read;
     in
     if !(isAttrs t) then
       {
@@ -1833,7 +1869,9 @@ let
       { refused = relationRefusal t; }
     else if relationOwedRefusal t roles != null then
       { refused = relationOwedRefusal t roles; }
-    else if unroledCollisionRefusal t roles unroled != null then
+    # Not asked of a record whose `nestedTypes` is its own evaluation's output: its one role is the
+    # module set, which spells no nested key, so no unroled key can collide, and asking would force it.
+    else if !(evaluatesOwnRoles t) && unroledCollisionRefusal t roles unroled != null then
       { refused = unroledCollisionRefusal t roles unroled; }
     else
       {
@@ -1885,7 +1923,9 @@ let
           // (if roles == { } then { } else { carries = roles; })
           # What `nestedTypes` states beyond the roles crosses VERBATIM and is re-published at export,
           # as a nixpkgs type keeps it. It names no gen role, so nothing on this side reads it.
-          // (if attrNames unroled == [ ] then { } else { unroledNested = unroled; })
+          // (
+            if !(evaluatesOwnRoles t) && attrNames unroled == [ ] then { } else { unroledNested = unroled; }
+          )
           # ★★ THE AUTHOR'S RELATION IS RETAINED UNDER A GEN NAME, NOT UNDER THE PROTOCOL'S. What the
           # author stated about how this type merges is not the protocol's to take back — stripped
           # with the rest, the record has no relation and the vocabulary supplies its nullary one,

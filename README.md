@@ -1890,7 +1890,31 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   walk never descends through it — below such a record the walk sees only what the record's module
   set states (`getSubModules`/`getSubOptions`; an `attrTag`'s tags and a `coercedTo`'s `finalType`
   state theirs there). An identity reachable only through such a key is compared by the byte oracle
-  and not tracked by the warm refusal.
+  and not tracked by the warm refusal. The same blindness holds inside a redeclared nixpkgs
+  submodule's `freeformType`: the two halves' freeform types join below the walk's sight, so the
+  witness does not see a check that join drops (`freeformType = attrsOf port` redeclared against
+  `attrsOf int` serves `70000`, as nixpkgs does; `submodule-laziness`, row `freeformCheckDrop`).
+
+- **A nixpkgs submodule's `nestedTypes` is never forced, and what that recognition cannot see is
+  served as a module set.** nixpkgs' `submoduleWith` states `nestedTypes` as an output of
+  evaluating the type's own module set with no definitions, a read nixpkgs never takes; taking it
+  refused "option does not exist" on a redeclared submodule whose halves complete each other. A
+  record whose functor payload states `modules` and which states a non-null `getSubModules` is
+  recognised for laziness only (ADR-0014's one exception to reading what a record carries off its
+  carrying spelling): its role is the module set, read off `getSubModules`, and its `nestedTypes`
+  crosses as an unforced thunk (`ci/tests/submodule-laziness.nix`, a poisoned `nestedTypes` on
+  every route). The residue, pinned (`test-the-residue-is-served-as-a-module-set`): such a record
+  that also states a static role in `nestedTypes` (a nixpkgs submodule given an `elemType` by `//`)
+  is served as a module set with that role unread; a record whose `nestedTypes` is evaluation-derived
+  but whose payload states no `modules` (a hand-copied submodule) or which states no
+  `getSubModules` is not recognised and keeps the refusal. A container whose payload states
+  `modules` beside a static element and states no `getSubModules` keeps both its refusals.
+
+- **A sub-option declared beneath an option whose type is a submodule is refused by name, where
+  nixpkgs merges it** (the `nix.settings` shape: `options.thing` of type `submodule { … }` in one
+  module, `options.thing.sub` in another). nixpkgs folds the sub-option into the submodule; here
+  the declaration merge refuses it as a leaf/group collision, naming the option
+  (`ci/tests-error.nix` `test-leaf-group-collision-refusal-names-the-option`).
 
 - **An identity inside an instance is not walked.** The identity walk stops at an instance (a
   position whose declaration declares `id_hash`) and reads only that instance's `id_hash`, never its

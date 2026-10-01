@@ -6391,5 +6391,145 @@ in
           expectedError = refuses "`listOf' over `int' and `listOf' over `int', whose element types do not merge: `int' and `int', ${drops "the second"}";
         };
       };
+
+    # A NIXPKGS SUBMODULE'S `nestedTypes` IS NEVER FORCED WHERE NIXPKGS WOULD NOT FORCE IT
+    # (den-hoag-a0c4z; `../tests/submodule-laziness.nix` holds the values). The recogniser is for
+    # laziness only, so what it does not admit keeps its carrying spelling read: the same poison on
+    # a `listOf`/`attrsOf` fires, and a hand-built container whose payload states `modules` beside a
+    # static gen nesting element, stating no `getSubModules`, keeps both ruled refusals (n6dh7
+    # OQ11 (d)'s nesting-element refusal, and the witness's dropped check). Each has its
+    # `staticModules` twin, which refuses alike. The undeclared control refuses naming the full path
+    # as nixpkgs does, from the joined evaluation rather than one operand's.
+    flake.testsError.submodule-laziness =
+      let
+        lib = nixpkgsLib;
+        np = lib.types;
+        int = lib.mkOption { type = np.int; };
+        poisonMsg = "submodule-laziness: nestedTypes forced e975a05c0a";
+        poison = ty: ty // { nestedTypes = throw poisonMsg; };
+        fired = {
+          type = "ThrownError";
+          msg = "^${poisonMsg}$";
+        };
+        at = modules: builtins.deepSeq (cfg { inherit modules; }).s null;
+        fakeList =
+          elem: payload:
+          lib.mkOptionType {
+            name = "fakeList";
+            check = builtins.isList;
+            merge = _loc: defs: lib.concatMap (d: d.value) defs;
+            nestedTypes.elemType = elem;
+            functor = np.defaultFunctor "fakeList" // {
+              inherit payload;
+              binOp = a: _b: a;
+              type = _p: fakeList elem payload;
+            };
+          };
+        nesting = payload: [
+          {
+            options.s = lib.mkOption {
+              type = fakeList (t.submodule { options.y = int; }) payload;
+              default = [ ];
+            };
+          }
+          { s = [ { y = 2; } ]; }
+        ];
+        redeclared = payload: [
+          {
+            options.s = lib.mkOption {
+              type = fakeList np.port payload;
+              default = [ ];
+            };
+          }
+          { options.s = lib.mkOption { type = fakeList np.int payload; }; }
+          { s = [ 70000 ]; }
+        ];
+        nestingRefusal = {
+          type = "ThrownError";
+          msg = "^gen-merge: `evalModuleTree' at option `s': the option type `fakeList' declares a gen nesting type as an element \\(its `nestedTypes\\.elemType'\\), and it cannot thread the evaluation to that nested tree here\\..*$";
+        };
+        droppedCheck = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `s' is declared with types that do not merge \\(`fakeList' and `fakeList', which their own relation joins to `fakeList', a type that states the check `fakeList' declares but not the check `fakeList' declares\\); declared in <gen-merge>, <gen-merge>$";
+        };
+      in
+      {
+        test-a-poisoned-listOf-is-read = {
+          expr = at [
+            {
+              options.s = lib.mkOption {
+                type = poison (np.listOf np.int);
+                default = [ ];
+              };
+            }
+            { s = [ 1 ]; }
+          ];
+          expectedError = fired;
+        };
+        test-a-poisoned-listOf-redeclared-is-read = {
+          expr = at [
+            {
+              options.s = lib.mkOption {
+                type = poison (np.listOf np.int);
+                default = [ ];
+              };
+            }
+            { options.s = lib.mkOption { type = poison (np.listOf np.int); }; }
+            { s = [ 1 ]; }
+          ];
+          expectedError = fired;
+        };
+        test-a-poisoned-attrsOf-is-read = {
+          expr = at [
+            {
+              options.s = lib.mkOption {
+                type = poison (np.attrsOf np.int);
+                default = { };
+              };
+            }
+            { s.k = 1; }
+          ];
+          expectedError = fired;
+        };
+        test-a-payload-stating-modules-keeps-the-nesting-element-refusal = {
+          expr = at (nesting {
+            modules = [ ];
+          });
+          expectedError = nestingRefusal;
+        };
+        test-a-payload-stating-static-modules-keeps-the-nesting-element-refusal = {
+          expr = at (nesting {
+            staticModules = [ ];
+          });
+          expectedError = nestingRefusal;
+        };
+        test-a-payload-stating-modules-keeps-the-dropped-check-refusal = {
+          expr = at (redeclared {
+            modules = [ ];
+          });
+          expectedError = droppedCheck;
+        };
+        test-a-payload-stating-static-modules-keeps-the-dropped-check-refusal = {
+          expr = at (redeclared {
+            staticModules = [ ];
+          });
+          expectedError = droppedCheck;
+        };
+        test-an-undeclared-key-names-the-joined-path = {
+          expr = at [
+            {
+              options.s = lib.mkOption {
+                type = np.submodule { config.y = 2; };
+                default = { };
+              };
+            }
+            { options.s = lib.mkOption { type = np.submodule { options.x = int; }; }; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^The option `s\\.y' does not exist\\. Definition values:\n- In `<unknown-file>': 2\n\nDid you mean `s\\.x'\\?$";
+          };
+        };
+      };
   };
 }
