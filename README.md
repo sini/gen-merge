@@ -1909,6 +1909,14 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   but whose payload states no `modules` (a hand-copied submodule) or which states no
   `getSubModules` is not recognised and keeps the refusal. A container whose payload states
   `modules` beside a static element and states no `getSubModules` keeps both its refusals.
+  "Served" holds for an honest record only: a recognised record answers the decidability pre-check
+  without a walk, so its own `typeMerge` runs unguarded, and a hand-built one whose `typeMerge`
+  recurses through itself overflows the stack uncatchably where the type-walk fuel refused it by name.
+  The nesting walk is blind inside a recognised record's `freeformType` as well: a gen nesting type
+  there is neither threaded nor refused but evaluated standalone through the bridge, as a declared
+  sub-option's is, so under a stock `uniq` OQ11 (d)'s named refusal becomes a silent standalone
+  evaluation whose value equals nixpkgs'
+  (`test-a-freeform-gen-nesting-type-serves-through-the-bridge`).
 
 - **A sub-option declared beneath an option whose type is a submodule is refused by name, where
   nixpkgs merges it** (the `nix.settings` shape: `options.thing` of type `submodule { … }` in one
@@ -2062,7 +2070,10 @@ for its formals (only `options-introspection` is decidable on it); the other kin
 on attrset modules, `import`ed path leaves (a path or a string naming an absolute path), and the
 modules reached through `imports`. A
 submodule's `getSubModules` is a separate nested eval — lint those by passing them to `lint`
-directly.
+directly. A recognised nixpkgs submodule's `freeformType` is not scanned, by either route: reading
+it is the forcing the engine never takes (den-hoag-a0c4z), so here "never forces what the engine
+wouldn't" wins over "must not false-negative" and a `functionTo` there is not flagged
+(`test-the-lint-does-not-scan-a-submodule-freeformType`).
 
 Run it over a module list (or wire it into CI as an accept-gate — `ci/tests/lint.nix` asserts it
 accepts the whole equivalence corpus and rejects one fixture per construct):

@@ -386,5 +386,55 @@ in
         copyDefDeclaresFn = "refused";
       };
     };
+
+    # ★ THE LAZINESS'S BLINDNESS INSIDE `freeformType`, pinned (ADR-0014's rider: a stated boundary).
+    # A gen nesting type under a recognised submodule's `freeformType` is neither threaded nor refused:
+    # it is evaluated standalone through the bridge, as a declared sub-option's is. Under a stock `uniq`
+    # this replaces OQ11 (d)'s named refusal with a silent standalone evaluation; both equal nixpkgs.
+    test-a-freeform-gen-nesting-type-serves-through-the-bridge = {
+      expr =
+        let
+          freeformGen = np.submodule { freeformType = np.attrsOf genSub; };
+          at = type: [
+            {
+              options.s = lib.mkOption {
+                inherit type;
+                default = { };
+              };
+            }
+            { s.k.y = 2; }
+          ];
+        in
+        {
+          freeformGenSub = gen (c: c.s.k.y) (at freeformGen);
+          uniqFreeformGenSub = gen (c: c.s.k.y) (at (np.uniq freeformGen));
+        };
+      expected = {
+        freeformGenSub = 2;
+        uniqFreeformGenSub = 2;
+      };
+    };
+    # The lint scans no recognised submodule's `freeformType`: a `functionTo` there is not flagged.
+    # Control: the same type as a plain element is.
+    test-the-lint-does-not-scan-a-submodule-freeformType = {
+      expr =
+        let
+          lintOf =
+            t:
+            map (f: f.kind) (
+              gm.lint {
+                modules = [ { options.s = lib.mkOption { type = t; }; } ];
+              }
+            );
+        in
+        {
+          lintFreeformFn = lintOf (np.submodule { freeformType = np.attrsOf (np.functionTo np.int); });
+          lintCtl = lintOf (np.attrsOf (np.functionTo np.int));
+        };
+      expected = {
+        lintFreeformFn = [ ];
+        lintCtl = [ "function-to" ];
+      };
+    };
   };
 }

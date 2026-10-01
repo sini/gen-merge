@@ -677,7 +677,11 @@ let
   # ★ THE STATED RESIDUE: a record stating both and ALSO a static role in `nestedTypes` is served as
   # a module set with that role unread (no test that leaves `nestedTypes` unread can separate it);
   # one whose payload states no `modules`, or which states no `getSubModules`, is not recognised and
-  # keeps the operand-alone evaluation and its refusal.
+  # keeps the operand-alone evaluation and its refusal. "Served" holds for an HONEST record only: a
+  # recognised record answers `importedDecidable` without a walk, so its own `typeMerge` runs
+  # unguarded, and a hand-built one recursing through itself overflows the stack uncatchably where
+  # the fuel refused it by name. What its `freeformType` wraps is unread too: a gen nesting type
+  # there evaluates standalone through the bridge, and the lint does not scan it.
   evaluatesOwnRoles =
     t:
     !(t ? carries)
