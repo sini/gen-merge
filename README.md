@@ -1695,9 +1695,11 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   does not have. Where a later occurrence shares the key of the one kept, and either publishes it, the
   pair is decided rather than the later one dropped: `decide kept.subject later.subject` true is one
   module; false, a non-boolean, or only one of the two publishing it is refused by name, the same in
-  both import orders. A throw inside `decide` propagates. Where neither publishes it, nixpkgs' rule
-  holds and the later occurrence is dropped. A path-keyed occurrence is the one file and keeps
-  nixpkgs' rule. A module publishing `__keyEq` without a `key` is refused by name. gen-schema keys a
+  both import orders wherever both occurrences publish one symmetric `decide`, as gen-schema's do;
+  gen-merge applies the kept occurrence's `decide`. A throw inside `decide` propagates. Where neither
+  publishes it, nixpkgs' rule holds and the later occurrence is dropped. Two path-keyed occurrences
+  are the one file and keep nixpkgs' rule; a path import sharing its key with a content module is
+  decided like any other pair. A module publishing `__keyEq` without a `key` is refused by name. gen-schema keys a
   kind with parents by its mark and publishes its sealed comparison here (`ci/tests/key-eq.nix`).
 
 - **An import cycle terminates.** A keyed or path cycle (`a` imports `b` imports `a`, or a module

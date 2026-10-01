@@ -1178,19 +1178,26 @@ let
   # THE KEY COMPARISON (`__keyEq = { subject; decide; }`, den-hoag-kind-generator-collision-d4gnx).
   # `keyedDrop w x` decides an occurrence `x` whose node key the kept entry `w` already holds: `false`
   # drops it. Where neither publishes `__keyEq`, nixpkgs' key rule holds and `x` is dropped. Where
-  # either does, the pair is decided, the same in both orders (ADR-0022): only one publishing is
-  # refused, `decide w.subject x.subject` true is the one module, and false or a non-boolean is
-  # refused by name; a throw inside `decide` propagates. A path-keyed occurrence is the one file, so
-  # it keeps nixpkgs' rule and its content is not read. Bound here, never per level: `moduleLevels`
-  # runs once per level of every tree.
+  # either does, the pair is decided, the same in both orders (ADR-0022) wherever both publish one
+  # symmetric `decide`, since the kept entry's is applied: only one publishing is refused,
+  # `decide w.subject x.subject` true is the one module, and false or a non-boolean is
+  # refused by name; a throw inside `decide` propagates. Two path-keyed occurrences are the one file,
+  # so they keep nixpkgs' rule and neither content is read; a path sharing its key with a content
+  # module is decided like any other pair. The key is read off the node key, because a path's content
+  # need carry no `key`. Bound here, never per level: `moduleLevels` runs once per level of every tree.
   keyedDrop =
     w: x:
-    if builtins.isPath x.e.m0 || isPathString x.e.m0 then
+    let
+      key = builtins.substring 1 (builtins.stringLength x.k) x.k;
+    in
+    if
+      (builtins.isPath x.e.m0 || isPathString x.e.m0) && (builtins.isPath w.e.m0 || isPathString w.e.m0)
+    then
       false
     else if !(w.e.content ? __keyEq || x.e.content ? __keyEq) then
       false
     else if !(w.e.content ? __keyEq && x.e.content ? __keyEq) then
-      throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${toString x.e.content.key}', and only `${
+      throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}', and only `${
         if w.e.content ? __keyEq then w.e._file else x.e._file
       }' publishes a key comparison (`__keyEq'). One key is one declaration: publish the comparison on both, or give them different keys."
     else
@@ -1200,9 +1207,9 @@ let
       if same == true then
         false
       else if same == false then
-        throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${toString x.e.content.key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
+        throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
-        throw "gen-merge: the key comparison (`__keyEq.decide') of key '${toString x.e.content.key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
+        throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
   moduleLevels =
     callM: seen: level:
     if level == [ ] then

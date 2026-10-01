@@ -122,6 +122,36 @@ in
       ];
       expected = [ "p" ];
     };
+    # A path import sharing its key with a content module is not the one file: only the content
+    # module publishes, so the pair refuses in both orders. The path-twice cell above is its control.
+    test-path-and-content-sharing-a-key-refuse-in-both-orders =
+      let
+        file = ./_fixtures/key-eq-plain-path.nix;
+        content = {
+          key = toString file;
+          __keyEq = {
+            subject = 1;
+            decide = _: _: true;
+          };
+          l = [ "content" ];
+        };
+      in
+      {
+        expr = {
+          contentThenPath = l [
+            content
+            file
+          ];
+          pathThenContent = l [
+            file
+            content
+          ];
+        };
+        expected = {
+          contentThenPath = "REFUSED";
+          pathThenContent = "REFUSED";
+        };
+      };
     test-key-eq-is-a-module-key-in-both-lists = {
       expr = {
         structured = builtins.elem "__keyEq" gm.moduleSyntax.structured;

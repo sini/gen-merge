@@ -138,8 +138,10 @@ first line of each).
 - `__keyEq` — writer gen-schema `mkSchemaEntryType` (`lib/entry-type.nix`, binding `keyed`), reader `keyedDrop` (`lib/modules.nix`):
   `{ subject; decide; }` on a keyed module, the comparison gen-merge's key dedup applies when a second
   occurrence shares the key. `decide kept.subject dropped.subject` true is one module; false, a
-  non-boolean, or only one occurrence publishing it is refused by name. Neither publishing keeps
-  nixpkgs' first-wins rule; a module publishing it without a `key` is refused by name.
+  non-boolean, or only one occurrence publishing it is refused by name, the same in both import orders
+  wherever both occurrences publish one symmetric `decide`, as gen-schema's do; gen-merge applies the
+  kept occurrence's `decide`. Neither publishing keeps nixpkgs' first-wins rule; a module publishing it
+  without a `key` is refused by name.
 
 ## Entry points by task
 
