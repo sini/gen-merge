@@ -1206,6 +1206,27 @@ in
       x = "f";
     };
   };
+  # A sole winner carrying an order marker hands back its value, as nixpkgs' `mergeOneOption` over
+  # sorted definitions does, never the `{ _type = "order"; … }` record. The argument is read raw
+  # (`toJSON`): assigned to an option, a leaked record is a property again, and the option's own
+  # merge would strip it.
+  flake.tests.moduleArgs.test-module-args-sole-mkBefore-resolves-to-its-value = {
+    expr = cfg {
+      modules = [
+        (
+          { pkgs, ... }:
+          {
+            options.x = mkOption { type = t.str; };
+            config.x = builtins.toJSON pkgs;
+          }
+        )
+        { config._module.args.pkgs = genMerge.mkBefore "a"; }
+      ];
+    };
+    expected = {
+      x = ''"a"'';
+    };
+  };
 
   # nullOr / either / oneOf — merge-aware type combinators (gen-schema ref/union fields).
   flake.tests.combinators = {

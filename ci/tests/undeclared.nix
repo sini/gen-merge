@@ -53,7 +53,7 @@ let
     z = "dropped";
   };
   freeformNestDecl = {
-    _module.freeformType = t.lazyAttrsOf t.anything;
+    config._module.freeformType = t.lazyAttrsOf t.anything;
     options.nest = mkOption { type = laxNest; };
   };
 
@@ -488,7 +488,7 @@ in
           check = false;
           modules = [
             {
-              _module.freeformType = t.lazyAttrsOf t.str;
+              config._module.freeformType = t.lazyAttrsOf t.str;
               options.defined = mkOption { type = t.str; };
               options.never = mkOption { type = t.str; };
               config.defined = "ok";

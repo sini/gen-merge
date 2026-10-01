@@ -277,7 +277,7 @@ let
     (
       { config, options, ... }:
       {
-        _module.freeformType = t.lazyAttrsOf t.anything;
+        config._module.freeformType = t.lazyAttrsOf t.anything;
         options.name = mkOption { type = t.str; };
         config.stow.id_hash = crateOf config options;
       }
@@ -906,7 +906,7 @@ in
       let
         base = [
           {
-            _module.freeformType = t.lazyAttrsOf t.str;
+            config._module.freeformType = t.lazyAttrsOf t.str;
             options.a = mkOption { type = t.str; };
           }
           {
@@ -1949,7 +1949,7 @@ in
         ];
         ffBase = [
           {
-            _module.freeformType = t.lazyAttrsOf t.anything;
+            config._module.freeformType = t.lazyAttrsOf t.anything;
             options.nest = mkOption { type = inner; };
           }
           def
@@ -2133,7 +2133,7 @@ in
       let
         base = [
           {
-            _module.freeformType = t.lazyAttrsOf t.str;
+            config._module.freeformType = t.lazyAttrsOf t.str;
             options.a = mkOption { type = t.str; };
           }
           {

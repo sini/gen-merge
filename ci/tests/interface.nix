@@ -98,7 +98,7 @@ let
   # own rather than riding an arm that cannot see it. The quotes are part of the needle: they are what
   # separate the tag from prose about option types.
   literalTag = ''"option-type"'';
-  filesContaining = s: map (x: x.name) (builtins.filter (x: lib.hasInfix s x.code) libSources);
+  filesContaining = s: map (x: x.name) (builtins.filter (x: genPrelude.hasInfix s x.code) libSources);
 
   # THE SEEDED CONTROLS, same predicates, same run. A synthetic source that DOES carry each needle
   # must come back carrying it, and one that carries it only in a COMMENT must not; if either row
@@ -292,8 +292,8 @@ in
         # The SAME two halves for the substring row, whose needle the token scan cannot represent at
         # all — so without these the tag cell above would be an unarmed assertion sitting beside an
         # armed one and reading exactly like it.
-        tagSeenInCode = lib.hasInfix literalTag seededSource.code;
-        tagSeenInComment = lib.hasInfix "neither of which" seededSource.code;
+        tagSeenInCode = genPrelude.hasInfix literalTag seededSource.code;
+        tagSeenInComment = genPrelude.hasInfix "neither of which" seededSource.code;
         wholeWordsOnly = {
           # `typeMergeRel` must not read as `typeMerge`, and `__functor` must not read as `functor`.
           relationIsNotTheProtocolField =

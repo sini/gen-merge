@@ -1800,13 +1800,13 @@ The module reader is nixpkgs' `unifyModuleSyntax`: a module is structured iff it
 `options`, a structured module admits exactly nixpkgs' `attrsToRemove` and refuses any other key by
 name (naming every surplus key and the file, whatever `check` says), and a shorthand module strips
 nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require` joins `imports`;
-`meta` on a structured module is folded into config). Both lists also carry gen-merge's engine keys
-`_module` and `__pureModule`. Its departures:
+`meta` on a structured module is folded into config). Both lists also carry gen-merge's engine key
+`__pureModule`, and the shorthand list carries `_module`, which a shorthand module reads as config.
+A top-level `_module` beside `config`/`options` is refused by name as an unsupported attribute, as
+nixpkgs refuses it. Its departures:
 
 - `_class` is stripped in both forms and never checked. gen-merge has no `class` parameter, which is
   nixpkgs with `class = null`.
-- `_module` beside `config`/`options` is folded into config, where nixpkgs refuses it as an
-  unsupported attribute. A strict superset: no module nixpkgs accepts changes meaning.
 - `disabledModules` is **refused by presence**, in both module forms and before the surplus check:
   gen-merge does not implement module removal, so the modules it names would stay enabled. The empty
   list is refused too, which over-refuses relative to nixpkgs (it accepts `[ ]`); refusing on

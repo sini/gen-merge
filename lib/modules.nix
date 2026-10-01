@@ -675,19 +675,19 @@ let
   # ── module classification: the reference's `unifyModuleSyntax`, key list for key list ─────────
   # STRUCTURED iff the module carries `config` or `options` — nothing else makes it structured. A
   # structured module admits exactly `structuredKeys` (the reference's `attrsToRemove`, verbatim, plus
-  # this engine's `_module` and `__pureModule`); any other top-level key is REFUSED BY NAME, naming
-  # every surplus key and the file, whatever `check` says. `meta` is folded into config as `meta`.
+  # this engine's `__pureModule`); any other top-level key is REFUSED BY NAME, naming every surplus
+  # key and the file, whatever `check` says. `_module` is such a key, as in the reference: beside
+  # `config`/`options` it is refused, because `_module` is a CONFIG path (`config._module`) and two
+  # sites in one module would be two definitions with no order between them. `meta` is folded into
+  # config as `meta`.
   # Otherwise the module is SHORTHAND: `shorthandMetaKeys` (the reference's `shorthandAttrsToRemove`,
-  # verbatim, plus the same two) are metadata, `require` joins `imports` (`importsOf`), and every other
-  # key is config. The shorthand arm copies the module only when a metadata key is present.
+  # verbatim, plus `_module` and `__pureModule`) are metadata, `require` joins `imports`
+  # (`importsOf`), and every other key is config. The shorthand arm copies the module only when a
+  # metadata key is present.
   #
   # The deliberate departures, each listed under README "Known byte-mode boundaries":
   #   * `_class` is stripped and never checked — this engine has no `class` parameter, which is the
   #     reference's `class = null`.
-  #   * `_module` beside `config`/`options` is folded into config (as it always was here), where the
-  #     reference refuses it: a strict superset, and no module the reference accepts changes meaning.
-  #     `_module` is always a CONFIG path (`config._module`), so a top-level `{ _module.args.x = y; }`
-  #     is shorthand.
   #   * `disabledModules` is REFUSED BY PRESENCE, before the surplus test, in both forms — an empty
   #     list included, which the reference accepts. This engine does not implement module removal
   #     (deferred work, re-armed by a consumer that needs it): the modules named would stay enabled.
@@ -716,7 +716,6 @@ let
     "config"
     "meta"
     "freeformType"
-    "_module"
     "__pureModule"
   ];
   shorthandMetaKeys = [
@@ -742,46 +741,29 @@ let
     e:
     let
       m = e.content;
-      base =
-        if m ? config || m ? options then
-          (if m ? meta then (m.config or { }) // { inherit (m) meta; } else m.config or { })
-        else if
-          m ? _file
-          || m ? key
-          || m ? _class
-          || m ? disabledModules
-          || m ? require
-          || m ? imports
-          || m ? freeformType
-          || m ? _module
-          || m ? __pureModule
-        then
-          builtins.removeAttrs m shorthandMetaKeys
-        else
-          m;
     in
-    if m ? _module then
-      base
-      // {
-        # A `_module` sub-key stated at both sites is two definitions, not a pair the `config`
-        # site silently wins: it is carried as an `mkMerge`, so the `_module.args` merge refuses a
-        # same-name argument and the freeform pass sees two `freeformType` contributions.
-        _module =
-          let
-            cfgModule = base._module or { };
-          in
-          m._module
-          // cfgModule
-          // mapAttrs (
-            k: v:
-            priority.mkMerge [
-              m._module.${k}
-              v
-            ]
-          ) (builtins.intersectAttrs m._module cfgModule);
-      }
+    if m ? config || m ? options then
+      (if m ? meta then (m.config or { }) // { inherit (m) meta; } else m.config or { })
+    else if
+      m ? _file
+      || m ? key
+      || m ? _class
+      || m ? disabledModules
+      || m ? require
+      || m ? imports
+      || m ? freeformType
+      || m ? _module
+      || m ? __pureModule
+    then
+      # A shorthand module's `_module` is config like any other key: stripped with the
+      # metadata keys and restored. A structured module's top-level `_module` is refused by
+      # `moduleSyntaxChecked`, so the structured arm above never reads it.
+      let
+        s = builtins.removeAttrs m shorthandMetaKeys;
+      in
+      if m ? _module then s // { inherit (m) _module; } else s
     else
-      base;
+      m;
   optionsOf = m: m.options or { };
   moduleSyntaxChecked =
     e:
@@ -3582,14 +3564,29 @@ let
                   winners = filterOverrides (
                     concatMap (d: map (w: w // { inherit (d) _file; }) (dischargeProperties d.value)) defs
                   );
-                  files = ws: concatStringsSep ", " (map (w: w._file) ws);
+                  # Each file once, in fold order; a file carrying several definitions (an `mkMerge`
+                  # inside one module) says how many.
+                  files =
+                    ws:
+                    let
+                      fs = map (w: w._file) ws;
+                    in
+                    concatStringsSep ", " (
+                      map (
+                        f:
+                        let
+                          n = length (filter (x: x == f) fs);
+                        in
+                        if n == 1 then f else "${f} (${toString n} definitions)"
+                      ) (prelude.unique fs)
+                    );
                 in
                 # One property-free definition is its own winner; skipping the discharge saves its
                 # records on every tree that sets an argument once (gen-schema's instance inlet).
                 if tail defs == [ ] && !(priority.isProperty (head defs).value) then
                   (head defs).value
                 else if length winners == 1 then
-                  (head winners).value
+                  (head (sortProperties winners)).value
                 else if winners == [ ] then
                   throw "gen-merge: module argument `${name}' (`_module.args.${name}') is used but every definition of it is disabled; defined in ${files defs}"
                 else

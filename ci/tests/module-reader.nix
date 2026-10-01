@@ -83,7 +83,9 @@ in
       };
     };
 
-    # ── UNCHANGED by the reader: the controls and gen-merge's kept `_module` superset ─────────────
+    # ── UNCHANGED by the reader: the controls ──────────────────────────────────────────────────
+    # (`_module` beside `config` is refused, as the reference refuses it: `ci/tests-error.nix`
+    # `refusal-messages`, `test-module-args-*-refuse-by-name`.)
     test-structured-config-control = {
       expr = read { config.a = 2; };
       expected = {
@@ -96,17 +98,6 @@ in
       expected = {
         a = 0;
         foo = 1;
-      };
-    };
-    # `_module` beside `config` is folded into config (the reference refuses it): the kept superset.
-    test-module-key-beside-config-is-folded = {
-      expr = read {
-        config.a = 2;
-        _module.args.zz = 1;
-      };
-      expected = {
-        a = 2;
-        foo = 0;
       };
     };
     test-class-beside-config-is-stripped = {

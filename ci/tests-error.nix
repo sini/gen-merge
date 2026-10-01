@@ -611,8 +611,30 @@ in
           msg = moduleArgsDupMsg "/demo/a\\.nix, /demo/b\\.nix";
         };
       };
-      # One structured module stating the argument at the top-level `_module` AND under `config`
-      # is two definitions too, not a pair the `config` site silently wins.
+      # An `mkMerge` inside ONE module carrying both definitions names that file once, with the
+      # count, rather than twice as if two modules defined it.
+      test-module-args-same-name-pair-in-one-module-names-the-file-once = {
+        expr = realize {
+          modules = moduleArgsReader ++ [
+            {
+              _file = "/demo/m.nix";
+              config = gm.mkMerge [
+                { _module.args.pkgs = "a"; }
+                { _module.args.pkgs = "b"; }
+              ];
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = moduleArgsDupMsg "/demo/m\\.nix \\(2 definitions\\)";
+        };
+      };
+      # A TOP-LEVEL `_module` BESIDE `config`/`options` IS REFUSED BY NAME, naming the module file,
+      # as nixpkgs' `unifyModuleSyntax` refuses it: `_module` is not one of its `attrsToRemove`.
+      # Two sites in one module are two definitions with no order between them; the trigger is the
+      # top-level key, whatever either site holds. Control: the same definition at one site resolves
+      # (`./tests/merge.nix` `moduleArgs`).
       test-module-args-both-sites-of-one-module-refuse-by-name = {
         expr = realize {
           modules = moduleArgsReader ++ [
@@ -625,12 +647,49 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = moduleArgsDupMsg "/demo/both\\.nix, /demo/both\\.nix";
+          msg = surplusKeyMsg "/demo/both\\.nix" "_module";
         };
       };
-      # The same holds for `freeformType`: both sites reach the freeform pass as two contributions,
-      # where the `config` site's type silently replaced the top-level one.
-      test-module-freeformtype-both-sites-of-one-module-are-two-contributions = {
+      # A property at either site changes nothing: the config-site argument was dropped silently
+      # when the top-level site was an `mkIf`.
+      test-module-args-mkif-top-beside-config-refuses-by-name = {
+        expr = realize {
+          modules = [
+            (
+              { qq, ... }:
+              {
+                options.x = gm.mkOption { type = t.str; };
+                config.x = qq;
+              }
+            )
+            {
+              _file = "/demo/both.nix";
+              _module = gm.mkIf true { args.pkgs = "a"; };
+              config._module.args.qq = "q";
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusKeyMsg "/demo/both\\.nix" "_module";
+        };
+      };
+      test-module-args-top-beside-options-only-refuses-by-name = {
+        expr = realize {
+          modules = moduleArgsReader ++ [
+            {
+              _file = "/demo/top.nix";
+              _module.args.pkgs = "a";
+              options.y = gm.mkOption { default = 1; };
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = surplusKeyMsg "/demo/top\\.nix" "_module";
+        };
+      };
+      test-module-freeformtype-both-sites-of-one-module-refuse-by-name = {
         expr = realize {
           modules = [
             {
@@ -644,7 +703,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' and `lazyAttrsOf'\\); defined in /demo/both\\.nix, /demo/both\\.nix$";
+          msg = surplusKeyMsg "/demo/both\\.nix" "_module";
         };
       };
       # A NESTED TREE'S FINDING IS REFUSED BY NAME UNDER A `freeformType` TOO. `nest.z` has an
@@ -656,7 +715,7 @@ in
           check = true;
           modules = [
             {
-              _module.freeformType = t.lazyAttrsOf t.anything;
+              config._module.freeformType = t.lazyAttrsOf t.anything;
               options.nest = gm.mkOption { type = laxNest; };
             }
             laxNestDef
