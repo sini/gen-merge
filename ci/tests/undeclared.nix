@@ -841,5 +841,47 @@ in
           likeNixpkgs = true;
         };
       };
+
+    # Cells 23-24: a `_module.<x>` the engine does not own is an ordinary unmatched path, listed under
+    # every regime (den-hoag-lnleu). It was dropped before the realizer saw it, so both read `[]`.
+    test-a-module-unknown-key-is-listed-under-check-false = {
+      expr =
+        let
+          r = evalModuleTree {
+            check = false;
+            modules = [
+              declared
+              { config._module.bogus = 1; }
+            ];
+          };
+        in
+        {
+          undeclared = map (u: u.path) r.undeclared;
+          config = builtins.attrNames r.config;
+        };
+      expected = {
+        undeclared = [
+          [
+            "_module"
+            "bogus"
+          ]
+        ];
+        config = [ "declared" ];
+      };
+    };
+    test-a-refused-module-unknown-key-is-listed-without-forcing-config = {
+      expr = map (u: u.path) (report {
+        modules = [
+          declared
+          { config._module.bogus = 1; }
+        ];
+      });
+      expected = [
+        [
+          "_module"
+          "bogus"
+        ]
+      ];
+    };
   };
 }

@@ -94,6 +94,7 @@ let
   inherit (core)
     isOptLeaf
     configOf
+    moduleDefOf
     moduleSyntaxChecked
     isPathString
     notAModule
@@ -281,16 +282,19 @@ let
           av // bv
         ) [ ] acc (e.module.options or { })
       ) { } attrsetEntries;
-      # config defs, one per attrset module, pushed once at the root; `_module` is the engine's pseudo-
-      # tree (`topDefs` strips it from the realizer), never an order-bearing config path.
+      # config defs, one per attrset module, pushed once at the root and read through `moduleDefOf`,
+      # as `topDefs` reads them: a `_module` input the engine refuses is refused here too, and the
+      # engine's own `_module` keys are never an order-bearing config path.
       rootPushed = map (e: {
         inherit (e) file;
-        attrs = builtins.removeAttrs (pushDownProperties (
-          configOf (moduleSyntaxChecked {
-            content = e.module;
-            _file = e.file;
-          })
-        )) [ "_module" ];
+        attrs = moduleDefOf e.file (
+          pushDownProperties (
+            configOf (moduleSyntaxChecked {
+              content = e.module;
+              _file = e.file;
+            })
+          )
+        );
       }) attrsetEntries;
       descend =
         opts: loc: pushed:

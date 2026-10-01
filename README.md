@@ -309,7 +309,9 @@ does *not* grow the undeclared key, so a report living in `config` would change 
 instead of describing it. `check` does not gate the list — whether the engine tells the truth about
 what it consumed is a different question from whether it checks — while a `freeformType` gates **this
 level's own definitions only**, since there those definitions are merged and nothing was dropped. A
-fully declared config reports `[ ]`.
+fully declared config reports `[ ]`. A `_module.<x>` the engine does not own (anything but `args`,
+`freeformType`, `check` and `specialArgs`) is an ordinary unmatched path: `config._module.bogus = 1`
+is listed as `[ "_module" "bogus" ]`.
 
 **A nested tree's findings.** A leaf whose declared type carries `mergeDefs.reported` — a tree merged as a
 type, `(evalModuleTree { … }).type` — reports the definitions *its own* eval did not merge, and they
@@ -1794,8 +1796,23 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   the value a foreign leaf gives at this site (`ci/tests/undeclared.nix` cell 22). Whether the
   plane should discharge or refuse such properties is an open design question.
 
-- `_module.check`'s unknown-key error message is minimal (freeform absorbs unknown keys on the
-  surface, so the throw path is rarely hit).
+- **A module's `_module.check` is refused by presence; nixpkgs honours it.** nixpkgs declares four
+  `_module` options. gen-merge reads `args` and `freeformType` itself and takes `check` and
+  `specialArgs` at `evalModuleTree`'s door, so a module defining either is refused by name, any
+  value, `mkIf false` included:
+  `` gen-merge: `_module.check' is not read from a module: pass it as `evalModuleTree { check = …; }'; defined in <file> ``.
+  The refusal fires before the realizer, so it is what an undeclared sibling meets first. Whether to
+  honour the option as nixpkgs does is an open owner question (`den-hoag-lnleu` Q1).
+  `_module.specialArgs` is refused the same way (`… is set by the caller, never by a module …`):
+  nixpkgs drops a module's definition silently, and a silent drop is not a value. A non-attrset
+  `_module` is refused (`` `_module' must be an attribute set, and this one is <type>; defined in <file> ``),
+  as nixpkgs refuses it. Every other `_module.<x>` is an ordinary config path, as in nixpkgs: refused
+  as an option that does not exist under `check`, listed on `.undeclared`, absorbed by a
+  `freeformType`, merged by a declared `options._module.<x>`. Declaring `options._module` as a
+  single option is refused by name, as nixpkgs refuses it (it would be a parent of the engine's own
+  keys). `lint` refuses the three module-input refusals the engine fires before merging
+  (`specialArgs`, `check`, a non-attrset `_module`) and reports nothing for an unknown `_module.<x>`,
+  where the two engines agree.
 
 - **A redeclared option's type refuses where a gen-native relation refuses, even where nixpkgs
   accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign list whose

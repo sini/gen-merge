@@ -499,6 +499,20 @@ let
   moduleArgsDupMsg =
     files:
     "^gen-merge: module argument `pkgs' \\(`_module\\.args\\.pkgs'\\) is defined multiple times, and a module argument must be unique; defined in ${files}$";
+  # `_module.<x>`: one declared option beside the module under test.
+  moduleKey = file: m: [
+    { options.x = gm.mkOption { default = "dflt"; }; }
+    ({ _file = file; } // m)
+  ];
+  orphanMsg = p: "^gen-merge: option `${p}' does not exist \\(no freeformType to absorb it\\)$";
+  checkMsg =
+    file:
+    "^gen-merge: `_module\\.check' is not read from a module: pass it as `evalModuleTree \\{ check = …; }'; defined in ${file}$";
+  specialArgsMsg =
+    file:
+    "^gen-merge: `_module\\.specialArgs' is set by the caller, never by a module: pass it as `evalModuleTree \\{ specialArgs = …; }'; defined in ${file}$";
+  nonAttrModuleMsg =
+    file: "^gen-merge: `_module' must be an attribute set, and this one is int; defined in ${file}$";
 in
 {
   config = {
@@ -704,6 +718,188 @@ in
         expectedError = {
           type = "ThrownError";
           msg = surplusKeyMsg "/demo/both\\.nix" "_module";
+        };
+      };
+      # A `_module.<x>` THE ENGINE DOES NOT OWN IS AN ORDINARY CONFIG PATH (den-hoag-lnleu). nixpkgs
+      # refuses it as an option that does not exist; it was dropped here with nothing said. Every
+      # spelling meets the same orphan refusal: `config.`, the shorthand, a misspelt `args`, an
+      # `mkIf false` (captured undischarged, as `.undeclared` states), one beside a read `args`, and
+      # one inside a submodule value, refused at the tree that owns it.
+      test-module-unknown-key-refused-by-name = {
+        expr = realize { modules = moduleKey "/g/B.nix" { config._module.bogus = 1; }; };
+        expectedError = {
+          type = "ThrownError";
+          msg = orphanMsg "_module\\.bogus";
+        };
+      };
+      test-module-unknown-key-shorthand-refused-by-name = {
+        expr = realize { modules = moduleKey "/g/B.nix" { _module.bogus = 1; }; };
+        expectedError = {
+          type = "ThrownError";
+          msg = orphanMsg "_module\\.bogus";
+        };
+      };
+      test-module-misspelt-args-refused-by-name = {
+        expr = realize { modules = moduleKey "/g/A.nix" { config._module.arg.pkgs = 1; }; };
+        expectedError = {
+          type = "ThrownError";
+          msg = orphanMsg "_module\\.arg";
+        };
+      };
+      test-module-unknown-key-under-mkif-false-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/B.nix" { config._module = gm.mkIf false { bogus = 1; }; };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = orphanMsg "_module\\.bogus";
+        };
+      };
+      test-module-unknown-key-beside-args-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/A.nix" {
+            config._module = {
+              args.pkgs = "P";
+              bogus = 1;
+            };
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = orphanMsg "_module\\.bogus";
+        };
+      };
+      test-module-unknown-key-in-a-submodule-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/N.nix" {
+            options.n = gm.mkOption { type = t.submodule { options.a = gm.mkOption { default = 1; }; }; };
+            config.n._module.bogus = 1;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = orphanMsg "n\\._module\\.bogus";
+        };
+      };
+      # Under a `_module.freeformType` the key is absorbed (`./tests/module-key.nix`), so a pair
+      # defining it twice refuses through the freeform type's own merge, naming both files. The text
+      # is gen-merge's `lazyAttrsOf raw`; nixpkgs' says `is defined multiple times`.
+      test-module-unknown-key-pair-under-a-freeformtype-names-both-files = {
+        expr = realize {
+          modules = [
+            { options.x = gm.mkOption { default = "dflt"; }; }
+            { config._module.freeformType = t.lazyAttrsOf t.raw; }
+            {
+              _file = "/g/B1.nix";
+              config._module.bogus = 1;
+            }
+            {
+              _file = "/g/B2.nix";
+              config._module.bogus = 2;
+            }
+            (
+              { config, ... }:
+              {
+                options.r = gm.mkOption { };
+                config.r = config._module.bogus or "ABSENT";
+              }
+            )
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `_module' has conflicting definitions:\n- In `/g/B2\\.nix': <a set>\n- In `/g/B1\\.nix': <a set>$";
+        };
+      };
+      # THE ENGINE'S OWN `_module` INPUTS A MODULE MAY NOT SET, refused by presence naming the file.
+      # `specialArgs` and `check` come through `evalModuleTree`'s door; nixpkgs is silent on a module's
+      # `specialArgs` and honours its `check`, which this engine does not read (Q1 decides). The
+      # `check` refusal fires before the realizer, so it is what an undeclared sibling meets first, and
+      # it fires under `mkIf false` too, as `disabledModules` does.
+      test-module-special-args-refused-by-name = {
+        expr = realize { modules = moduleKey "/g/S.nix" { config._module.specialArgs.z = 1; }; };
+        expectedError = {
+          type = "ThrownError";
+          msg = specialArgsMsg "/g/S\\.nix";
+        };
+      };
+      test-module-non-attrset-refused-by-name = {
+        expr = realize { modules = moduleKey "/g/N.nix" { config._module = 5; }; };
+        expectedError = {
+          type = "ThrownError";
+          msg = nonAttrModuleMsg "/g/N\\.nix";
+        };
+      };
+      test-module-check-refused-by-presence = {
+        expr = realize { modules = moduleKey "/g/C.nix" { config._module.check = false; }; };
+        expectedError = {
+          type = "ThrownError";
+          msg = checkMsg "/g/C\\.nix";
+        };
+      };
+      test-module-check-refused-before-an-undeclared-sibling = {
+        expr = realize {
+          modules = moduleKey "/g/C.nix" { config._module.check = false; } ++ [ { y = 1; } ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = checkMsg "/g/C\\.nix";
+        };
+      };
+      test-module-check-under-mkif-false-refused-by-presence = {
+        expr = realize {
+          modules = moduleKey "/g/C.nix" { config._module = gm.mkIf false { check = false; }; };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = checkMsg "/g/C\\.nix";
+        };
+      };
+      # `_module` DECLARED AS ONE OPTION would swallow every `_module.<x>` and see the engine's own
+      # keys taken out of it. nixpkgs refuses the declaration (it would be a parent of its own
+      # `_module` options); so does this engine, naming the declaring file.
+      test-module-declared-as-a-single-option-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/L.nix" {
+            options._module = gm.mkOption {
+              type = t.attrsOf t.anything;
+              default = { };
+            };
+            config._module.bogus = 1;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `_module' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options\\._module\\.<name>' instead; declared in /g/L\\.nix$";
+        };
+      };
+      # The lint refuses what the engine refuses before merging. An unknown `_module.<x>` is no lint
+      # finding (`./tests/module-key.nix`): both engines refuse or absorb it alike.
+      test-module-special-args-refused-by-lint = {
+        expr = withControl (viaLint readerC0) [ ] (viaLint {
+          config._module.specialArgs.z = 1;
+        });
+        expectedError = {
+          type = "ThrownError";
+          msg = specialArgsMsg "/real/L\\.nix";
+        };
+      };
+      test-module-non-attrset-refused-by-lint = {
+        expr = withControl (viaLint readerC0) [ ] (viaLint {
+          config._module = 5;
+        });
+        expectedError = {
+          type = "ThrownError";
+          msg = nonAttrModuleMsg "/real/L\\.nix";
+        };
+      };
+      test-module-check-refused-by-lint = {
+        expr = withControl (viaLint readerC0) [ ] (viaLint {
+          config._module.check = false;
+        });
+        expectedError = {
+          type = "ThrownError";
+          msg = checkMsg "/real/L\\.nix";
         };
       };
       # A NESTED TREE'S FINDING IS REFUSED BY NAME UNDER A `freeformType` TOO. `nest.z` has an

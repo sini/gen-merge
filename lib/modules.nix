@@ -825,6 +825,31 @@ let
     else
       m;
   optionsOf = m: m.options or { };
+  # nixpkgs' `internalModule` declares four `_module` options. This engine reads `args` and
+  # `freeformType` itself and takes `check` and `specialArgs` at its door, so a module defining one
+  # of the door pair is refused by name. Every other `_module` sub-key stays a config path, met by
+  # the realizer like any other: a declared one merges, an undeclared one is unmatched.
+  moduleOwnKeys = [
+    "args"
+    "freeformType"
+    "check"
+    "specialArgs"
+  ];
+  moduleDefOf =
+    file: attrs:
+    if !(attrs ? _module) then attrs else moduleRest file attrs (pushDownProperties attrs._module);
+  moduleRest =
+    file: attrs: m:
+    if !isAttrs m then
+      throw "gen-merge: `_module' must be an attribute set, and this one is ${builtins.typeOf m}; defined in ${file}"
+    else if m ? specialArgs then
+      throw "gen-merge: `_module.specialArgs' is set by the caller, never by a module: pass it as `evalModuleTree { specialArgs = …; }'; defined in ${file}"
+    else if m ? check then
+      throw "gen-merge: `_module.check' is not read from a module: pass it as `evalModuleTree { check = …; }'; defined in ${file}"
+    else if builtins.removeAttrs m moduleOwnKeys == { } then
+      builtins.removeAttrs attrs [ "_module" ]
+    else
+      attrs // { _module = builtins.removeAttrs m moduleOwnKeys; };
   moduleSyntaxChecked =
     e:
     let
@@ -1395,10 +1420,12 @@ let
               }
             ]
         ) (attrNames attrs);
-      rootAttrs = builtins.removeAttrs (pushDownProperties (configOf {
-        inherit content;
-        _file = "<gen-merge>";
-      })) [ "_module" ];
+      rootAttrs = moduleDefOf "<gen-merge>" (
+        pushDownProperties (configOf {
+          inherit content;
+          _file = "<gen-merge>";
+        })
+      );
     in
     descend allOptions [ ] rootAttrs;
 
@@ -1506,7 +1533,9 @@ let
       freeContribs = concatMap (x: x.free) allF;
 
       editedFreeformType = prelude.any (
-        e: (topFreeformOf e.content != null) || ((configOf e)._module.freeformType or null != null)
+        e:
+        (topFreeformOf e.content != null)
+        || ((pushDownProperties ((pushDownProperties (configOf e))._module or { })) ? freeformType)
       ) editedEntries;
       reuseAllFreeform = freeContribs == [ ] && !editedFreeformType;
       disabledRefusal = prelude.any (e: e.content ? disabledModules) editedEntries;
@@ -3276,7 +3305,8 @@ let
               abs = prefix ++ lk;
             in
             if isOptLeaf opts.${k} then
-              if warm.active && warm.isClean (builtins.toJSON lk) then
+              # A root `_module` leaf never splices: prev's returned `config` is `_module`-free.
+              if warm.active && head lk != "_module" && warm.isClean (builtins.toJSON lk) then
                 # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
                 # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
                 # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
@@ -3757,9 +3787,9 @@ let
               );
           moduleFreeforms = concatMap (
             p:
-            optional (p.attrs ? _module && p.attrs._module ? freeformType) {
+            optional (p.attrs ? _module && (pushDownProperties p.attrs._module) ? freeformType) {
               inherit (p) _file;
-              type = p.attrs._module.freeformType;
+              type = (pushDownProperties p.attrs._module).freeformType;
             }
           ) pushed;
 
@@ -3824,19 +3854,42 @@ let
           # here; the per-level descent preserves it (nixpkgs `reverseList` once, then `zipAttrs`).
           pushedRev = reverse pushed;
 
-          # The realizer's def stream: each module's pushed-down config, REVERSED, minus the
-          # `_module` pseudo-key (handled above via `moduleTree`; it is not a real config path). The
+          # The realizer's def stream: each module's pushed-down config, REVERSED, read through
+          # `moduleDefOf` (inlined behind the presence test, so a module with no `_module` pays
+          # nothing): the engine's own `_module` keys are taken out, the rest stay config. The
           # `modIndex` (position in reverse-module order) rides each def so the root freeform can
           # coalesce unmatched keys back into one wide def per originating module.
           topDefs = prelude.imap0 (i: p: {
             file = p._file;
             modIndex = i;
-            value = builtins.removeAttrs p.attrs [ "_module" ];
+            value =
+              if p.attrs ? _module then
+                moduleRest p._file p.attrs (pushDownProperties p.attrs._module)
+              else
+                p.attrs;
           }) pushedRev;
 
           # Realize the whole config tree against the option-decl tree. Declared names are present
           # lazily (undefined+no-default throws only on access, matching nixpkgs); groups recurse.
-          realized = mergeTree warmCtx [ ] allOptions topDefs;
+          # A `_module.<x>` the engine does not own meets the realizer as a config path: an empty
+          # per-evaluation `_module` group makes its capture path `_module.<x>`, never `_module`, and
+          # `.options` is untouched. A `_module` declared as a single option is refused, as nixpkgs
+          # refuses it: it would be a parent of the engine's own `moduleOwnKeys`.
+          realized = mergeTree warmCtx [ ] (
+            if allOptions ? _module then
+              if isOptLeaf allOptions._module then
+                throw "gen-merge: option `${
+                  showOption (prefix ++ [ "_module" ])
+                }' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options._module.<name>' instead; declared in ${
+                  concatStringsSep ", " (map (s: s.file) (sitesAt (prefix ++ [ "_module" ])))
+                }"
+              else
+                allOptions
+            else if prelude.any (d: d.value ? _module) topDefs then
+              allOptions // { _module = { }; }
+            else
+              allOptions
+          ) topDefs;
           declaredConfig = realized.value;
 
           # Unknown keys — at ANY depth — route as ONE freeformType def-set at the ROOT (nixpkgs
@@ -3949,7 +4002,12 @@ let
           # The RETURNED/embedded `config` stays `_module`-free, exactly like nixpkgs — its
           # `(evalModules).config` strips `_module`, so the parity oracle and every consumer that reads
           # the merged value never sees it.
-          config = builtins.seq _orphanCheck (recursiveUpdate freeformConfig declaredConfig);
+          config = builtins.seq _orphanCheck (
+            if freeformConfig ? _module || declaredConfig ? _module then
+              builtins.removeAttrs (recursiveUpdate freeformConfig declaredConfig) [ "_module" ]
+            else
+              recursiveUpdate freeformConfig declaredConfig
+          );
 
           # The MODULE-VISIBLE config (`baseArgs.config`, ~:888) re-surfaces `_module.args` as a
           # readable path, matching nixpkgs (inside a module `config._module.args` resolves; the
@@ -3958,7 +4016,16 @@ let
           # `resolvedCtxModule` reads `config._module.args` to build the entity resolution context (it
           # can't enumerate `...` function args). ONLY `.args` (not the `_module.freeformType` gen-merge
           # consumes internally), and ONLY when a module set an arg — else `config` is used unchanged.
-          moduleConfig = if moduleArgs == { } then config else config // { _module.args = moduleArgs; };
+          moduleConfig =
+            if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
+              if moduleArgs == { } then config else config // { _module.args = moduleArgs; }
+            else
+              config
+              // {
+                _module =
+                  recursiveUpdate (freeformConfig._module or { }) (declaredConfig._module or { })
+                  // (if moduleArgs == { } then { } else { args = moduleArgs; });
+              };
 
           # ── provenance (A2 spec §1) ────────────────────────────────────────────────────────────
           # A lazy tree mirroring `config`'s loc structure. Per DECLARED-option loc the rich record
@@ -4718,6 +4785,7 @@ in
     # public `moduleSyntax` record (lib/default.nix) can be built from the SAME bindings `configOf`
     # enforces with, never a second spelling of them.
     structuringKeys
+    moduleDefOf
     structuredKeys
     shorthandMetaKeys
     configOf
