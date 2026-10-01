@@ -256,9 +256,16 @@ let
         let
           merged = mergeElemTypes element partnerElem;
         in
+        # The element pair's own reason, where it states one, rides the refusal: the option is named
+        # at the top, and the cause sits one level down.
         if merged == null then
+          let
+            cause = core.mergeTypesReason element partnerElem;
+          in
           {
-            refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partnerElem}', whose element types do not merge";
+            refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partnerElem}', whose element types do not merge${
+              if cause == null then "" else ": ${cause}"
+            }";
           }
         else
           { merged = rebuild merged; };

@@ -1098,7 +1098,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge\\); defined in A, B$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge: `string' and `int'\\); defined in A, B$";
         };
       };
       # The reverse order. This is the one that did not throw at all — it returned `{ x = "s"; }` by
@@ -1113,7 +1113,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge\\); defined in B, A$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge: `int' and `string'\\); defined in B, A$";
         };
       };
       # The SECOND feeder, same pair. `_module.freeformType` reaches the selection as N definitions
@@ -1129,7 +1129,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge\\); defined in A, B$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge: `string' and `int'\\); defined in A, B$";
         };
       };
       test-unmergeable-module-freeform-pair-refused-in-the-reverse-order = {
@@ -1142,7 +1142,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge\\); defined in B, A$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge: `int' and `string'\\); defined in B, A$";
         };
       };
       # THE FILE LIST IS EVERY CONTRIBUTOR, NOT THE PAIR HOLDING THE REFUSAL. The fold starts from
@@ -1161,7 +1161,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge\\); defined in A, A, B$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge: `string' and `int'\\); defined in A, A, B$";
         };
       };
       # The runner is not uniformly throwing: the same fixture vocabulary, one contribution, returns
@@ -4140,7 +4140,7 @@ in
         };
         test-element-relation-names-the-partner-element-name-type = {
           expr = declaredTwice (t.attrsOf t.int) (t.attrsOf badlyNamed);
-          expectedError = refuses "`attrsOf' over `int' and `attrsOf' over `<a name of type int>', whose element types do not merge";
+          expectedError = refuses "`attrsOf' over `int' and `attrsOf' over `<a name of type int>', whose element types do not merge: `int' and `<a name of type int>'";
         };
         test-submodule-relation-names-the-partner-name-type = {
           expr = declaredTwice (t.submodule { }) badlyNamed;
@@ -5838,6 +5838,56 @@ in
         test-malformed-marker-names-list-refused-by-name = {
           expr = malformed { names = [ "k" ]; };
           expectedError = malformedMsg "its `names' is a list";
+        };
+      };
+
+    # Which declaration's added check a type merge drops, named (`mergeTypesReason`'s drop arm,
+    # lib/modules.nix), and the same reason riding a container's refusal one level down (`elementRel`,
+    # lib/types.nix). `ci/tests/check-family-merge.nix` pins that each pair refuses and that one shared
+    # wrapped value declared twice does not.
+    flake.testsError.dropped-wrapper-check =
+      let
+        wi = nixpkgsLib.types.addCheck t.int (x: x > 0);
+        wi2 = nixpkgsLib.types.addCheck t.int (x: x > 0);
+        u = t.union [ t.int ];
+        wu = nixpkgsLib.types.addCheck u (x: x > 0);
+        declaredTwice =
+          a: b:
+          realize {
+            modules = [
+              { options.x = gm.mkOption { type = a; }; }
+              { options.x = gm.mkOption { type = b; }; }
+            ];
+          };
+        refuses = pair: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+        };
+        drops = whose: "which merge to `int', a type that drops the `check' a wrapper added to ${whose}";
+      in
+      {
+        # The leaf pair is named deciding (later) type first, so a later wrapper is "the first".
+        test-a-later-wrappers-check-is-named = {
+          expr = declaredTwice t.int wi;
+          expectedError = refuses "`int' and `int', ${drops "the first"}";
+        };
+        test-an-earlier-wrappers-check-is-named = {
+          expr = declaredTwice wi t.int;
+          expectedError = refuses "`int' and `int', ${drops "the second"}";
+        };
+        test-two-wrappers-name-both-checks = {
+          expr = declaredTwice wi wi2;
+          expectedError = refuses "`int' and `int', ${drops "both"}";
+        };
+        test-a-parametric-wrapper-is-named = {
+          expr = declaredTwice u wu;
+          expectedError = refuses "`union<int>' and `union<int>', which merge to `union<int>', a type that drops the `check' a wrapper added to the first";
+        };
+        # Inside a container the earlier operand's relation asks first (`declaredPair`'s veto), so the
+        # element pair reads earlier first and the later wrapper is "the second".
+        test-a-container-names-the-cause-at-depth = {
+          expr = declaredTwice (t.listOf t.int) (t.listOf wi);
+          expectedError = refuses "`listOf' over `int' and `listOf' over `int', whose element types do not merge: `int' and `int', ${drops "the second"}";
         };
       };
   };

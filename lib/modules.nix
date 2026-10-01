@@ -335,7 +335,7 @@ let
   # against. The arm is the boundary's IMPORT ENVIRONMENT, reached here and spelled there: this is
   # the engine's own read of a foreign type, and it is why the inbound half is load-bearing rather
   # than decorative.
-  mergeTypes =
+  relationMerge =
     a: b:
     if (a ? nonMountable) || (b ? nonMountable) then
       null
@@ -346,6 +346,41 @@ let
       if answer ? merged then answer.merged else null
     else
       interface.importedMerge a b;
+
+  # ★★ A MERGE THAT DROPS A WRAPPER'S CHECK REFUSES, AT EVERY DEPTH. nixpkgs' `addCheck` is
+  # `elemType // { check = …; }`: it keeps its base's name and relation, so the relation above answers
+  # its base's own `self`, a type that no longer holds the added check, and the value the wrapper
+  # refuses is served. No name separates the two, so the name witness (`importedMerge`) cannot see it;
+  # gen-types' check-witness protocol can, for a gen record (`rewritesCheck`). An operand DROPS when
+  # its check was rewritten and the merge is not that operand itself. Refusing is the one answer
+  # sound whether a redeclaration is read as a join or as a meet, and it leaves that reading open
+  # (the witness clause in `lib/interface.nix`); it is the defaulted disposition under ADR-0025 item
+  # 1, which forbids the silence and does not choose the refusal, so a ruling for the join reading
+  # relaxes this arm alone. A pair that is ONE value keeps it (`x ⊔ x = x ⊓ x = x`): the same
+  # wrapped binding declared twice merges and keeps its check. Two separately written wrappers are
+  # two values even over one predicate source, since a check is a caller's function and cannot be
+  # compared (`sealedRel`'s answer for `mkOptionType`, lib/types.nix).
+  #
+  # The test lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
+  # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
+  # `listOf int` drops it one level down, inside `elementRel`, which `declaredPair` never sees.
+  # "One value" is Nix `==` over `closuresFirst`'s subject, as `sealedRel` compares, because an
+  # exported record is cyclic. Foreign records state no witness, so `addCheck` over a nixpkgs type
+  # redeclared still serves as nixpkgs does (README, "Not covered"). The comparison runs only on the
+  # path where a witnessed rewrite would be dropped; a record with no witness short-circuits.
+  sameTypeValue = x: y: interface.closuresFirst [ x ] x == interface.closuresFirst [ y ] y;
+  dropsWrappedCheck = m: o: interface.rewritesCheck o && !(sameTypeValue m o);
+  mergeTypes =
+    a: b:
+    let
+      m = relationMerge a b;
+    in
+    if m == null || !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
+      m
+    else if sameTypeValue a b then
+      a
+    else
+      null;
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -362,9 +397,28 @@ let
   # plane) and the freeform selection both report `declaredRefusalText`, which prefers this reason
   # to a bare name pair. It is asked `(later, earlier)`, the deciding operand first. A gen type is unaffected — `mergeTypes` short-circuits on `typeMergeRel` before the
   # boundary is reached, so the first arm still answers for every pair that has a relation.
+  # The drop arm comes first: where the relation answers but `mergeTypes` refused a dropped check, the
+  # relation itself has no refusal to report, so this names the merged type and whose check it lost.
+  # Whose is said by POSITION in the pair the reason names, not as "later"/"earlier": inside a
+  # container the pair arrives in whichever order the deciding relation asked it, and `declaredPair`'s
+  # veto asks the earlier operand's relation first.
   mergeTypesReason =
     a: b:
-    if a ? typeMergeRel then
+    let
+      m = relationMerge a b;
+      dA = m != null && dropsWrappedCheck m a;
+      dB = m != null && dropsWrappedCheck m b;
+    in
+    if (dA || dB) && !(sameTypeValue a b) then
+      "`${interface.nameOf a}' and `${interface.nameOf b}', which merge to `${interface.nameOf m}', a type that drops the `check' a wrapper added to ${
+        if dA && dB then
+          "both"
+        else if dA then
+          "the first"
+        else
+          "the second"
+      }"
+    else if a ? typeMergeRel then
       (a.typeMergeRel b).refused or null
     else if !(interface.importedDecidable a) || !(interface.importedDecidable b) then
       "`${interface.nameOf a}' and `${interface.nameOf b}', whose structure does not bottom out within the boundary's type-walk fuel (${toString interface.importedTypeWalkFuel})"

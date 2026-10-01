@@ -1219,7 +1219,8 @@ gen-native relation refuses, and then by refusing: gen `attrs` against foreign `
 nixpkgs accepts, directly or under a gen container; an earlier gen relation vetoing a later foreign
 relation that answers another type; and a refinement under a gen container against its bare element.
 It also departs where a foreign join drops a name an operand states (the check-family witness,
-below): by refusing, or, for a pair that is one shared value, by keeping that value. Over a 65-type
+below), and where a merge drops the check a wrapper added to a gen record (below the witness): by
+refusing, or, for a pair that is one shared value, by keeping that value. Over a 65-type
 pair census it merges no pair the relation without the witness refuses. They are listed under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A refined type redeclared against
 its bare base refuses in both orders, directly or under a gen container.
@@ -1241,6 +1242,30 @@ and a second join only on the refusal path; gen-native pairs never reach it. Mea
 `NIX_SHOW_STATS`, one option declared in 200 modules: `listOf str` +2.7% thunks and +1.0% function
 calls, a distinct `submodule` each +0.1%, `port` +0.07% and +0.18%. The measured members are under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate).
+
+**A type merge that drops a wrapper's check refuses, at every depth.** An `addCheck` keeps its base's
+name and relation, so no name separates `addCheck int p` from `int`, and the relation answers the bare
+base: `[int, addCheck int (x: x > 0)]` serves -1 on nixpkgs, in either order. For a gen record
+gen-types' check-witness protocol makes the rewritten check observable (`rewritesCheck`), so
+`mergeTypes` refuses wherever an operand's check was rewritten and the merge is not that operand
+itself. The pair refuses with the wrapper first or second, under a gen parametric (`union [ int ]`),
+under a container (`listOf (addCheck int p)` beside `listOf int`), and in a longer list, with a
+reason naming which of the pair lost its check; under a container that reason follows the element
+refusal. The test sits in `mergeTypes`, so the declaration and freeform planes, every container's
+element relation and the published `genMerge.mergeTypes` all answer it. As above, refusing is sound
+under both readings of a redeclaration. It is a default, and reversible: the rule that no check
+vanishes silently forbids serving the value, but does not itself choose a refusal over another named
+answer, so settling the reading as a join would relax this arm alone. **One wrapped value declared twice keeps its operand**: `w = addCheck int p`
+declared as `[w, w]`, or as two `listOf w`, merges to `w` and rejects what `p` rejects. **Two
+separately written wrappers refuse even over one predicate source**, because a check is a caller's
+function and two cannot be compared (`mkOptionType`'s `sealedRel` answers the same): declare the
+wrapped type once and reference it. A foreign record states no witness, so `addCheck` over a nixpkgs
+type redeclared still serves as nixpkgs does (Known byte-mode boundaries, "Not covered"). The cost,
+measured with `NIX_SHOW_STATS` on Nix: +3 thunks per evaluation, a constant, with calls and bytes
+unchanged, for any number of options each declared once; `listOf int` declared in 200 modules, +0.40%
+thunks, +0.90% function calls and +0.62% bytes, the element relation now asking the witness on every
+step. The hub perf-bench never redeclares an option, so it guards the constant and not the
+redeclaration path.
 
 **Cost.** Each typed redeclaration step reads the declaring-site list, `O(modules × depth)`, so an
 option declared with a type in `n` of `M` modules costs `O(n × M × depth)`: flat for a fixed small
@@ -1487,14 +1512,14 @@ refuses; over `nullOr` nixpkgs erases it too). Refusing every re-home of those w
 stock six over the tree. The gen-types composites (`ts.refined (addCheck ts.int p) …`) read the
 witness through the same protocol and carry or refuse such a member; what stays silent there is a
 bare gen-types checker with its `check` rewritten, which has no witness (gen-types' residue R1).
-**And a parametric leaf redeclared with a wrapped twin** (residue R2): an option declared once with
-a gen-types parametric leaf and once with the same leaf under `addCheck` (`union [ int ]` beside
+**And a parametric leaf redeclared with a wrapped twin** refuses: an option declared once with a
+gen-types parametric leaf and once with the same leaf under `addCheck` (`union [ int ]` beside
 `addCheck (union [ int ]) (x: x > 0)`), in either order, merges by the two records' shared digest
-(`completeParametric`'s relation), and the added check is lost. The relation cannot read the
-witness there: a `//` copies the relation, so it is bound to its base and cannot tell its own
-wrapped record declared twice, which must merge (and then, like any `addCheck` keeping its base's
-name, loses the check: nixpkgs loses it too), from a wrapped partner, which must not. Closing it
-belongs to the redeclaration's caller, which sees both operands.
+(`completeParametric`'s relation), which drops the added check. The relation cannot read the
+witness: a `//` copies the relation, so it is bound to its base and cannot tell its own wrapped
+record declared twice, which must merge, from a wrapped partner, which must not. `mergeTypes` sees
+both operands, so it refuses the drop and keeps one wrapped value declared twice, check and all
+("Redeclaring an option").
 
 Each nesting and container fold also carries a `threaded` sibling, reading its
 nested trees through the evaluation's accessor, and a gen type's exported `merge` folds through it
@@ -1747,8 +1772,15 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     twin keeps its operand: the imported record meets the engine's own import of its partner, and
     Nix `==` does not survive that path.
 
-  Not covered, because no name separates the check from its base: an `addCheck` that keeps its
-  base's name (`addCheck int f`, `nonEmptyListOf`). Nor a drop under a
+- **A type merge that drops a wrapper's check refuses, for a gen record, even where nixpkgs serves**
+  ("A type merge that drops a wrapper's check refuses, at every depth"). Measured members, each
+  served by nixpkgs: `addCheck int p` beside `int` in either order, beside `union [ int ]`, under
+  `listOf` and in a three-declaration list; two separately written `addCheck int p`, which is the
+  one legitimate input refused (the remedy is one shared value). One shared wrapped value declared
+  twice merges and keeps its check, where nixpkgs serves what the check rejects.
+
+  Not covered, because no name separates the check from its base and a foreign record states no
+  check witness: an `addCheck` over a nixpkgs type that keeps its base's name (`addCheck lib.types.int f`, `nonEmptyListOf`). Nor a drop under a
   key `nestedTypes` states that names no role this boundary carries (`freeformType`,
   `coercedType`/`finalType`, an `attrTag`'s tags): it is not in gen's vocabulary, so a join is not
   judged over it.
@@ -1879,13 +1911,13 @@ These boundaries are mechanically checkable — see [Portable-subset lint](#port
 step outside the byte-mode surface, so the "runs on gen-merge and `lib.evalModules` byte-identically"
 claim is verifiable, not asserted. The flagged kinds:
 
-| kind                    | what it catches                                                                        | why it diverges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ----------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `order-pass`            | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale                                                                                                                                                                                                    |
-| `options-introspection` | a module **function** whose formals include `options`                                  | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `type-merge`            | the same option loc declared **with a `type`** in more than one module                 | on the type the engines agree on every all-foreign declaration list whose joins keep their operands' names (both fold it as nixpkgs brackets it, the later type deciding), and gen-merge departs by refusing where a fold step's gen-native relation refuses or a foreign join drops a name an operand states, or by keeping one shared value declared twice (Known byte-mode boundaries); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge |
-| `function-to`           | an option type named `functionTo`                                                      | intentionally omitted from the type surface (wrap guard functions as data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `unverifiable`          | an option type nested deeper than the type-walk fuel                                   | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| kind                    | what it catches                                                                        | why it diverges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `order-pass`            | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale                                                                                                                                                                                                                                              |
+| `options-introspection` | a module **function** whose formals include `options`                                  | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `type-merge`            | the same option loc declared **with a `type`** in more than one module                 | on the type the engines agree on every all-foreign declaration list whose joins keep their operands' names (both fold it as nixpkgs brackets it, the later type deciding), and gen-merge departs by refusing where a fold step's gen-native relation refuses, a foreign join drops a name an operand states or a merge drops a gen record's added check, or by keeping one shared value declared twice (Known byte-mode boundaries); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge |
+| `function-to`           | an option type named `functionTo`                                                      | intentionally omitted from the type surface (wrap guard functions as data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `unverifiable`          | an option type nested deeper than the type-walk fuel                                   | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Each finding is `{ kind; loc; file; detail }` — `loc` is the option/config path (`[]` for a whole-module
 finding like `options-introspection`); `file` is the def/decl provenance (`_file`), a **list** of files

@@ -303,6 +303,83 @@ in
       };
     };
 
+    # A MERGE THAT DROPS A WRAPPER'S CHECK REFUSES, AT EVERY DEPTH (`mergeTypes`, lib/modules.nix).
+    # `addCheck` over a gen record keeps its base's name and relation, so the relation answers the
+    # bare base. gen-types' witness makes the rewrite observable, so the pair refuses: wrapper first
+    # or second, under a gen parametric, under a container, and in a three-declaration list. nixpkgs
+    # serves every row.
+    test-a-dropped-wrapper-check-refuses =
+      let
+        pos = x: x > 0;
+        wi = t.addCheck gt.int pos;
+        wi2 = t.addCheck gt.int pos;
+        u = gt.union [ gt.int ];
+        wu = t.addCheck u pos;
+      in
+      {
+        expr = {
+          plainThenWrapped = ev [ gt.int wi ] (-1);
+          wrappedThenPlain = ev [ wi gt.int ] (-1);
+          twoConstructions = ev [ wi wi2 ] (-1);
+          genAddCheckTwin = ev [
+            (t.addCheck gt.int (_: false))
+            (t.addCheck gt.int (_: false))
+          ] 5;
+          threePlainWrappedPlain = ev [ gt.int wi gt.int ] (-1);
+          uPlainThenWrapped = ev [ u wu ] (-1);
+          uWrappedThenPlain = ev [ wu u ] (-1);
+          lPlainThenWrapped = ev [ (gt.listOf gt.int) (gt.listOf wi) ] [ (-1) ];
+          lWrappedThenPlain = ev [ (gt.listOf wi) (gt.listOf gt.int) ] [ (-1) ];
+        };
+        expected = {
+          plainThenWrapped = "REFUSED";
+          wrappedThenPlain = "REFUSED";
+          twoConstructions = "REFUSED";
+          genAddCheckTwin = "REFUSED";
+          threePlainWrappedPlain = "REFUSED";
+          uPlainThenWrapped = "REFUSED";
+          uWrappedThenPlain = "REFUSED";
+          lPlainThenWrapped = "REFUSED";
+          lWrappedThenPlain = "REFUSED";
+        };
+      };
+
+    # CONTROL: one wrapped value declared twice is one value, so it keeps its operand and its check:
+    # the value the wrapper accepts is served and the one it refuses is rejected by the carried check.
+    # Two separate containers over one shared wrapped element are the same case one level down.
+    test-a-shared-wrapped-value-declared-twice-keeps-its-check =
+      let
+        wi = t.addCheck gt.int (x: x > 0);
+        wu = t.addCheck (gt.union [ gt.int ]) (x: x > 0);
+        lw = gt.listOf wi;
+      in
+      {
+        expr = {
+          wrappedTwicePos = ev [ wi wi ] 5;
+          wrappedTwiceNeg = ev [ wi wi ] (-1);
+          uWrappedTwicePos = ev [ wu wu ] 5;
+          uWrappedTwiceNeg = ev [ wu wu ] (-1);
+          lSharedTwicePos = ev [ lw lw ] [ 5 ];
+          lSharedTwiceNeg = ev [ lw lw ] [ (-1) ];
+          lSeparateTwicePos = ev [ (gt.listOf wi) (gt.listOf wi) ] [ 5 ];
+          lSeparateTwiceNeg = ev [ (gt.listOf wi) (gt.listOf wi) ] [ (-1) ];
+          ctlWrappedAlone = ev [ wi ] (-1);
+          ctlPlainTwice = ev [ gt.int gt.int ] (-1);
+        };
+        expected = {
+          wrappedTwicePos = "MERGED int / ACCEPTED";
+          wrappedTwiceNeg = "MERGED int / REJECTED";
+          uWrappedTwicePos = "MERGED union<int> / ACCEPTED";
+          uWrappedTwiceNeg = "MERGED union<int> / REJECTED";
+          lSharedTwicePos = "MERGED listOf / ACCEPTED";
+          lSharedTwiceNeg = "MERGED listOf / REJECTED";
+          lSeparateTwicePos = "MERGED listOf / ACCEPTED";
+          lSeparateTwiceNeg = "MERGED listOf / REJECTED";
+          ctlWrappedAlone = "MERGED int / REJECTED";
+          ctlPlainTwice = "MERGED int / ACCEPTED";
+        };
+      };
+
     # CONTROL: what the witness must not refuse. The first rows are joins that keep their operands'
     # names; the rest GAIN a role or spell one in the other vocabulary, and merge on nixpkgs too.
     test-a-non-renaming-foreign-join-is-unchanged = {

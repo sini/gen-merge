@@ -2153,7 +2153,7 @@ in
         expr = byteOracle base edited;
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`lazyAttrsOf' over `anything' and `lazyAttrsOf' over `string', whose element types do not merge\\); defined in edit-fft, <gen-merge>$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`lazyAttrsOf' over `anything' and `lazyAttrsOf' over `string', whose element types do not merge: `anything' and `string'\\); defined in edit-fft, <gen-merge>$";
         };
       };
 
