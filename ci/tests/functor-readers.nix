@@ -12,9 +12,11 @@
 # declaration-stratum cell likewise, the lint cell reads `[ ]`, and the published-formals cell
 # reads "flavour-not-passed". The pureModule and config-only cells are green on both sides.
 #
-# The value-merge readers are NOT this unit's: two functor DEFINITIONS still merge as attrsets in
-# `mergeDefaultOption`, where nixpkgs merges them as functions. That cell is pinned below as the
-# residue it is, beside its lambda control, and den-hoag-1ypox carries it.
+# Two functor DEFINITIONS take the default law's function arm, as nixpkgs' `lib.isFunction` reads
+# them (den-hoag-1ypox). RED at gen-merge 37cd511 (the builtin `isFunction` at both sites): the
+# two-functor and setFunctionArgs cells read "set", the check-only cell reads
+# `{ functor = true; lambda = false; }`, and the lambda-beside-a-functor cell aborts
+# `conflicting definitions`.
 { genMerge, nixpkgsLib, ... }:
 let
   inherit (genMerge) evalModuleTree mkOption mergeDefaultOption;
@@ -63,10 +65,45 @@ let
     np = npX mods;
   };
   declaring = { myArg, ... }: { options.y = mkOption { default = "declared"; }; };
+  # Two definitions of one default-merged position, by kind: a `setFunctionArgs` wrapper is a
+  # function to nixpkgs' `lib.isFunction`, so the law takes its function arm (den-hoag-1ypox).
+  one = x: [ x ];
+  two = x: [ (x + 1) ];
+  defsOf =
+    vs:
+    map (v: {
+      file = "/t/d.nix";
+      value = v;
+    }) vs;
+  sfaPair = defsOf [
+    (np.setFunctionArgs one { })
+    (np.setFunctionArgs two { })
+  ];
+  mixPair = defsOf [
+    one
+    (np.setFunctionArgs two { })
+  ];
+  sharedFunctor = np.setFunctionArgs one { };
+  checkOnly =
+    vs:
+    builtins.tryEval
+      (evalModuleTree {
+        modules = [
+          {
+            options.x = mkOption {
+              type = genMerge.mkOptionType {
+                name = "t";
+                check = _: true;
+              };
+            };
+          }
+        ]
+        ++ map (v: { x = v; }) vs;
+      }).config.x;
 in
 {
   flake.tests.functor-readers = {
-    test-two-functor-defs-merge-as-attrsets = {
+    test-two-functor-defs-merge-as-functions = {
       expr = builtins.typeOf (
         mergeDefaultOption
           [ "x" ]
@@ -81,7 +118,75 @@ in
             }
           ]
       );
-      expected = "set";
+      expected = "lambda";
+    };
+    test-setfunctionargs-defs-take-the-function-arm-nixpkgs-takes = {
+      expr = {
+        gm = builtins.typeOf (mergeDefaultOption [ "x" ] sfaPair);
+        np = builtins.typeOf (np.mergeDefaultOption [ "x" ] sfaPair);
+        applied = mergeDefaultOption [ "x" ] sfaPair 1;
+      };
+      expected = {
+        gm = "lambda";
+        np = "lambda";
+        applied = [
+          1
+          2
+        ];
+      };
+    };
+    test-a-lambda-beside-a-functor-merges-as-functions = {
+      expr = mergeDefaultOption [ "x" ] mixPair 1;
+      expected = [
+        1
+        2
+      ];
+    };
+    test-control-a-functor-beside-an-attrset-merges-as-attrsets = {
+      expr = {
+        gm = builtins.attrNames (
+          mergeDefaultOption [ "x" ] (defsOf [
+            sharedFunctor
+            { b = 2; }
+          ])
+        );
+        np = builtins.attrNames (
+          np.mergeDefaultOption [ "x" ] (defsOf [
+            sharedFunctor
+            { b = 2; }
+          ])
+        );
+      };
+      expected = {
+        gm = [
+          "__functionArgs"
+          "__functor"
+          "b"
+        ];
+        np = [
+          "__functionArgs"
+          "__functor"
+          "b"
+        ];
+      };
+    };
+    test-check-only-type-refuses-one-functor-defined-twice-as-it-refuses-a-lambda = {
+      expr = {
+        functor =
+          (checkOnly [
+            sharedFunctor
+            sharedFunctor
+          ]).success;
+        lambda =
+          (checkOnly [
+            one
+            one
+          ]).success;
+      };
+      expected = {
+        functor = false;
+        lambda = false;
+      };
     };
     test-control-two-lambda-defs-merge-as-functions = {
       expr = builtins.typeOf (

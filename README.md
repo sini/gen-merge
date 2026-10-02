@@ -114,7 +114,8 @@ into the value domain.
 `genMerge.mergeDefaultOption loc defs` is the nixpkgs `lib.mergeDefaultOption` analogue: the law
 nixpkgs applies where no *per-key* type was authored. It combines by the definitions' **runtime
 shape** — one def ⇒ its value · all functions ⇒ applied **pointwise**, results merged by the same law
-(this is not composition) · all lists ⇒ concatenated · all attrsets ⇒ `//`-folded, **shallow,
+(this is not composition; a function is what nixpkgs' `lib.isFunction` accepts, so a `setFunctionArgs`
+wrapper counts) · all lists ⇒ concatenated · all attrsets ⇒ `//`-folded, **shallow,
 last-wins** · all bools ⇒ OR-folded · all strings ⇒ concatenated · all ints **and all equal** ⇒ that
 value · anything else ⇒ a named refusal. **Only differing ints and type-heterogeneous definition lists
 refuse**; differing bools and strings combine.
@@ -141,7 +142,8 @@ takes `merge ? mergeDefaultOption`, so a descriptor stating `name` and no `merge
 `"aa"`), bools OR, equal ints pass. Two arms keep a named refusal, by the parity criterion ruled
 2026-09-25 (take nixpkgs' value except where that value is silent): attrsets sharing a key whose
 values are **not `==`**, which nixpkgs' shallow `//` settles by keeping the first file's value and
-dropping the rest without a word, and functions, where nixpkgs aborts or unwraps silently. Attrsets
+dropping the rest without a word, and functions (functors included, rendered `<a set>` in the conflict
+text), where nixpkgs aborts or unwraps silently. Attrsets
 with disjoint keys, or whose shared keys carry `==` values, are `//`-folded: `{ a = 1; b = 1; }`,
 `{ a = 1; c = 2; }` ⇒ `{ a = 1; b = 1; c = 2; }`, nixpkgs' value, which 6a508e3 refused. "Equal" is
 the running evaluator's `==` applied to each definer's own value, and nothing wider. Between
@@ -151,8 +153,8 @@ value passed to both modules through `specialArgs`; two distinct closures refuse
 evaluators split only where the definitions hold one function, or one value with an attribute that
 throws when forced, in *different* value slots (a selection written at each site, a `_module.args`
 module argument, …): that case, and why it stays, is under
-[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A functor is an attrset to
-`builtins.isFunction`, so two functors refuse through the attrset arm, not the function arm. And
+[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A functor is a function to
+nixpkgs' `lib.isFunction`, so two functors refuse through the function arm, as two lambdas do. And
 deciding a shared key forces its values, so `{ a = 1; b = 1; }`,`{ a = throw …; }` throws on reading
 `.b`, where nixpkgs gives `1`. A descriptor stating `verify` is a gen leaf and keeps
 `mergeLeaf`. Cells: `ci/tests/parity-surface.nix` (both engines) and `ci/tests-error.nix`
@@ -1805,7 +1807,8 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   nixpkgs does on the same modules.
 
 - **A check-only `mkOptionType` refuses where nixpkgs' default merge is silent.** Two definitions
-  that are attrsets sharing a key whose values are not `==`, or that are functions, are refused by
+  that are attrsets sharing a key whose values are not `==`, or that are functions (functors
+  included), are refused by
   name (`ci/tests-error.nix` `mkoptiontype-default-merge`); nixpkgs keeps the FIRST file's value at
   the key (`{ a = 1; }` in the first file, `{ a = 2; }` in the second ⇒ `{ a = 1; }`: its
   definitions list runs in reverse file order and `//` is last-wins over that list), and for

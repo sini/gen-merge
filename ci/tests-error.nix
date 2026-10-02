@@ -3046,6 +3046,20 @@ in
             msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a lambda>\\n- In `/demo/warp\\.nix': <a lambda>$";
           };
         };
+        # A `setFunctionArgs` wrapper is a function to nixpkgs' `lib.isFunction`, so one wrapper
+        # written twice takes that same refusal (den-hoag-1ypox); the conflict text renders it as the
+        # attrset it is. RED (the builtin `isFunction` at this site): ❌ NOERROR, a value served.
+        test-one-functor-written-twice-refuses-naming-files =
+          let
+            f = nixpkgsLib.setFunctionArgs (x: [ x ]) { };
+          in
+          {
+            expr = heddle thread f f;
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
+            };
+          };
         # A shared key compares each definer's own value slot (`sharedKeyDiffers`), and identity is
         # sound only while DISTINCT closures stay unequal: two closures of one lambda over different
         # environments, and two function literals, refuse on all three evaluators. RED (a fold that

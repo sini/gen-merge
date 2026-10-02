@@ -67,9 +67,10 @@ let
   # in `callM` and `callD`, reads nixpkgs' functor-aware predicate (`lib.isFunction` and
   # `lib.functionArgs`, gen-prelude's readers) INLINE behind the builtin test, so a functor module is
   # applied by its `__functionArgs` (den-hoag-genmerge-functor-module-application-u6lf8). The
-  # builtins stay bound here for the value-merge sites, which still read a functor DEFINITION as an
-  # attrset (the residue, den-hoag-1ypox). Inline rather than the prelude readers by name because
-  # `prelude.isFunction` is a lambda: binding it allocates an env on every module application,
+  # builtins stay bound here for that inline fast path and `isModuleValue`; every definition-value
+  # site reads `prelude.isFunction` by name (den-hoag-1ypox). Inline rather than the prelude
+  # readers by name because `prelude.isFunction` is a lambda: binding it allocates an env on every
+  # module application,
   # lambda and attrset modules included (+921,600 B on the hub's deepSubmodule n=1600, ratio 0.501
   # against the 0.500 bound), where the inline test costs those arms nothing.
   inherit (builtins) isFunction functionArgs;
@@ -2862,7 +2863,10 @@ let
   # HOMOGENEOUS definition list the shape predicates are mutually exclusive and the order is
   # observable only at the singleton fast path and the terminal refusal:
   #   one definition ......................... that definition's value
-  #   all functions .......................... applied POINTWISE, results merged by this same law
+  #   all functions .......................... applied POINTWISE, results merged by this same law;
+  #                                            "function" is nixpkgs' `lib.isFunction` (gen-prelude's
+  #                                            reader): a lambda, or an attrset whose `__functor`
+  #                                            yields one, such as a `setFunctionArgs` wrapper
   #   all lists .............................. concatenated
   #   all attrsets ........................... `//`-folded (SHALLOW, last definition wins per key)
   #   all bools .............................. OR-folded — differing bools do NOT refuse
@@ -2897,7 +2901,7 @@ let
     in
     if length list == 1 then
       head list
-    else if all isFunction list then
+    else if all prelude.isFunction list then
       (x: mergeDefaultOption loc (map (d: d // { value = d.value x; }) defs))
     else if all isList list then
       concatLists list
@@ -2938,6 +2942,7 @@ let
   #   · attrsets sharing a key with DIFFERING values: `//` keeps the last and drops the rest without
   #     a word. Disjoint keys, and shared keys carrying equal values, lose nothing and fold as above.
   #   · functions: nixpkgs aborts uncatchably, or silently unwraps a `{ value = …; }` result.
+  #     Functors are functions here as in the law above; the conflict text renders one as `<a set>`.
   # The price, stated with the ruling: a nixpkgs module relying on silent last-wins attrset merging
   # under a check-only type is refused here. The exported law keeps both arms, because its ruled
   # caller (gen-aspects' freeform arm) is not this one.
@@ -2953,7 +2958,7 @@ let
       # hold one value in one slot. The split that remains is stated in the README.
       sharedKeyDiffers = any slotsDiffer (builtins.attrValues (builtins.zipAttrsWith (_: vs: vs) list));
     in
-    if length list > 1 && (all isFunction list || (all isAttrs list && sharedKeyDiffers)) then
+    if length list > 1 && (all prelude.isFunction list || (all isAttrs list && sharedKeyDiffers)) then
       throw (showConflict loc defs)
     else
       mergeDefaultOption loc defs;
