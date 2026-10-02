@@ -1357,8 +1357,8 @@ hold. What stays with the engine is the gen half: a name, a fold, and the mark.
 | `name`, `mergeDefs`/`merge`                                                                                    | **implemented** — the nesting seam. The fold is answered rather than refused because such a value really does combine definitions that way; it opens no mount, since the field a foreign engine forces first refuses before any fold is reached                                                                                                                                                                                                                                                                                                                      |
 | `nonMountable`                                                                                                 | **the mark.** Presence is the predicate (testing it forces nothing); the value carries the reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `deprecationMessage` ⇒ `null`, `emptyValue` ⇒ the tree's fold over no definitions, `nestedTypes` ⇒ `{ }`       | **answered, and true of a tree** — it is not deprecated, supplies its own fold over no definitions for an undefined nesting option (the same binding as the gen face's `whenEmpty`), and wraps no element type. `deprecationMessage` does one thing more: it closes the consumer's one remaining **direct** (non-`or`) read of this type, the read that would abort *uncatchably* rather than refuse. The refusal does not depend on it — with the field removed the mount still refuses catchably, because `getSubModules` is forced first and is read through `or` |
-| `check` ⇒ the module-value domain                                                                              | **answered, and true of a tree** — the same `isModuleValue` binding as `admits`, one domain published under both names (den-hoag-f8mgj arm Q). It reads only the value, never the tree                                                                                                                                                                                                                                                                                                                                                                               |
-| `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for (pending den-hoag-foreign-mount-parity-knhyg)                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `check` ⇒ the module-value domain                                                                              | **answered, and true of a tree** — the same `isModuleValue` binding as `admits`, one domain published under both names. It reads only the value, never the tree                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for (pending foreign-mount parity)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `_type`                                                                                                        | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort                                                                                                                                                                                                                                                                                                     |
 
 **A union in gen's own eval holds the tree as nesting.** The tree also answers `admits`, a gen field
@@ -1510,7 +1510,7 @@ cannot be told from the stock one and is re-homed silently, losing the override;
 that forwards to a gen nesting type it does NOT declare evaluates that tree standalone through the
 exported `merge`. A stock `either`/`oneOf`/`nullOr` re-homed over the gen module tree carries an
 `addCheck` on that container: the tree's `check` is its module-value domain, so the stock check reads
-it and the rewritten one is evaluated (den-hoag-f8mgj arm Q). `addCheck (either tree str) p` and the
+it and the rewritten one is evaluated. `addCheck (either tree str) p` and the
 `oneOf` twin refuse as nixpkgs does; over `nullOr` gen-merge is stricter than nixpkgs, which erases the
 check at declaration. The `eitherTree`, `oneOfTree` and `nullOrTree` rows of
 `test-the-residue-is-the-bare-tree-and-the-offered-tree` in `ci/tests/check-carriage.nix` pin all
@@ -1810,7 +1810,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   value, `mkIf false` included:
   `` gen-merge: `_module.check' is not read from a module: pass it as `evalModuleTree { check = …; }'; defined in <file> ``.
   The refusal fires before the realizer, so it is what an undeclared sibling meets first. Whether to
-  honour the option as nixpkgs does is an open owner question (`den-hoag-lnleu` Q1).
+  honour the option as nixpkgs does is an open design question.
   `_module.specialArgs` is refused the same way (`… is set by the caller, never by a module …`):
   nixpkgs drops a module's definition silently, and a silent drop is not a value. A non-attrset
   `_module` is refused (`` `_module' must be an attribute set, and this one is <type>; defined in <file> ``),
@@ -1897,7 +1897,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   evaluating the type's own module set with no definitions, a read nixpkgs never takes; taking it
   refused "option does not exist" on a redeclared submodule whose halves complete each other. A
   record whose functor payload states `modules` and which states a non-null `getSubModules` is
-  recognised for laziness only (ADR-0014's one exception to reading what a record carries off its
+  recognised for laziness only (the one exception to reading what a record carries off its
   carrying spelling): its role is the module set, read off `getSubModules`, and its `nestedTypes`
   crosses as an unforced thunk (`ci/tests/submodule-laziness.nix`, a poisoned `nestedTypes` on
   every route). The residue, pinned (`test-the-residue-is-served-as-a-module-set`): such a record
@@ -2068,7 +2068,7 @@ on attrset modules, `import`ed path leaves (a path or a string naming an absolut
 modules reached through `imports`. A
 submodule's `getSubModules` is a separate nested eval — lint those by passing them to `lint`
 directly. A recognised nixpkgs submodule's `freeformType` is not scanned, by either route: reading
-it is the forcing the engine never takes (den-hoag-a0c4z), so here "never forces what the engine
+it is the forcing the engine never takes, so here "never forces what the engine
 wouldn't" wins over "must not false-negative" and a `functionTo` there is not flagged
 (`test-the-lint-does-not-scan-a-submodule-freeformType`).
 
