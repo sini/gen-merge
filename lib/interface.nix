@@ -372,7 +372,7 @@ let
       checkedFold t (t.mergeDefs or leafFold)
     else if t._protoLeafMerge or false then
       null
-    else if isV2 t && !(t.check.isV2MergeCoherent or false) then
+    else if adHocChecked t then
       adHocFold t
     else if isV2 t && (t.getSubModules or null) == null then
       v2Fold t
@@ -398,6 +398,8 @@ let
       null;
 
   isV2 = t: (t.merge or { }) ? v2;
+  # a v2 type whose `check` is not the coherent one its constructor shipped: `type // { check = ...; }`
+  adHocChecked = t: isV2 t && !(t.check.isV2MergeCoherent or false);
   checksDefs = t: t ? check && !(t ? verify);
   describe = t: if builtins.isString (t.description or null) then t.description else nameOf t;
 
@@ -1094,44 +1096,78 @@ let
         name == "either" || (name == "nullOr" && mayFoldUnion ((statedRoles t).element or null))
     );
 
-  # ── THE ROOT FIX-UP: WHERE NIXPKGS REBUILDS A TYPE, GEN DOES (den-hoag-threadedforeign-parity-residue-0hew4) ─
+  # ── THE ROOT FIX-UP: WHERE NIXPKGS REBUILDS A TYPE, GEN DOES (den-hoag-threadedforeign-parity-residue-0hew4, den-hoag-gijly) ─
   # nixpkgs' `fixupOptionType` mounts a declared option's type as `t.substSubModules` over the
   # declaration's module set when `t.getSubModules` is non-null, and `t` otherwise, at the option's
   # ROOT only; the rebuild reaches what the root's own `substSubModules` forwards to, and nothing
   # below a container stating no module set (`either`, `oneOf`). Gen's evaluation does the same at
-  # the same place, for a foreign root that declares a gen nesting element its marker rebuild does
-  # not thread (`threadsAt`): it is mounted as that rebuild over the real module set, where the
-  # result is an option type declaring no gen nesting element. Otherwise the root is unchanged, and
-  # its homing threads or refuses by name as before. A gen root is gen's own fold, unchanged.
+  # the same place, for every foreign root stating a module set:
+  #   - one declaring NO gen nesting element is mounted as that rebuild, whose merge is the one
+  #     served, and its own `check` rides on it (`carriedCheck`); a rebuild that is not an option
+  #     type is refused by name (`rootRebuildRefusal`); the rebuild is judged before any read of the
+  #     record's roles, so a copied submodule's `nestedTypes` is never forced (den-hoag-2lmky);
+  #   - one declaring a gen nesting element its marker rebuild does not thread (`threadsAt`) is
+  #     mounted as that rebuild where the result declares no gen nesting element; otherwise its
+  #     homing threads or refuses by name as before.
+  # `site` is the caller's own record, read only past the presence tests (`isOptionRoot`). A gen
+  # record (`substructure`, `carries`, `verify`, a nesting type) is gen's own fold, unchanged.
   homedRootAt =
-    door: loc: t:
+    door: loc: site: t:
     # presence first, with no binding: every option's root passes here, and a gen root or a leaf
     # pays these tests and nothing else
     if
       !(isAttrs t)
       || t ? verify
       || t ? carries
+      || t ? substructure
       || isNesting t
-      || !(statesWrapped t)
       || !(isList (t.getSubModules or null))
     then
       homedAt door loc t
     else
-      homedRootFixed door loc t;
+      homedRootFixed door loc site t;
+  # Is the position an OPTION ROOT? An evaluation's option (its fold's mode states the `reader`) or
+  # a declared option's group; not the freeform group, whose type is no option's, nor the value-only
+  # `mergeOption`'s option. nixpkgs fixes up neither.
+  isOptionRoot = site: site ? reader || site ? hostMode && site.name != "freeform";
   homedRootFixed =
-    door: loc: t:
+    door: loc: site: t:
     let
       mods = t.getSubModules;
       s = t.substSubModules or null;
       threads = threadsAt door loc t;
+      # the shape `mergeOptionDecls` hands a rebuild, labelled as nixpkgs labels a module that states
+      # no file
       fixed = s (
         map (m: {
-          _file = "<gen-merge: ${showOption loc}, mounted as fixupOptionType mounts it>";
+          _file = "<unknown-file>";
           imports = [ m ];
         }) mods
       );
+      callable = isFunction s || isAttrs s && s ? __functor;
+      mountable = callable && isAttrs fixed && fixed ? merge && fixed ? check;
+      # judged on the record as written (a re-homing disagreement), then mounted as the rebuild over
+      # the real module set, whose merge is the one served, the record's own `check` riding on it
+      mounted = builtins.seq (importedRehomeAt door loc t) (
+        homedAt door loc (fixed // { check = carriedCheck t fixed; })
+      );
     in
-    if !(isFunction s || isAttrs s && s ? __functor) || !(declaresNestingAt door loc t) then
+    # the rebuild first, before any read of the record's own roles (a0c4z: never take a read nixpkgs
+    # never takes): at an option root, a rebuild that is an option type declaring no gen nesting
+    # element is mounted; an ad-hoc `check` keeps `adHocFold`
+    if isOptionRoot site && !(adHocChecked t) && mountable && !(declaresNestingAt door loc fixed) then
+      mounted
+    else if !(statesWrapped t && declaresNestingAt door loc t) then
+      # no gen nesting element: a rebuild that is not an option type is refused by name
+      (
+        if !(isOptionRoot site) || adHocChecked t then
+          homedAt door loc t
+        else if !mountable then
+          throw (rootRebuildRefusal door loc t)
+        else
+          mounted
+      )
+    else if !callable then
       homedAt door loc t
     else if threads then
       # one verdict for the root: an unrecognised container threads with it, a recognised one is
@@ -1146,6 +1182,23 @@ let
       homedAt door loc fixed
     else
       homedAt door loc t;
+
+  # THE RECORD'S OWN `check` RIDES ON THE ROOT'S REBUILD, as on every re-home (den-hoag-4ifgb M-B,
+  # `homedAt`): a refinement `{ x : F e | p x }` is not part of the functor, so `addCheck` over a
+  # module-set root is rebuilt away unless carried. The rebuild's own `check` stays, so the domain is
+  # the meet of the two; a v2 merge reads it as the coherent check its constructor would ship.
+  carriedCheck = t: fixed: {
+    __functor = _: x: fixed.check x && t.check x;
+    isV2MergeCoherent = true;
+  };
+
+  rootRebuildRefusal =
+    door: loc: t:
+    "gen-merge: `${door}' at option `${showOption loc}': the option type `${nameOf t}' states a module "
+    + "set (`getSubModules'), and its `substSubModules' rebuild over that set is not an option type. "
+    + "An option root stating a module set is mounted as that rebuild (fixupOptionType), here as in "
+    + "the module system it comes from. Make `substSubModules' return an option type, or state `getSubModules = null' "
+    + "where the type carries no module set";
 
   # The rebuild of a foreign container over the thread marker, and whether it THREADS: judged on
   # the ORIGINAL record, position by position (`threadsAt`). `null` where the record has no rebuild

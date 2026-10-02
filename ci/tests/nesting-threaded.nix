@@ -1084,4 +1084,88 @@ in
         nestedTypes.elemType = sub;
       }) { x = 2; };
     };
+
+  # gijly: a foreign root that states a module set and declares NO gen nesting element is mounted
+  # as nixpkgs' `fixupOptionType` mounts it, as its rebuild over that set, whose merge is the one
+  # served; a stock nixpkgs root stating a module set is served the value it was served before.
+  flake.tests.nesting-threaded-root-fixup =
+    let
+      own = nixpkgsLib.mkOptionType {
+        name = "own";
+        check = builtins.isAttrs;
+        merge = _: _: "OWN-MERGE";
+        getSubModules = [ ];
+        substSubModules = _: np.submodule { options.x = gm.mkOption { type = t.int; }; };
+      };
+      ySub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+      cell = type: def: {
+        expr = opt type def;
+        expected = fwd type def;
+      };
+    in
+    {
+      test-a-root-with-no-gen-element-is-mounted-as-its-rebuild-not-its-own-merge = cell own { x = 2; };
+      test-a-forwarding-root-with-no-gen-element-is-mounted-as-its-rebuild = cell (np.uniq own) {
+        x = 2;
+      };
+      test-a-stock-submodule-root-is-served-as-before = cell ySub { x = 2; };
+      test-a-stock-attrsof-submodule-root-is-served-as-before = cell (np.attrsOf ySub) { a.x = 2; };
+      # A stock record is mounted as its rebuild too: a `//` override of its `merge`, or of its
+      # `substSubModules`, is served what nixpkgs serves, never the record's own fold.
+      test-a-stock-record-s-overridden-merge-is-mounted-as-its-rebuild = cell (
+        ySub // { merge = _: _: "OVR"; }
+      ) { x = 2; };
+      test-a-stock-record-s-overridden-rebuild-is-mounted = cell (
+        ySub
+        // {
+          substSubModules =
+            _:
+            np.submodule {
+              options.x = nixpkgsLib.mkOption { type = np.int; };
+              options.z = nixpkgsLib.mkOption {
+                type = np.int;
+                default = 3;
+              };
+            };
+        }
+      ) { x = 2; };
+      # the record's own `check` rides on a gen rebuild and admits what it accepts
+      test-a-root-s-own-check-on-a-gen-rebuild-admits-what-it-accepts = cell (np.addCheck (
+        nixpkgsLib.mkOptionType
+          {
+            name = "ownG";
+            check = builtins.isAttrs;
+            merge = nixpkgsLib.mergeOneOption;
+            getSubModules = [ ];
+            substSubModules = _: t.submodule { options.x = gm.mkOption { type = t.int; }; };
+          }
+      ) (v: (v.x or 9) > 5)) { x = 7; };
+      # A freeform type is no option's root: nixpkgs never fixes it up, and gen does not either.
+      test-a-freeform-type-is-not-mounted-as-its-rebuild = {
+        expr =
+          (cfg [
+            { freeformType = np.attrsOf own; }
+            { a.x = 2; }
+          ]).a;
+        expected =
+          (nixpkgsLib.evalModules {
+            modules = [
+              { freeformType = np.attrsOf own; }
+              { a.x = 2; }
+            ];
+          }).config.a;
+      };
+      test-a-stock-deferred-module-root-stores-as-many-modules = {
+        expr =
+          builtins.length
+            (opt (np.deferredModuleWith {
+              staticModules = [ { options.x = gm.mkOption { type = t.int; }; } ];
+            }) { config.x = 2; }).imports;
+        expected =
+          builtins.length
+            (fwd (np.deferredModuleWith {
+              staticModules = [ { options.x = gm.mkOption { type = t.int; }; } ];
+            }) { config.x = 2; }).imports;
+      };
+    };
 }

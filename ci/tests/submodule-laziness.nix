@@ -39,6 +39,13 @@ let
     in
     if r.success then r.value else "refused";
   gen = served (modules: gm.evalModuleTree { inherit modules; });
+  genL = served (
+    modules:
+    gm.evalModuleTree {
+      inherit modules;
+      specialArgs = { inherit lib; };
+    }
+  );
   ref = served (modules: lib.evalModules { inherit modules; });
   y = c: c.s.y;
 
@@ -235,6 +242,64 @@ let
       { s.y = 2; }
     ];
   };
+
+  # a payload-null copy (`mkOptionType`'s default functor) of a module-set record, every other field
+  # kept: no recogniser admits it, so only the root's mount serves it (den-hoag-2lmky)
+  copy =
+    r:
+    lib.mkOptionType {
+      name = "submodule";
+      inherit (r)
+        check
+        merge
+        getSubOptions
+        getSubModules
+        substSubModules
+        nestedTypes
+        emptyValue
+        description
+        ;
+    };
+  declaresFn = { ... }: { options.y = int; };
+  declaresPath = ./_fixtures/declares-y.nix;
+  setsY = np.submodule { config.y = 2; };
+  shorthandSetsY = np.submoduleWith {
+    modules = [ { config.y = 2; } ];
+    shorthandOnlyDefinesConfig = true;
+  };
+  at = type: def: [
+    { options.s = lib.mkOption { inherit type; }; }
+    { s = def; }
+  ];
+  # a copy whose definition DECLARES what the type's module set sets, at an option root, as a
+  # function and as a path, over `submodule` and over a shorthand `submoduleWith`; the same below a
+  # stock `attrsOf`; and a copy whose `nestedTypes` is poisoned
+  copyDeclares = {
+    copyFn = [
+      y
+      (at (copy setsY) declaresFn)
+    ];
+    copyPath = [
+      y
+      (at (copy setsY) declaresPath)
+    ];
+    copyShorthandFn = [
+      y
+      (at (copy shorthandSetsY) declaresFn)
+    ];
+    copyShorthandPath = [
+      y
+      (at (copy shorthandSetsY) declaresPath)
+    ];
+    attrsOfCopyFn = [
+      (c: c.s.k.y)
+      (at (np.attrsOf (copy setsY)) { k = declaresFn; })
+    ];
+    copyPoisoned = [
+      y
+      (at (poison (copy setsY)) declaresFn)
+    ];
+  };
 in
 {
   flake.tests.submodule-laziness = {
@@ -310,7 +375,8 @@ in
     # `payload.modules`, a non-null `getSubModules` AND a static role in `nestedTypes` is served as a
     # module set, its static role unread: a hand-built container whose substitution lies about its
     # roles, the same with a coherent substitution, and a nixpkgs submodule given an element by `//`.
-    # (R3) a payload-null copy of a partial submodule is not recognised and keeps the refusal.
+    # (R3) a payload-null copy of a partial submodule is not recognised, and at an option root it is
+    # mounted as nixpkgs' `fixupOptionType` mounts it: its rebuild, a stock submodule, is served.
     # Control: `fakeNesting` (the same container stating no `getSubModules`) is refused by name on
     # the error plane.
     test-the-residue-is-served-as-a-module-set = {
@@ -380,11 +446,23 @@ in
         ];
       };
       expected = {
-        fakeSubstLiar = [ { y = 2; } ];
+        fakeSubstLiar = "refused";
         fakeSubstSelf = [ { y = 2; } ];
         subWithElemType = 2;
-        copyDefDeclaresFn = "refused";
+        copyDefDeclaresFn = 2;
       };
+    };
+
+    # A copied submodule is mounted at the root as nixpkgs mounts it, before any read of the record,
+    # so a definition completing its module set is served nixpkgs' value (den-hoag-2lmky).
+    test-a-copied-submodule-is-mounted-before-any-read = {
+      expr = builtins.mapAttrs (_: a: genL (builtins.elemAt a 0) (builtins.elemAt a 1)) copyDeclares;
+      expected = builtins.mapAttrs (_: a: ref (builtins.elemAt a 0) (builtins.elemAt a 1)) copyDeclares;
+    };
+    # the reference row: nixpkgs serves every copy cell
+    test-nixpkgs-serves-every-copy-cell = {
+      expr = builtins.mapAttrs (_: a: ref (builtins.elemAt a 0) (builtins.elemAt a 1)) copyDeclares;
+      expected = builtins.mapAttrs (_: _: 2) copyDeclares;
     };
 
     # ★ THE LAZINESS'S BLINDNESS INSIDE `freeformType`, pinned (ADR-0014's rider: a stated boundary).
