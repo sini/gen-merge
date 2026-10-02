@@ -1084,4 +1084,272 @@ in
         nestedTypes.elemType = sub;
       }) { x = 2; };
     };
+
+  # den-hoag-i2xjs: a FOREIGN container (one `homedAt` threads rather than re-homes:
+  # `uniq`, `unique`, `coercedTo`, `attrsWith` with a placeholder) at an EXACT container's element is
+  # keyed where it is READ, so no sibling's read runs its merge. Every `expected` is nixpkgs'
+  # evalModules over the same types and definitions, never a literal. One test per cell, so an
+  # uncatchable abort errors its own cell only.
+  flake.tests.nesting-threaded-foreign-keyed-on-read =
+    let
+      npSub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+      optDefs =
+        type: defs:
+        (cfg ([ { options.h = gm.mkOption { inherit type; }; } ] ++ map (d: { config.h = d; }) defs)).h;
+      fwdDefs =
+        type: defs:
+        (nixpkgsLib.evalModules {
+          modules = [
+            { options.h = nixpkgsLib.mkOption { inherit type; }; }
+          ]
+          ++ map (d: { config.h = d; }) defs;
+        }).config.h;
+      # gen and nixpkgs spell the same type from one builder `T: S: …` (`T` the six, `S` the submodule)
+      pair = mk: defs: read: {
+        expr = read (optDefs (mk t sub) defs);
+        expected = read (fwdDefs (mk np npSub) defs);
+      };
+      # a refusal stays catchable where nixpkgs refuses: the cell reads `tryEval`'s verdict on both
+      caught = mk: defs: read: {
+        expr = (builtins.tryEval (builtins.deepSeq (read (optDefs (mk t sub) defs)) true)).success;
+        expected = (builtins.tryEval (builtins.deepSeq (read (fwdDefs (mk np npSub) defs)) true)).success;
+      };
+      ctT = S: np.coercedTo np.str (_: throw "i2xjs: a sibling's coercion was forced") S;
+      ctOk = S: np.coercedTo np.str (s: { x = builtins.stringLength s; }) S;
+      awP =
+        S:
+        np.attrsWith {
+          elemType = S;
+          placeholder = "p";
+        };
+      awLP =
+        S:
+        np.attrsWith {
+          elemType = S;
+          lazy = true;
+          placeholder = "p";
+        };
+      uq = S: np.unique { message = "m"; } S;
+      # nixpkgs <= 24.05 spells `listOf`'s functor `defaultFunctor name // { wrapped = elemType; }`
+      oldListOf =
+        S:
+        let
+          l = np.listOf S;
+        in
+        l
+        // {
+          functor = l.functor // {
+            payload = null;
+            wrapped = S;
+          };
+        };
+      # `attrsWith` with the default placeholder, and a payload key re-homing does not know
+      awExtra =
+        S:
+        let
+          a = np.attrsOf S;
+        in
+        a
+        // {
+          functor = a.functor // {
+            payload = a.functor.payload // {
+              extra = true;
+            };
+          };
+        };
+      freeform = T: S: [
+        { freeformType = T.attrsOf (ctOk S); }
+        { k.x = 1; }
+        { n = 5; }
+      ];
+      ab = x: [
+        {
+          a = x;
+          b.x = 5;
+        }
+      ];
+      twice = [
+        {
+          a.x = 1;
+          b.x = 5;
+        }
+        { a.x = 2; }
+      ];
+      b = v: v.b;
+      a = v: v.a;
+      i1 = v: builtins.elemAt v 1;
+      all = v: v;
+    in
+    {
+      # the sibling's read serves nixpkgs' value: the foreign merge at `a` is never run
+      test-attrsOf-coercedTo-throwing-sibling = pair (T: S: T.attrsOf (ctT S)) (ab "hello") b;
+      test-attrsOf-coercedTo-sibling-outside-the-domain = pair (T: S: T.attrsOf (ctOk S)) (ab 5) b;
+      test-attrsOf-uniq-sibling-defined-twice = pair (T: S: T.attrsOf (np.uniq S)) twice b;
+      test-attrsOf-unique-sibling-defined-twice = pair (T: S: T.attrsOf (uq S)) twice b;
+      test-attrsOf-attrsWith-placeholder-sibling-not-a-set = pair (T: S: T.attrsOf (awP S)) [
+        {
+          a = 5;
+          b.k.x = 5;
+        }
+      ] b;
+      test-attrsOf-lazy-attrsWith-placeholder-sibling-not-a-set = pair (T: S: T.attrsOf (awLP S)) [
+        {
+          a = 5;
+          b.k.x = 5;
+        }
+      ] (v: v.b.k);
+      test-listOf-coercedTo-throwing-sibling = pair (T: S: T.listOf (ctT S)) [
+        [
+          "hello"
+          { x = 5; }
+        ]
+      ] i1;
+      test-listOf-coercedTo-sibling-outside-the-domain = pair (T: S: T.listOf (ctOk S)) [
+        [
+          5
+          { x = 5; }
+        ]
+      ] i1;
+      test-listOf-attrsWith-placeholder-sibling-not-a-set = pair (T: S: T.listOf (awP S)) [
+        [
+          5
+          { k.x = 5; }
+        ]
+      ] i1;
+      test-nullOr-under-attrsOf-coercedTo-throwing-sibling = pair (
+        T: S: T.attrsOf (T.nullOr (ctT S))
+      ) (ab "hello") b;
+      test-nullOr-under-attrsOf-uniq-sibling-defined-twice = pair (
+        T: S: T.attrsOf (T.nullOr (np.uniq S))
+      ) twice b;
+      test-uniq-over-coercedTo-throwing-sibling = pair (T: S: T.attrsOf (np.uniq (ctT S))) (ab "hello") b;
+      test-coercedTo-over-coercedTo-throwing-sibling = pair (
+        T: S: T.attrsOf (np.coercedTo np.str (_: throw "i2xjs: forced") (np.coercedTo np.int toString S))
+      ) (ab "hello") b;
+      test-coercedTo-over-attrsWith-throwing-sibling =
+        pair (T: S: T.attrsOf (np.coercedTo np.str (_: throw "i2xjs: forced") (awP S)))
+          [
+            {
+              a = "hello";
+              b.k.x = 5;
+            }
+          ]
+          b;
+      test-attrsOf-attrsOf-coercedTo-sibling-in-the-inner-container =
+        pair (T: S: T.attrsOf (T.attrsOf (ctT S)))
+          [
+            {
+              p.a = "hello";
+              p.b.x = 5;
+            }
+          ]
+          (v: v.p.b);
+      test-attrsOf-attrsOf-coercedTo-sibling-across-outer-keys =
+        pair (T: S: T.attrsOf (T.attrsOf (ctT S)))
+          [
+            {
+              q.a = "hello";
+              p.b.x = 5;
+            }
+          ]
+          (v: v.p.b);
+      test-attrsOf-listOf-coercedTo-sibling-across-outer-keys =
+        pair (T: S: T.attrsOf (T.listOf (ctT S)))
+          [
+            {
+              q = [ "hello" ];
+              p = [ { x = 5; } ];
+            }
+          ]
+          (v: builtins.elemAt v.p 0);
+      # the position outside the domain still refuses, catchably, where it is read
+      test-attrsOf-coercedTo-throwing-position-refuses = caught (T: S: T.attrsOf (ctT S)) (ab "hello") a;
+      test-attrsOf-coercedTo-position-outside-the-domain-refuses = caught (
+        T: S: T.attrsOf (ctOk S)
+      ) (ab 5) a;
+      test-attrsOf-uniq-position-defined-twice-refuses = caught (T: S: T.attrsOf (np.uniq S)) twice a;
+      test-attrsOf-attrsWith-placeholder-position-not-a-set-refuses = caught (T: S: T.attrsOf (awP S)) [
+        {
+          a = 5;
+          b.k.x = 5;
+        }
+      ] a;
+      # served today, served after: the whole value equals nixpkgs'
+      test-attrsOf-coercedTo-value = pair (T: S: T.attrsOf (ctOk S)) [
+        {
+          a = "hello";
+          b.x = 5;
+        }
+      ] all;
+      test-attrsOf-uniq-value = pair (T: S: T.attrsOf (np.uniq S)) [
+        {
+          a.x = 1;
+          b.x = 5;
+        }
+      ] all;
+      test-attrsOf-attrsWith-placeholder-value = pair (T: S: T.attrsOf (awP S)) [
+        {
+          a.k.x = 1;
+          b = { };
+        }
+      ] all;
+      test-listOf-coercedTo-value = pair (T: S: T.listOf (ctOk S)) [
+        [
+          "hello"
+          { x = 5; }
+        ]
+      ] all;
+      test-nullOr-under-attrsOf-coercedTo-value = pair (T: S: T.attrsOf (T.nullOr (ctOk S))) [
+        {
+          a = null;
+          b = "hi";
+        }
+      ] all;
+      test-attrsOf-attrsOf-coercedTo-value = pair (T: S: T.attrsOf (T.attrsOf (ctOk S))) [
+        {
+          p.a = "hello";
+          q.b.x = 2;
+        }
+      ] all;
+      test-attrsOf-coercedTo-priority-removes-the-coerced-definition = pair (T: S: T.attrsOf (ctT S)) [
+        { a = nixpkgsLib.mkDefault "hello"; }
+        { a.x = 3; }
+      ] a;
+      test-attrsOf-coercedTo-conflict-refuses = caught (T: S: T.attrsOf (ctOk S)) [
+        { a = "hello"; }
+        { b.x = 5; }
+        { b.x = 6; }
+      ] all;
+      # a stock-NAMED record re-homing does not recognise is threaded, so it is marked: the mark reads
+      # re-homing's own recognition (`rehomeRecognition`), never the functor name alone
+      test-attrsOf-pre-elemTypeFunctor-listOf-value = pair (T: S: T.attrsOf (oldListOf S)) [
+        {
+          a = [ { x = 1; } ];
+          b = [ { x = 2; } ];
+        }
+      ] b;
+      test-listOf-pre-elemTypeFunctor-listOf-value = pair (T: S: T.listOf (oldListOf S)) [
+        [
+          [ { x = 1; } ]
+          [ { x = 2; } ]
+        ]
+      ] i1;
+      test-attrsOf-attrsWith-name-placeholder-unrecognised-payload-value =
+        pair (T: S: T.attrsOf (awExtra S))
+          [
+            {
+              a.k.x = 1;
+              b.k.x = 2;
+            }
+          ]
+          b;
+      # a freeform plane typed by an exact container keys its elements as that container does
+      test-freeform-attrsOf-coercedTo-sibling-outside-the-domain = {
+        expr = (cfg (freeform t sub)).k;
+        expected =
+          (nixpkgsLib.evalModules {
+            modules = freeform np npSub;
+          }).config.k;
+      };
+    };
 }

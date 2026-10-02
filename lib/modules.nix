@@ -2346,7 +2346,8 @@ let
         threadedAs ev t
     );
   # The fold's half of the walk's union-node rule (`keyWalk`): a union holding a container member,
-  # at an exact container's element (`exactAt`, never the walk's own root), is read off its node.
+  # or a threaded foreign container, at an exact container's element (`exactAt`, never the walk's
+  # own root), is read off its node.
   # Asked only of a marked element (`types.exactThread`), so an unmarked fold calls nothing here.
   unionNodeAt =
     ev: loc: t:
@@ -2354,7 +2355,7 @@ let
     && ev.position != [ ]
     && ev.exactAt == ev.position
     && isAttrs t
-    && t ? choose
+    && (t ? choose || t ? __threadedForeign)
     && containerAt loc t;
   threadedUnder =
     ev: loc: t:
@@ -2533,6 +2534,9 @@ let
   #     exact container it is a CONTAINER NODE, and at the walk's own root (an option's position, or
   #     a node's) its `choose` decides the member walked, as its fold's does, so no sibling's read
   #     runs a member's code;
+  #   · so is a FOREIGN container `homedAt` threads (`__threadedForeign`): under an exact container
+  #     it is a CONTAINER NODE, since only its own `merge` decides its steps; at the walk's own root
+  #     it is walked through its `split`, as the position read is the position keyed;
   #   · any other UNION is walked member by member at its own position (below); the walk never
   #     applies `choose` there, so a union's member is decided where the child is read;
   #   · a container is walked through its `split`, where it keys exactly;
@@ -2566,26 +2570,29 @@ let
           inherit loc defs;
         }
       ]
+    else if
+      under == null && pos != [ ] && (t ? choose || t ? __threadedForeign) && containerAt loc t
+    then
+      # KEYED WHERE READ: a position whose key set only code nixpkgs runs when it MERGES that
+      # position can decide (a union's `choose`, or a foreign container's own merge, the split
+      # `threadedForeign` captures). Under an exact container it is a CONTAINER NODE, whose own walk
+      # runs only when the position is read, so no sibling's read runs its code (`unionNodeAt`).
+      [
+        {
+          key = pos;
+          type = t;
+          member = t;
+          container = true;
+          inherit loc defs;
+        }
+      ]
     else if under == null && t ? choose && containerAt loc t then
-      # A UNION HOLDING A CONTAINER MEMBER, keyed EXACTLY: its key set is its member's, which only
-      # `choose` decides. Under an exact container it is a CONTAINER NODE, so the choice runs where
-      # the position is read and never at a sibling; at the walk's own root (an option's position,
-      # or a node's), the position IS the one read, and `choose` decides it, as the fold does.
-      if pos == [ ] then
-        let
-          c = chosenAt loc defs t;
-        in
-        if c == null then [ ] else keyWalk null group c pos loc defs
-      else
-        [
-          {
-            key = pos;
-            type = t;
-            member = t;
-            container = true;
-            inherit loc defs;
-          }
-        ]
+      # At the walk's own root (an option's position, or a node's) the position IS the one read, and
+      # a union holding a container member is keyed by the member its `choose` takes, as its fold is.
+      let
+        c = chosenAt loc defs t;
+      in
+      if c == null then [ ] else keyWalk null group c pos loc defs
     else if t ? choose then
       map (
         r:

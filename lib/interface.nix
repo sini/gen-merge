@@ -916,6 +916,19 @@ let
   importedRehomeAt =
     door: loc: t:
     let
+      r = rehomeRecognition t;
+    in
+    if r == null then null else rehomeAgreed door loc t r;
+  importedRehome = importedRehomeAt null null;
+
+  # THE RECOGNITION ITSELF, which refuses nothing: what `importedRehomeAt` re-homes `t` as, before
+  # the payload's offer is judged against the statement (`rehomeAgreed`), or `null`. ONE predicate,
+  # read by re-homing and by the type-time mark (`mayFoldUnion`), so the mark's foreign arm is the
+  # exact complement of what re-homing recognises: a stock-named record whose payload or statement
+  # fails recognition is threaded, and is marked.
+  rehomeRecognition =
+    t:
+    let
       f = t.functor or { };
       payload = f.payload or null;
       keys = if isAttrs payload then attrNames payload else [ ];
@@ -944,23 +957,22 @@ let
         && payload.placeholder == "name"
         && roles ? element
       then
-        rehomeAgreed door loc t {
+        {
           container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
           inherit (roles) element;
         }
       else if (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && roles ? element then
-        rehomeAgreed door loc t {
+        {
           container = name;
           inherit (roles) element;
         }
       else if name == "either" && keys == [ "elemType" ] && roles ? alternatives then
-        rehomeAgreed door loc t {
+        {
           container = "either";
           inherit (roles) alternatives;
         }
       else
         null;
-  importedRehome = importedRehomeAt null null;
 
   # A recognition `r` of `t`, or the disagreement refusal where its payload offers another element
   # than the carrying spelling states. Two elements are the same type when their `check` and `merge`
@@ -1073,12 +1085,13 @@ let
       else
         t;
 
-  # MAY this type fold as a UNION that may nest, at its own position or through a container below
-  # it? Gen's own union, or the stock foreign `either` that `homedAt` re-homes as one; through a gen
+  # MAY this type be KEYED WHERE READ, at its own position or through a container below it? Gen's
+  # own union, or the stock foreign `either` that `homedAt` re-homes as one; a foreign container
+  # re-homing does not recognise (`rehomeRecognition`), which `homedAt` threads; through a gen
   # container's element and a stock foreign `nullOr`'s, which over-approximates, since `nullOr` is
   # the one container besides a union that adds no step. Read without homing, so it refuses nothing:
   # an exact container asks it once, when it is built, to decide whether its elements carry the
-  # union-node mark (`types.exactThread`).
+  # container-node mark (`types.exactThread`).
   mayFoldUnion =
     t:
     isAttrs t
@@ -1089,9 +1102,11 @@ let
         t ? choose || (t ? carries.element && mayFoldUnion t.carries.element)
       else
         let
-          name = (t.functor or { }).name or null;
+          r = rehomeRecognition t;
         in
-        name == "either" || (name == "nullOr" && mayFoldUnion ((statedRoles t).element or null))
+        # a record re-homing does not recognise is threaded (`threadedForeign`), and is keyed where
+        # read under an exact container, as a union is (`keyWalk`, `unionNodeAt`)
+        r == null || r.container == "either" || (r.container == "nullOr" && mayFoldUnion r.element)
     );
 
   # ── THE ROOT FIX-UP: WHERE NIXPKGS REBUILDS A TYPE, GEN DOES (den-hoag-threadedforeign-parity-residue-0hew4) ─
