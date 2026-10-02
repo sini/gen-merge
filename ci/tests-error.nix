@@ -5887,6 +5887,89 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `nullsub' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
           };
         };
+        # gijly: a root stating a module set with NO gen element whose rebuild is not an option type
+        # is refused by name, where nixpkgs aborts on the null type it mounts.
+        test-a-root-with-no-gen-element-whose-rebuild-is-not-a-type-is-refused-by-name = {
+          expr = opt (nixpkgsLib.mkOptionType {
+            name = "nullsub";
+            check = builtins.isAttrs;
+            merge = nixpkgsLib.mergeOneOption;
+            getSubModules = [ ];
+          }) { x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `nullsub' states a module set [(]`getSubModules'[)], and its `substSubModules' rebuild over that set is not an option type[.]";
+          };
+        };
+        # gijly: the record's own `check` rides on the root's rebuild (4ifgb M-B), so an `addCheck`
+        # over a stock submodule root still refuses the definition it rejects.
+        test-a-root-s-own-check-rides-on-its-rebuild = {
+          expr = opt (np.addCheck (np.submodule {
+            freeformType = np.attrsOf np.int;
+          }) (v: !(v ? z))) { z = 3; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h' is not of type `open submodule of attribute set of signed integer'";
+          };
+        };
+        # gijly: the record's own `check` rides on a rebuild that is gen's own type too, so an
+        # `addCheck` over a root whose rebuild is a gen submodule still refuses what it rejects.
+        test-a-root-s-own-check-rides-on-a-gen-rebuild = {
+          expr = opt (np.addCheck (nixpkgsLib.mkOptionType {
+            name = "ownG";
+            check = builtins.isAttrs;
+            merge = nixpkgsLib.mergeOneOption;
+            getSubModules = [ ];
+            substSubModules = _: t.submodule { options.x = gm.mkOption { type = t.int; }; };
+          }) (v: (v.x or 9) > 5)) { x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h' is not of type `submodule'";
+          };
+        };
+        # gijly: a rebuild stating a `merge` but no `check` is no option type, refused by name.
+        test-a-root-whose-rebuild-states-no-check-is-refused-by-name = {
+          expr = opt (nixpkgsLib.mkOptionType {
+            name = "nocheck";
+            check = builtins.isAttrs;
+            merge = nixpkgsLib.mergeOneOption;
+            getSubModules = [ ];
+            substSubModules = _: { merge = nixpkgsLib.mergeOneOption; };
+          }) { x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `nocheck' states a module set [(]`getSubModules'[)], and its `substSubModules' rebuild over that set is not an option type[.]";
+          };
+        };
+        # 2lmky: an ad-hoc `check` on a copied submodule keeps `adHocFold`'s refusal; the mount,
+        # which would erase it silently, is not taken.
+        test-an-adhoc-check-on-a-copied-submodule-root-is-refused-by-name = {
+          expr = opt (
+            let
+              r = np.submodule { options.x = gm.mkOption { type = t.int; }; };
+            in
+            nixpkgsLib.mkOptionType {
+              name = "submodule";
+              inherit (r)
+                check
+                merge
+                getSubOptions
+                getSubModules
+                substSubModules
+                nestedTypes
+                emptyValue
+                description
+                ;
+            }
+            // {
+              check = v: v.x > 5;
+            }
+          ) { x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "option `h'.*ad-hoc.*submodule-bearing";
+          };
+        };
         # A rebuild whose marked element is stated, but beside a position that CONSUMED the marker
         # (a copied submodule, which now states the marker as its module set), is not the container
         # nixpkgs merges with: threading it would fold the copy as an empty module and drop its

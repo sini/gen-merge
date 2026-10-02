@@ -2998,7 +2998,7 @@ let
           )
           (
             keyWalk null g.loc
-              (if g.type ? carries then g.type else interface.homedRootAt "evalModuleTree" g.loc g.type)
+              (if g.type ? carries then g.type else interface.homedRootAt "evalModuleTree" g.loc g g.type)
               [ ]
               g.loc
               (
@@ -3259,7 +3259,7 @@ let
                 if (optDecl.type or null) ? carries then
                   optDecl.type
                 else
-                  interface.homedRootAt "evalModuleTree" loc (optDecl.type or null)
+                  interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)
               )
           ) withDefault;
     in
