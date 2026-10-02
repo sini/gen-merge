@@ -418,6 +418,58 @@ let
 in
 {
   flake.tests.nixpkgs-protocol = {
+    # den-hoag-b47r5: a gen `oneOf` declared beside nixpkgs' `oneOf` over the same members is ONE
+    # type, in gen's evaluation and in nixpkgs', because both fold their `either`s LEFT. A two-member
+    # list nests no deeper in either fold, so its rows are the control.
+    test-oneOf-beside-nixpkgs-oneOf-merges-in-both-engines =
+      let
+        twice =
+          ev: mk: ts:
+          (builtins.tryEval
+            (ev {
+              modules = [
+                { options.x = mk { type = gmT.oneOf ts; }; }
+                { options.x = mk { type = nixpkgsLib.types.oneOf ts; }; }
+                { x = "s"; }
+              ];
+            }).config.x
+          ).value;
+        lists = {
+          two = [
+            gmT.int
+            gmT.str
+          ];
+          three = [
+            gmT.int
+            gmT.str
+            gmT.bool
+          ];
+          four = [
+            gmT.int
+            gmT.str
+            gmT.bool
+            gmT.float
+          ];
+        };
+      in
+      {
+        expr = {
+          gen = builtins.mapAttrs (_: twice genMerge.evalModuleTree genMerge.mkOption) lists;
+          nixpkgs = builtins.mapAttrs (_: twice nixpkgsLib.evalModules nixpkgsLib.mkOption) lists;
+        };
+        expected = {
+          gen = {
+            two = "s";
+            three = "s";
+            four = "s";
+          };
+          nixpkgs = {
+            two = "s";
+            three = "s";
+            four = "s";
+          };
+        };
+      };
     # every completed type carries the full protocol — leaf (gen-types-injected), structural values, and
     # the results of the structural constructors.
     test-protocol-complete = {

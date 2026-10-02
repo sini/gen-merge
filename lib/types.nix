@@ -1150,12 +1150,22 @@ let
       # THE MEMBER CHOICE, stated ONCE (den-hoag-n6dh7 item 2): the member that accepts every
       # definition, `null` when neither does (the fold's refusal). With no definitions there is
       # nothing to place and nothing to refuse, and the member decides only which empty value the
-      # fold goes on to ask for. It ignores `loc`; the argument is the shape every union's choice
-      # takes, since a union keyed on its position reads it.
+      # fold goes on to ask for.
+      #
+      # A member accepts when every definition passes its `isValid` and, when it is itself an
+      # `either`, its own choice is non-null, as nixpkgs' `either` takes `t1` only when `t1`'s whole
+      # merge reports no `headError`. Asked pointwise only, `either a b` admits `{ 1, "s" }` over
+      # `int` and `str` and is chosen, then refuses inside, and a later member that takes the set
+      # whole is never asked. `oneOf` folds LEFT, so every `oneOf` of three or more members has such
+      # a member first. The pointwise conjunct stays for a refined `either` (nixpkgs' `addCheck`
+      # keeps the record's key and `choose`), whose `headError` is its base's or else the added
+      # check's. Only this constructor's own `either` is asked for its choice: a `null` from it IS
+      # its refusal, which another union's `choose` does not promise (gen-aspects' unions answer
+      # some definitions themselves, with no member).
       choose =
-        _loc: defs:
+        loc: defs:
         let
-          accepts = t: all (d: isValid t d.value) defs;
+          accepts = t: all (d: isValid t d.value) defs && (!isEither t || t.choose loc defs != null);
         in
         if defs == [ ] then
           b
@@ -1177,14 +1187,21 @@ let
         foldE: loc: defs:
         let
           e = head (split loc defs);
-          # Per member, the definitions IT could not take. Neither list is empty at the refusal — a
-          # member rejecting nothing would have been chosen — and between them they name every
-          # definition the author has to reconcile, which is more than the one pair the interpreter
-          # would have collided on.
+          # Per LEAF member, through every nested `either` whose own choice refused, the
+          # definitions IT could not take. No list is empty at the refusal — a leaf rejecting nothing
+          # would have been chosen, and so would every `either` above it — and between them they name
+          # every member and every definition the author has to reconcile, which is more than the one
+          # pair the interpreter would have collided on.
+          leaves =
+            t:
+            if isEither t && t.choose loc defs == null then concatMap leaves t.carries.alternatives else [ t ];
           rejects = t: map (d: toString (d.file or "<def>")) (filter (d: !(isValid t d.value)) defs);
+          rejected = t: "`${nameOf t}' rejects ${concatStringsSep ", " (rejects t)}";
         in
         if e.type == null then
-          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (`${nameOf a}' rejects ${concatStringsSep ", " (rejects a)}; `${nameOf b}' rejects ${concatStringsSep ", " (rejects b)})"
+          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (${
+            concatStringsSep "; " (map rejected (leaves a ++ leaves b))
+          })"
         else
           foldE e;
       called = foldWith foldElement;
@@ -1250,15 +1267,15 @@ let
       };
     };
 
-  # oneOf [t1 t2 …] — n-ary either (right-nested). One use on the surface (schema either-chains).
+  # A member `either`'s `choose` answers for it (`either`, above): this constructor's own, by its key.
+  isEither = t: isAttrs t && t ? choose && keyOf t == "either";
+
+  # oneOf [t1 t2 …] — n-ary either, nested to the LEFT as nixpkgs' `foldl' either` nests it, so
+  # `oneOf [ a b c ]` IS `either (either a b) c`: its `nestedTypes`, its docs phrase and its merge
+  # with a nixpkgs `oneOf` are nixpkgs'. Members are still tried first to last.
   oneOf =
     ts:
-    if ts == [ ] then
-      throw "gen-merge: oneOf: empty type list"
-    else if length ts == 1 then
-      head ts
-    else
-      either (head ts) (oneOf (tail ts));
+    if ts == [ ] then throw "gen-merge: oneOf: empty type list" else foldl' either (head ts) (tail ts);
 
   # raw — opaque single value; it brings no fold of its own, so the engine's leaf fold (one winner,
   # or equal winners) is what folds it, and the boundary publishes that same fold outward.

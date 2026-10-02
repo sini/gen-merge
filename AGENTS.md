@@ -97,7 +97,7 @@ decision trace.
 | `deferredModule`          | `type` (a value) — merges defs into `{ imports = [ … ]; }`, never forced                                                  |
 | `nullOr` / `option`       | `type -> type` (`option` is the same binding as `nullOr`); null defs drop                                                 |
 | `either`                  | `type -> type -> type`                                                                                                    |
-| `oneOf`                   | `[type] -> type` (right-nested `either`; empty list throws)                                                               |
+| `oneOf`                   | `[type] -> type` (left-nested `either`, as nixpkgs; empty list throws)                                                    |
 | `raw`                     | `type` (a value) — one winner, or all-equal winners                                                                       |
 | `anything`                | `type` (a value) — lists concat, attrsets recurse per key, else the leaf fold; a value carrying `__mint` is carried whole |
 

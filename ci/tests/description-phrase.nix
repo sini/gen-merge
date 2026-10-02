@@ -163,6 +163,188 @@ let
       );
     in
     if r.success then r.value else "REFUSED";
+  # den-hoag-b47r5: `oneOf` is `either`s folded LEFT, as nixpkgs' `foldl' either` folds them. The
+  # nest is read through the published `nestedTypes.{left,right}`, down to each member's phrase.
+  shapeOf =
+    t:
+    if (t.name or null) == "either" then
+      [
+        (shapeOf t.nestedTypes.left)
+        (shapeOf t.nestedTypes.right)
+      ]
+    else
+      t.description;
+  oneOfLists = D: {
+    "[int str]" = [
+      D.int
+      D.str
+    ];
+    "[int str bool]" = [
+      D.int
+      D.str
+      D.bool
+    ];
+    "[int nrc str]" = [
+      D.int
+      (nrc D)
+      D.str
+    ];
+    "[nrc int str]" = [
+      (nrc D)
+      D.int
+      D.str
+    ];
+    "[int nrc str bool]" = [
+      D.int
+      (nrc D)
+      D.str
+      D.bool
+    ];
+    "[str int nrc bool]" = [
+      D.str
+      D.int
+      (nrc D)
+      D.bool
+    ];
+  };
+  oneOfRead =
+    D:
+    builtins.mapAttrs (_: ts: (read (D.oneOf ts)) // { shape = shapeOf (D.oneOf ts); }) (oneOfLists D);
+  oneOfSides = {
+    gen = oneOfRead dial.gen;
+    np = oneOfRead dial.np;
+  };
+  # Which member a union merges through: tagged members over one definition, `5`. The first member
+  # accepting every definition wins in nixpkgs' `either`, and the fold must not change that order.
+  tagged =
+    D: preds:
+    D.oneOf (
+      nl.imap1 (
+        j: p:
+        D.mkOptionType {
+          name = "m${toString j}";
+          check = p;
+          merge = _: _: "m${toString j}";
+        }
+      ) preds
+    );
+  winner =
+    D: preds:
+    (nl.evalModules {
+      modules = [
+        { options.x = nl.mkOption { type = tagged D preds; }; }
+        { x = 5; }
+      ];
+    }).config.x;
+  mixedMembers = D: {
+    i = tagOf D "mI" builtins.isInt;
+    s = tagOf D "mS" builtins.isString;
+    b = tagOf D "mB" builtins.isBool;
+    all = tagOf D "mAll" (_: true);
+  };
+  tagOf =
+    D: n: p:
+    D.mkOptionType {
+      name = n;
+      check = p;
+      merge = _: _: n;
+    };
+  mixedRows =
+    let
+      m = mixedMembers;
+    in
+    {
+      "[i s all]" =
+        D:
+        D.oneOf [
+          (m D).i
+          (m D).s
+          (m D).all
+        ];
+      "[i s all b]" =
+        D:
+        D.oneOf [
+          (m D).i
+          (m D).s
+          (m D).all
+          (m D).b
+        ];
+      "[i all s]" =
+        D:
+        D.oneOf [
+          (m D).i
+          (m D).all
+          (m D).s
+        ];
+      "[all i s]" =
+        D:
+        D.oneOf [
+          (m D).all
+          (m D).i
+          (m D).s
+        ];
+      "either (either i s) all" = D: D.either (D.either (m D).i (m D).s) (m D).all;
+      "[i s b]" =
+        D:
+        D.oneOf [
+          (m D).i
+          (m D).s
+          (m D).b
+        ];
+    };
+  # Each side in its own engine, so the cell reads gen's fold and nixpkgs' `merge.v2`.
+  winnerOver =
+    vals: gen: ty:
+    let
+      r =
+        builtins.tryEval
+          ((if gen then gm.evalModuleTree else nl.evalModules) {
+            modules = [
+              { options.x = (if gen then gm.mkOption else nl.mkOption) { type = ty; }; }
+            ]
+            ++ map (v: { x = v; }) vals;
+          }).config.x;
+    in
+    if r.success then r.value else "REFUSED";
+  mixedWinner = winnerOver [
+    1
+    "s"
+  ];
+  # A member refined by nixpkgs' `addCheck`, which keeps the record's key and `choose`, over `1`.
+  refinedRows =
+    let
+      m = mixedMembers;
+      p = v: v != 1;
+    in
+    {
+      "either (addCheck (either i s)) all" =
+        D: D.either (np.addCheck (D.either (m D).i (m D).s) p) (m D).all;
+      "either (addCheck i) all" = D: D.either (np.addCheck (m D).i p) (m D).all;
+    };
+  memberOrders = with builtins; {
+    "str,int,int" = [
+      isString
+      isInt
+      isInt
+    ];
+    "int,str,int" = [
+      isInt
+      isString
+      isInt
+    ];
+    "str,str,int,int" = [
+      isString
+      isString
+      isInt
+      isInt
+    ];
+    "str,int,str,int" = [
+      isString
+      isInt
+      isString
+      isInt
+    ];
+  };
   sides = builtins.mapAttrs (_: k: {
     gen = read (k dial.gen);
     np = read (k dial.np);
@@ -248,20 +430,79 @@ let
 in
 {
   flake.tests.description-phrase = {
-    # G1: every construction's pair equals nixpkgs', but one. `oneOf [int nrc str]` is
-    # den-hoag-b47r5's: nixpkgs' `oneOf` folds into a right-nested `either`, so its middle operand is
-    # a second operand and parenthesised. This cell reds when b47r5 lands, which is the right failure.
+    # G1: every construction's pair equals nixpkgs'.
     test-every-construction-reads-nixpkgs-phrase-and-class = {
       expr = nl.filterAttrs (_: s: s.gen != s.np) sides;
-      expected."oneOf [int nrc str]" = {
-        gen = {
-          c = "conjunction";
-          d = "signed integer or port, meaning >0, or string";
-        };
-        np = {
-          c = "conjunction";
-          d = "signed integer or (port, meaning >0) or string";
-        };
+      expected = { };
+    };
+
+    # den-hoag-b47r5: `oneOf` over 2, 3 and 4 members, a clause-described member first, second and
+    # third, publishes nixpkgs' nest, phrase and class. A right fold departs on every row of three
+    # or more members, and on the phrase wherever the clause-described member is not first.
+    test-oneOf-nests-phrases-and-classes-as-nixpkgs-folds-it = {
+      expr = nl.filterAttrs (k: g: g != oneOfSides.np.${k}) oneOfSides.gen;
+      expected = { };
+    };
+    # Its live control: the instrument reads a nest, not a flat member list, on nixpkgs' side.
+    test-control-a-four-member-oneOf-reads-a-three-deep-left-nest = {
+      expr = oneOfSides.np."[int nrc str bool]".shape;
+      expected = [
+        [
+          [
+            "signed integer"
+            "port, meaning >0"
+          ]
+          "string"
+        ]
+        "boolean"
+      ];
+    };
+    # The fold changes no merge: the first member accepting every definition is the one merged
+    # through, in gen as in nixpkgs.
+    test-oneOf-merges-through-the-first-accepting-member-as-nixpkgs = {
+      expr = builtins.mapAttrs (_: p: winner gt p) memberOrders;
+      expected = builtins.mapAttrs (_: p: winner np p) memberOrders;
+    };
+    # Over a MIXED definition set, `{ 1, "s" }`: a nested `either` of `int` and `str` covers it
+    # pointwise and takes it whole in neither member, so it is passed over for the later member
+    # that does (`all`), as nixpkgs' `either` passes over a member whose merge reports a
+    # `headError`. One definition (above) cannot tell the two rules apart.
+    test-oneOf-passes-over-a-member-that-covers-mixed-definitions-only-pointwise = {
+      expr = builtins.mapAttrs (_: ty: mixedWinner true (ty gt)) mixedRows;
+      expected = builtins.mapAttrs (_: ty: mixedWinner false (ty np)) mixedRows;
+    };
+    # A refined `either` member is judged by its refinement AND its own choice, as nixpkgs'
+    # `addCheck` reports its base's `headError` or else the added check's: `either i s` takes `1`,
+    # its refinement does not, so the later member does.
+    test-a-refined-either-member-is-passed-over-when-its-refinement-rejects = {
+      expr = builtins.mapAttrs (_: ty: winnerOver [ 1 ] true (ty gt)) refinedRows;
+      expected = builtins.mapAttrs (_: ty: winnerOver [ 1 ] false (ty np)) refinedRows;
+    };
+    test-control-the-refined-rows-pick-the-later-member = {
+      expr = builtins.mapAttrs (_: ty: winnerOver [ 1 ] false (ty np)) refinedRows;
+      expected = {
+        "either (addCheck (either i s)) all" = "mAll";
+        "either (addCheck i) all" = "mAll";
+      };
+    };
+    test-control-the-mixed-rows-pick-a-later-member = {
+      expr = builtins.mapAttrs (_: ty: mixedWinner false (ty np)) mixedRows;
+      expected = {
+        "[i s all]" = "mAll";
+        "[i s all b]" = "mAll";
+        "[i all s]" = "mAll";
+        "[all i s]" = "mAll";
+        "either (either i s) all" = "mAll";
+        "[i s b]" = "REFUSED";
+      };
+    };
+    test-control-the-member-orders-pick-distinct-winners = {
+      expr = builtins.mapAttrs (_: p: winner np p) memberOrders;
+      expected = {
+        "int,str,int" = "m1";
+        "str,int,int" = "m2";
+        "str,int,str,int" = "m2";
+        "str,str,int,int" = "m3";
       };
     };
     # Its live control: the table is the 55 constructions, and the departure set is empty of every
@@ -362,8 +603,11 @@ in
             (gt.enum "a" (vs 1))
             (gt.enum "b" (vs 2))
             (gt.enum "c" (vs 3))
-          ]).description == (np.either (np.enum (vs 1)) (np.either (np.enum (vs 2)) (np.enum (vs 3))))
-          .description;
+          ]).description == (np.oneOf [
+            (np.enum (vs 1))
+            (np.enum (vs 2))
+            (np.enum (vs 3))
+          ]).description;
         bigEnum =
           (gt.listOf (gt.enum "e" bigEnum)).description == (np.listOf (np.enum bigEnum)).description;
       };
