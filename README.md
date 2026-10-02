@@ -1097,7 +1097,8 @@ nixpkgs `anything` posture.
 
 That default is correct for a type whose merge really does accept any value. **`deferredModule`'s does
 not.** Its merge wraps each def into an `imports` list, and the engine's `callM` can apply only a path,
-a string naming an absolute path, a function, a `__functor` attrset, or a plain attrset — so a
+a string naming an absolute path, a function, a `__functor` attrset (applied by its `__functionArgs`,
+nixpkgs `lib.functionArgs`, when its `__functor` yields a function), or a plain attrset — so a
 wrong-shaped definition used to be accepted and then detonate at whoever imported it, with no option
 path and no definition file. It now tests those shapes, and its domain equals nixpkgs
 `deferredModuleWith`'s `isAttrs x || isFunction x || path.check x`: `types.path.check` admits a string

@@ -63,10 +63,15 @@ let
     all
     any
     ;
-  # The two readers are the BUILTINS, stated rather than taken from gen-prelude: gen-prelude's
-  # `isFunction`/`functionArgs` became nixpkgs' functor-aware readers (den-hoag-7gp66 P2-OQ15 arm
-  # (i)), and every site here keeps the meaning it had, a functor read as an attrset. Adopting
-  # nixpkgs' functor-aware parity is gen-merge's own P2 unit's change, with its cells.
+  # The two readers are the BUILTINS, stated rather than taken from gen-prelude. Module application,
+  # in `callM` and `callD`, reads nixpkgs' functor-aware predicate (`lib.isFunction` and
+  # `lib.functionArgs`, gen-prelude's readers) INLINE behind the builtin test, so a functor module is
+  # applied by its `__functionArgs` (den-hoag-genmerge-functor-module-application-u6lf8). The
+  # builtins stay bound here for the value-merge sites, which still read a functor DEFINITION as an
+  # attrset (the residue, den-hoag-1ypox). Inline rather than the prelude readers by name because
+  # `prelude.isFunction` is a lambda: binding it allocates an env on every module application,
+  # lambda and attrset modules included (+921,600 B on the hub's deepSubmodule n=1600, ratio 0.501
+  # against the 0.500 bound), where the inline test costs those arms nothing.
   inherit (builtins) isFunction functionArgs;
   inherit (priority)
     dischargeProperties
@@ -3049,9 +3054,10 @@ let
         m:
         if builtins.isPath m then
           callD (import m)
-        else if isFunction m then
+        else if isFunction m || m ? __functor && isFunction m.__functor && isFunction (m.__functor m) then
           let
-            formals = functionArgs m;
+            formals =
+              if m ? __functor then m.__functionArgs or (functionArgs (m.__functor m)) else functionArgs m;
             extra = mapAttrs (
               name: _: declArgs.${name} or (inadmissible "config" "read the module argument `${name}'")
             ) formals;
@@ -3693,9 +3699,10 @@ let
             m:
             if builtins.isPath m then
               callM (import m)
-            else if isFunction m then
+            else if isFunction m || m ? __functor && isFunction m.__functor && isFunction (m.__functor m) then
               let
-                formals = functionArgs m;
+                formals =
+                  if m ? __functor then m.__functionArgs or (functionArgs (m.__functor m)) else functionArgs m;
                 extra = mapAttrs (
                   name: _:
                   baseArgs.${name} or result.moduleArgs.${name}
