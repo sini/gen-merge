@@ -302,6 +302,94 @@ let
 
   subA = gmT.submodule { options.a = genMerge.mkOption { type = gmT.str; }; };
   subB = gmT.submodule { options.b = genMerge.mkOption { type = gmT.str; }; };
+
+  # THE TREE'S `name` (den-hoag-tree-type-no-name-arg-xy2r0). One construction read on a SIDE: `ref`
+  # is nixpkgs' `(lib.evalModules …).type` in nixpkgs' eval, `own` gen's tree type in gen's eval,
+  # `foreign` gen's tree type in nixpkgs' eval; `voc` is the container vocabulary. A cell is
+  # `e: { mods; specialArgs; types; defs; root; rootSpecialArgs; docs; }`, read over `e`, the side's
+  # vocabulary, and defaults to a name-reading module under `attrsOf` with `{ x = { }; }`. The answer
+  # is `{ v; }` or `{ refused = true; }`, so a refusal compares beside a value.
+  nameCell =
+    side: voc: cell:
+    let
+      isRef = side == "ref";
+      e = {
+        L = if isRef then nixpkgsLib else genMerge;
+        leaf = if isRef then nixpkgsLib.types else gmT;
+        ty = if voc == "np" then nixpkgsLib.types else gmT;
+        R = if side == "own" then genMerge else nixpkgsLib;
+        plain =
+          { name, ... }:
+          {
+            options.a = e.L.mkOption {
+              type = e.leaf.str;
+              default = name;
+            };
+          };
+        treeOf =
+          mods: specialArgs:
+          (if isRef then nixpkgsLib.evalModules else genMerge.evalModuleTree) {
+            modules = mods;
+            inherit specialArgs;
+          };
+        T = (e.treeOf c.mods c.specialArgs).type;
+      };
+      c = {
+        mods = [ e.plain ];
+        specialArgs = { };
+        types = [ (e.ty.attrsOf e.T) ];
+        defs = [ { x = { }; } ];
+        root = [ ];
+        docs = false;
+      }
+      // cell e;
+      engine = if side == "own" then genMerge.evalModuleTree else nixpkgsLib.evalModules;
+      r =
+        if c.docs then
+          (e.T.getSubOptions [ "s" ]).a.default
+        else
+          (engine (
+            {
+              modules =
+                map (type: { options.s = e.R.mkOption { inherit type; }; }) c.types
+                ++ map (d: { s = d; }) c.defs
+                ++ c.root;
+            }
+            // (if c ? rootSpecialArgs then { specialArgs = c.rootSpecialArgs; } else { })
+          )).config.s;
+      t = builtins.tryEval (builtins.deepSeq r r);
+    in
+    if t.success then { v = t.value; } else { refused = true; };
+  # A container cell: nixpkgs, and gen's tree in both engines under both container vocabularies.
+  nameClass = cell: answer: {
+    expr = {
+      ref = nameCell "ref" "np" cell;
+      own = nameCell "own" "gen" cell;
+      ownNp = nameCell "own" "np" cell;
+      foreign = nameCell "foreign" "gen" cell;
+      foreignNp = nameCell "foreign" "np" cell;
+    };
+    expected = {
+      ref = answer;
+      own = answer;
+      ownNp = answer;
+      foreign = answer;
+      foreignNp = answer;
+    };
+  };
+  # An edge cell: each engine under its own container vocabulary.
+  nameEdge = cell: answer: {
+    expr = {
+      ref = nameCell "ref" "np" cell;
+      own = nameCell "own" "gen" cell;
+      foreign = nameCell "foreign" "np" cell;
+    };
+    expected = {
+      ref = answer;
+      own = answer;
+      foreign = answer;
+    };
+  };
 in
 {
   flake.tests.nixpkgs-protocol = {
@@ -1845,6 +1933,266 @@ in
         ];
       };
     };
+
+    # ── THE TREE STATES `name` AS NIXPKGS' `submoduleWith` DOES (den-hoag-tree-type-no-name-arg-xy2r0)
+    # Every cell reads nixpkgs' answer for the same construction in the same cell, beside the
+    # literal. The position's last step under every container, `‹name›` over no definitions and in
+    # the docs, and the definition's priority: a module's `mkForce`/`mkDefault`/`mkOptionDefault` on
+    # `_module.args.name`, or a plain definition, resolves against the position's normal priority.
+    test-tree-type-name-bare = nameClass (e: {
+      types = [ e.T ];
+      defs = [ { } ];
+    }) { v.a = "s"; };
+    test-tree-type-name-empty = nameClass (e: {
+      types = [ e.T ];
+      defs = [ ];
+    }) { v.a = "‹name›"; };
+    test-tree-type-name-attrsOf = nameClass (_: { }) { v.x.a = "x"; };
+    test-tree-type-name-lazyAttrsOf = nameClass (e: {
+      types = [ (e.ty.lazyAttrsOf e.T) ];
+    }) { v.x.a = "x"; };
+    test-tree-type-name-listOf =
+      nameClass
+        (e: {
+          types = [ (e.ty.listOf e.T) ];
+          defs = [
+            [
+              { }
+              { }
+            ]
+          ];
+        })
+        {
+          v = [
+            { a = "[definition 1-entry 1]"; }
+            { a = "[definition 1-entry 2]"; }
+          ];
+        };
+    test-tree-type-name-nullOr = nameClass (e: {
+      types = [ (e.ty.nullOr e.T) ];
+      defs = [ { } ];
+    }) { v.a = "s"; };
+    test-tree-type-name-either = nameClass (e: {
+      types = [ (e.ty.either e.T e.ty.int) ];
+      defs = [ { } ];
+    }) { v.a = "s"; };
+    test-tree-type-name-oneOf = nameClass (e: {
+      types = [
+        (e.ty.oneOf [
+          e.ty.int
+          e.T
+        ])
+      ];
+      defs = [ { } ];
+    }) { v.a = "s"; };
+    test-tree-type-name-attrsOf-attrsOf = nameClass (e: {
+      types = [ (e.ty.attrsOf (e.ty.attrsOf e.T)) ];
+      defs = [ { x.y = { }; } ];
+    }) { v.x.y.a = "y"; };
+    test-tree-type-name-docs = {
+      expr = {
+        ref = nameCell "ref" "np" (_: {
+          docs = true;
+        });
+        gen = nameCell "own" "gen" (_: {
+          docs = true;
+        });
+      };
+      expected = {
+        ref.v = "‹name›";
+        gen.v = "‹name›";
+      };
+    };
+
+    test-tree-type-name-control-reads-no-name = nameEdge (e: {
+      mods = [
+        {
+          options.a = e.L.mkOption {
+            type = e.leaf.str;
+            default = "k";
+          };
+        }
+      ];
+    }) { v.x.a = "k"; };
+    test-tree-type-name-nested-tree-takes-its-own-position =
+      nameEdge
+        (e: {
+          mods = [
+            (
+              { name, ... }:
+              {
+                options.a = e.L.mkOption {
+                  type = e.leaf.str;
+                  default = name;
+                };
+                options.t = e.L.mkOption {
+                  type = e.leaf.attrsOf (e.treeOf [ e.plain ] { }).type;
+                };
+                config.t.y = { };
+              }
+            )
+          ];
+        })
+        {
+          v.x = {
+            a = "x";
+            t.y.a = "y";
+          };
+        };
+    test-tree-type-name-mkIf-false-element = nameEdge (e: {
+      defs = [
+        {
+          x = e.R.mkIf false { };
+          y = { };
+        }
+      ];
+    }) { v.y.a = "y"; };
+    test-tree-type-name-mkIf-false-bare = nameEdge (e: {
+      types = [ e.T ];
+      defs = [ (e.R.mkIf false { }) ];
+    }) { v.a = "‹name›"; };
+    test-tree-type-name-mkIf-false-list = nameEdge (e: {
+      types = [ (e.ty.listOf e.T) ];
+      defs = [
+        [ { } ]
+        (e.R.mkIf false [ { } ])
+      ];
+    }) { v = [ { a = "[definition 1-entry 1]"; } ]; };
+    test-tree-type-name-nullOr-null = nameEdge (e: {
+      types = [ (e.ty.nullOr e.T) ];
+      defs = [ null ];
+    }) { v = null; };
+    test-tree-type-name-args-mkDefault-yields-to-the-position = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkDefault "dflt"; }
+      ];
+    }) { v.x.a = "x"; };
+    test-tree-type-name-args-plain-is-defined-twice = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = "plain"; }
+      ];
+    }) { refused = true; };
+    test-tree-type-name-args-mkOptionDefault-yields-to-the-position = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkOptionDefault "od"; }
+      ];
+    }) { v.x.a = "x"; };
+    test-tree-type-name-args-mkForce-wins = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkForce "forced"; }
+      ];
+    }) { v.x.a = "forced"; };
+    test-tree-type-name-args-mkDefault-over-the-placeholder = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkDefault "dflt"; }
+      ];
+      types = [ e.T ];
+      defs = [ ];
+    }) { v.a = "dflt"; };
+    test-tree-type-name-args-plain-over-the-placeholder = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = "plain"; }
+      ];
+      types = [ e.T ];
+      defs = [ ];
+    }) { v.a = "plain"; };
+    test-tree-type-name-args-mkOptionDefault-ties-the-placeholder = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkOptionDefault "od"; }
+      ];
+      types = [ e.T ];
+      defs = [ ];
+    }) { refused = true; };
+    test-tree-type-name-args-mkDefault-in-the-docs = nameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkDefault "dflt"; }
+      ];
+      docs = true;
+    }) { v = "dflt"; };
+    test-tree-type-name-caller-specialArgs-wins = nameEdge (_: {
+      specialArgs.name = "caller";
+    }) { v.x.a = "caller"; };
+    test-tree-type-name-caller-specialArgs-wins-over-no-definitions = nameEdge (e: {
+      specialArgs.name = "caller";
+      types = [ e.T ];
+      defs = [ ];
+    }) { v.a = "caller"; };
+    test-tree-type-name-root-args-do-not-reach-the-child = nameEdge (_: {
+      root = [ { _module.args.name = "root"; } ];
+    }) { v.x.a = "x"; };
+    test-tree-type-name-root-specialArgs-do-not-reach-the-child = nameEdge (_: {
+      rootSpecialArgs.name = "rootSA";
+    }) { v.x.a = "x"; };
+    test-tree-type-name-is-a-config-value = nameEdge (e: {
+      mods = [
+        (
+          { config, ... }:
+          {
+            options.a = e.L.mkOption {
+              type = e.leaf.str;
+              default = config._module.args.name;
+            };
+          }
+        )
+      ];
+    }) { v.x.a = "x"; };
+    test-tree-type-name-functor-module = nameEdge (e: {
+      mods = [ { __functor = _: e.plain; } ];
+    }) { v.x.a = "x"; };
+    test-tree-type-name-two-declarations-union-and-name =
+      nameEdge
+        (e: {
+          types = [
+            (e.ty.attrsOf e.T)
+            (e.ty.attrsOf
+              (e.treeOf [
+                {
+                  options.b = e.L.mkOption {
+                    type = e.leaf.str;
+                    default = "b";
+                  };
+                }
+              ] { }).type
+            )
+          ];
+        })
+        {
+          v.x = {
+            a = "x";
+            b = "b";
+          };
+        };
+    test-tree-type-name-freeform =
+      nameEdge
+        (e: {
+          mods = [
+            (
+              { name, ... }:
+              {
+                freeformType = e.leaf.attrsOf e.leaf.str;
+                options.a = e.L.mkOption {
+                  type = e.leaf.str;
+                  default = name;
+                };
+              }
+            )
+          ];
+          defs = [ { x.extra = "e"; } ];
+        })
+        {
+          v.x = {
+            a = "x";
+            extra = "e";
+          };
+        };
 
     # A SELF-REFERENTIAL type folds in gen's eval and mounts abroad, to the definition itself. The
     # foreign face rebuilds `attrsOf j` over `j`'s own face one level at a time and lazily, so it is

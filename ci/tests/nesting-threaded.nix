@@ -386,14 +386,26 @@ in
         sub = false;
       };
     };
+    # `named` is the `specialArgs` injection; `namesByModule` is the tree's: nixpkgs' `‹name›`
+    # placeholder module, stated as data, beside the position's `_module.args.name` definition.
     test-a-nesting-type-states-whether-its-tree-is-named = {
       expr = {
         sub = sub.nests.named;
         tree = tree.nests.named;
+        subNamesByModule = sub.nests ? namesByModule;
+        treeNamesByModule = {
+          inherit (tree.nests.namesByModule._module.args.name) _type priority content;
+        };
       };
       expected = {
         sub = true;
         tree = false;
+        subNamesByModule = false;
+        treeNamesByModule = {
+          _type = "override";
+          priority = 1500;
+          content = "‹name›";
+        };
       };
     };
   };
