@@ -220,9 +220,10 @@ in
         ];
       };
     };
-    # Under an exact container, each element is its own union position (gate P5): `q`'s string
-    # is not the container's shape, so it keys nothing, though `canNest` holds there.
-    test-a-union-element-over-a-container-keys-only-its-own-shape = {
+    # Under an exact container, each element is its own union position (gate P5), keyed where it is
+    # read (4zvc9 Unit 2): a CONTAINER NODE, as under a lazy container, whose own walk takes the
+    # member `choose` picks, so `q`'s string keys nothing inside its node and is never walked by `p`'s read.
+    test-a-union-element-over-a-container-is-a-container-node = {
       expr = row (t.attrsOf (t.either (t.attrsOf sub) t.str)) [
         {
           p.a.x = 1;
@@ -234,7 +235,10 @@ in
           p.a.x = 1;
           q = "s";
         };
-        keys."[\"o\"]" = [ "[\"p\",\"a\"]" ];
+        keys."[\"o\"]" = [
+          "[\"p\"]"
+          "[\"q\"]"
+        ];
       };
     };
     # Under a lazy container a union with a container member is S1's class (a): its position is a
