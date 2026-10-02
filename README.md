@@ -1535,10 +1535,18 @@ declared option, a foreign type outside the six that declares a gen nesting elem
 hand-rolled `mkOptionType` whose rebuild forwards its argument, …) is rebuilt through its own
 `substSubModules`, handed a marker that a gen element answers with itself. The container keeps its
 own `merge` and `check` (`coercedTo` keeps its coercion), and the element under it folds as a node
-of the one evaluation, so the value is nixpkgs'. Four things are refused by name instead:
+of the one evaluation, so the value is nixpkgs'. Whether the rebuild threads is judged on the
+ORIGINAL record against its rebuild, position by position and at any depth: every declared position
+that may nest comes back as the marked element (or as a record that threads in turn), and every
+other declared position is a sibling whose own `substSubModules`, called on the marker, answers
+`null`, so it has no module set to lose. The marker's import throws the import refusal if anything
+evaluates it as a module. Five things are refused by name instead:
 
-- a rebuild that does not STATE the element it was handed (`nestedTypes` or a top-level
-  `elemType`): it drops its argument, and would reach the tree as a standalone evaluation;
+- a rebuild that does not THREAD: it drops its argument (and would reach the tree as a standalone
+  evaluation), or a sibling of the element would receive the marker in place of the module set
+  nixpkgs leaves it (one that evaluates, relabels, stores, or drops the list from its rebuild);
+- a position the declarations do not show that evaluates the marker as modules: it meets the
+  marker's import, never folding an empty module;
 - a nested-tree read at a position the container's merge does not expose, such as inside the
   function `functionTo` returns; a member that reads no tree (a string definition) still answers;
 - the container's own refinement (`addCheck`), applied on the threaded fold with nixpkgs' verdict
@@ -1553,6 +1561,37 @@ gen's words and `getSubModules` with `null`; the container's merge runs three ti
 against nixpkgs' once. A foreign closure, the container's own merge and check, runs inside gen's
 evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
 is entered only in gen's own evaluation.
+
+**At the option root, a record that does not thread is mounted as nixpkgs mounts it**
+(den-hoag-threadedforeign-parity-residue-0hew4). nixpkgs' `fixupOptionType` rebuilds a declared
+option's type over the declaration's module set, at the option's root only, and the rebuild reaches
+what the root's own `substSubModules` forwards to. A foreign root that declares a gen nesting
+element, states a module set (`getSubModules` is a list) and a callable `substSubModules`, and does
+not thread, is mounted the same way: as its rebuild over that module set, where the result is an
+option type declaring no gen nesting element. So a payload-null copy of a stock submodule, or a
+submodule given an `elemType` it never folds, gives nixpkgs' value at the root and under a
+forwarding container. The claim is scoped to roots declaring a gen nesting element; a foreign root
+without one keeps its own fold. The fix-up item's `_file` names the mount, not the declaring file,
+and the module set is the merged type's, not a union per declaration. Refused by name, pending the
+release-parity ruling (den-hoag-t1j4z), where nixpkgs serves:
+
+- a record declaring a gen nesting element that nixpkgs never rebuilds (no module set at the root,
+  or below a union: `uniq (either (attrsOf sub) str)`, `either int copy`, any non-six container over
+  a union holding a gen element) and whose marker rebuild does not thread;
+- a fan-out container whose sibling of the threaded element substitutes a module set or becomes
+  `null`; the opt-out serves it;
+- a gen root container over such a record (`attrsOf copy`, `listOf copy` from gen-merge's types),
+  whose element is homed at an inner site, never fixed up;
+- a root whose fix-up result still declares a gen nesting element (a copy whose rebuild re-wraps
+  itself).
+
+**The prices, stated.** A hand-rolled position the declarations do not show whose evaluation of the
+old empty marker module happened to equal nixpkgs' value is now refused by name. And a position the
+declarations do not show whose merge STORES the handed list (`deferredModule`) is served with gen's
+marker item in its value: inspecting the stored list (its length, its `_file` labels) differs from
+nixpkgs silently, and evaluating it refuses by name. No predicate reaches it without reading a
+payload: it is the half of arm (T)'s stated domain (a merge that does not inspect element values)
+that has no predicate here.
 
 Two more records are
 refused by name (*defaulted, reversible*): one that states no element but whose functor payload
@@ -2004,7 +2043,9 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   that also states a static role in `nestedTypes` (a nixpkgs submodule given an `elemType` by `//`)
   is served as a module set with that role unread; a record whose `nestedTypes` is evaluation-derived
   but whose payload states no `modules` (a hand-copied submodule) or which states no
-  `getSubModules` is not recognised and keeps the refusal. A container whose payload states
+  `getSubModules` is not recognised: one stating a module set is mounted at an option root as
+  nixpkgs' `fixupOptionType` mounts it (arm (T), the root fix-up), and one stating none keeps the
+  refusal, pending den-hoag-t1j4z. A container whose payload states
   `modules` beside a static element and states no `getSubModules` keeps both its refusals.
   "Served" holds for an honest record only: a recognised record answers the decidability pre-check
   without a walk, so its own `typeMerge` runs unguarded, and a hand-built one whose `typeMerge`

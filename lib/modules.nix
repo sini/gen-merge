@@ -2797,18 +2797,22 @@ let
               }
           )
           (
-            keyWalk null g.loc (interface.homedAt "evalModuleTree" g.loc g.type) [ ] g.loc (
-              prelude.imap0 (
-                i: d:
-                d
-                // {
-                  at = [
-                    i
-                    "value"
-                  ];
-                }
-              ) g.definitions
-            )
+            keyWalk null g.loc
+              (if g.type ? carries then g.type else interface.homedRootAt "evalModuleTree" g.loc g.type)
+              [ ]
+              g.loc
+              (
+                prelude.imap0 (
+                  i: d:
+                  d
+                  // {
+                    at = [
+                      i
+                      "value"
+                    ];
+                  }
+                ) g.definitions
+              )
           );
       positions = listToAttrs (
         prelude.imap0 (j: g: {
@@ -3051,7 +3055,7 @@ let
                 if (optDecl.type or null) ? carries then
                   optDecl.type
                 else
-                  interface.homedAt "evalModuleTree" loc (optDecl.type or null)
+                  interface.homedRootAt "evalModuleTree" loc (optDecl.type or null)
               )
           ) withDefault;
     in

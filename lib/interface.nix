@@ -98,12 +98,12 @@ let
   # which answers with itself. `threadElementOf` reads the sentinel `_file` before `imports`, so a
   # real module list handed to a gen answerer by nixpkgs is never forced.
   threadMarkerFile = "<gen-merge thread marker>";
-  threadMarker = f: [
+  threadMarker = refusal: f: [
     {
       _file = threadMarkerFile;
       imports = [
         {
-          __functor = _: _: { };
+          __functor = _: _: throw refusal;
           __genThreadElement = f;
         }
       ];
@@ -1094,6 +1094,149 @@ let
         name == "either" || (name == "nullOr" && mayFoldUnion ((statedRoles t).element or null))
     );
 
+  # ── THE ROOT FIX-UP: WHERE NIXPKGS REBUILDS A TYPE, GEN DOES (den-hoag-threadedforeign-parity-residue-0hew4) ─
+  # nixpkgs' `fixupOptionType` mounts a declared option's type as `t.substSubModules` over the
+  # declaration's module set when `t.getSubModules` is non-null, and `t` otherwise, at the option's
+  # ROOT only; the rebuild reaches what the root's own `substSubModules` forwards to, and nothing
+  # below a container stating no module set (`either`, `oneOf`). Gen's evaluation does the same at
+  # the same place, for a foreign root that declares a gen nesting element its marker rebuild does
+  # not thread (`threadsAt`): it is mounted as that rebuild over the real module set, where the
+  # result is an option type declaring no gen nesting element. Otherwise the root is unchanged, and
+  # its homing threads or refuses by name as before. A gen root is gen's own fold, unchanged.
+  homedRootAt =
+    door: loc: t:
+    # presence first, with no binding: every option's root passes here, and a gen root or a leaf
+    # pays these tests and nothing else
+    if
+      !(isAttrs t)
+      || t ? verify
+      || t ? carries
+      || isNesting t
+      || !(statesWrapped t)
+      || !(isList (t.getSubModules or null))
+    then
+      homedAt door loc t
+    else
+      homedRootFixed door loc t;
+  homedRootFixed =
+    door: loc: t:
+    let
+      mods = t.getSubModules;
+      s = t.substSubModules or null;
+      threads = threadsAt door loc t;
+      fixed = s (
+        map (m: {
+          _file = "<gen-merge: ${showOption loc}, mounted as fixupOptionType mounts it>";
+          imports = [ m ];
+        }) mods
+      );
+    in
+    if !(isFunction s || isAttrs s && s ? __functor) || !(declaresNestingAt door loc t) then
+      homedAt door loc t
+    else if threads then
+      # one verdict for the root: an unrecognised container threads with it, a recognised one is
+      # re-homed as before
+      (
+        if importedRehomeAt door loc t == null then
+          threadedForeignWith threads door loc t
+        else
+          homedAt door loc t
+      )
+    else if isAttrs fixed && fixed ? merge && !(declaresNestingAt door loc fixed) then
+      homedAt door loc fixed
+    else
+      homedAt door loc t;
+
+  # The rebuild of a foreign container over the thread marker, and whether it THREADS: judged on
+  # the ORIGINAL record, position by position (`threadsAt`). `null` where the record has no rebuild
+  # to call (nixpkgs never calls one where `getSubModules` is null, so an absent or null one
+  # rebuilds nothing).
+  rebuiltOver =
+    refusal: t: f:
+    let
+      s = t.substSubModules or null;
+    in
+    if isFunction s || isAttrs s && s ? __functor then
+      s (threadMarker refusal (e: f e // { __genThreadMark = true; }))
+    else
+      null;
+
+  # A record's declared positions, by name, as the walks read them (`declaredWrapped`'s reading,
+  # keyed): `nestedTypes` unless it is an output of the record's own evaluation (a0c4z), and a
+  # top-level `elemType`. An `attrTag` tag is an option record, read at its type.
+  positionsOf =
+    t:
+    let
+      nested = if isAttrs t && !(evaluatesOwnRoles t) then t.nestedTypes or { } else { };
+      asType = v: if isAttrs v && (v._type or null) == "option" then v.type else v;
+    in
+    if !(isAttrs t) then
+      { }
+    else
+      prelude.mapAttrs (_: asType) (nested // (if t ? elemType then { inherit (t) elemType; } else { }));
+
+  # DOES THE MARKER REBUILD THREAD? Judged on the ORIGINAL record against its rebuild, position by
+  # position, never on what the rebuild says it consumed:
+  #   - every position the original declares that MAY NEST comes back in the rebuild as the marked
+  #     element (a gen record), or as a record that threads in turn by this same rule;
+  #   - every position the original declares that may NOT nest is a SIBLING the rebuild also hands
+  #     the marker to. It must not substitute: its own `substSubModules` over the marker answers
+  #     `null` (it has no module set to lose: a leaf, `either`), and the rebuild keeps it as an
+  #     option type. A sibling that answers anything else would receive the marker in place of the
+  #     module set nixpkgs leaves it, whether it evaluates the list (`submoduleWith`), stores it
+  #     (`deferredModuleWith`), relabels it, or drops `getSubModules` from its rebuild.
+  # A sibling's answer is a value, read to weak head normal form only; a rebuild that reads the
+  # marker as modules meets its import, which throws the import refusal (`threadMarker`), so a
+  # consumer the declarations do not show still refuses by name, never folding an empty module.
+  # Bounded by the walks' fuel, refusing by name at exhaustion, as `declaresNestingAt` does.
+  threadsAt =
+    door: loc: t:
+    let
+      refusal = nestingImportRefusal door loc t;
+      marker = threadMarker refusal (e: e);
+      sibling =
+        o: r:
+        let
+          s = if isAttrs o then o.substSubModules or null else null;
+        in
+        (!(isFunction s || isAttrs s && s ? __functor) || s marker == null) && isAttrs r && r ? merge;
+      go =
+        fuel: o: r:
+        if o ? carries || isNesting o then
+          isAttrs r && (r ? __genThreadMark || !(canNest o) && r ? merge)
+        else if fuel <= 0 then
+          throw refusal
+        else
+          let
+            po = positionsOf o;
+            pr = positionsOf r;
+            pair =
+              k:
+              let
+                a = po.${k};
+                b = pr.${k} or null;
+                as = if isList a then a else [ a ];
+                bs = if isList b then b else [ b ];
+              in
+              isList a == isList b
+              && length as == length bs
+              && prelude.all (i: one (elemAt as i) (elemAt bs i)) (builtins.genList (i: i) (length as));
+            # a position that declares positions of its own is walked in step; one that declares none
+            # is a sibling (a leaf, a module set read as a whole)
+            one =
+              a: b:
+              if isAttrs a && (a ? carries || isNesting a || positionsOf a != { }) then
+                go (fuel - 1) a b
+              else
+                sibling a b;
+          in
+          isAttrs r && r ? merge && prelude.all pair (attrNames po);
+      r = rebuiltOver refusal t (e: e);
+    in
+    # not under `tryEval`: a throw from the container's own closure keeps its own words, and the
+    # walk's own refusals (exhaustion, the marker's import) are the import refusal already
+    go importedTypeWalkFuel t r;
+
   # ── AN UNRECOGNISED CONTAINER THREADS THROUGH ITS OWN REBUILD (den-hoag-f8mgj, owner-ruled arm (T)) ─
   # A foreign container outside the six, declaring a gen nesting element, is rebuilt by its own
   # `substSubModules`, handed a module list that carries a marker (`threadMarker`). Every stock
@@ -1104,10 +1247,13 @@ let
   #   capture  — the element's merge RECORDS each site (loc, defs), so the container's own merge is
   #              the split: the key walk reads which element positions exist and what defs each gets.
   #   threaded — the element's merge is the engine's threaded twin at position ++ (eloc - loc).
-  # With no accessor (called) it refuses as the import refusal does. A rebuild that does not STATE
-  # the marked element (in `nestedTypes` or a top-level `elemType`) is refused by name, as F2 α
-  # requires: a container that drops its argument would otherwise reach the nested tree through the
-  # bridge, a silent standalone evaluation.
+  # With no accessor (called) it refuses as the import refusal does. A rebuild that does not THREAD
+  # (`threadsAt`: every declared position that may nest comes back marked, every other declared
+  # position is a sibling with no module set to lose) is refused by name, as F2 α requires: a
+  # container that drops its argument would otherwise reach the nested tree through the bridge, a
+  # silent standalone evaluation. A foreign ROOT stating a module set that does not thread is
+  # mounted as nixpkgs mounts it instead, where that rebuild declares no gen element
+  # (`homedRootAt`).
   #
   # ★ THE BOUNDARY (ADR-0014, ADR-0023): a FOREIGN closure, the container's own `merge` and `check`,
   # runs inside gen's evaluation with a gen-threaded element fold under it. No foreign engine
@@ -1120,31 +1266,17 @@ let
   # (`genFace`); the container's merge runs three times per option (the split, the steps read, the
   # threaded fold) against nixpkgs' once. The domain is a container whose rebuild forwards its
   # argument and whose merge does not inspect element values; the first half is refused by name
-  # above, and the second has no predicate here.
+  # above, and the second has no predicate here. Inside it sits a position the declarations do not
+  # show whose merge STORES the handed list (`deferredModule`): its value carries the marker item,
+  # silent on inspection, and refuses by name where the list is evaluated (the marker's import).
   threadedForeign =
     door: loc0: t:
+    threadedForeignWith (threadsAt door loc0 t) door loc0 t;
+  threadedForeignWith =
+    threads: door: loc0: t:
     let
-      via =
-        f:
-        let
-          # called only when it is a function or a functor: nixpkgs never calls it where
-          # `getSubModules` is null, so an absent or null one rebuilds nothing and is refused below
-          s = t.substSubModules or null;
-          r =
-            if isFunction s || isAttrs s && s ? __functor then
-              s (threadMarker (e: f e // { __genThreadMark = true; }))
-            else
-              null;
-          stated =
-            if isAttrs r then
-              prelude.attrValues (r.nestedTypes or { }) ++ (if r ? elemType then [ r.elemType ] else [ ])
-            else
-              [ ];
-        in
-        if isAttrs r && r ? merge && builtins.any (e: isAttrs e && e ? __genThreadMark) stated then
-          r
-        else
-          throw (nestingImportRefusal door loc0 t);
+      refusal = nestingImportRefusal door loc0 t;
+      via = f: if threads then rebuiltOver refusal t f else throw refusal;
       # the element as the container's closure reads it: gen's own check, and no module set for an
       # element that may nest (a nesting seam's exported face refuses both, at any depth)
       genFace =
@@ -2525,6 +2657,7 @@ in
     canNest
     declaresNesting
     homedAt
+    homedRootAt
     mayFoldUnion
     bridge
     importedCarried
