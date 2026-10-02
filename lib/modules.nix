@@ -984,7 +984,7 @@ let
             k
           ]
         )
-    else if (m.type.name or null) != "submodule" || !(sub.options ? ${k}) then
+    else if (m.type.name or null) != "submodule" || (sub.options.${k} or null) == null then
       [ ]
     else
       [
