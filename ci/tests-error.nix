@@ -511,6 +511,9 @@ let
   specialArgsMsg =
     file:
     "^gen-merge: `_module\\.specialArgs' is set by the caller, never by a module: pass it as `evalModuleTree \\{ specialArgs = …; }'; defined in ${file}$";
+  alreadyDeclaredMsg =
+    k: files:
+    "^gen-merge: the option `_module\\.${k}' in ${files} is already declared by the engine's own `_module' options$";
   nonAttrModuleMsg =
     file: "^gen-merge: `_module' must be an attribute set, and this one is int; defined in ${file}$";
 in
@@ -873,23 +876,152 @@ in
           msg = "^gen-merge: option `_module' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options\\._module\\.<name>' instead; declared in /g/L\\.nix$";
         };
       };
-      # A `submodule`-TYPED `_module` is the exception: nixpkgs merges its own `_module` options into
-      # the submodule and reads `_module.foo` and `_module.args.pkgs` alike. This engine has no
-      # `moduleOwnKeys` declared as options to merge into it, so it refuses the declaration by name.
-      test-module-declared-as-a-submodule-option-refused-by-name = {
+      # A `submodule`-typed `_module` is not refused: nixpkgs merges its own `_module` options into the
+      # submodule, and this engine gives the same reads (`./tests/module-key.nix`).
+      #
+      # AN ENGINE-OWNED `_module.<k>` RE-DECLARED, refused where nixpkgs' `mergeOptionDecls` refuses it
+      # with the engine's own declaration taking part: a type that does not merge with the engine's
+      # own, or a field the engine's own declaration states (`description`; `default` at `check` and
+      # `freeformType`). Two modules' fields right-bias, as every redeclaration here does.
+      test-module-owned-key-redeclared-with-another-type-refused-by-name = {
         expr = realize {
-          modules = moduleKey "/g/S.nix" {
-            options._module = gm.mkOption {
-              type = t.submodule { options.foo = gm.mkOption { default = 1; }; };
-              default = { };
-            };
-            config._module.foo = 2;
+          modules = moduleKey "/g/O.nix" {
+            options._module.args = gm.mkOption { type = t.attrsOf t.int; };
             config._module.args.pkgs = "P";
           };
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: option `_module' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options\\._module\\.<name>' instead; declared in /g/S\\.nix$";
+          msg = alreadyDeclaredMsg "args" "`/g/O\\.nix'";
+        };
+      };
+      test-module-owned-key-redeclared-with-a-description-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" { options._module.check = gm.mkOption { description = "d"; }; };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = alreadyDeclaredMsg "check" "`/g/O\\.nix'";
+        };
+      };
+      # The same keys declared inside a `submodule`-typed `_module` leaf are judged alike, named by the
+      # file that declared the leaf.
+      test-module-owned-key-inside-a-submodule-leaf-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" {
+            options._module = gm.mkOption {
+              type = t.submodule {
+                options.foo = gm.mkOption { default = 1; };
+                options.args = gm.mkOption { type = t.attrsOf t.int; };
+              };
+              default = { };
+            };
+            config._module.foo = 2;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = alreadyDeclaredMsg "args" "`/g/O\\.nix'";
+        };
+      };
+      # An EXPLICIT `type = unspecified` is a stated type, and it does not merge with the engine's own.
+      # gen's `types.submodule` states it on the record; a nixpkgs record states it for an untyped
+      # declaration too, so a nixpkgs leaf is judged by nixpkgs, in its words, with the engine's own
+      # declarations taking part.
+      test-module-owned-key-typed-unspecified-inside-a-submodule-leaf-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" {
+            options._module = gm.mkOption {
+              type = t.submodule {
+                options.foo = gm.mkOption { default = 1; };
+                options.args = gm.mkOption { type = nixpkgsLib.types.unspecified; };
+              };
+              default = { };
+            };
+            config._module.foo = 2;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = alreadyDeclaredMsg "args" "`/g/O\\.nix'";
+        };
+      };
+      test-module-owned-key-typed-unspecified-inside-a-nixpkgs-submodule-leaf-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" {
+            options._module = gm.mkOption {
+              type = nixpkgsLib.types.submodule {
+                options.foo = nixpkgsLib.mkOption { default = 1; };
+                options.args = nixpkgsLib.mkOption { type = nixpkgsLib.types.unspecified; };
+              };
+              default = { };
+            };
+            config._module.foo = 2;
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          # The leaf module's file is not asserted: this engine's mount of a nixpkgs submodule states no
+          # module location, so nixpkgs names it `<unknown-file>', as it does for any option there.
+          msg = "^The option `_module\\.args' in `[^']*' is already declared in `<the engine's own _module options>'\\.$";
+        };
+      };
+      # An owned key declared as a group would be the parent of options its own type cannot carry.
+      test-module-owned-key-declared-as-a-group-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" { options._module.args.foo = gm.mkOption { type = t.int; }; };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `_module\\.args' is the engine's own, and its type does not support nested options, so it cannot be the parent of `_module\\.args\\.foo'; declared in /g/O\\.nix$";
+        };
+      };
+      # An accepted re-declaration's `readOnly` refuses a second definition, as nixpkgs' does: its own
+      # module defines `args`, and the re-declaration's own `default` counts as one.
+      test-module-owned-key-read-only-refuses-a-definition = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" {
+            options._module.args = gm.mkOption { readOnly = true; };
+            config._module.args.pkgs = "P";
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `_module\\.args' is read-only, but it is defined more than once \\(the engine defines it too\\); defined in /g/O\\.nix$";
+        };
+      };
+      test-module-owned-key-read-only-refuses-its-own-default = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" {
+            options._module.args = gm.mkOption {
+              readOnly = true;
+              default = { };
+            };
+          };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `_module\\.args' is read-only, but it is defined more than once \\(the engine defines it too\\); defined in /g/O\\.nix$";
+        };
+      };
+      # `check` and `specialArgs` are not read from a module, so a re-declaration that would act on
+      # either is refused by name.
+      test-module-check-redeclared-with-an-apply-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" { options._module.check = gm.mkOption { apply = _: false; }; };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `_module\\.check' is read only from `evalModuleTree \\{ check = …; }', so a module's `apply' on it would not run; declared in /g/O\\.nix$";
+        };
+      };
+      test-module-special-args-redeclared-with-a-type-refused-by-name = {
+        expr = realize {
+          modules = moduleKey "/g/O.nix" { options._module.specialArgs = gm.mkOption { type = t.attrs; }; };
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module cannot read `_module\\.specialArgs' in this engine, so a module's `type' on it would not run; declared in /g/O\\.nix$";
         };
       };
       # The lint refuses what the engine refuses before merging. An unknown `_module.<x>` is no lint
