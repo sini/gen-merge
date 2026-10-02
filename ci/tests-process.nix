@@ -133,6 +133,17 @@
           [ "$rc" -eq 0 ] || die phrase-cycle-control "expected exit 0, got $rc"
           [ "$val" = '"null or (list of signed integer) | list of (null or string)"' ] || die phrase-cycle-control "expected nixpkgs' phrases, got '$val'"
 
+          # den-hoag-23dqs: a foreign knot closed through a gen door dies in the infinite-recursion
+          # channel at construction (the argued exception); crossed once, the same knot answers.
+          for arm in foreign-knot-mkoptiontype foreign-knot-derivetype; do
+            evalArm "$arm"
+            [ "$rc" -ne 0 ] || die "$arm" "expected a death, got exit 0 with '$val'"
+            grep -q 'infinite recursion encountered' "$TMPDIR/err" || die "$arm" "death is not the infinite-recursion channel"
+          done
+          evalArm foreign-knot-crossed-once
+          [ "$rc" -eq 0 ] || die foreign-knot-crossed-once "expected exit 0, got $rc"
+          [ "$val" = '[ 1 [ 2 ] ]' ] || die foreign-knot-crossed-once "expected [ 1 [ 2 ] ], got '$val'"
+
           # den-hoag-fpxsd: a submodule module whose `_module.args` key set reads `name` dies in the
           # infinite-recursion channel, as nixpkgs' `submoduleWith` does; a value reading it answers.
           evalArm name-keyset-reads-name
@@ -143,8 +154,8 @@
           [ "$val" = '"x:x"' ] || die name-keyset-control "expected value \"x:x\", got '$val'"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "20" ] || die runner "expected 20 evaluations, ran $ran"
-          echo "tests-process: 20 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "23" ] || die runner "expected 23 evaluations, ran $ran"
+          echo "tests-process: 23 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
