@@ -759,7 +759,7 @@ and it does not pay for the protocol (`ci/bench/interface-cost.sh` measures the 
 ### `deriveType` — a type derived from a completed one
 
 Published as `types.deriveType` and as top-level `deriveType`, one value under one name; name and
-placement owner-ruled 2026-10-01 (`den-hoag-5kic`).
+placement owner-ruled 2026-10-01.
 
 ```nix
 deriveType base {
@@ -794,7 +794,7 @@ record, an option descriptor); `fields` setting anything but metadata — a type
 relation differs is a new type (`mkOptionType`); no string `id`; a `key` holding an option type,
 which Nix `==` cannot compare totally (key a derivation by plain data).
 
-**Identity (ADR-0034).** A derivation never inherits its base's mint. With no `mint` it is sealed:
+**Identity.** A derivation never inherits its base's mint. With no `mint` it is sealed:
 `typeEq` compares the reified value, and `__id` is the named refusal. A caller that passes a
 `mint` owes a preimage covering the `id`, the `key` and the base's identity; one that omits the
 `key` mints two different derivations as one.
@@ -814,8 +814,8 @@ one a type constructor over a TYPE, and neither is reachable where the other is.
   derivation levels pay N completions and N relation frames, as gen-schema's `refined` does. The
   hub perf-bench constructs no derivation, so it says nothing about this cost.
 - A foreign CONTAINER base (`lib.types.listOf …`) crosses the import boundary with no constructor to
-  rebuild it over, and the vocabulary refuses it by name — the inherited round-trip residue
-  (`den-hoag-un50q`). A foreign leaf derives.
+  rebuild it over, and the vocabulary refuses it by name — the inherited round-trip residue. A
+  foreign leaf derives.
 - A derivation OF a consumer type whose relation keys on an inherited marker field is absorbed by
   that type: gen-schema's `refined` decides by `partner ? __schema`, which a derivation of a
   refined type inherits, so `mergeTypes R (deriveType R …)` and the foreign `R.typeMerge` answer
