@@ -1428,7 +1428,7 @@ and `getSubOptions` read the placeholder `mkOptionDefault "‹name›"`. So a mo
 `mkDefault` on `_module.args.name` resolves by priority as nixpkgs resolves it, a plain definition
 refuses as defined multiple times, and a caller's `specialArgs.name` (`withArgs` on `submodule`)
 outranks it. `withArgs` therefore admits `name`, and refuses by name only the three arguments the engine
-writes over, `config`, `options` and `prefix` (the refusal of `name` there, den-hoag-jyiji's arm, stood
+writes over, `config`, `options` and `prefix` (the refusal of `name` there stood
 while `submodule` injected it over the caller's, and is superseded). A module reading `name` while its
 declarations are folded (`imports`, an option key) refuses by name as it would for any module argument,
 unless a caller supplied it. A module whose `_module.args` key set reads `name`
@@ -1562,8 +1562,8 @@ against nixpkgs' once. A foreign closure, the container's own merge and check, r
 evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
 is entered only in gen's own evaluation.
 
-**At the option root, a record that does not thread is mounted as nixpkgs mounts it**
-(den-hoag-threadedforeign-parity-residue-0hew4). nixpkgs' `fixupOptionType` rebuilds a declared
+**At the option root, a record that does not thread is mounted as nixpkgs mounts it.**
+nixpkgs' `fixupOptionType` rebuilds a declared
 option's type over the declaration's module set, at the option's root only, and the rebuild reaches
 what the root's own `substSubModules` forwards to. A foreign root that declares a gen nesting
 element, states a module set (`getSubModules` is a list) and a callable `substSubModules`, and does
@@ -1573,7 +1573,7 @@ submodule given an `elemType` it never folds, gives nixpkgs' value at the root a
 forwarding container. The claim is scoped to roots declaring a gen nesting element; a foreign root
 without one keeps its own fold. The fix-up item's `_file` names the mount, not the declaring file,
 and the module set is the merged type's, not a union per declaration. Refused by name, pending the
-release-parity ruling (den-hoag-t1j4z), where nixpkgs serves:
+release-parity ruling, where nixpkgs serves:
 
 - a record declaring a gen nesting element that nixpkgs never rebuilds (no module set at the root,
   or below a union: `uniq (either (attrsOf sub) str)`, `either int copy`, any non-six container over
@@ -2045,7 +2045,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   but whose payload states no `modules` (a hand-copied submodule) or which states no
   `getSubModules` is not recognised: one stating a module set is mounted at an option root as
   nixpkgs' `fixupOptionType` mounts it (arm (T), the root fix-up), and one stating none keeps the
-  refusal, pending den-hoag-t1j4z. A container whose payload states
+  refusal, pending the release-parity ruling. A container whose payload states
   `modules` beside a static element and states no `getSubModules` keeps both its refusals.
   "Served" holds for an honest record only: a recognised record answers the decidability pre-check
   without a walk, so its own `typeMerge` runs unguarded, and a hand-built one whose `typeMerge`
