@@ -2153,6 +2153,19 @@ let
       if loc == null then "" else " at option `${showOption loc}'"
     }: its called `${field}' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it (`evalModuleTree'), read through its fold's threaded sibling, and no second evaluation is made for it";
 
+  # THE `name` A TREE STATES AS A DEFINITION: nixpkgs' `submoduleWith` merge adds
+  # `{ _module.args.name = last loc; }` to each evaluation over its base's `mkOptionDefault "‹name›"`,
+  # so the position's name is a `config` value a module can override and a caller's `specialArgs.name`
+  # outranks. A nesting type stating `namesByModule` (the tree record, whose value is the placeholder
+  # module) gives a child with definitions this one definition, at priority 100, in its `_module.args`
+  # merge (`positionArgs`, read by `moduleArgs`), and a child without the placeholder module: the
+  # first always outranks the second, so a child never carries both. A definition and not a module,
+  # because the module's collection is what costs. `submodule` injects through `specialArgs` instead
+  # (`named`).
+  positionArgsAt = loc: {
+    name = if loc == [ ] then "" else prelude.last loc;
+  };
+
   # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
   # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
   # in the mode `m` (`{ carried; inherited; }`). It is the call a nesting type's called form made,
@@ -2167,7 +2180,12 @@ let
     evalModuleTreeWith knotRoot m.carried m.inherited (
       if site.defs == [ ] then
         {
-          inherit (site.nests) modules coreShortCircuit;
+          modules =
+            if site.nests ? namesByModule then
+              site.nests.modules ++ [ site.nests.namesByModule ]
+            else
+              site.nests.modules;
+          inherit (site.nests) coreShortCircuit;
           inherit (site.nests.empty) prefix specialArgs check;
         }
       else
@@ -2181,6 +2199,7 @@ let
               site.nests.specialArgs;
           inherit (site.nests) check coreShortCircuit;
         }
+        // (if site.nests ? namesByModule then { positionArgs = positionArgsAt site.loc; } else { })
     );
 
   # ── THE ENGINE'S THREADED TWIN (den-hoag-n6dh7 item 5) ───────────────────────────────────────────
@@ -3352,7 +3371,8 @@ let
       evalModuleTreeWith knotChild m.carried m.inherited (
         if p.defs == [ ] then
           {
-            inherit (n) modules coreShortCircuit;
+            modules = if n ? namesByModule then n.modules ++ [ n.namesByModule ] else n.modules;
+            inherit (n) coreShortCircuit;
             inherit (n.empty) prefix specialArgs check;
           }
         else
@@ -3366,6 +3386,7 @@ let
                 n.specialArgs;
             inherit (n) check coreShortCircuit;
           }
+          // (if n ? namesByModule then { positionArgs = positionArgsAt p.loc; } else { })
       ) self (self.get id knotAttr);
 
   # The knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a call
@@ -3432,7 +3453,11 @@ let
       # top eval); the nested moduleTree-as-type merge stays COLD (a boundary, like provenance's).
       warmFrom ? null,
       editedModules ? [ ],
-    }:
+      # `positionArgs`: a nested tree child's `_module.args` definitions from its position
+      # (`positionArgsAt`), read only by `moduleArgs`. Taken through `...`, not a defaulted formal,
+      # so an evaluation without it pays nothing; the public door's closed key list does not name it.
+      ...
+    }@evalArgs:
     let
       modList = if isList modules then modules else [ modules ];
       # This evaluation's effective strictness: its own `check`, or a carrying tree's.
@@ -3969,6 +3994,17 @@ let
                   else
                     [ ]
                 ) (filter (p: p.attrs ? _module) pushed)
+                ++ (
+                  if evalArgs ? positionArgs then
+                    [
+                      (mapAttrs (_: value: {
+                        _file = "<position>";
+                        inherit value;
+                      }) evalArgs.positionArgs)
+                    ]
+                  else
+                    [ ]
+                )
               );
           # freeformType is priority-resolved (nixpkgs treats it as an option): a top-level
           # `freeformType` (bare, prio 100) beats a `_module.freeformType = mkDefault …` (prio 1000)
@@ -4754,6 +4790,7 @@ let
               inherit (ev) position;
               inherit nests loc defs;
             };
+            placeholder._module.args.name = mkOptionDefault "‹name›";
             nestingFold = {
               __functor =
                 _: loc: _:
@@ -4785,9 +4822,13 @@ let
             # field: `entry` is one definition read as `defsAsModules false` reads it (every definition
             # is a module, as the reference `(evalModules …).type` reads it), `empty` is the arguments
             # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
-            # and `named` is `false` because the tree injects no `name`.
+            # and `named` is `false` because the tree injects no `name` through `specialArgs`: it states
+            # it as nixpkgs' `submoduleWith` does, a `_module.args.name` definition per child with
+            # definitions (`positionArgsAt`), and the documentation placeholder `‹name›` at
+            # `mkOptionDefault` (`namesByModule`) in the child without and in the declarations.
             nests = {
               modules = modList;
+              namesByModule = placeholder;
               inherit specialArgs check coreShortCircuit;
               entry = d: head (defsAsModules false [ d ]);
               empty = {
@@ -4860,7 +4901,7 @@ let
               declares =
                 prefix:
                 (evalModuleTreeNested {
-                  modules = modList;
+                  modules = modList ++ [ placeholder ];
                   inherit prefix specialArgs check;
                 }).options;
               rebuild = over;

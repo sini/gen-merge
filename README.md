@@ -205,8 +205,11 @@ the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]
 named `sub`) in addition to any `specialArgs` and `_module.args` entries. The engine's three win over
 an entry of the same name: a `specialArgs` key among them is refused by name, since the caller's value
 would reach no module, and a `_module.args` entry of that name stays readable as
-`config._module.args.<name>` but does not bind the formal. **That is the whole of the injected
-argument set, and it is the argument-side compat boundary:** nixpkgs injects `lib` at every
+`config._module.args.<name>` but does not bind the formal. A nested tree's modules also receive
+`name`, the last step of their position: `types.submodule` injects it through `specialArgs`, and the
+tree-as-a-type states it as nixpkgs' `submoduleWith` does, an overridable `_module.args.name`
+definition. **That is the whole of the injected argument set, and it is the argument-side compat
+boundary:** nixpkgs injects `lib` at every
 `evalModules` level and gen-merge injects none, so a module reading `lib` is refused by name
 (`` module argument `lib' is not defined ``) until the caller threads it through `specialArgs`.
 
@@ -1415,6 +1418,14 @@ triple. Every protocol field is then derived by `exportType` as for any gen type
 | `description`, `nestedTypes`, `getSubOptions`       | the freeform datum crosses: the tree's resolved freeform type (`unroledNested.freeformType`) gives nixpkgs' "open submodule of …", `nestedTypes.freeformType` and `_freeformOptions`                                                                                     |
 | `getSubOptions`, `getSubModules`, `substSubModules` | the tree's declarations under the foreign prefix, its module set, and its rebuild over another                                                                                                                                                                           |
 | `check`, `merge`, `emptyValue`                      | the module-value domain, the fold through the bridge (one root evaluation of the tree), and the tree over no definitions                                                                                                                                                 |
+
+**The tree names its modules as nixpkgs' `submoduleWith` does.** Each child with definitions gets
+`_module.args.name` = the last step of its position (the attribute name under `attrsOf`, the
+`[definition n-entry m]` step under `listOf`, the option's own name bare or under a union), as one
+definition at normal priority in its `_module.args` merge. The child over no definitions, `emptyValue`
+and `getSubOptions` read the placeholder `mkOptionDefault "‹name›"`. So a module's `mkForce` or
+`mkDefault` on `_module.args.name` resolves by priority as nixpkgs resolves it, a plain definition
+refuses as defined multiple times, and a caller's `specialArgs.name` outranks it.
 
 **The published option records carry nixpkgs' declaration shape.** An evaluation's `.options` (and
 `declaredOptions`) records carry `loc`, `declarations` (the declaring modules' files) and nixpkgs'
