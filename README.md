@@ -783,10 +783,15 @@ leaves every one of those answering for the base — the copy merges with itself
 absorbed by its base when both are declared, rebuilds to its base and mints as its base — while
 its check and fold stay right, so nothing a value reaches says so. `deriveType` applies the delta
 **before** completion instead: the base's behaviour fields cross into a source record, the delta and
-the datum `__derivation = { base; id; key; }` are added, and `defineType` completes it. Its relation
+the datum `__derivation = { base; read; id; key; }` (`read` is the base as the import boundary
+reads it) are added, and `defineType` completes it. Its relation
 merges only a derivation of the same `id` and `key`, answering the bases' own join (through
 `mergeTypes`) derived again; `recarry`, `substructure.rebuild` and `withArgs` derive their result
-again. No protocol field is stated by hand. Which field of the base goes where is
+again. No protocol field is stated by hand, the phrase included: a derivation stating no
+`description` is described by its base's phrase, rendered from `read` within the export's node
+budget and costing one node, so a type whose cycle closes through the derivation
+(`d = deriveType (nullOr (oneOf [ str (listOf d) ])) …`) has a finite phrase, docs and refusals,
+as the same shape without the derivation does. Which field of the base goes where is
 `interface.deriveClasses`, and `ci/tests/derive-type.nix` fails by name on a field no class names.
 
 The derivation keeps its base's `name` by default, the value vocabulary its messages speak. Its
@@ -1905,7 +1910,10 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   remaining members read `…`, where nixpkgs never elides: `listOf` nested 129 times departs, 128
   times is nixpkgs' phrase (`ci/tests/description-phrase.nix`). The most-composed phrase in
   nixpkgs' NixOS option tree composes 35 nodes, and no gen-typed declaration measured composes more
-  than 3. Raising the ceiling is a one-constant change.
+  than 3. Raising the ceiling is a one-constant change. A `deriveType` stating no `description`
+  costs one node, however long its chain of such derivations: a derivation of a 128-node phrase
+  elides where its base does not, and a derivation over a cyclic base, whose phrase always reaches
+  the ceiling, renders one node less than its base.
 
 - **A self-referential gen type has a finite phrase where nixpkgs' twin diverges.** For
   `v = nullOr (oneOf [ str (attrsOf v) (listOf v) ])` the budget is what ends the phrase: it is
@@ -1922,14 +1930,17 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 - **A cycle closed through a foreign record's `description` aborts uncatchably, a declared
   exception to the rule that every refusal is catchable.** A gen container reads a foreign member's
   phrase from the member's own `description`, as nixpkgs' containers do. When that foreign phrase is
-  itself a cycle, the read dies with `infinite recursion encountered`. There are two instances:
+  itself a cycle, the read dies with `infinite recursion encountered`. There are three instances:
   `listOf nv` over nixpkgs' self-referential `nv = nullOr (oneOf [ str (attrsOf nv) (listOf nv) ])`,
   whose divergence is inside nixpkgs' own `description` thunk, and `vm = nullOr (np.listOf vm)`, a
   gen cycle closed through a nixpkgs composer, which describes `vm` from `vm`'s own exported
-  `description`. Before the phrase was derived both served the constructor's name (`"listOf"`,
+  `description`; and a `deriveType` whose `fields` states its base's `description`
+  (`fields = b: { inherit (b) description; }`) over a base that holds the derivation, a caller's
+  stated phrase built from the phrase its own member renders. Omitting `description` serves the
+  same text within the budget. Before the phrase was derived all three served the constructor's name (`"listOf"`,
   `"nullOr"`) as their description; now the description, the docs over it and (for `listOf nv`)
   nixpkgs' refusal over it abort, as nixpkgs' twin `np.listOf nv` does in every arm.
-  `ci/tests-process-cells.nix` pins both deaths and a live acyclic control. The exception is
+  `ci/tests-process-cells.nix` pins the three deaths, each with a live control. The exception is
   argued, not merely declared: parity requires reading a foreign member's stated phrase; nothing
   observable separates a foreign record's stated `description` from a derived one without forcing
   it; and the structural alternative, re-rendering a stock-named foreign composer from its

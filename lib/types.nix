@@ -360,8 +360,20 @@ let
         // {
           name = spec.name or delta.name or gen.name or "raw";
           # The base AS PASSED: the join asks it, and a foreign one answers through the boundary's arm.
+          # The base AS READ (`read`): the phrase renders it, so a foreign base is described as the
+          # import boundary reads it, within the budget, and never by its own `description`.
           __derivation = {
             inherit base id key;
+            # null when this derivation states its phrase. A base derivation stating none is read
+            # through to what IT reads, so a chain of them costs the renderer one unit, not one per
+            # layer, and keeps its base's phrase however deep it is.
+            read =
+              if spec ? description || delta ? description then
+                null
+              else if gen ? __derivation && (gen.__derivation.read or null) != null then
+                gen.__derivation.read
+              else
+                gen;
           };
           typeMergeRel = relation;
           __mint = mint;
@@ -379,8 +391,11 @@ let
             base' // { inherit (spec) description; }
           else if delta ? description then
             builtins.removeAttrs base' [ "description" ]
+          # Nothing stated: the export renders the base's phrase through `__derivation` within its
+          # budget. Stating the base's `description` here closes a cycle through the derivation on
+          # its own value (`d = deriveType (nullOr (oneOf [ str (listOf d) ])) …`).
           else
-            base'
+            { }
         )
         // (if gen ? recarry then { recarry = c: lift (gen.recarry c); } else { })
         // (if gen ? withArgs then { withArgs = a: lift (gen.withArgs a); } else { })
