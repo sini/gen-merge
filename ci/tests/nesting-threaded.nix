@@ -1321,7 +1321,7 @@ in
         { b.x = 6; }
       ] all;
       # a stock-NAMED record re-homing does not recognise is threaded, so it is marked: the mark reads
-      # re-homing's own recognition (`rehomeRecognition`), never the functor name alone
+      # re-homing's own recognition (`recognitionDoor`), never the functor name alone
       test-attrsOf-pre-elemTypeFunctor-listOf-value = pair (T: S: T.attrsOf (oldListOf S)) [
         {
           a = [ { x = 1; } ];
