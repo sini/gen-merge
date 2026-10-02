@@ -743,4 +743,56 @@ in
       };
     };
   };
+
+  # 4zvc9 G1-B: a union over a foreign wrapper of a submodule under `lazyAttrsOf` gives nixpkgs'
+  # value. The walk's container node is the node the fold reads: `memberChain` stops at the record
+  # that states it minted one, so the fold never reads a tree with no `value`. One test per cell, so
+  # an uncatchable abort errors its own cell only.
+  flake.tests.nesting-threaded-union-wrapper =
+    let
+      npSub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+      unions = {
+        either = u: e: u.either e np.str;
+        oneOf =
+          u: e:
+          u.oneOf [
+            e
+            np.str
+          ];
+        npEither = _: e: np.either e np.str;
+      };
+      wrappers = {
+        uniq = _: s: np.uniq s;
+        coercedTo = _: s: np.coercedTo np.str (_: throw "unused") s;
+      };
+      cell =
+        un: wn:
+        let
+          lazy = T: w: T.lazyAttrsOf w;
+        in
+        {
+          expr = opt (unions.${un} t (lazy t (wrappers.${wn} t sub))) { k.x = 5; };
+          expected = fwd (unions.${un} np (lazy np (wrappers.${wn} np npSub))) { k.x = 5; };
+        };
+    in
+    builtins.listToAttrs (
+      builtins.concatMap
+        (
+          un:
+          map
+            (wn: {
+              name = "test-${un}-lazy-${wn}";
+              value = cell un wn;
+            })
+            [
+              "uniq"
+              "coercedTo"
+            ]
+        )
+        [
+          "either"
+          "oneOf"
+          "npEither"
+        ]
+    );
 }
