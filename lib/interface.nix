@@ -916,19 +916,6 @@ let
   importedRehomeAt =
     door: loc: t:
     let
-      r = rehomeRecognition t;
-    in
-    if r == null then null else rehomeAgreed door loc t r;
-  importedRehome = importedRehomeAt null null;
-
-  # THE RECOGNITION ITSELF, which refuses nothing: what `importedRehomeAt` re-homes `t` as, before
-  # the payload's offer is judged against the statement (`rehomeAgreed`), or `null`. ONE predicate,
-  # read by re-homing and by the type-time mark (`mayFoldUnion`), so the mark's foreign arm is the
-  # exact complement of what re-homing recognises: a stock-named record whose payload or statement
-  # fails recognition is threaded, and is marked.
-  rehomeRecognition =
-    t:
-    let
       f = t.functor or { };
       payload = f.payload or null;
       keys = if isAttrs payload then attrNames payload else [ ];
@@ -957,22 +944,31 @@ let
         && payload.placeholder == "name"
         && roles ? element
       then
-        {
+        rehomeAgreed door loc t {
           container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
           inherit (roles) element;
         }
       else if (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && roles ? element then
-        {
+        rehomeAgreed door loc t {
           container = name;
           inherit (roles) element;
         }
       else if name == "either" && keys == [ "elemType" ] && roles ? alternatives then
-        {
+        rehomeAgreed door loc t {
           container = "either";
           inherit (roles) alternatives;
         }
       else
         null;
+  importedRehome = importedRehomeAt null null;
+
+  # THE RECOGNITION DOOR: asked through it, `importedRehomeAt` answers its recognition and never
+  # judges the payload's offer (`rehomeAgreed`), so it refuses nothing. The type-time mark
+  # (`mayFoldUnion`) asks through it, so the mark's foreign arm is the exact complement of what
+  # re-homing recognises: ONE recognition, and a stock-named record whose payload or statement it
+  # does not recognise is threaded, and is marked. A door rather than a second binding, so
+  # re-homing's own call pays nothing for it (`homedAt` asks per position).
+  recognitionDoor = "the type-time mark";
 
   # A recognition `r` of `t`, or the disagreement refusal where its payload offers another element
   # than the carrying spelling states. Two elements are the same type when their `check` and `merge`
@@ -984,30 +980,33 @@ let
   # export fields by `isFunction`, which forces that same `description`.
   rehomeAgreed =
     door: loc: t: r:
-    let
-      slots =
-        x:
-        builtins.intersectAttrs {
-          check = null;
-          merge = null;
-        } x;
-      same = a: b: isAttrs a && isAttrs b && (slots a == slots b);
-      offered = t.functor.payload.elemType;
-    in
-    if
-      (
-        if r ? alternatives then
-          isList offered
-          && length offered == 2
-          && same (elemAt offered 0) (elemAt r.alternatives 0)
-          && same (elemAt offered 1) (elemAt r.alternatives 1)
-        else
-          same offered r.element
-      )
-    then
+    if door == recognitionDoor then
       r
     else
-      throw (rehomeDisagreementRefusal door loc t);
+      let
+        slots =
+          x:
+          builtins.intersectAttrs {
+            check = null;
+            merge = null;
+          } x;
+        same = a: b: isAttrs a && isAttrs b && (slots a == slots b);
+        offered = t.functor.payload.elemType;
+      in
+      if
+        (
+          if r ? alternatives then
+            isList offered
+            && length offered == 2
+            && same (elemAt offered 0) (elemAt r.alternatives 0)
+            && same (elemAt offered 1) (elemAt r.alternatives 1)
+          else
+            same offered r.element
+        )
+      then
+        r
+      else
+        throw (rehomeDisagreementRefusal door loc t);
 
   # The re-homing disagreement's text (OQ2 arm (b)): the record, both statements, and the way out.
   rehomeDisagreementRefusal =
@@ -1087,7 +1086,8 @@ let
 
   # MAY this type be KEYED WHERE READ, at its own position or through a container below it? Gen's
   # own union, or the stock foreign `either` that `homedAt` re-homes as one; a foreign container
-  # re-homing does not recognise (`rehomeRecognition`), which `homedAt` threads; through a gen
+  # re-homing does not recognise (`importedRehomeAt`, asked through `recognitionDoor`), which
+  # `homedAt` threads; through a gen
   # container's element and a stock foreign `nullOr`'s, which over-approximates, since `nullOr` is
   # the one container besides a union that adds no step. Read without homing, so it refuses nothing:
   # an exact container asks it once, when it is built, to decide whether its elements carry the
@@ -1102,7 +1102,7 @@ let
         t ? choose || (t ? carries.element && mayFoldUnion t.carries.element)
       else
         let
-          r = rehomeRecognition t;
+          r = importedRehomeAt recognitionDoor null t;
         in
         # a record re-homing does not recognise is threaded (`threadedForeign`), and is keyed where
         # read under an exact container, as a union is (`keyWalk`, `unionNodeAt`)
