@@ -311,14 +311,16 @@ let
   subA = gmT.submodule { options.a = genMerge.mkOption { type = gmT.str; }; };
   subB = gmT.submodule { options.b = genMerge.mkOption { type = gmT.str; }; };
 
-  # THE TREE'S `name` (den-hoag-tree-type-no-name-arg-xy2r0). One construction read on a SIDE: `ref`
-  # is nixpkgs' `(lib.evalModules …).type` in nixpkgs' eval, `own` gen's tree type in gen's eval,
-  # `foreign` gen's tree type in nixpkgs' eval; `voc` is the container vocabulary. A cell is
+  # A NESTING TYPE'S `name` (den-hoag-tree-type-no-name-arg-xy2r0, den-hoag-fpxsd). One construction
+  # of a KIND read on a SIDE: the kind `tree` is nixpkgs' `(lib.evalModules …).type` against gen's
+  # tree type, the kind `submodule` nixpkgs' `submodule` (`submoduleWith`, its caller's `specialArgs`)
+  # against gen's (`withArgs`). `ref` is nixpkgs' type in nixpkgs' eval, `own` gen's type in gen's
+  # eval, `foreign` gen's type in nixpkgs' eval; `voc` is the container vocabulary. A cell is
   # `e: { mods; specialArgs; types; defs; root; rootSpecialArgs; docs; }`, read over `e`, the side's
   # vocabulary, and defaults to a name-reading module under `attrsOf` with `{ x = { }; }`. The answer
   # is `{ v; }` or `{ refused = true; }`, so a refusal compares beside a value.
-  nameCell =
-    side: voc: cell:
+  nameCellOf =
+    kind: side: voc: cell:
     let
       isRef = side == "ref";
       e = {
@@ -340,7 +342,17 @@ let
             modules = mods;
             inherit specialArgs;
           };
-        T = (e.treeOf c.mods c.specialArgs).type;
+        T =
+          if kind == "tree" then
+            (e.treeOf c.mods c.specialArgs).type
+          else if isRef then
+            nixpkgsLib.types.submoduleWith {
+              modules = c.mods;
+              inherit (c) specialArgs;
+              shorthandOnlyDefinesConfig = true;
+            }
+          else
+            (gmT.submodule c.mods).withArgs c.specialArgs;
       };
       c = {
         mods = [ e.plain ];
@@ -368,14 +380,15 @@ let
       t = builtins.tryEval (builtins.deepSeq r r);
     in
     if t.success then { v = t.value; } else { refused = true; };
-  # A container cell: nixpkgs, and gen's tree in both engines under both container vocabularies.
-  nameClass = cell: answer: {
+  nameCell = nameCellOf "tree";
+  # A container cell: nixpkgs, and gen's type in both engines under both container vocabularies.
+  nameClassOf = kind: cell: answer: {
     expr = {
-      ref = nameCell "ref" "np" cell;
-      own = nameCell "own" "gen" cell;
-      ownNp = nameCell "own" "np" cell;
-      foreign = nameCell "foreign" "gen" cell;
-      foreignNp = nameCell "foreign" "np" cell;
+      ref = nameCellOf kind "ref" "np" cell;
+      own = nameCellOf kind "own" "gen" cell;
+      ownNp = nameCellOf kind "own" "np" cell;
+      foreign = nameCellOf kind "foreign" "gen" cell;
+      foreignNp = nameCellOf kind "foreign" "np" cell;
     };
     expected = {
       ref = answer;
@@ -386,11 +399,11 @@ let
     };
   };
   # An edge cell: each engine under its own container vocabulary.
-  nameEdge = cell: answer: {
+  nameEdgeOf = kind: cell: answer: {
     expr = {
-      ref = nameCell "ref" "np" cell;
-      own = nameCell "own" "gen" cell;
-      foreign = nameCell "foreign" "np" cell;
+      ref = nameCellOf kind "ref" "np" cell;
+      own = nameCellOf kind "own" "gen" cell;
+      foreign = nameCellOf kind "foreign" "np" cell;
     };
     expected = {
       ref = answer;
@@ -398,6 +411,10 @@ let
       foreign = answer;
     };
   };
+  nameClass = nameClassOf "tree";
+  nameEdge = nameEdgeOf "tree";
+  subNameClass = nameClassOf "submodule";
+  subNameEdge = nameEdgeOf "submodule";
 in
 {
   flake.tests.nixpkgs-protocol = {
@@ -665,38 +682,47 @@ in
     };
 
     # WHICH prefix segment each constructor contributes, pinned by CONTENTS. A nullable introduces no
-    # path level, so it must pass the caller's prefix through UNCHANGED — the containers do not. gen-merge
-    # option records carry no `loc`, so the observable is the submodule's `name` special-arg, which
-    # `getSubOptions` binds from the last prefix segment: `attrsOf` contributes `<name>`, `listOf`
-    # contributes `*`, and `submodule`/`nullOr` contribute nothing and so both report the caller's own
-    # last segment. This discriminates all four from each other — a `nullOr` that wrongly added a segment
-    # reads differently from one that adds none, where a key-set check would call both green.
+    # path level, so it must pass the caller's prefix through UNCHANGED — the containers do not. The
+    # observable is the declared option's `loc`: `attrsOf` contributes `<name>`, `listOf` contributes
+    # `*`, and `submodule`/`nullOr` contribute nothing. This discriminates all four from each other — a
+    # `nullOr` that wrongly added a segment reads differently from one that adds none, where a key-set
+    # check would call both green. (The submodule's `name` is no observable here: `getSubOptions` reads
+    # nixpkgs' `‹name›` placeholder at every prefix, `test-submodule-name-docs`.)
     test-getSubOptions-prefix-segments = {
       expr =
         let
-          nameMod =
-            { name, ... }:
-            {
-              options.y = genMerge.mkOption {
-                type = gmT.str;
-                default = name;
-              };
-            };
-          seg = t: ((t.getSubOptions [ "root" ]).y.default or "<no y>");
+          locMod = {
+            options.y = genMerge.mkOption { type = gmT.str; };
+          };
+          seg = t: ((t.getSubOptions [ "root" ]).y.loc or "<no y>");
         in
         {
-          submodule = seg (gmT.submodule nameMod);
-          nullOr = seg (gmT.nullOr (gmT.submodule nameMod));
-          attrsOf = seg (gmT.attrsOf (gmT.submodule nameMod));
-          listOf = seg (gmT.listOf (gmT.submodule nameMod));
-          nullOrAtRoot = ((gmT.nullOr (gmT.submodule nameMod)).getSubOptions [ ]).y.default or "<no y>";
+          submodule = seg (gmT.submodule locMod);
+          nullOr = seg (gmT.nullOr (gmT.submodule locMod));
+          attrsOf = seg (gmT.attrsOf (gmT.submodule locMod));
+          listOf = seg (gmT.listOf (gmT.submodule locMod));
+          nullOrAtRoot = ((gmT.nullOr (gmT.submodule locMod)).getSubOptions [ ]).y.loc or "<no y>";
         };
       expected = {
-        submodule = "root";
-        nullOr = "root";
-        attrsOf = "<name>";
-        listOf = "*";
-        nullOrAtRoot = "";
+        submodule = [
+          "root"
+          "y"
+        ];
+        nullOr = [
+          "root"
+          "y"
+        ];
+        attrsOf = [
+          "root"
+          "<name>"
+          "y"
+        ];
+        listOf = [
+          "root"
+          "*"
+          "y"
+        ];
+        nullOrAtRoot = [ "y" ];
       };
     };
 
@@ -2201,6 +2227,116 @@ in
             extra = "e";
           };
         };
+
+    # ── `submodule` STATES `name` AS NIXPKGS' `submoduleWith` DOES (den-hoag-fpxsd) ───────────────
+    # The tree's construction, on `submodule`: the position's `_module.args.name` definition over the
+    # `‹name›` placeholder, so a module's override resolves by priority and a caller's `name`
+    # (`withArgs`, nixpkgs' `specialArgs`) outranks both. Each cell reads nixpkgs' answer beside it.
+    test-submodule-name-bare = subNameClass (e: {
+      types = [ e.T ];
+      defs = [ { } ];
+    }) { v.a = "s"; };
+    test-submodule-name-empty = subNameClass (e: {
+      types = [ e.T ];
+      defs = [ ];
+    }) { v.a = "‹name›"; };
+    test-submodule-name-attrsOf = subNameClass (_: { }) { v.x.a = "x"; };
+    test-submodule-name-listOf = subNameClass (e: {
+      types = [ (e.ty.listOf e.T) ];
+      defs = [ [ { } ] ];
+    }) { v = [ { a = "[definition 1-entry 1]"; } ]; };
+    test-submodule-name-docs = {
+      expr = {
+        ref = nameCellOf "submodule" "ref" "np" (_: {
+          docs = true;
+        });
+        gen = nameCellOf "submodule" "own" "gen" (_: {
+          docs = true;
+        });
+      };
+      expected = {
+        ref.v = "‹name›";
+        gen.v = "‹name›";
+      };
+    };
+    test-submodule-name-control-reads-no-name = subNameEdge (e: {
+      mods = [
+        {
+          options.a = e.L.mkOption {
+            type = e.leaf.str;
+            default = "k";
+          };
+        }
+      ];
+    }) { v.x.a = "k"; };
+    test-submodule-name-args-mkForce-wins = subNameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkForce "forced"; }
+      ];
+    }) { v.x.a = "forced"; };
+    test-submodule-name-args-mkDefault-yields-to-the-position = subNameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkDefault "dflt"; }
+      ];
+    }) { v.x.a = "x"; };
+    test-submodule-name-args-plain-is-defined-twice = subNameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = "plain"; }
+      ];
+    }) { refused = true; };
+    test-submodule-name-args-mkOptionDefault-yields-to-the-position = subNameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkOptionDefault "od"; }
+      ];
+    }) { v.x.a = "x"; };
+    test-submodule-name-args-mkDefault-over-the-placeholder = subNameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkDefault "dflt"; }
+      ];
+      types = [ e.T ];
+      defs = [ ];
+    }) { v.a = "dflt"; };
+    test-submodule-name-args-mkOptionDefault-ties-the-placeholder = subNameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkOptionDefault "od"; }
+      ];
+      types = [ e.T ];
+      defs = [ ];
+    }) { refused = true; };
+    test-submodule-name-args-mkDefault-in-the-docs = subNameEdge (e: {
+      mods = [
+        e.plain
+        { _module.args.name = e.L.mkDefault "dflt"; }
+      ];
+      docs = true;
+    }) { v = "dflt"; };
+    test-submodule-name-caller-specialArgs-wins = subNameEdge (_: {
+      specialArgs.name = "caller";
+    }) { v.x.a = "caller"; };
+    test-submodule-name-caller-specialArgs-wins-over-no-definitions = subNameEdge (e: {
+      specialArgs.name = "caller";
+      types = [ e.T ];
+      defs = [ ];
+    }) { v.a = "caller"; };
+    test-submodule-name-is-a-config-value = subNameEdge (e: {
+      mods = [
+        (
+          { config, ... }:
+          {
+            options.a = e.L.mkOption {
+              type = e.leaf.str;
+              default = config._module.args.name;
+            };
+          }
+        )
+      ];
+    }) { v.x.a = "x"; };
 
     # A SELF-REFERENTIAL type folds in gen's eval and mounts abroad, to the definition itself. The
     # foreign face rebuilds `attrsOf j` over `j`'s own face one level at a time and lazily, so it is

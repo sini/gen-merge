@@ -130,9 +130,18 @@
           [ "$rc" -eq 0 ] || die phrase-cycle-control "expected exit 0, got $rc"
           [ "$val" = '"null or (list of signed integer) | list of (null or string)"' ] || die phrase-cycle-control "expected nixpkgs' phrases, got '$val'"
 
+          # den-hoag-fpxsd: a submodule module whose `_module.args` key set reads `name` dies in the
+          # infinite-recursion channel, as nixpkgs' `submoduleWith` does; a value reading it answers.
+          evalArm name-keyset-reads-name
+          [ "$rc" -ne 0 ] || die name-keyset-reads-name "expected a death, got exit 0 with '$val'"
+          grep -q 'infinite recursion encountered' "$TMPDIR/err" || die name-keyset-reads-name "death is not the infinite-recursion channel"
+          evalArm name-keyset-control
+          [ "$rc" -eq 0 ] || die name-keyset-control "expected exit 0, got $rc"
+          [ "$val" = '"x:x"' ] || die name-keyset-control "expected value \"x:x\", got '$val'"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "16" ] || die runner "expected 16 evaluations, ran $ran"
-          echo "tests-process: 16 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "18" ] || die runner "expected 18 evaluations, ran $ran"
+          echo "tests-process: 18 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

@@ -3298,22 +3298,112 @@ in
     # CALLER STATES IT, and names the key. Refusing at the eval sites instead would be too late in
     # two ways: the loss would already have happened, and the caller's name for it would be gone.
     #
-    # ★ THERE ARE FOUR, NOT ONE. `name` is injected by `submodule`'s own two `evalModuleTree` calls;
-    # `config`, `options` and `prefix` are injected by the ENGINE, at both strata (`lib/modules.nix`
-    # `declArgs` and `baseArgs`), with the supplied set on the LEFT of `//`, so the engine's value
-    # wins. The engine refuses those three itself (`engine-reserved-args` below), but only when a
-    # module is applied; the inlet answers when the caller states the key.
+    # ★ THERE ARE THREE. `config`, `options` and `prefix` are injected by the ENGINE, at both strata
+    # (`lib/modules.nix` `declArgs` and `baseArgs`), with the supplied set on the LEFT of `//`, so the
+    # engine's value wins. The engine refuses those three itself (`engine-reserved-args` below), but
+    # only when a module is applied; the inlet answers when the caller states the key. `name` is not
+    # one: `submodule` states it as a `_module.args` definition, which the caller's outranks
+    # (`nixpkgs-protocol` `test-submodule-name-caller-specialArgs-wins`).
     #
     # Each cell reads the TEXT, not merely that it threw: `tryEval` discards the message, and "it
     # threw" passes on any refusal anywhere in the construction.
-    flake.testsError.submodule-args = {
-      test-withArgs-refuses-the-reserved-name-by-name = {
-        expr = (t.submodule [ { } ]).withArgs { name = "CALLER"; };
-        expectedError = {
+    # ── `submodule`'s `name`: WHICH refusal fires (den-hoag-fpxsd) ──────────────────────────────
+    # The value plane (`nixpkgs-protocol` `test-submodule-name-*`) holds THAT nixpkgs and gen both
+    # refuse; these hold WHY, so a refusal for an unrelated reason cannot pass. Two definitions of
+    # `name` at one priority refuse as a module argument defined twice, naming both files: with
+    # definitions the position (`<position>`) is the second, over none the `‹name›` placeholder is
+    # (an anonymous module, so the two read as one file's two definitions).
+    # A module reading `name` on the DECLARATION plane (`imports`, an option key) refuses by name as
+    # any value-stratum argument does there (ADR-0033); nixpkgs overflows (infinite recursion) and
+    # gen served the position's step before the name became a definition.
+    flake.testsError.submodule-name =
+      let
+        reader =
+          { name, ... }:
+          {
+            options.a = gm.mkOption {
+              type = t.str;
+              default = name;
+            };
+          };
+        under =
+          type: defs:
+          (gm.evalModuleTree {
+            modules = [
+              { options.s = gm.mkOption { inherit type; }; }
+              { s = defs; }
+            ];
+          }).config.s;
+        twice = files: {
           type = "ThrownError";
-          msg = "^gen-merge: `withArgs' cannot supply the base module argument `name'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
+          msg = "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in ${files}$";
+        };
+        declRead = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read the module argument `name' while its own declarations were being folded.*";
+        };
+      in
+      {
+        test-a-plain-definition-and-the-position-are-defined-twice = {
+          expr =
+            (under (t.attrsOf (
+              t.submodule [
+                reader
+                { _module.args.name = "plain"; }
+              ]
+            )) { x = { }; }).x.a;
+          expectedError = twice "<gen-merge>, <position>";
+        };
+        test-an-option-default-ties-the-placeholder = {
+          expr =
+            (under (t.submodule [
+              reader
+              { _module.args.name = gm.mkOptionDefault "od"; }
+            ]) (gm.mkIf false { })).a;
+          expectedError = twice "<gen-merge> \\(2 definitions\\)";
+        };
+        test-a-declaration-reading-name-in-imports-refuses-by-name = {
+          expr =
+            (under (t.attrsOf (
+              t.submodule (
+                { name, ... }:
+                {
+                  imports = if name == "x" then [ { options.a = gm.mkOption { default = "ix"; }; } ] else [ ];
+                }
+              )
+            )) { x = { }; }).x;
+          expectedError = declRead;
+        };
+        test-a-declaration-reading-name-as-an-option-key-refuses-by-name = {
+          expr =
+            (under (t.attrsOf (
+              t.submodule (
+                { name, ... }:
+                {
+                  options.${name} = gm.mkOption { default = "k"; };
+                }
+              )
+            )) { x = { }; }).x;
+          expectedError = declRead;
+        };
+        # LIVE CONTROL, same run: a caller's `name` is served on the declaration plane, as nixpkgs'
+        # `specialArgs` are, so the two cells above refuse the position's name and not the read.
+        test-control-a-callers-name-is-served-on-the-declaration-plane = {
+          expr =
+            (under (t.attrsOf (
+              (t.submodule (
+                { name, ... }:
+                {
+                  options.${name} = gm.mkOption { default = "k"; };
+                }
+              )).withArgs
+                { name = "caller"; }
+            )) { x = { }; }).x;
+          expected.caller = "k";
         };
       };
+
+    flake.testsError.submodule-args = {
       test-withArgs-refuses-the-reserved-config-by-name = {
         expr = (t.submodule [ { } ]).withArgs { config = "CALLER"; };
         expectedError = {
@@ -3339,16 +3429,16 @@ in
       # edit instead of rediscovering the second after the first.
       test-withArgs-names-every-reserved-key-the-caller-stated = {
         expr = (t.submodule [ { } ]).withArgs {
-          name = "A";
+          config = "A";
           prefix = "B";
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: `withArgs' cannot supply the base module arguments `name', `prefix'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
+          msg = "^gen-merge: `withArgs' cannot supply the base module arguments `config', `prefix'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
         };
       };
       # LIVE CONTROL, same run: an UNRESERVED key is admitted and the type still builds. Without it
-      # the five cells above are consistent with a `withArgs` that refuses everything — which would
+      # the four cells above are consistent with a `withArgs` that refuses everything — which would
       # pass its own oracle while shipping no inlet at all.
       test-withArgs-admits-an-unreserved-key-control = {
         expr = ((t.submodule [ { } ]).withArgs { anArg = "CALLER"; }).specialArgs;
@@ -3442,9 +3532,8 @@ in
           expectedError = refused "argument `prefix'";
         };
         # The two reserved sets are spelled twice (`withArgs`' in `lib/types.nix`, the engine's
-        # inline at each binding), so this cell holds them to one answer per key. Only `name`
-        # differs, because `submodule` injects `name` and the engine does not. `lib` and `anArg`
-        # are the controls: every door admits them. Each answer comes through `tryEval`, so this
+        # inline at each binding), so this cell holds them to one answer per key. `name`, `lib` and
+        # `anArg` are the controls: every door admits them. Each answer comes through `tryEval`, so this
         # cell is also the catchability oracle.
         test-withArgs-and-both-engine-strata-agree-per-key = {
           expr = builtins.listToAttrs (
@@ -3478,11 +3567,7 @@ in
               config = all3 "REFUSED";
               options = all3 "REFUSED";
               prefix = all3 "REFUSED";
-              name = {
-                withArgs = "REFUSED";
-                engine = "CALLER";
-                declared = "CALLER";
-              };
+              name = all3 "CALLER";
               lib = all3 "CALLER";
               anArg = all3 "CALLER";
             };

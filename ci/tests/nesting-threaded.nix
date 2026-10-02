@@ -386,22 +386,21 @@ in
         sub = false;
       };
     };
-    # `named` is the `specialArgs` injection; `namesByModule` is the tree's: nixpkgs' `‹name›`
-    # placeholder module, stated as data, beside the position's `_module.args.name` definition.
-    test-a-nesting-type-states-whether-its-tree-is-named = {
+    # The name is the engine's, not a nesting type's: no nesting type states a `name` channel, and
+    # the placeholder every nested tree over no definitions reads is nixpkgs' `mkOptionDefault "‹name›"`.
+    test-the-name-is-the-engines-not-a-nesting-types = {
       expr = {
-        sub = sub.nests.named;
-        tree = tree.nests.named;
-        subNamesByModule = sub.nests ? namesByModule;
-        treeNamesByModule = {
-          inherit (tree.nests.namesByModule._module.args.name) _type priority content;
+        typeStates = builtins.filter (k: sub.nests ? ${k} || tree.nests ? ${k}) [
+          "named"
+          "namesByModule"
+        ];
+        placeholder = {
+          inherit (genMergeCore.namePlaceholder._module.args.name) _type priority content;
         };
       };
       expected = {
-        sub = true;
-        tree = false;
-        subNamesByModule = false;
-        treeNamesByModule = {
+        typeStates = [ ];
+        placeholder = {
           _type = "override";
           priority = 1500;
           content = "‹name›";

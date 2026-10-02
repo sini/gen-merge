@@ -206,9 +206,8 @@ named `sub`) in addition to any `specialArgs` and `_module.args` entries. The en
 an entry of the same name: a `specialArgs` key among them is refused by name, since the caller's value
 would reach no module, and a `_module.args` entry of that name stays readable as
 `config._module.args.<name>` but does not bind the formal. A nested tree's modules also receive
-`name`, the last step of their position: `types.submodule` injects it through `specialArgs`, and the
-tree-as-a-type states it as nixpkgs' `submoduleWith` does, an overridable `_module.args.name`
-definition. **That is the whole of the injected argument set, and it is the argument-side compat
+`name`, the last step of their position: `types.submodule` and the tree-as-a-type state it as
+nixpkgs' `submoduleWith` does, an overridable `_module.args.name` definition. **That is the whole of the injected argument set, and it is the argument-side compat
 boundary:** nixpkgs injects `lib` at every
 `evalModules` level and gen-merge injects none, so a module reading `lib` is refused by name
 (`` module argument `lib' is not defined ``) until the caller threads it through `specialArgs`.
@@ -1078,7 +1077,7 @@ throw.
 The table matches nixpkgs entry for entry, and the second half is as load-bearing as the first: a type
 that declares no empty value must keep throwing. A submodule's empty value is nixpkgs
 `submoduleWith`'s `base.config`: its module set evaluated with no definitions, at no prefix, with
-`name = "‹name›"`. So its defaults read as declared and an undefined sub-option refuses by name.
+`_module.args.name = mkOptionDefault "‹name›"`. So its defaults read as declared and an undefined sub-option refuses by name.
 The tree type's is its own fold over no definitions.
 
 There are **two ways to arrive with nothing**, and both reach the same rule: an option that was never
@@ -1421,13 +1420,20 @@ triple. Every protocol field is then derived by `exportType` as for any gen type
 | `getSubOptions`, `getSubModules`, `substSubModules` | the tree's declarations under the foreign prefix, its module set, and its rebuild over another                                                                                                                                                                           |
 | `check`, `merge`, `emptyValue`                      | the module-value domain, the fold through the bridge (one root evaluation of the tree), and the tree over no definitions                                                                                                                                                 |
 
-**The tree names its modules as nixpkgs' `submoduleWith` does.** Each child with definitions gets
+**`submodule` and the tree name their modules as nixpkgs' `submoduleWith` does.** Each child with definitions gets
 `_module.args.name` = the last step of its position (the attribute name under `attrsOf`, the
-`[definition n-entry m]` step under `listOf`, the option's own name bare or under a union), as one
-definition at normal priority in its `_module.args` merge. The child over no definitions, `emptyValue`
+`[definition n-entry m]` step under `listOf`, the option's own name bare or under a union), resolved as
+one definition at normal priority beside its modules' own. The child over no definitions, `emptyValue`
 and `getSubOptions` read the placeholder `mkOptionDefault "‹name›"`. So a module's `mkForce` or
 `mkDefault` on `_module.args.name` resolves by priority as nixpkgs resolves it, a plain definition
-refuses as defined multiple times, and a caller's `specialArgs.name` outranks it.
+refuses as defined multiple times, and a caller's `specialArgs.name` (`withArgs` on `submodule`)
+outranks it. `withArgs` therefore admits `name`, and refuses by name only the three arguments the engine
+writes over, `config`, `options` and `prefix` (the refusal of `name` there, den-hoag-jyiji's arm, stood
+while `submodule` injected it over the caller's, and is superseded). A module reading `name` while its
+declarations are folded (`imports`, an option key) refuses by name as it would for any module argument,
+unless a caller supplied it. A module whose `_module.args` key set reads `name`
+(`_module.args = if name == … then { … } else { }`) dies with infinite recursion, as in nixpkgs: whether
+a module states `name` is decided by that key set, so it cannot wait on `name`.
 
 **The published option records carry nixpkgs' declaration shape.** An evaluation's `.options` (and
 `declaredOptions`) records carry `loc`, `declarations` (the declaring modules' files) and nixpkgs'

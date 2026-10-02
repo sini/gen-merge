@@ -2158,54 +2158,131 @@ let
       if loc == null then "" else " at option `${showOption loc}'"
     }: its called `${field}' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it (`evalModuleTree'), read through its fold's threaded sibling, and no second evaluation is made for it";
 
-  # THE `name` A TREE STATES AS A DEFINITION: nixpkgs' `submoduleWith` merge adds
+  # THE `name` EVERY NESTED TREE STATES, AS NIXPKGS' `submoduleWith` STATES IT: its merge adds
   # `{ _module.args.name = last loc; }` to each evaluation over its base's `mkOptionDefault "‹name›"`,
   # so the position's name is a `config` value a module can override and a caller's `specialArgs.name`
-  # outranks. A nesting type stating `namesByModule` (the tree record, whose value is the placeholder
-  # module) gives a child with definitions this one definition, at priority 100, in its `_module.args`
-  # merge (`positionArgs`, read by `moduleArgs`), and a child without the placeholder module: the
-  # first always outranks the second, so a child never carries both. A definition and not a module,
-  # because the module's collection is what costs. `submodule` injects through `specialArgs` instead
-  # (`named`).
+  # outranks. A nested tree over definitions at a position (the positioned knots,
+  # `knotChildPositioned` and `knotRootPositioned`) carries this value as the `name` key of the
+  # argument sets its modules are applied to (`baseArgs`, and `declArgs` on the declaration plane);
+  # it enters a merge, as one priority-100 definition, only in `positionNameOf`, when a module states
+  # `name`. `moduleArgs` zips the modules' own sets alone. A nested tree over no definitions, and
+  # every nesting type's declarations, read the placeholder module `namePlaceholder` instead. The
+  # first always outranks the second, so a child never carries both. A key and not a module, because
+  # the module's collection is what costs.
   positionArgsAt = loc: {
     name = if loc == [ ] then "" else prelude.last loc;
   };
+  # `_module.args` merges as nixpkgs' `lazyAttrsOf raw` (`moduleArgs` in `evalModuleTreeWith`): one
+  # argument's definitions are discharged and priority-filtered, and MORE THAN ONE WINNER REFUSES BY
+  # NAME, naming the argument and every winning file in fold order.
+  mergeModuleArg =
+    name: defs:
+    # One property-free definition is its own winner, decided before any binding is
+    # allocated: gen-schema's instance inlet sets an argument once on every instance.
+    if tail defs == [ ] && !(priority.isProperty (head defs).value) then
+      (head defs).value
+    else
+      let
+        winners = filterOverrides (
+          concatMap (d: map (w: w // { inherit (d) _file; }) (dischargeProperties d.value)) defs
+        );
+        # Each file once, in fold order; a file carrying several definitions (an `mkMerge`
+        # inside one module) says how many.
+        files =
+          ws:
+          let
+            fs = map (w: w._file) ws;
+          in
+          concatStringsSep ", " (
+            map (
+              f:
+              let
+                n = length (filter (x: x == f) fs);
+              in
+              if n == 1 then f else "${f} (${toString n} definitions)"
+            ) (prelude.unique fs)
+          );
+      in
+      if length winners == 1 then
+        (head (sortProperties winners)).value
+      else if winners == [ ] then
+        throw "gen-merge: module argument `${name}' (`_module.args.${name}') is used but every definition of it is disabled; defined in ${files defs}"
+      else
+        throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}";
+
+  # Each module's `_module.args`, one set of `{ _file; value; }` definitions per module stating any.
+  moduleArgSetsOf =
+    pushed:
+    # Pay per use: `filter` calls its predicate without allocating a thunk, so a module
+    # stating no `_module` costs nothing here, and one stating no `_module.args` costs
+    # its `m` alone (an `optional` call would thunk both of its arguments).
+    concatMap (
+      p:
+      let
+        m = pushDownProperties p.attrs._module;
+      in
+      if m ? args then
+        [
+          (mapAttrs (_: value: {
+            inherit (p) _file;
+            inherit value;
+          }) (pushDownProperties m.args))
+        ]
+      else
+        [ ]
+    ) (filter (p: p.attrs ? _module) pushed);
+
+  # A positioned evaluation's `name`, as nixpkgs' `submoduleWith` resolves it: the position's
+  # `last loc` is one priority-100 definition beside whatever the modules state. A module stating
+  # none leaves the position's value itself, read without building the merge; one that states some
+  # merges its definitions with the position's (`mergeModuleArg`), so `mkForce` wins, `mkDefault`
+  # yields, and a plain definition refuses as defined twice. `stated` is the evaluation's
+  # `moduleArgs`, which holds no position definition.
+  positionNameOf =
+    prefix: stated: pushed:
+    if stated ? name then
+      mergeModuleArg "name" (
+        builtins.catAttrs "name" (moduleArgSetsOf pushed)
+        ++ [
+          {
+            _file = "<position>";
+            value = (positionArgsAt prefix).name;
+          }
+        ]
+      )
+    else
+      (positionArgsAt prefix).name;
+
+  declarationStratum = declarationStratumWith false;
+  declarationStratumPositioned = declarationStratumWith true;
+
+  # The documentation placeholder, one module shared by every nesting type: the child over no
+  # definitions and the declarations (`substructure.declares`) read it.
+  namePlaceholder._module.args.name = mkOptionDefault "‹name›";
 
   # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
   # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
   # in the mode `m` (`{ carried; inherited; }`). It is the call a nesting type's called form made,
   # field for field, built from what the type states as data: its module set plus one entry per
   # seed definition, the placing fold's `loc` as the prefix, and its own arguments, with `name`
-  # injected where the type injects one (`nests.named`: `submodule` does, the tree record does not).
+  # carried by the positioned knot (`positionArgsAt`, resolved by `positionNameOf`).
   # It is the export BRIDGE's child (item 7, OQ11 (d)), where no gen evaluation holds the tree: one
   # root evaluation per nested tree, as many as the called form made. With no definition it is the tree over none, with `nests.empty`'s arguments, as a child with an
   # empty seed is (item 4). It is a ROOT evaluation, so the trees it holds are its own children.
   nestedTreeAt =
     m: site:
-    evalModuleTreeWith knotRoot m.carried m.inherited (
-      if site.defs == [ ] then
-        {
-          modules =
-            if site.nests ? namesByModule then
-              site.nests.modules ++ [ site.nests.namesByModule ]
-            else
-              site.nests.modules;
-          inherit (site.nests) coreShortCircuit;
-          inherit (site.nests.empty) prefix specialArgs check;
-        }
-      else
-        {
-          modules = site.nests.modules ++ map site.nests.entry site.defs;
-          prefix = site.loc;
-          specialArgs =
-            if site.nests.named then
-              site.nests.specialArgs // { name = if site.loc == [ ] then "" else prelude.last site.loc; }
-            else
-              site.nests.specialArgs;
-          inherit (site.nests) check coreShortCircuit;
-        }
-        // (if site.nests ? namesByModule then { positionArgs = positionArgsAt site.loc; } else { })
-    );
+    if site.defs == [ ] then
+      evalModuleTreeWith knotRoot m.carried m.inherited {
+        modules = site.nests.modules ++ [ namePlaceholder ];
+        inherit (site.nests) coreShortCircuit;
+        inherit (site.nests.empty) prefix specialArgs check;
+      }
+    else
+      evalModuleTreeWith knotRootPositioned m.carried m.inherited {
+        modules = site.nests.modules ++ map site.nests.entry site.defs;
+        prefix = site.loc;
+        inherit (site.nests) specialArgs check coreShortCircuit;
+      };
 
   # ── THE ENGINE'S THREADED TWIN (den-hoag-n6dh7 item 5) ───────────────────────────────────────────
   # The CALLED fold over the type whose fold is its threaded form, bound to the evaluation's
@@ -3054,7 +3131,13 @@ let
   # `declEntries`, `sitesAt` and `options` are published together because every refusal on this
   # plane names the files that declared the option, and a second walk to recover them would be a
   # second answer to `which module declared this` that can drift from the first.
-  declarationStratum =
+  #
+  # `positioned`: a positioned evaluation's `name` is a key of `declArgs` too, refusing as any
+  # value-stratum argument does unless a caller supplied it, so a module reading `name` takes
+  # `callD`'s elided application. A curried flag, bound twice below, and not a key of the argument
+  # set: every nested evaluation's guard builds that set, and a key on it is paid per evaluation.
+  declarationStratumWith =
+    positioned:
     {
       modules,
       specialArgs ? { },
@@ -3093,11 +3176,21 @@ let
               + "; the engine injects its own value there, so the caller's would be discarded rather than used"
             )
         )
-        // {
-          config = inadmissible "config" "read `config'";
-          options = inadmissible "options" "read `options'";
-          inherit prefix;
-        };
+        // (
+          if positioned then
+            {
+              config = inadmissible "config" "read `config'";
+              options = inadmissible "options" "read `options'";
+              inherit prefix;
+              name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
+            }
+          else
+            {
+              config = inadmissible "config" "read `config'";
+              options = inadmissible "options" "read `options'";
+              inherit prefix;
+            }
+        );
 
       # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
       # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
@@ -3414,27 +3507,18 @@ let
       throw "gen-merge: `evalModuleTree': option `${showOption p.loc}': the fold of the tree holding it did not select a nested tree at this position${
         if isAttrs member then " (it folds as `${member.name or "<unnamed>"}')" else ""
       }, so this nested tree is a candidate and is never evaluated"
+    else if p.defs == [ ] then
+      evalModuleTreeWith knotChild m.carried m.inherited {
+        modules = n.modules ++ [ namePlaceholder ];
+        inherit (n) coreShortCircuit;
+        inherit (n.empty) prefix specialArgs check;
+      } self (self.get id knotAttr)
     else
-      evalModuleTreeWith knotChild m.carried m.inherited (
-        if p.defs == [ ] then
-          {
-            modules = if n ? namesByModule then n.modules ++ [ n.namesByModule ] else n.modules;
-            inherit (n) coreShortCircuit;
-            inherit (n.empty) prefix specialArgs check;
-          }
-        else
-          {
-            modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
-            prefix = p.loc;
-            specialArgs =
-              if n.named then
-                n.specialArgs // { name = if p.loc == [ ] then "" else prelude.last p.loc; }
-              else
-                n.specialArgs;
-            inherit (n) check coreShortCircuit;
-          }
-          // (if n ? namesByModule then { positionArgs = positionArgsAt p.loc; } else { })
-      ) self (self.get id knotAttr);
+      evalModuleTreeWith knotChildPositioned m.carried m.inherited {
+        modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
+        prefix = p.loc;
+        inherit (n) specialArgs check coreShortCircuit;
+      } self (self.get id knotAttr);
 
   # The knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a call
   # pays no argument for the choice: a root's (the minting knot), a root's whose evaluation is
@@ -3444,24 +3528,38 @@ let
     mints = true;
     exposes = false;
     inner = true;
+    positioned = false;
     drive = null;
+  };
+  # A nested tree over definitions at a position: the sets its modules are applied to hold the
+  # position's `name` (`positionArgsAt` of its `prefix`), resolved against the modules' own
+  # definitions by `positionNameOf` only when one states it. A knot, not an argument, because the
+  # argument record is built per child and every field on it is paid per child.
+  knotChildPositioned = knotChild // {
+    positioned = true;
   };
   knotNested = {
     mints = false;
     exposes = false;
     inner = false;
+    positioned = false;
     drive = driveKnot;
   };
   knotRoot = {
     mints = true;
     exposes = false;
     inner = false;
+    positioned = false;
     drive = driveKnotMinting false;
+  };
+  knotRootPositioned = knotRoot // {
+    positioned = true;
   };
   knotExposed = {
     mints = true;
     exposes = true;
     inner = false;
+    positioned = false;
     drive = driveKnotMinting true;
   };
 
@@ -3500,11 +3598,7 @@ let
       # top eval); the nested moduleTree-as-type merge stays COLD (a boundary, like provenance's).
       warmFrom ? null,
       editedModules ? [ ],
-      # `positionArgs`: a nested tree child's `_module.args` definitions from its position
-      # (`positionArgsAt`), read only by `moduleArgs`. Taken through `...`, not a defaulted formal,
-      # so an evaluation without it pays nothing; the public door's closed key list does not name it.
-      ...
-    }@evalArgs:
+    }:
     let
       modList = if isList modules then modules else [ modules ];
       # This evaluation's effective strictness: its own `check`, or a carrying tree's.
@@ -3716,7 +3810,7 @@ let
             ) (attrNames t);
         in
         builtins.seq (spine
-          (declarationStratum {
+          ((if knot.positioned then declarationStratumPositioned else declarationStratum) {
             inherit specialArgs prefix;
             modules = modList;
           }).options
@@ -3747,13 +3841,26 @@ let
                   + "; the engine injects its own value there, so the caller's would be discarded rather than used"
                 )
             )
-            // {
-              inherit (result) options;
-              # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
-              # parity); the returned `result.config` stays `_module`-free.
-              config = result.moduleConfig;
-              inherit prefix;
-            };
+            // (
+              # A positioned evaluation carries its `name` here, resolved as a definition
+              # (`positionNameOf`) and outranked by a caller's: a key in the set every module is
+              # applied to, so a module reading `name` takes `callM`'s elided application.
+              if knot.positioned then
+                {
+                  inherit (result) options;
+                  # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
+                  # parity); the returned `result.config` stays `_module`-free.
+                  config = result.moduleConfig;
+                  inherit prefix;
+                  name = specialArgs.name or (positionNameOf prefix moduleArgs pushed);
+                }
+              else
+                {
+                  inherit (result) options;
+                  config = result.moduleConfig;
+                  inherit prefix;
+                }
+            );
 
           # Apply a module by its declared formals, sourcing each from baseArgs then the dynamic
           # module-args set. Using `functionArgs` (static) is what breaks the spine cycle.
@@ -3986,74 +4093,7 @@ let
           #
           # IT IS NOT THE FREEFORM FEEDER: `freeformType` is collected PER MODULE
           # (`moduleFreeformEntries`), so N contributions reach `filterOverrides` as N defs.
-          moduleArgs =
-            builtins.zipAttrsWith
-              (
-                name: defs:
-                # One property-free definition is its own winner, decided before any binding is
-                # allocated: gen-schema's instance inlet sets an argument once on every instance.
-                if tail defs == [ ] && !(priority.isProperty (head defs).value) then
-                  (head defs).value
-                else
-                  let
-                    winners = filterOverrides (
-                      concatMap (d: map (w: w // { inherit (d) _file; }) (dischargeProperties d.value)) defs
-                    );
-                    # Each file once, in fold order; a file carrying several definitions (an `mkMerge`
-                    # inside one module) says how many.
-                    files =
-                      ws:
-                      let
-                        fs = map (w: w._file) ws;
-                      in
-                      concatStringsSep ", " (
-                        map (
-                          f:
-                          let
-                            n = length (filter (x: x == f) fs);
-                          in
-                          if n == 1 then f else "${f} (${toString n} definitions)"
-                        ) (prelude.unique fs)
-                      );
-                  in
-                  if length winners == 1 then
-                    (head (sortProperties winners)).value
-                  else if winners == [ ] then
-                    throw "gen-merge: module argument `${name}' (`_module.args.${name}') is used but every definition of it is disabled; defined in ${files defs}"
-                  else
-                    throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}"
-              )
-              (
-                # Pay per use: `filter` calls its predicate without allocating a thunk, so a module
-                # stating no `_module` costs nothing here, and one stating no `_module.args` costs
-                # its `m` alone (an `optional` call would thunk both of its arguments).
-                concatMap (
-                  p:
-                  let
-                    m = pushDownProperties p.attrs._module;
-                  in
-                  if m ? args then
-                    [
-                      (mapAttrs (_: value: {
-                        inherit (p) _file;
-                        inherit value;
-                      }) (pushDownProperties m.args))
-                    ]
-                  else
-                    [ ]
-                ) (filter (p: p.attrs ? _module) pushed)
-                ++ (
-                  if evalArgs ? positionArgs then
-                    [
-                      (mapAttrs (_: value: {
-                        _file = "<position>";
-                        inherit value;
-                      }) evalArgs.positionArgs)
-                    ]
-                  else
-                    [ ]
-                )
-              );
+          moduleArgs = builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed);
           # freeformType is priority-resolved (nixpkgs treats it as an option): a top-level
           # `freeformType` (bare, prio 100) beats a `_module.freeformType = mkDefault …` (prio 1000)
           # — this is how strict.nix's throw-on-unknown default yields to a kind's own freeform.
@@ -4254,16 +4294,38 @@ let
           # gen-schema's `mkInstanceType` sets `config._module.args.${kind} = config` and den's
           # `resolvedCtxModule` reads `config._module.args` to build the entity resolution context (it
           # can't enumerate `...` function args). ONLY `.args` (not the `_module.freeformType` gen-merge
-          # consumes internally), and ONLY when a module set an arg — else `config` is used unchanged.
+          # consumes internally), and ONLY when there is an arg — a module set one, or the evaluation is
+          # positioned and so has its `name` — else `config` is used unchanged.
           moduleConfig =
             if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
-              if moduleArgs == { } then config else config // { _module.args = moduleArgs; }
+              if knot.positioned then
+                config
+                // {
+                  _module.args = moduleArgs // {
+                    name = positionNameOf prefix moduleArgs pushed;
+                  };
+                }
+              else if moduleArgs == { } then
+                config
+              else
+                config // { _module.args = moduleArgs; }
             else
               config
               // {
                 _module =
                   recursiveUpdate (freeformConfig._module or { }) (declaredConfig._module or { })
-                  // (if moduleArgs == { } then { } else { args = moduleArgs; });
+                  // (
+                    if knot.positioned then
+                      {
+                        args = moduleArgs // {
+                          name = positionNameOf prefix moduleArgs pushed;
+                        };
+                      }
+                    else if moduleArgs == { } then
+                      { }
+                    else
+                      { args = moduleArgs; }
+                  );
               };
 
           # ── provenance (A2 spec §1) ────────────────────────────────────────────────────────────
@@ -4838,7 +4900,6 @@ let
               inherit (ev) position;
               inherit nests loc defs;
             };
-            placeholder._module.args.name = mkOptionDefault "‹name›";
             nestingFold = {
               __functor =
                 _: loc: _:
@@ -4870,13 +4931,8 @@ let
             # field: `entry` is one definition read as `defsAsModules false` reads it (every definition
             # is a module, as the reference `(evalModules …).type` reads it), `empty` is the arguments
             # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
-            # and `named` is `false` because the tree injects no `name` through `specialArgs`: it states
-            # it as nixpkgs' `submoduleWith` does, a `_module.args.name` definition per child with
-            # definitions (`positionArgsAt`), and the documentation placeholder `‹name›` at
-            # `mkOptionDefault` (`namesByModule`) in the child without and in the declarations.
             nests = {
               modules = modList;
-              namesByModule = placeholder;
               inherit specialArgs check coreShortCircuit;
               entry = d: head (defsAsModules false [ d ]);
               empty = {
@@ -4887,7 +4943,6 @@ let
                 carried = false;
                 inherited = false;
               };
-              named = false;
             };
             # The fold over no definitions, CALLED, refuses (item 1): an undefined tree is the child
             # with an empty seed, which the threaded fold reads (`threadedAs`).
@@ -4949,7 +5004,7 @@ let
               declares =
                 prefix:
                 (evalModuleTreeNested {
-                  modules = modList ++ [ placeholder ];
+                  modules = modList ++ [ namePlaceholder ];
                   inherit prefix specialArgs check;
                 }).options;
               rebuild = over;
@@ -5072,6 +5127,7 @@ in
     nestedTreeAt
     mergeDefsThreaded
     calledNestingRefusal
+    namePlaceholder
     # The nixpkgs `optionType` PROTOCOL BOUNDARY (lib/interface.nix), reached through this seam by
     # everything above it — the type vocabulary exports through it, this engine reads foreign types
     # through it, and the public surface stamps through it. ONE binding, so the library cannot hold

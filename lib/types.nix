@@ -44,6 +44,7 @@ let
   inherit (builtins) isFunction;
   inherit (core)
     evalModuleTreeNested
+    namePlaceholder
     calledNestingRefusal
     mergeDefs
     mergeDefsThreaded
@@ -490,15 +491,16 @@ let
   exactThread = element: if interface.mayFoldUnion element then threadExact else threadElement;
 
   # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
-  # `name` is injected by the two `evalModuleTree` calls below; `config`, `options` and `prefix` are
-  # injected by the engine itself at BOTH strata — `lib/modules.nix` `declArgs` (declaration) and
-  # `baseArgs` (value) — and in both the caller's set is on the LEFT of `//`, so the engine's key
-  # wins. The engine refuses those three keys itself at both bindings; `withArgs` refuses the whole
-  # set at the moment the caller states it, which is the earlier door, and it adds `name` because
-  # `submodule` injects that one. `ci/tests-error.nix` `engine-reserved-args` holds the two spellings
-  # to one answer per key.
+  # `config`, `options` and `prefix` are injected by the engine itself at BOTH strata —
+  # `lib/modules.nix` `declArgs` (declaration) and `baseArgs` (value) — and in both the caller's set is
+  # on the LEFT of `//`, so the engine's key wins. The engine refuses those three keys itself at both
+  # bindings; `withArgs` refuses them at the moment the caller states them, which is the earlier door.
+  # `name` is not one: the engine states it as a `_module.args` definition (`positionArgsAt`),
+  # which a caller's `name` outranks, as nixpkgs `submoduleWith`'s `specialArgs.name` does. It was
+  # reserved here (den-hoag-jyiji) while `submodule` injected it over the caller's value; that arm is
+  # superseded (den-hoag-fpxsd), since the caller's value is now the one used.
+  # `ci/tests-error.nix` `engine-reserved-args` holds the two spellings to one answer per key.
   submoduleReservedArgs = {
-    name = null;
     config = null;
     options = null;
     prefix = null;
@@ -531,9 +533,6 @@ let
     args: modOrMods:
     let
       mods = if isList modOrMods then modOrMods else [ modOrMods ];
-      # The args a nested evaluation runs with. The substrate's `name` is injected LAST, so its key
-      # wins by construction rather than by the caller having behaved.
-      argsAt = loc: args // { name = if loc == [ ] then "" else prelude.last loc; };
       # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
       # through `defsAsModules true` to a nested `evalModuleTree`, so an attrset def is CONFIG and a
       # function or path def is a MODULE, and the domain is `isModuleValue`'s and not "any value":
@@ -543,10 +542,9 @@ let
       # THE NESTED TREE, STATED AS DATA (den-hoag-n6dh7 item 1): the module set and arguments this
       # type's nested evaluation takes, so an evaluation can mint the tree as a node of its own
       # instead of calling it. Each field is today's call's, field for field: `mergeDefs` below
-      # (`entry` is one definition read as `defsAsModules true` reads it, and `named` is `argsAt`'s
-      # `name`), `whenEmpty` (`empty`), and the `{ carried; inherited; }` pair the CALLED form
-      # evaluates in (`calledMode`): the public `evalModuleTree`'s, `{ carried = true; inherited =
-      # false; }`.
+      # (`entry` is one definition read as `defsAsModules true` reads it), `whenEmpty` (`empty`), and the
+      # `{ carried; inherited; }` pair the CALLED form evaluates in (`calledMode`): the public
+      # `evalModuleTree`'s, `{ carried = true; inherited = false; }`.
       nests = {
         modules = mods;
         specialArgs = args;
@@ -555,23 +553,20 @@ let
         entry = d: head (defsAsModules true [ d ]);
         empty = {
           prefix = [ ];
-          specialArgs = args // {
-            name = "‹name›";
-          };
+          specialArgs = args;
           check = true;
         };
         calledMode = {
           carried = true;
           inherited = false;
         };
-        named = true;
       };
       # The CALLED fold refuses by name (den-hoag-n6dh7 item 1): the tree is a child of the one
       # evaluation that holds it, read through `threaded` below.
       called = loc: _: throw (calledNestingRefusal "submodule" "mergeDefs" loc);
       freeform =
         ((core.evalModuleTreeNested {
-          modules = mods;
+          modules = mods ++ [ namePlaceholder ];
           inherit (nests.empty) prefix specialArgs check;
         }).type.unroledNested
         ).freeformType or null;
@@ -603,7 +598,7 @@ let
       inherit admits nests;
       # With no surviving definition the value is the module set evaluated over NO definitions, as
       # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
-      # with the documentation placeholder as `name` (`nests.empty`), so its defaults read as they
+      # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
       # would there and an undefined sub-option refuses by name. That evaluation is the child with an
       # empty seed, read through the threaded fold; called, it refuses (den-hoag-n6dh7 item 1).
       whenEmpty.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
@@ -679,9 +674,9 @@ let
         declares =
           prefix:
           (evalModuleTreeNested {
-            modules = mods;
+            modules = mods ++ [ namePlaceholder ];
             inherit prefix;
-            specialArgs = argsAt prefix;
+            specialArgs = args;
             check = true;
           }).options;
         modules = mods;

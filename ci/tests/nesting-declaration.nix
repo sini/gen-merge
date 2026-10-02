@@ -738,13 +738,14 @@ in
     test-the-empty-arguments-are-the-when-empty-call = {
       expr = {
         inherit (sub.nests.empty) prefix check;
-        name = sub.nests.empty.specialArgs.name;
+        # `‹name›` is the engine's placeholder module (`namePlaceholder`), not an argument.
+        name = sub.nests.empty.specialArgs ? name;
         treePrefix = tree.nests.empty.prefix;
       };
       expected = {
         prefix = [ ];
         check = true;
-        name = "‹name›";
+        name = false;
         treePrefix = [ ];
       };
     };

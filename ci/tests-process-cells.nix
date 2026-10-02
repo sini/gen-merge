@@ -46,6 +46,30 @@ let
     default = "on";
   };
   eval = modules: m.evalModuleTree { inherit modules; };
+  # `<name>:<q>` read off the child `x` of an `attrsOf (submodule …)` whose second module is `extra`.
+  nameAt =
+    extra:
+    (eval [
+      {
+        options.s = m.mkOption {
+          type = m.types.attrsOf (
+            m.types.submodule [
+              (
+                { name, q, ... }:
+                {
+                  options.a = m.mkOption {
+                    type = m.types.str;
+                    default = "${name}:${q}";
+                  };
+                }
+              )
+              extra
+            ]
+          );
+        };
+      }
+      { s.x = { }; }
+    ]).config.s.x.a;
 
   # THE SPY (den-hoag-n6dh7 U2-g): the same library over an evaluator whose `eval` traces `label`,
   # so the label's count on stderr is the number of independent gen-scope evaluations.
@@ -247,6 +271,26 @@ let
       (m.types.nullOr (np.listOf m.types.int)).description
       + " | "
       + (m.types.listOf (np.nullOr np.str)).description;
+
+    # A SUBMODULE'S `name` RESOLVED AGAINST A KEY SET THAT READS IT (den-hoag-fpxsd): the position's
+    # `name` is a definition beside the modules' own, so whether a module states `name` is decided
+    # by the key set of their `_module.args`. A module whose key set depends on `name` closes that
+    # cycle and dies in the infinite-recursion channel, as nixpkgs' `submoduleWith` does on the same
+    # construction. When `name` was a `specialArgs` key outranking every definition, this was served.
+    name-keyset-reads-name = nameAt (
+      { name, ... }:
+      {
+        _module.args = if name == "x" then { q = "1"; } else { };
+      }
+    );
+    # Its live control, same wiring: a `_module.args` VALUE read through `name` over a key set that
+    # does not read it answers.
+    name-keyset-control = nameAt (
+      { name, ... }:
+      {
+        _module.args.q = name;
+      }
+    );
   };
 in
 cells.${arm}
