@@ -214,6 +214,7 @@ let
       "nests"
       "split"
       "specialArgs"
+      "shorthandOnlyDefinesConfig"
       "__name"
       "__nameWithin"
     ];
