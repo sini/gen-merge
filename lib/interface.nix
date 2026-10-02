@@ -181,6 +181,59 @@ let
     ];
   };
 
+  # ── WHAT A DERIVATION DOES WITH EACH FIELD OF ITS BASE (den-hoag-5kic) ─────────────────────────
+  # `types.deriveType` re-completes a SOURCE record cut from a completed base, and which fields cross
+  # into it is this partition, as data beside `exportFields` for the reason `exportClasses` is: a
+  # field gen's vocabulary gains and nobody classifies fails a cell by name (`ci/tests/derive-type.nix`
+  # quantifies over every field a built type carries) rather than crossing as whatever a default makes
+  # of it. `types.nix` reads the classes and never the names, so the foreign ones stay in this unit.
+  #
+  #   behaviour — the base's VALUE behaviour: crosses unread, which is what keeps the derivation's
+  #               check and fold the base's.
+  #   tied      — closed over the base's SELF or its CONSTRUCTOR, so each answers for the base: cut,
+  #               and the ones that rebuild are lifted through the derivation again.
+  #   identity  — the base's mint and what reads it (ADR-0034): a derivation is not its base, and
+  #               never inherits them.
+  #   derived   — this boundary's own output, re-derived when the source is exported again: the
+  #               fourteen protocol fields and gen-types' check witness, which is published beside them.
+  #   datum     — the derivation's own record of what it was derived from.
+  #
+  # `nameCarried` fields are the only protocol fields a delta may restate. Every field outside these
+  # classes is a caller's metadata, which a delta may set.
+  deriveClasses = {
+    behaviour = [
+      "verify"
+      "admits"
+      "mergeDefs"
+      "whenEmpty"
+      "carries"
+      "substructure"
+      "deprecated"
+      "unroledNested"
+      "choose"
+      "nests"
+      "split"
+      "specialArgs"
+      "__name"
+      "__nameWithin"
+    ];
+    tied = [
+      "typeMergeRel"
+      "recarry"
+      "retainedRelation"
+      "withArgs"
+      "_protoLeafMerge"
+    ];
+    identity = [
+      "__mint"
+      "__id"
+      "__okAt"
+      "__payload"
+    ];
+    derived = exportFields ++ [ "_checkWitness" ];
+    datum = [ "__derivation" ];
+  };
+
   # ── THE COMPARISON SUBJECT OF A VALUE THAT CAN CARRY A TYPE RECORD (den-hoag-bfc0k) ────────────
   # An exported record is CYCLIC — `exportType` publishes `functor.type` as the record itself — and
   # Nix `==` walks an attrset in symbol-interning order, so a bare `==` between two distinct records
@@ -579,6 +632,17 @@ let
       t.name
     else
       "<a name of type ${builtins.typeOf t.name}>";
+
+  # ── THE IDENTITY A RELATION KEYS ON (den-hoag-5kic) ─────────────────────────────────────────────
+  # A type's `name` is its VALUE VOCABULARY, the word its messages speak, and for every type a
+  # constructor builds it is also the identity a relation decides on. A DERIVATION
+  # (`types.deriveType`) keeps its base's name and carries its own identity in `__derivation.id`, so a
+  # relation reading the name would merge it with its base and drop it silently. Every gen relation
+  # that decides by identity reads it here — one total reader, as `nameOf` is for a refusal's wording
+  # — and `exportType` publishes the same identity as the functor name a foreign engine keys on. On
+  # a record without the datum it is the name, so nothing built otherwise moves.
+  keyOf =
+    x: if isAttrs x && x ? __derivation then "derivation:${x.__derivation.id}" else x.name or null;
 
   # ── THE NAME THAT GOVERNED ──────────────────────────────────────────────────────────────────────
   # The foreign protocol keys a redeclaration on the FUNCTOR name, not the type name (`protoTypeMerge'
@@ -2054,7 +2118,9 @@ let
       # it takes the other TYPE — so the outbound half recovers a type from whatever functor arrives
       # and the inbound half publishes a functor a foreign engine can recover THIS type from.
       functor = {
-        inherit name payload;
+        inherit payload;
+        # A derivation keeps its base's `name` and is keyed on its own identity (`keyOf`).
+        name = if t ? __derivation then t.__derivation.id else name;
         type = if role == null then exported else (p: exportType (recarried p));
         binOp =
           if role == null then
@@ -2170,6 +2236,7 @@ in
     admitsCarried
     checkedFold
     closuresFirst
+    deriveClasses
     exportClasses
     exportFields
     exportType
@@ -2194,6 +2261,7 @@ in
     importedRawFold
     importedMergeReason
     joinRenames
+    keyOf
     nameOf
     functorNamesOf
     importedPartner
