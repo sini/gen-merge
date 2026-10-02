@@ -2375,11 +2375,15 @@ let
   # the fold reads, so the fold's selection and the child's admission cannot disagree. `null` where
   # the chain does not reach the position: the candidate refusal.
   memberChain =
-    t: rel: loc: defs:
+    stop: t: rel: loc: defs:
     if !(isAttrs t) then
       null
+    else if stop && rel == [ ] then
+      t
     else if t ? choose then
-      memberChain (interface.homedAt "evalModuleTree" loc (t.choose loc (plainDefs defs))) rel loc defs
+      memberChain stop (interface.homedAt "evalModuleTree" loc (
+        t.choose loc (plainDefs defs)
+      )) rel loc defs
     else if interface.isNesting t || !(t ? split) then
       (if rel == [ ] then t else null)
     else
@@ -2391,9 +2395,9 @@ let
       if es == [ ] then
         (if rel == [ ] then t else null)
       else
-        memberChain (interface.homedAt "evalModuleTree" e.loc e.type) (drop (length e.step) rel) e.loc (
-          addressedDefs (map (d: d // { at = [ ]; }) e.defs)
-        );
+        memberChain stop (interface.homedAt "evalModuleTree" e.loc
+          e.type
+        ) (drop (length e.step) rel) e.loc (addressedDefs (map (d: d // { at = [ ]; }) e.defs));
 
   # `under`: `null` where every enclosing container keys EXACTLY (`attrsOf`, `listOf`, `nullOr`,
   # whose key sets already read each element's definitions to WHNF), else the name of the enclosing
@@ -2441,7 +2445,7 @@ let
         r
         // {
           type = t;
-          member = memberChain t (drop (length pos) r.key) loc defs;
+          member = memberChain (r ? container) t (drop (length pos) r.key) loc defs;
         }
       ) (unionKeys under group t pos loc defs t)
     else if !(t ? split) then
