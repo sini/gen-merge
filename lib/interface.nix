@@ -2216,7 +2216,9 @@ let
   #
   # ★ THE ACCOUNTING IS COMPOSING NODES, NOT BYTES. Every container, union or freeform nest whose
   # phrase composes a member costs one unit, and the units are threaded through the siblings
-  # (`left`), so the budget bounds the whole tree rather than its depth. A leaf's text, a stated
+  # (`left`), so the budget bounds the whole tree rather than its depth. A derivation stating no
+  # phrase (`types.deriveType`) costs one unit too: it is described by re-entering the renderer on
+  # the base it reads (`__derivation.read`), which is a descent. A leaf's text, a stated
   # description and a foreign member's own fields cost nothing: they are finite data, never a
   # descent, so they are never what diverges. Termination: each composing call, the freeform nest's
   # included, is handed `b - 1` or less, and the budget-spent arm stops every one of them at `b <= 0`.
@@ -2369,6 +2371,9 @@ let
       }
     else if t ? description then
       flat (statedPhrase t)
+    # a derivation stating no phrase says its base's: one descent, so it costs a unit like any other
+    else if t ? __derivation then
+      if b <= 0 then elided else phraseOfMember (b - 1) t.__derivation.read
     else if (ff != null || el != null || alts != null) && b <= 0 then
       elided
     else if ff != null then

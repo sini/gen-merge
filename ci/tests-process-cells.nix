@@ -263,6 +263,22 @@ let
         );
       in
       (m.types.listOf nv).description;
+    # The same exception closed through a CALLER's stated phrase: a derivation whose `fields' states
+    # its base's `description' reads the phrase its own member renders, as a foreign composer does.
+    phrase-cycle-stated-from-base =
+      let
+        d = m.types.deriveType (m.types.either m.types.int (m.types.listOf d)) {
+          id = "d";
+          fields = b: { inherit (b) description; };
+        };
+      in
+      d.description;
+    # Its live control: the derivation stating nothing renders its base's phrase within the budget.
+    phrase-cycle-stated-from-base-control =
+      let
+        d = m.types.deriveType (m.types.either m.types.int (m.types.listOf d)) { id = "d"; };
+      in
+      builtins.substring 0 40 d.description;
     # Their live control, same wiring: the same shapes over a foreign member that holds no cycle answer.
     phrase-cycle-control =
       let

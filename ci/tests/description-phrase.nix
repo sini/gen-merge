@@ -218,6 +218,31 @@ let
     ]
   );
   ffself = gt.submodule [ { freeformType = ffself; } ];
+  # The same shape with its cycle closed THROUGH a derivation, and closed outside one it holds.
+  vd = gt.deriveType (gt.nullOr (
+    gt.oneOf [
+      gt.str
+      (gt.attrsOf vd)
+      (gt.listOf vd)
+    ]
+  )) { id = "d"; };
+  vdIn = gt.nullOr (
+    gt.oneOf [
+      gt.str
+      (gt.attrsOf (gt.deriveType vdIn { id = "d"; }))
+      (gt.listOf vdIn)
+    ]
+  );
+  # a phrase's head, which is where the derivation's and its base shape's agree
+  head200 = t: builtins.substring 0 200 t.description;
+  docTypeOf =
+    type:
+    (builtins.head (
+      builtins.filter (o: o.name == "s") (
+        nl.optionAttrSetToDocList
+          (nl.evalModules { modules = [ { options.s = nl.mkOption { inherit type; }; } ]; }).options
+      )
+    )).type;
   mountedAt =
     type: value:
     (nl.evalModules {
@@ -318,6 +343,41 @@ in
       };
     };
 
+    # A cycle closed through a derivation (`deriveType`) renders the base's phrase within the budget,
+    # so its docs and every nixpkgs refusal over it answer, as they do for `v`.
+    test-a-cycle-through-a-derivation-renders-its-bases-phrase = {
+      expr = {
+        through = head200 vd;
+        outside = head200 vdIn;
+        docs = builtins.substring 0 200 (docTypeOf vd);
+      };
+      expected = {
+        through = head200 v;
+        outside = head200 v;
+        docs = head200 v;
+      };
+    };
+    test-nixpkgs-refusals-over-a-cycle-through-a-derivation-are-caught = {
+      expr = {
+        top = caught (mountedAt vd 5);
+        either = caught (mountedAt (np.either np.int vd) true);
+        list = caught (mountedAt (np.listOf vd) 5);
+        outside = caught (mountedAt vdIn 5);
+      };
+      expected = {
+        top = false;
+        either = false;
+        list = false;
+        outside = false;
+      };
+    };
+    test-control-a-cycle-through-a-derivation-admits-its-value = {
+      expr = mountedAt vd { a = [ "x" ]; };
+      expected = {
+        a = [ "x" ];
+      };
+    };
+
     # G6: the ceiling. Up to `phraseBudget` (128) composing nodes the phrase is nixpkgs'; past it the
     # rest elides to `…`. A leaf costs nothing, however wide; a freeform nest costs a node.
     test-the-phrase-is-nixpkgs-up-to-the-ceiling-and-elides-past-it = {
@@ -339,6 +399,51 @@ in
           equal = false;
           ends = "…";
         };
+      };
+    };
+    # A derivation stating no phrase costs one node: its base's 128-node phrase elides under it.
+    test-a-derivation-is-charged-a-node = {
+      expr =
+        let
+          row =
+            k:
+            let
+              d = (gt.deriveType (nest gt.listOf gt.int k) { id = "d"; }).description;
+            in
+            {
+              equal = d == (nest gt.listOf gt.int k).description;
+              ends = builtins.substring (builtins.stringLength d - 3) 3 d;
+            };
+        in
+        {
+          "127" = row 127;
+          "128" = row 128;
+        };
+      expected = {
+        "127" = {
+          equal = true;
+          ends = "ger";
+        };
+        "128" = {
+          equal = false;
+          ends = "…";
+        };
+      };
+    };
+    # ... and a chain of them costs that one node in total, never one per layer.
+    test-a-chain-of-derivations-keeps-its-bases-phrase = {
+      expr =
+        let
+          b = nest gt.listOf gt.int 3;
+          chain = n: if n == 0 then b else gt.deriveType (chain (n - 1)) { id = "d"; };
+        in
+        {
+          "126" = (chain 126).description;
+          "200" = (chain 200).description;
+        };
+      expected = {
+        "126" = "list of list of list of signed integer";
+        "200" = "list of list of list of signed integer";
       };
     };
     test-a-freeform-nest-is-charged-a-node = {
