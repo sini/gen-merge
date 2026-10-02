@@ -673,6 +673,73 @@ let
         second = nameOf fb;
       };
 
+  # ── THE TYPES nixpkgs' `internalModule` DECLARES ─────────────────────────────────────────────────
+  # Whether a module's re-declaration of an engine-owned `_module.<k>` states a type nixpkgs'
+  # `mergeOptionDecls` merges with that module's own: `args` is `lazyAttrsOf raw`, `check` `bool`,
+  # `freeformType` `nullOr optionType`. Each own type's `typeMerge` is a test of functor names (and,
+  # for `attrsWith`, of `lazy`), so this reads the declared type's names in both vocabularies'
+  # spellings. `specialArgs` declares no type, so every type merges there.
+  moduleOwnTypeAdmits =
+    k: t:
+    let
+      named = n: (t.functor.name or null) == n;
+      elem = t.nestedTypes.elemType.name or null;
+    in
+    {
+      args =
+        elem == "raw" && (named "lazyAttrsOf" || named "attrsWith" && (t.functor.payload.lazy or false));
+      check = named "bool";
+      freeformType = named "nullOr" && elem == "optionType";
+      specialArgs = true;
+    }
+    .${k};
+
+  # The sub-options a `submodule`-typed `_module` leaf's own submodule declares at `loc`, as
+  # `{ judged; options; }`. gen's `types.submodule` states a record's fields as they were declared,
+  # so its records are judged by the caller as they stand. A nixpkgs record states
+  # `type = unspecified` for a declaration that states none, so an explicit `unspecified` cannot be
+  # told from no type there, and a nixpkgs leaf is judged by nixpkgs, as nixpkgs judges it: the
+  # engine's own declarations (`own`, which of `default` and `description` each states, beside the
+  # type every key but `specialArgs` declares) are read off the leaf's own evaluation and added last
+  # to its modules, where nixpkgs adds its `internalModule`, so they fold first, and an owned key's
+  # record is kept only where a leaf module declares it too, so reading it runs nixpkgs'
+  # `mergeOptionDecls` over both. What that leaves the caller is the fields
+  # the engine itself runs; a merged type is not one of them, so the `unspecified` one is taken off.
+  moduleLeafSubOptions =
+    own: t: loc:
+    if t ? carries then
+      {
+        judged = false;
+        options = t.getSubOptions loc;
+      }
+    else
+      let
+        engine = (t.getSubOptions loc)._module;
+        ownModule = {
+          _file = "<the engine's own _module options>";
+          options = builtins.mapAttrs (
+            k: fields:
+            {
+              _type = "option";
+            }
+            // builtins.intersectAttrs (
+              if k == "specialArgs" then fields else fields // { type = true; }
+            ) engine.${k}
+          ) own;
+        };
+        sub = (t.substSubModules (t.getSubModules ++ [ ownModule ])).getSubOptions loc;
+      in
+      {
+        judged = true;
+        options = builtins.listToAttrs (
+          map (k: {
+            name = k;
+            value =
+              if sub.${k}.type.name == "unspecified" then builtins.removeAttrs sub.${k} [ "type" ] else sub.${k};
+          }) (filter (k: length sub.${k}.declarations > 1) (attrNames own))
+        );
+      };
+
   # ── THE DECIDABILITY PRE-CHECK THE FOREIGN MERGE IS GUARDED BY ──────────────────────────────────
   # A foreign `typeMerge` recurses through its own structure and bounds nothing: `types.json` is
   # self-referential, so `json.typeMerge json.functor` unfolds forever and dies with
@@ -2695,6 +2762,8 @@ in
     keyOf
     nameOf
     functorNamesOf
+    moduleOwnTypeAdmits
+    moduleLeafSubOptions
     importedPartner
     importedRebuilds
     importedSubstructure

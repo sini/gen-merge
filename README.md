@@ -1976,16 +1976,41 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   as an option that does not exist under `check`, listed on `.undeclared`, absorbed by a
   `freeformType`, merged by a declared `options._module.<x>`. Declaring `options._module` as a
   single option whose type carries no sub-options is refused by name, as nixpkgs refuses it (it would
-  be a parent of the engine's own keys). A `submodule`-typed `options._module` is refused by name
-  too, where nixpkgs merges its own `_module` options into the submodule and yields a value
-  (`ci/tests-error.nix` `test-module-declared-as-a-submodule-option-refused-by-name`): honouring it
-  would need the engine's `moduleOwnKeys` declared as options inside the caller's submodule, a
-  construction this engine does not have. A declared `options._module.<k>` for an engine-owned `k`
-  is not read, because the engine owns `k`: a typed `options._module.args` is silently inert (its
-  type never runs), where nixpkgs refuses the re-declaration as already declared. That is a known
-  gap. `lint` refuses the three module-input refusals the engine fires before merging
-  (`specialArgs`, `check`, a non-attrset `_module`) and reports nothing for an unknown `_module.<x>`,
-  where the two engines agree.
+  be a parent of the engine's own keys). A `submodule`-typed `options._module` takes every
+  `_module.<x>` the engine does not own, as nixpkgs' does once it merges its own `_module` options
+  into the submodule (`ci/tests/module-key.nix`). An engine-owned `_module.<k>` re-declared, as an
+  `options._module.<k>` or inside such a leaf, is refused where nixpkgs refuses it with its own
+  declaration taking part: a type that does not merge with the engine's own, or a field the engine's
+  own declaration states (`` gen-merge: the option `_module.<k>' in `<file>' is already declared by the engine's own `_module' options ``); a nixpkgs `submodule` leaf is judged by nixpkgs itself, in
+  its words, with the engine's declarations folded first. An owned key declared as a group of
+  options is refused as the parent of options its type cannot carry. Two modules' fields right-bias,
+  as every redeclaration does. An accepted `apply` maps the value where the engine reads the key,
+  and on `args` the set it maps holds a nested child's `name`, so the `name` its modules receive is
+  the applied one; an accepted `readOnly` refuses a second definition (nixpkgs' own module defines
+  `args`, and a re-declaration's `default` counts). The departures from nixpkgs, each with its
+  ground:
+
+  - *Eager at `args` and `specialArgs`.* The refusal fires on every config read, where nixpkgs'
+    fires only when the key is read: the engine's redeclaration refusal is eager everywhere, and the
+    unread type nixpkgs passes is one that never runs.
+  - *`readOnly` at `args`.* nixpkgs dies with a stack overflow; this engine refuses by name.
+  - *The door keys.* An `apply` or `readOnly` on `check`, and a `type`, `apply` or `readOnly` on
+    `specialArgs`, are refused by name (`` … is read only from `evalModuleTree { check = …; }' ``,
+    `` a module cannot read `_module.specialArgs' in this engine … ``), because the engine does not
+    run them; nixpkgs honours them. They wait on the door's own design and on a module read site
+    for `specialArgs`, which this engine does not have.
+  - *The ordered fold.* Two `apply`s, at the group or inside the leaf, keep the later, as every
+    doubled field of a redeclaration does here; nixpkgs refuses the pair.
+  - *The module-visible `_module` view.* A module reading `config._module.<k>` for an owned key
+    other than `args` finds it absent or aborts, where nixpkgs reads a value; that waits on the
+    same module read site.
+  - *Both refuse, by different causes.* Three inputs nixpkgs refuses as a parent or as already
+    declared are refused here as types that do not merge or as a single option.
+  - *A redeclaration never read.* An ordinary option redeclared with clashing types refuses here and
+    exits 0 in nixpkgs when it is not read; that is the engine's standing rule.
+    `lint` refuses the three module-input refusals the engine fires before merging
+    (`specialArgs`, `check`, a non-attrset `_module`) and reports nothing for an unknown `_module.<x>`,
+    where the two engines agree.
 
 - **A redeclared option's type refuses where a gen-native relation refuses, even where nixpkgs
   accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign list whose

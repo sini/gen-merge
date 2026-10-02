@@ -919,6 +919,197 @@ let
     "check"
     "specialArgs"
   ];
+  # The engine's own declaration of each of those keys, as nixpkgs' `internalModule` declares it,
+  # carrying exactly what that engine's `mergeOptionDecls` reads of a declaration: which of
+  # `default`, `example`, `description` and `apply` it states. Whether a declared type merges with
+  # its own is the boundary's question (`interface.moduleOwnTypeAdmits`).
+  moduleOwnDecls = {
+    args.description = true;
+    check = {
+      default = true;
+      description = true;
+    };
+    freeformType = {
+      default = true;
+      description = true;
+    };
+    specialArgs.description = true;
+  };
+  # The declarations of an engine-owned `_module.<k>` an evaluation's modules state, in authored order,
+  # each `{ file; decl; }`. A `_module` group declares them as `options._module.<k>` leaves
+  # (`sitesAt`). A `submodule`-typed `_module` leaf declares them inside its submodule, which nixpkgs
+  # merges with its own `_module` options, so they are read off the leaf type's sub-options, one
+  # merged record named by the files that declared the leaf (`interface.moduleLeafSubOptions`). A
+  # record nixpkgs has already judged against its own declarations carries `judged`.
+  moduleOwnSites =
+    sitesAt: prefix: allOptions: leafSub: k:
+    let
+      m = allOptions._module;
+      leafFiles = map (s: s.file) (sitesAt (prefix ++ [ "_module" ]));
+      sub =
+        if leafSub != null then
+          leafSub
+        else
+          interface.moduleLeafSubOptions moduleOwnDecls m.type (prefix ++ [ "_module" ]);
+    in
+    if !(isOptLeaf m) then
+      if m ? ${k} && !(isOptLeaf m.${k}) then
+        [
+          {
+            file = concatStringsSep ", " (
+              prelude.unique (
+                map (s: s.file) (
+                  concatMap (
+                    n:
+                    sitesAt (
+                      prefix
+                      ++ [
+                        "_module"
+                        k
+                        n
+                      ]
+                    )
+                  ) (attrNames m.${k})
+                )
+              )
+            );
+            decl = m.${k};
+          }
+        ]
+      else
+        sitesAt (
+          prefix
+          ++ [
+            "_module"
+            k
+          ]
+        )
+    else if (m.type.name or null) != "submodule" || !(sub.options ? ${k}) then
+      [ ]
+    else
+      [
+        {
+          file = concatStringsSep ", " leafFiles;
+          decl = sub.options.${k};
+          inherit (sub) judged;
+        }
+      ];
+  # A module re-declaring an engine-owned `_module.<k>`, judged as nixpkgs' `mergeOptionDecls` judges
+  # it where the engine's own declaration takes part: refused by name when a declared type does not
+  # merge with the engine's own, or when a declaration states a field the engine's own states
+  # (`moduleOwnDecls`). Between two modules' declarations the non-type fields right-bias, as every
+  # redeclaration in this engine does (ADR-0029's ordered fold, owner-ruled on den-hoag-00g), so two
+  # `apply`s keep the later one; nixpkgs refuses that pair.
+  #
+  # Of what an accepted re-declaration may carry, nixpkgs reads `apply` and `readOnly` into a value,
+  # and at `specialArgs` (which declares no type of its own) a `type`. This engine runs `apply` where
+  # it reads the key itself (`moduleArgs`, `freeform`), and `readOnly` here: nixpkgs' own module
+  # defines `args`, and both its own `freeformType` default and a re-declaration's `default` count as
+  # definitions, so a second one refuses. At `check` and `specialArgs` the engine runs none of the
+  # three, so a re-declaration carrying one is refused by name, never dropped. An owned key declared
+  # as a group of options would be the parent of options its own type cannot carry, and is refused
+  # as nixpkgs refuses it.
+  moduleOwnRedeclared =
+    {
+      sites,
+      loc,
+      pushed,
+      freeformDeclared,
+    }:
+    k:
+    let
+      own = moduleOwnDecls.${k};
+      files = concatStringsSep ", " (map (s: s.file) sites);
+      group = filter (s: !isOptLeaf s.decl) sites;
+      # A record nixpkgs has judged against its own declarations already (`judged`) states theirs too.
+      unjudged = filter (s: !(s.judged or false)) sites;
+      unread =
+        filter (f: any (s: s.decl ? ${f} && (f != "readOnly" || s.decl.readOnly)) sites)
+          {
+            args = [ ];
+            freeformType = [ ];
+            check = [
+              "apply"
+              "readOnly"
+            ];
+            specialArgs = [
+              "type"
+              "apply"
+              "readOnly"
+            ];
+          }
+          .${k};
+      defined =
+        if !(any (s: s.decl.readOnly or false) sites) then
+          [ ]
+        else if k == "args" then
+          map (p: p._file) (
+            filter (p: p.attrs ? _module && (pushDownProperties p.attrs._module) ? args) pushed
+          )
+          ++ map (s: s.file) (filter (s: s.decl ? default) sites)
+        else if k == "freeformType" then
+          map (c: c._file) freeformDeclared
+        else
+          [ ];
+    in
+    if group != [ ] then
+      throw "gen-merge: the option `${showOption loc}' is the engine's own, and its type does not support nested options, so it cannot be the parent of `${
+        concatStringsSep "', `" (map (n: showOption (loc ++ [ n ])) (attrNames (head group).decl))
+      }'; declared in ${files}"
+    else if
+      !all (s: interface.moduleOwnTypeAdmits k s.decl.type) (filter (s: s.decl ? type) unjudged)
+      || any (f: any (s: s.decl ? ${f}) unjudged) (attrNames own)
+    then
+      throw "gen-merge: the option `${showOption loc}' in ${
+        concatStringsSep ", " (map (s: "`${s.file}'") sites)
+      } is already declared by the engine's own `_module' options"
+    else if unread != [ ] then
+      throw (
+        "gen-merge: "
+        + {
+          check = "`${showOption loc}' is read only from `evalModuleTree { check = …; }'";
+          specialArgs = "a module cannot read `${showOption loc}' in this engine";
+        }
+        .${k}
+        + ", so a module's ${
+          concatStringsSep ", " (map (f: "`${f}'") unread)
+        } on it would not run; declared in ${files}"
+      )
+    else if defined != [ ] then
+      throw "gen-merge: the option `${showOption loc}' is read-only, but it is defined more than once (the engine defines it too); defined in ${concatStringsSep ", " (prelude.unique defined)}"
+    else
+      null;
+  # Each engine-owned `_module.<k>` an evaluation's modules declare, judged; `realized` reads it only
+  # on the branches where a module declares `options._module`.
+  moduleOwnJudged =
+    sitesAt: prefix: allOptions: leafSub: pushed: freeformDeclared: k:
+    moduleOwnRedeclared {
+      sites = moduleOwnSites sitesAt prefix allOptions leafSub k;
+      loc = prefix ++ [
+        "_module"
+        k
+      ];
+      inherit pushed freeformDeclared;
+    } k;
+  # An accepted re-declaration's `apply`, the last one stated (the ordered fold), or the identity.
+  moduleOwnApply =
+    sites:
+    let
+      a = filter (s: s.decl ? apply) sites;
+    in
+    if a == [ ] then x: x else (prelude.last a).decl.apply;
+  # The `_module.args` of an evaluation whose modules declare `options._module`: the modules' own
+  # sets merged (`mergeModuleArg`), with the position's `name` (`positionNameOf`) where the
+  # evaluation is positioned, as nixpkgs' `submoduleWith` defines it there, and then mapped by an
+  # accepted `apply` (`moduleOwnApply`). So the `name` its modules receive is the applied set's.
+  moduleOwnArgs =
+    positioned: prefix: sites: pushed:
+    let
+      stated = builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed);
+    in
+    moduleOwnApply sites (
+      if positioned then stated // { name = positionNameOf prefix stated pushed; } else stated
+    );
   moduleDefOf =
     file: attrs:
     if !(attrs ? _module) then attrs else moduleRest file attrs (pushDownProperties attrs._module);
@@ -2166,7 +2357,8 @@ let
   # `knotChildPositioned` and `knotRootPositioned`) carries this value as the `name` key of the
   # argument sets its modules are applied to (`baseArgs`, and `declArgs` on the declaration plane);
   # it enters a merge, as one priority-100 definition, only in `positionNameOf`, when a module states
-  # `name`. `moduleArgs` zips the modules' own sets alone. A nested tree over no definitions, and
+  # `name`. `moduleArgs` zips the modules' own sets alone, except where a module declares
+  # `options._module`, whose `apply` nixpkgs runs over the set holding `name` (`moduleOwnArgs`). A nested tree over no definitions, and
   # every nesting type's declarations, read the placeholder module `namePlaceholder` instead. The
   # first always outranks the second, so a child never carries both. A key and not a module, because
   # the module's collection is what costs.
@@ -3860,7 +4052,8 @@ let
             // (
               # A positioned evaluation carries its `name` here, resolved as a definition
               # (`positionNameOf`) and outranked by a caller's: a key in the set every module is
-              # applied to, so a module reading `name` takes `callM`'s elided application.
+              # applied to, so a module reading `name` takes `callM`'s elided application. Where a
+              # module declares `options._module`, `moduleArgs` holds it, after any `apply`.
               if knot.positioned then
                 {
                   inherit (result) options;
@@ -3868,7 +4061,9 @@ let
                   # parity); the returned `result.config` stays `_module`-free.
                   config = result.moduleConfig;
                   inherit prefix;
-                  name = specialArgs.name or (positionNameOf prefix moduleArgs pushed);
+                  name =
+                    specialArgs.name
+                      or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
                 }
               else
                 {
@@ -4109,7 +4304,15 @@ let
           #
           # IT IS NOT THE FREEFORM FEEDER: `freeformType` is collected PER MODULE
           # (`moduleFreeformEntries`), so N contributions reach `filterOverrides` as N defs.
-          moduleArgs = builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed);
+          #
+          # Where a module declares `options._module`, a re-declared `_module.args`' `apply` maps the
+          # merged set, `name` included, as nixpkgs' does (`moduleOwnArgs`). The test is inline, so a
+          # tree that declares no `options._module` allocates nothing for it.
+          moduleArgs =
+            if allOptions ? _module then
+              moduleOwnArgs knot.positioned prefix (moduleOwnSites sitesAt prefix allOptions null "args") pushed
+            else
+              builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed);
           # freeformType is priority-resolved (nixpkgs treats it as an option): a top-level
           # `freeformType` (bare, prio 100) beats a `_module.freeformType = mkDefault …` (prio 1000)
           # — this is how strict.nix's throw-on-unknown default yields to a kind's own freeform.
@@ -4139,7 +4342,13 @@ let
           # `nested` product's test for a freeform group (den-hoag-i4c0n), which must not force a type.
           freeformDeclared =
             map topFreeformEntry (filter hasTopFreeform flat) ++ concatMap moduleFreeformEntries pushed;
-          freeform = resolvedFreeform freeformDeclared;
+          freeform =
+            if allOptions ? _module then
+              moduleOwnApply (moduleOwnSites sitesAt prefix allOptions null "freeformType") (
+                resolvedFreeform freeformDeclared
+              )
+            else
+              resolvedFreeform freeformDeclared;
 
           # Definition order is REVERSE flattened-module order — byte-identical to nixpkgs, which
           # collects defs last-module-first (observable in list-typed options: `[a] [b] [c]` merges
@@ -4163,23 +4372,33 @@ let
                 p.attrs;
           }) pushedRev;
 
-          # Realize the whole config tree against the option-decl tree. Declared names are present
-          # lazily (undefined+no-default throws only on access, matching nixpkgs); groups recurse.
-          # A `_module.<x>` the engine does not own meets the realizer as a config path: an empty
-          # per-evaluation `_module` group makes its capture path `_module.<x>`, never `_module`, and
-          # `.options` is untouched. A `_module` declared as a single option is refused: it would be a
-          # parent of the engine's own `moduleOwnKeys`. nixpkgs refuses it too, except for a
-          # `submodule` type, into which it merges its own `_module` options.
           realized = mergeTree warmCtx [ ] (
             if allOptions ? _module then
               if isOptLeaf allOptions._module then
-                throw "gen-merge: option `${
-                  showOption (prefix ++ [ "_module" ])
-                }' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options._module.<name>' instead; declared in ${
-                  concatStringsSep ", " (map (s: s.file) (sitesAt (prefix ++ [ "_module" ])))
-                }"
+                if all (s: (s.decl.type.name or null) == "submodule") (sitesAt (prefix ++ [ "_module" ])) then
+                  let
+                    # The leaf's sub-options are a nested evaluation: read once for the four keys.
+                    leafSub = interface.moduleLeafSubOptions moduleOwnDecls allOptions._module.type (
+                      prefix ++ [ "_module" ]
+                    );
+                  in
+                  foldl' (
+                    acc: k:
+                    builtins.seq (moduleOwnJudged sitesAt prefix allOptions leafSub pushed freeformDeclared k) acc
+                  ) allOptions moduleOwnKeys
+                else
+                  throw "gen-merge: option `${
+                    showOption (prefix ++ [ "_module" ])
+                  }' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options._module.<name>' instead; declared in ${
+                    concatStringsSep ", " (map (s: s.file) (sitesAt (prefix ++ [ "_module" ])))
+                  }"
               else
-                allOptions
+                foldl'
+                  (
+                    acc: k: builtins.seq (moduleOwnJudged sitesAt prefix allOptions null pushed freeformDeclared k) acc
+                  )
+                  (allOptions // { _module = builtins.removeAttrs allOptions._module moduleOwnKeys; })
+                  (filter (k: allOptions._module ? ${k}) moduleOwnKeys)
             else if prelude.any (d: d.value ? _module) topDefs then
               allOptions // { _module = { }; }
             else
@@ -4311,15 +4530,18 @@ let
           # `resolvedCtxModule` reads `config._module.args` to build the entity resolution context (it
           # can't enumerate `...` function args). ONLY `.args` (not the `_module.freeformType` gen-merge
           # consumes internally), and ONLY when there is an arg — a module set one, or the evaluation is
-          # positioned and so has its `name` — else `config` is used unchanged.
+          # positioned and so has its `name` — else `config` is used unchanged. Where a module declares
+          # `options._module`, `moduleArgs` already holds that `name`, after any `apply` (`moduleOwnArgs`).
           moduleConfig =
             if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
               if knot.positioned then
                 config
                 // {
-                  _module.args = moduleArgs // {
-                    name = positionNameOf prefix moduleArgs pushed;
-                  };
+                  _module.args =
+                    if allOptions ? _module then
+                      moduleArgs
+                    else
+                      moduleArgs // { name = positionNameOf prefix moduleArgs pushed; };
                 }
               else if moduleArgs == { } then
                 config
@@ -4333,9 +4555,11 @@ let
                   // (
                     if knot.positioned then
                       {
-                        args = moduleArgs // {
-                          name = positionNameOf prefix moduleArgs pushed;
-                        };
+                        args =
+                          if allOptions ? _module then
+                            moduleArgs
+                          else
+                            moduleArgs // { name = positionNameOf prefix moduleArgs pushed; };
                       }
                     else if moduleArgs == { } then
                       { }
