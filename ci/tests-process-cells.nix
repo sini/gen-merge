@@ -272,6 +272,52 @@ let
       + " | "
       + (m.types.listOf (np.nullOr np.str)).description;
 
+    # A FOREIGN KNOT CLOSED THROUGH A GEN DOOR (den-hoag-23dqs): `r = door (F … r …)`, `F` a stock
+    # foreign container and `door` `mkOptionType` or `deriveType`. The import decides at construction
+    # whether the record is re-homed, a decision its key set states, by walking the elements, and the
+    # walk reaches the value being constructed: the infinite-recursion channel, where nixpkgs' twin
+    # constructs. No construction decides it without changing an answer gen gives today; the README's
+    # "Known byte-mode boundaries" states the argument.
+    foreign-knot-mkoptiontype =
+      let
+        np = (import "${nixpkgsSrc}/lib").types;
+        r = m.mkOptionType (np.either np.int (np.listOf r));
+      in
+      r.check [
+        1
+        [ 2 ]
+      ];
+    foreign-knot-derivetype =
+      let
+        np = (import "${nixpkgsSrc}/lib").types;
+        d = m.deriveType (np.either np.int (np.listOf d)) { id = "d"; };
+      in
+      d.check [
+        1
+        [ 2 ]
+      ];
+    # Their live control and the stated way out, same wiring: the knot closed on the foreign side and
+    # carried through the door once constructs and serves nixpkgs' value.
+    foreign-knot-crossed-once =
+      let
+        np = (import "${nixpkgsSrc}/lib").types;
+        t = m.mkOptionType (
+          let
+            r = np.either np.int (np.listOf r);
+          in
+          r
+        );
+      in
+      (eval [
+        { options.s = m.mkOption { type = t; }; }
+        {
+          config.s = [
+            1
+            [ 2 ]
+          ];
+        }
+      ]).config.s;
+
     # A SUBMODULE'S `name` RESOLVED AGAINST A KEY SET THAT READS IT (den-hoag-fpxsd): the position's
     # `name` is a definition beside the modules' own, so whether a module states `name` is decided
     # by the key set of their `_module.args`. A module whose key set depends on `name` closes that

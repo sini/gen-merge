@@ -1930,6 +1930,30 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `time.timeZone`'s "null or string without spaces" among them). Every construction changes an
   answer the export gives correctly today without deciding the input that aborts.
 
+- **A foreign knot closed through a gen door aborts uncatchably at construction, a declared
+  exception to the rule that every refusal is catchable.** `r = mkOptionType (np.either np.int (np.listOf r))` and `d = deriveType (np.either np.int (np.listOf d)) { … }` die with `infinite recursion encountered` on every reader, where nixpkgs' twin (`np.mkOptionType` over the record,
+  `base // { … }`) constructs and serves its check. The import decides at construction whether a
+  stock foreign container crosses as gen's own container (it may nest) or as itself (it cannot),
+  and the two records differ in their key set: `split` and `recarry` against `phraseClass` and
+  `retainedRelation`. The two inputs that decide it differ only in an element (`np.attrsOf np.int`, `np.attrsOf sub`), at any depth, so the decision forces the elements, and in a knot the
+  elements reach the value being built. A container outside the six is the same case through the
+  import refusal's walk (`uniq`). The class is every such knot, through either door and through
+  `either`, `listOf`, `attrsOf`, `nullOr` and `uniq` alike, `declaresNesting = false` on the
+  record at the door included, since the re-homing decision does not read the marker; one whose
+  door sits inside the cycle (`r = np.either np.int (np.listOf (mkOptionType r))`) constructs and
+  dies at its first fold instead. **The way out:** close the knot on the foreign side and carry it
+  through the door once, `mkOptionType (let r = np.either np.int (np.listOf r); in r)`, which
+  serves nixpkgs' value. Through `deriveType` the same knot serves too, but only because the walk
+  answers "may nest" at its fuel's exhaustion and so re-homes a cyclic container; an acyclic
+  foreign container there is the vocabulary's named refusal. A cycle through a container outside
+  the six is then the walk's named refusal at its fuel, with its three remedies.
+  `ci/tests-process-cells.nix` pins both deaths and the way out. The exception is
+  argued, not merely declared: a record whose key set does not wait on the walk is a fixed shape,
+  and both fixed shapes change answers given today. Crossing every stock container as itself
+  stops re-homing one that nests and refuses `deriveType` over it; crossing every one as gen's
+  container drops an override on one that nests nothing and admits `deriveType` over a foreign
+  container, which the vocabulary refuses.
+
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict
   `raw` only if a consumer hits it.
