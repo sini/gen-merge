@@ -118,9 +118,21 @@
           n=$(traced)
           [ "$n" -ge 1 ] || die candidate-modules-control "expected the selected child to apply the module, counted $n"
 
+          # den-hoag-type-description-parity-5k1l1: a cycle closed through a foreign record's
+          # `description` dies in the infinite-recursion channel (the argued exception), and the same
+          # shapes over an acyclic foreign member answer nixpkgs' phrase.
+          for arm in phrase-cycle-gen-through-foreign phrase-cycle-foreign-under-gen; do
+            evalArm "$arm"
+            [ "$rc" -ne 0 ] || die "$arm" "expected a death, got exit 0 with '$val'"
+            grep -q 'infinite recursion encountered' "$TMPDIR/err" || die "$arm" "death is not the infinite-recursion channel"
+          done
+          evalArm phrase-cycle-control
+          [ "$rc" -eq 0 ] || die phrase-cycle-control "expected exit 0, got $rc"
+          [ "$val" = '"null or (list of signed integer) | list of (null or string)"' ] || die phrase-cycle-control "expected nixpkgs' phrases, got '$val'"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "13" ] || die runner "expected 13 evaluations, ran $ran"
-          echo "tests-process: 13 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "16" ] || die runner "expected 16 evaluations, ran $ran"
+          echo "tests-process: 16 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

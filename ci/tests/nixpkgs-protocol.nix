@@ -113,6 +113,7 @@ let
         "__name"
         "__nameWithin"
         "__payload"
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "substructure"
@@ -123,6 +124,7 @@ let
       # A type parameterised by one thing: what it carries, how to rebuild it over another, its own
       # domain, its own fold, its own relation.
       wrapper = [
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "admits"
@@ -141,17 +143,20 @@ let
       int = leaf;
       bool = leaf;
       raw = [
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "typeMergeRel"
       ];
       anything = [
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "mergeDefs"
         "typeMergeRel"
       ];
       custom = [
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "admits"
@@ -162,6 +167,7 @@ let
       ];
       # No empty value: an undefined option of this type is a mistake, not an empty container.
       deferredModule = [
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "admits"
@@ -170,6 +176,7 @@ let
         "typeMergeRel"
       ];
       either = [
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "admits"
@@ -195,6 +202,7 @@ let
       # partner's become readable from the relation. `withArgs` is the method that states them.
       # Both are gen's own words; neither is a protocol field, which is why they land in this half.
       submodule = [
+        "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
         "admits"

@@ -356,8 +356,8 @@ in
         unclassified = [ ];
         notAProtocolField = [ ];
         doubleClassified = false;
-        derived = 10;
-        foreignConstant = 2;
+        derived = 11;
+        foreignConstant = 1;
         nameCarried = 2;
         derivedExceedsForeignConstant = true;
       };
