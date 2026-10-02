@@ -302,6 +302,11 @@ is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
   `result` is `{ value; _nested; }`, never a tree. ★ A reader of `result` by identifier checks the
   host position's `mode` first: `.config` on a container node is a missing attribute, which
   `tryEval` does not catch. Under another over-approximating container the shape is refused.
+- At an EXACT container's element, a position only foreign code can key is a container node too,
+  keyed where it is read: a union holding a container member (its `choose`), and a foreign container
+  `homedAt` threads (its own `merge`, `__threadedForeign`), so no sibling's read runs that code. The
+  type-time mark (`mayFoldUnion`) reads re-homing's own recognition (`rehomeRecognition`), never the
+  functor name alone (den-hoag-i2xjs).
 - Growth over empty seeds past `importedTypeWalkFuel` refuses by name (OQ15 (c), *defaulted,
   reversible*). Its price: an undefined chain that deep refuses even where it is finite.
 - Enumerating a deep node set (`allNodeIds`) is gen-scope's, and it grows exponentially with nesting

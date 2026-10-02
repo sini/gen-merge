@@ -1705,6 +1705,11 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   and whose `result` is `{ value; _nested; }`, the inner container's fold, not a tree's evaluation.
   Under any other over-approximating container — a split container whose fold sets no mark
   (gen-aspects' `aspectsRoot`, or a freeform plane typed by one) — the shape is refused by name.
+  At an EXACT container's element, a position whose key set only foreign code decides is a container
+  node too, keyed where it is read: a union holding a container member, and a nixpkgs container gen
+  threads rather than re-homes (`uniq`, `unique`, `coercedTo`, `attrsWith` with a placeholder). So a
+  sibling's definition outside that container's domain never breaks another key's read, as in
+  nixpkgs.
 - **Candidates.** An over-approximated child the fold never selected (a union position under a lazy
   container whose `choose` picks a non-nesting member) is enumerated, and reading its `result` refuses
   by name before any of its member's modules is applied.
