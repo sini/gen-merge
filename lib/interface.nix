@@ -700,11 +700,11 @@ let
   # `type = unspecified` for a declaration that states none, so an explicit `unspecified` cannot be
   # told from no type there, and a nixpkgs leaf is judged by nixpkgs, as nixpkgs judges it: the
   # engine's own declarations (`own`, which of `default` and `description` each states, beside the
-  # type every key but `specialArgs` declares) are read off the leaf's own evaluation and added last
-  # to its modules, where nixpkgs adds its `internalModule`, so they fold first, and an owned key's
-  # record is kept only where a leaf module declares it too, so reading it runs nixpkgs'
-  # `mergeOptionDecls` over both. What that leaves the caller is the fields
-  # the engine itself runs; a merged type is not one of them, so the `unspecified` one is taken off.
+  # type every key but `specialArgs` declares) are read off nixpkgs' own `_module` options in the
+  # same evaluation and added last to its modules, where nixpkgs adds its `internalModule`, so they
+  # fold first. An owned key's record is kept only where a leaf module declares it too, so reading
+  # it runs nixpkgs' `mergeOptionDecls` over both. What that leaves the caller is the fields the
+  # engine itself runs; a merged type is not one of them, so the `unspecified` one is taken off.
   moduleLeafSubOptions =
     own: t: loc:
     if t ? carries then
@@ -714,7 +714,6 @@ let
       }
     else
       let
-        engine = (t.getSubOptions loc)._module;
         ownModule = {
           _file = "<the engine's own _module options>";
           options = builtins.mapAttrs (
@@ -724,20 +723,23 @@ let
             }
             // builtins.intersectAttrs (
               if k == "specialArgs" then fields else fields // { type = true; }
-            ) engine.${k}
+            ) sub._module.${k}
           ) own;
         };
         sub = (t.substSubModules (t.getSubModules ++ [ ownModule ])).getSubOptions loc;
       in
       {
         judged = true;
-        options = builtins.listToAttrs (
-          map (k: {
-            name = k;
-            value =
-              if sub.${k}.type.name == "unspecified" then builtins.removeAttrs sub.${k} [ "type" ] else sub.${k};
-          }) (filter (k: length sub.${k}.declarations > 1) (attrNames own))
-        );
+        # Per key, so a reader of one key forces one record; `null` where no leaf module declares it.
+        options = builtins.mapAttrs (
+          k: _:
+          if length sub.${k}.declarations == 1 then
+            null
+          else if sub.${k}.type.name == "unspecified" then
+            builtins.removeAttrs sub.${k} [ "type" ]
+          else
+            sub.${k}
+        ) own;
       };
 
   # ── THE DECIDABILITY PRE-CHECK THE FOREIGN MERGE IS GUARDED BY ──────────────────────────────────
