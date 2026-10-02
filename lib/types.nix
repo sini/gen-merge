@@ -376,14 +376,15 @@ let
               throw "gen-merge: the derivation `${id}' of `${nameOf base}' is sealed: it states no minted identity, so it has none to answer with (pass `mint' to `deriveType')";
         }
         // (
+          let
+            base' = if gen ? description then interface.carriedPhrase gen else { };
+          in
           if spec ? description then
-            { inherit (spec) description; }
+            base' // { inherit (spec) description; }
           else if delta ? description then
-            { }
-          else if gen ? description then
-            { inherit (gen) description; }
+            builtins.removeAttrs base' [ "description" ]
           else
-            { }
+            base'
         )
         // (if gen ? recarry then { recarry = c: lift (gen.recarry c); } else { })
         // (if gen ? withArgs then { withArgs = a: lift (gen.withArgs a); } else { })

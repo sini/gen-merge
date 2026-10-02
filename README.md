@@ -714,7 +714,7 @@ The two vocabularies, kept apart on purpose:
 
 | gen-native            | what it is                                                            | the foreign field(s) it derives                     |
 | --------------------- | --------------------------------------------------------------------- | --------------------------------------------------- |
-| `name`                | the type's name                                                       | `name`, `description`                               |
+| `name`                | the type's name                                                       | `name`, `description`, `descriptionClass`           |
 | `verify` / `admits`   | value predicate (`v -> null \| err`) / domain predicate (`v -> bool`) | `check`                                             |
 | `mergeDefs`           | definition fold, `loc -> defs -> value`                               | `merge`                                             |
 | `whenEmpty`           | what it is worth when nobody defined it                               | `emptyValue`                                        |
@@ -725,10 +725,11 @@ The two vocabularies, kept apart on purpose:
 | `deprecated`          | the deprecation message, if any                                       | `deprecationMessage`                                |
 
 `exportType` publishes a **partition of the fourteen** as data (`exportClasses`), so it can be read
-rather than argued: **10 DERIVED** (a real translation from a differently-named gen datum), **2
-FOREIGN CONSTANT** (`descriptionClass`, `_type` — no counterpart exists on this side, which is the
-point), **2 NAME-CARRIED** (`name`, `description` — carried from the name, translating nothing,
-which is why those two are allowed to be the same word on both sides and the ten are not).
+rather than argued: **11 DERIVED** (a real translation from a differently-named gen datum;
+`descriptionClass` is derived from `phraseClass`, the name and what the type carries), **1
+FOREIGN CONSTANT** (`_type` — no counterpart exists on this side, which is the point), **2
+NAME-CARRIED** (`name`, `description` — carried from the name, translating nothing, which is why
+those two are allowed to be the same word on both sides and the eleven are not).
 
 ### What "ceremony" would look like
 
@@ -1840,6 +1841,49 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   accepts and this fold accepts today, and one that instead accepts on exhaustion is a silent drop
   past its bound. Every construction changes an answer this fold gives today without deciding the
   input that aborts, so the abort stands as the exception rather than behind a door.
+
+- **A type's docs phrase elides past 128 composing nodes.** An exported type's `description` and
+  `descriptionClass` are nixpkgs' phrase and class for the same construction, derived once at the
+  export (`interface.phraseOfWithin`): a container composes its member's phrase, parenthesised by
+  the member's class, as nixpkgs' `optionDescriptionPhrase` does. The phrase is rendered within a
+  budget of `phraseBudget = 128` composing nodes (a container, a union or a freeform nest each cost
+  one; a leaf, however wide, and a foreign member's stated phrase cost none), threaded through
+  siblings, so it bounds the whole phrase tree and not only its depth. Past the budget the
+  remaining members read `…`, where nixpkgs never elides: `listOf` nested 129 times departs, 128
+  times is nixpkgs' phrase (`ci/tests/description-phrase.nix`). The most-composed phrase in
+  nixpkgs' NixOS option tree composes 35 nodes, and no gen-typed declaration measured composes more
+  than 3. Raising the ceiling is a one-constant change.
+
+- **A self-referential gen type has a finite phrase where nixpkgs' twin diverges.** For
+  `v = nullOr (oneOf [ str (attrsOf v) (listOf v) ])` the budget is what ends the phrase: it is
+  1 473 B, elided with `…`, nixpkgs' docs serve it, and every nixpkgs refusal over it (`type = v`,
+  `either int v`, `listOf v`) is a named refusal `tryEval` catches; nixpkgs' own `valueType`
+  diverges on the same reads, so here the export is more defined than the reference. A freeform
+  nest of itself (`submodule [ { freeformType = self; } ]`) is bounded the same way. The price is
+  per lap, not a byte figure: every lap of the cycle re-emits its leaves at no cost, so the phrase
+  is bounded by 128 times the widest text one lap emits. A cycle through a 1 500-member enum gives
+  a 1 850 177 B phrase, and a nixpkgs refusal over it still terminates and is still caught, at about
+  444 MB RSS. No byte cap is placed on it: one would have to stay above the widest single leaf to
+  keep parity, and it bounds no descent.
+
+- **A cycle closed through a foreign record's `description` aborts uncatchably, a declared
+  exception to the rule that every refusal is catchable.** A gen container reads a foreign member's
+  phrase from the member's own `description`, as nixpkgs' containers do. When that foreign phrase is
+  itself a cycle, the read dies with `infinite recursion encountered`. There are two instances:
+  `listOf nv` over nixpkgs' self-referential `nv = nullOr (oneOf [ str (attrsOf nv) (listOf nv) ])`,
+  whose divergence is inside nixpkgs' own `description` thunk, and `vm = nullOr (np.listOf vm)`, a
+  gen cycle closed through a nixpkgs composer, which describes `vm` from `vm`'s own exported
+  `description`. Before the phrase was derived both served the constructor's name (`"listOf"`,
+  `"nullOr"`) as their description; now the description, the docs over it and (for `listOf nv`)
+  nixpkgs' refusal over it abort, as nixpkgs' twin `np.listOf nv` does in every arm.
+  `ci/tests-process-cells.nix` pins both deaths and a live acyclic control. The exception is
+  argued, not merely declared: parity requires reading a foreign member's stated phrase; nothing
+  observable separates a foreign record's stated `description` from a derived one without forcing
+  it; and the structural alternative, re-rendering a stock-named foreign composer from its
+  `nestedTypes` without reading its `description`, departs from nixpkgs on every stock composer
+  with a stated override (49 of the 16 798 top-level NixOS options hold one in their phrase tree,
+  `time.timeZone`'s "null or string without spaces" among them). Every construction changes an
+  answer the export gives correctly today without deciding the input that aborts.
 
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict

@@ -213,6 +213,40 @@ let
         ];
       in
       r.config.x;
+
+    # THE CYCLE CLOSED THROUGH A FOREIGN RECORD'S `description` (den-hoag-type-description-parity-5k1l1):
+    # the docs phrase's one argued exception. A gen container composes a foreign member's STATED
+    # phrase, and when the foreign phrase is itself built from the gen type's `description` (a gen
+    # cycle through a nixpkgs composer), or diverges in nixpkgs' own thunk (nixpkgs' self-referential
+    # `valueType` under a gen container), the read dies in the infinite-recursion channel, as nixpkgs'
+    # twin does on every arm. No construction decides it without changing an answer gen gives
+    # correctly today; the README's "Known byte-mode boundaries" states the argument.
+    phrase-cycle-gen-through-foreign =
+      let
+        np = (import "${nixpkgsSrc}/lib").types;
+        vm = m.types.nullOr (np.listOf vm);
+      in
+      vm.description;
+    phrase-cycle-foreign-under-gen =
+      let
+        np = (import "${nixpkgsSrc}/lib").types;
+        nv = np.nullOr (
+          np.oneOf [
+            np.str
+            (np.attrsOf nv)
+            (np.listOf nv)
+          ]
+        );
+      in
+      (m.types.listOf nv).description;
+    # Their live control, same wiring: the same shapes over a foreign member that holds no cycle answer.
+    phrase-cycle-control =
+      let
+        np = (import "${nixpkgsSrc}/lib").types;
+      in
+      (m.types.nullOr (np.listOf m.types.int)).description
+      + " | "
+      + (m.types.listOf (np.nullOr np.str)).description;
   };
 in
 cells.${arm}

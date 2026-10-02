@@ -2514,7 +2514,7 @@ in
                     type = "ThrownError";
                     msg =
                       if nullableOnly then
-                        "^A definition for option `s' is not of type `nullOr'\\. Definition values:"
+                        "^A definition for option `s' is not of type `${nixpkgsLib.escapeRegex c.reference.description}'\\. Definition values:"
                       else
                         riderRefusal (builtins.concatStringsSep "\\." (
                           [ "s" ] ++ builtins.concatMap segment parts
@@ -5648,7 +5648,9 @@ in
           }) { a.x = 1; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: a definition for option `h[.]a' is not of type `either', in `<gen-merge>'$";
+            msg = "^gen-merge: a definition for option `h[.]a' is not of type `${
+              nixpkgsLib.escapeRegex (np.either (np.submodule { }) np.str).description
+            }', in `<gen-merge>'$";
           };
         };
         test-a-hand-rolled-container-declaring-by-nested-types-is-refused-at-construction = {
@@ -6112,23 +6114,27 @@ in
               }
             ];
           };
-        carried = name: {
+        # The type is named by nixpkgs' phrase for the same construction over nixpkgs' own types.
+        npSub = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        phrase = ref: nixpkgsLib.escapeRegex ref.description;
+        carried = ref: {
           type = "ThrownError";
-          msg = "^gen-merge: a definition for option `s' is not of type `${name}', in `def[.]nix'$";
+          msg = "^gen-merge: a definition for option `s' is not of type `${phrase ref}', in `def[.]nix'$";
         };
       in
       {
         test-a-rewritten-leaf-check-refuses-as-the-checked-fold = {
           expr = opt (np.addCheck t.int no) 5;
-          expectedError = carried "int";
+          expectedError = carried (np.addCheck np.int no);
         };
+        # Re-homed, the refusal is the gen `listOf`'s, so its phrase is `listOf`'s, not the wrapper's.
         test-a-re-homed-non-empty-list-refuses-as-the-checked-fold = {
           expr = opt (np.nonEmptyListOf sub) [ ];
-          expectedError = carried "listOf";
+          expectedError = carried (np.listOf npSub);
         };
         test-a-rewritten-check-over-a-union-holding-the-tree-refuses-as-the-checked-fold = {
           expr = opt (np.addCheck (t.either tree t.str) no) { a = 5; };
-          expectedError = carried "either";
+          expectedError = carried (np.either npSub np.str);
         };
         test-a-passing-rewritten-check-over-a-union-holding-the-tree-is-served = {
           expr =
@@ -6148,14 +6154,14 @@ in
         };
         test-a-rewritten-check-over-a-nullable-tree-refuses-as-the-checked-fold = {
           expr = opt (np.addCheck (t.nullOr tree) no) { a = 5; };
-          expectedError = carried "nullOr";
+          expectedError = carried (np.nullOr npSub);
         };
         # The element's segment is nixpkgs `listOf`'s, quoted as nixpkgs' `showOption` quotes it.
         test-a-rewritten-check-over-a-union-member-holding-the-tree-refuses-as-the-checked-fold = {
           expr = opt (t.listOf (np.addCheck (t.either tree t.str) no)) [ { a = 5; } ];
           expectedError = {
             type = "ThrownError";
-            msg = ''^gen-merge: a definition for option `s[.]"\[definition 1-entry 1\]"' is not of type `either', in `def[.]nix'$'';
+            msg = ''^gen-merge: a definition for option `s[.]"\[definition 1-entry 1\]"' is not of type `${phrase (np.either npSub np.str)}', in `def[.]nix'$'';
           };
         };
       };

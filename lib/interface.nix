@@ -170,9 +170,9 @@ let
       substSubModules = "substructure";
       typeMerge = "typeMergeRel | retainedRelation";
       functor = "typeMergeRel | retainedRelation";
+      descriptionClass = "phraseClass | name, carries, payload";
     };
     foreignConstant = [
-      "descriptionClass"
       "_type"
     ];
     nameCarried = [
@@ -231,7 +231,11 @@ let
       "__okAt"
       "__payload"
     ];
-    derived = exportFields ++ [ "_checkWitness" ];
+    derived = exportFields ++ [
+      "_checkWitness"
+      "phraseClass"
+      "__phraseWithin"
+    ];
     datum = [ "__derivation" ];
   };
 
@@ -1840,10 +1844,16 @@ let
   # where it stood refused by name.
   importDescriptor =
     d:
+    let
+      # nixpkgs' `mkOptionType` describes an undescribed type by its name (`description ? name`), so
+      # a descriptor's name is never read as the vocabulary's word for one of its own constructions.
+      described =
+        if isAttrs d && d ? name && !(d ? description) then d // { description = d.name; } else d;
+    in
     if isAttrs d && d ? name && !(d ? merge) && !(d ? mergeDefs) && !(d ? verify) then
-      importType (d // { merge = mergeDescriptorDefault; })
+      importType (described // { merge = mergeDescriptorDefault; })
     else
-      importType d;
+      importType described;
 
   # `read` is bound ONCE per import and shared by every refusal and the record: `importType` runs per
   # instance, so each re-reading is paid once per declared position (perf-bench `schemaHosts`). An
@@ -1954,6 +1964,8 @@ let
           )
           // (if deprecated == null then { } else { inherit deprecated; })
           // (if t ? description then { inherit (t) description; } else { })
+          # A stated class travels with its phrase, under gen's name for it (`phraseOf`).
+          // (if t ? descriptionClass then { phraseClass = t.descriptionClass; } else { })
           // (if roles == { } then { } else { carries = roles; })
           # What `nestedTypes` states beyond the roles crosses VERBATIM and is re-published at export,
           # as a nixpkgs type keeps it. It names no gen role, so nothing on this side reads it.
@@ -2046,19 +2058,256 @@ let
   # A nesting type states its resolved freeform type as `unroledNested.freeformType` (the tree reads
   # its own evaluation's, `submodule` its base evaluation's, as nixpkgs' `submoduleWith` reads
   # `base`'s). nixpkgs derives two more fields from it, and so does the export, in nixpkgs' words:
-  # the description "open <name> of <phrase>", the phrase parenthesised unless its class is `noun`
-  # or `composite`, and `_freeformOptions` beside the declared sub-options. Both are read only when
+  # the description "open <name> of <phrase>" (`phraseOfWithin`'s freeform arm), the phrase
+  # parenthesised unless its class is `noun` or `composite`, and `_freeformOptions` beside the
+  # declared sub-options. Both are read only when
   # the field is, and an argument is evaluated only when read, so a type that is never described
   # abroad never resolves its freeform type here.
   freeformOf = t: (t.unroledNested or { }).freeformType or null;
-  openDescription =
-    name: ff:
-    if ff == null then
-      name
-    else if ff.descriptionClass or null == "noun" || ff.descriptionClass or null == "composite" then
-      "open ${name} of ${ff.description}"
+
+  # ── THE DOCS PHRASE (den-hoag-type-description-parity-5k1l1) ──────────────────────────────────
+  # nixpkgs describes a type by a phrase and a class saying where the phrase needs parentheses, and
+  # a container composes its element's phrase through `optionDescriptionPhrase`. The export derives
+  # the pair here, once, from what the record says about itself: a stated phrase crosses verbatim
+  # with its class (nixpkgs' `mkOptionType` defaults neither beyond `description ? name`), a
+  # freeform nesting type reads "open …", a container composes its carried element's phrase, and a
+  # nullary type answers from the vocabulary's own word for itself. Elements are read through the
+  # same function, so a foreign element answers by its own fields and a gen one by this.
+  #
+  # ★★ THE PHRASE IS RENDERED WITHIN A NODE BUDGET HANDED DOWN IN PREORDER, because a type can hold
+  # itself (`let v = nullOr (oneOf [ str (attrsOf v) (listOf v) ]); in v`). Its phrase then denotes
+  # an infinite tree, and a phrase built by reading the members' `description` needs its own value:
+  # an uncatchable black hole on every foreign read of it, a refusal's text included. So a member
+  # of a gen container is read through its own renderer (`__phraseWithin`) and never through its
+  # `description`, which is gen-types' `__nameWithin` and this file's `importedTypeWalkFuel` again:
+  # Nix has no observation that two visited nodes are one, so the walk is bounded by count.
+  #
+  # ★ THE ACCOUNTING IS COMPOSING NODES, NOT BYTES. Every container, union or freeform nest whose
+  # phrase composes a member costs one unit, and the units are threaded through the siblings
+  # (`left`), so the budget bounds the whole tree rather than its depth. A leaf's text, a stated
+  # description and a foreign member's own fields cost nothing: they are finite data, never a
+  # descent, so they are never what diverges. Termination: each composing call, the freeform nest's
+  # included, is handed `b - 1` or less, and the budget-spent arm stops every one of them at `b <= 0`.
+  #
+  # ★ THE CEILING, STATED: a phrase composing more than `phraseBudget` nodes elides its remaining
+  # members to `…` (class `noun`, so no parentheses). nixpkgs never elides, so that is a departure,
+  # and it is placed past every real shape measured: the deepest composed phrase in nixpkgs' NixOS
+  # option tree composes 35 nodes, and no type in the gen roster or the gen-demo corpus composes more
+  # than 3 (den-hoag-type-description-parity-5k1l1 respec v1). Below the ceiling the phrase is
+  # byte-identical to nixpkgs', whatever its length: a 20 KB enum costs one leaf.
+  #
+  # ★ THE PRICE IS PER LAP. On a cyclic type every lap re-emits its leaves at no cost, so the elided
+  # phrase is bounded by `phraseBudget` times the widest text one lap emits, not by a byte figure:
+  # 1 473 B for `v` above, 1 850 177 B for a cycle carrying a 1 500-member enum (whose refusal still
+  # terminates and is still caught, at about 444 MB RSS). No byte cap is placed on it: one would
+  # have to stay above the widest single leaf to keep parity, and it bounds no descent.
+  phraseBudget = 128;
+  elided = {
+    text = "…";
+    class = "noun";
+    left = 0;
+  };
+  # A member's phrase within budget `b`: a gen export's own renderer, else its stated fields (cost 0).
+  phraseOfMember =
+    b: e:
+    if isAttrs e && isFunction (e.__phraseWithin or null) then
+      e.__phraseWithin b
     else
-      "open ${name} of (${ff.description})";
+      phraseOfWithin b e;
+  memberWithin =
+    classes: b: e:
+    let
+      p = phraseOfMember b e;
+    in
+    {
+      text = if builtins.elem p.class classes then p.text else "(${p.text})";
+      inherit (p) left;
+    };
+  # What a derivation keeps of its base's phrase: both halves, as nixpkgs' `base // { … }` keeps them.
+  carriedPhrase =
+    t:
+    let
+      p = statedPhrase t;
+    in
+    {
+      description = p.text;
+      phraseClass = p.class;
+    };
+  statedPhrase = t: {
+    text = t.description;
+    class = if isOptionType t then t.descriptionClass or null else t.phraseClass or null;
+  };
+  noun = text: {
+    inherit text;
+    class = "noun";
+  };
+  # The leaf vocabulary's nouns, keyed by its CONSTRUCTION (`payloadOf`'s `prim` coordinate), never
+  # by name: a caller's `typedef "int"` is sealed, reads no payload, and is described by its name.
+  primPhrase = {
+    int = noun "signed integer";
+    string = noun "string";
+    bool = noun "boolean";
+    float = noun "floating point number";
+    number = {
+      text = "signed integer or floating point number";
+      class = "conjunction";
+    };
+    path = noun "absolute path";
+    # The vocabulary's own leaves with no nixpkgs namesake, in the same register.
+    any = noun "any value";
+    list = noun "list";
+    function = noun "function";
+    derivation = noun "derivation";
+    null = noun "null";
+    never = noun "impossible (no value)";
+    pathLike = {
+      text = "path or derivation or string";
+      class = "conjunction";
+    };
+  };
+  showEnumMember =
+    v:
+    if builtins.isString v then
+      "\"${v}\""
+    else if builtins.isInt v then
+      toString v
+    else if builtins.isBool v then
+      (if v then "true" else "false")
+    else
+      "<${builtins.typeOf v}>";
+  payloadPhrase =
+    t:
+    let
+      r = builtins.tryEval (
+        if types ? payloadOf then
+          let
+            p = types.payloadOf t;
+          in
+          builtins.deepSeq p (if isAttrs p && p ? ctor && p ? args then p else null)
+        else
+          null
+      );
+      p = if r.success then r.value else null;
+      elems = if p != null && isAttrs p.args then p.args.elems or null else null;
+    in
+    if p == null then
+      null
+    else if p.ctor == "prim" && builtins.isString p.args && primPhrase ? ${p.args} then
+      primPhrase.${p.args}
+    else if p.ctor == "enum" && isList elems then
+      if elems == [ ] then
+        noun "impossible (empty enum)"
+      else if length elems == 1 then
+        noun "value ${showEnumMember (head elems)} (singular enum)"
+      else
+        {
+          text = "one of ${concatStringsSep ", " (map showEnumMember elems)}";
+          class = "conjunction";
+        }
+    else
+      null;
+  phraseOf = t: builtins.removeAttrs (phraseOfWithin phraseBudget t) [ "left" ];
+  phraseOfWithin =
+    b: t:
+    let
+      name = t.name or "raw";
+      ff = freeformOf t;
+      carried = t.carries or { };
+      el = carried.element or null;
+      alts = carried.alternatives or null;
+      # a phrase that spends nothing
+      flat = p: p // { left = b; };
+      # one composing node: costs a unit, then its members share what is left
+      over =
+        class: prefix: classes: e:
+        let
+          m = memberWithin classes (b - 1) e;
+        in
+        {
+          inherit class;
+          text = prefix + m.text;
+          inherit (m) left;
+        };
+      leaf = payloadPhrase t;
+    in
+    if !(isAttrs t) then
+      flat {
+        text = nameOf t;
+        class = null;
+      }
+    else if t ? description then
+      flat (statedPhrase t)
+    else if (ff != null || el != null || alts != null) && b <= 0 then
+      elided
+    else if ff != null then
+      let
+        m = memberWithin [ "noun" "composite" ] (b - 1) ff;
+      in
+      {
+        text = "open ${name} of ${m.text}";
+        class = null;
+        inherit (m) left;
+      }
+    else if el != null && name == "listOf" then
+      over "composite" "list of " [ "noun" "composite" ] el
+    else if el != null && name == "attrsOf" then
+      over "composite" "attribute set of " [ "noun" "composite" ] el
+    else if el != null && name == "lazyAttrsOf" then
+      over "composite" "lazy attribute set of " [ "noun" "composite" ] el
+    else if el != null && name == "nullOr" then
+      over "conjunction" "null or " [ "noun" "conjunction" ] el
+    else if isList alts && length alts == 2 && name == "either" then
+      let
+        pa = phraseOfMember (b - 1) (head alts);
+        ta =
+          if pa.class == "nonRestrictiveClause" then
+            "${pa.text},"
+          else if
+            builtins.elem pa.class [
+              "noun"
+              "conjunction"
+            ]
+          then
+            pa.text
+          else
+            "(${pa.text})";
+        mb = memberWithin (
+          if pa.class == "nonRestrictiveClause" then
+            [
+              "noun"
+              "conjunction"
+            ]
+          else
+            [
+              "noun"
+              "conjunction"
+              "composite"
+            ]
+        ) pa.left (elemAt alts 1);
+      in
+      {
+        class = "conjunction";
+        text = "${ta} or ${mb.text}";
+        inherit (mb) left;
+      }
+    else if leaf != null then
+      flat leaf
+    else if name == "raw" then
+      flat (noun "raw value")
+    else if name == "anything" then
+      flat (noun "anything")
+    else if name == "deferredModule" then
+      flat (noun "module")
+    else if name == "attrs" then
+      flat {
+        text = "attribute set";
+        class = null;
+      }
+    else
+      flat {
+        text = name;
+        class = null;
+      };
   freeformSubOptions =
     declares: ff: prefix:
     if ff == null then
@@ -2162,9 +2411,12 @@ let
             );
       };
 
+      phrase = phraseOf t;
       exported = t // {
+        # this type's phrase within a budget, for a container reading it as a member (`phraseOfMember`)
+        __phraseWithin = b: phraseOfWithin b t;
         _type = "option-type";
-        descriptionClass = null;
+        descriptionClass = phrase.class;
         inherit name;
         # ★★ THE CALLER'S FUNCTOR IS REPUBLISHED WITH ITS NAME INTACT, AND THAT NAME GOVERNS. The
         # derivation above is what a type with no stated relation is published as; overwriting a
@@ -2174,7 +2426,7 @@ let
         # It is read off `retainedRelation', a differently-named gen datum, exactly as every other
         # derived field is read off one — see the retention site in `importType' for why.
         functor = t.retainedRelation.functor or functor;
-        description = t.description or (openDescription name (freeformOf t));
+        description = phrase.text;
         deprecationMessage = t.deprecated or null;
         # `_checkWitness` is not a fifteenth protocol field: it is gen-types' check-witness
         # protocol field, the record of which `check` was published, read only by `rewritesCheck`.
@@ -2260,6 +2512,7 @@ in
     admitsCarried
     checkedFold
     closuresFirst
+    carriedPhrase
     deriveClasses
     exportClasses
     exportFields
