@@ -89,6 +89,40 @@ let
   inherit (builtins) isFunction;
   inherit (types) rewritesCheck witnessRecord;
 
+  # THE THREAD MARKER (den-hoag-threadedforeign-substsubmodules-abort-srpix): what `threadedForeign`
+  # hands a foreign `substSubModules`. nixpkgs types that argument as a module list, built as
+  # `mergeOptionDecls` builds one (`setDefaultModuleLocation`): `[ { _file; imports = [ m ]; } ]`.
+  # The marker is one such item whose import is an inert function module carrying the element
+  # function, so a rebuild that CONSUMES the list as modules (`submoduleWith`, `attrTag`) evaluates
+  # an empty module and states no marked element, and one that FORWARDS it reaches a gen element,
+  # which answers with itself. `threadElementOf` reads the sentinel `_file` before `imports`, so a
+  # real module list handed to a gen answerer by nixpkgs is never forced.
+  threadMarkerFile = "<gen-merge thread marker>";
+  threadMarker = f: [
+    {
+      _file = threadMarkerFile;
+      imports = [
+        {
+          __functor = _: _: { };
+          __genThreadElement = f;
+        }
+      ];
+    }
+  ];
+  threadElementOf =
+    m:
+    let
+      i =
+        if isList m && length m == 1 && isAttrs (head m) && (head m)._file or null == threadMarkerFile then
+          (head m).imports or null
+        else
+          null;
+    in
+    if isList i && length i == 1 && isAttrs (head i) && head i ? __genThreadElement then
+      (head i).__genThreadElement
+    else
+      null;
+
   # ── THE EXPORT ENVIRONMENT'S NAMES ──────────────────────────────────────────────────────────────
   # The fourteen names nixpkgs' module system reads off every option type. They are the foreign
   # protocol's, not this library's, and they are private data of this unit: a name from this list
@@ -989,11 +1023,11 @@ let
 
   # ── AN UNRECOGNISED CONTAINER THREADS THROUGH ITS OWN REBUILD (den-hoag-f8mgj, owner-ruled arm (T)) ─
   # A foreign container outside the six, declaring a gen nesting element, is rebuilt by its own
-  # `substSubModules`, handed a marker in place of a module list. Every stock container's rebuild
-  # calls its element's `substSubModules`, and a gen element answers the marker with itself
-  # (`exportType`, and the tree's `refuseMount`); the marker's function returns that element with its
-  # `merge` replaced, so the container keeps its own merge and check (`coercedTo` keeps its
-  # `coerceFunc`). Two rebuilds:
+  # `substSubModules`, handed a module list that carries a marker (`threadMarker`). Every stock
+  # container's rebuild calls its element's `substSubModules`, and a gen element answers the marker
+  # with itself (`exportType`, and the tree's `refuseMount`); the marker's function returns that
+  # element with its `merge` replaced, so the container keeps its own merge and check (`coercedTo`
+  # keeps its `coerceFunc`). Two rebuilds:
   #   capture  — the element's merge RECORDS each site (loc, defs), so the container's own merge is
   #              the split: the key walk reads which element positions exist and what defs each gets.
   #   threaded — the element's merge is the engine's threaded twin at position ++ (eloc - loc).
@@ -1020,7 +1054,14 @@ let
       via =
         f:
         let
-          r = t.substSubModules { __genThreadElement = e: f e // { __genThreadMark = true; }; };
+          # called only when it is a function or a functor: nixpkgs never calls it where
+          # `getSubModules` is null, so an absent or null one rebuilds nothing and is refused below
+          s = t.substSubModules or null;
+          r =
+            if isFunction s || isAttrs s && s ? __functor then
+              s (threadMarker (e: f e // { __genThreadMark = true; }))
+            else
+              null;
           stated =
             if isAttrs r then
               prelude.attrValues (r.nestedTypes or { }) ++ (if r ? elemType then [ r.elemType ] else [ ])
@@ -2113,8 +2154,8 @@ let
         getSubModules = if sub == null then null else sub.modules;
         substSubModules =
           m:
-          if isAttrs m && m ? __genThreadElement then
-            m.__genThreadElement exported
+          if threadElementOf m != null then
+            threadElementOf m exported
           else if sub == null then
             null
           else
@@ -2225,11 +2266,7 @@ let
         getSubModules = refuse "getSubModules";
         getSubOptions = refuse "getSubOptions";
         substSubModules =
-          m:
-          if isAttrs m && m ? __genThreadElement then
-            m.__genThreadElement record
-          else
-            refuse "substSubModules";
+          m: if threadElementOf m != null then threadElementOf m record else refuse "substSubModules";
         typeMerge = refuse "typeMerge";
       }
       // fields;

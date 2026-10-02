@@ -5451,6 +5451,70 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `fwd' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
           };
         };
+        # A rebuild that CONSUMES the module list (nixpkgs `submoduleWith` reads it as its modules) is
+        # handed a list of modules, as nixpkgs' `fixupOptionType` hands one, so it states no marked
+        # element and is refused by name, catchably: a payload-null copy of a stock freeform
+        # submodule, and a stock submodule given a top-level `elemType`
+        # (den-hoag-threadedforeign-substsubmodules-abort-srpix).
+        test-a-rebuild-that-consumes-the-module-list-is-refused-by-name = {
+          expr = opt (
+            let
+              s = np.submodule { freeformType = np.attrsOf sub; };
+            in
+            nixpkgsLib.mkOptionType {
+              name = "submodule";
+              inherit (s)
+                check
+                merge
+                getSubOptions
+                getSubModules
+                substSubModules
+                nestedTypes
+                emptyValue
+                description
+                ;
+            }
+          ) { k.x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `submodule' declares a gen nesting type as an element [(]its `nestedTypes[.]freeformType'[)], ${rule}";
+          };
+        };
+        test-a-submodule-given-an-elemType-is-refused-by-name = {
+          expr = opt (np.submodule { options.x = gm.mkOption { type = t.int; }; } // { elemType = sub; }) {
+            x = 1;
+          };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `submodule' declares a gen nesting type as an element [(]its `elemType'[)], ${rule}";
+          };
+        };
+        # A record whose `substSubModules` is null beside a null `getSubModules` is valid nixpkgs
+        # (it never calls the field), so it is not called: it rebuilds nothing and is refused by name.
+        test-a-null-rebuild-is-refused-by-name = {
+          expr = opt (
+            let
+              s = np.submodule { options.x = gm.mkOption { type = t.int; }; };
+            in
+            nixpkgsLib.mkOptionType {
+              name = "submodule";
+              inherit (s)
+                check
+                merge
+                getSubOptions
+                emptyValue
+                description
+                ;
+              getSubModules = null;
+              substSubModules = null;
+              nestedTypes.elemType = sub;
+            }
+          ) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `submodule' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
+          };
+        };
         # Condition (2) (M4): `functionTo` folds its element inside the function it returns, where its
         # merge exposes no site, so a nested-tree read there is refused by name; a member that never
         # reads the tree (a string definition) still answers (`nesting-threaded-rehome`).

@@ -1533,6 +1533,24 @@ in
       };
     };
 
+    # LAZINESS: nixpkgs' `fixupOptionType` hands `substSubModules` a real module list; the thread
+    # marker's recogniser reads the item's `_file` before its imports, so the caller's module is not
+    # forced where nixpkgs' own `submodule` does not force it
+    # (den-hoag-threadedforeign-substsubmodules-abort-srpix).
+    test-substSubModules-does-not-force-the-callers-module = {
+      expr =
+        (nixpkgsLib.evalModules {
+          modules = [
+            {
+              options.s = nixpkgsLib.mkOption {
+                type = gmT.submodule [ (throw "nixpkgs-protocol: the caller's module was forced") ];
+              };
+            }
+          ];
+        }).options.s.type.name;
+      expected = "submodule";
+    };
+
     # ── THE ONE TYPE-SHAPED VALUE THAT MUST **NOT** MOUNT ──────────────────────────────────────────
     # Every cell above is this file's forward claim: a gen-merge type serves a foreign engine. The
     # tree-as-a-type (`(evalModuleTree …).type`) is the exception, and it is an exception on purpose
