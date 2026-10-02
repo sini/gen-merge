@@ -262,7 +262,10 @@ an undeclared position evaluates the marker (its import throws the refusal), and
 `mkOptionType`. At an option ROOT stating a module set whose rebuild does not thread, it is mounted
 as nixpkgs' `fixupOptionType` mounts it, where that rebuild is an option type declaring no gen
 element (`homedRootAt`, den-hoag-threadedforeign-parity-residue-0hew4); below a union or a gen root
-it is not. Its own `check` rides on the threaded fold and a
+it is not. Every foreign option root stating a module set, a nesting element or none, is mounted so,
+judged before any read of the record's roles (a copy's `nestedTypes` is never forced); the record's
+own `check` rides on the rebuild (`carriedCheck`), and a rebuild that is no option type is refused by
+name (`rootRebuildRefusal`; den-hoag-gijly, den-hoag-2lmky). Its own `check` rides on the threaded fold and a
 refined element is carried (`checkedFold`), a check that reads the tree included, since the tree's
 `check` is its module-value domain (den-hoag-f8mgj arm Q). One that forwards without declaring evaluates its tree standalone (OQ11 (d)'s
 price). So does a gen nesting type inside a recognised nixpkgs submodule's `freeformType`

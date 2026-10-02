@@ -1304,9 +1304,8 @@ let
   # (`threadsAt`: every declared position that may nest comes back marked, every other declared
   # position is a sibling with no module set to lose) is refused by name, as F2 α requires: a
   # container that drops its argument would otherwise reach the nested tree through the bridge, a
-  # silent standalone evaluation. A foreign ROOT stating a module set that does not thread is
-  # mounted as nixpkgs mounts it instead, where that rebuild declares no gen element
-  # (`homedRootAt`).
+  # silent standalone evaluation. A foreign ROOT stating a module set is mounted as nixpkgs mounts
+  # it instead, where that rebuild declares no gen element (`homedRootAt`).
   #
   # ★ THE BOUNDARY (ADR-0014, ADR-0023): a FOREIGN closure, the container's own `merge` and `check`,
   # runs inside gen's evaluation with a gen-threaded element fold under it. No foreign engine

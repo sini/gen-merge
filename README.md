@@ -1562,17 +1562,25 @@ against nixpkgs' once. A foreign closure, the container's own merge and check, r
 evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
 is entered only in gen's own evaluation.
 
-**At the option root, a record that does not thread is mounted as nixpkgs mounts it.**
+**At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared
 option's type over the declaration's module set, at the option's root only, and the rebuild reaches
-what the root's own `substSubModules` forwards to. A foreign root that declares a gen nesting
-element, states a module set (`getSubModules` is a list) and a callable `substSubModules`, and does
-not thread, is mounted the same way: as its rebuild over that module set, where the result is an
-option type declaring no gen nesting element. So a payload-null copy of a stock submodule, or a
-submodule given an `elemType` it never folds, gives nixpkgs' value at the root and under a
-forwarding container. The claim is scoped to roots declaring a gen nesting element; a foreign root
-without one keeps its own fold. The fix-up item's `_file` names the mount, not the declaring file,
-and the module set is the merged type's, not a union per declaration. Refused by name, pending the
+what the root's own `substSubModules` forwards to. A foreign root that states a module set
+(`getSubModules` is a list) is mounted the same way, judged before any read of the record's roles: as
+its rebuild over that module set, where the result is an option type declaring no gen nesting
+element, whose merge is the one served (`homedRootAt`). A root declaring a gen nesting element that
+does not thread is mounted so too. So a hand-written `mkOptionType` whose own merge is not its
+rebuild's, a `//` override of a stock submodule's `merge` or `substSubModules`, a payload-null copy
+of a stock submodule (a definition completing its module set included), or a submodule given an
+`elemType` it never folds, gives nixpkgs' value at the root and under a forwarding container. The
+record's own `check` rides on the rebuild, gen's own or foreign, so the domain is the meet of the two
+(`carriedCheck`, the re-home law): an `addCheck` over such a root refuses what it rejects, where
+nixpkgs' rebuild erases it silently. A rebuild that is no option type (null, a bare attrset, absent,
+or stating `merge` but no `check`) is refused by name (`rootRebuildRefusal`), where nixpkgs aborts, and
+an ad-hoc `type // { check = ...; }` keeps its by-name refusal. A freeform type is no option's root
+and is not mounted. The fix-up item's `_file` is `<unknown-file>`, as nixpkgs labels a module stating
+no file, not the declaring file, and the module set is the merged type's, not a union per
+declaration. Refused by name, pending the
 release-parity ruling, where nixpkgs serves:
 
 - a record declaring a gen nesting element that nixpkgs never rebuilds (no module set at the root,
@@ -2044,8 +2052,10 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   is served as a module set with that role unread; a record whose `nestedTypes` is evaluation-derived
   but whose payload states no `modules` (a hand-copied submodule) or which states no
   `getSubModules` is not recognised: one stating a module set is mounted at an option root as
-  nixpkgs' `fixupOptionType` mounts it (arm (T), the root fix-up), and one stating none keeps the
-  refusal, pending the release-parity ruling. A container whose payload states
+  nixpkgs' `fixupOptionType` mounts it (arm (T), the root fix-up), before its `nestedTypes` is
+  read, and one stating none keeps the refusal, pending the release-parity ruling. At an option root
+  a recognised record is mounted as its rebuild too, so one whose rebuild lies about its roles is
+  served what nixpkgs serves. A container whose payload states
   `modules` beside a static element and states no `getSubModules` keeps both its refusals.
   "Served" holds for an honest record only: a recognised record answers the decidability pre-check
   without a walk, so its own `typeMerge` runs unguarded, and a hand-built one whose `typeMerge`
