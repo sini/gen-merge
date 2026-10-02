@@ -118,9 +118,10 @@ in
           { x = 2; }
         ];
         sub-empty.x = 0;
+        # nixpkgs `listOf`'s names: one segment per definition.
         list-two-defs = [
-          "0"
-          "0"
+          "[definition 1-entry 1]"
+          "[definition 2-entry 1]"
         ];
       };
     };

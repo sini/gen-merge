@@ -80,7 +80,35 @@ let
     defaultPriority
     ;
 
-  showOption = loc: concatStringsSep "." loc;
+  # nixpkgs' `lib.options.showOption`: a segment that is not a Nix identifier, or is a keyword,
+  # prints as a string literal (`escapeNixIdentifier`, `$` escaped as `escapeNixString` does), so
+  # `a."b.c"` and `a.b.c` stay two paths; the placeholders `*` and `<...>` print bare.
+  showOption =
+    let
+      keywords = [
+        "assert"
+        "else"
+        "if"
+        "in"
+        "inherit"
+        "let"
+        "or"
+        "rec"
+        "then"
+        "with"
+      ];
+      showPart =
+        part:
+        if
+          part == "*"
+          || builtins.match "<(.*)>" part != null
+          || (builtins.match "[a-zA-Z_][a-zA-Z0-9_'-]*" part != null && !(builtins.elem part keywords))
+        then
+          part
+        else
+          builtins.replaceStrings [ "$" ] [ "\\$" ] (builtins.toJSON part);
+    in
+    loc: concatStringsSep "." (map showPart loc);
 
   # The conflict refusal, ONE text for both leaf folds (`mergeLeaf` below and the boundary's
   # `leafFold`), so the engine and what it publishes outward cannot drift apart. ADR-0025 item 1:

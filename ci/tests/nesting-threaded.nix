@@ -229,7 +229,8 @@ in
 {
   # U2.2-a: through the bridge, each nesting shape's `threaded` fold gives its called fold's value
   # byte for byte, over the fixtures above. The called fold refuses since the switch (Unit 2.4, item
-  # 1), so its values are pinned as the literals it gave at the switch's parent (gen-merge 193a18d).
+  # 1), so its values are pinned as the literals it gave at the switch's parent (gen-merge 193a18d),
+  # with a list element's name since taken as nixpkgs `listOf` names it, `[definition n-entry m]`.
   flake.tests.nesting-threaded-bridge = {
     test-threaded-through-the-bridge-is-the-called-fold = {
       expr = builtins.mapAttrs (_: threadedOf) fixtures;
@@ -261,24 +262,24 @@ in
         };
         list-dropped = [
           {
-            n = "1";
+            n = "[definition 1-entry 2]";
             x = 1;
           }
         ];
         list-two-defs = [
           {
-            n = "0";
+            n = "[definition 1-entry 1]";
             x = 1;
           }
           {
-            n = "0";
+            n = "[definition 2-entry 1]";
             x = 2;
           }
         ];
         nested = {
           a = [
             {
-              n = "0";
+              n = "[definition 1-entry 1]";
               x = 1;
             }
           ];
@@ -312,7 +313,9 @@ in
         };
       };
     };
-    # The fixtures reach every constructor that nests, and the names they read moved nowhere.
+    # The fixtures reach every constructor that nests, and each reads the name nixpkgs gives it: a
+    # list element reads nixpkgs `listOf`'s `[definition n-entry m]`, `n` the definition's ordinal
+    # and `m` its index within that definition, taken before the drop.
     test-the-fixtures-read-their-loc = {
       expr = {
         sub = (threadedOf fixtures.sub).n;
@@ -327,10 +330,10 @@ in
         root = "";
         args = "w-k";
         list = [
-          "0"
-          "0"
+          "[definition 1-entry 1]"
+          "[definition 2-entry 1]"
         ];
-        dropped = [ "1" ];
+        dropped = [ "[definition 1-entry 2]" ];
         attrs = [
           "a"
           "b"

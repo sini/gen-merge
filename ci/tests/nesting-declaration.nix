@@ -246,8 +246,8 @@ in
 
   # ── the split: each container states its element positions once ───────────────────────────────
   flake.tests.nesting-declaration-split = {
-    # U2-g's `lt-two-defs` shape. The fold names both elements `"0"`, so a position keyed on `loc`
-    # would name the two elements once; the step `[ d i ]` names them twice.
+    # U2-g's `lt-two-defs` shape. The step `[ d i ]` names the two elements twice, and the `loc`
+    # segment is the same position in nixpkgs `listOf`'s spelling, `[definition n-entry m]`.
     test-list-two-definitions-give-two-positions = {
       expr = {
         steps = steps (t.listOf t.str) twoDefs;
@@ -269,11 +269,11 @@ in
         locs = [
           [
             "o"
-            "0"
+            "[definition 1-entry 1]"
           ]
           [
             "o"
-            "0"
+            "[definition 2-entry 1]"
           ]
         ];
       };
@@ -300,7 +300,8 @@ in
         ]
       ];
     };
-    # The index is taken BEFORE a discharged element is dropped, as the fold's own index is.
+    # The index is taken BEFORE a discharged element is dropped, as the fold's own index is, and as
+    # nixpkgs `listOf`'s `[definition n-entry m]` takes `m`.
     test-list-index-is-taken-before-the-drop = {
       expr =
         splitOf (t.listOf t.str)
@@ -322,7 +323,7 @@ in
           ];
           loc = [
             "o"
-            "1"
+            "[definition 1-entry 2]"
           ];
           defs = [
             {
