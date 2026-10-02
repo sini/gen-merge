@@ -1923,6 +1923,39 @@ in
           msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`listOf' rejects str\\.nix; `string' rejects list\\.nix\\)$";
         };
       };
+      # A `oneOf` of three members is `either (either int str) bool`, and the refusal names every
+      # LEAF member with the definitions it rejects, through the nested `either` (den-hoag-b47r5).
+      # Asked pointwise, the nested `either` would have rejected nothing and been named bare.
+      test-a-oneOf-refusal-names-every-leaf-member = {
+        expr =
+          builtins.deepSeq
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.x = gm.mkOption {
+                    type = t.oneOf [
+                      t.int
+                      t.str
+                      t.bool
+                    ];
+                  };
+                }
+                {
+                  _file = "a.nix";
+                  x = 1;
+                }
+                {
+                  _file = "b.nix";
+                  x = "s";
+                }
+              ];
+            }).config.x
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`int' rejects b\\.nix; `string' rejects a\\.nix; `bool' rejects b\\.nix, a\\.nix\\)$";
+        };
+      };
       # EVERY offending definition is named, not the pair a dispatch happened to be holding. Two
       # list definitions and one string: the member that takes lists rejects one file, the member
       # that takes strings rejects two, and an author reconciling only the first collision the

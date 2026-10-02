@@ -1180,8 +1180,10 @@ gen-merge: option `x' has definitions no single `either' member accepts
 ```
 
 Picking from the first definition instead handed the rest to a member that could not consume them.
-`oneOf` is right-nested `either` and inherits the rule, so an n-ary union refuses at whichever
-nesting level runs out of members.
+`oneOf` is left-nested `either`, as nixpkgs folds it, and inherits the rule. A member that is
+itself an `either` accepts when every definition passes its check and its own choice takes them,
+as nixpkgs' `either` takes a member whose merge reports no head error, and a refusal names every
+leaf member with the files it rejected.
 
 A definition set that merged before merges to the same value: the member selected from the first
 definition *is* the member that accepts them all whenever one does. **The refusal reaches every
