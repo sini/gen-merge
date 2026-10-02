@@ -156,12 +156,14 @@ in
       };
     };
 
-    # THE RESIDUE (README "The prices, stated"): a check over the bare tree, which has no witness
-    # (member A), and the same stated against the bare tree a container offers (M0). Each is served,
-    # as pinned here. A stock `either`/`oneOf`/`nullOr` over the bare tree is NOT in it: the tree's
-    # `check` is its module-value domain, so the rewritten check over the union is carried (member
-    # B) and refuses, as nixpkgs does for `either`/`oneOf` and stricter than nixpkgs for `nullOr`.
-    test-the-residue-is-the-bare-tree-and-the-offered-tree = {
+    # THE RESIDUE (README "The prices, stated"): a check over the bare tree, served, as pinned here.
+    # A stock `either`/`oneOf`/`nullOr` over the bare tree is NOT in it: the tree's `check` is its
+    # module-value domain, so the rewritten check over the union is carried (member B) and refuses,
+    # as nixpkgs does for `either`/`oneOf` and stricter than nixpkgs for `nullOr`. Nor is the same
+    # check stated against the bare tree a container offers: the tree is a type built at the
+    # crossing site, so the stated element and the offered one are two records, and that is refused
+    # by name, as it is over `submodule` (stricter than nixpkgs, which ignores the stated check).
+    test-the-residue-is-the-bare-tree = {
       expr = {
         bareTree = opt (ac tree no) m;
         eitherTree = accepted (ac (np.either tree np.str) no) m;
@@ -170,16 +172,17 @@ in
           np.str
         ]) no) m;
         nullOrTree = accepted (ac (np.nullOr tree) no) m;
-        # A tree stated with only its `check` rewritten against the tree offered: the two agree on
-        # `merge`, the one slot a tree is compared on (M0 gate F3).
-        statedCheckOverOfferedTree = opt (np.listOf tree // { nestedTypes.elemType = ac tree no; }) [ m ];
+        # A tree stated with only its `check` rewritten against the tree offered.
+        statedCheckOverOfferedTree = accepted (np.listOf tree // { nestedTypes.elemType = ac tree no; }) [
+          m
+        ];
       };
       expected = {
         bareTree = m;
         eitherTree = false;
         oneOfTree = false;
         nullOrTree = false;
-        statedCheckOverOfferedTree = [ m ];
+        statedCheckOverOfferedTree = false;
       };
     };
   };

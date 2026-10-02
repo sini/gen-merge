@@ -398,9 +398,9 @@ let
   # its slots, allocating nothing per test: the test is paid on every fold, so it may cost nothing
   # per fold (hub perf-bench's `wideFreeform` and `deepSubmodule` alloc ratchets). A rewritten
   # `check` is a function (`addCheck`'s `x: t.check x && p x`) or another record's, and compares
-  # unequal. A record with no witness (a `nonMountable` tree, a foreign descriptor) is not asked;
-  # a check rewritten over the bare tree is therefore not detected, and nixpkgs erases it there too
-  # (the enumerated residue, README "The prices, stated"). A record re-bound by selection (`t // { inherit (t) check; }`) keeps the same
+  # unequal. A record with no witness (a foreign descriptor) is not asked. A check rewritten over the
+  # bare tree is not carried at its declared leaf, whose threaded fold reads none, and nixpkgs erases
+  # it there too (the enumerated residue, README "The prices, stated"). A record re-bound by selection (`t // { inherit (t) check; }`) keeps the same
   # record and reads as its own on every evaluator. Four per-fold sites restate the test inline for
   # cost (`importedFold`, `modules.nix` `ownFold` and `threadedAs`, `types.nix` `isValid`), and the
   # library's construction door holds their spelling to this test (`lib/default.nix`).
@@ -587,17 +587,12 @@ let
   # naming the pair by type name alone reads "`int' and `int'" in exactly the case the functor names
   # decided, which looks like a self-contradiction. Where both operands state a functor name and the
   # two differ, this answers them, read through `nameOf'; otherwise `null' and the refusal is
-  # unchanged. A `nonMountable' operand's `functor' is itself a refusal (`refuseMount'), so it is not
-  # read.
+  # unchanged.
   functorNamesOf =
     a: b:
     let
       functorOf =
-        x:
-        if isAttrs x && !(x ? nonMountable) && isAttrs (x.functor or null) && x.functor ? name then
-          x.functor
-        else
-          null;
+        x: if isAttrs x && isAttrs (x.functor or null) && x.functor ? name then x.functor else null;
       fa = functorOf a;
       fb = functorOf b;
     in
@@ -661,7 +656,7 @@ let
   # function of that set) AND by stating its module set in a carrying spelling (`getSubModules`), for
   # LAZINESS ONLY. What it carries is never read off the payload. `getSubModules` is read only once
   # the payload test holds: a container forwards it to its element, and is never asked. A gen record
-  # (`carries`) and a seam (`nonMountable`, whose `functor` refuses) never pay the read.
+  # (`carries`) never pays the read.
   #
   # ★ THE STATED RESIDUE: a record stating both and ALSO a static role in `nestedTypes` is served as
   # a module set with that role unread (no test that leaves `nestedTypes` unread can separate it);
@@ -674,7 +669,6 @@ let
   evaluatesOwnRoles =
     t:
     !(t ? carries)
-    && !(t ? nonMountable)
     && ((t.functor or { }).payload or null) ? modules
     && (t.getSubModules or null) != null;
 
@@ -716,14 +710,14 @@ let
   # `coercedTo`'s `finalType` counts), and, where it states none there, the element or members the
   # carrying spellings state (`statedRoles`, which there reaches only a top-level `elemType`). Never
   # its functor payload: a payload is what a type offers to MERGE on (`payloadOffered` below), not
-  # what it carries. A `nonMountable` record wraps no type.
+  # what it carries.
   declaredWrapped =
     t:
     # No binding on the common path: `canNest` asks this of every option the engine folds, so one
     # there is paid per instance. A record with `carries` or a non-empty `nestedTypes` answers
     # `importedWrapped` whole. Past that, the one carrying spelling `statedRoles` can still reach is
     # a top-level `elemType`, so only a record stating one pays for the reading.
-    if t ? carries || t ? nonMountable || (!(evaluatesOwnRoles t) && { } != (t.nestedTypes or { })) then
+    if t ? carries || (!(evaluatesOwnRoles t) && { } != (t.nestedTypes or { })) then
       importedWrapped t
     else if t ? elemType then
       [ (statedRoles t).element ]
@@ -731,7 +725,7 @@ let
       [ ];
 
   # What a record's functor payload OFFERS to merge on as an element or members; `[ ]` for a record
-  # with `carries` or a `nonMountable` one. Read only where `declaredWrapped` is empty, and only to
+  # with `carries`. Read only where `declaredWrapped` is empty, and only to
   # JUDGE the offer: the walk below refuses a record offering a type that declares a gen nesting type
   # while stating none (OQ1 arm (ii-a), *defaulted, reversible*), and never takes the offer as a
   # declaration.
@@ -741,7 +735,7 @@ let
       payload = (t.functor or { }).payload or null;
       role = payloadRole payload;
     in
-    if t ? carries || t ? nonMountable then
+    if t ? carries then
       [ ]
     else if role == "element" then
       [ payload.elemType ]
@@ -863,7 +857,6 @@ let
     if
       !(isAttrs t)
       || t ? carries
-      || t ? nonMountable
       || !(name == "attrsWith" || name == "listOf" || name == "nullOr" || name == "either")
     then
       null
@@ -907,10 +900,7 @@ let
   # never the records whole: `==` on two distinct type records forces every attribute, and a
   # self-referential `description` (nixpkgs' `types.json` shape) then recurses uncatchably; a
   # compared record's `type` would be forced as well. `closuresOf` is not used here: it filters the
-  # export fields by `isFunction`, which forces that same `description`. A `nonMountable` record's
-  # `check` is the one module-value domain every tree publishes, so it cannot tell two trees apart:
-  # where either side is one only `merge` is compared, and one tree offered and stated is still one
-  # closure.
+  # export fields by `isFunction`, which forces that same `description`.
   rehomeAgreed =
     door: loc: t: r:
     let
@@ -920,14 +910,7 @@ let
           check = null;
           merge = null;
         } x;
-      mergeSlot = x: builtins.intersectAttrs { merge = null; } x;
-      same =
-        a: b:
-        isAttrs a
-        && isAttrs b
-        && (
-          if a ? nonMountable || b ? nonMountable then mergeSlot a == mergeSlot b else slots a == slots b
-        );
+      same = a: b: isAttrs a && isAttrs b && (slots a == slots b);
       offered = t.functor.payload.elemType;
     in
     if
@@ -1025,7 +1008,7 @@ let
   # A foreign container outside the six, declaring a gen nesting element, is rebuilt by its own
   # `substSubModules`, handed a module list that carries a marker (`threadMarker`). Every stock
   # container's rebuild calls its element's `substSubModules`, and a gen element answers the marker
-  # with itself (`exportType`, and the tree's `refuseMount`); the marker's function returns that
+  # with itself (`exportType`); the marker's function returns that
   # element with its `merge` replaced, so the container keeps its own merge and check (`coercedTo`
   # keeps its `coerceFunc`). Two rebuilds:
   #   capture  — the element's merge RECORDS each site (loc, defs), so the container's own merge is
@@ -1189,8 +1172,7 @@ let
 
   # Whether a record states an element or members AT ALL, in any carrying spelling (`carries`, a
   # non-empty `nestedTypes`, a top-level `elemType`), or OFFERS one to merge on in its functor
-  # payload's `elemType` (read only so the walk can judge the offer, `payloadOffered`; a
-  # `nonMountable` record's `functor` is a refusal, and it wraps nothing). Presence only, read before
+  # payload's `elemType` (read only so the walk can judge the offer, `payloadOffered`). Presence only, read before
   # any walk: a record doing neither can be neither re-homed nor refused, and most records crossing a
   # door do neither, so this is what keeps the nested-tree crossing's price off every leaf and every
   # `mkOptionType` descriptor.
@@ -1198,7 +1180,8 @@ let
     t:
     t ? carries
     || (!(evaluatesOwnRoles t) && { } != (t.nestedTypes or { }))
-    || (!(t ? nonMountable) && (t ? elemType || ((t.functor or { }).payload or null) ? elemType));
+    || t ? elemType
+    || ((t.functor or { }).payload or null) ? elemType;
 
   # The import refusal's text: the door, the option where there is one, the container, what in it
   # declared the element, and the rule with the ways out that exist: one of the six, a container
@@ -1654,7 +1637,7 @@ let
   # ★ ONE DELIBERATE DIVERGENCE, stated rather than transcribed silently: where the two functors
   # disagree on whether there is a payload at all, nixpkgs `assert's the symmetry and this returns
   # `null'. An abort a consumer survives only by having wrapped the force in `tryEval (deepSeq …)' is
-  # exactly the shape `refuseMount' below exists to convert into a value the algebra can act on.
+  # exactly the shape this boundary exists to convert into a value the algebra can act on.
   protoTypeMerge =
     f: f':
     if f.name != (f'.name or null) then
@@ -1971,60 +1954,29 @@ let
     else
       null;
 
-  # foreignFace — the type a FOREIGN eval folds, which is the gen type minus what only gen's own
-  # eval may read. The boundary is the eval (ADR-0014): inside gen's folds a union answers the
-  # nesting tree's module domain (`admits`) and holds the tree as nesting, while a foreign engine
-  # reaches a gen type only through the published `check` and `merge`, so those two read this face
-  # and gen's own fields are untouched. It is therefore lazy by construction — computed only when a
-  # foreign engine forces one of the two.
-  #
-  # The foreign face of a composite is the composite rebuilt over its members' foreign faces: the
-  # functorial map `recarry` exists to perform. The tree's is the tree without its gen domain
-  # answer, so a foreign membership question reaches its `check`, which answers the same
-  # module-value domain (den-hoag-f8mgj arm Q): a gen composite holding the tree folds it through
-  # `bridge` at nixpkgs' value. A leaf is its own face, and so is a type carrying a module set
-  # (`submodule`): its fold is gen's own `evalModuleTree`, the eval boundary itself, which is why a
-  # union inside a submodule mounted abroad still yields a value.
-  #
-  # It rests on ONE law, `mkTypeWith`'s `recarry` contract (`t.recarry c'` is `t`'s own constructor
-  # over `c'`), and on nothing stronger: it rebuilds only when a direct member is the tree or a
-  # rebuildable composite, so a type over leaves is returned as itself and the identity round trip
-  # `t.recarry t.carries == t` is never assumed. A caller `recarry` rebuilding ANOTHER type would
-  # fold a foreign eval's definitions through that type's fold; the door refuses it by name, the
-  # identity the vocabulary's nullary relation keys on. A same-named rebuild that still breaks the
-  # law is past this door. Both guard and rebuild are one level deep and lazy, so a self-referential
-  # type (`j = either str (attrsOf j)`) is unfolded only as deep as a definition reaches.
-  #
-  # The fence reaches what a type CARRIES. A caller fold closing over a union lexically, and a
-  # foreign container's fold over a gen union in either eval, read no face this computes.
-  #
-  # ★ `exportType` CALLS IT INLINE IN BOTH FIELDS, never through a `let` binding: a binding is one
-  # more thunk on EVERY type construction, gen's own included, for a question only a foreign engine
-  # asks — measured on the hub bench as eleven gates over bound. And it asks `opensForeign` INLINE
-  # before calling, because the published fields are not read by foreign engines alone: a gen
-  # library may fold through a gen type's published `merge` inside gen's own eval (gen-aspects does,
-  # over a fresh `submodule` per node), and a call per read there is a per-node price on gen's side,
-  # which the fence does not charge. A type that does not open is returned before any binding.
-  opensForeign = u: isAttrs u && u ? carries && u ? recarry && !(u.carries ? moduleSet);
-  foreignMember =
-    u: if isAttrs u && u ? nonMountable then builtins.removeAttrs u [ "admits" ] else foreignFace u;
-  foreignFace =
-    t:
-    if !(opensForeign t) then
-      t
+  # ── THE FREEFORM DATUM, CROSSED (den-hoag-foreign-mount-parity-knhyg) ─────────────────────────
+  # A nesting type states its resolved freeform type as `unroledNested.freeformType` (the tree reads
+  # its own evaluation's, `submodule` its base evaluation's, as nixpkgs' `submoduleWith` reads
+  # `base`'s). nixpkgs derives two more fields from it, and so does the export, in nixpkgs' words:
+  # the description "open <name> of <phrase>", the phrase parenthesised unless its class is `noun`
+  # or `composite`, and `_freeformOptions` beside the declared sub-options. Both are read only when
+  # the field is, and an argument is evaluated only when read, so a type that is never described
+  # abroad never resolves its freeform type here.
+  freeformOf = t: (t.unroledNested or { }).freeformType or null;
+  openDescription =
+    name: ff:
+    if ff == null then
+      name
+    else if ff.descriptionClass or null == "noun" || ff.descriptionClass or null == "composite" then
+      "open ${name} of ${ff.description}"
     else
-      let
-        members = builtins.concatMap (c: if isList c then c else [ c ]) (builtins.attrValues t.carries);
-        rebuilt = t.recarry (
-          builtins.mapAttrs (_: c: if isList c then map foreignMember c else foreignMember c) t.carries
-        );
-      in
-      if !(builtins.any (m: isAttrs m && (m ? nonMountable || opensForeign m)) members) then
-        t
-      else if nameOf rebuilt == nameOf t then
-        rebuilt
-      else
-        throw "gen-merge: the type `${nameOf t}' cannot be folded by a foreign eval: its `recarry' rebuilds it as `${nameOf rebuilt}', so the fold published for it would be another type's";
+      "open ${name} of (${ff.description})";
+  freeformSubOptions =
+    declares: ff: prefix:
+    if ff == null then
+      declares prefix
+    else
+      declares prefix // { _freeformOptions = ff.getSubOptions prefix; };
 
   # exportType — a gen type EXPRESSED in the foreign protocol.
   #
@@ -2061,7 +2013,24 @@ let
       spelling = if role == null then null else roleSpelling.${role};
       carried = if role == null then null else t.carries.${role};
 
-      payload = if role == null then null else { ${spelling.payloadKey} = carried; };
+      payload =
+        if role == null then
+          null
+        else
+          {
+            ${spelling.payloadKey} = carried;
+          }
+          // (
+            if role == "moduleSet" then
+              {
+                specialArgs = t.specialArgs or { };
+                shorthandOnlyDefinesConfig = t.shorthandOnlyDefinesConfig or null;
+                description = null;
+                class = null;
+              }
+            else
+              { }
+          );
       # Rebuild this type over a payload in the protocol's spelling — the inverse of the line above,
       # and the only inversion needed, because the role is fixed by the type rather than guessed.
       recarried = p: t.recarry { ${role} = p.${spelling.payloadKey}; };
@@ -2071,25 +2040,12 @@ let
       # the witness (`rewritesCheck`). The pair is spelled here rather than taken from
       # `witnessedCheck`, whose two-field result every exported type would read or copy
       # (den-hoag-ydro3, owner-ruled arm (c)); `default.nix`'s agreement door holds this spelling to
-      # its output. Nix forces the record's slots, the function among them, before it compares their
-      # pointers, so forcing the function must not compute the foreign face, which
-      # gen's own eval never reads: the face is bound unforced behind the function, and computed at
-      # its first application, by a foreign engine.
+      # its output.
       check = witnessRecord (
         if t ? verify then
           (v: t.verify v == null)
         else if t ? admits then
-          (
-            if t ? carries && t ? recarry && !(t.carries ? moduleSet) then
-              (
-                let
-                  face = foreignFace t;
-                in
-                v: face.admits v
-              )
-            else
-              t.admits
-          )
+          t.admits
         else
           (_: true)
       );
@@ -2128,7 +2084,7 @@ let
         # It is read off `retainedRelation', a differently-named gen datum, exactly as every other
         # derived field is read off one — see the retention site in `importType' for why.
         functor = t.retainedRelation.functor or functor;
-        description = t.description or name;
+        description = t.description or (openDescription name (freeformOf t));
         deprecationMessage = t.deprecated or null;
         # `_checkWitness` is not a fifteenth protocol field: it is gen-types' check-witness
         # protocol field, the record of which `check` was published, read only by `rewritesCheck`.
@@ -2138,19 +2094,14 @@ let
         # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
         # each element through its one `split`, so the forward mount keeps working without a third
         # fold form. Every other fold publishes as it did (`bridged`'s presence arm).
-        merge =
-          if !(t ? mergeDefs) then
-            leafFold
-          else if t ? carries && t ? recarry && !(t.carries ? moduleSet) then
-            bridged (foreignFace t).mergeDefs
-          else
-            bridged t.mergeDefs;
+        merge = if !(t ? mergeDefs) then leafFold else bridged t.mergeDefs;
         # A nesting type's empty value is its tree over no definitions, through the same bridge: its
         # called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
         emptyValue =
           if isNesting t then { value = t.mergeDefs.threaded bridge [ ] [ ]; } else t.whenEmpty or { };
         nestedTypes = (t.unroledNested or { }) // (if role == null then { } else spelling.nested carried);
-        getSubOptions = if sub == null then (_prefix: { }) else sub.declares;
+        getSubOptions =
+          if sub == null then (_prefix: { }) else freeformSubOptions sub.declares (freeformOf t);
         getSubModules = if sub == null then null else sub.modules;
         substSubModules =
           m:
@@ -2213,65 +2164,6 @@ let
     else
       exported;
 
-  # refuseMount — the foreign protocol answered entirely by REFUSAL, for a value that is a nesting
-  # seam rather than an option type.
-  #
-  # A missing attribute is a decision no one wrote down: handed to a real `lib.evalModules`, such a
-  # value dies INSIDE the consumer on a missing attribute, an interpreter error naming a foreign line
-  # and uncatchable by the caller. Completing the protocol would be the wrong repair — the boundary
-  # is the eval and what crosses it is plain data, so a mountable nesting seam is crossing work, not
-  # a gap in a type. Every field is therefore disposed of explicitly, and the three that are ANSWERED
-  # are answered truthfully: such a value is not deprecated, supplies the caller's `whenEmpty` when
-  # the option nesting it goes undefined, and wraps no element type. `_type` is deliberately absent —
-  # a consumer that ASKS whether this is an option type reads it through `or null` and gets a correct
-  # `false`, and a throwing tombstone would turn the one working negative answer into an abort. A
-  # caller's `fields` may answer more where it holds a truthful answer: the tree answers `check`
-  # with its module-value domain (den-hoag-f8mgj arm Q). What still refuses is pending
-  # den-hoag-foreign-mount-parity-knhyg.
-  #
-  # ★ THE FOLD IS ANSWERED, NOT REFUSED, and that is a fourth truthful answer rather than a crack in
-  # the refusal. Such a value really does combine definitions that way — it is a nesting seam, and
-  # the seam is a shipped capability — so refusing the field would delete a working answer to make a
-  # point. It opens no mount either: the field a foreign engine forces FIRST is the module-set read,
-  # which refuses before any fold is reached. The caller states it in gen's word and it is spelled in
-  # the foreign protocol's here, which is the same trade every other field on this side makes.
-  #
-  # ★ ONE FIELD ANSWERS INSIDE THE THREADING CHANNEL ONLY (den-hoag-f8mgj, arm (T)): handed the
-  # channel's marker (`threadedForeign`), `substSubModules` answers with the record itself, so a
-  # foreign container rebuilt in gen's own evaluation reaches the seam as its element. Handed
-  # anything else it refuses as every other field does. A foreign engine never holds the marker, so
-  # its mount is refused exactly as before. `fields` are the caller's own, and the record answered
-  # through the channel is the whole one, with them.
-  refuseMount =
-    {
-      name,
-      reason,
-      fold,
-      whenEmpty,
-      fields ? { },
-    }:
-    let
-      refuse =
-        field: throw "gen-merge: `${name}' is not an option type and does not answer `${field}'; ${reason}";
-      record = {
-        merge = fold;
-        deprecationMessage = null;
-        emptyValue = whenEmpty;
-        nestedTypes = { };
-
-        check = refuse "check";
-        description = refuse "description";
-        descriptionClass = refuse "descriptionClass";
-        functor = refuse "functor";
-        getSubModules = refuse "getSubModules";
-        getSubOptions = refuse "getSubOptions";
-        substSubModules =
-          m: if threadElementOf m != null then threadElementOf m record else refuse "substSubModules";
-        typeMerge = refuse "typeMerge";
-      }
-      // fields;
-    in
-    record;
 in
 {
   inherit
@@ -2310,7 +2202,6 @@ in
     importedTypeWalkFuel
     importedWrapped
     isOptionType
-    refuseMount
     rewritesCheck
     typeDefect
     ;

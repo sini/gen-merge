@@ -210,6 +210,55 @@ let
   # Anything else inside the `options` tree is an option-GROUP: a plain attrset of sub-declarations.
   isOptLeaf = v: isAttrs v && (v._type or null) == "option";
 
+  # ── THE PUBLISHED OPTION RECORD, IN nixpkgs' SHAPE (den-hoag-foreign-mount-parity-knhyg) ──────────
+  # A published declaration carries `loc` and `declarations` (the declaring modules' files, read off
+  # the evaluation's own `sitesAt`) and nixpkgs' string form, `__toString = _: showOption loc`
+  # (nixpkgs `lib/modules.nix` `mergeOptionDecls`/`evalOptionValue`), so `"${opt}"` reads the path
+  # there as here. Those three and the record's own fields are what nixpkgs' docs read
+  # (`optionAttrSetToDocList`). The evaluated keys nixpkgs adds beside them are the OPTION'S VALUE
+  # and its definitions, which this record is not: gen publishes them on `config` and `provenance`.
+  # Each is therefore REFUSED BY NAME, never absent, because an absent key is an uncatchable abort in
+  # the reader (ADR-0025 item 1). One shared record, so a refusal costs no thunk per option.
+  #
+  # Applied to the PUBLISHED record and the stratum-1 door only, never inside the evaluation body:
+  # there every child evaluation would pay it (measured: the hub perf-bench's deepSubmodule thunk row).
+  unansweredOptionKeys = listToAttrs (
+    map
+      (k: {
+        name = k;
+        value = throw "gen-merge: a gen option record does not answer `${k}': it is the declaration, not the evaluated option; read the value off the evaluation's `config' and its definitions off `provenance'";
+      })
+      [
+        "value"
+        "isDefined"
+        "definitions"
+        "definitionsWithLocations"
+        "files"
+        "highestPrio"
+        "declarationPositions"
+        "options"
+        "valueMeta"
+      ]
+  );
+  stampOptions =
+    sitesAt: loc: tree:
+    mapAttrs (
+      k: v:
+      let
+        lk = loc ++ [ k ];
+      in
+      if isOptLeaf v then
+        v
+        // unansweredOptionKeys
+        // {
+          loc = lk;
+          declarations = map (s: s.file) (sitesAt lk);
+          __toString = _: showOption lk;
+        }
+      else
+        stampOptions sitesAt lk v
+    ) tree;
+
   # ── isOptLeaf's missing THIRD arm: a declaration-plane misuse ─────────────
   # The disjunction above is binary, so a value that is neither a leaf nor a group is recursed into
   # as though its own internals were sub-declarations — and the abort fires frames below the mistake
@@ -338,9 +387,7 @@ let
   # than decorative.
   relationMerge =
     a: b:
-    if (a ? nonMountable) || (b ? nonMountable) then
-      null
-    else if a ? typeMergeRel then
+    if a ? typeMergeRel then
       let
         answer = a.typeMergeRel b;
       in
@@ -931,6 +978,64 @@ let
     else
       [ i ];
   topFreeformOf = m: m.freeformType or null;
+
+  # ── WHAT AN EVALUATION DERIVES FROM ITS MODULE CLOSURE, AS FUNCTIONS OF `flat` ────────────────
+  # The evaluation body binds each of these over its own `flat`; a reader OUTSIDE the body (the
+  # published `options`' stamp, the tree-as-a-type's freeform datum) applies the same function to
+  # the `flat` the body publishes. One definition, two applications, so the two cannot disagree, and
+  # no evaluation result carries a field only those readers need: a field on the body is paid by
+  # every child evaluation (the hub perf-bench's deepSubmodule alloc row prices it).
+  #
+  # Config attrsets (shorthand-aware), config-root properties pushed to keys. Every config read
+  # forces this for every entry, so it is where the module-syntax refusals fire.
+  #
+  # Each is spelled as the per-entry function the body maps, never as a wrapper over the list: a
+  # call per evaluation is an environment per evaluation, which the same row prices.
+  pushedEntry = e: {
+    inherit (e) _file;
+    attrs = pushDownProperties (configOf e);
+  };
+  # Each module's options root, beside the file that declared it and its position in the fold.
+  declEntry = i: e: {
+    idx = i;
+    file = e._file;
+    options = optionsOf e.content;
+  };
+  # The freeform declarations by KEY, value unforced: a top-level `freeformType` and each module's
+  # `_module.freeformType`, one entry per contribution.
+  topFreeformEntry = e: {
+    inherit (e) _file;
+    type = topFreeformOf e.content;
+  };
+  hasTopFreeform = e: e.content ? freeformType;
+  moduleFreeformEntries =
+    p:
+    optional (p.attrs ? _module && (pushDownProperties p.attrs._module) ? freeformType) {
+      inherit (p) _file;
+      type = (pushDownProperties p.attrs._module).freeformType;
+    };
+  # The resolved freeform type (the body's `freeform` states the rule it follows).
+  resolvedFreeform =
+    freeformDeclared:
+    let
+      candidates = filter (c: c.type != null) freeformDeclared;
+      # `dischargeProperties` is shared with the value-path def folds (`mergeDefsWith`,
+      # `mergeDefsRichWith`) and emits `{ priority; value; }`, so the originating file is
+      # paired back on HERE rather than grown as a field there.
+      winners = filterOverrides (
+        concatMap (c: map (d: d // { inherit (c) _file; }) (dischargeProperties c.type)) candidates
+      );
+      files = concatStringsSep ", " (map (w: w._file) winners);
+      decided = mergeDeclaredTypes (map (w: w.value) winners);
+    in
+    if winners == [ ] then
+      null
+    else if length winners == 1 then
+      (head winners).value
+    else if decided ? merged then
+      decided.merged
+    else
+      throw "gen-merge: the freeform type is defined with types that do not merge (${declaredRefusalText decided}); defined in ${files}";
 
   # ── source-class classifier (design spec §0.3 / §3) ────────────────────────
   # Tag a module with the CLASS of its PRE-application source. The class is decided on `m0` (before
@@ -2956,7 +3061,12 @@ let
   #
   # It is the SAME fold the full result's `options` field is, published twice rather than computed
   # twice: a second definition of "which options are declared" is a second answer, free to disagree.
-  declaredOptions = args: (declarationStratum args).options;
+  declaredOptions =
+    args:
+    let
+      s = declarationStratum args;
+    in
+    stampOptions s.sitesAt (args.prefix or [ ]) s.options;
 
   # ── THE ONE DRIVER — this library declares no fixpoint of its own ─────────────────────────────
   # ADR-0006 / ADR-0008 §1. What was `prelude.fix (result: …)` is the SAME knot, driven by the
@@ -3619,11 +3729,7 @@ let
           # guard above is what makes the two agree on everything a declaration is: the key set and
           # the imports expansion. Where they could differ is the one place a descriptor is allowed
           # to hold a stratum-2 value — its `default` — and that difference is the point.
-          declEntries = prelude.imap0 (i: e: {
-            idx = i;
-            file = e._file;
-            options = optionsOf e.content;
-          }) flat;
+          declEntries = prelude.imap0 declEntry flat;
           sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
           allOptions = foldl' (
             # ONE door for the whole engine: every downstream reader (`mergeTree`'s
@@ -3762,10 +3868,7 @@ let
 
           # Config attrsets (shorthand-aware), config-root properties pushed to keys. Every config
           # read forces this for every entry, so it is where the module-syntax refusals fire.
-          pushed = map (e: {
-            inherit (e) _file;
-            attrs = pushDownProperties (configOf e);
-          }) flat;
+          pushed = map pushedEntry flat;
 
           # `_module.args` merges as nixpkgs' `lazyAttrsOf raw`: each module's `_module` and `args`
           # are pushed down a level at a time (so `mkIf`/`mkMerge`/`mkOverride` around them
@@ -3777,7 +3880,7 @@ let
           # whichever module came last. Lazy per argument: a value is forced only when it is read.
           #
           # IT IS NOT THE FREEFORM FEEDER: `freeformType` is collected PER MODULE
-          # (`moduleFreeforms`), so N contributions reach `filterOverrides` as N defs.
+          # (`moduleFreeformEntries`), so N contributions reach `filterOverrides` as N defs.
           moduleArgs =
             builtins.zipAttrsWith
               (
@@ -3835,14 +3938,6 @@ let
                     [ ]
                 ) (filter (p: p.attrs ? _module) pushed)
               );
-          moduleFreeforms = concatMap (
-            p:
-            optional (p.attrs ? _module && (pushDownProperties p.attrs._module) ? freeformType) {
-              inherit (p) _file;
-              type = (pushDownProperties p.attrs._module).freeformType;
-            }
-          ) pushed;
-
           # freeformType is priority-resolved (nixpkgs treats it as an option): a top-level
           # `freeformType` (bare, prio 100) beats a `_module.freeformType = mkDefault …` (prio 1000)
           # — this is how strict.nix's throw-on-unknown default yields to a kind's own freeform.
@@ -3871,31 +3966,8 @@ let
           # The freeform declarations by KEY, value unforced: the candidates below, and the
           # `nested` product's test for a freeform group (den-hoag-i4c0n), which must not force a type.
           freeformDeclared =
-            map (e: {
-              inherit (e) _file;
-              type = topFreeformOf e.content;
-            }) (filter (e: e.content ? freeformType) flat)
-            ++ moduleFreeforms;
-          freeform =
-            let
-              candidates = filter (c: c.type != null) freeformDeclared;
-              # `dischargeProperties` is shared with the value-path def folds (`mergeDefsWith`,
-              # `mergeDefsRichWith`) and emits `{ priority; value; }`, so the originating file is
-              # paired back on HERE rather than grown as a field there.
-              winners = filterOverrides (
-                concatMap (c: map (d: d // { inherit (c) _file; }) (dischargeProperties c.type)) candidates
-              );
-              files = concatStringsSep ", " (map (w: w._file) winners);
-              decided = mergeDeclaredTypes (map (w: w.value) winners);
-            in
-            if winners == [ ] then
-              null
-            else if length winners == 1 then
-              (head winners).value
-            else if decided ? merged then
-              decided.merged
-            else
-              throw "gen-merge: the freeform type is defined with types that do not merge (${declaredRefusalText decided}); defined in ${files}";
+            map topFreeformEntry (filter hasTopFreeform flat) ++ concatMap moduleFreeformEntries pushed;
+          freeform = resolvedFreeform freeformDeclared;
 
           # Definition order is REVERSE flattened-module order — byte-identical to nixpkgs, which
           # collects defs last-module-first (observable in list-typed options: `[a] [b] [c]` merges
@@ -4306,9 +4378,8 @@ let
           # tracked. Not in the map, even when the value there IS an instance on the ecosystem's own
           # `hasId` test: a value AT or BELOW a `raw`/`anything`/`package` leaf, an element of a
           # container of one (`attrsOf raw`), a member of a union (`either` declares nothing of its
-          # own, so which member a value is cannot be read off the declaration), a nesting seam (a
-          # `nonMountable` tree type, whose nested eval is always cold), and the whole freeform
-          # layer, and a foreign module set its declaration does not place at the position
+          # own, so which member a value is cannot be read off the declaration), and the whole
+          # freeform layer, and a foreign module set its declaration does not place at the position
           # (`importedHeldAt`: a container forwarding its element's `getSubModules`, or option records
           # stating no `loc`), at a declared position and as a gen container's element alike. A
           # position whose declaration places an instance there and whose value is not one (nixpkgs'
@@ -4372,7 +4443,7 @@ let
               # tree's eval is always cold, the same boundary provenance draws.
               below =
                 loc: ty: v:
-                if !(isAttrs ty) || ty ? nonMountable then
+                if !(isAttrs ty) then
                   { }
                 else
                   let
@@ -4381,13 +4452,9 @@ let
                     # segment below for a container, `null` for a type carrying no single element.
                     elementAt = interface.importedElementPrefix ty loc;
                   in
-                  # A SEAM AS THE ELEMENT stops the walk the same way, before the guard below asks it
-                  # what it carries (`attrsOf`/`listOf`/`nullOr` of a tree type, empty ones included).
-                  if element != null && isAttrs element && element ? nonMountable then
-                    { }
                   # AN ELEMENT THAT CARRIES NOTHING declares no instance at any depth (`listOf str`,
                   # `attrsOf raw`, `nullOr str`), so neither the value nor the type's level is read.
-                  else if
+                  if
                     element != null
                     && interface.importedCarried "element" element == null
                     && (interface.importedSubstructure element).modules == null
@@ -4573,8 +4640,12 @@ let
         #
         # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
         config = builtins.seq result.identityHeld result.config;
+        options =
+          let
+            entries = prelude.imap0 declEntry result._flat;
+          in
+          stampOptions (lk: declaringSitesAt entries (drop (length prefix) lk)) prefix result.options;
         inherit (result)
-          options
           provenance
           # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
           # `check` does not gate it (see above) — empty whenever a freeformType absorbed them, and empty
@@ -4594,58 +4665,29 @@ let
         # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform). Nested
         # evals are always COLD (no `warmFrom` threaded) — a documented boundary, like provenance's.
         #
-        # ── NON-MOUNTABLE, AND IT SAYS SO ────────────────────────────────────────────────────────────
-        # This is a NESTING SEAM, not an `optionType`. It answers two of the fourteen protocol fields,
-        # and they are the two that make a value LOOK like an option type — a name and a merge is what
-        # a reader checks by eye. They are NOT the fields a foreign engine reads first: measured, the
-        # first protocol field a real `lib.evalModules` forces is `getSubModules` (`fixupOptionType`),
-        # and neither `name` nor `merge` is forced before the abort. So the shape invites a mount it
-        # cannot serve: handed to a real `lib.evalModules` it used to die inside the CONSUMER on a
-        # missing attribute — an interpreter error naming a nixpkgs line, uncatchable by the caller.
+        # ── AN OPTION TYPE, BUILT AT THE CROSSING SITE (den-hoag-foreign-mount-parity-knhyg) ─────────
+        # The value is a type of the vocabulary's own kind, built by `strategies.defineType` exactly as
+        # `submodule` is (`lib/types.nix` `mkSubmodule`): a fold, a domain, a carried module set and its
+        # rebuild, a relation, and the substructure triple. `defineType` is the one crossing site, so
+        # the type answers the whole foreign protocol by derivation (`lib/interface.nix` `exportType`),
+        # and a real `lib.evalModules` mounts it: bare, inside every member-taking combinator, and in
+        # its docs.
         #
-        # Completing the protocol is the wrong repair. The boundary is the EVAL, not the repo
-        # (ADR-0014), and what crosses a gen boundary is plain data (ADR-0023) — a mounted option type
-        # is neither, so completion would build the bridge the law removes. Every unimplemented field
-        # therefore RETURNS A NAMED REFUSAL rather than an interpreter error, and the mount is refused
-        # at the consumer's first real read of the protocol instead of aborting inside it. Making the
-        # tree mountable for real is CROSSING work, and it belongs on that chain, not here; nothing is
-        # deleted meanwhile, because the nesting seam below is a shipped capability.
-        #
-        # Each of the twelve unanswered fields is DISPOSED OF EXPLICITLY — a missing attribute is a
-        # decision no one wrote down, and it is what made the abort unnamed. The disposition itself is
-        # the BOUNDARY'S (`lib/interface.nix` `refuseMount`), because stating what a foreign protocol
-        # asks for, even in order to refuse it, is exactly the knowledge that unit exists to hold. What
-        # stays here is the gen half — a name, a fold, and the mark:
-        #
-        #   * THREE ARE ANSWERED TRUTHFULLY, and they are the answers this engine's own readers take:
-        #     a tree is not deprecated, it supplies its own fold over no definitions when a nesting
-        #     option goes undefined (`emptyTree`, the one binding both faces publish), and it wraps
-        #     no element TYPE.
-        #     Supplying them opens no mount: they are answers, not capabilities. The deprecation answer
-        #     additionally closes the consumer's one remaining DIRECT (non-`or`) read of this type — the
-        #     read that would abort UNCATCHABLY rather than refuse. The refusal does not depend on it:
-        #     with the field removed the mount still refuses catchably, because the field a foreign
-        #     engine forces first is the module-set read, which it takes through `or`.
-        #   * THE DOMAIN IS ANSWERED, ONCE, UNDER BOTH NAMES — `admits`, a gen field and not one of
-        #     the fourteen, and the protocol's `check`, the fourth field answered truthfully
-        #     (den-hoag-f8mgj arm Q): the module-value domain, exactly the reference
-        #     `(evalModules …).type`'s `check`, one binding published twice. It reads only the value,
-        #     never the tree. A gen union (`either`, `oneOf`, `nullOr`) asks its members `admits`
-        #     before `check`, so inside this engine's own eval the tree is a union member as nixpkgs'
-        #     is. The foreign face strips `admits` (`lib/interface.nix` `foreignFace`), and the
-        #     `check` a foreign eval then reaches answers the same domain, so a foreign eval reaching
-        #     the tree through a gen composite folds it through `bridge`, at nixpkgs' value.
-        #   * SEVEN REFUSE BY NAME, pending den-hoag-foreign-mount-parity-knhyg: `description`,
-        #     `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`
-        #     outside the threading channel, and `typeMerge`. None is read by this engine's own folds
-        #     on a declared leaf's type, so the refusals are reachable only through a foreign fold — a
-        #     foreign engine's, or a foreign container's hosted in this eval; the type-merge pair is
-        #     additionally fenced at `mergeTypes` above, which owes a value, and the warm identity walk
-        #     (`identityMapOf`'s `below`) stops on the mark before it asks what the type carries.
-        #   * `_type` IS DELIBERATELY ABSENT, and it is the one field a refusal would make worse. A
-        #     consumer that ASKS whether this is an option type reads it through `or null` and gets a
-        #     correct `false` today; a throwing tombstone would turn the one working negative answer
-        #     into an abort. Absence is the answer here, and `nonMountable` is what states it.
+        #   * THE NAME IS `submodule`, nixpkgs' name for a type whose definitions are modules: nixpkgs
+        #     merges raw sub-option declarations into an option whose type is named `submodule`
+        #     (`mergeModules'`), and its container phrases and refusals name it so. The name carries
+        #     nixpkgs' `submoduleWith` payload with it (`exportType`, role `moduleSet`), whose
+        #     `shorthandOnlyDefinesConfig` is `false` here: every definition is read as a module, as
+        #     the reference `(evalModules …).type` reads it. `submodule` states `true`, and each
+        #     relation refuses the other's datum by name, as nixpkgs refuses two such declarations.
+        #   * THE RELATION unions in authored order (`pm ++ modList`), as nixpkgs' `binOp` does, and
+        #     merges `specialArgs` by `//`, refusing a key both state.
+        #   * THE FREEFORM DATUM is this evaluation's resolved freeform type, `unroledNested`, derived
+        #     from the published closure (`_flat`) by the body's own functions when the type is read,
+        #     never carried as a field of every evaluation result.
+        #   * `getSubOptions` is the tree's declarations under the foreign prefix, a nested evaluation
+        #     that folds no value (`evalModuleTreeNested`), whose published records carry `loc` and
+        #     `declarations` (`stampOptions`): nixpkgs' docs read nothing else gen's records lack.
         type =
           let
             # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
@@ -4683,20 +4725,20 @@ let
             nestingFold = {
               __functor =
                 _: loc: _:
-                throw (calledNestingRefusal "moduleTree" "mergeDefs" loc);
+                throw (calledNestingRefusal "submodule" "mergeDefs" loc);
               reported =
                 _: loc: _:
-                throw (calledNestingRefusal "moduleTree" "mergeDefs.reported" loc);
+                throw (calledNestingRefusal "submodule" "mergeDefs.reported" loc);
               threaded =
                 ev:
-                refusingOutside "moduleTree" isModuleValue (
+                refusingOutside "submodule" isModuleValue (
                   loc: defs: strictValue loc (ev.child (site ev loc defs))
                 );
               # `strict` is the child's `mode.inherited` by construction (both are the carrying
               # evaluation's strictness); it is kept so the signature stays `.reported`'s.
               threadedReported =
                 ev: _strict:
-                refusingOutside "moduleTree" isModuleValue (
+                refusingOutside "submodule" isModuleValue (
                   loc: defs:
                   let
                     n = ev.child (site ev loc defs);
@@ -4728,24 +4770,68 @@ let
             };
             # The fold over no definitions, CALLED, refuses (item 1): an undefined tree is the child
             # with an empty seed, which the threaded fold reads (`threadedAs`).
-            emptyTree.value = throw (calledNestingRefusal "moduleTree" "whenEmpty" null);
+            emptyTree.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
           in
-          interface.refuseMount {
-            name = "moduleTree";
-            reason = "it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open (the boundary is the evaluation, and what crosses it is plain data)";
-            fold = nestingFold;
+          let
+            over =
+              ms:
+              (evalModuleTreeUnchecked {
+                modules = ms;
+                inherit specialArgs check coreShortCircuit;
+              }).type;
+            freeform = resolvedFreeform (
+              map topFreeformEntry (filter hasTopFreeform result._flat)
+              ++ concatMap moduleFreeformEntries (map pushedEntry result._flat)
+            );
+          in
+          strategies.defineType {
+            name = "submodule";
+            mergeDefs = nestingFold;
             whenEmpty = emptyTree;
-            fields = {
-              name = "moduleTree";
-              mergeDefs = nestingFold;
-              whenEmpty = emptyTree;
-              admits = isModuleValue;
-              check = isModuleValue;
-              inherit nests;
-
-              # THE MARK. Presence is the predicate — testing it forces nothing — and the value carries
-              # the reason, so a consumer that finds it needs no other document to know what to do.
-              nonMountable = "`moduleTree' is gen-merge's own nesting seam, not an option type: it answers a name and a fold, and refuses the rest of that protocol by name. Mounting a tree in a foreign module system is crossing work (the boundary is the evaluation, and what crosses it is plain data), not a gap in this type";
+            admits = isModuleValue;
+            shorthandOnlyDefinesConfig = false;
+            inherit nests specialArgs;
+            unroledNested = if freeform == null then { } else { freeformType = freeform; };
+            carries.moduleSet = modList;
+            recarry = c: over c.moduleSet;
+            typeMergeRel =
+              other:
+              let
+                pm = interface.importedOffered "moduleSet" other;
+                partnerArgs = other.specialArgs or { };
+              in
+              if (other.name or null) != "submodule" then
+                { refused = "`submodule' and `${interface.nameOf other}'"; }
+              else if pm == null then
+                {
+                  refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry";
+                }
+              # The one datum two `submodule' declarations must agree on beside the name, and the
+              # reason names it, since the names agree.
+              else if (other.shorthandOnlyDefinesConfig or null) != false then
+                {
+                  refused = "`submodule' reading every definition as a module, and a `submodule' reading an attribute-set definition as config";
+                }
+              else if builtins.intersectAttrs specialArgs partnerArgs != { } then
+                { refused = "two `submodule' declarations stating the same specialArgs"; }
+              else
+                {
+                  merged =
+                    (evalModuleTreeUnchecked {
+                      modules = pm ++ modList;
+                      specialArgs = specialArgs // partnerArgs;
+                      inherit check coreShortCircuit;
+                    }).type;
+                };
+            substructure = {
+              modules = modList;
+              declares =
+                prefix:
+                (evalModuleTreeNested {
+                  modules = modList;
+                  inherit prefix specialArgs check;
+                }).options;
+              rebuild = over;
             };
           };
       }

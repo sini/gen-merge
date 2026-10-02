@@ -1780,8 +1780,7 @@ in
     # The warm identity walk (`identityMapOf`) passes this leaf on both configs: `inst` is a minted
     # instance in the BASE, so the prior map is non-empty and the NEXT walk is forced too (gen-memo's
     # `movedIdentities` reads the next map only under a prior key). At `nest` the walk meets the
-    # tree type and stops on its `nonMountable` mark, before any foreign-protocol read — asking the
-    # seam what it carries is refused by name, and was what made the warm `.config` throw here.
+    # tree type and reads it as it reads a `submodule`.
     test-reused-module-tree-leaf-reports-its-dropped-def =
       let
         inner =
@@ -1850,11 +1849,10 @@ in
         };
       };
 
-    # A NESTING SEAM AS A CONTAINER'S OR WRAPPER'S ELEMENT STOPS THE WALK TOO, on its `nonMountable`
-    # mark and before any protocol read of the element: an unrelated edit re-composes warm and
-    # byte-identical to cold. `inst` is a minted instance in the BASE, so the next walk is forced. A
-    # walk that asks the element what it carries first throws `moduleTree … does not answer functor`
-    # on every row, the empty and defaulted `attrsOf` included, while cold serves them.
+    # A TREE AS A CONTAINER'S OR WRAPPER'S ELEMENT: an unrelated edit re-composes warm and
+    # byte-identical to cold, on every row, the empty and defaulted `attrsOf` included. `inst` is a
+    # minted instance in the BASE, so the next walk is forced. The walk reads the tree element as it
+    # reads a `submodule` one.
     test-identity-walk-stops-at-a-seam-element =
       let
         inner =

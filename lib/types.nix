@@ -374,9 +374,17 @@ let
       # The CALLED fold refuses by name (den-hoag-n6dh7 item 1): the tree is a child of the one
       # evaluation that holds it, read through `threaded` below.
       called = loc: _: throw (calledNestingRefusal "submodule" "mergeDefs" loc);
+      freeform =
+        ((core.evalModuleTreeNested {
+          modules = mods;
+          inherit (nests.empty) prefix specialArgs check;
+        }).type.unroledNested
+        ).freeformType or null;
     in
     defineType {
       name = "submodule";
+      unroledNested = if freeform == null then { } else { freeformType = freeform; };
+      shorthandOnlyDefinesConfig = true;
       # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
       # nobody added to, which is what makes the union below total.
       specialArgs = args;
@@ -414,6 +422,13 @@ let
         other:
         if !(isAttrs other) || (other.name or null) != "submodule" then
           { refused = "`submodule' and `${nameOf other}'"; }
+        # The one datum two `submodule' declarations must agree on beside the name: whether an
+        # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
+        # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
+        else if (other.shorthandOnlyDefinesConfig or true) != true then
+          {
+            refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
+          }
         else
           let
             partnerMods = interface.importedOffered "moduleSet" other;

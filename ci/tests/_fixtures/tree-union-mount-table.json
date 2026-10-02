@@ -1,10 +1,10 @@
 {
   "attrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "attrsOf.attrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "attrsOf.eitherL": {
@@ -16,15 +16,15 @@
     "string": "SERVED"
   },
   "attrsOf.lazyAttrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "attrsOf.listOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "attrsOf.nullOr": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "attrsOf.oneOfL": {
@@ -36,7 +36,7 @@
     "string": "SERVED"
   },
   "attrsOf.option": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "eitherL": {
@@ -120,11 +120,11 @@
     "string": "SERVED"
   },
   "lazyAttrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "lazyAttrsOf.attrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "lazyAttrsOf.eitherL": {
@@ -136,15 +136,15 @@
     "string": "SERVED"
   },
   "lazyAttrsOf.lazyAttrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "lazyAttrsOf.listOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "lazyAttrsOf.nullOr": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "lazyAttrsOf.oneOfL": {
@@ -156,15 +156,15 @@
     "string": "SERVED"
   },
   "lazyAttrsOf.option": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "listOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "listOf.attrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "listOf.eitherL": {
@@ -176,15 +176,15 @@
     "string": "SERVED"
   },
   "listOf.lazyAttrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "listOf.listOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "listOf.nullOr": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "listOf.oneOfL": {
@@ -196,15 +196,15 @@
     "string": "SERVED"
   },
   "listOf.option": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "nullOr": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "nullOr.attrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "nullOr.eitherL": {
@@ -216,15 +216,15 @@
     "string": "SERVED"
   },
   "nullOr.lazyAttrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "nullOr.listOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "nullOr.nullOr": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "nullOr.oneOfL": {
@@ -236,7 +236,7 @@
     "string": "SERVED"
   },
   "nullOr.option": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "oneOfL": {
@@ -320,11 +320,11 @@
     "string": "SERVED"
   },
   "option": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "option.attrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "option.eitherL": {
@@ -336,15 +336,15 @@
     "string": "SERVED"
   },
   "option.lazyAttrsOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "option.listOf": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "option.nullOr": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   },
   "option.oneOfL": {
@@ -356,7 +356,7 @@
     "string": "SERVED"
   },
   "option.option": {
-    "module": "REFUSED",
+    "module": "SERVED",
     "string": "REFUSED"
   }
 }

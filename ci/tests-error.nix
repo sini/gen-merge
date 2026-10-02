@@ -1192,7 +1192,7 @@ in
             (t.submodule { options.known = gm.mkOption { type = t.str; }; });
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`submodule' and `moduleTree'\\); declared in a\\.nix, b\\.nix$";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`submodule' reading every definition as a module, and a `submodule' reading an attribute-set definition as config\\); declared in a\\.nix, b\\.nix$";
         };
       };
       # LIVE CONTROL, same run and same helper — an `expected` cell in an `expectedError` output on
@@ -2436,27 +2436,16 @@ in
       };
     };
 
-    # The tree-as-a-type is a NESTING SEAM, not an `optionType`, and it now says so instead of
-    # letting a foreign module system walk into a missing attribute. Before the mark, a real
-    # `lib.evalModules` mounting it died INSIDE nixpkgs on `attribute 'deprecationMessage' missing`
-    # — an interpreter error, and one `builtins.tryEval` could not catch, so there was nothing for
-    # any in-language cell to observe. These cells are the whole of what replaces it. The
-    # disposition (why completing the protocol is the wrong repair) is argued at the seam in
-    # lib/modules.nix; what is assertable is that the read now returns a NAMED refusal.
-    #
-    # ★ THE PATTERNS DIFFER IN ONE PLACE ON PURPOSE. The direct read below names the field it
-    # reached for and is pinned exactly. The MOUNT cannot be: which protocol field a foreign engine
-    # forces first is that engine's evaluation order, not this library's behaviour, so pinning it
-    # here would pin nixpkgs' internals and go red on a bump that changed nothing about the refusal.
-    # That one field name is the only part left open; every other byte of the message is anchored.
-    #
-    # ── THE TREE AS A UNION MEMBER: gen's eval holds it, a foreign eval folds it at nixpkgs' value ─
-    # The tree answers `admits` and `check` (one module-value domain), so a gen union in this
-    # engine's own eval holds it as nesting (`ci/tests/nixpkgs-protocol.nix` pins the parity). What a
-    # FOREIGN eval folds is each type's foreign face (`lib/interface.nix` `foreignFace`), whose check
-    # reaches the tree's: the cells below pin the 180-cell family one cell per mount, a SERVED cell
-    # against nixpkgs' fold of the same construction and a REFUSED one by its message. The refusals
-    # left are the docs reads (`getSubModules`) and the rider, pending den-hoag-foreign-mount-parity-knhyg.
+    # ── THE TREE-AS-A-TYPE MOUNTS (den-hoag-foreign-mount-parity-knhyg) ─────────────────────────
+    # `(evalModuleTree …).type` is an option type built at the crossing site under nixpkgs' name for
+    # a module-set type, `submodule`, so a real `lib.evalModules` mounts it, bare and inside every
+    # member-taking combinator. The cells below pin the 180-cell family one cell per mount: a SERVED
+    # cell against nixpkgs' fold of the same construction over nixpkgs' own `(evalModules …).type`,
+    # and a REFUSED one, which nixpkgs refuses too, by its message. Every refused cell is a string
+    # definition: inside a container it reaches the tree's own fold, whose domain guard refuses it
+    # before the nested evaluation, naming the position; under `nullOr`/`option` alone nixpkgs'
+    # check refuses it first. `ci/tests/nixpkgs-protocol.nix` pins the same family's parity in gen's
+    # own evaluation.
     flake.testsError.tree-type =
       let
         family = import ./tests/_fixtures/tree-union-family.nix {
@@ -2465,16 +2454,11 @@ in
         };
         T = family.T;
         table = builtins.fromJSON (builtins.readFile ./tests/_fixtures/tree-union-mount-table.json);
-        treeRefusal =
-          field:
-          "^gen-merge: `moduleTree' is not an option type and does not answer `${field}'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(the boundary is the evaluation, and what crosses it is plain data\\)$";
         riderRefusal =
-          loc: file: "^gen-merge: option `${loc}' has definitions `moduleTree' cannot consume \\(${file}\\)$";
-        doorRefusal =
-          rebuiltAs:
-          "^gen-merge: the type `wrap' cannot be folded by a foreign eval: its `recarry' rebuilds it as `${rebuiltAs}', so the fold published for it would be another type's$";
+          loc: file: "^gen-merge: option `${loc}' has definitions `submodule' cannot consume \\(${file}\\)$";
+        calledFoldRefusal = "^gen-merge: `submodule' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$";
         # A caller composite over `el`, its `recarry` rebuilding through `rec_`: `good` rebuilds
-        # itself, `bad` rebuilds a `listOf` — the one law the foreign face relies on, kept and broken.
+        # itself, `bad` rebuilds a `listOf`.
         mkWrap =
           rec_: el:
           t.defineType {
@@ -2496,15 +2480,22 @@ in
           t.submodule {
             options.s = gm.mkOption { inherit type; };
           };
-        # A construction whose MODULE definition is SERVED folds the tree abroad. Where its string
-        # definition is still REFUSED (the twelve `either`/`oneOf` over a container holding the tree
-        # directly), it reaches the tree's own fold, which refuses it by the domain guard before the
-        # nested eval.
-        foldsAbroad = c: table.${c}.module == "SERVED";
+        # A refused cell's position: one segment per container the construction nests the tree in.
+        # A construction of `nullOr`/`option` alone never reaches the tree's fold: nixpkgs' own
+        # check refuses the string first.
         mountCell =
           c:
           let
-            inner = builtins.elemAt (builtins.split "\\." c.construction) 2;
+            parts = builtins.filter builtins.isString (builtins.split "\\." c.construction);
+            segment =
+              f:
+              if f == "listOf" then
+                [ "0" ]
+              else if f == "attrsOf" || f == "lazyAttrsOf" then
+                [ "k" ]
+              else
+                [ ];
+            nullableOnly = builtins.all (f: f == "nullOr" || f == "option") parts;
             recorded = table.${c.construction}.${c.definition};
           in
           {
@@ -2520,10 +2511,12 @@ in
                   expectedError = {
                     type = "ThrownError";
                     msg =
-                      if c.definition == "string" && foldsAbroad c.construction then
-                        riderRefusal (if inner == "listOf" then "s\\.0" else "s\\.k") "<unknown-file>"
+                      if nullableOnly then
+                        "^A definition for option `s' is not of type `nullOr'\\. Definition values:"
                       else
-                        treeRefusal "[a-zA-Z]+";
+                        riderRefusal (builtins.concatStringsSep "\\." (
+                          [ "s" ] ++ builtins.concatMap segment parts
+                        )) "<unknown-file>";
                   };
                 }
             );
@@ -2531,9 +2524,9 @@ in
       in
       builtins.listToAttrs (map mountCell family.cells)
       // {
-        # THE BOUNDARY CELL: a real nixpkgs `lib.evalModules` mounting a tree-type is refused BY NAME,
-        # by gen-merge, before the consumer can trip over what the tree does not implement.
-        test-foreign-mount-refused-by-name = {
+        # THE BOUNDARY CELL: a real nixpkgs `lib.evalModules` mounts a bare tree-type and reads its
+        # value, a declared default included.
+        test-a-bare-tree-mounts-in-nixpkgs = {
           expr =
             let
               tree = gm.evalModuleTree {
@@ -2547,40 +2540,81 @@ in
                 ];
               };
             in
-            builtins.deepSeq
-              (nixpkgsLib.evalModules {
-                modules = [
-                  {
-                    options.x = nixpkgsLib.mkOption { type = tree.type; };
-                    config.x = { };
-                  }
-                ];
-              }).config.x
-              null;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `moduleTree' is not an option type and does not answer `[a-zA-Z]+'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(the boundary is the evaluation, and what crosses it is plain data\\)$";
+            (nixpkgsLib.evalModules {
+              modules = [
+                {
+                  options.x = nixpkgsLib.mkOption { type = tree.type; };
+                  config.x = { };
+                }
+              ];
+            }).config.x;
+          expected = {
+            a = "x";
           };
         };
-        # The refusal NAMES THE FIELD the caller reached for. An author told only "this is not a type"
-        # still has to work out which read they made; the per-field message tells them, and it is what
-        # makes the refusal usable from any consumer rather than only from a mount.
-        test-protocol-read-names-the-field = {
-          expr =
+        # The docs read answers: the tree's declarations under the prefix a foreign engine hands it,
+        # each stamped with its `loc`.
+        test-protocol-read-answers-the-field = {
+          expr = builtins.mapAttrs (_: o: o.loc) (
             (gm.evalModuleTree {
               modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
             }).type.getSubOptions
-              [ ];
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `moduleTree' is not an option type and does not answer `getSubOptions'; it is this engine's own nesting seam, and mounting it in a foreign module system is a crossing this library does not open \\(the boundary is the evaluation, and what crosses it is plain data\\)$";
+              [ "x" ]
+          );
+          expected = {
+            a = [
+              "x"
+              "a"
+            ];
           };
         };
-        # LIVE CONTROLS, same run, and BOTH are needed — the cells above are equally consistent with a
-        # change that broke ALL mounting, and with one that broke the tree's own nesting.
+        # A published option record refuses BY NAME each evaluated key nixpkgs adds beside a
+        # declaration (`lib/modules.nix` `unansweredOptionKeys`), never an absent attribute, which
+        # its reader could not catch. One key here; the record carries all nine.
+        test-an-evaluated-option-key-is-refused-by-name = {
+          expr =
+            (
+              (gm.evalModuleTree {
+                modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
+              }).type.getSubOptions
+                [ "x" ]
+            ).a.definitions;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a gen option record does not answer `definitions': it is the declaration, not the evaluated option; read the value off the evaluation's `config' and its definitions off `provenance'$";
+          };
+        };
+        test-every-evaluated-option-key-is-present = {
+          expr =
+            let
+              o =
+                (
+                  (gm.evalModuleTree {
+                    modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
+                  }).type.getSubOptions
+                    [ "x" ]
+                ).a;
+            in
+            builtins.filter (k: !(o ? ${k})) [
+              "value"
+              "isDefined"
+              "definitions"
+              "definitionsWithLocations"
+              "files"
+              "highestPrio"
+              "declarationPositions"
+              "options"
+              "valueMeta"
+              "loc"
+              "declarations"
+              "__toString"
+            ];
+          expected = [ ];
+        };
+        # LIVE CONTROLS, same run: a completed leaf mounts, and the tree's own nesting still merges.
         #
-        # (1) A protocol-COMPLETED gen-merge type still mounts in a real `lib.evalModules` and its
-        # value comes back, so the refusal above is the tree-type's and not the boundary's.
+        # (1) A protocol-COMPLETED gen-merge type mounts in a real `lib.evalModules` and its value
+        # comes back.
         test-completed-leaf-still-mounts-control = {
           expr =
             (nixpkgsLib.evalModules {
@@ -2594,7 +2628,6 @@ in
           expected = "ok";
         };
         # (2) The seam itself still merges: a parent tree nests a child through the child's `.type`.
-        # Nothing was deleted to make the mark, and this is the row that says so.
         test-tree-still-nests-in-gen-merge-control = {
           expr =
             let
@@ -2776,18 +2809,17 @@ in
           };
         };
 
-        # THE DOOR. The foreign face rebuilds a composite through its own `recarry`; a caller whose
-        # `recarry` rebuilds ANOTHER type would fold a foreign eval's definitions through that type's
-        # fold, and is refused by name. Gen's own eval never reads the foreign face, so the same type
-        # folds there.
-        test-a-recarry-rebuilding-another-type-is-refused-abroad = {
+        # A caller composite whose `recarry` rebuilds ANOTHER type: no foreign fold rebuilds a type
+        # through `recarry` (the export publishes the type's own fold), so abroad it folds its member
+        # through the member's called fold, and the tree refuses by name, as in gen's own eval below.
+        test-a-recarry-rebuilding-another-type-meets-the-called-fold-refusal-abroad = {
           expr = family.foreign (bad (t.either T t.str)) { a = 5; };
           expectedError = {
             type = "ThrownError";
-            msg = doorRefusal "listOf";
+            msg = calledFoldRefusal;
           };
         };
-        # In gen's own eval the same composite folds its element by the "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$" fold, since it carries
+        # In gen's own eval the same composite folds its element by the called fold, since it carries
         # no `threaded` sibling, and the tree refuses: OQ2 α (den-hoag-n6dh7), "A container that
         # does not thread it is REFUSED BY NAME — never a silent standalone evaluation". It yielded
         # `{ a = 5; }` before the switch. What carries it forward is a composite that threads the
@@ -2796,30 +2828,25 @@ in
           expr = force (family.gen (bad (t.either T t.str)) { a = 5; });
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$";
+            msg = calledFoldRefusal;
           };
         };
         test-a-lawful-caller-composite-meets-the-called-fold-refusal-abroad = {
           expr = family.foreign (good (t.either T t.str)) { a = 5; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$";
+            msg = calledFoldRefusal;
           };
         };
-        # Over leaves alone the face is the type itself, so the door is never reached: the fence
-        # rebuilds only what holds the tree or a rebuildable composite.
+        # A law-breaking composite over a leaf mounts with its own fold.
         test-a-law-breaking-composite-over-a-leaf-still-mounts = {
           expr = family.foreign (bad t.str) "hello";
           expected = "hello";
         };
-        # The door NARROWS: a law-breaking composite over a composite with no tree in it mounted
-        # before the fence and is refused now (defaulted, reversible).
-        test-a-law-breaking-composite-over-a-composite-is-refused-abroad = {
+        # …and so does one over a composite with no tree in it: its `recarry` is never read abroad.
+        test-a-law-breaking-composite-over-a-composite-mounts-with-its-own-fold = {
           expr = family.foreign (bad (t.listOf t.str)) [ "x" ];
-          expectedError = {
-            type = "ThrownError";
-            msg = doorRefusal "listOf";
-          };
+          expected = [ "x" ];
         };
         # The law, over the class: each combinator's `recarry` rebuilds a type of its own name.
         test-every-member-taking-combinator-recarries-to-itself = {
@@ -2852,7 +2879,7 @@ in
           };
         };
         # A caller fold closing over a union LEXICALLY carries no member, so no face of it is
-        # rebuilt, and it calls the union's "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$" fold, whose tree member refuses by name: the
+        # rebuilt, and it calls the union's called fold, whose tree member refuses by name: the
         # called fold of a nesting type does not evaluate its tree (den-hoag-n6dh7 Unit 2.4, item 1).
         # It yielded `{ a = 5; }` before the switch. What carries the capability forward is the
         # threaded route: a caller fold states `mergeDefs.threaded = ev: …` and folds its union
@@ -2867,7 +2894,7 @@ in
           );
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `moduleTree' at option `s': its called `mergeDefs' does not evaluate the nested tree: a nested tree is a child of the one evaluation that holds it [(]`evalModuleTree'[)], read through its fold's threaded sibling, and no second evaluation is made for it$";
+            msg = calledFoldRefusal;
           };
         };
         # Control, same run: the same closure calling the union's PUBLISHED fold serves, at nixpkgs'
@@ -5709,9 +5736,8 @@ in
             msg = disagrees "either" "members";
           };
         };
-        # A tree is compared by its `merge` alone, since every tree publishes the same module-value
-        # `check` (den-hoag-4ifgb M0, den-hoag-f8mgj arm Q), and a disagreement over it is still this refusal, not the tree's
-        # tombstone: a tree stated over another element offered, and two trees constructed apart.
+        # A tree is compared as every type is, and a disagreement over it is this refusal: a tree
+        # stated over another element offered, and two trees constructed apart.
         test-a-container-stating-a-tree-and-offering-another-element-is-refused-at-the-engine = {
           expr = opt (np.listOf np.str // { nestedTypes.elemType = tree 1; }) [ "a" ];
           expectedError = {
@@ -6011,14 +6037,14 @@ in
           );
           expectedError = {
             type = "ThrownError";
-            msg = called "moduleTree" "mergeDefs" "o";
+            msg = called "submodule" "mergeDefs" "o";
           };
         };
         test-the-tree-records-called-empty-value-refuses = {
           expr = force tree.whenEmpty.value;
           expectedError = {
             type = "ThrownError";
-            msg = called "moduleTree" "whenEmpty" null;
+            msg = called "submodule" "whenEmpty" null;
           };
         };
         # U2-o's `submodule` row (v7, gate v1 K2): a lax tree inside a `submodule` evaluates in the

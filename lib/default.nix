@@ -320,7 +320,7 @@ let
   # answering only part of the sub-protocol, it computes W4a's refusal BY NAME. Swallowing that and
   # publishing the record unchanged put a protocol-incomplete value into `lib.types`, where a mounting
   # consumer dies INSIDE the foreign engine on a missing attribute — the uncatchable, unnamed abort
-  # that this boundary's own `refuseMount` exists to convert into a refusal. A computed refusal thrown
+  # that this boundary exists to convert into a refusal. A computed refusal thrown
   # away is worse than one never computed: the library knew and declined to say.
   #
   # ★ "NO SHIPPED ROSTER TRIPS IT" IS NOT A REASON TO SWALLOW, because the foreign vocabulary is the

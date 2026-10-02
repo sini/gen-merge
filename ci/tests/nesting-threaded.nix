@@ -684,9 +684,8 @@ in
   };
 
   # THE STOCK SIX OVER THE BARE TREE (den-hoag-4ifgb M0). A stock nixpkgs container over the tree
-  # record is re-homed as gen's own, and the agreement test compares only `merge` where an element is
-  # `nonMountable`: every tree publishes the same module-value `check`, so only `merge` tells two
-  # trees apart, and nixpkgs over its own types gives each value below. The disagreement
+  # record is re-homed as gen's own, and nixpkgs over its own types gives each value below. The
+  # disagreement
   # that test exists for is still refused (`ci/tests-error.nix`, `nesting-threaded`, the tree cells).
   flake.tests.nesting-threaded-stock-six-over-tree =
     let

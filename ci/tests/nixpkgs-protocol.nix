@@ -203,9 +203,13 @@ let
         # den-hoag-n6dh7 U2.1, a declared gain: the nested tree stated as data (`nests`)
         "nests"
         "recarry"
+        # den-hoag-foreign-mount-parity-knhyg: how a definition is read (as config), which the
+        # module-set payload publishes and the relation keys on, and the resolved freeform type
+        "shorthandOnlyDefinesConfig"
         "specialArgs"
         "substructure"
         "typeMergeRel"
+        "unroledNested"
         "whenEmpty"
         "withArgs"
       ];
@@ -1551,18 +1555,15 @@ in
       expected = "submodule";
     };
 
-    # ── THE ONE TYPE-SHAPED VALUE THAT MUST **NOT** MOUNT ──────────────────────────────────────────
-    # Every cell above is this file's forward claim: a gen-merge type serves a foreign engine. The
-    # tree-as-a-type (`(evalModuleTree …).type`) is the exception, and it is an exception on purpose
-    # — it is a NESTING SEAM, and a mount is a crossing (lib/modules.nix, where the disposition is
-    # argued). What this cell pins is that the exception is DECLARED rather than left to a missing
-    # attribute: the refusals themselves are asserted in `ci/tests-error.nix`, which is where a
-    # message can be read.
+    # ── THE TREE-AS-A-TYPE IS AN OPTION TYPE (den-hoag-foreign-mount-parity-knhyg) ──────────────
+    # `(evalModuleTree …).type` is built at the crossing site (`defineType`), under nixpkgs' name for
+    # a type whose definitions are modules, `submodule`, so it answers the whole protocol a foreign
+    # engine reads. The mounts themselves are asserted in `ci/tests-error.nix` (`tree-type`), where a
+    # refusal can be read beside a value.
     #
-    # `_type` is read the way a consumer reads it — through `or`, the `lib.isType` shape — because
-    # the point of leaving that one field absent is that ASKING still gets a correct `false`. Assert
-    # only presence and a boolean answer here: forcing the refusing fields is the error suite's job.
-    test-tree-type-is-marked-non-mountable = {
+    # Read through `or`, the way every consumer of an optional protocol field reads it, so an ANSWER
+    # of `null` stays distinguishable from a missing attribute.
+    test-tree-type-is-an-option-type = {
       expr =
         let
           tree = genMerge.evalModuleTree {
@@ -1571,58 +1572,40 @@ in
           ty = tree.type;
         in
         {
-          marked = ty ? nonMountable;
-          # A consumer that ASKS gets a correct negative rather than an abort.
-          answersIsTypeFalse = (ty._type or null) == "option-type";
-          # The nesting seam is intact — nothing was deleted to make the mark.
-          keepsTheSeam = (ty ? name) && (ty ? merge);
-          # The three answered truthfully. A tree is not deprecated, supplies a value for an
-          # undefined nesting option (its fold over no definitions; read for PRESENCE, since the
-          # value forces the tree's own undefined options), and wraps no element TYPE.
-          #
-          # Read through `or` — the way every consumer of an optional protocol field reads it, this
-          # engine's own readers included — so an ANSWER of `null` stays distinguishable from a
-          # missing attribute. Reading them directly would make a regression that dropped the field
-          # crash the cell instead of failing it, and `null` is exactly the value that collapses
-          # against absence under a careless predicate.
+          isType = (ty._type or null) == "option-type";
+          name = ty.name or "<absent>";
           answered = {
             deprecationMessage = ty.deprecationMessage or "<absent>";
             emptyValue = (ty.emptyValue or { }) ? value;
             nestedTypes = ty.nestedTypes or "<absent>";
+            description = ty.description or "<absent>";
+            subOptions = builtins.attrNames (ty.getSubOptions [ "s" ]);
           };
-          # The protocol is otherwise DISPOSED OF, not half-present: every field of the fourteen is
-          # either answered, refused (present, throwing — presence is what this row sees) or the one
-          # deliberate absence. `_type` is that absence and the only one.
+          # Every field of the fourteen is present.
           unanswered = builtins.filter (f: !(ty ? ${f})) protocolFields;
         };
       expected = {
-        marked = true;
-        answersIsTypeFalse = false;
-        keepsTheSeam = true;
+        isType = true;
+        name = "submodule";
         answered = {
           deprecationMessage = null;
           emptyValue = true;
           nestedTypes = { };
+          description = "submodule";
+          subOptions = [ "a" ];
         };
-        unanswered = [ "_type" ];
+        unanswered = [ ];
       };
     };
 
-    # THE ONE INTERNAL BEHAVIOUR THE MARK CHANGES, PINNED AS DELIBERATE RATHER THAN LEFT TO BE
-    # REDISCOVERED. Deep-forcing a parent's whole `.options` tree now REFUSES: the nested tree-type
-    # lives in that tree, and a deep force reaches its refusing fields. Before the mark the same
-    # force succeeded, the fields being merely absent — so this is a real divergence and it is the
-    # one the marking causes.
-    #
-    # It is the mark working, not a casualty of it: a deep force of a declaration tree IS a protocol
-    # read of every type in it, and a tree-type that answered there would be a value that lied about
-    # what it is. The cell exists so that stays a decision on the record — a later change that makes
-    # this force succeed again has to come here and say why.
-    #
-    # THREE CONTROLS IN THE SAME CELL, and without them the row is consistent with a change that
-    # broke deep-forcing generally: an ordinary type's declaration tree still deep-forces, the VALUE
-    # side is untouched, and a shallow read of the tree-type still answers.
-    test-tree-type-refuses-a-deep-force-of-the-declaration-tree = {
+    # DEEP-FORCING A PUBLISHED DECLARATION TREE REFUSES, for every tree and not for the tree-type: a
+    # published option record refuses by name the evaluated keys nixpkgs adds beside a declaration
+    # (`value`, `definitions`, …; `lib/modules.nix` `unansweredOptionKeys`), and a deep force reads
+    # them. With those keys set aside, a declaration tree of leaf types deep-forces, and one holding
+    # a nesting type refuses exactly as one holding a `submodule` does: a deep force reaches the
+    # type's called empty fold (`whenEmpty`), which refuses by name. A shallow read of the tree-type
+    # answers its name.
+    test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys = {
       expr =
         let
           child = genMerge.evalModuleTree {
@@ -1645,6 +1628,20 @@ in
               }
             ];
           };
+          parentSub = genMerge.evalModuleTree {
+            modules = [
+              {
+                options.inner = genMerge.mkOption {
+                  type = gmT.submodule {
+                    options.a = genMerge.mkOption {
+                      type = gmT.str;
+                      default = "x";
+                    };
+                  };
+                };
+              }
+            ];
+          };
           parentPlain = genMerge.evalModuleTree {
             modules = [
               {
@@ -1655,25 +1652,43 @@ in
               }
             ];
           };
+          declarationOnly = builtins.mapAttrs (
+            _: o:
+            builtins.removeAttrs o [
+              "value"
+              "isDefined"
+              "definitions"
+              "definitionsWithLocations"
+              "files"
+              "highestPrio"
+              "declarationPositions"
+              "options"
+              "valueMeta"
+            ]
+          );
         in
         {
           deepForceOfDeclTree = resolves parentTree.options;
-          plainTypeDeclTreeControl = resolves parentPlain.options;
+          plainTypeDeclTree = resolves parentPlain.options;
+          declarationsOfTreeTyped = resolves (declarationOnly parentTree.options);
+          declarationsOfSubmoduleTyped = resolves (declarationOnly parentSub.options);
+          declarationsOfPlainTyped = resolves (declarationOnly parentPlain.options);
           valueSideControl = resolves parentTree.config;
           shallowReadControl = parentTree.options.inner.type.name;
         };
       expected = {
         deepForceOfDeclTree = false;
-        plainTypeDeclTreeControl = true;
+        plainTypeDeclTree = false;
+        declarationsOfTreeTyped = false;
+        declarationsOfSubmoduleTyped = false;
+        declarationsOfPlainTyped = true;
         valueSideControl = true;
-        shallowReadControl = "moduleTree";
+        shallowReadControl = "submodule";
       };
     };
 
-    # LIVE CONTROL, same run: the seam the mark fences off still WORKS. A parent tree declares an
-    # option typed with a child tree's `.type` and the child merges the parent's definition — the
-    # capability the interim disposition keeps rather than deletes. Without this row the cell above
-    # is equally consistent with a tree-type that refuses everything, including its own engine.
+    # The nesting seam in gen's own evaluation: a parent tree declares an option typed with a child
+    # tree's `.type` and the child merges the parent's definition.
     test-tree-type-still-nests-in-gen-merge-control = {
       expr =
         let
@@ -1791,8 +1806,8 @@ in
       };
 
     # The tree states its gen domain: the module-value domain, the `check` of its reference
-    # `(lib.evalModules …).type` — attrset, function, path, absolute path string. The mark stays:
-    # answering its own engine's membership question opens no mount.
+    # `(lib.evalModules …).type` — attrset, function, path, absolute path string — and publishes it as
+    # its `check`, read off `admits` at the crossing site.
     test-tree-type-states-its-module-domain = {
       expr =
         let
@@ -1810,7 +1825,10 @@ in
             "hello"
             3
           ];
-          marked = ty ? nonMountable;
+          check = map ty.check [
+            { }
+            "hello"
+          ];
         };
       expected = {
         admits = [
@@ -1821,7 +1839,10 @@ in
           false
           false
         ];
-        marked = true;
+        check = [
+          true
+          false
+        ];
       };
     };
 
@@ -1901,5 +1922,303 @@ in
         name = "either";
       };
     };
+
+    # ── THE MODULE-SET TYPES MOUNT AT nixpkgs' PARITY (den-hoag-foreign-mount-parity-knhyg) ────────
+    # The tree-as-a-type and `submodule` against nixpkgs' own `(evalModules …).type` and
+    # `submoduleWith`, over nixpkgs' leaf types (so what is read is the module-set type's crossing,
+    # not the vocabulary's descriptions), each in a real `lib.evalModules`. Every cell is relational:
+    # the expected side is nixpkgs' own answer over the same construction.
+
+    # nixpkgs merges raw sub-option declarations into an option whose type is named `submodule`
+    # (`mergeModules'`), reading the type's `submoduleWith` payload. Typed declaration first.
+    test-a-raw-sub-option-joins-a-module-set-type =
+      let
+        np = nixpkgsLib.types;
+        run =
+          T:
+          (nixpkgsLib.evalModules {
+            modules = [
+              { options.s = nixpkgsLib.mkOption { type = T; }; }
+              {
+                options.s.b = nixpkgsLib.mkOption {
+                  type = np.str;
+                  default = "b";
+                };
+              }
+              { s.a = 5; }
+            ];
+          }).config.s;
+        mods = mk: [
+          {
+            options.a = mk {
+              type = np.int;
+              default = 0;
+            };
+          }
+        ];
+      in
+      {
+        expr = {
+          tree = run (genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).type;
+          submodule = run (gmT.submodule (mods genMerge.mkOption));
+        };
+        expected = {
+          tree = run (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }).type;
+          submodule = run (np.submodule (mods nixpkgsLib.mkOption));
+        };
+      };
+
+    # The tree reads every definition as a module, `submodule` reads an attribute set as config, so
+    # one option declared with both is refused, in either order, in gen's evaluation and abroad, as
+    # nixpkgs refuses its own pair ("conflicting shorthandOnlyDefinesConfig values"). The control:
+    # two trees declared for one option union their module sets.
+    test-a-tree-and-a-submodule-declared-for-one-option-refuse =
+      let
+        np = nixpkgsLib.types;
+        mods = mk: T: [
+          {
+            options.known = mk {
+              type = T.str;
+              default = "k";
+            };
+          }
+        ];
+        tree = (genMerge.evalModuleTree { modules = mods genMerge.mkOption gmT; }).type;
+        sub = gmT.submodule (mods genMerge.mkOption gmT);
+        treeN = (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption np; }).type;
+        subN = np.submodule (mods nixpkgsLib.mkOption np);
+        twice =
+          ev: mk: a: b:
+          let
+            r = builtins.tryEval (
+              let
+                v =
+                  (ev {
+                    modules = [
+                      { options.x = mk { type = a; }; }
+                      { options.x = mk { type = b; }; }
+                      { x.known = "v"; }
+                    ];
+                  }).config.x;
+              in
+              builtins.deepSeq v v
+            );
+          in
+          if r.success then r.value else "REFUSED";
+        gen = twice genMerge.evalModuleTree genMerge.mkOption;
+        foreign = twice nixpkgsLib.evalModules nixpkgsLib.mkOption;
+      in
+      {
+        expr = {
+          gen = [
+            (gen tree sub)
+            (gen sub tree)
+          ];
+          foreign = [
+            (foreign tree sub)
+            (foreign sub tree)
+          ];
+          nixpkgs = [
+            (foreign treeN subN)
+            (foreign subN treeN)
+          ];
+          treeTwiceControl = [
+            (gen tree tree)
+            (foreign tree tree)
+          ];
+        };
+        expected = {
+          gen = [
+            "REFUSED"
+            "REFUSED"
+          ];
+          foreign = [
+            "REFUSED"
+            "REFUSED"
+          ];
+          nixpkgs = [
+            "REFUSED"
+            "REFUSED"
+          ];
+          treeTwiceControl = [
+            { known = "v"; }
+            { known = "v"; }
+          ];
+        };
+      };
+
+    # nixpkgs' docs (`optionAttrSetToDocList`) over an option of each type, bare and under nixpkgs'
+    # containers, plain, freeform and declared in a file, read in `make-options-doc`'s own view
+    # (`visible && !internal`): byte-equal to nixpkgs' docs over its own type. The full list departs
+    # by the four `_module.*` entries nixpkgs marks internal below the root, which gen does not
+    # declare. `cells` keeps the universe from shrinking silently.
+    test-the-rendered-docs-of-a-mounted-module-set-type-equal-nixpkgs =
+      let
+        np = nixpkgsLib.types;
+        modsOf =
+          mk: shape:
+          [
+            {
+              options.a = mk {
+                type = np.int;
+                default = 0;
+                description = "a";
+              };
+            }
+          ]
+          ++ (if shape == "free" then [ { freeformType = np.attrsOf np.int; } ] else [ ])
+          ++ (if shape == "path" then [ ./_fixtures/declares-p.nix ] else [ ]);
+        args.lib = nixpkgsLib;
+        sides = {
+          tree = {
+            gen =
+              shape:
+              (genMerge.evalModuleTree {
+                modules = modsOf genMerge.mkOption shape;
+                specialArgs = args;
+              }).type;
+            ref =
+              shape:
+              (nixpkgsLib.evalModules {
+                modules = modsOf nixpkgsLib.mkOption shape;
+                specialArgs = args;
+              }).type;
+          };
+          submodule = {
+            gen = shape: (gmT.submodule (modsOf genMerge.mkOption shape)).withArgs args;
+            ref =
+              shape:
+              np.submoduleWith {
+                modules = modsOf nixpkgsLib.mkOption shape;
+                specialArgs = args;
+                shorthandOnlyDefinesConfig = true;
+              };
+          };
+        };
+        containers = {
+          bare = T: T;
+          attrsOf = np.attrsOf;
+          listOf = np.listOf;
+          nullOr = np.nullOr;
+        };
+        docs =
+          T:
+          map
+            (o: {
+              inherit (o)
+                loc
+                name
+                description
+                declarations
+                readOnly
+                type
+                ;
+              default = o.default or null;
+            })
+            (
+              builtins.filter (o: o.visible && !o.internal) (
+                nixpkgsLib.optionAttrSetToDocList
+                  (nixpkgsLib.evalModules {
+                    modules = [
+                      {
+                        options.s = nixpkgsLib.mkOption {
+                          type = T;
+                          description = "s";
+                        };
+                      }
+                    ];
+                  }).options
+              )
+            );
+        cells = builtins.concatMap (
+          side:
+          builtins.concatMap (
+            c:
+            map
+              (shape: {
+                name = "${side}/${c}/${shape}";
+                differs =
+                  docs (containers.${c} (sides.${side}.gen shape))
+                  != docs (containers.${c} (sides.${side}.ref shape));
+              })
+              [
+                "plain"
+                "free"
+                "path"
+              ]
+          ) (builtins.attrNames containers)
+        ) (builtins.attrNames sides);
+      in
+      {
+        expr = {
+          differ = map (c: c.name) (builtins.filter (c: c.differs) cells);
+          cells = builtins.length cells;
+        };
+        expected = {
+          differ = [ ];
+          cells = 24;
+        };
+      };
+
+    # A freeform module-set type crosses its freeform datum: nixpkgs' "open submodule of …"
+    # description and `_freeformOptions` beside the declared sub-options. nixpkgs' `_module`
+    # sub-options are set aside: gen declares no `_module` options, which nixpkgs marks internal
+    # below the root (the docs cell above reads them away the same way).
+    test-a-freeform-module-set-type-crosses-its-freeform-type =
+      let
+        np = nixpkgsLib.types;
+        mods = mk: [
+          {
+            options.a = mk {
+              type = np.int;
+              default = 0;
+            };
+          }
+          { freeformType = np.attrsOf np.int; }
+        ];
+        read = T: {
+          inherit (T) description;
+          subOptions = builtins.filter (k: k != "_module") (builtins.attrNames (T.getSubOptions [ "s" ]));
+          nestedTypes = builtins.attrNames T.nestedTypes;
+        };
+      in
+      {
+        expr = {
+          tree = read (genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).type;
+          submodule = read (gmT.submodule (mods genMerge.mkOption));
+        };
+        expected = {
+          tree = read (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }).type;
+          submodule = read (np.submodule (mods nixpkgsLib.mkOption));
+        };
+      };
+
+    # A published option record reads as its path in a string, as nixpkgs' does
+    # (`"${options.path.to.it}"`, nixpkgs' `__toString = _: showOption loc`).
+    test-a-published-option-record-coerces-to-its-path =
+      let
+        np = nixpkgsLib.types;
+        mods = mk: [
+          {
+            options.a = mk {
+              type = np.int;
+              default = 0;
+            };
+          }
+        ];
+        read = T: "${(T.getSubOptions [ "s" ]).a}";
+      in
+      {
+        expr = {
+          tree = read (genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).type;
+          submodule = read (gmT.submodule (mods genMerge.mkOption));
+          evaluation = "${(genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).options.a}";
+        };
+        expected = {
+          tree = read (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }).type;
+          submodule = read (np.submodule (mods nixpkgsLib.mkOption));
+          evaluation = "${(nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }).options.a}";
+        };
+      };
   };
 }

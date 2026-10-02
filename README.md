@@ -194,8 +194,8 @@ in
 
 `evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance; undeclared; deprecations }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
-recursion) — it is a nesting seam and NOT a mountable option type, so it carries a `nonMountable`
-mark and refuses the rest of the option-type protocol by name (see below);
+recursion) — and it is an option type named `submodule`, which a real nixpkgs `lib.evalModules`
+mounts (see below);
 `.provenance` is a lazy per-loc record of WHERE each value came from (see below);
 `.undeclared` lists the definitions the eval did not merge into `.config` (see below);
 `.deprecations` lists the declared options whose TYPE carries a `deprecationMessage` (see below).
@@ -761,7 +761,7 @@ refusal by name. **That refusal is propagated at every site that consumes it**, 
 where it is least visible: `lib/default.nix` assembling the published `types` namespace out of the
 injected leaf vocabulary. Swallowing it there published a protocol-incomplete record into
 `lib.types`, where a mounting consumer dies inside the foreign engine on a missing attribute — the
-uncatchable, unnamed abort that `refuseMount` exists to convert into a refusal. A computed refusal
+uncatchable, unnamed abort this boundary exists to convert into a refusal. A computed refusal
 thrown away is worse than one never computed.
 
 The `types` parameter is this library's **uncontrolled input** — it means the gen-types library, and
@@ -1190,7 +1190,7 @@ bare constructor — makes its container not mergeable instead of aborting on a 
 **The relation is published as `genMerge.mergeTypes a b`** — the merged type or `null` — the one
 binding the declaration stratum and the structural element folds both answer through. It asks a gen
 type's `typeMergeRel` first and a foreign type's own `a.typeMerge b.functor` otherwise, behind the
-type-walk fuel guard and the `nonMountable` fence. A consumer holding two types it did not build
+type-walk fuel guard. A consumer holding two types it did not build
 (gen-schema's `refined` asks it about its base) calls this rather than keeping a copy of the relation,
 which would answer the question twice with two answers that could disagree. Pinned by
 `test-merge-types-is-published-and-answers-a-foreign-pair-at-its-parameter`.
@@ -1204,8 +1204,8 @@ Two modules may declare the same option loc. The merge splits the record in two:
   folds it: seeded from the LAST declaration, the accumulated type deciding against each earlier one,
   `[a, b, c] = (c ⊳ b) ⊳ a` (the relation above, later operand deciding). A refusal is named and
   carries the option path and *every* declaring file. A relation-worded reason names the deciding
-  (later) type first: a tree type declared first and a `submodule` second reads
-  `` (`submodule' and `moduleTree') ``. The outcome the routing removes is one declaration's field
+  (later) type first: `submodule` declared beside `int` reads `` (`submodule' and `int') ``, and a
+  tree type beside a `submodule` names the reading that differs, since both are named `submodule`. The outcome the routing removes is one declaration's field
   surviving beside the *other's* type on a record that then disagrees with itself.
 - **The non-type fields are right-biased, and what they shadow stays reachable.** Later declarations
   win field by field: this fold is an *ordered* fold over the authored module order, so a later
@@ -1324,65 +1324,51 @@ separates them.
 that merely adds fields (the `apply`-layering shape) leaves the record exactly what a plain field
 union produces. A third declaration appends to the chain rather than replacing it.
 
-### The tree-as-a-type is NOT mountable bare, and it says so
+### The tree-as-a-type is an option type named `submodule`
 
 `(evalModuleTree …).type` is the seam that lets a parent tree nest a child (submodule recursion,
-freeform). It is not an option type, and the rest of this section does not apply to it. It reads
-every definition as a module, as its reference `(lib.evalModules …).type` does (`submoduleWith`'s
-`shorthandOnlyDefinesConfig` defaults to false), where `types.submodule` reads an attrset definition
-as config. Both nesting types read through the one binding `defsAsModules`, nixpkgs' `allModules`
-flag for flag.
+freeform), and it is an option type: a real nixpkgs `lib.evalModules` mounts it bare, inside every
+member-taking combinator, and in its docs. It reads every definition as a module, as its reference
+`(lib.evalModules …).type` does (`submoduleWith`'s `shorthandOnlyDefinesConfig` defaults to false),
+where `types.submodule` reads an attrset definition as config. Both nesting types read through the
+one binding `defsAsModules`, nixpkgs' `allModules` flag for flag.
 
-It used to be indistinguishable from one at a glance. It answered `name` and `merge` and nothing else
-— the two fields that make a value **look** like an option type, which is not the same thing as the
-ones a foreign engine reads first. Measured, the first protocol field a real nixpkgs `lib.evalModules`
-forces is `getSubModules` (in `fixupOptionType`), and neither `name` nor `merge` is forced before the
-abort. So handing the tree-type to a real `lib.evalModules` produced an error raised **inside the
-consumer** (`attribute 'deprecationMessage' missing`, at a nixpkgs line), which the caller could not
-catch and which named nothing about gen-merge.
+It is built as `submodule` is, by `strategies.defineType`, the one crossing site: a fold
+(`mergeDefs`), a domain (`admits`, the module-value domain `isModuleValue`), a carried module set
+(`carries.moduleSet`) with its rebuild (`recarry`), a relation (`typeMergeRel`) and the substructure
+triple. Every protocol field is then derived by `exportType` as for any gen type.
 
-Completing the protocol is the wrong repair, and this is a boundary question rather than a
-compatibility one: the boundary is the **eval**, not the repo, and what crosses a gen boundary is
-plain data — a mounted option type is neither, so completion would build the bridge the rule removes.
-Making a tree genuinely mountable is crossing work and belongs on that chain. What lands here instead
-is the mark plus the refusal, and nothing is deleted: the nesting seam is a shipped capability and
-still works.
+| field                                               | answer                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                                              | `submodule`, nixpkgs' name for a type whose definitions are modules: nixpkgs merges raw sub-option declarations into an option whose type is named `submodule` (`mergeModules'`), and its container phrases and refusals read so                                         |
+| `functor.payload`                                   | nixpkgs' `submoduleWith` payload, `{ modules; specialArgs; shorthandOnlyDefinesConfig; description; class; }`, published for both nesting types (`false` for the tree, `true` for `submodule`), so nixpkgs' `binOp` and raw-option merge read what they read off its own |
+| `typeMerge`                                         | the relation: two trees union their module sets in authored order, as nixpkgs' `binOp` does, and merge `specialArgs`, refusing a key both state. A tree and a `submodule` refuse each other by name, naming the reading that differs, as nixpkgs refuses the pair        |
+| `description`, `nestedTypes`, `getSubOptions`       | the freeform datum crosses: the tree's resolved freeform type (`unroledNested.freeformType`) gives nixpkgs' "open submodule of …", `nestedTypes.freeformType` and `_freeformOptions`                                                                                     |
+| `getSubOptions`, `getSubModules`, `substSubModules` | the tree's declarations under the foreign prefix, its module set, and its rebuild over another                                                                                                                                                                           |
+| `check`, `merge`, `emptyValue`                      | the module-value domain, the fold through the bridge (one root evaluation of the tree), and the tree over no definitions                                                                                                                                                 |
 
-The disposition is built by the protocol boundary (`interface.refuseMount`), because stating what a
-foreign protocol asks for — even in order to refuse it — is exactly the knowledge that unit exists to
-hold. What stays with the engine is the gen half: a name, a fold, and the mark.
+**The published option records carry nixpkgs' declaration shape.** An evaluation's `.options` (and
+`declaredOptions`) records carry `loc`, `declarations` (the declaring modules' files) and nixpkgs'
+string form, `__toString = _: showOption loc`, so nixpkgs' `optionAttrSetToDocList` renders a mounted
+tree's docs byte-equal to its own in `make-options-doc`'s view (`visible && !internal`). The evaluated
+keys nixpkgs adds beside a declaration (`value`, `isDefined`, `definitions`,
+`definitionsWithLocations`, `files`, `highestPrio`, `declarationPositions`, `options`, `valueMeta`)
+are the option's value and definitions, which gen publishes on `config` and `provenance`; each is
+refused by name, never absent. So a deep force of a published `.options` tree refuses, for every tree
+(`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). The tree declares no
+`_module` options, so its full doc list departs from nixpkgs' by the four `_module.*` entries nixpkgs
+marks internal below the root.
 
-| field                                                                                                          | disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`, `mergeDefs`/`merge`                                                                                    | **implemented** — the nesting seam. The fold is answered rather than refused because such a value really does combine definitions that way; it opens no mount, since the field a foreign engine forces first refuses before any fold is reached                                                                                                                                                                                                                                                                                                                      |
-| `nonMountable`                                                                                                 | **the mark.** Presence is the predicate (testing it forces nothing); the value carries the reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `deprecationMessage` ⇒ `null`, `emptyValue` ⇒ the tree's fold over no definitions, `nestedTypes` ⇒ `{ }`       | **answered, and true of a tree** — it is not deprecated, supplies its own fold over no definitions for an undefined nesting option (the same binding as the gen face's `whenEmpty`), and wraps no element type. `deprecationMessage` does one thing more: it closes the consumer's one remaining **direct** (non-`or`) read of this type, the read that would abort *uncatchably* rather than refuse. The refusal does not depend on it — with the field removed the mount still refuses catchably, because `getSubModules` is forced first and is read through `or` |
-| `check` ⇒ the module-value domain                                                                              | **answered, and true of a tree** — the same `isModuleValue` binding as `admits`, one domain published under both names. It reads only the value, never the tree                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `description`, `descriptionClass`, `functor`, `getSubModules`, `getSubOptions`, `substSubModules`, `typeMerge` | **refuse by name**, each naming the field the caller reached for (pending foreign-mount parity)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `_type`                                                                                                        | **deliberately absent.** It is the one field a refusal would make worse: a consumer that ASKS (`lib.isType "option-type"` reads it through `or`) gets a correct `false` today, and a throwing tombstone would turn the one working negative answer into an abort                                                                                                                                                                                                                                                                                                     |
-
-**A union in gen's own eval holds the tree as nesting.** The tree also answers `admits`, a gen field
-outside the fourteen: the module-value domain (`isModuleValue`, the one binding `submodule` and
-`deferredModule` read), exactly the `check` of its reference `(lib.evalModules …).type`. A gen union
-(`either`, `oneOf`, `nullOr`) asks its members `admits` before `check`, so `either tree str` folded by
-gen-merge's own eval is union membership, not mounting, and gives what nixpkgs gives over the same
-construction. A definition outside that domain is refused by name before the nested eval runs
-(`` option … has definitions `moduleTree' cannot consume ``), and an undeclared key under the union is
-refused by name as at a container element. **A foreign eval that reaches the tree through a gen
-composite carrying it folds it at nixpkgs' value**: the published `check` and `merge` of a gen type
-read its *foreign face* (`interface.nix` `foreignFace`) — the type rebuilt over its members' foreign
-faces through `recarry`, where the tree's face is the tree without `admits` — and the `check` that
-face reaches answers the same module-value domain, so the fold goes through `bridge`, one root
-evaluation of the tree. Over the 180-mount tree-union family 108 are served, each equal to nixpkgs'
-fold of the same construction over its own `(evalModules …).type`, and 72 still refuse by name: 60
-at `getSubModules` (every construction holding no union) and 12 by the definition guard (a union
-over a container, with a string definition). A `submodule`'s inner eval is gen's own, so a
-union inside a submodule mounted abroad yields a value. Two reaches the fence does not have, both as
-before: a foreign combinator's fold over a gen union (nixpkgs `attrsOf (either tree str)`) reads the
-published face in **either** eval, so gen's own eval refuses it too; and a caller fold that closes
-over a union lexically, carrying no member, folds through gen's engine in a foreign eval and yields a
-value. A caller composite whose `recarry` rebuilds a differently-named type is refused by name when a
-foreign eval folds it.
+**A union holds the tree as a member**, in gen's own eval and abroad. A gen union (`either`, `oneOf`,
+`nullOr`) asks its members `admits` before `check`, so `either tree str` is union membership, and
+gives what nixpkgs gives over the same construction. A definition outside the module domain is
+refused by name before the nested eval runs (`` option … has definitions `submodule' cannot consume ``),
+and an undeclared key under the union is refused by name as at a container element. Over the 180-mount
+tree-union family a real `lib.evalModules` serves 138, each equal to nixpkgs' fold of the same
+construction over its own `(evalModules …).type`, and refuses 42, each one nixpkgs refuses too: a
+string definition reaching the tree's fold inside a container, or refused by nixpkgs' own check under
+`nullOr`/`option` alone. A caller fold that closes over a union lexically, carrying no member, folds
+it by its called form, and the tree refuses by name.
 
 **Its fold is one value, and where no report is carried it refuses.** The tree is a child of the one
 evaluation that holds it (below), so the fold READS it rather than evaluating it. `mergeDefs.threaded`
@@ -1401,25 +1387,13 @@ unchecked fold as `.unchecked` for the freeformType site: a whole replacement go
 refined `__functor` is ignored at the freeformType site
 (`test-replaced-mergeDefs-governs-at-the-freeformType-site`).
 
-`mergeTypes` fences the pair it consults: a non-mountable operand answers "not mergeable" **before**
-either vocabulary's type-merge half is read, because "do these two types merge?" has a true answer
-here — `null`, they do not — and returning it keeps the declaration stratum's own refusal, which names
-both types and every declaring file. The warm identity walk fences the same way: at a declared leaf
-typed by a tree it stops on the mark before asking what the type carries, since the seam wraps no
-element type and a nested tree's eval is always cold. Pinned by
+`mergeTypes` consults a tree's relation as any type's. The warm identity walk reads a declared leaf
+typed by a tree as it reads a `submodule` one. Pinned by
 `test-reused-module-tree-leaf-reports-its-dropped-def`.
 
-**One thing inside gen-merge changes, and it is deliberate.** Forcing a parent's whole `.options` tree
-*deeply* now refuses, because the nested tree-type sits in that tree and a deep force reaches its
-refusing fields; before the mark the same force succeeded, the fields being merely absent. That is the
-mark working rather than a casualty of it — a deep force of a declaration tree **is** a protocol read
-of every type in it, and a value that answered would be a value that lied. The value side is
-unaffected (`.config` still forces), an ordinary type's declaration tree still deep-forces, and
-shallow reads of the tree-type still answer. Pinned by
-`test-tree-type-refuses-a-deep-force-of-the-declaration-tree`.
-
-Refusals are pinned in `ci/tests-error.nix` (`tree-type.*`), including a real nixpkgs mount and both
-live controls: a completed leaf still mounts, and a tree still nests.
+The mounts are pinned in `ci/tests-error.nix` (`tree-type.*`) and the parity cells in
+`ci/tests/nixpkgs-protocol.nix` (the raw sub-option merge, the tree and `submodule` pair, the rendered
+docs, the freeform datum and the string form).
 
 ### A foreign type that declares a nested tree, and the declared opt-out
 
@@ -1486,8 +1460,7 @@ of the one evaluation, so the value is nixpkgs'. Four things are refused by name
 
 A stock `unique` over the tree is decided stock and served, since its check is its element's. A
 refinement on the element is carried as it is under the six. **The prices, stated:** `unique`'s
-message is lost on rebuild, as nixpkgs' own rebuild loses it; the tree's tombstone answers
-`substSubModules` inside the channel, and the element handed into a rebuild answers `check` in
+message is lost on rebuild, as nixpkgs' own rebuild loses it; the element handed into a rebuild answers `check` in
 gen's words and `getSubModules` with `null`; the container's merge runs three times per option
 against nixpkgs' once. A foreign closure, the container's own merge and check, runs inside gen's
 evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
@@ -1500,10 +1473,8 @@ container with its `nestedTypes` removed), since its own fold would evaluate tha
 and nothing in it says so; and a recognised container whose payload offers a different element
 than it states, nesting or not, since it would carry one type and merge on another. Two elements
 are the same when their `check` and `merge` are the same closures, as a stock container's are, so
-two separate constructions of one shape differ. Where either element is `nonMountable` (the bare
-tree), only `merge` is compared, since every tree publishes the same module-value `check`; so two trees, or a tree
-and a type folding by another `merge`, are still told apart, but a tree whose `check` alone was
-rewritten is not (the price below). Every one of these messages names the door (`mkOptionType`, or `evalModuleTree` with the
+two separate constructions of one shape differ; so two trees, a tree and a type folding by another
+`merge`, and a tree stated with its `check` rewritten against the tree offered are each refused. Every one of these messages names the door (`mkOptionType`, or `evalModuleTree` with the
 option), the type, what declared the element, and the ways out, the opt-out above among them.
 **The prices, stated:** a stock container whose `merge` was overridden (`attrsOf t // { merge = …; }`)
 cannot be told from the stock one and is re-homed silently, losing the override; and a foreign type
@@ -1562,11 +1533,9 @@ domain, so it is evaluated like any other: a failing one refuses and a passing o
 Determinate and Lix. Pinned by `ci/tests/check-carriage.nix` and
 `ci/tests-error.nix` (`check-carriage.*`).
 **The price extended to a lost `check`**: a check over
-the bare tree can be neither carried nor detected, and is lost silently. The class is a check over the bare tree itself (the tree has no witness, and
-nixpkgs erases it too) and a stock container stating the tree with only its `check` rewritten against
-the tree it offers (`np.listOf tree // { nestedTypes.elemType = addCheck tree p; }`: the two agree on
-`merge`, the only slot a tree can be compared on, so the check is lost where gen-merge once refused
-it with the tombstone). Refusing every re-home of those would revert the stock six over the tree. The gen-types composites (`ts.refined (addCheck ts.int p) …`) read the
+the bare tree itself is not carried, and is lost silently: the declared leaf folds the tree through its
+threaded fold, which reads no rewritten `check`, and nixpkgs erases it too
+(`test-the-residue-is-the-bare-tree`). The gen-types composites (`ts.refined (addCheck ts.int p) …`) read the
 witness through the same protocol and carry or refuse such a member; what stays silent there is a
 bare gen-types checker with its `check` rewritten, which has no witness (gen-types' residue R1).
 **And a parametric leaf redeclared with a wrapped twin** refuses: an option declared once with a
