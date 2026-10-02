@@ -1032,4 +1032,57 @@ in
         v: v
       );
     };
+
+  # 0hew4: the threaded channel's parity residue gives nixpkgs' value. A rebuild states its marked
+  # element one container further in (`uniq (attrsOf sub)`), read at any depth; a payload-null copy
+  # of a stock submodule, or one given an element it never folds, is mounted as nixpkgs'
+  # `fixupOptionType` mounts it, rebuilt over its own module set. One test per cell, so an
+  # uncatchable abort errors its own cell only.
+  flake.tests.nesting-threaded-parity-residue =
+    let
+      # a payload-null copy (`mkOptionType`'s default functor) of a stock submodule, every other
+      # field kept
+      copy =
+        s:
+        nixpkgsLib.mkOptionType {
+          name = "submodule";
+          inherit (s)
+            check
+            merge
+            getSubOptions
+            getSubModules
+            substSubModules
+            nestedTypes
+            emptyValue
+            description
+            ;
+        };
+      freeform = np.submodule { freeformType = np.attrsOf sub; };
+      cell = type: def: {
+        expr = opt type def;
+        expected = fwd type def;
+      };
+    in
+    {
+      test-a-marked-element-two-containers-in-threads = cell (np.uniq (np.attrsOf sub)) { a.x = 1; };
+      test-a-marked-element-under-a-coercion-threads = cell (np.coercedTo np.int (x: {
+        a.x = x;
+      }) (np.attrsOf sub)) 7;
+      test-a-copied-submodule-is-mounted-as-fixed-up = cell (copy freeform) { k.x = 1; };
+      test-a-copied-submodule-under-a-container-is-mounted-as-fixed-up = cell (np.uniq (copy freeform)) {
+        k.x = 1;
+      };
+      test-a-submodule-given-an-unfolded-element-is-mounted-as-fixed-up = cell (
+        np.submodule { options.x = gm.mkOption { type = t.int; }; } // { elemType = sub; }
+      ) { x = 1; };
+      # At the ROOT the record is mounted as its rebuild, not by its own merge, as nixpkgs mounts it.
+      test-a-root-is-mounted-as-its-rebuild-not-its-own-merge = cell (nixpkgsLib.mkOptionType {
+        name = "own";
+        check = builtins.isAttrs;
+        merge = _: _: "OWN-MERGE";
+        getSubModules = [ ];
+        substSubModules = _: np.submodule { options.x = gm.mkOption { type = t.int; }; };
+        nestedTypes.elemType = sub;
+      }) { x = 2; };
+    };
 }

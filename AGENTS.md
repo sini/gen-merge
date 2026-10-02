@@ -255,9 +255,14 @@ containers whose element may nest (`canNest`) is re-homed as gen-merge's own, re
 functor and rebuilt over the element its carrying spellings (`nestedTypes`, a top-level `elemType`)
 state, never its functor payload's. Its stated price: an overridden `merge` on it is lost silently. A
 type outside the six that declares a nesting element threads at a declared option through its own
-`substSubModules` rebuild (`threadedForeign`, arm (T)), and is refused by name where the rebuild
-does not state the element, where a tree is read at a position its merge does not expose
-(`unexposedRefusal`), and at `mkOptionType`; its own `check` rides on the threaded fold and a
+`substSubModules` rebuild (`threadedForeign`, arm (T)) where that rebuild threads (`threadsAt`,
+judged on the original record position by position, at any depth), and is refused by name where it
+does not, where a tree is read at a position its merge does not expose (`unexposedRefusal`), where
+an undeclared position evaluates the marker (its import throws the refusal), and at
+`mkOptionType`. At an option ROOT stating a module set whose rebuild does not thread, it is mounted
+as nixpkgs' `fixupOptionType` mounts it, where that rebuild is an option type declaring no gen
+element (`homedRootAt`, den-hoag-threadedforeign-parity-residue-0hew4); below a union or a gen root
+it is not. Its own `check` rides on the threaded fold and a
 refined element is carried (`checkedFold`), a check that reads the tree included, since the tree's
 `check` is its module-value domain (den-hoag-f8mgj arm Q). One that forwards without declaring evaluates its tree standalone (OQ11 (d)'s
 price). So does a gen nesting type inside a recognised nixpkgs submodule's `freeformType`
