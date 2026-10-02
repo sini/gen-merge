@@ -112,7 +112,7 @@ let
   # `types that do not merge (types do not merge: …)`. So every refusal below names the two operands
   # and, where there is one, the DISCRIMINATING FACT — which is the part the reader does not already
   # have from the sentence around it.
-  inherit (interface) nameOf;
+  inherit (interface) nameOf keyOf;
   # `self` is what this type's own default relation answers WITH — the value a caller actually holds.
   # It is threaded rather than closed over locally because a type built through `defineType` is used
   # in its EXPORTED form, and a relation answering with the un-exported twin would hand a consumer a
@@ -146,7 +146,7 @@ let
       missing = missingSub ++ missingRecarry;
       nullaryRel =
         other:
-        if isAttrs other && (other.name or null) == name then
+        if isAttrs other && (keyOf other) == name then
           { merged = self; }
         else
           { refused = "`${nameOf t}' and `${nameOf other}'"; };
@@ -209,7 +209,7 @@ let
       # one is refused by name. A `//` derivation of a built record is a different value, and refuses.
       sealedRel =
         self: other:
-        if !(isAttrs other) || (other.name or null) != imported.name then
+        if !(isAttrs other) || (keyOf other) != keyOf imported then
           { refused = "`${nameOf imported}' and `${nameOf other}'"; }
         else if interface.closuresFirst [ other ] other == interface.closuresFirst [ self ] self then
           { merged = self; }
@@ -229,6 +229,181 @@ let
     else
       exported;
 
+  # deriveType — a type DERIVED from a completed one: the base's behaviour, a delta of metadata, and an
+  # identity of its own (den-hoag-5kic).
+  #
+  #   deriveType base {
+  #     id = "<string>";        # REQUIRED: the derivation's merge identity, and its functor name
+  #     key = <plain data>;     # default null: content two derivations of one `id' must agree on, `=='
+  #     fields = b: { … };      # default `_: { }': metadata, as a function of the base it is applied to
+  #     name = "<string>";      # default the base's: the value vocabulary its messages speak
+  #     description = "<string>";
+  #     mint = { minted = …; }; # default sealed: an identity the CALLER minted
+  #   }
+  #
+  # ★★ WHY `base // Δ` IS NOT A DERIVATION. A completed type is a FIXPOINT: `defineType` ties the knot
+  # once, and every answer that refers back to the type — its relation, `typeMerge`, `functor.type` —
+  # is closed over that knot, while every answer that rebuilds it (`recarry`, `substructure.rebuild`,
+  # `withArgs`) is closed over its constructor. `//` changes the record and leaves each of them
+  # answering for the base: the derivation merges with itself to its base, rebuilds to its base, and
+  # mints as its base, while its check and fold stay right, so nothing a value reaches says so. This
+  # is the delta applied AFTER the fixpoint. Bracha & Cook 1990 §2.1 ("incremental derivation", the
+  # inheritance operator `C = Δ(P) ⊕ P') gives the delta parametric in the parent, which is why
+  # `fields` takes the base; that `self` is then re-bound is Cook 1989's account, which that paper
+  # defers to and which is cited, not read — the ground here is this file's own knot (`mkTypeWith`'s
+  # `self`) and the cells measuring it. So the derivation is built as `mkOptionType` and every
+  # parametric leaf build theirs: a SOURCE record overridden first, then completed through
+  # `defineType`. No protocol field is written here; the export derives all of them again.
+  #
+  # The source is the base with `interface.deriveClasses`' derived, tied, identity and datum fields
+  # cut; its behaviour crosses unread. A base that is not gen's own record (a foreign type, or a gen
+  # one whose `check` a wrapper rewrote) is read through the import boundary first, as `mkOptionType`
+  # reads one. The tied fields are stated again, each the base's answer lifted through the derivation
+  # (`recarry c' is the derivation over `base.recarry c', a natural map):
+  #   · the RELATION merges only a derivation of the same `id' and `key', and answers the base pair's
+  #     own join, re-derived. It asks `mergeTypes' — the one dispatch, so a foreign base merges through
+  #     the boundary's arm — and never answers with this declaration's own value. Metadata is
+  #     left-biased: `key' is the whole of what separates two derivations of one `id'.
+  #   · IDENTITY is never the base's (ADR-0034). A caller that minted one passes it, and owes a
+  #     preimage covering the `id', the `key' and the base's identity; one omitting the `key' mints two
+  #     different derivations as one. With none it is SEALED: decisions compare the reified value and
+  #     `__id' is the named refusal. ★ That is the refusal limb for a derivation whose distinguishing
+  #     content is inert (a string `id', a plain `key'), which ADR-0034 would make structural: what
+  #     would have to change is a mint REACHABLE here, and gen-merge mints nothing — the one minting
+  #     authority is gen-identity, reached by a caller holding it, as gen-types' `identityGuard' is.
+  #     A mint composed through the injected leaf vocabulary would move this limb to the minted one.
+  #
+  # ★ ITS COST IS ONE COMPLETION PER LIFT: a merge, a `recarry' or a rebuild of a derivation
+  # re-completes it through `defineType', so a fold over N derivation levels pays N completions and
+  # N relation frames, the price gen-schema's `refined' pays for its own lifted relation today.
+  deriveType =
+    base: spec:
+    let
+      classes = interface.deriveClasses;
+      id = spec.id or null;
+      key = spec.key or null;
+      fields = spec.fields or (_: { });
+      gen =
+        if base ? typeMergeRel && !(interface.rewritesCheck base) then
+          base
+        else
+          let
+            answer = interface.importType base;
+          in
+          if answer ? refused then throw answer.refused else answer.imported;
+      delta = fields gen;
+      # Cut from the source: everything but its behaviour. A delta may restate only the name-carried.
+      cut = classes.derived ++ classes.tied ++ classes.identity ++ classes.datum;
+      fixed = filter (n: !(builtins.elem n interface.exportClasses.nameCarried)) cut ++ classes.behaviour;
+      notMetadata = filter (n: builtins.elem n fixed) (attrNames delta);
+      holdsType =
+        v:
+        if isAttrs v then
+          interface.isOptionType v || v ? typeMergeRel || builtins.any holdsType (builtins.attrValues v)
+        else
+          isList v && builtins.any holdsType v;
+      defect =
+        if !(interface.isOptionType base) then
+          if interface.typeDefect base != null then
+            interface.typeDefect base
+          else
+            "has not been completed (it states no foreign protocol; build it through `defineType' first)"
+        else
+          interface.typeDefect base;
+      named = "`deriveType' over `${nameOf base}'";
+      lift = b: deriveType b spec;
+      relation =
+        other:
+        let
+          theirs = other.__derivation;
+          partner =
+            if isAttrs other && other ? __derivation then
+              "the derivation `${theirs.id}' of `${nameOf theirs.base}'"
+            else
+              "`${nameOf other}'";
+          pair = "the derivation `${id}' of `${nameOf base}' and ${partner}";
+        in
+        if !(isAttrs other) || keyOf other != "derivation:${id}" then
+          { refused = pair; }
+        else if theirs.key != key then
+          { refused = "${pair}, whose keys differ"; }
+        else
+          let
+            joined = core.mergeTypes base theirs.base;
+            cause = core.mergeTypesReason base theirs.base;
+          in
+          if joined == null then
+            { refused = "${pair}, whose bases do not merge${if cause == null then "" else ": ${cause}"}"; }
+          else
+            { merged = lift joined; };
+      sealed = {
+        unmintable = {
+          ctor = id;
+          reason = "a derivation states no minted identity; demand `__id` for its named refusal";
+        };
+      };
+      mint = spec.mint or sealed;
+      sub = gen.substructure or null;
+    in
+    if defect != null then
+      throw "gen-merge: ${named}: the base ${defect}"
+    else if !(builtins.isString id) then
+      throw "gen-merge: ${named} states no string `id'; a derivation's merge identity is the string it names"
+    else if notMetadata != [ ] then
+      throw "gen-merge: ${named} as `${id}': `fields' sets ${
+        concatStringsSep ", " (map (n: "`${n}'") notMetadata)
+      }, which ${
+        if length notMetadata == 1 then "is" else "are"
+      } not metadata; a type whose behaviour or relation differs is a new type (`mkOptionType'), not a derivation"
+    else if holdsType key then
+      throw "gen-merge: ${named} as `${id}': its `key' holds an option type, which Nix `==' cannot compare totally; key a derivation by plain data"
+    else
+      defineType (
+        builtins.removeAttrs gen cut
+        // delta
+        // {
+          name = spec.name or delta.name or gen.name or "raw";
+          # The base AS PASSED: the join asks it, and a foreign one answers through the boundary's arm.
+          __derivation = {
+            inherit base id key;
+          };
+          typeMergeRel = relation;
+          __mint = mint;
+          __id =
+            if mint ? minted then
+              mint.minted
+            else
+              throw "gen-merge: the derivation `${id}' of `${nameOf base}' is sealed: it states no minted identity, so it has none to answer with (pass `mint' to `deriveType')";
+        }
+        // (
+          if spec ? description then
+            { inherit (spec) description; }
+          else if delta ? description then
+            { }
+          else if gen ? description then
+            { inherit (gen) description; }
+          else
+            { }
+        )
+        // (if gen ? recarry then { recarry = c: lift (gen.recarry c); } else { })
+        // (if gen ? withArgs then { withArgs = a: lift (gen.withArgs a); } else { })
+        // (
+          if sub == null then
+            { }
+          else
+            {
+              substructure = sub // {
+                rebuild =
+                  m:
+                  let
+                    r = sub.rebuild m;
+                  in
+                  if r == null then null else lift r;
+              };
+            }
+        )
+      );
+
   # Merge two ELEMENT types — the element stratum's name for `core.mergeTypes` (lib/modules.nix),
   # which is guarded on both halves and stated there. It is the SAME binding the DECLARATION stratum
   # consults when one option is declared twice, which is what makes "these two types do not merge"
@@ -244,7 +419,7 @@ let
   # which is the one place that knows any spelling but this one.
   elementRel =
     name: rebuild: element: other:
-    if !(isAttrs other) || (other.name or null) != name then
+    if !(isAttrs other) || (keyOf other) != name then
       { refused = "`${name}' and `${nameOf other}'"; }
     else
       let
@@ -412,7 +587,7 @@ let
       recarry = c: mkSubmodule args c.moduleSet;
       typeMergeRel =
         other:
-        if !(isAttrs other) || (other.name or null) != "submodule" then
+        if !(isAttrs other) || (keyOf other) != "submodule" then
           { refused = "`submodule' and `${nameOf other}'"; }
         else
           let
@@ -746,7 +921,7 @@ let
       # sides of the pair, which tells the reader nothing they did not already have.
       typeMergeRel =
         other:
-        if !(isAttrs other) || (other.name or null) != "attrs" then
+        if !(isAttrs other) || (keyOf other) != "attrs" then
           { refused = "`attrs' and `${nameOf other}'"; }
         else if other ? mergeDefs then
           { merged = attrs; }
@@ -991,7 +1166,7 @@ let
       recarry = c: either (head c.alternatives) (elemAt c.alternatives 1);
       typeMergeRel =
         other:
-        if !(isAttrs other) || (other.name or null) != "either" then
+        if !(isAttrs other) || (keyOf other) != "either" then
           { refused = "`either' and `${nameOf other}'"; }
         else
           let
@@ -1137,12 +1312,15 @@ in
   inherit
     mkOption
     mkOptionType
-    # The two halves of a type's construction, on the internal seam rather than the public surface:
+    # The two halves of a type's construction, published in `types` (not at the top level):
     # `mkType` is the gen record alone (what the boundary is handed, and what a C-2 reading is taken
     # on), `defineType` is that record expressed in the foreign protocol as well (what every
     # constructor above builds, and the library's single crossing site).
     mkType
     defineType
+    # A type derived from a completed one, re-completed rather than overridden (den-hoag-5kic). Also
+    # published at the library's top level, as the same value.
+    deriveType
     submodule
     listOf
     attrs

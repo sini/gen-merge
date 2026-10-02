@@ -205,7 +205,10 @@ the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]
 named `sub`) in addition to any `specialArgs` and `_module.args` entries. The engine's three win over
 an entry of the same name: a `specialArgs` key among them is refused by name, since the caller's value
 would reach no module, and a `_module.args` entry of that name stays readable as
-`config._module.args.<name>` but does not bind the formal.
+`config._module.args.<name>` but does not bind the formal. **That is the whole of the injected
+argument set, and it is the argument-side compat boundary:** nixpkgs injects `lib` at every
+`evalModules` level and gen-merge injects none, so a module reading `lib` is refused by name
+(`` module argument `lib' is not defined ``) until the caller threads it through `specialArgs`.
 
 ## Provenance
 
@@ -640,7 +643,7 @@ are internal fields — additive, threaded between chained evals, not part of th
 drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 
 - from gen-merge (merge-bearing): `submodule`, `listOf`, `attrsOf`, `lazyAttrsOf`, `deferredModule`,
-  `either`, `raw`, `anything`, plus `mkOption` / `mkOptionType`.
+  `either`, `raw`, `anything`, plus `mkOption` / `mkOptionType` / `deriveType`.
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
@@ -752,6 +755,72 @@ knows how to get from the first to the second, and that everything above states 
 alone. `mkType` builds the gen record **without** its foreign expression: usable by this engine,
 and it does not pay for the protocol (`ci/bench/interface-cost.sh` measures the difference in
 `nrThunks`).
+
+### `deriveType` — a type derived from a completed one
+
+Published as `types.deriveType` and as top-level `deriveType`, one value under one name; name and
+placement owner-ruled 2026-10-01 (`den-hoag-5kic`).
+
+```nix
+deriveType base {
+  id = "tagged";                  # required: the derivation's merge identity and functor name
+  key = { … };                    # default null: plain data two derivations of one `id` must agree on
+  fields = b: { __tag = "t"; };   # default `_: { }`: metadata, a function of the base it applies to
+  name = "…"; description = "…";  # default: the base's
+  mint = { minted = …; };         # default sealed
+}
+```
+
+**Why not `base // { … }`.** A completed type is a fixpoint: `defineType` ties the knot once, and
+its relation, `typeMerge` and `functor.type` are closed over it, while `recarry`,
+`substructure.rebuild` and `withArgs` are closed over its constructor. `//` changes the record and
+leaves every one of those answering for the base — the copy merges with itself to its base, is
+absorbed by its base when both are declared, rebuilds to its base and mints as its base — while
+its check and fold stay right, so nothing a value reaches says so. `deriveType` applies the delta
+**before** completion instead: the base's behaviour fields cross into a source record, the delta and
+the datum `__derivation = { base; id; key; }` are added, and `defineType` completes it. Its relation
+merges only a derivation of the same `id` and `key`, answering the bases' own join (through
+`mergeTypes`) derived again; `recarry`, `substructure.rebuild` and `withArgs` derive their result
+again. No protocol field is stated by hand. Which field of the base goes where is
+`interface.deriveClasses`, and `ci/tests/derive-type.nix` fails by name on a field no class names.
+
+The derivation keeps its base's `name` by default, the value vocabulary its messages speak. Its
+identity is `__derivation.id`, which every gen relation reads through `interface.keyOf` and which
+`exportType` publishes as `functor.name`, so neither a gen relation nor a foreign `typeMerge`
+absorbs it into its base. A foreign base (a nixpkgs type) crosses the import boundary first.
+
+**Refusals, each by name:** a base that is not a completed option type (a constructor, a `mkType`
+record, an option descriptor); `fields` setting anything but metadata — a type whose behaviour or
+relation differs is a new type (`mkOptionType`); no string `id`; a `key` holding an option type,
+which Nix `==` cannot compare totally (key a derivation by plain data).
+
+**Identity (ADR-0034).** A derivation never inherits its base's mint. With no `mint` it is sealed:
+`typeEq` compares the reified value, and `__id` is the named refusal. A caller that passes a
+`mint` owes a preimage covering the `id`, the `key` and the base's identity; one that omits the
+`key` mints two different derivations as one.
+
+**The name.** "Derive" is Bracha & Cook 1990 §2.1's word for this operation — inheritance as
+"incremental derivation", `C = Δ(P) ⊕ P` with the delta parametric in the parent (hence `fields`
+takes the base) — and it pairs with `defineType`. That `self` is then re-bound is Cook 1989's
+account, which Bracha defers to; it is cited, not read, and the ground here is `mkTypeWith`'s own
+knot and the cells. The hub's TERMINOLOGY already registers **Derive** for gen-schema's
+`mkInstanceRegistry` `derive` hook, a post-validation enrichment of a registry's VALUES. This is a
+second meaning, kept because the two sorts never meet: that one is a hook field on a registry, this
+one a type constructor over a TYPE, and neither is reachable where the other is.
+
+**Costs and residues.**
+
+- One completion per lift: a merge, a `recarry` or a rebuild of a derivation re-completes it, so N
+  derivation levels pay N completions and N relation frames, as gen-schema's `refined` does. The
+  hub perf-bench constructs no derivation, so it says nothing about this cost.
+- A foreign CONTAINER base (`lib.types.listOf …`) crosses the import boundary with no constructor to
+  rebuild it over, and the vocabulary refuses it by name — the inherited round-trip residue
+  (`den-hoag-un50q`). A foreign leaf derives.
+- A derivation OF a consumer type whose relation keys on an inherited marker field is absorbed by
+  that type: gen-schema's `refined` decides by `partner ? __schema`, which a derivation of a
+  refined type inherits, so `mergeTypes R (deriveType R …)` and the foreign `R.typeMerge` answer
+  `R`. Separation holds over bases whose relation reads identity through `keyOf`; it closes for
+  `refined` once `refined` is itself a `deriveType`.
 
 ### The import environment is PARTIAL, and its refusal survives the namespace assembly
 

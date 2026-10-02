@@ -596,6 +596,7 @@ in
   inherit (strategies)
     mkOption
     mkOptionType
+    deriveType
     submodule
     listOf
     attrsOf

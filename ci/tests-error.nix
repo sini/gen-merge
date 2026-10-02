@@ -6560,5 +6560,97 @@ in
           };
         };
       };
+
+    # `deriveType`'s refusals (den-hoag-5kic), each by name: a base that is not a completed option
+    # type, a delta reaching past metadata, no `id`, a `key` Nix `==` cannot decide, and a demand for
+    # the identity of a sealed derivation. The two declaration cells read a relation's own reason
+    # through the declaration plane; `ci/tests/derive-type.nix` holds the refusals as values.
+    flake.testsError.derive-type =
+      let
+        tagged.id = "tagged";
+        derive = gm.deriveType;
+        declared =
+          a: b:
+          realize {
+            modules = [
+              { options.o = gm.mkOption { type = a; }; }
+              { options.o = gm.mkOption { type = b; }; }
+              { o = "a"; }
+            ];
+          };
+        refusal = msg: {
+          type = "ThrownError";
+          inherit msg;
+        };
+      in
+      {
+        test-a-constructor-is-not-a-base = {
+          expr = force (derive t.listOf tagged);
+          expectedError = refusal "^gen-merge: `deriveType' over `<not a type>': the base is a function, not a type \\(a type constructor must be applied\\)$";
+        };
+        test-an-uncompleted-record-is-not-a-base = {
+          expr = force (derive (genMergeVocab.mkType { name = "m"; }) tagged);
+          expectedError = refusal "^gen-merge: `deriveType' over `m': the base has not been completed \\(it states no foreign protocol; build it through `defineType' first\\)$";
+        };
+        test-an-option-descriptor-is-not-a-base = {
+          expr = force (derive (gm.mkOption { type = t.str; }) tagged);
+          expectedError = refusal "^gen-merge: `deriveType' over `<unnamed>': the base is a tagged `option' value, not a type$";
+        };
+        test-a-delta-past-metadata-is-refused = {
+          expr = force (
+            derive t.str (
+              tagged
+              // {
+                fields = _: {
+                  mergeDefs = null;
+                  check = null;
+                };
+              }
+            )
+          );
+          expectedError = refusal "^gen-merge: `deriveType' over `string' as `tagged': `fields' sets `check', `mergeDefs', which are not metadata; a type whose behaviour or relation differs is a new type \\(`mkOptionType'\\), not a derivation$";
+        };
+        test-a-derivation-without-an-id-is-refused = {
+          expr = force (derive t.str { });
+          expectedError = refusal "^gen-merge: `deriveType' over `string' states no string `id'; a derivation's merge identity is the string it names$";
+        };
+        test-a-key-holding-a-type-is-refused = {
+          expr = force (derive t.str (tagged // { key.inner = [ t.int ]; }));
+          expectedError = refusal "^gen-merge: `deriveType' over `string' as `tagged': its `key' holds an option type, which Nix `==' cannot compare totally; key a derivation by plain data$";
+        };
+        test-a-sealed-derivation-answers-no-identity = {
+          expr = force (derive t.str tagged).__id;
+          expectedError = refusal "^gen-merge: the derivation `tagged' of `string' is sealed: it states no minted identity, so it has none to answer with \\(pass `mint' to `deriveType'\\)$";
+        };
+        test-a-derivation-declared-beside-its-base-names-the-pair = {
+          expr = declared (derive t.str tagged) t.str;
+          expectedError = refusal "^gen-merge: option `o' is declared with types that do not merge \\(the derivation `tagged' of `string' and `string'\\); declared in <gen-merge>, <gen-merge>$";
+        };
+        test-two-derivations-whose-keys-differ-name-the-keys = {
+          expr = declared (derive t.str (tagged // { key = 1; })) (derive t.str (tagged // { key = 2; }));
+          expectedError = refusal "^gen-merge: option `o' is declared with types that do not merge \\(the derivation `tagged' of `string' and the derivation `tagged' of `string', whose keys differ\\); declared in <gen-merge>, <gen-merge>$";
+        };
+        # A foreign container crosses the import boundary with no constructor to rebuild it over, and
+        # the vocabulary refuses it by name (the inherited round-trip residue, den-hoag-un50q).
+        test-a-foreign-container-base-is-refused-by-the-vocabulary = {
+          expr = force (derive (nixpkgsLib.types.listOf t.str) tagged).name;
+          expectedError = refusal "^gen-merge: the structural type `listOf' carries a parameter but does not supply `recarry'; a type that carries something answers for it rather than inheriting a leaf's answers$";
+        };
+        # LIVE CONTROL, same run: the same declaration of one derivation twice evaluates.
+        test-control-one-derivation-declared-twice-evaluates = {
+          expr =
+            let
+              d = derive t.str tagged;
+            in
+            (gm.evalModuleTree {
+              modules = [
+                { options.o = gm.mkOption { type = d; }; }
+                { options.o = gm.mkOption { type = d; }; }
+                { o = "a"; }
+              ];
+            }).config.o;
+          expected = "a";
+        };
+      };
   };
 }
