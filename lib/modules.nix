@@ -2235,12 +2235,26 @@ let
   # whose own fold is this one at the same `loc`, over the same definitions.
   mergeDefsThreaded =
     ev: loc: type:
+    let
+      t = interface.homedAt "evalModuleTree" loc type;
+    in
     mergeDefs loc (
-      if ev.under or false then
-        threadedUnder ev loc (interface.homedAt "evalModuleTree" loc type)
+      if ev.under or false || (ev.exactAt or null) != null && unionNodeAt ev loc t then
+        threadedUnder ev loc t
       else
-        threadedAs ev (interface.homedAt "evalModuleTree" loc type)
+        threadedAs ev t
     );
+  # The fold's half of the walk's union-node rule (`keyWalk`): a union holding a container member,
+  # at an exact container's element (`exactAt`, never the walk's own root), is read off its node.
+  # Asked only of a marked element (`types.exactThread`), so an unmarked fold calls nothing here.
+  unionNodeAt =
+    ev: loc: t:
+    ev.containerNodes or false
+    && ev.position != [ ]
+    && ev.exactAt == ev.position
+    && isAttrs t
+    && t ? choose
+    && containerAt loc t;
   threadedUnder =
     ev: loc: t:
     if containerAt loc t then
@@ -2363,6 +2377,18 @@ let
     else
       containerAt loc m;
 
+  # The member a union's fold folds through: `choose`, repeated through nested unions; `null` where
+  # no member takes every definition (the fold's refusal).
+  chosenAt =
+    loc: defs: t:
+    if isAttrs t && t ? choose then
+      let
+        c = t.choose loc (plainDefs defs);
+      in
+      if c == null then null else chosenAt loc defs (interface.homedAt "evalModuleTree" loc c)
+    else
+      t;
+
   # A definition list as a fold reads it, without the walk's addresses.
   plainDefs = map (d: {
     inherit (d) file value;
@@ -2375,15 +2401,11 @@ let
   # the fold reads, so the fold's selection and the child's admission cannot disagree. `null` where
   # the chain does not reach the position: the candidate refusal.
   memberChain =
-    stop: t: rel: loc: defs:
+    t: rel: loc: defs:
     if !(isAttrs t) then
       null
-    else if stop && rel == [ ] then
-      t
     else if t ? choose then
-      memberChain stop (interface.homedAt "evalModuleTree" loc (
-        t.choose loc (plainDefs defs)
-      )) rel loc defs
+      memberChain (interface.homedAt "evalModuleTree" loc (t.choose loc (plainDefs defs))) rel loc defs
     else if interface.isNesting t || !(t ? split) then
       (if rel == [ ] then t else null)
     else
@@ -2395,9 +2417,9 @@ let
       if es == [ ] then
         (if rel == [ ] then t else null)
       else
-        memberChain stop (interface.homedAt "evalModuleTree" e.loc
-          e.type
-        ) (drop (length e.step) rel) e.loc (addressedDefs (map (d: d // { at = [ ]; }) e.defs));
+        memberChain (interface.homedAt "evalModuleTree" e.loc e.type) (drop (length e.step) rel) e.loc (
+          addressedDefs (map (d: d // { at = [ ]; }) e.defs)
+        );
 
   # `under`: `null` where every enclosing container keys EXACTLY (`attrsOf`, `listOf`, `nullOr`,
   # whose key sets already read each element's definitions to WHNF), else the name of the enclosing
@@ -2406,8 +2428,12 @@ let
   # `{ key; type; member; loc; defs; }`, where `member`
   # is the type the child evaluates under, forced only when the child's `result` reads it.
   #   · a nesting type IS a key, and its own member;
-  #   · a UNION (`choose`) is walked member by member at its own position (below); the walk never
-  #     applies `choose`, so a union's member is decided where the child is read;
+  #   · a UNION holding a CONTAINER member (`containerAt`) is keyed where it is READ: under an
+  #     exact container it is a CONTAINER NODE, and at the walk's own root (an option's position, or
+  #     a node's) its `choose` decides the member walked, as its fold's does, so no sibling's read
+  #     runs a member's code;
+  #   · any other UNION is walked member by member at its own position (below); the walk never
+  #     applies `choose` there, so a union's member is decided where the child is read;
   #   · a container is walked through its `split`, where it keys exactly;
   #   · under `lazyAttrsOf`, a position `containerAt` holds is a CONTAINER NODE (arm (v)): one
   #     record, marked `container`, whose own walk keys it over its own definitions (`containerNode`);
@@ -2439,13 +2465,33 @@ let
           inherit loc defs;
         }
       ]
+    else if under == null && t ? choose && containerAt loc t then
+      # A UNION HOLDING A CONTAINER MEMBER, keyed EXACTLY: its key set is its member's, which only
+      # `choose` decides. Under an exact container it is a CONTAINER NODE, so the choice runs where
+      # the position is read and never at a sibling; at the walk's own root (an option's position,
+      # or a node's), the position IS the one read, and `choose` decides it, as the fold does.
+      if pos == [ ] then
+        let
+          c = chosenAt loc defs t;
+        in
+        if c == null then [ ] else keyWalk null group c pos loc defs
+      else
+        [
+          {
+            key = pos;
+            type = t;
+            member = t;
+            container = true;
+            inherit loc defs;
+          }
+        ]
     else if t ? choose then
       map (
         r:
         r
         // {
           type = t;
-          member = memberChain (r ? container) t (drop (length pos) r.key) loc defs;
+          member = memberChain t (drop (length pos) r.key) loc defs;
         }
       ) (unionKeys under group t pos loc defs t)
     else if !(t ? split) then
@@ -2482,12 +2528,9 @@ let
 
   # A UNION's keys (v10, S1 RULED (ii)): each member that may nest, in order, at the union's own
   # position, which a union's members add no step to. A nesting member contributes that position; a
-  # union member is walked by this same rule; a container member contributes the keys of its own
-  # walk, taken ONLY WHEN every definition at the position has its shape at WHNF (its own `admits`),
-  # since the union's `choose` takes the member that accepts every definition, so a container whose
-  # shape fails on one cannot be the fold's choice. The filter never applies `choose`, and it reads
-  # nothing the enclosing exact container's key set has not already forced (*defaulted,
-  # reversible*). A position two members key is ONE key (`listToAttrs` keeps the first). Under an
+  # union member is walked by this same rule. A union holding a container member reaches this walk
+  # only under an over-approximating container (`keyWalk` keys it where read otherwise). A position
+  # two members key is ONE key (`listToAttrs` keeps the first). Under an
   # over-approximating container nothing is read: a container member that keys exactly is class
   # (a), refused naming the union's position (under `lazyAttrsOf` that position is a container node
   # instead, `containerAt`, whose own walk takes this rule with `under = null`).
@@ -2517,8 +2560,6 @@ let
         }
       else if under != null then
         throw (unionUnderLazyRefusal group under u pos mt)
-      else if mt ? admits && all (d: mt.admits d.value) defs then
-        keyWalk null group mt pos loc defs
       else
         [ ]
     ) (t.carries.alternatives or [ ]);

@@ -1069,6 +1069,27 @@ let
       else
         t;
 
+  # MAY this type fold as a UNION that may nest, at its own position or through a container below
+  # it? Gen's own union, or the stock foreign `either` that `homedAt` re-homes as one; through a gen
+  # container's element and a stock foreign `nullOr`'s, which over-approximates, since `nullOr` is
+  # the one container besides a union that adds no step. Read without homing, so it refuses nothing:
+  # an exact container asks it once, when it is built, to decide whether its elements carry the
+  # union-node mark (`types.exactThread`).
+  mayFoldUnion =
+    t:
+    isAttrs t
+    && !(isNesting t)
+    && canNest t
+    && (
+      if t ? carries then
+        t ? choose || (t ? carries.element && mayFoldUnion t.carries.element)
+      else
+        let
+          name = (t.functor or { }).name or null;
+        in
+        name == "either" || (name == "nullOr" && mayFoldUnion ((statedRoles t).element or null))
+    );
+
   # ── AN UNRECOGNISED CONTAINER THREADS THROUGH ITS OWN REBUILD (den-hoag-f8mgj, owner-ruled arm (T)) ─
   # A foreign container outside the six, declaring a gen nesting element, is rebuilt by its own
   # `substSubModules`, handed a module list that carries a marker (`threadMarker`). Every stock
@@ -1218,6 +1239,8 @@ let
                     ev
                     // {
                       position = ev.position ++ stepOf loc eloc;
+                      # A foreign container keys over-approximately (`keyWalk`), never exactly.
+                      exactAt = null;
                     }
                     // (
                       if builtins.elem (stepOf loc eloc) steps then
@@ -2249,6 +2272,7 @@ in
     canNest
     declaresNesting
     homedAt
+    mayFoldUnion
     bridge
     importedCarried
     importedOffered

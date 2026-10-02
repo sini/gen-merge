@@ -797,4 +797,227 @@ in
           "npEither"
         ]
     );
+
+  # 4zvc9 Unit 2 (lazy position walk): a union holding a container member is keyed where it is READ.
+  # Every `expected` is nixpkgs' evalModules over the same types and definitions, never a literal.
+  # One test per cell, so an uncatchable abort errors its own cell only.
+  flake.tests.nesting-threaded-union-lazy-walk =
+    let
+      npSub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+      optDefs =
+        type: defs:
+        (cfg ([ { options.h = gm.mkOption { inherit type; }; } ] ++ map (d: { config.h = d; }) defs)).h;
+      fwdDefs =
+        type: defs:
+        (nixpkgsLib.evalModules {
+          modules = [
+            { options.h = nixpkgsLib.mkOption { inherit type; }; }
+          ]
+          ++ map (d: { config.h = d; }) defs;
+        }).config.h;
+      # gen and nixpkgs spell the same type from one builder `T: S: …` (`T` the types, `S` the submodule)
+      pair = mk: defs: read: {
+        expr = read (optDefs (mk t sub) defs);
+        expected = read (fwdDefs (mk np npSub) defs);
+      };
+      # a refusal stays catchable where nixpkgs refuses: the cell reads `tryEval`'s verdict on both
+      caught = mk: defs: read: {
+        expr = (builtins.tryEval (builtins.deepSeq (read (optDefs (mk t sub) defs)) true)).success;
+        expected = (builtins.tryEval (builtins.deepSeq (read (fwdDefs (mk np npSub) defs)) true)).success;
+      };
+      forced = _: throw "4zvc9: a sibling's coercion was forced";
+      unions = {
+        either = T: e: T.either e np.str;
+        oneOf =
+          T: e:
+          T.oneOf [
+            e
+            np.str
+          ];
+        npEither = _: e: np.either e np.str;
+      };
+      wrappers = {
+        uniq = s: np.uniq s;
+        coercedTo = s: np.coercedTo np.str (_: throw "unused") s;
+      };
+      # G1: the 90's shape — a union over a foreign wrapper of a submodule, at an option's root and as
+      # an exact container's element.
+      sites = {
+        root = {
+          ty = _: u: u;
+          d = {
+            x = 5;
+          };
+        };
+        attrsOf = {
+          ty = T: u: T.attrsOf u;
+          d = {
+            k.x = 5;
+          };
+        };
+        listOf = {
+          ty = T: u: T.listOf u;
+          d = [ { x = 5; } ];
+        };
+      };
+      g1 = builtins.listToAttrs (
+        builtins.concatMap (
+          un:
+          builtins.concatMap (
+            wn:
+            map (sn: {
+              name = "test-${un}-${wn}-${sn}";
+              value = pair (T: S: sites.${sn}.ty T (unions.${un} T (wrappers.${wn} S))) [ sites.${sn}.d ] (v: v);
+            }) (builtins.attrNames sites)
+          ) (builtins.attrNames wrappers)
+        ) (builtins.attrNames unions)
+      );
+      aw =
+        S:
+        np.attrsWith {
+          elemType = S;
+          placeholder = "p";
+        };
+    in
+    g1
+    // {
+      # G2: reading one position runs no sibling's member code (gate v1 C1, v0 C1). Each reads a
+      # nested sibling `b`.
+      test-an-unchosen-foreign-container-never-merges-a-sibling =
+        pair (T: S: T.attrsOf (T.either S (aw S)))
+          [
+            {
+              a = "s";
+              b.x = 5;
+            }
+          ]
+          (v: v.b);
+      test-an-unchosen-foreign-container-never-merges-a-sibling-int =
+        pair (T: S: T.attrsOf (T.either S (aw S)))
+          [
+            {
+              a = 5;
+              b.x = 5;
+            }
+          ]
+          (v: v.b);
+      test-a-sibling-coercion-is-not-forced =
+        pair (T: S: T.attrsOf (T.either (np.coercedTo np.str forced S) S))
+          [
+            {
+              a = "hello";
+              b.x = 5;
+            }
+          ]
+          (v: v.b);
+      test-a-sibling-coercion-is-not-forced-across-definitions =
+        pair (T: S: T.attrsOf (T.either (np.coercedTo np.str forced S) S))
+          [
+            { b.x = 5; }
+            { a = "hello"; }
+            { b = { }; }
+          ]
+          (v: v.b);
+      test-a-sibling-coercion-is-not-forced-second-member =
+        pair (T: S: T.attrsOf (T.either S (np.coercedTo np.str forced S)))
+          [
+            {
+              a = "hello";
+              b.x = 5;
+            }
+          ]
+          (v: v.b);
+      test-a-sibling-wrapper-merge-is-not-run = pair (T: S: T.attrsOf (T.either (np.uniq S) np.str)) [
+        {
+          a = "s";
+          b.x = 5;
+        }
+        { a = "s"; }
+      ] (v: v.b);
+      test-a-nested-union-is-keyed-where-read =
+        pair (T: S: T.attrsOf (T.either (T.either (np.uniq S) np.int) np.str))
+          [
+            {
+              a = "s";
+              b.x = 5;
+            }
+          ]
+          (v: v.b);
+      # the coerce function reads a sibling through `config`: forcing it at key time is a cycle
+      test-a-coercion-reading-its-sibling-is-not-a-cycle =
+        let
+          mods = mkOption: T: S: [
+            (
+              { config, ... }:
+              {
+                options.h = mkOption {
+                  type = T.attrsOf (
+                    T.either (np.coercedTo np.str (_: if config.h.b.x > 0 then { x = 1; } else { }) S) S
+                  );
+                };
+                config.h = {
+                  a = "hello";
+                  b.x = 5;
+                };
+              }
+            )
+          ];
+        in
+        {
+          expr = (cfg (mods gm.mkOption t sub)).h.b;
+          expected = (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption np npSub; }).config.h.b;
+        };
+      # the read position's own choice is nixpkgs' (gate v1 prices 1 and 2: both serve)
+      test-an-unchosen-wrapper-over-a-list-keeps-the-tree-member =
+        pair (T: S: T.either (np.uniq (T.listOf S)) (T.either S np.str))
+          [
+            { x = 5; }
+          ]
+          (v: v);
+      test-a-coerced-member-evaluates-the-coerced-definition =
+        pair (T: S: T.attrsOf (T.either (np.coercedTo np.str (s: { x = builtins.stringLength s; }) S) S))
+          [
+            { a = "hello"; }
+            { b.x = 5; }
+          ]
+          (v: v);
+      test-a-union-over-a-list-of-coercions-serves =
+        pair (T: S: T.listOf (T.either (np.coercedTo np.str (s: { x = builtins.stringLength s; }) S) S))
+          [
+            [
+              "hello"
+              { x = 5; }
+            ]
+          ]
+          (v: v);
+      # gate v1 P1: an unchosen foreign wrapper over a FOREIGN container holding a tree
+      test-an-unchosen-wrapper-over-a-foreign-container-serves-a-sibling =
+        pair (T: S: T.attrsOf (T.either S (np.uniq (np.attrsOf S))))
+          [
+            {
+              a = "s";
+              b.x = 5;
+            }
+          ]
+          (v: v.b);
+      test-an-unchosen-coercion-over-a-foreign-list-serves-a-sibling =
+        pair (T: S: T.attrsOf (T.either (np.coercedTo np.str forced (np.listOf S)) S))
+          [
+            {
+              a = "hello";
+              b.x = 5;
+            }
+          ]
+          (v: v.b);
+      # G4: where nixpkgs refuses, the refusal is catchable (never an abort)
+      test-a-read-position-outside-every-member-refuses-catchably =
+        caught (T: S: T.attrsOf (T.either S (aw S)))
+          [
+            { b = "s"; }
+          ]
+          (v: v.b);
+      test-a-root-outside-every-member-refuses-catchably = caught (T: S: T.either S (aw S)) [ "s" ] (
+        v: v
+      );
+    };
 }

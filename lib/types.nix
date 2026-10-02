@@ -468,6 +468,25 @@ let
   # element reads is the one at that position. It is the called fold's call with `ev` added.
   threadElement =
     ev: e: mergeDefsThreaded (ev // { position = ev.position ++ e.step; }) e.loc e.type e.defs;
+  # An EXACT container's element (`attrsOf`, `listOf`): marked with its own position, so a union
+  # there that the key walk made a container node is read off it (`mergeDefsThreaded`). The mark
+  # names one position, so a container below that adds a step clears it.
+  threadExact =
+    ev: e:
+    let
+      position = ev.position ++ e.step;
+    in
+    mergeDefsThreaded (
+      ev
+      // {
+        inherit position;
+        exactAt = position;
+      }
+    ) e.loc e.type e.defs;
+  # The thread an exact container's elements take, decided ONCE, when the type is built: the mark
+  # only where the element may fold as such a union (`interface.mayFoldUnion`), so any other
+  # element's fold allocates nothing for it.
+  exactThread = element: if interface.mayFoldUnion element then threadExact else threadElement;
 
   # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
   # `name` is injected by the two `evalModuleTree` calls below; `config`, `options` and `prefix` are
@@ -735,6 +754,7 @@ let
           ) defs
         );
       called = refusingOutside "listOf" admits (loc: defs: map foldElement (split loc defs));
+      thread = exactThread element;
     in
     defineType {
       name = "listOf";
@@ -763,7 +783,7 @@ let
       # `threaded` folds the same elements through the engine's threaded twin (den-hoag-n6dh7 item 5).
       mergeDefs = {
         __functor = _: called;
-        threaded = ev: refusingOutside "listOf" admits (loc: defs: map (threadElement ev) (split loc defs));
+        threaded = ev: refusingOutside "listOf" admits (loc: defs: map (thread ev) (split loc defs));
       };
     };
 
@@ -817,6 +837,7 @@ let
       # exists only under an accessor that states `containerNodes` (a gen evaluation's key walk);
       # under the bridge each element folds inline, one root evaluation per nested tree.
       marks = tyName == "lazyAttrsOf" && !(interface.isNesting element);
+      thread = if tyName == "attrsOf" then exactThread element else threadElement;
       threaded =
         ev:
         refusingOutside tyName admits (
@@ -827,7 +848,7 @@ let
           listToAttrs (
             map (e: {
               name = head e.step;
-              value = threadElement ev' e;
+              value = thread ev' e;
             }) (split loc defs)
           )
         );
