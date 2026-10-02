@@ -544,7 +544,9 @@ let
                     d
                     i
                   ];
-                  loc = loc ++ [ (toString i) ];
+                  # nixpkgs `listOf`'s segment, rendered from the same `d` and `i` as the step:
+                  # the 1-based definition ordinal and the 1-based index within it, before the drop.
+                  loc = loc ++ [ "[definition ${toString (d + 1)}-entry ${toString (i + 1)}]" ];
                   defs = [
                     {
                       inherit (def) file;

@@ -1,6 +1,7 @@
 # The location id is injective (design spec §3 O4 / §2.1). `options."a.b".c` and `options.a."b.c"`
-# are TWO distinct declared leaves whose DISPLAY name (`showOption` — the dot-join, `lib/modules.nix`)
-# collides: both read "a.b.c". The bipartite contribution relation's node ids must not collide the
+# are TWO distinct declared leaves whose bare dot-join collides: both read "a.b.c". (Their DISPLAY
+# name, `showOption` in `lib/modules.nix`, quotes a segment as nixpkgs' does, so it no longer
+# collides.) The bipartite contribution relation's node ids must not collide the
 # same way, or an edit to one leaks reuse-unsoundness onto the other (over-approximating dirty is
 # sound; UNDER-approximating it, by merging two locations' dirtiness into one, is not). Only `"a.b".c`
 # is edited here; `a."b.c"` stays untouched and must still be independently reusable.
@@ -60,11 +61,10 @@ in
       expected = {
         # The clean leaf (`a."b.c"`) is reusable; its edited namesake is not — the discriminating
         # conjunct (see file header).
-        reused = [ "a.b.c" ];
-        # OQ-2's accepted residual: the DISPLAY join still collides at publication (one string
-        # standing for two distinct locations, in opposite buckets) — this is a companion reading,
-        # not the discriminator.
-        remergedKeys = [ "a.b.c" ];
+        reused = [ ''a."b.c"'' ];
+        # OQ-2's residual, closed by nixpkgs' `showOption` quoting: the two locations publish as two
+        # strings, in opposite buckets. A companion reading, not the discriminator.
+        remergedKeys = [ ''"a.b".c'' ];
         byte = true;
         edited = "dirty-edited";
         untouched = "clean-base";

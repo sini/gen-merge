@@ -342,4 +342,32 @@
       ];
     }
   ];
+  # A list element's `name` is nixpkgs `listOf`'s segment, `[definition n-entry m]`: two definitions
+  # (the second holding a discharged entry before its survivor), so the names must be distinct and
+  # each index taken before the drop.
+  list-element-name = P: [
+    {
+      options.xs = P.mkOption {
+        type = P.types.listOf (
+          P.types.submodule (
+            { name, ... }:
+            {
+              options.n = P.mkOption {
+                type = P.types.str;
+                default = name;
+              };
+              options.v = P.mkOption { type = P.types.int; };
+            }
+          )
+        );
+      };
+    }
+    { xs = [ { v = 1; } ]; }
+    {
+      xs = [
+        (P.mkIf false { v = 2; })
+        { v = 3; }
+      ];
+    }
+  ];
 }

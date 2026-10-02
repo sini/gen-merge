@@ -81,8 +81,8 @@ in
   # U2-g's key clauses. One child per nesting position, keyed by the POSITION path, minted with
   # Unit 1's identifier: the host's coordinates, the NTA `nested`, the option path as the group.
   flake.tests.nesting-keys-children = {
-    # Two definitions of one list element each: the fold's own names are `[ "0" "0" ]` (it indexes
-    # within a definition), and the two elements are two children, `[ d i ]` apart.
+    # Two definitions of one list element each: the names are nixpkgs `listOf`'s segments, one per
+    # definition, and the two elements are two children, `[ d i ]` apart.
     test-two-definitions-of-one-list-element-each-are-two-children = {
       expr =
         let
@@ -99,8 +99,8 @@ in
         };
       expected = {
         names = [
-          "0"
-          "0"
+          "[definition 1-entry 1]"
+          "[definition 2-entry 1]"
         ];
         children."[\"o\"]" = [
           "[0,0]"
@@ -108,7 +108,7 @@ in
         ];
       };
     };
-    # The control: one definition of two elements.
+    # The control: one definition of two elements, named as nixpkgs `listOf` names them.
     test-one-definition-of-two-list-elements-is-two-children-by-index = {
       expr =
         let
@@ -127,8 +127,8 @@ in
         };
       expected = {
         names = [
-          "0"
-          "1"
+          "[definition 1-entry 1]"
+          "[definition 1-entry 2]"
         ];
         children."[\"o\"]" = [
           "[0,0]"

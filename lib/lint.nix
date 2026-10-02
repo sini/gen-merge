@@ -103,7 +103,7 @@ let
     mergeOptionDecls
     ;
 
-  showLoc = concatStringsSep ".";
+  showLoc = core.showOption;
   mkFinding = kind: loc: file: detail: {
     inherit
       kind

@@ -85,7 +85,8 @@ in
       expected = "‹name›";
     };
     # A survivor keeps its SOURCE position: the index is taken before the discharged element is
-    # dropped, as nixpkgs `listOf` indexes (`imap1`) inside its `filter`.
+    # dropped, as nixpkgs `listOf` indexes (`imap1`) inside its `filter`, and the name is nixpkgs
+    # `listOf`'s segment for that position.
     test-listOf-survivor-keeps-its-source-index = {
       expr = map (e: e.n) (
         at (t.listOf subName) [
@@ -95,7 +96,7 @@ in
           ]
         ]
       );
-      expected = [ "1" ];
+      expected = [ "[definition 1-entry 2]" ];
     };
     # ARMING CONTROLS, green at RED and GREEN: a surviving definition wins over the empty value, and
     # `lazyAttrsOf` keeps the key its strict sibling drops.

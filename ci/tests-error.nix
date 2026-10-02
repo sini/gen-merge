@@ -1280,9 +1280,10 @@ in
           expr = defined (t.attrsOf (t.listOf t.int)) [ (at "/p/F.nix" { k = 5; }) ];
           expectedError = refuses "o\\.k" "listOf" "/p/F\\.nix";
         };
+        # The index is nixpkgs `listOf`'s segment, `[definition n-entry m]`.
         test-nested-attrsOf-in-listOf-refuses-at-the-index = {
           expr = defined (t.listOf (t.attrsOf t.int)) [ (at "/p/F.nix" [ 5 ]) ];
-          expectedError = refuses "o\\.0" "attrsOf" "/p/F\\.nix";
+          expectedError = refuses ''o\."\[definition 1-entry 1\]"'' "attrsOf" "/p/F\\.nix";
         };
       };
 
@@ -2482,7 +2483,8 @@ in
           };
         # A refused cell's position: one segment per container the construction nests the tree in.
         # A construction of `nullOr`/`option` alone never reaches the tree's fold: nixpkgs' own
-        # check refuses the string first.
+        # check refuses the string first. A `listOf` names its element by nixpkgs `listOf`'s
+        # segment.
         mountCell =
           c:
           let
@@ -2490,7 +2492,7 @@ in
             segment =
               f:
               if f == "listOf" then
-                [ "0" ]
+                [ ''"\[definition 1-entry 1\]"'' ]
               else if f == "attrsOf" || f == "lazyAttrsOf" then
                 [ "k" ]
               else
@@ -4296,11 +4298,12 @@ in
             msg = msg "x\\.a\\.bogus" "x\\.a";
           };
         };
+        # The element's segment is nixpkgs `listOf`'s, quoted as nixpkgs' `showOption` quotes it.
         test-listof-element-refuses = {
           expr = builtins.deepSeq (cx (t.listOf el) [ bad ]) null;
           expectedError = {
             type = "ThrownError";
-            msg = msg "x\\.0\\.bogus" "x\\.0";
+            msg = msg ''x\."\[definition 1-entry 1\]"\.bogus'' ''x\."\[definition 1-entry 1\]"'';
           };
         };
         # 9f4bn K4, the non-reporting half: an element whose every def is discharged takes the
@@ -5206,9 +5209,10 @@ in
           expr = read (t.attrsOf 5) { x = "a"; };
           expectedError = refused "p.x" (notAType "int");
         };
+        # The element's segment is nixpkgs `listOf`'s, quoted as nixpkgs' `showOption` quotes it.
         test-listOf-a-scalar-is-refused = {
           expr = read (t.listOf 5) [ "a" ];
-          expectedError = refused "p.0" (notAType "int");
+          expectedError = refused ''p\."\[definition 1-entry 1\]"'' (notAType "int");
         };
         test-nullOr-a-scalar-is-refused = {
           expr = read (t.nullOr 5) "a";
@@ -5218,10 +5222,11 @@ in
           expr = read (t.either 5 t.str) "a";
           expectedError = refused "p" (notAType "int");
         };
-        # Nested: each level re-enters the same fold, and the loc names the concrete position.
+        # Nested: each level re-enters the same fold, and the loc names the concrete position, the
+        # list element by nixpkgs `listOf`'s segment.
         test-a-nested-scalar-element-is-refused-at-its-position = {
           expr = read (t.attrsOf (t.listOf 5)) { x = [ "a" ]; };
-          expectedError = refused "p.x.0" (notAType "int");
+          expectedError = refused ''p\.x\."\[definition 1-entry 1\]"'' (notAType "int");
         };
         test-attrsOf-a-bare-constructor-is-refused = {
           expr = read (t.attrsOf t.enum) { x = "a"; };
@@ -6145,11 +6150,12 @@ in
           expr = opt (np.addCheck (t.nullOr tree) no) { a = 5; };
           expectedError = carried "nullOr";
         };
+        # The element's segment is nixpkgs `listOf`'s, quoted as nixpkgs' `showOption` quotes it.
         test-a-rewritten-check-over-a-union-member-holding-the-tree-refuses-as-the-checked-fold = {
           expr = opt (t.listOf (np.addCheck (t.either tree t.str) no)) [ { a = 5; } ];
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: a definition for option `s[.]0' is not of type `either', in `def[.]nix'$";
+            msg = ''^gen-merge: a definition for option `s[.]"\[definition 1-entry 1\]"' is not of type `either', in `def[.]nix'$'';
           };
         };
       };
