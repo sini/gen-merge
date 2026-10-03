@@ -1113,6 +1113,59 @@ in
     # ★ EVERY PATTERN HERE IS ANCHORED `^…$`, for the reason stated below the sub-protocol cells.
     # These messages DO carry ERE metacharacters — the parenthesised type pair, and the `.` in every
     # file name — so each is escaped and the anchors are left to carry only the ends.
+    # ONE MARK, TWO TYPES (U1 landing gate C2): two types sharing one mark and differing at a sealed
+    # component are refused with that reason, never "mint to different constructions" (the distinct-mark
+    # refusal, pinned beside them).
+    flake.testsError.shared-mark-refusal =
+      let
+        t = gm.types;
+        algebra = genTypesFlake.inputs.gen-algebra.lib;
+        identity = genTypesFlake.inputs.gen-identity.lib;
+        its =
+          args:
+          algebra.mkIntensional identity.hashIdentity {
+            revision = "r1";
+            members.stitch = a: v: builtins.isInt v && v >= a.lo && v <= a.hi;
+          } "stitch" args;
+      in
+      {
+        test-two-lambda-predicates-name-the-shared-mark = {
+          expr = declaredTwice (t.typedef "even" (v: builtins.bitAnd v 1 == 0)) (
+            t.typedef "even" (v: builtins.bitAnd v 1 == 0)
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x' is declared with types that do not merge \\(`even' and `even', which mint one identity and differ at a sealed component \\(a caller-supplied predicate or a registered construction\\) that identity is blind to, where two separately written predicates cannot be compared: declare one binding, or register the predicate \\(gen-algebra `mkIntensional`\\) so that two constructions of it decide\\); declared in a\\.nix, b\\.nix$";
+          };
+        };
+        test-two-registered-terms-name-the-shared-mark = {
+          expr =
+            declaredTwice
+              (t.typedef "stitched" (its {
+                lo = 1;
+                hi = 9;
+              }))
+              (
+                t.typedef "stitched" (its {
+                  lo = 1;
+                  hi = 10;
+                })
+              );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x' is declared with types that do not merge \\(`stitched' and `stitched', which mint one identity and differ at a sealed component \\(a caller-supplied predicate or a registered construction\\) that identity is blind to, and their sealed subjects decide them two types\\); declared in a\\.nix, b\\.nix$";
+          };
+        };
+        # the distinct-mark refusal keeps its own reason
+        test-two-marks-keep-the-distinct-construction-reason = {
+          expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "f" [ "b" ]);
+          expectedError = {
+            type = "ThrownError";
+            msg = "which mint to different constructions";
+          };
+        };
+      };
+
     flake.testsError.declaration-merge = {
       # The message names the option, the two types that could not be combined, and the files that
       # declared them: an author who is told only "types do not merge" still has to find both.
@@ -4851,9 +4904,11 @@ in
           expr = declaredTwice (t.either t.int t.str) badlyNamed;
           expectedError = refuses "`either' and `<a name of type int>'";
         };
+        # an `enum' over a path, which the encoder refuses: a parametric leaf with no mint (a
+        # `refined' over a caller lambda now mints, with the lambda a sealed component)
         test-unminted-parametric-leaf-names-the-partner-name-type = {
-          expr = declaredTwice (t.refined t.str (_: true)) badlyNamed;
-          expectedError = refuses "`refined<string>' and `<a name of type int>', whose parameters live behind their own predicate and cannot be compared";
+          expr = declaredTwice (t.enum "e" [ /x ]) badlyNamed;
+          expectedError = refuses "`e' and `<a name of type int>', whose parameters live behind their own predicate and cannot be compared";
         };
         test-minted-parametric-leaf-names-the-partner-name-type = {
           expr = declaredTwice (t.union [ t.str ]) badlyNamed;

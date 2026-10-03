@@ -32,6 +32,7 @@
           export cells=${./tests-process-cells.nix} libSrc=${../lib}
           export genPreludeSrc=${inputs.gen-prelude} genIdentitySrc=${inputs.gen-scope.inputs.gen-identity}
           export genGraphSrc=${inputs.gen-scope.inputs.gen-graph} genTypesSrc=${inputs.gen-types}
+          export genAlgebraSrc=${inputs.gen-types.inputs.gen-algebra}
           export genMemoSrc=${inputs.gen-memo} genScopeSrc=${inputs.gen-scope}
           # nixpkgs as a VALUE, for the one cell folding a stock nixpkgs container (never a lib dep).
           export nixpkgsSrc=${inputs.nixpkgs}
@@ -68,6 +69,7 @@
               --argstr genIdentitySrc "$genIdentitySrc" \
               --argstr genGraphSrc "$genGraphSrc" \
               --argstr genTypesSrc "$genTypesSrc" \
+              --argstr genAlgebraSrc "$genAlgebraSrc" \
               --argstr genMemoSrc "$genMemoSrc" \
               --argstr genScopeSrc "$genScopeSrc" \
               --argstr label "$label" \

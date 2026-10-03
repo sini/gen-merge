@@ -349,11 +349,11 @@ let
   #     apart, and `struct "s"` over different fields does too.
   #   · "value equality is pointer-based over the closures (two identical constructions compare
   #     UNEQUAL)" — false for a MINTED family: two separately-built `enum "e" [ "a" "b" ]`s mint the
-  #     SAME digest and compare equal. It is STILL TRUE for a SEALED one (`refined`, a `struct`
-  #     carrying a caller `verify`, `typedef`/`typedef'`): their `check` is a bare lambda rebuilt on
-  #     every call, and gen-types' own README says `typeEq` still separates two identical sealed
-  #     constructions ("What a checker's identity is minted over"). Sealed and foreign leaves (no
-  #     `__mint.minted` at all) therefore keep the ORIGINAL refusal below, unchanged.
+  #     SAME digest and compare equal. A type with a SEALED component (`refined`, a `struct` carrying a
+  #     caller `verify`, `typedef`/`typedef'`) mints too, with the component in `__sealed`, and `typeEq`
+  #     decides it (`same`, below): one binding is one type, two separately written lambdas are
+  #     refused. A leaf with no `__mint.minted` at all (an `enum` over a path, a self-referential type)
+  #     keeps the ORIGINAL refusal below, unchanged.
   #
   # A differing-construction pair is not "cannot be compared" — the mint compares it fine, and says
   # unequal — so what reconciles it is a LAW over the two constructions, read back through the
@@ -376,10 +376,25 @@ let
   refuseParametricMerge = t: other: {
     refused = "`${nameOf t}' and `${nameOf other}', whose parameters live behind their own predicate and cannot be compared";
   };
+  # The ONE-MARK refusal: two types that mint one mark and are not one type, because they differ at a
+  # SEALED component the mark is blind to (a caller-supplied predicate, a registered construction).
+  # `decided` says whether the vocabulary's `typeEq` answered `false` (two different registered
+  # constructions) or refused (two separately written lambdas, which no `==` tells apart from one); its
+  # own refusal text is caught by `tryEval`, so the reason and the way out are stated here.
+  refuseSharedMark = t: other: decided: {
+    refused =
+      "`${nameOf t}' and `${nameOf other}', which mint one identity and differ at a sealed component (a caller-supplied predicate or a registered construction) that identity is blind to"
+      + (
+        if decided then
+          ", and their sealed subjects decide them two types"
+        else
+          ", where two separately written predicates cannot be compared: declare one binding, or register the predicate (gen-algebra `mkIntensional`) so that two constructions of it decide"
+      );
+  };
   # The MINTED-but-differing refusal — same shape as `refuseParametricMerge`, a different reason,
-  # because the two are no longer the same failure. This one fires only when a digest was minted and
-  # the two did not match, so "cannot be compared" would be a lie: the mint compared them and they
-  # are not the same construction. `pa`/`pb` are the operands' certified payloads, or `null` where
+  # because the two are no longer the same failure. This one fires only when the two carry DIFFERENT
+  # marks (a pair sharing a mark takes `refuseSharedMark`), so "cannot be compared" would be a lie: the
+  # mint compared them and they are not the same construction. `pa`/`pb` are the operands' certified payloads, or `null` where
   # one could not be read, and the message says which of the two is missing: a readable payload, or
   # a law reconciling the constructions both payloads name.
   refuseUnreconciledMint = t: other: pa: pb: {
@@ -411,12 +426,49 @@ let
         digest = base.__mint.minted or null;
         # `self` is threaded exactly as `mkTypeWith` threads its own — the value a caller holds is
         # the EXPORTED type, so a match answers with that rather than with the pre-export record.
+        # ★ SAMENESS FIRST, decided by the vocabulary's own `typeEq` (den-hoag-6orb8 U1; design §1,
+        # "Where both operands carry a gen identity … gen-merge decides redeclaration on that
+        # identity"). A digest match alone is NOT sameness: gen-types' mark is blind to a type's
+        # SEALED components (a caller lambda, a registered construction), which `typeEq` decides over
+        # beside it, so two lambda `typedef`s sharing a mark would merge on the mark. `true` merges (one
+        # binding redeclared, two constructions of one registered term); `false` or a refusal goes on to
+        # the reconciliation laws below and otherwise to the named refusal.
+        #
+        # Where NEITHER operand seals anything, the mark is a total identity and a digest match is
+        # that decision read off the operands' own fields (equal marks, `{ } == { }`), as before;
+        # it is also the arm a wrapper's `//` keeps (`addCheck` over a parametric leaf declared
+        # twice from one value), whose rewritten `check` sends `typeEq` to the record.
+        markShared =
+          other:
+          builtins.isAttrs other
+          && other ? __mint
+          && builtins.isAttrs other.__mint
+          && other.__mint ? minted
+          && other.__mint.minted == digest;
+        same =
+          other:
+          builtins.isAttrs other
+          && other ? __mint
+          && builtins.isAttrs other.__mint
+          && other.__mint ? minted
+          && other.__mint.minted == digest
+          && (
+            ((base.__sealed or { }) == { } && (other.__sealed or { }) == { })
+            || (
+              let
+                r = builtins.tryEval (checkedTypes.typeEq base other);
+              in
+              r.success && r.value
+            )
+          );
         rel =
           self: other:
           if digest == null then
             refuseParametricMerge base other
-          else if builtins.isAttrs other && (other.__mint.minted or null) == digest then
+          else if same other then
             { merged = self; }
+          else if markShared other then
+            refuseSharedMark base other (builtins.tryEval (checkedTypes.typeEq base other)).success
           else
             let
               # ★ THE READ IS TOTAL. The vocabulary's `payloadOf` refuses by `throw` whatever it cannot
