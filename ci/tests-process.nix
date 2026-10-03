@@ -153,9 +153,22 @@
           [ "$rc" -eq 0 ] || die name-keyset-control "expected exit 0, got $rc"
           [ "$val" = '"x:x"' ] || die name-keyset-control "expected value \"x:x\", got '$val'"
 
+          # den-hoag-iaram: a type that is its own derivation dies at construction in the
+          # infinite-recursion channel, and an unguarded cycle's out-of-domain check in the call-depth
+          # channel (the argued exceptions); a guarded cycle through a derivation answers.
+          evalArm cyclic-derive-self
+          [ "$rc" -ne 0 ] || die cyclic-derive-self "expected a death, got exit 0 with '$val'"
+          grep -q 'infinite recursion encountered' "$TMPDIR/err" || die cyclic-derive-self "death is not the infinite-recursion channel"
+          evalArm cyclic-unguarded
+          [ "$rc" -ne 0 ] || die cyclic-unguarded "expected a death, got exit 0 with '$val'"
+          grep -q 'max-call-depth exceeded' "$TMPDIR/err" || die cyclic-unguarded "death is not the call-depth channel"
+          evalArm cyclic-guarded-control
+          [ "$rc" -eq 0 ] || die cyclic-guarded-control "expected exit 0, got $rc"
+          [ "$val" = '[ true false ]' ] || die cyclic-guarded-control "expected [ true false ], got '$val'"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "23" ] || die runner "expected 23 evaluations, ran $ran"
-          echo "tests-process: 23 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "26" ] || die runner "expected 26 evaluations, ran $ran"
+          echo "tests-process: 26 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
