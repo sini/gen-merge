@@ -672,14 +672,17 @@ let
         ).freeformType or null;
     in
     defineType (
+      # The module set is ONE sealed component, the list itself: its elements keep the caller's slots,
+      # so one function module handed to two constructions compares equal on every evaluator. A slot
+      # per module (`imap0`) is a fresh thunk per module, which upstream Nix and Determinate compare by
+      # slot and Lix by the forced closure (den-hoag-1fo91).
       identified "submodule" [ ] (_: { specialArgs = args; })
-        (imap0 (i: m: {
-          path = [
-            "modules"
-            (toString i)
-          ];
-          value = m;
-        }) mods)
+        [
+          {
+            path = [ "modules" ];
+            value = mods;
+          }
+        ]
         {
           name = "submodule";
           unroledNested = if freeform == null then { } else { freeformType = freeform; };
