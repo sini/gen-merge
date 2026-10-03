@@ -259,9 +259,11 @@ in
         regime = [ "unmintable" ];
       };
     };
+    # A naive `//` derivation keeps its base's mark and witness, so `typeEq` refuses it by name (the
+    # completion stamp): it is not the record its constructor completed. `deriveType` is the door.
     test-control-a-naive-derivation-mints-as-its-base = {
-      expr = genTypes.typeEq (naive t.str) t.str;
-      expected = true;
+      expr = (builtins.tryEval (genTypes.typeEq (naive t.str) t.str)).success;
+      expected = false;
     };
     # C9 — `key`: two derivations of one `id` merge only where their keys agree.
     test-derivations-whose-keys-differ-never-merge = {
