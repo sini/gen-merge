@@ -16,6 +16,9 @@
 {
   prelude,
   core,
+  # The leaf vocabulary (gen-types), for its exported identity half (`mkIdentity`) and its sameness
+  # decision (`typeEq`). A vocabulary publishing neither leaves every composite here unminted.
+  types,
 }:
 let
   inherit (prelude)
@@ -182,6 +185,60 @@ let
     in
     exported;
 
+  # ── A COMPOSITE'S IDENTITY (den-hoag-6orb8 U2) ──────────────────────────────────────────────────
+  # `identified ctor members mkArgs sealed t` is the source record `t` carrying the identity fields
+  # built by the leaf vocabulary's exported identity half (gen-types `mkIdentity`, ADR-0034's
+  # per-component clause): a mark over the constructor and one tag per component, and `__sealed`
+  # beside it. So a composite is minted whatever its components' regimes, and two constructions of
+  # one composite over one component are one type, directly and after transport through `anything`
+  # (which carries a `__mint` carrier whole). The constructor is spelled in THIS library's namespace,
+  # `gen-merge.<name>`: gen-types' own `listOf`/`attrsOf` mint over the same argument shape, and they
+  # fold differently (a concatenation here, the leaf fold there), so one spelling would decide two
+  # types one. The fields are lazy, so a declaration that is never compared mints nothing.
+  #
+  # `__typeSelf` is the completion stamp's slot: the export ties it to the record it completes (gen-types
+  # `completedType`, `lib/interface.nix` `exportType`), so a `//` copy of a composite is refused at
+  # `typeEq` as a copy of a leaf is.
+  #
+  # ★ SAMENESS FIRST, THEN THE TYPE'S OWN LAW (U2 item 4). The relation asks the vocabulary's `typeEq`
+  # first where both operands carry one mark: `true` merges, to the partner, which is the same type. A
+  # different mark, or a refused collision (two constructions differing at a sealed component the mark
+  # is blind to, such as two submodules' module sets), goes to the relation the constructor states,
+  # never to a refusal of its own, so every merge that relation admits (a submodule union, an element
+  # join) is kept. The pre-test reads the two marks, so a pair of different marks pays no `typeEq`.
+  identified =
+    ctor: members: mkArgs: sealed: t:
+    if types ? mkIdentity && types ? typeEq then
+      let
+        name = t.name or ctor;
+        ids = types.mkIdentity "gen-merge.${ctor}" members mkArgs sealed name;
+        mark = ids.__mint.minted or null;
+        same =
+          other:
+          let
+            theirs = other.__mint or null;
+          in
+          mark != null
+          && isAttrs theirs
+          && theirs ? minted
+          && theirs.minted == mark
+          && (
+            let
+              r = builtins.tryEval (types.typeEq (ids // { inherit name; }) other);
+            in
+            r.success && r.value
+          );
+      in
+      t
+      // ids
+      // {
+        __typeSelf = null;
+        typeMergeRel =
+          other: if isAttrs other && same other then { merged = other; } else t.typeMergeRel other;
+      }
+    else
+      t;
+
   # mkOptionType — the (loc,defs) custom-merge escape hatch (spec §1 item 6). Its descriptor is
   # written in the FOREIGN protocol's words (`check`, `merge`, `emptyValue`, …) because that is what
   # a nixpkgs `mkOptionType` drop-in means, so it is exactly a round trip through the boundary: the
@@ -234,7 +291,7 @@ let
   #     fields = b: { … };      # default `_: { }': metadata, as a function of the base it is applied to
   #     name = "<string>";      # default the base's: the value vocabulary its messages speak
   #     description = "<string>";
-  #     mint = { minted = …; }; # default sealed: an identity the CALLER minted
+  #     mint = { minted = …; }; # default per component: an identity the CALLER minted
   #   }
   #
   # ★★ WHY `base // Δ` IS NOT A DERIVATION. A completed type is a FIXPOINT: `defineType` ties the knot
@@ -260,14 +317,13 @@ let
   #     own join, re-derived. It asks `mergeTypes' — the one dispatch, so a foreign base merges through
   #     the boundary's arm — and never answers with this declaration's own value. Metadata is
   #     left-biased: `key' is the whole of what separates two derivations of one `id'.
-  #   · IDENTITY is never the base's (ADR-0034). A caller that minted one passes it, and owes a
-  #     preimage covering the `id', the `key' and the base's identity; one omitting the `key' mints two
-  #     different derivations as one. With none it is SEALED: decisions compare the reified value and
-  #     `__id' is the named refusal. ★ That is the refusal limb for a derivation whose distinguishing
-  #     content is inert (a string `id', a plain `key'), which ADR-0034 would make structural: what
-  #     would have to change is a mint REACHABLE here, and gen-merge mints nothing — the one minting
-  #     authority is gen-identity, reached by a caller holding it, as gen-types' `identityGuard' is.
-  #     A mint composed through the injected leaf vocabulary would move this limb to the minted one.
+  #   · IDENTITY is never the base's (ADR-0034). With no `mint' it is minted PER COMPONENT through the
+  #     injected leaf vocabulary's identity half (`identified', den-hoag-6orb8 U2.3): the `id' and the
+  #     `key' inert, the base by its mark, or sealed where it carries none or a wrapper rewrote its
+  #     `check'. So a derivation is the same type everywhere whenever its arguments are, and gen-merge
+  #     still mints nothing itself — the one minting authority is gen-identity, behind gen-types. A
+  #     caller that minted one passes it and keeps that meaning: it owes a preimage covering the `id',
+  #     the `key' and the base's identity, and one omitting the `key' mints two derivations as one.
   #
   # ★ ITS COST IS ONE COMPLETION PER LIFT: a merge, a `recarry' or a rebuild of a derivation
   # re-completes it through `defineType', so a fold over N derivation levels pays N completions and
@@ -338,7 +394,26 @@ let
           reason = "a derivation states no minted identity; demand `__id` for its named refusal";
         };
       };
+      # A caller's mint keeps its meaning; with none the derivation is identified per component.
+      callerMint = spec ? mint || !(types ? mkIdentity && types ? typeEq);
       mint = spec.mint or sealed;
+      identify =
+        if callerMint then
+          r:
+          r
+          // {
+            __mint = mint;
+            __id =
+              if mint ? minted then
+                mint.minted
+              else
+                throw "gen-merge: the derivation `${id}' of `${nameOf base}' is sealed: it states no minted identity, so it has none to answer with (pass `mint' to `deriveType')";
+          }
+        else
+          identified "deriveType" [ base ] (tags: {
+            inherit id key;
+            base = head tags;
+          }) [ ];
       sub = gen.substructure or null;
     in
     if defect != null then
@@ -355,64 +430,60 @@ let
       throw "gen-merge: ${named} as `${id}': its `key' holds an option type, which Nix `==' cannot compare totally; key a derivation by plain data"
     else
       defineType (
-        builtins.removeAttrs gen cut
-        // delta
-        // {
-          name = spec.name or delta.name or gen.name or "raw";
-          # The base AS PASSED: the join asks it, and a foreign one answers through the boundary's arm.
-          # The base AS READ (`read`): the phrase renders it, so a foreign base is described as the
-          # import boundary reads it, within the budget, and never by its own `description`.
-          __derivation = {
-            inherit base id key;
-            # null when this derivation states its phrase. A base derivation stating none is read
-            # through to what IT reads, so a chain of them costs the renderer one unit, not one per
-            # layer, and keeps its base's phrase however deep it is.
-            read =
-              if spec ? description || delta ? description then
-                null
-              else if gen ? __derivation && (gen.__derivation.read or null) != null then
-                gen.__derivation.read
-              else
-                gen;
-          };
-          typeMergeRel = relation;
-          __mint = mint;
-          __id =
-            if mint ? minted then
-              mint.minted
+        identify (
+          builtins.removeAttrs gen cut
+          // delta
+          // {
+            name = spec.name or delta.name or gen.name or "raw";
+            # The base AS PASSED: the join asks it, and a foreign one answers through the boundary's arm.
+            # The base AS READ (`read`): the phrase renders it, so a foreign base is described as the
+            # import boundary reads it, within the budget, and never by its own `description`.
+            __derivation = {
+              inherit base id key;
+              # null when this derivation states its phrase. A base derivation stating none is read
+              # through to what IT reads, so a chain of them costs the renderer one unit, not one per
+              # layer, and keeps its base's phrase however deep it is.
+              read =
+                if spec ? description || delta ? description then
+                  null
+                else if gen ? __derivation && (gen.__derivation.read or null) != null then
+                  gen.__derivation.read
+                else
+                  gen;
+            };
+            typeMergeRel = relation;
+          }
+          // (
+            let
+              base' = if gen ? description then interface.carriedPhrase gen else { };
+            in
+            if spec ? description then
+              base' // { inherit (spec) description; }
+            else if delta ? description then
+              builtins.removeAttrs base' [ "description" ]
+            # Nothing stated: the export renders the base's phrase through `__derivation` within its
+            # budget. Stating the base's `description` here closes a cycle through the derivation on
+            # its own value (`d = deriveType (nullOr (oneOf [ str (listOf d) ])) …`).
             else
-              throw "gen-merge: the derivation `${id}' of `${nameOf base}' is sealed: it states no minted identity, so it has none to answer with (pass `mint' to `deriveType')";
-        }
-        // (
-          let
-            base' = if gen ? description then interface.carriedPhrase gen else { };
-          in
-          if spec ? description then
-            base' // { inherit (spec) description; }
-          else if delta ? description then
-            builtins.removeAttrs base' [ "description" ]
-          # Nothing stated: the export renders the base's phrase through `__derivation` within its
-          # budget. Stating the base's `description` here closes a cycle through the derivation on
-          # its own value (`d = deriveType (nullOr (oneOf [ str (listOf d) ])) …`).
-          else
-            { }
-        )
-        // (if gen ? recarry then { recarry = c: lift (gen.recarry c); } else { })
-        // (if gen ? withArgs then { withArgs = a: lift (gen.withArgs a); } else { })
-        // (
-          if sub == null then
-            { }
-          else
-            {
-              substructure = sub // {
-                rebuild =
-                  m:
-                  let
-                    r = sub.rebuild m;
-                  in
-                  if r == null then null else lift r;
-              };
-            }
+              { }
+          )
+          // (if gen ? recarry then { recarry = c: lift (gen.recarry c); } else { })
+          // (if gen ? withArgs then { withArgs = a: lift (gen.withArgs a); } else { })
+          // (
+            if sub == null then
+              { }
+            else
+              {
+                substructure = sub // {
+                  rebuild =
+                    m:
+                    let
+                      r = sub.rebuild m;
+                    in
+                    if r == null then null else lift r;
+                };
+              }
+          )
         )
       );
 
@@ -583,156 +654,166 @@ let
         }).type.unroledNested
         ).freeformType or null;
     in
-    defineType {
-      name = "submodule";
-      unroledNested = if freeform == null then { } else { freeformType = freeform; };
-      shorthandOnlyDefinesConfig = true;
-      # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
-      # nobody added to, which is what makes the union below total.
-      specialArgs = args;
-      # THE INLET. Refusal lives HERE — one place, where the caller states the key — rather than at
-      # the eval sites, where the loss would already have happened and the name would be gone.
-      withArgs =
-        a:
-        let
-          reserved = filter (k: submoduleReservedArgs ? ${k}) (attrNames a);
-        in
-        if reserved != [ ] then
-          throw (
-            "gen-merge: `withArgs' cannot supply the base module argument"
-            + (if length reserved == 1 then " " else "s ")
-            + concatStringsSep ", " (map (k: "`${k}'") reserved)
-            + "; a submodule's own evaluation injects over whatever a caller supplies there, so the "
-            + "value would be discarded rather than used"
-          )
-        else
-          mkSubmodule (args // a) mods;
-      inherit admits nests;
-      # With no surviving definition the value is the module set evaluated over NO definitions, as
-      # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
-      # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
-      # would there and an undefined sub-option refuses by name. That evaluation is the child with an
-      # empty seed, read through the threaded fold; called, it refuses (den-hoag-n6dh7 item 1).
-      whenEmpty.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
-      # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
-      # relation unions rather than merges: an option declared as a submodule in two modules ends up
-      # declaring the union of what they declare. On a nullary relation the second declaration would
-      # be discarded silently.
-      carries.moduleSet = mods;
-      recarry = c: mkSubmodule args c.moduleSet;
-      typeMergeRel =
-        other:
-        if !(isAttrs other) || (keyOf other) != "submodule" then
-          { refused = "`submodule' and `${nameOf other}'"; }
-        # The one datum two `submodule' declarations must agree on beside the name: whether an
-        # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
-        # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
-        else if (other.shorthandOnlyDefinesConfig or true) != true then
-          {
-            refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
-          }
-        else
-          let
-            partnerMods = interface.importedOffered "moduleSet" other;
-            # A partner's base module args are read off the descriptor attribute directly, for the
-            # reason stated above: it is an ordinary attribute and survives export.
-            #
-            # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
-            # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
-            # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
-            # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
-            # with themselves: no conflict can be seen there and the left declaration's args win
-            # silently. That path is not reachable with a gen partner anyway — `importedCarried`
-            # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
-            # its own parameters beside it, so the arm below hands that pair to the partner's
-            # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
-            partnerArgs = other.specialArgs or { };
-            # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
-            # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
-            # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
-            # its WHNF on every evaluator, where comparing two selections walked the whole value
-            # on Nix and Determinate. A key only one declaration states never conflicts.
-            slots = builtins.zipAttrsWith (_: vs: vs) [
-              args
-              partnerArgs
-            ];
-            conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
-          in
-          if partnerMods == null then
+    defineType (
+      identified "submodule" [ ] (_: { specialArgs = args; })
+        (imap0 (i: m: {
+          path = [
+            "modules"
+            (toString i)
+          ];
+          value = m;
+        }) mods)
+        {
+          name = "submodule";
+          unroledNested = if freeform == null then { } else { freeformType = freeform; };
+          shorthandOnlyDefinesConfig = true;
+          # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
+          # nobody added to, which is what makes the union below total.
+          specialArgs = args;
+          # THE INLET. Refusal lives HERE — one place, where the caller states the key — rather than at
+          # the eval sites, where the loss would already have happened and the name would be gone.
+          withArgs =
+            a:
             let
-              joined = interface.joinInStatedRelation {
-                name = "submodule";
-                payload = interface.moduleSetPayload {
-                  modules = mods;
-                  specialArgs = args;
-                  shorthandOnlyDefinesConfig = true;
-                };
-              } other;
+              reserved = filter (k: submoduleReservedArgs ? ${k}) (attrNames a);
             in
-            if joined == null then
+            if reserved != [ ] then
+              throw (
+                "gen-merge: `withArgs' cannot supply the base module argument"
+                + (if length reserved == 1 then " " else "s ")
+                + concatStringsSep ", " (map (k: "`${k}'") reserved)
+                + "; a submodule's own evaluation injects over whatever a caller supplies there, so the "
+                + "value would be discarded rather than used"
+              )
+            else
+              mkSubmodule (args // a) mods;
+          inherit admits nests;
+          # With no surviving definition the value is the module set evaluated over NO definitions, as
+          # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
+          # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
+          # would there and an undefined sub-option refuses by name. That evaluation is the child with an
+          # empty seed, read through the threaded fold; called, it refuses (den-hoag-n6dh7 item 1).
+          whenEmpty.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
+          # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
+          # relation unions rather than merges: an option declared as a submodule in two modules ends up
+          # declaring the union of what they declare. On a nullary relation the second declaration would
+          # be discarded silently.
+          carries.moduleSet = mods;
+          recarry = c: mkSubmodule args c.moduleSet;
+          typeMergeRel =
+            other:
+            if !(isAttrs other) || (keyOf other) != "submodule" then
+              { refused = "`submodule' and `${nameOf other}'"; }
+            # The one datum two `submodule' declarations must agree on beside the name: whether an
+            # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
+            # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
+            else if (other.shorthandOnlyDefinesConfig or true) != true then
               {
-                refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
               }
             else
-              { merged = joined; }
-          # The module sets UNION, so the args must too — and two declarations that disagree about
-          # what a base module argument IS are a conflict this library names rather than resolves by
-          # declaration order.
-          else if conflicting != [ ] then
-            {
-              refused =
-                "two `submodule' declarations stating different values for the base module argument"
-                + (if length conflicting == 1 then " " else "s ")
-                + concatStringsSep ", " (map (k: "`${k}'") conflicting);
-            }
-          # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
-          # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
-          # the union nixpkgs builds. Pinned by
-          # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
-          else
-            { merged = mkSubmodule (args // partnerArgs) (partnerMods ++ mods); };
-      substructure = {
-        # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
-        #   declares = prefix: (evalModuleTree { inherit modules prefix; }).options
-        # Reads `.options` off the same nested fixpoint the fold builds, with no defs supplied, so
-        # the two halves cannot disagree about what a submodule declares and no instance-authored
-        # value is forced.
-        declares =
-          prefix:
-          (evalModuleTreeNested {
-            modules = mods ++ [ namePlaceholder ];
-            inherit prefix;
-            specialArgs = args;
-            check = true;
-          }).options;
-        modules = mods;
-        # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT
-        # append: a foreign module system builds the replacement as this type's OWN modules
-        # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
-        # second time, double-evaluating the base module (a readOnly config value — e.g.
-        # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
-        rebuild = m: mkSubmodule args m;
-      };
-      # A definition outside `admits` is refused here, naming the option and the file, before the
-      # module reader would refuse it without either (`refusingOutside`).
-      #
-      # `threaded` is the same fold reading the tree through the evaluation's accessor instead of
-      # evaluating it here (den-hoag-n6dh7 item 1, α's sibling): the site names this tree's `nests`,
-      # the fold's `loc` and its `defs`. It tests no `undeclared`, as the called form does not: the
-      # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
-      mergeDefs = {
-        __functor = _: called;
-        threaded =
-          ev:
-          refusingOutside "submodule" admits (
-            loc: defs:
-            (ev.child {
-              inherit (ev) position;
-              inherit nests loc defs;
-            }).config
-          );
-      };
-    };
+              let
+                partnerMods = interface.importedOffered "moduleSet" other;
+                # A partner's base module args are read off the descriptor attribute directly, for the
+                # reason stated above: it is an ordinary attribute and survives export.
+                #
+                # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
+                # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
+                # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
+                # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
+                # with themselves: no conflict can be seen there and the left declaration's args win
+                # silently. That path is not reachable with a gen partner anyway — `importedCarried`
+                # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
+                # its own parameters beside it, so the arm below hands that pair to the partner's
+                # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
+                partnerArgs = other.specialArgs or { };
+                # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
+                # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
+                # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
+                # its WHNF on every evaluator, where comparing two selections walked the whole value
+                # on Nix and Determinate. A key only one declaration states never conflicts.
+                slots = builtins.zipAttrsWith (_: vs: vs) [
+                  args
+                  partnerArgs
+                ];
+                conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
+              in
+              if partnerMods == null then
+                let
+                  joined = interface.joinInStatedRelation {
+                    name = "submodule";
+                    payload = interface.moduleSetPayload {
+                      modules = mods;
+                      specialArgs = args;
+                      shorthandOnlyDefinesConfig = true;
+                    };
+                  } other;
+                in
+                if joined == null then
+                  {
+                    refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                  }
+                else
+                  { merged = joined; }
+              # The module sets UNION, so the args must too — and two declarations that disagree about
+              # what a base module argument IS are a conflict this library names rather than resolves by
+              # declaration order.
+              else if conflicting != [ ] then
+                {
+                  refused =
+                    "two `submodule' declarations stating different values for the base module argument"
+                    + (if length conflicting == 1 then " " else "s ")
+                    + concatStringsSep ", " (map (k: "`${k}'") conflicting);
+                }
+              # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
+              # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
+              # the union nixpkgs builds. Pinned by
+              # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
+              else
+                { merged = mkSubmodule (args // partnerArgs) (partnerMods ++ mods); };
+          substructure = {
+            # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
+            #   declares = prefix: (evalModuleTree { inherit modules prefix; }).options
+            # Reads `.options` off the same nested fixpoint the fold builds, with no defs supplied, so
+            # the two halves cannot disagree about what a submodule declares and no instance-authored
+            # value is forced.
+            declares =
+              prefix:
+              (evalModuleTreeNested {
+                modules = mods ++ [ namePlaceholder ];
+                inherit prefix;
+                specialArgs = args;
+                check = true;
+              }).options;
+            modules = mods;
+            # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT
+            # append: a foreign module system builds the replacement as this type's OWN modules
+            # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
+            # second time, double-evaluating the base module (a readOnly config value — e.g.
+            # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
+            rebuild = m: mkSubmodule args m;
+          };
+          # A definition outside `admits` is refused here, naming the option and the file, before the
+          # module reader would refuse it without either (`refusingOutside`).
+          #
+          # `threaded` is the same fold reading the tree through the evaluation's accessor instead of
+          # evaluating it here (den-hoag-n6dh7 item 1, α's sibling): the site names this tree's `nests`,
+          # the fold's `loc` and its `defs`. It tests no `undeclared`, as the called form does not: the
+          # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
+          mergeDefs = {
+            __functor = _: called;
+            threaded =
+              ev:
+              refusingOutside "submodule" admits (
+                loc: defs:
+                (ev.child {
+                  inherit (ev) position;
+                  inherit nests loc defs;
+                }).config
+              );
+          };
+        }
+    );
 
   # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
   # base module args to the TYPE it returns, never to this.
@@ -778,41 +859,43 @@ let
       called = refusingOutside "listOf" admits (loc: defs: map foldElement (split loc defs));
       thread = exactThread element;
     in
-    defineType {
-      name = "listOf";
-      inherit admits;
-      whenEmpty.value = [ ];
-      carries.element = element;
-      recarry = c: listOf c.element;
-      typeMergeRel = elementRel "listOf" listOf element;
-      # Descend to the element type under the positional placeholder segment. A container's module
-      # set IS its element's, and substituting one rebuilds the container over the substituted
-      # element.
-      substructure = {
-        # The spine's step, stated as data (`interface.forwardStep`): the segment the container adds
-        # on its way to `carries.element`. The walk follows it within its fuel and refuses by name at
-        # exhaustion. A constant, so stating it allocates no thunk per container.
-        forward = "*";
-        modules = interface.spineModules interface.importedTypeWalkFuel element;
-        declares =
-          prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "*" ]);
-        rebuild = m: listOf (if carriesSub element then (subOf element).rebuild m else element);
-      };
-      # A position whose every definition was discharged is DROPPED, as nixpkgs' `listOf` drops it.
-      # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
-      # loc (and a submodule element's `name`) is its source position whatever an earlier sibling's
-      # condition says.
-      #
-      # ★ THE STEP IS `[ d i ]`, NOT THE LOC. `loc` indexes within ONE definition, so two definitions
-      # of one element each both place an element at `"0"`; a position keyed on it would name the two
-      # elements once. The step adds the definition's ordinal `d` among the position's definitions.
-      inherit split;
-      # `threaded` folds the same elements through the engine's threaded twin (den-hoag-n6dh7 item 5).
-      mergeDefs = {
-        __functor = _: called;
-        threaded = ev: refusingOutside "listOf" admits (loc: defs: map (thread ev) (split loc defs));
-      };
-    };
+    defineType (
+      identified "listOf" [ element ] head [ ] {
+        name = "listOf";
+        inherit admits;
+        whenEmpty.value = [ ];
+        carries.element = element;
+        recarry = c: listOf c.element;
+        typeMergeRel = elementRel "listOf" listOf element;
+        # Descend to the element type under the positional placeholder segment. A container's module
+        # set IS its element's, and substituting one rebuilds the container over the substituted
+        # element.
+        substructure = {
+          # The spine's step, stated as data (`interface.forwardStep`): the segment the container adds
+          # on its way to `carries.element`. The walk follows it within its fuel and refuses by name at
+          # exhaustion. A constant, so stating it allocates no thunk per container.
+          forward = "*";
+          modules = interface.spineModules interface.importedTypeWalkFuel element;
+          declares =
+            prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "*" ]);
+          rebuild = m: listOf (if carriesSub element then (subOf element).rebuild m else element);
+        };
+        # A position whose every definition was discharged is DROPPED, as nixpkgs' `listOf` drops it.
+        # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
+        # loc (and a submodule element's `name`) is its source position whatever an earlier sibling's
+        # condition says.
+        #
+        # ★ THE STEP IS `[ d i ]`, NOT THE LOC. `loc` indexes within ONE definition, so two definitions
+        # of one element each both place an element at `"0"`; a position keyed on it would name the two
+        # elements once. The step adds the definition's ordinal `d` among the position's definitions.
+        inherit split;
+        # `threaded` folds the same elements through the engine's threaded twin (den-hoag-n6dh7 item 5).
+        mergeDefs = {
+          __functor = _: called;
+          threaded = ev: refusingOutside "listOf" admits (loc: defs: map (thread ev) (split loc defs));
+        };
+      }
+    );
 
   # attrsOf / lazyAttrsOf — per-key merge through the element type. They differ where nixpkgs' do: a
   # key whose every definition was discharged is DROPPED by `attrsOf` and KEPT by `lazyAttrsOf` (at
@@ -911,43 +994,45 @@ let
           )
       );
     in
-    defineType {
-      name = tyName;
-      inherit admits;
-      whenEmpty.value = { };
-      carries.element = element;
-      recarry = c: attrsOfWith tyName c.element;
-      # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct type NAMES where nixpkgs unifies both
-      # under one constructor discriminated by a payload field. Distinct names are the conservative
-      # direction: the two never merge with each other, and neither merges with the unified foreign
-      # one. The rebuild keeps THIS container's name, so the distinction survives substitution.
-      typeMergeRel = elementRel tyName (attrsOfWith tyName) element;
-      # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
-      # registry exposes its INSTANCE option surface to an introspecting consumer.
-      substructure = {
-        forward = "<name>";
-        modules = interface.spineModules interface.importedTypeWalkFuel element;
-        declares =
-          prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "<name>" ]);
-        rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
-      };
-      inherit split;
-      # `attrsOf`'s fold is the split's elements, each folded through the element type and placed at
-      # its key.
-      #
-      # ★ `lazyAttrsOf`'S FOLD IS THE SPLIT'S TWIN, NOT ITS READER, and that is measured, not chosen:
-      # it is the hub bench's `wideFreeform` hot path, whose thunk band and allocation bound have no
-      # headroom, and reading the split there costs a record per key (measured at 92dec6e + this
-      # split: thunks 1.096 -> 1.166 over the 1.096 band, alloc 0.805 -> 0.856 over 0.806, rc 6).
-      # So its text is the fold it was, selected once at construction, and it agrees with the split
-      # by a cell (`ci/tests/nesting-declaration.nix`, `lazy-fold-is-the-split's`) rather than by
-      # sharing a binding. A nesting element never reaches this fold once the threaded half lands:
-      # its option folds through the threaded twin, which reads the split.
-      mergeDefs = {
-        __functor = _: called;
-        inherit threaded;
-      };
-    };
+    defineType (
+      identified tyName [ element ] head [ ] {
+        name = tyName;
+        inherit admits;
+        whenEmpty.value = { };
+        carries.element = element;
+        recarry = c: attrsOfWith tyName c.element;
+        # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct type NAMES where nixpkgs unifies both
+        # under one constructor discriminated by a payload field. Distinct names are the conservative
+        # direction: the two never merge with each other, and neither merges with the unified foreign
+        # one. The rebuild keeps THIS container's name, so the distinction survives substitution.
+        typeMergeRel = elementRel tyName (attrsOfWith tyName) element;
+        # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
+        # registry exposes its INSTANCE option surface to an introspecting consumer.
+        substructure = {
+          forward = "<name>";
+          modules = interface.spineModules interface.importedTypeWalkFuel element;
+          declares =
+            prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "<name>" ]);
+          rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
+        };
+        inherit split;
+        # `attrsOf`'s fold is the split's elements, each folded through the element type and placed at
+        # its key.
+        #
+        # ★ `lazyAttrsOf`'S FOLD IS THE SPLIT'S TWIN, NOT ITS READER, and that is measured, not chosen:
+        # it is the hub bench's `wideFreeform` hot path, whose thunk band and allocation bound have no
+        # headroom, and reading the split there costs a record per key (measured at 92dec6e + this
+        # split: thunks 1.096 -> 1.166 over the 1.096 band, alloc 0.805 -> 0.856 over 0.806, rc 6).
+        # So its text is the fold it was, selected once at construction, and it agrees with the split
+        # by a cell (`ci/tests/nesting-declaration.nix`, `lazy-fold-is-the-split's`) rather than by
+        # sharing a binding. A nesting element never reaches this fold once the threaded half lands:
+        # its option folds through the threaded twin, which reads the split.
+        mergeDefs = {
+          __functor = _: called;
+          inherit threaded;
+        };
+      }
+    );
 
   attrsOf = attrsOfWith "attrsOf";
   lazyAttrsOf = attrsOfWith "lazyAttrsOf";
@@ -1156,33 +1241,35 @@ let
           foldE e;
       called = foldWith foldElement;
     in
-    defineType {
-      name = "nullOr";
-      # A nullable option nobody defined IS null. Distinct from the containers only in which empty
-      # value it names.
-      whenEmpty.value = null;
-      carries.element = element;
-      recarry = c: nullOr c.element;
-      typeMergeRel = elementRel "nullOr" nullOr element;
-      # Pass straight through to the element, adding NO path segment. A nullable introduces no path
-      # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
-      # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`. A nullable
-      # declares exactly what its element declares, so it carries exactly its element's module set too.
-      substructure = {
-        # the step adds no segment
-        forward = null;
-        modules = interface.spineModules interface.importedTypeWalkFuel element;
-        declares = interface.spineDeclares interface.importedTypeWalkFuel element;
-        rebuild = m: nullOr (if carriesSub element then (subOf element).rebuild m else element);
-      };
-      admits = v: v == null || isValid element v;
-      inherit split;
-      # One fold over its element's, called or threaded (den-hoag-n6dh7 item 5).
-      mergeDefs = {
-        __functor = _: called;
-        threaded = ev: foldWith (threadElement ev);
-      };
-    };
+    defineType (
+      identified "nullOr" [ element ] head [ ] {
+        name = "nullOr";
+        # A nullable option nobody defined IS null. Distinct from the containers only in which empty
+        # value it names.
+        whenEmpty.value = null;
+        carries.element = element;
+        recarry = c: nullOr c.element;
+        typeMergeRel = elementRel "nullOr" nullOr element;
+        # Pass straight through to the element, adding NO path segment. A nullable introduces no path
+        # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
+        # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`. A nullable
+        # declares exactly what its element declares, so it carries exactly its element's module set too.
+        substructure = {
+          # the step adds no segment
+          forward = null;
+          modules = interface.spineModules interface.importedTypeWalkFuel element;
+          declares = interface.spineDeclares interface.importedTypeWalkFuel element;
+          rebuild = m: nullOr (if carriesSub element then (subOf element).rebuild m else element);
+        };
+        admits = v: v == null || isValid element v;
+        inherit split;
+        # One fold over its element's, called or threaded (den-hoag-n6dh7 item 5).
+        mergeDefs = {
+          __functor = _: called;
+          threaded = ev: foldWith (threadElement ev);
+        };
+      }
+    );
   option = nullOr;
 
   # either A B — recursion-safe lazy union: merge through the member that accepts EVERY definition,
@@ -1250,66 +1337,68 @@ let
           foldE e;
       called = foldWith foldElement;
     in
-    defineType {
-      name = "either";
-      # The members are carried POSITIONALLY, not as a set — `either str int` and `either int str`
-      # are distinct types, and two `either`s merge iff both members merge pairwise.
-      carries.alternatives = [
-        a
-        b
-      ];
-      recarry = c: either (head c.alternatives) (elemAt c.alternatives 1);
-      typeMergeRel =
-        other:
-        if !(isAttrs other) || (keyOf other) != "either" then
-          { refused = "`either' and `${nameOf other}'"; }
-        else
-          let
-            alts = interface.importedOffered "alternatives" other;
-          in
-          if alts == null || !(isList alts) || length alts != 2 then
-            { refused = "`either' and a partner that states no member pair"; }
+    defineType (
+      identified "either" [ a b ] (ids: ids) [ ] {
+        name = "either";
+        # The members are carried POSITIONALLY, not as a set — `either str int` and `either int str`
+        # are distinct types, and two `either`s merge iff both members merge pairwise.
+        carries.alternatives = [
+          a
+          b
+        ];
+        recarry = c: either (head c.alternatives) (elemAt c.alternatives 1);
+        typeMergeRel =
+          other:
+          if !(isAttrs other) || (keyOf other) != "either" then
+            { refused = "`either' and `${nameOf other}'"; }
           else
             let
-              left = mergeElemTypes a (head alts);
-              right = mergeElemTypes b (elemAt alts 1);
+              alts = interface.importedOffered "alternatives" other;
             in
-            if left == null || right == null then
-              { refused = "`either' and `either', whose members do not merge pairwise"; }
+            if alts == null || !(isList alts) || length alts != 2 then
+              { refused = "`either' and a partner that states no member pair"; }
             else
-              { merged = either left right; };
-      substructure = {
-        # A union's members introduce no path level, so it declares nothing of its own — stated
-        # rather than inherited, because the pair lives in `carries` and this does not read it.
-        declares = _prefix: { };
-        modules = null;
-        rebuild = _m: null;
-      };
-      admits = v: isValid a v || isValid b v;
-      # A UNION'S FOLD IS TOTAL: every definition is merged through a member that accepts it, or the
-      # merge refuses by name. Choosing the member from the FIRST definition's shape and then merging
-      # ALL of them through it hands a definition that member cannot consume straight to the
-      # interpreter, which answers with a raw type error naming neither the option nor the file that
-      # wrote the definition — and that abort escapes `tryEval`, so no caller can turn it into a
-      # diagnostic either. The predicate is the members' own, the same one `admits` above is the
-      # disjunction of; what is resolved ONCE over the whole definition set, rather than per
-      # definition against a member already chosen, is WHICH member — and that leaves no branch that
-      # can hand on a definition its member rejects. Nothing is filtered: a set no member takes whole
-      # has no merge to perform, and the refusal is the answer. A homogeneous set is unchanged — the
-      # member selected from its first definition is the member that accepts them all.
-      #
-      # THE MEMBERS' ANSWERS ARE THIS RULE'S PRECONDITION, which is why the structural types above
-      # state their domains: a member that accepts every definition by default would be picked for a
-      # set it cannot merge and the refusal could never fire. A member that genuinely accepts
-      # anything (`raw`, `anything`, and a consumer type declaring so on purpose) still does, and is
-      # still chosen first.
-      inherit choose split;
-      # One fold over its chosen member's, called or threaded (den-hoag-n6dh7 item 5).
-      mergeDefs = {
-        __functor = _: called;
-        threaded = ev: foldWith (threadElement ev);
-      };
-    };
+              let
+                left = mergeElemTypes a (head alts);
+                right = mergeElemTypes b (elemAt alts 1);
+              in
+              if left == null || right == null then
+                { refused = "`either' and `either', whose members do not merge pairwise"; }
+              else
+                { merged = either left right; };
+        substructure = {
+          # A union's members introduce no path level, so it declares nothing of its own — stated
+          # rather than inherited, because the pair lives in `carries` and this does not read it.
+          declares = _prefix: { };
+          modules = null;
+          rebuild = _m: null;
+        };
+        admits = v: isValid a v || isValid b v;
+        # A UNION'S FOLD IS TOTAL: every definition is merged through a member that accepts it, or the
+        # merge refuses by name. Choosing the member from the FIRST definition's shape and then merging
+        # ALL of them through it hands a definition that member cannot consume straight to the
+        # interpreter, which answers with a raw type error naming neither the option nor the file that
+        # wrote the definition — and that abort escapes `tryEval`, so no caller can turn it into a
+        # diagnostic either. The predicate is the members' own, the same one `admits` above is the
+        # disjunction of; what is resolved ONCE over the whole definition set, rather than per
+        # definition against a member already chosen, is WHICH member — and that leaves no branch that
+        # can hand on a definition its member rejects. Nothing is filtered: a set no member takes whole
+        # has no merge to perform, and the refusal is the answer. A homogeneous set is unchanged — the
+        # member selected from its first definition is the member that accepts them all.
+        #
+        # THE MEMBERS' ANSWERS ARE THIS RULE'S PRECONDITION, which is why the structural types above
+        # state their domains: a member that accepts every definition by default would be picked for a
+        # set it cannot merge and the refusal could never fire. A member that genuinely accepts
+        # anything (`raw`, `anything`, and a consumer type declaring so on purpose) still does, and is
+        # still chosen first.
+        inherit choose split;
+        # One fold over its chosen member's, called or threaded (den-hoag-n6dh7 item 5).
+        mergeDefs = {
+          __functor = _: called;
+          threaded = ev: foldWith (threadElement ev);
+        };
+      }
+    );
 
   # A member `either`'s `choose` answers for it (`either`, above): this constructor's own, by its key.
   isEither = t: isAttrs t && t ? choose && keyOf t == "either";
@@ -1370,12 +1459,14 @@ let
       # ★ THE FOLD'S STATED COSTS, which are `mergeLeaf`'s own and not this arm's invention:
       #   · TWINS ARE REFUSED. Two INDEPENDENT constructions of one identity (one digest, distinct
       #     closures) are `==`-unequal, so defined twice they refuse the whole value where the
-      #     rebuild gave one. Two definitions of ONE value still fold to it.
+      #     rebuild gave one. Two definitions of ONE value still fold to it. Since gen-merge's own
+      #     composites carry `__mint` (den-hoag-6orb8 U2), this reaches them too: two constructions of
+      #     `listOf int` defined in one slot are refused by name, where the rebuild admitted them.
       #   · A hand-written `__mint` on a freshly built CYCLIC value, defined twice, sends `==` round
       #     the cycle and overflows the stack uncatchably — the residue `mergeLeaf` already states for
       #     a leaf, extended here to whole attrsets.
       #   · Values carrying NO `__mint` are still rebuilt, so their compared limbs still do not survive
-      #     transport (a gen-merge composite such as `attrsOf int`, or `{ f = g; }`).
+      #     transport (a nixpkgs composite, an `mkOptionType` record, or `{ f = g; }`).
       if (head defs).value ? __mint && all (d: d.value ? __mint) defs then
         mergeLeaf loc defs
       else

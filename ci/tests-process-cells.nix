@@ -116,11 +116,13 @@ let
     memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
     inherit scope;
     strategies = ct;
-    types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
+    types = genTypesLib;
   };
+  genTypesLib = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
   # The core seam's own vocabulary, tied to it as `ci/flake.nix` ties `genMergeVocab`.
   ct = import "${libSrc}/types.nix" {
     inherit prelude;
+    types = genTypesLib;
     core = spiedCore;
   };
   lazyUnionAt =

@@ -73,7 +73,10 @@ let
     scope = genScope;
     types = genTypes;
   };
-  vocab = import ../../lib/types.nix { inherit prelude core; };
+  vocab = import ../../lib/types.nix {
+    inherit prelude core;
+    types = genTypes;
+  };
 
   count = builtins.fromJSON n;
   idx = builtins.genList (i: i) count;

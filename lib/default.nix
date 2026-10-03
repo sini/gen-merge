@@ -306,7 +306,10 @@ let
       }
     )
   );
-  strategies = import ./types.nix { inherit prelude core; };
+  strategies = import ./types.nix {
+    inherit prelude core;
+    types = checkedTypes;
+  };
   lintLib = import ./lint.nix { inherit prelude priority core; };
   linkset = import ./linkset.nix { inherit prelude; };
 

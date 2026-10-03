@@ -123,22 +123,37 @@ let
         "verify"
         "whenEmpty"
       ];
+      # den-hoag-6orb8 U2, a declared gain: a composite's identity fields, built by gen-types'
+      # exported identity half (`mkIdentity`), and the completion stamp's slot. `__okAt` rides only
+      # a composite with a type member, so `submodule` (whose module set is sealed) has none.
+      minted = [
+        "__id"
+        "__mint"
+        "__payload"
+        "__sealed"
+        "__typeSelf"
+      ];
+      sorted = builtins.sort builtins.lessThan;
       # A type parameterised by one thing: what it carries, how to rebuild it over another, its own
       # domain, its own fold, its own relation.
-      wrapper = [
-        "__phraseWithin"
-        "_checkWitness"
-        "_protoLeafMerge"
-        "admits"
-        "carries"
-        "mergeDefs"
-        "recarry"
-        # den-hoag-n6dh7 U2.1, a declared gain: a container's element positions (`split`)
-        "split"
-        "substructure"
-        "typeMergeRel"
-        "whenEmpty"
-      ];
+      wrapper = sorted (
+        minted
+        ++ [ "__okAt" ]
+        ++ [
+          "__phraseWithin"
+          "_checkWitness"
+          "_protoLeafMerge"
+          "admits"
+          "carries"
+          "mergeDefs"
+          "recarry"
+          # den-hoag-n6dh7 U2.1, a declared gain: a container's element positions (`split`)
+          "split"
+          "substructure"
+          "typeMergeRel"
+          "whenEmpty"
+        ]
+      );
     in
     {
       str = leaf;
@@ -177,21 +192,25 @@ let
         "substructure"
         "typeMergeRel"
       ];
-      either = [
-        "__phraseWithin"
-        "_checkWitness"
-        "_protoLeafMerge"
-        "admits"
-        "carries"
-        # den-hoag-n6dh7 U2.1, a declared gain: the union's member choice (`choose`)
-        "choose"
-        "mergeDefs"
-        "recarry"
-        # den-hoag-n6dh7 U2.1, a declared gain: its one member position (`split`)
-        "split"
-        "substructure"
-        "typeMergeRel"
-      ];
+      either = sorted (
+        minted
+        ++ [ "__okAt" ]
+        ++ [
+          "__phraseWithin"
+          "_checkWitness"
+          "_protoLeafMerge"
+          "admits"
+          "carries"
+          # den-hoag-n6dh7 U2.1, a declared gain: the union's member choice (`choose`)
+          "choose"
+          "mergeDefs"
+          "recarry"
+          # den-hoag-n6dh7 U2.1, a declared gain: its one member position (`split`)
+          "split"
+          "substructure"
+          "typeMergeRel"
+        ]
+      );
       attrsOf = wrapper;
       lazyAttrsOf = wrapper;
       listOf = wrapper;
@@ -203,26 +222,29 @@ let
       # while the export is a pass-through, so an ordinary attribute is how the args cross and how a
       # partner's become readable from the relation. `withArgs` is the method that states them.
       # Both are gen's own words; neither is a protocol field, which is why they land in this half.
-      submodule = [
-        "__phraseWithin"
-        "_checkWitness"
-        "_protoLeafMerge"
-        "admits"
-        "carries"
-        "mergeDefs"
-        # den-hoag-n6dh7 U2.1, a declared gain: the nested tree stated as data (`nests`)
-        "nests"
-        "recarry"
-        # den-hoag-foreign-mount-parity-knhyg: how a definition is read (as config), which the
-        # module-set payload publishes and the relation keys on, and the resolved freeform type
-        "shorthandOnlyDefinesConfig"
-        "specialArgs"
-        "substructure"
-        "typeMergeRel"
-        "unroledNested"
-        "whenEmpty"
-        "withArgs"
-      ];
+      submodule = sorted (
+        minted
+        ++ [
+          "__phraseWithin"
+          "_checkWitness"
+          "_protoLeafMerge"
+          "admits"
+          "carries"
+          "mergeDefs"
+          # den-hoag-n6dh7 U2.1, a declared gain: the nested tree stated as data (`nests`)
+          "nests"
+          "recarry"
+          # den-hoag-foreign-mount-parity-knhyg: how a definition is read (as config), which the
+          # module-set payload publishes and the relation keys on, and the resolved freeform type
+          "shorthandOnlyDefinesConfig"
+          "specialArgs"
+          "substructure"
+          "typeMergeRel"
+          "unroledNested"
+          "whenEmpty"
+          "withArgs"
+        ]
+      );
     };
 
   # a representative type of every constructor class the completion reaches, INCLUDING a consumer type
