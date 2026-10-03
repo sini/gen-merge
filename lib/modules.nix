@@ -128,15 +128,35 @@ let
   # before it reads an element — so an element that aborts at WHNF (`({ }).nope`, a missing config
   # attribute) would first be forced INSIDE the refusal, turning this catchable, named refusal into
   # an uncatchable abort (ADR-0025 item 1). Forcing no element keeps the refusal total on every list.
+  #
+  # `showDefs` is the "- In `file': value" block, shared with the undeclared-option refusal
+  # (`_orphanCheck`), which names ONE definition as nixpkgs' `showDefs [ firstDef ]` does.
+  showValue = v: if builtins.isList v then "<a list>" else prelude.renderValue v;
+  showDefLine = d: rest: "\n- In `${toString (d.file or "<unknown-file>")}'${rest}";
+  showDefs = defs: concatStringsSep "" (map (d: showDefLine d ": ${showValue d.value}") defs);
   showConflict =
-    loc: defs:
+    loc: defs: "gen-merge: the option `${showOption loc}' has conflicting definitions:" + showDefs defs;
+
+  # The undeclared-option refusal's definition line. The conflict fold has forced every value
+  # already; an unmatched definition's value is merged by nothing, so rendering it can raise. As
+  # nixpkgs' `showDefs` does, the value is rendered under `tryEval` and omitted when it throws, so a
+  # `throw` in the misplaced key's value never replaces the refusal that names the key (ADR-0025
+  # item 1). `abort` and a missing attribute are not catchable by `tryEval`, here as in nixpkgs.
+  showUnmatchedDef =
+    d:
     let
-      showValue = v: if builtins.isList v then "<a list>" else prelude.renderValue v;
+      shown = builtins.tryEval ": ${showValue d.value}";
     in
-    "gen-merge: the option `${showOption loc}' has conflicting definitions:"
-    + concatStringsSep "" (
-      map (d: "\n- In `${toString (d.file or "<unknown-file>")}': ${showValue d.value}") defs
-    );
+    showDefLine d (if shown.success then shown.value else "");
+
+  # The definition the undeclared-option refusal names: nixpkgs takes `head merged.unmatchedDefns`
+  # (modules.nix), which is NAME-SORTED per level across a level's own undeclared keys and its
+  # declared groups. `unmatched` lists own keys first, then groups, so the head is the first of the
+  # smallest path (componentwise), the earlier entry winning a tie — which keeps nixpkgs' choice
+  # among several definitions of one name.
+  firstUnmatched =
+    unmatched:
+    foldl' (best: d: if d.path < best.path then d else best) (head unmatched) (tail unmatched);
 
   # The protocol boundary (lib/interface.nix). Imported HERE, and re-exported on the core seam, so the
   # dependency graph stays a chain — prelude → interface → this engine → the type vocabulary — rather
@@ -4538,9 +4558,12 @@ let
           # parent over a lax child) to the freeform regime.
           _orphanCheck =
             if check && freeform == null && realized.unmatched != [ ] then
-              throw "gen-merge: option `${
-                showOption (prefix ++ (head realized.unmatched).path)
-              }' does not exist (no freeformType to absorb it)"
+              let
+                first = firstUnmatched realized.unmatched;
+              in
+              throw "The option `${
+                showOption (prefix ++ first.path)
+              }' does not exist. Definition values:${showUnmatchedDef first}"
             else if inherited && freeform == null && realized.unmatched != [ ] then
               throw "gen-merge: option `${
                 showOption (prefix ++ (head realized.unmatched).path)
