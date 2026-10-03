@@ -1721,9 +1721,9 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
 (`getNta`), never by identifier. Values are unchanged; the evaluation count is 1
 (`ci/tests-process.nix`, `one-eval-*`).
 
-- **Which positions are children.** A nesting type is one; a container is walked through its `split`,
-  exactly where its key set already reads its definitions (`attrsOf`, `listOf`, `nullOr`) and
-  over-approximately where it does not (`lazyAttrsOf`, a freeform plane). A union is walked member by
+- **Which positions are children.** A nesting type is one; at the walk's root a container is walked
+  through its `split`, exactly where its key set already reads its definitions (`attrsOf`, `listOf`,
+  `nullOr`) and over-approximately where it does not (`lazyAttrsOf`, a freeform plane). A union is walked member by
   member at its own position; a container member counts only where every definition has its shape.
   A container of trees under `lazyAttrsOf` — bare, or as a union member — is S1 class (a): its
   position is a **container node**, a child whose own `container` group
@@ -1731,11 +1731,16 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   and whose `result` is `{ value; _nested; }`, the inner container's fold, not a tree's evaluation.
   Under any other over-approximating container — a split container whose fold sets no mark
   (gen-aspects' `aspectsRoot`, or a freeform plane typed by one) — the shape is refused by name.
-  At an EXACT container's element, a position whose key set only foreign code decides is a container
-  node too, keyed where it is read: a union holding a container member, and a nixpkgs container gen
-  threads rather than re-homes (`uniq`, `unique`, `coercedTo`, `attrsWith` with a placeholder). So a
-  sibling's definition outside that container's domain never breaks another key's read, as in
-  nixpkgs.
+  At an EXACT container's element, every container is keyed where it is READ. An attribute-keyed one
+  (`lazyAttrsOf`, or an `attrsOf` whose element would not itself key so) keys over-approximately, by
+  its definitions' attribute names, through its fold's door. Every other one is a container node: a
+  `listOf`, a union holding a container member, a nixpkgs container gen threads rather than re-homes
+  (`uniq`, `unique`, `coercedTo`, `attrsWith` with a placeholder), another split container
+  (gen-aspects' `aspectsRoot`), and an `attrsOf` over an element that keys over-approximately. So
+  `attrsOf^k S` at an exact element alternates with k: over-approximated where k is odd, a node where
+  k is even.
+  A sibling's definition outside a container's domain, or a sibling whose element throws, never
+  breaks another key's read, as in nixpkgs (den-hoag-mda6f).
 - **Candidates.** An over-approximated child the fold never selected (a union position under a lazy
   container whose `choose` picks a non-nesting member) is enumerated, and reading its `result` refuses
   by name before any of its member's modules is applied.

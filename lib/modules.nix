@@ -217,12 +217,17 @@ let
   # the engine's discharge has already done. The refusal list is built only on refusal.
   refusingOutside =
     tyName: inDomain: fold: loc: defs:
-    if all (d: inDomain d.value) defs then
+    if admitsAll inDomain defs then
       fold loc defs
     else
       throw "gen-merge: option `${showOption loc}' has definitions `${tyName}' cannot consume (${
         concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: !(inDomain d.value)) defs))
       })";
+
+  # The door's quantifier, one binding for every reader of a container's domain: the fold's door
+  # above, and the key walk's over-approximated arm (`keyWalk`), which keys a position only where
+  # this door would let its fold run.
+  admitsAll = inDomain: defs: all (d: inDomain d.value) defs;
 
   # The refusal of a value that is none of those shapes, one binding for every reader that loads a
   # module: the config and declaration strata's `callM`/`callD`, and the lint's `collect`.
@@ -2576,9 +2581,9 @@ let
       else
         threadedAs ev t
     );
-  # The fold's half of the walk's union-node rule (`keyWalk`): a union holding a container member,
-  # or a threaded foreign container, at an exact container's element (`exactAt`, never the walk's
-  # own root), is read off its node.
+  # The fold's half of the walk's container-node rule (`keyWalk`): a container `containerAt` holds
+  # at an exact container's element (`exactAt`, never the walk's own root), other than an
+  # attribute-keyed one (`keyedOverAt`), is read off its node.
   # Asked only of a marked element (`types.exactThread`), so an unmarked fold calls nothing here.
   unionNodeAt =
     ev: loc: t:
@@ -2586,8 +2591,36 @@ let
     && ev.position != [ ]
     && ev.exactAt == ev.position
     && isAttrs t
-    && (t ? choose || t ? __threadedForeign)
+    && !(keyedOverAt loc t)
     && containerAt loc t;
+  # An ATTRIBUTE-KEYED container of gen's own (`lazyAttrsOf`, or an `attrsOf` whose element is not
+  # itself keyed over-approximately, or a stock one re-homed as one) at an exact container's element
+  # is keyed OVER-APPROXIMATELY in the enclosing group: its candidate keys are the attribute names of
+  # its definitions, already forced to WHNF by the exact container above, so keying them forces
+  # nothing nixpkgs does not. An `attrsOf` over an element that would itself key over-approximately
+  # is a container node instead, one per element of the exact container above, which is the unit
+  # nixpkgs merges: that element's keys are its definitions' data, read when the element is. One
+  # predicate, read by the walk (`keyWalk`) and the fold (`unionNodeAt`).
+  keyedOverAt =
+    loc: t:
+    !(t ? choose || t ? __threadedForeign)
+    && (
+      (t.name or null) == "lazyAttrsOf"
+      || ((t.name or null) == "attrsOf" && !(keyedOverMemberAt loc t.carries.element))
+    );
+  # Would this element key over-approximately (`keyedOverAt`), looked through `nullOr`, which adds no
+  # step? Over any other element an `attrsOf` keys over-approximately itself: an element that is a
+  # container is then a node in the over-approximating regime, one per inner element, read by the
+  # fold through the element's own mark (`interface.mayFoldNested`), so no lazy unit is minted twice.
+  keyedOverMemberAt =
+    loc: t0:
+    let
+      m = interface.homedAt "evalModuleTree" loc t0;
+    in
+    if isAttrs m && (m.name or null) == "nullOr" then
+      keyedOverMemberAt loc m.carries.element
+    else
+      keyedOverAt loc m;
   threadedUnder =
     ev: loc: t:
     if containerAt loc t then
@@ -2770,7 +2803,11 @@ let
   #     it is walked through its `split`, as the position read is the position keyed;
   #   · any other UNION is walked member by member at its own position (below); the walk never
   #     applies `choose` there, so a union's member is decided where the child is read;
-  #   · a container is walked through its `split`, where it keys exactly;
+  #   · under an exact container, any other container is keyed where it is READ too, so no sibling's
+  #     read splits or forces its definitions: an attribute-keyed one (`keyedOverAt`) keys
+  #     over-approximately, by its definitions' attribute names, and every other one is a CONTAINER
+  #     NODE (den-hoag-mda6f);
+  #   · at the walk's own root, a container is walked through its `split`, where it keys exactly;
   #   · under `lazyAttrsOf`, a position `containerAt` holds is a CONTAINER NODE (arm (v)): one
   #     record, marked `container`, whose own walk keys it over its own definitions (`containerNode`);
   #   · under another over-approximating container, `nullOr` adds no step and is looked through, and
@@ -2801,13 +2838,43 @@ let
           inherit loc defs;
         }
       ]
-    else if
-      under == null && pos != [ ] && (t ? choose || t ? __threadedForeign) && containerAt loc t
-    then
-      # KEYED WHERE READ: a position whose key set only code nixpkgs runs when it MERGES that
-      # position can decide (a union's `choose`, or a foreign container's own merge, the split
-      # `threadedForeign` captures). Under an exact container it is a CONTAINER NODE, whose own walk
-      # runs only when the position is read, so no sibling's read runs its code (`unionNodeAt`).
+    else if under == null && pos != [ ] && keyedOverAt loc t && containerAt loc t then
+      # KEYED OVER-APPROXIMATELY: an attribute-keyed container at an exact container's element. Its
+      # candidate keys are its definitions' attribute names, with no definedness pass, and its
+      # elements are walked in the over-approximating regime (`under = "lazyAttrsOf"`), whose
+      # positions key without forcing their definitions, and whose container elements are nodes
+      # (none of them keys over-approximately, `keyedOverAt`). The key set is taken over the container's own
+      # domain, through its fold's door (`admitsAll` over `admits`): a position with a definition
+      # outside it is refused by name where it is read, before any key under it is read, so it has
+      # none.
+      if admitsAll t.admits defs then
+        concatMap (
+          k:
+          keyWalk "lazyAttrsOf" group (interface.homedAt "evalModuleTree" (loc ++ [ k ]) t.carries.element)
+            (pos ++ [ k ])
+            (loc ++ [ k ])
+            (
+              addressedDefs (
+                concatMap (
+                  d:
+                  optional (d.value ? ${k}) {
+                    inherit (d) file;
+                    value = d.value.${k};
+                    at = d.at ++ [ k ];
+                  }
+                ) defs
+              )
+            )
+        ) (attrNames (foldl' (acc: d: acc // d.value) { } defs))
+      else
+        [ ]
+    else if under == null && pos != [ ] && containerAt loc t then
+      # KEYED WHERE READ: any other container at an exact container's element (a union's `choose`, a
+      # foreign container's own merge, a list's indices, which are the positions its definedness
+      # pass leaves, another split container's own `split`, or an `attrsOf` over a container, whose
+      # element's keys are that element's data). Under an exact container it is a CONTAINER NODE,
+      # whose own walk runs only when the position is read, so no sibling's read forces or splits its
+      # definitions (`unionNodeAt`).
       [
         {
           key = pos;

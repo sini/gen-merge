@@ -135,7 +135,7 @@ in
       }) 3;
     };
     # Gen's own evaluation SERVES the same type: its fold never reads the spine, and the union-mark
-    # walk that did (`mayFoldUnion`) is bounded, answering `true` at exhaustion.
+    # walk that did (`mayFoldNested`) is bounded, answering `true` at exhaustion.
     test-gen-serves-a-cycle-through-containers-alone = {
       expr = {
         accept = genEval spine [

@@ -482,7 +482,7 @@ let
   # element reads is the one at that position. It is the called fold's call with `ev` added.
   threadElement =
     ev: e: mergeDefsThreaded (ev // { position = ev.position ++ e.step; }) e.loc e.type e.defs;
-  # An EXACT container's element (`attrsOf`, `listOf`): marked with its own position, so a union
+  # An EXACT container's element (`attrsOf`, `listOf`): marked with its own position, so a container
   # there that the key walk made a container node is read off it (`mergeDefsThreaded`). The mark
   # names one position, so a container below that adds a step clears it.
   threadExact =
@@ -498,9 +498,9 @@ let
       }
     ) e.loc e.type e.defs;
   # The thread an exact container's elements take, decided ONCE, when the type is built: the mark
-  # only where the element may fold as such a union (`interface.mayFoldUnion`), so any other
+  # only where the element may fold as such a node (`interface.mayFoldNested`), so any other
   # element's fold allocates nothing for it.
-  exactThread = element: if interface.mayFoldUnion element then threadExact else threadElement;
+  exactThread = element: if interface.mayFoldNested element then threadExact else threadElement;
 
   # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
   # `config`, `options` and `prefix` are injected by the engine itself at BOTH strata —
