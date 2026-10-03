@@ -182,7 +182,8 @@ in
         hatch40 = 1;
       };
     };
-    # A cyclic type declared twice is refused catchably, through both engines.
+    # A cyclic type declared twice is refused catchably, through both engines; the relation's
+    # foreign entries answer "not mergeable" (`binOp`'s `null`) rather than descend.
     test-a-cyclic-type-declared-twice-refuses-catchably = {
       expr = {
         gen = caught (declaredTwice json);
@@ -194,10 +195,12 @@ in
                 { options.s = nixpkgsLib.mkOption { type = json; }; }
               ];
             }).options.s.type.name;
+        binOp = (t.listOf json).functor.binOp { elemType = json; } { elemType = json; };
       };
       expected = {
         gen = true;
         np = true;
+        binOp = null;
       };
     };
     # The pre-flight STOPS at a nesting type: its relation unions module SETS and descends into no
