@@ -659,12 +659,11 @@ in
                 "gm"
               ]
           );
-        # nixpkgs' engine lists the LATER declaration's modules first; gen's engine, over a foreign
-        # pair, the earlier's. The `gm` literal pins that earlier-first module order, which is
-        # den-hoag-z75vj's known divergence from nixpkgs (later-first); z75vj re-pins the `gm` rows.
-        served = eng: o: {
+        # Both engines list the LATER declaration's modules first in `l` (the union is authored, as
+        # nixpkgs builds it), so the literal does not depend on the engine.
+        served = _: o: {
           l =
-            if (eng == "np") == (o == "o12") then
+            if o == "o12" then
               [
                 "gen-listed"
                 "np-listed"
@@ -722,6 +721,385 @@ in
         expected = {
           mixed = expected;
           ref = expected;
+        };
+      };
+
+    # z75vj: a redeclared nesting option's module set is the AUTHORED concatenation of every
+    # declaration's own set, as nixpkgs' `fixupOptionType` rebuilds it, whatever kinds the declarations
+    # are (nixpkgs submodule / tree, gen submodule / tree) and under any container. `l` reads the
+    # merged list, so the module-union order is observable. `expected` is the SAME table under
+    # `lib.evalModules` over the SAME declared types, live, so there is no literal to drift. Rows:
+    # every ordering of 2-3 declarations (bare / `listOf` / `nullOr` over submodule and tree), the
+    # nixpkgs-only containers (`attrsOf`, `lazyAttrsOf`, `functionTo`), four declarations, five
+    # order-observable value shapes, and `deferredModuleWith`. A mixed `attrsOf` pair is refused by
+    # both engines, so it has no row; `live` fails if any row is refused in the reference.
+    test-redeclared-nesting-modules-union-in-authored-order =
+      let
+        nt = np.types;
+        npDecl = tag: {
+          options.l = np.mkOption { type = nt.listOf nt.str; };
+          config.l = [ "n${tag}" ];
+        };
+        # a gen module cannot declare `l` beside a nixpkgs one that does, so only the first one does
+        genDecl =
+          tag:
+          {
+            config.l = [ "g${tag}" ];
+          }
+          // (
+            if tag == "A" then
+              {
+                options.l = mkOption { type = t.listOf t.str; };
+              }
+            else
+              { }
+          );
+        build = {
+          N = {
+            sub = tag: nt.submodule [ (npDecl tag) ];
+            tree = tag: (np.evalModules { modules = [ (npDecl tag) ]; }).type;
+          };
+          G = {
+            sub = tag: t.submodule [ (genDecl tag) ];
+            tree = tag: (evalModuleTree { modules = [ (genDecl tag) ]; }).type;
+          };
+        };
+        wrap =
+          w: v: T:
+          if w == "bare" then
+            T
+          else if v == "N" then
+            nt.${w} T
+          else
+            t.${w} T;
+        def = {
+          bare = { };
+          listOf = [ { } ];
+          nullOr = { };
+          attrsOf = {
+            k = { };
+          };
+          lazyAttrsOf = {
+            k = { };
+          };
+          functionTo = _: { };
+        };
+        pick = {
+          bare = x: x;
+          listOf = builtins.head;
+          nullOr = x: x;
+          attrsOf = x: x.k;
+          lazyAttrsOf = x: x.k;
+          functionTo = x: x 0;
+        };
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalModuleTree;
+            mk = mkOption;
+          };
+        };
+        settle =
+          v:
+          let
+            r = builtins.tryEval (builtins.deepSeq v v);
+          in
+          if r.success then r.value else "REFUSED";
+        decls =
+          vs:
+          np.imap0 (i: v: {
+            inherit v;
+            tag = builtins.elemAt [ "A" "B" "C" "D" ] i;
+          }) vs;
+        perms =
+          l:
+          if l == [ ] then
+            [ [ ] ]
+          else
+            builtins.concatMap (x: map (p: [ x ] ++ p) (perms (builtins.filter (y: y != x) l))) l;
+        twoOrders = ds: [
+          ds
+          (np.lists.reverseList ds)
+        ];
+        sets = {
+          NN = [
+            "N"
+            "N"
+          ];
+          NG = [
+            "N"
+            "G"
+          ];
+          GG = [
+            "G"
+            "G"
+          ];
+          NNN = [
+            "N"
+            "N"
+            "N"
+          ];
+          NNG = [
+            "N"
+            "N"
+            "G"
+          ];
+          NGG = [
+            "N"
+            "G"
+            "G"
+          ];
+          GGG = [
+            "G"
+            "G"
+            "G"
+          ];
+        };
+        nm = ds: builtins.concatStringsSep "-" (map (d: "${d.v}${d.tag}") ds);
+        # one option `x` declared by `Ts` in order; a nesting option's list `l` is read through `pickFn`
+        run =
+          eng: w: Ts: pickFn:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def.${w}; } ];
+            };
+          in
+          settle (pickFn r.config.x);
+        listRows =
+          eng:
+          builtins.listToAttrs (
+            builtins.concatLists (
+              map (
+                row:
+                map (ds: {
+                  name = "${row.w}/${row.k}/${nm ds}";
+                  value = run eng row.w (map (d: wrap row.w d.v (build.${d.v}.${row.k} d.tag)) ds) (
+                    x: (pick.${row.w} x).l
+                  );
+                }) (row.ord (decls sets.${row.s}))
+              ) rows
+            )
+          );
+        rows =
+          builtins.concatMap
+            (
+              w:
+              builtins.concatMap
+                (
+                  k:
+                  map (s: {
+                    inherit w k s;
+                    ord = perms;
+                  }) (builtins.attrNames sets)
+                )
+                [
+                  "sub"
+                  "tree"
+                ]
+            )
+            [
+              "bare"
+              "listOf"
+              "nullOr"
+            ]
+          ++
+            builtins.concatMap
+              (
+                k:
+                map
+                  (s: {
+                    w = "attrsOf";
+                    inherit k s;
+                    ord = perms;
+                  })
+                  [
+                    "NN"
+                    "NNN"
+                  ]
+              )
+              [
+                "sub"
+                "tree"
+              ]
+          ++
+            builtins.concatMap
+              (
+                w:
+                map
+                  (s: {
+                    inherit w s;
+                    k = "sub";
+                    ord = twoOrders;
+                  })
+                  [
+                    "NN"
+                    "NNN"
+                  ]
+              )
+              [
+                "lazyAttrsOf"
+                "functionTo"
+              ];
+        fourRows =
+          eng:
+          builtins.listToAttrs (
+            map
+              (ds: {
+                name = "four/${nm ds}";
+                value = run eng "bare" (map (d: build.${d.v}.sub d.tag) ds) (x: x.l);
+              })
+              (
+                perms (decls [
+                  "N"
+                  "G"
+                  "N"
+                  "G"
+                ])
+              )
+          );
+        # the value shapes the union order reaches: A declares, B only defines
+        shapeDecl.options = {
+          l = np.mkOption {
+            type = nt.listOf nt.str;
+            default = [ ];
+          };
+          s = np.mkOption {
+            type = nt.lines;
+            default = "";
+          };
+          sep = np.mkOption {
+            type = nt.separatedString ",";
+            default = "";
+          };
+          o = np.mkOption {
+            type = nt.listOf nt.str;
+            default = [ ];
+          };
+          m = np.mkOption {
+            type = nt.attrsOf (nt.listOf nt.str);
+            default = { };
+          };
+        };
+        shapeDefs = tag: {
+          config = {
+            l = [ tag ];
+            s = tag;
+            sep = tag;
+            o = np.mkOrder 500 [ tag ];
+            m.k = [ tag ];
+          };
+        };
+        shapeTypes = {
+          NN = [
+            (nt.submodule [
+              shapeDecl
+              (shapeDefs "A")
+            ])
+            (nt.submodule [ (shapeDefs "B") ])
+          ];
+          NG = [
+            (nt.submodule [
+              shapeDecl
+              (shapeDefs "A")
+            ])
+            (t.submodule [ (shapeDefs "B") ])
+          ];
+        };
+        shapeRows =
+          eng:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                s:
+                builtins.concatMap
+                  (
+                    ord:
+                    map
+                      (f: {
+                        name = "shape/${s}/${ord}/${f}";
+                        value = run eng "bare" (
+                          if ord == "AB" then shapeTypes.${s} else np.lists.reverseList shapeTypes.${s}
+                        ) (x: x.${f});
+                      })
+                      [
+                        "l"
+                        "s"
+                        "sep"
+                        "o"
+                        "m"
+                      ]
+                  )
+                  [
+                    "AB"
+                    "BA"
+                  ]
+              )
+              [
+                "NN"
+                "NG"
+              ]
+          );
+        deferredRows =
+          eng:
+          let
+            dm = tag: nt.deferredModuleWith { staticModules = [ { config.l = [ tag ]; } ]; };
+            reader = {
+              options.l = np.mkOption {
+                type = nt.listOf nt.str;
+                default = [ ];
+              };
+            };
+            at = {
+              AB = [
+                "A"
+                "B"
+              ];
+              BA = [
+                "B"
+                "A"
+              ];
+              ABC = [
+                "A"
+                "B"
+                "C"
+              ];
+              CAB = [
+                "C"
+                "A"
+                "B"
+              ];
+            };
+          in
+          builtins.listToAttrs (
+            map (n: {
+              name = "deferred/${n}";
+              value = run eng "bare" (map dm at.${n}) (
+                x:
+                (np.evalModules {
+                  modules = [
+                    reader
+                    x
+                  ];
+                }).config.l
+              );
+            }) (builtins.attrNames at)
+          );
+        table = eng: listRows eng // fourRows eng // shapeRows eng // deferredRows eng;
+        reference = table "np";
+      in
+      {
+        expr = {
+          gm = table "gm";
+          live = builtins.all (v: v != "REFUSED") (builtins.attrValues reference);
+          rows = builtins.length (builtins.attrNames reference);
+        };
+        expected = {
+          gm = reference;
+          live = true;
+          rows = 252;
         };
       };
 

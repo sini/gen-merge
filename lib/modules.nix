@@ -581,6 +581,23 @@ let
       }
     else
       { merged = m; };
+  # nixpkgs `fixupOptionType`: the merged type rebuilt over the AUTHORED concatenation of every
+  # declaration's own module set, replacing whatever module list the join's `binOp` built. A type
+  # that states no module set (a leaf, `either`, `oneOf`) is returned as is. Lives on the
+  # declaration plane, not in `mergeDeclaredTypes`, because that is also the freeform-type merge,
+  # which nixpkgs's `optionType.merge` leaves unrebuilt.
+  fixupModuleSets =
+    declared: merged:
+    let
+      sub = interface.importedSubstructure merged;
+      own =
+        t:
+        let
+          m = (interface.importedSubstructure t).modules;
+        in
+        if m == null then [ ] else m;
+    in
+    if sub.modules == null then merged else sub.rebuild (concatMap own declared);
   # The list, in AUTHORED order; stops at the first refusing step. A one-element list is itself.
   mergeDeclaredTypes =
     ts:
@@ -731,7 +748,8 @@ let
         # the LAST typed declaration decides the whole list; an earlier step's prefix is provisional
         final = all (s: s.idx <= modIndex) typed;
         prior = filter (s: s.idx <= modIndex) typed;
-        upTo = mergeDeclaredTypes (map (s: s.decl.type) prior);
+        declaredTypes = map (s: s.decl.type) prior;
+        upTo = mergeDeclaredTypes declaredTypes;
       in
       if final && upTo ? refused then
         throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${declaredRefusalText upTo}); declared in ${
@@ -742,7 +760,7 @@ let
         // {
           type =
             if upTo ? merged then
-              upTo.merged
+              fixupModuleSets declaredTypes upTo.merged
             else
               throw "gen-merge: option `${showOption lk}': the declarations through the one in ${(prelude.last prior).file} do not merge on their own (${declaredRefusalText upTo}); a later declaration decides them";
         }
