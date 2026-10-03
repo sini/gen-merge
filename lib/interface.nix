@@ -195,7 +195,8 @@ let
   #   identity  — the base's mint and what reads it (ADR-0034): a derivation is not its base, and
   #               never inherits them.
   #   derived   — this boundary's own output, re-derived when the source is exported again: the
-  #               fourteen protocol fields and gen-types' check witness, which is published beside them.
+  #               fourteen protocol fields and the two witnesses published beside them, gen-types'
+  #               check witness and the rebuild's.
   #   datum     — the derivation's own record of what it was derived from.
   #
   # `nameCarried` fields are the only protocol fields a delta may restate. Every field outside these
@@ -235,6 +236,7 @@ let
     ];
     derived = exportFields ++ [
       "_checkWitness"
+      "_substSubModulesWitness"
       "phraseClass"
       "__phraseWithin"
     ];
@@ -727,21 +729,30 @@ let
       };
 
   # A descriptor carrying a `substructure` BESIDE a callable `substSubModules` is a copy of a built
-  # record (`base // Δ`, gen-schema's `refined`). Its `substructure.rebuild` is TIED, closed over
-  # the record it was copied from (`deriveType`'s note), so it rebuilds the base and drops the
-  # copy's own layer. The stated `substSubModules` is the copy's own rebuild, the one nixpkgs'
-  # `fixupOptionType` calls on the outer type, so it is the one imported. The module set and the
-  # declarations are data, not tied, and cross as carried. The fields are bound as formals, so the
-  # rebuild is the descriptor's own value and the import allocates no thunk for it: this runs once per
-  # imported instance (perf-bench `schemaHosts`).
+  # record (`base // Δ`), and the copy states its rebuild in one of the two fields, carrying the
+  # other from the base. Which one the author overrode is read off the witness `exportType`
+  # publishes beside `substSubModules` (`_substSubModulesWitness`, the check-witness pair's
+  # construction): a `substSubModules` that no longer holds its witness was rewritten (gen-schema's
+  # `refined`), and is the copy's own rebuild, the one nixpkgs' `fixupOptionType` calls on the outer
+  # type; the `substructure.rebuild` the base's export derived it from is TIED, closed over the base
+  # (`deriveType`'s note), and would drop the copy's layer. A `substSubModules` still holding its
+  # witness is the base's, carried along stale, so the copy's `substructure` decides, as it does for
+  # a copy that restated its rebuild there. The module set and the declarations are data, not tied,
+  # and cross as carried. The fields are bound as formals, so the rebuild is the descriptor's own
+  # value and the import allocates no thunk for it: this runs once per imported instance (perf-bench
+  # `schemaHosts`).
   importedOwnSubstructure =
     {
       substructure ? null,
       substSubModules ? null,
+      _substSubModulesWitness ? null,
       ...
     }@t:
+    # gen-types' `rewritesCheck`, restated inline for cost over the rebuild's pair.
     if
       substructure != null
+      && _substSubModulesWitness != null
+      && substSubModules != _substSubModulesWitness
       && (isFunction substSubModules || isAttrs substSubModules && substSubModules ? __functor)
     then
       substructure // { rebuild = substSubModules; }
@@ -2507,6 +2518,7 @@ let
             ++ [
               "_protoLeafMerge"
               "_checkWitness"
+              "_substSubModulesWitness"
             ]
           )
           // {
@@ -2951,6 +2963,17 @@ let
         else
           (_: true)
       );
+      # The rebuild, built once by the same `witnessRecord` and published twice, as `substSubModules`
+      # and as `_substSubModulesWitness`.
+      rebuild = witnessRecord (
+        m:
+        if threadElementOf m != null then
+          threadElementOf m exported
+        else if sub == null then
+          null
+        else
+          sub.rebuild m
+      );
 
       # `typeMerge` and `functor` are ONE derivation from ONE gen datum. The relation is row-free —
       # it takes the other TYPE — so the outbound half recovers a type from whatever functor arrives
@@ -3018,14 +3041,10 @@ let
         getSubOptions =
           if sub == null then (_prefix: { }) else freeformSubOptions sub.declares (freeformOf t);
         getSubModules = if sub == null then null else sub.modules;
-        substSubModules =
-          m:
-          if threadElementOf m != null then
-            threadElementOf m exported
-          else if sub == null then
-            null
-          else
-            sub.rebuild m;
+        # Published under both fields, as `check` is: a copy that rewrote `substSubModules` is the
+        # one record whose field no longer holds the witness (`importedOwnSubstructure`).
+        substSubModules = rebuild;
+        _substSubModulesWitness = rebuild;
         # Derived from the gen datum only where there is no stated relation to derive it FROM.
         # Where the caller stated one, theirs is what the foreign engine must see — deriving over it
         # would shadow the relation the two clauses above went to the trouble of retaining.

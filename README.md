@@ -797,6 +797,20 @@ budget and costing one node, so a type whose cycle closes through the derivation
 as the same shape without the derivation does. Which field of the base goes where is
 `interface.deriveClasses`, and `ci/tests/derive-type.nix` fails by name on a field no class names.
 
+**A `//` copy's rebuild is read off a witness.** A copy states its rebuild in one of two fields and
+carries the other from its base: `substSubModules` in nixpkgs' words (gen-schema's `refined`), or
+`substructure.rebuild` in gen's. `exportType` builds the rebuild once with gen-types' `witnessRecord`
+and publishes it twice, as `substSubModules` and as `_substSubModulesWitness`, the construction of the
+check witness below. The import boundary takes a stated `substSubModules` as the copy's rebuild
+exactly when it no longer holds its witness, and the copy's `substructure` otherwise, so the layer
+the author stated survives in either field (`decl-merge.test-redeclared-wrapper-over-nesting-keeps-its-layer`,
+`decl-merge.test-copy-stating-its-rebuild-as-substructure-keeps-its-layer`). The rebuild is mounted
+in both directions: by gen's redeclaration fold, and by nixpkgs' `fixupOptionType`, which calls the
+outer type's `substSubModules` on **every** option whose type states a module set, declared once or
+more. A stated `substSubModules` that answers no option type (`null`, a bare attrset) is refused by
+name where gen's evaluation rebuilds it, and aborts in `lib.evalModules` as it does over a nixpkgs
+type; the base's rebuild no longer serves it silently.
+
 The derivation keeps its base's `name` by default, the value vocabulary its messages speak. Its
 identity is `__derivation.id`, which every gen relation reads through `interface.keyOf` and which
 `exportType` publishes as `functor.name`, so neither a gen relation nor a foreign `typeMerge`

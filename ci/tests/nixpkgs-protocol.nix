@@ -94,7 +94,8 @@ let
   # of, and a source that moved unnoticed is the shape this whole seam exists to make visible.
   #
   # ★ IT IS NOT ALL SUBSTRATE, AND SAYING SO WOULD BE WRONG IN THE DIRECTION THAT MISLEADS. Every
-  # class below includes `_protoLeafMerge` and `_checkWitness` (den-hoag-4ifgb), which the boundary
+  # class below includes `_protoLeafMerge`, `_checkWitness` (den-hoag-4ifgb) and
+  # `_substSubModulesWitness` (den-hoag-z75vj), which the boundary
   # MINTS (`interface.nix`, `_protoLeafMerge = !(t ? mergeDefs)`) and is never handed — a reader
   # told this set is "what the boundary is handed" would conclude `mkType` stamps the marker, which
   # it does not. The rest of each
@@ -118,6 +119,7 @@ let
         "__typeSelf"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "substructure"
         "typeMergeRel"
         "verify"
@@ -129,6 +131,7 @@ let
         "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "admits"
         "carries"
         "mergeDefs"
@@ -148,12 +151,14 @@ let
         "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "typeMergeRel"
       ];
       anything = [
         "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "mergeDefs"
         "typeMergeRel"
       ];
@@ -161,6 +166,7 @@ let
         "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "admits"
         "mergeDefs"
         "substructure"
@@ -172,6 +178,7 @@ let
         "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "admits"
         "mergeDefs"
         "substructure"
@@ -181,6 +188,7 @@ let
         "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "admits"
         "carries"
         # den-hoag-n6dh7 U2.1, a declared gain: the union's member choice (`choose`)
@@ -207,6 +215,7 @@ let
         "__phraseWithin"
         "_checkWitness"
         "_protoLeafMerge"
+        "_substSubModulesWitness"
         "admits"
         "carries"
         "mergeDefs"
