@@ -333,8 +333,8 @@ in
     # F1 — nixpkgs equivalence over the same arms: the file each engine attributes the definition
     # to agrees string for string, wrapped or direct, and through `deferredModule`. Scope: this is
     # the IMPORT-site attribution of content passed through an unattributed wrapper. A PATH module
-    # whose own content names `_file` diverges (gen-merge names the path, nixpkgs the declared
-    # `_file`), a pre-existing precedence difference this threading leaves unmoved.
+    # is named by the `_file` its own content sets, else its path, on both engines
+    # (`path-module-own-file.nix`).
     test-nixpkgs-equivalence-wrapped-and-direct = {
       expr = builtins.mapAttrs (_: mods: genMergeFiles mods == nixpkgsFiles mods) f1Arms // {
         deferred =
