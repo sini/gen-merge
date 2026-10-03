@@ -1824,6 +1824,31 @@ in
           msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`int' rejects b\\.nix; `string' rejects a\\.nix; `bool' rejects b\\.nix, a\\.nix\\)$";
         };
       };
+      # A refined `either` (nixpkgs' `addCheck`, which keeps the key and `choose`) whose own choice
+      # takes the definitions and whose refinement rejects them is named WHOLE, with the files its
+      # check rejects. Walked into, its `int' leaf would be named rejecting nothing.
+      test-a-refined-either-member-rejected-by-its-refinement-is-named-whole = {
+        expr =
+          builtins.deepSeq
+            (gm.evalModuleTree {
+              modules = [
+                {
+                  options.x = gm.mkOption {
+                    type = t.either (nixpkgsLib.types.addCheck (t.either t.int t.str) (v: v != 1)) t.bool;
+                  };
+                }
+                {
+                  _file = "a.nix";
+                  x = 1;
+                }
+              ];
+            }).config.x
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`either' rejects a\\.nix; `bool' rejects a\\.nix\\)$";
+        };
+      };
       # EVERY offending definition is named, not the pair a dispatch happened to be holding. Two
       # list definitions and one string: the member that takes lists rejects one file, the member
       # that takes strings rejects two, and an author reconciling only the first collision the
