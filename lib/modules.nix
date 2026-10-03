@@ -3010,7 +3010,25 @@ let
           )
           (
             keyWalk null g.loc
-              (if g.type ? carries then g.type else interface.homedRootAt "evalModuleTree" g.loc g g.type)
+              (
+                if
+                  g.type ? carries
+                  && !(
+                    # presence first, so a gen root that crossed nothing pays no call
+                    g.type ? substructure.mount
+                    ||
+                      (
+                        g.type ? carries.element.substructure.mount
+                        || g.type ? carries.element.carries.element.substructure.mount
+                        || g.type ? carries.element.carries.element.carries.element
+                      )
+                      && interface.crossedRoot g.type
+                  )
+                then
+                  g.type
+                else
+                  interface.homedRootAt "evalModuleTree" g.loc g g.type
+              )
               [ ]
               g.loc
               (
@@ -3268,7 +3286,21 @@ let
               optDecl.type
             else
               threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) (
-                if (optDecl.type or null) ? carries then
+                # a crossed module set, or a container carrying one, is mounted (`interface.crossedRoot`)
+                if
+                  (optDecl.type or null) ? carries
+                  && !(
+                    # presence first, so a gen root that crossed nothing pays no call
+                    optDecl.type ? substructure.mount
+                    ||
+                      (
+                        optDecl.type ? carries.element.substructure.mount
+                        || optDecl.type ? carries.element.carries.element.substructure.mount
+                        || optDecl.type ? carries.element.carries.element.carries.element
+                      )
+                      && interface.crossedRoot optDecl.type
+                  )
+                then
                   optDecl.type
                 else
                   interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)

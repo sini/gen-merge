@@ -134,7 +134,13 @@ let
       nestedTypes.elemType = el;
       getSubOptions = el.getSubOptions;
       getSubModules = el.getSubModules;
-      substSubModules = m: spindle (el.substSubModules m);
+      # the rebuild keeps the element's stated opt-out, which its own rebuild does not carry: the
+      # root is mounted as this rebuild, as nixpkgs mounts it (den-hoag-6yfat)
+      substSubModules =
+        m:
+        spindle (
+          el.substSubModules m // (if el ? declaresNesting then { inherit (el) declaresNesting; } else { })
+        );
       functor = {
         name = "spindle";
         payload = null;
