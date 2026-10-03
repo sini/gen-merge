@@ -1947,7 +1947,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `listOf nv` over nixpkgs' self-referential `nv = nullOr (oneOf [ str (attrsOf nv) (listOf nv) ])`,
   whose divergence is inside nixpkgs' own `description` thunk, and `vm = nullOr (np.listOf vm)`, a
   gen cycle closed through a nixpkgs composer, which describes `vm` from `vm`'s own exported
-  `description`; and a `deriveType` whose `fields` states its base's `description`
+  `description` (its `getSubModules`/`getSubOptions` refuse by name, the next bullet); and a `deriveType` whose `fields` states its base's `description`
   (`fields = b: { inherit (b) description; }`) over a base that holds the derivation, a caller's
   stated phrase built from the phrase its own member renders. Omitting `description` serves the
   same text within the budget. Before the phrase was derived all three served the constructor's name (`"listOf"`,
@@ -1961,6 +1961,63 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   with a stated override (49 of the 16 798 top-level NixOS options hold one in their phrase tree,
   `time.timeZone`'s "null or string without spaces" among them). Every construction changes an
   answer the export gives correctly today without deciding the input that aborts.
+
+- **A cyclic type's spine and its redeclaration refuse by name past the type-walk fuel.** A cycle
+  every back-edge of which sits under a constructor consuming the value is CONTRACTIVE, and its
+  value observations (check, merge, refusal) serve. Two observations of the TYPE itself consume
+  nothing, and nixpkgs' twin diverges on both:
+
+  - `getSubModules`/`getSubOptions` of a forwarding container (`listOf`, `attrsOf`, `lazyAttrsOf`,
+    `nullOr`) follow its element chain for at most `importedTypeWalkFuel` (32) steps. A stock
+    nixpkgs record forwarding both reads to one element (`listOf`, `nullOr`, `attrsWith`, `uniq`,
+    `functionTo`, `coercedTo`'s `finalType`) is a step of the same walk, taken to bound the chain
+    and never to answer for the record: once the chain is shown to end, the record answers for
+    itself, so one whose sub-protocol was overridden answers its override, as nixpkgs' own container
+    over it does. So `r = nullOr (listOf r)`, and the same cycle through any of those nixpkgs
+    records, is SERVED by `evalModuleTree` (`[ null [ null ] ]`), and nixpkgs' evaluation and docs
+    over it are named refusals `tryEval` catches where nixpkgs' twin aborts.
+  - A type merge (a redeclaration, `exportType`'s `typeMerge` and `binOp`) asks the boundary's
+    decidability walk of both operands once, at its entry, and refuses a pair that does not bottom
+    out within the fuel; its descent asks again of no sub-tree. So any cyclic type declared twice,
+    the union-closed json shape included, refuses by name, in gen's engine and through nixpkgs'.
+    The walk stops at a gen nesting type, whose relation unions module sets and descends into no
+    type, so a submodule's modules are never forced by it.
+  - THE PRICE: a finite chain of 34 or more forwarding containers below the container asked refuses
+    its spine where it was answered, a finite type nested 32 containers deep refuses its
+    redeclaration, and a cycle through a stock nixpkgs container whose override stops forwarding
+    refuses its spine where the override was answered. All three are named refusals; the deepest
+    real family measured in nixpkgs' vocabulary is 2. A redeclaration pays one bounded walk per
+    operand, linear in its depth (`ci/tests/cyclic-types.nix`; den-hoag-iaram build report). THE
+    REMEDY is in the refusal: close a cycle through a union (`either`, `oneOf`) or a submodule, which
+    answer for themselves, or nest a finite chain less deeply. THE ESCAPE HATCH: a gen record whose
+    `substructure` states no `forward` answers for itself, which ends the spine walk there. The
+    redeclaration walk states none, as the foreign arm's identical walk states none.
+  - nixpkgs' docs over a cycle through a submodule (`r = listOf (submodule { options.x = mkOption { type = nullOr r; }; })`) still diverge, in nixpkgs as here: every `getSubOptions`
+    gen answers there is finite, and the walk that does not end is nixpkgs'
+    `optionAttrSetToDocList` recursing through nested options, whose own remedy is
+    `visible = "shallow"`.
+
+- **A type that is its own derivation, and an unguarded cycle, abort uncatchably, a declared
+  exception to the rule that every refusal is catchable.**
+
+  - `d = deriveType d { … }` states no constructor between `d` and itself: it is the equation
+    `d = d`, and denotes no type. `deriveType` reads its base when it is built, so Nix black-holes
+    the thunk (`infinite recursion encountered`) before any gen code observes a value, as nixpkgs'
+    `d = d // { … }` dies. Neither serving nor refusing is available: a lazy `deriveType` would die
+    the same way at its first read, since every field of `d` is read off `d`.
+  - A NON-CONTRACTIVE cycle, one whose back-edge passes no constructor that consumes the value
+    (`r = either int r`, `either r int`, `nullOr r`, `deriveType (either int d)`), has no unique
+    fixpoint: the least is `int`, the greatest admits everything. Its out-of-domain `check`, the
+    refusals that read it, and for `either r int` even the in-domain check, die in the call-depth
+    channel (`stack overflow; max-call-depth exceeded`) on all three evaluators, as nixpkgs' twins
+    do. A construction exists that would refuse it by name, a lazily-forced contractiveness walk per
+    union node, and it is not taken, by priority and cost (*defaulted, reversible*, den-hoag-iaram
+    OQ1): nixpkgs aborts identically and serves no value to keep parity with; the walk's cost on
+    `check`'s hot path is unmeasured; it would refuse a flat `oneOf` of 34 or more members that
+    serves today unless union width is charged apart; and it would leave a cycle alternating foreign
+    and gen unions unbounded.
+  - `ci/tests-process-cells.nix` pins both deaths (`cyclic-derive-self`, `cyclic-unguarded`) on
+    their channels, with a live control (`cyclic-guarded-control`).
 
 - **A foreign knot closed through a gen door aborts uncatchably at construction, a declared
   exception to the rule that every refusal is catchable.** `r = mkOptionType (np.either np.int (np.listOf r))` and `d = deriveType (np.either np.int (np.listOf d)) { … }` die with `infinite recursion encountered` on every reader, where nixpkgs' twin (`np.mkOptionType` over the record,
