@@ -403,11 +403,11 @@
         "gen-prelude": "gen-prelude_6"
       },
       "locked": {
-        "lastModified": 1790902148,
-        "narHash": "sha256-oGiuwAkeg45ibFj7j4+G4Me0+TkcJHMsJ1fgfKVXhXc=",
+        "lastModified": 1790969274,
+        "narHash": "sha256-V09HbB8t34DuR7cKvNC0C+NCE4mnzV6j83uFHLMQ2LQ=",
         "owner": "sini",
         "repo": "gen-types",
-        "rev": "818cc04b2989fa6914db5d4216875ca7876f91aa",
+        "rev": "28244ed733c8095ea8f6b61899c1de20b884dbd3",
         "type": "github"
       },
       "original": {
