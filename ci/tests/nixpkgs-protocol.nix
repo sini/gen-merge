@@ -104,7 +104,7 @@ let
     let
       # A leaf brings a domain predicate and nothing else; its substructure and empty answer are the
       # leaf ones, stated rather than inherited. `__id`/`__mint`/`__name`/`__nameWithin`/`__payload`/
-      # `verify` are gen-types' own fields riding the import-environment passthrough (see the header comment
+      # `__sealed`/`verify` are gen-types' own fields riding the import-environment passthrough (see the header comment
       # above) — substrate, not foreign protocol, so they belong here rather than in
       # `completedKeysBefore`.
       leaf = [
@@ -114,6 +114,7 @@ let
         "__nameWithin"
         "__payload"
         "__phraseWithin"
+        "__sealed"
         "_checkWitness"
         "_protoLeafMerge"
         "substructure"

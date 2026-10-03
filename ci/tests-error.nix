@@ -4787,9 +4787,11 @@ in
           expr = declaredTwice (t.either t.int t.str) badlyNamed;
           expectedError = refuses "`either' and `<a name of type int>'";
         };
+        # an `enum' over a path, which the encoder refuses: a parametric leaf with no mint (a
+        # `refined' over a caller lambda now mints, with the lambda a sealed component)
         test-unminted-parametric-leaf-names-the-partner-name-type = {
-          expr = declaredTwice (t.refined t.str (_: true)) badlyNamed;
-          expectedError = refuses "`refined<string>' and `<a name of type int>', whose parameters live behind their own predicate and cannot be compared";
+          expr = declaredTwice (t.enum "e" [ /x ]) badlyNamed;
+          expectedError = refuses "`e' and `<a name of type int>', whose parameters live behind their own predicate and cannot be compared";
         };
         test-minted-parametric-leaf-names-the-partner-name-type = {
           expr = declaredTwice (t.union [ t.str ]) badlyNamed;

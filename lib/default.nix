@@ -349,11 +349,11 @@ let
   #     apart, and `struct "s"` over different fields does too.
   #   · "value equality is pointer-based over the closures (two identical constructions compare
   #     UNEQUAL)" — false for a MINTED family: two separately-built `enum "e" [ "a" "b" ]`s mint the
-  #     SAME digest and compare equal. It is STILL TRUE for a SEALED one (`refined`, a `struct`
-  #     carrying a caller `verify`, `typedef`/`typedef'`): their `check` is a bare lambda rebuilt on
-  #     every call, and gen-types' own README says `typeEq` still separates two identical sealed
-  #     constructions ("What a checker's identity is minted over"). Sealed and foreign leaves (no
-  #     `__mint.minted` at all) therefore keep the ORIGINAL refusal below, unchanged.
+  #     SAME digest and compare equal. A type with a SEALED component (`refined`, a `struct` carrying a
+  #     caller `verify`, `typedef`/`typedef'`) mints too, with the component in `__sealed`, and `typeEq`
+  #     decides it (`same`, below): one binding is one type, two separately written lambdas are
+  #     refused. A leaf with no `__mint.minted` at all (an `enum` over a path, a self-referential type)
+  #     keeps the ORIGINAL refusal below, unchanged.
   #
   # A differing-construction pair is not "cannot be compared" — the mint compares it fine, and says
   # unequal — so what reconciles it is a LAW over the two constructions, read back through the
@@ -411,11 +411,39 @@ let
         digest = base.__mint.minted or null;
         # `self` is threaded exactly as `mkTypeWith` threads its own — the value a caller holds is
         # the EXPORTED type, so a match answers with that rather than with the pre-export record.
+        # ★ SAMENESS FIRST, decided by the vocabulary's own `typeEq` (den-hoag-6orb8 U1; design §1,
+        # "Where both operands carry a gen identity … gen-merge decides redeclaration on that
+        # identity"). A digest match alone is NOT sameness: gen-types' mark is blind to a type's
+        # SEALED components (a caller lambda, a registered construction), which `typeEq` decides over
+        # beside it, so two lambda `typedef`s sharing a mark would merge on the mark. `true` merges (one
+        # binding redeclared, two constructions of one registered term); `false` or a refusal goes on to
+        # the reconciliation laws below and otherwise to the named refusal.
+        #
+        # Where NEITHER operand seals anything, the mark is a total identity and a digest match is
+        # that decision read off the operands' own fields (equal marks, `{ } == { }`), as before;
+        # it is also the arm a wrapper's `//` keeps (`addCheck` over a parametric leaf declared
+        # twice from one value), whose rewritten `check` sends `typeEq` to the record.
+        same =
+          other:
+          builtins.isAttrs other
+          && other ? __mint
+          && builtins.isAttrs other.__mint
+          && other.__mint ? minted
+          && other.__mint.minted == digest
+          && (
+            ((base.__sealed or { }) == { } && (other.__sealed or { }) == { })
+            || (
+              let
+                r = builtins.tryEval (checkedTypes.typeEq base other);
+              in
+              r.success && r.value
+            )
+          );
         rel =
           self: other:
           if digest == null then
             refuseParametricMerge base other
-          else if builtins.isAttrs other && (other.__mint.minted or null) == digest then
+          else if same other then
             { merged = self; }
           else
             let

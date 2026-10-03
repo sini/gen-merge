@@ -21,6 +21,7 @@
   genIdentitySrc,
   genGraphSrc,
   genTypesSrc,
+  genAlgebraSrc,
   genMemoSrc,
   genScopeSrc,
   # A trace label generated fresh per run by the runner, which counts its lines on stderr.
@@ -30,10 +31,11 @@
 let
   prelude = import "${genPreludeSrc}/lib";
   identity = import "${genIdentitySrc}/lib";
+  algebra = import "${genAlgebraSrc}/lib";
   graph = import "${genGraphSrc}/lib" { inherit prelude; };
   m = import libSrc {
     inherit prelude;
-    types = import "${genTypesSrc}/lib" { inherit identity prelude; };
+    types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
     memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
     scope = import "${genScopeSrc}/lib" { inherit graph identity prelude; };
   };
@@ -76,7 +78,7 @@ let
   scope = import "${genScopeSrc}/lib" { inherit graph identity prelude; };
   spied = import libSrc {
     inherit prelude;
-    types = import "${genTypesSrc}/lib" { inherit identity prelude; };
+    types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
     memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
     scope = scope // {
       # den-hoag-3jyxf: a declaration-only evaluation (no `definitions`/`positions` attribute) is
@@ -114,7 +116,7 @@ let
     memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
     inherit scope;
     strategies = ct;
-    types = import "${genTypesSrc}/lib" { inherit identity prelude; };
+    types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
   };
   # The core seam's own vocabulary, tied to it as `ci/flake.nix` ties `genMergeVocab`.
   ct = import "${libSrc}/types.nix" {

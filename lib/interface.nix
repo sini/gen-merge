@@ -230,6 +230,7 @@ let
       "__id"
       "__okAt"
       "__payload"
+      "__sealed"
     ];
     derived = exportFields ++ [
       "_checkWitness"

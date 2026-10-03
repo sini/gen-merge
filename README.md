@@ -1056,16 +1056,20 @@ Two rules that look like details and are not:
 - **The predicate is `? verify`, not `? verify || ? name`.** A gen-types *helper* can return a
   `name`-bearing record that is not a type — `mkValidator name pred message` yields
   `{ message; name; pred; }`. Completing that would stamp `_type = "option-type"` onto a validator.
-- **A completed parametric leaf merges only the SAME construction, or two same-named `enum`s.** Its
-  identity is minted over its construction, so two textually-identical constructions merge. Where two
-  differ, the relation reads both constructions through gen-types' certifying `payloadOf` (the
+- **A completed parametric leaf merges only the SAME type, or two same-named `enum`s.** Sameness is
+  decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
+  textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,
+  a refinement's `check`) merges where `typeEq` says one type — one binding declared twice, or two
+  constructions of one registered term (gen-algebra `mkIntensional`). A digest match never merges on its
+  own where either side seals a component: two separately written lambdas share a mark and are refused.
+  Where `typeEq` answers `false` or refuses, the relation reads both constructions through gen-types' certifying `payloadOf` (the
   construction payload, read-only and never identity), and one law applies: two `enum`s under one name merge to
   the enum of their ordered union, nixpkgs' own `enum` functor `binOp` (`unique (a ++ b)`, left
   operand first). Every other differing pair refuses by name, saying whether no law exists for the two
   constructions (`struct`, two enum names) or a payload could not be read (a sealed or foreign
   partner) — gen-merge's own refusal on the declaration path, nixpkgs' `already declared` under a
-  foreign mount — instead of a wrong type. A sealed leaf (`refined`, `typedef`) keeps refusing: its
-  parameters live behind its own predicate. A **nullary** leaf keeps its self-merge: it has no
+  foreign mount — instead of a wrong type. A leaf with no mint at all (an `enum` over a path, a
+  self-referential type) keeps refusing: its parameters live behind its own predicate. A **nullary** leaf keeps its self-merge: it has no
   parameters to compare.
 
 ### `emptyValue` — when "nothing was defined" is not an error
