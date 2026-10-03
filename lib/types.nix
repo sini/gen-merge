@@ -817,6 +817,23 @@ let
   # attrsOf / lazyAttrsOf — per-key merge through the element type. They differ where nixpkgs' do: a
   # key whose every definition was discharged is DROPPED by `attrsOf` and KEPT by `lazyAttrsOf` (at
   # the element's empty value), so `attrsOf`'s key set forces each key's definitions to WHNF.
+  #
+  # `defsByKey` groups the definitions by key ONCE (`zipAttrsWith`, nixpkgs' `zipAttrs` grouping), so
+  # each key is a lookup, never a scan of the definitions per key; each key's list keeps definition
+  # order. Building it forces each definition's value to WHNF, and no element value.
+  # `attrsOf`/`lazyAttrsOf` (both folds and the split) and `anything` read it.
+  defsByKey =
+    defs:
+    builtins.zipAttrsWith (_: vs: vs) (
+      map (
+        d:
+        let
+          inherit (d) file;
+        in
+        builtins.mapAttrs (_: value: { inherit file value; }) d.value
+      ) defs
+    );
+
   attrsOfWith =
     tyName: element:
     let
@@ -824,15 +841,6 @@ let
       # definition that is not an attrset is one this type cannot consume. Bound once: the fold's
       # domain check reads this same binding and refuses the definition by name.
       admits = isAttrs;
-      defsAt =
-        defs: k:
-        concatMap (
-          d:
-          optional (d.value ? ${k}) {
-            inherit (d) file;
-            value = d.value.${k};
-          }
-        ) defs;
       at = loc: k: ds: {
         step = [ k ];
         loc = loc ++ [ k ];
@@ -841,19 +849,26 @@ let
       };
       # Selected ONCE, when the type is built, and not per call. `attrsOf` keeps only a key some
       # definition still defines after discharge (its key set forces each definition to WHNF);
-      # `lazyAttrsOf` keeps every key. The key union is an attrset fold: a list `unique` is O(k²).
+      # `lazyAttrsOf` keeps every key. Both read `defsByKey`.
       split =
         if tyName == "attrsOf" then
           loc: defs:
+          let
+            byKey = defsByKey defs;
+          in
           concatMap (
             k:
             let
-              ds = defsAt defs k;
+              ds = byKey.${k};
             in
             optional (isDefinedBy ds) (at loc k ds)
-          ) (attrNames (foldl' (acc: d: acc // d.value) { } defs))
+          ) (attrNames byKey)
         else
-          loc: defs: map (k: at loc k (defsAt defs k)) (attrNames (foldl' (acc: d: acc // d.value) { } defs));
+          loc: defs:
+          let
+            byKey = defsByKey defs;
+          in
+          map (k: at loc k byKey.${k}) (attrNames byKey);
       # Both containers' THREADED fold reads the split (den-hoag-n6dh7 item 5): the lazy one's key
       # set is every key, so its values stay unforced until read, as its called fold's are.
       #
@@ -890,25 +905,7 @@ let
             }) (split loc defs)
           )
         else
-          loc: defs:
-          let
-            # key union via attrset fold — a list `unique` is O(k²) in key count
-            keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
-          in
-          listToAttrs (
-            map (k: {
-              name = k;
-              value = mergeDefs (loc ++ [ k ]) element (
-                concatMap (
-                  d:
-                  optional (d.value ? ${k}) {
-                    inherit (d) file;
-                    value = d.value.${k};
-                  }
-                ) defs
-              );
-            }) keys
-          )
+          loc: defs: builtins.mapAttrs (k: mergeDefs (loc ++ [ k ]) element) (defsByKey defs)
       );
     in
     defineType {
@@ -1379,23 +1376,7 @@ let
       if (head defs).value ? __mint && all (d: d.value ? __mint) defs then
         mergeLeaf loc defs
       else
-        let
-          keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
-        in
-        listToAttrs (
-          map (k: {
-            name = k;
-            value = mergeAnythingDefs (loc ++ [ k ]) (
-              concatMap (
-                d:
-                optional (d.value ? ${k}) {
-                  inherit (d) file;
-                  value = d.value.${k};
-                }
-              ) defs
-            );
-          }) keys
-        )
+        builtins.mapAttrs (k: mergeAnythingDefs (loc ++ [ k ])) (defsByKey defs)
     else
       mergeLeaf loc defs;
   anything = defineType {

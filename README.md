@@ -1130,7 +1130,7 @@ beginning with `/`, context irrelevant, and `callM` imports such a string as the
 `loadModule` does. `submodule` admits the same domain, and `lint` collects it.
 
 **Nor did the rest of the structural surface's.** `listOf` walks every definition with `imap0`,
-`attrsOf`/`lazyAttrsOf` take the key union with `//`, and a submodule reads its definitions as
+`attrsOf`/`lazyAttrsOf` group their definitions by key, and a submodule reads its definitions as
 nixpkgs `types.submodule` does — an attrset definition is config, and any other definition is a
 module — so each states its domain too, matching nixpkgs on every shape except the submodule string-that-looks-
 like-a-path, where the `deferredModule` narrowing above applies for the same reason
@@ -1402,19 +1402,23 @@ thunks, +0.90% function calls and +0.62% bytes, the element relation now asking 
 step. The hub perf-bench never redeclares an option, so it guards the constant and not the
 redeclaration path.
 
-**Cost.** Each typed redeclaration step reads the declaring-site list, `O(modules × depth)`, so an
-option declared with a type in `n` of `M` modules costs `O(n × M × depth)`: flat for a fixed small
-`n`, and **quadratic when `n` grows with `M`**. Measured with `NIX_SHOW_STATS`, one option declared
-`int` in `n` of `M` modules, reading `config.p` and the type's name:
+**Cost.** The declaring sites are grouped once per evaluation into a trie keyed by path step, so a
+step finds an option's sites by a lookup of `depth` steps, whatever the module count `M`. What remains is
+the step itself: each typed redeclaration step filters the option's own site list for the typed sites
+before it and tests whether it is the last, `O(n)` for an option declared in `n` modules, so that option
+costs `O(n²)`: flat for a fixed small `n`, and **quadratic when `n` grows**. Measured with
+`NIX_SHOW_STATS` on Nix 2.34.8, one option declared `int` in the first `n` of `M` modules (the other
+modules each declaring one distinct option), reading `config.p` and the type's name:
 
-|                              | M = 200       | M = 400   | M = 800            |
-| ---------------------------- | ------------- | --------- | ------------------ |
-| n = M, before the bracketing | 26,664 thunks | 50,664    | 98,664 (0.03 s)    |
-| n = M                        | 553,251       | 2,143,851 | 8,445,051 (1.36 s) |
-| n = 2, before the bracketing | 18,942        | 35,142    | 67,542             |
-| n = 2                        | 19,443        | 36,043    | 69,243             |
+|                                  | M = 200        | M = 400   | M = 800           |
+| -------------------------------- | -------------- | --------- | ----------------- |
+| n = M, a scan of the module list | 580,206 thunks | 2,169,206 | 8,467,206 (3.9 s) |
+| n = M                            | 104,105        | 256,905   | 802,505 (0.43 s)  |
+| n = 2, a scan of the module list | 43,626         | 55,826    | 80,226            |
+| n = 2                            | 45,101         | 58,701    | 85,901            |
 
-A per-loc memo of the site list would remove the `n` factor; it is not taken here.
+A per-loc record of the last typed site, carried by the trie node, would remove the remaining `n`
+factor; it is not taken here.
 
 **Against nixpkgs, on the other fields.** The engines part on the **other** fields — nixpkgs refuses a redeclaration
 outright when both declarations carry any of `default`/`example`/`description`/`apply` (its
@@ -2144,9 +2148,8 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   (see "Redeclaring an option"). The
   departures are all over-refusals, each at a fold step whose earlier operand is a gen type whose
   relation refuses the later one. Under a **foreign** outer container the element relation runs in
-  foreign code and accepts what nixpkgs accepts. The list fold's cost is quadratic when one option is
-  declared with a type in a number of modules that grows with the module count ("Redeclaring an
-  option", **Cost**). Measured members:
+  foreign code and accepts what nixpkgs accepts. The list fold's cost is quadratic in the number of modules
+  that declare one option with a type ("Redeclaring an option", **Cost**). Measured members:
 
   - `gt.attrs` against `lib.types.attrs`, in the order nixpkgs accepts (the foreign `attrs` fold is
     `//`; gen's `attrs` refuses a collision, so it refuses a partner that states no fold of its own);

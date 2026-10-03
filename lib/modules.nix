@@ -610,28 +610,49 @@ let
   # The declaring SITES at one option loc, in authored module order — the entries whose own
   # `options` tree carries `loc` as a LEAF, each keeping the `idx` it had in the module fold. The
   # index is what lets a shadow record name the module that actually contributed the field being
-  # shadowed rather than the n-th declarer of the option. A direct path lookup per module —
-  # O(modules × depth), never a tree walk. Each site also carries its own leaf as `decl`, lazily.
-  # ★ IT IS READ ON THE HAPPY PATH: every redeclaration step where both operands are typed reads
-  # it, since the declared-type list is what decides the type (`redeclareDecl`). So an option
-  # redeclared with a type in n of M modules costs O(n × M × depth) — flat for small n, quadratic
-  # when n grows with M. README "Redeclaring an option" carries the measured table.
+  # shadowed rather than the n-th declarer of the option. Each site also carries its own leaf as
+  # `decl`, lazily.
+  # The entries are grouped ONCE into a lazy trie keyed by path step (`zipAttrsWith`, nixpkgs
+  # `mergeModules'`'s `declsByName`), so a loc is answered by a lookup of `depth` steps, never by a
+  # scan of the module list per loc. `depth` (the caller's prefix length) is applied inside, so each
+  # caller binds the application once. A node forces each entry's subtree at its own depth to WHNF and
+  # reads its `_type`, and nothing deeper. Every per-key list keeps entry order. It is read on the happy path: every redeclaration step where both operands are typed
+  # reads it (`redeclareDecl`), and the declaration fold reads each redeclared leaf's site indices
+  # from it (`mergeOptionDeclTrees`).
   declaringSitesAt =
-    entries: loc:
+    depth: entries:
     let
-      declaresLeaf =
-        opts: path:
+      node = xs: {
+        sites = map (x: x.e // { decl = x.o; }) (filter (x: isOptLeaf x.o) xs);
+        under = builtins.zipAttrsWith (_: node) (
+          map (
+            x:
+            if isAttrs x.o && !(isOptLeaf x.o) then
+              mapAttrs (_: o: {
+                inherit (x) e;
+                inherit o;
+              }) x.o
+            else
+              { }
+          ) xs
+        );
+      };
+      at =
+        n: path:
         if path == [ ] then
-          isOptLeaf opts
+          n.sites
+        else if n.under ? ${head path} then
+          at n.under.${head path} (tail path)
         else
-          isAttrs opts
-          && !(isOptLeaf opts)
-          && opts ? ${head path}
-          && declaresLeaf opts.${head path} (tail path);
+          [ ];
+      root = node (
+        map (e: {
+          inherit e;
+          o = e.options;
+        }) entries
+      );
     in
-    map (e: e // { decl = getAttrByPath loc e.options; }) (
-      filter (e: declaresLeaf e.options loc) entries
-    );
+    lk: at root (drop depth lk);
 
   # redeclareDecl — the ENGINE's answer when one option loc is declared by two modules.
   #
@@ -768,6 +789,47 @@ let
         bv
     ) b;
 
+  # mergeOptionDeclTrees — the engine's declaration fold: `mergeOptionDecls`' answer over a whole
+  # LIST of trees (the declaring entries' validated `options`, in entry order), grouped once per level
+  # with `zipAttrsWith`, so no step copies a growing accumulator (a `//` fold copies it once per
+  # module). A key declared once is that declaration; a group recurses; a leaf/group mix throws the
+  # binary fold's collision text; a leaf declared k times folds `onRedeclare` from the left, as the
+  # binary fold does, through a non-strict accumulator, so each step stays unforced until read. The
+  # j-th declaration of a leaf is the j-th declaring site at its loc (both are the entries carrying
+  # that loc as a leaf, in entry order), so its module index is read from `sitesAt` rather than
+  # carried on a per-key record. The binary `mergeOptionDecls` stays the lint's fold.
+  mergeOptionDeclTrees =
+    onRedeclare: sitesAt: loc: trees:
+    let
+      xs = filter (v: v != { }) trees;
+    in
+    if xs == [ ] then
+      { }
+    else if length xs == 1 then
+      head xs
+    else
+      builtins.zipAttrsWith (
+        k: ys:
+        if length ys == 1 then
+          head ys
+        else
+          let
+            lk = loc ++ [ k ];
+            leaf = isOptLeaf (head ys);
+          in
+          if !(all (y: isOptLeaf y == leaf) ys) then
+            throw "gen-merge: option `${showOption lk}' is declared both as an option and as an option-group (leaf/group collision)"
+          else if leaf then
+            let
+              sites = sitesAt lk;
+            in
+            (foldl' (acc: j: {
+              v = onRedeclare (prelude.elemAt sites j).idx lk acc.v (prelude.elemAt ys j);
+            }) { v = head ys; } (prelude.genList (j: j + 1) (length ys - 1))).v
+          else
+            mergeOptionDeclTrees onRedeclare sitesAt lk ys
+      ) xs;
+
   # ── list/path helpers for the warm re-eval path (design spec §§1-3) ─────────
   # `drop n` / `take n` (gen-prelude ships neither) — index-based, no `++` accumulation.
   drop =
@@ -820,22 +882,21 @@ let
     in
     recursiveUpdate flatAttrs deepAttrs;
 
-  # Extract each module's entries in ASCENDING index order (= reverse-module order) with a one-shot
-  # `filter` per module, then build its subtree once. This is O(moduleCount × |unmatched|), but that
-  # factor is over the MODULE COUNT (a small, bounded axis — config layers), NOT the freeform width;
-  # `filter` + `listToAttrs` are single builtin passes, so the cost stays LINEAR in width (the axis
-  # this fix exists to keep linear). A single-pass `foldl'` group-by is NOT an improvement here: with
-  # no O(1) cons/insert, accumulating per-module entry lists (`++`) or subtrees (`//`) copies the
-  # growing value each step → O(width²) (measured: 27× CPU / 52× alloc at a 4× width step, the very
-  # blow-up this fix removes — hidden from a thunk-count metric because the copies are lazy); a
-  # sort-first group-by avoids that but adds an O(U log U) term that tips the linear thunk growth. So
-  # the per-module `filter` is deliberate, not a missed optimisation.
+  # Group the entries by module ONCE (`builtins.groupBy`, which keeps each group in list order), then
+  # read each module's group in ASCENDING index order (= reverse-module order) and build its subtree
+  # once: linear in |unmatched| and in the module count, which is not bounded. A `foldl'` group-by
+  # would not be: with no O(1) cons/insert, accumulating per-module lists (`++`) or subtrees (`//`)
+  # copies the growing value each step (measured: 27× CPU / 52× alloc at a 4× width step, hidden from
+  # a thunk count because the copies are lazy). A builtin grouping copies nothing.
   coalesceUnmatched =
     moduleCount: unmatched:
+    let
+      byModule = builtins.groupBy (u: toString u.modIndex) unmatched;
+    in
     concatMap (
       i:
       let
-        entries = filter (u: u.modIndex == i) unmatched;
+        entries = byModule.${toString i} or [ ];
       in
       optional (entries != [ ]) {
         file = (head entries).file;
@@ -3547,18 +3608,17 @@ let
         file = e._file;
         options = optionsOf (moduleSyntaxChecked e).content;
       }) flat;
-      sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
+      sitesAt = declaringSitesAt (length prefix) declEntries;
     in
     {
       inherit declEntries sitesAt;
-      options = foldl' (
-        # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
-        # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
-        # traced back to it, so guarding the producer here covers all five tags at any nesting depth
-        # on both the `.options` and `.config` planes.
-        acc: e:
-        mergeOptionDecls (redeclareDecl sitesAt e.idx) prefix acc (validateDeclSubtree prefix e.options)
-      ) { } declEntries;
+      # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
+      # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
+      # traced back to it, so guarding the producer here covers all five tags at any nesting depth
+      # on both the `.options` and `.config` planes.
+      options = mergeOptionDeclTrees (redeclareDecl sitesAt) sitesAt prefix (
+        map (e: validateDeclSubtree prefix e.options) declEntries
+      );
     };
 
   # THE STRATUM-1 ENTRY, published beside `evalModuleTree`. A consumer wanting DECLARATIONS without
@@ -3953,18 +4013,21 @@ let
             inherit (d) file modIndex;
             attrs = pushDownProperties d.value;
           }) rawDefs;
-          subDefs =
-            k:
-            concatMap (
+          # The DECLARED keys' definitions, grouped once per level (nixpkgs `mergeModules'`'s
+          # `pushedDownDefinitionsByName`), so each key is answered by a lookup rather than a scan of
+          # `pushed`. Only the declared keys are grouped (`intersectAttrs opts`): the undeclared ones
+          # are grouped by `ownUnmatched` into their own records, so no definition is recorded twice.
+          # Each list keeps `pushed`'s order, the module-union order the merge reads (den-hoag-z75vj).
+          defsByKey = builtins.zipAttrsWith (_: vs: vs) (
+            map (
               p:
-              optional (p.attrs ? ${k}) {
+              mapAttrs (_: value: {
                 inherit (p) file modIndex;
-                value = p.attrs.${k};
-              }
-            ) pushed;
-          # key union via attrset fold — a list `unique` is O(k²) in sibling-key count
-          cfgKeys = attrNames (foldl' (acc: p: acc // p.attrs) { } pushed);
-          undeclaredKeys = filter (k: !(opts ? ${k})) cfgKeys;
+                inherit value;
+              }) (builtins.intersectAttrs opts p.attrs)
+            ) pushed
+          );
+          subDefs = k: defsByKey.${k} or [ ];
 
           # Each declared name yields BOTH its merged value and its provenance sub-tree from one
           # descent, as a pair `{ name; m; group? }` carrying the merge record whole: a declared LEAF →
@@ -4022,15 +4085,24 @@ let
           ) (attrNames opts);
 
           # Undeclared config keys at THIS level → unmatched defs carrying their full path + value
-          # (+ the originating `modIndex`, for per-module coalescing at the root).
-          ownUnmatched = concatMap (
-            k:
-            map (p: {
-              inherit (p) file modIndex;
-              path = loc ++ [ k ];
-              value = p.attrs.${k};
-            }) (filter (p: p.attrs ? ${k}) pushed)
-          ) undeclaredKeys;
+          # (+ the originating `modIndex`, for per-module coalescing at the root). Grouped once per
+          # level, like `defsByKey`, over each entry's undeclared keys (its keys less the declared
+          # ones it defines). `attrValues` of the grouping is key order and each group keeps `pushed`'s
+          # order, so the list is key-major; the report and the orphan refusal read that order.
+          ownUnmatched = concatLists (
+            builtins.attrValues (
+              builtins.zipAttrsWith (_: us: us) (
+                map (
+                  p:
+                  mapAttrs (k: value: {
+                    inherit (p) file modIndex;
+                    path = loc ++ [ k ];
+                    inherit value;
+                  }) (builtins.removeAttrs p.attrs (attrNames (builtins.intersectAttrs opts p.attrs)))
+                ) pushed
+              )
+            )
+          );
         in
         {
           value = listToAttrs (
@@ -4262,15 +4334,14 @@ let
           # the imports expansion. Where they could differ is the one place a descriptor is allowed
           # to hold a stratum-2 value — its `default` — and that difference is the point.
           declEntries = prelude.imap0 declEntry flat;
-          sitesAt = lk: declaringSitesAt declEntries (drop (length prefix) lk);
-          allOptions = foldl' (
-            # ONE door for the whole engine: every downstream reader (`mergeTree`'s
-            # `declaredPairs`, `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes
-            # `allOptions` or a value traced back to it, so guarding the producer here covers all
-            # five tags at any nesting depth on both the `.options` and `.config` planes.
-            acc: e:
-            mergeOptionDecls (redeclareDecl sitesAt e.idx) prefix acc (validateDeclSubtree prefix e.options)
-          ) { } declEntries;
+          sitesAt = declaringSitesAt (length prefix) declEntries;
+          # ONE door for the whole engine: every downstream reader (`mergeTree`'s
+          # `declaredPairs`, `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes
+          # `allOptions` or a value traced back to it, so guarding the producer here covers all
+          # five tags at any nesting depth on both the `.options` and `.config` planes.
+          allOptions = mergeOptionDeclTrees (redeclareDecl sitesAt) sitesAt prefix (
+            map (e: validateDeclSubtree prefix e.options) declEntries
+          );
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────
           # EDITED entries by ORIGIN, from the engine's OWN closure (imports expansion is
@@ -5183,7 +5254,7 @@ let
           let
             entries = prelude.imap0 declEntry result._flat;
           in
-          stampOptions (lk: declaringSitesAt entries (drop (length prefix) lk)) prefix result.options;
+          stampOptions (declaringSitesAt (length prefix) entries) prefix result.options;
         inherit (result)
           provenance
           # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
