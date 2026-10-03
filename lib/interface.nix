@@ -2430,10 +2430,8 @@ let
     derivation = noun "derivation";
     null = noun "null";
     never = noun "impossible (no value)";
-    pathLike = {
-      text = "path or derivation or string";
-      class = "conjunction";
-    };
+    # nixpkgs' `pathWith { }`, whose description is the bare noun.
+    pathLike = noun "path";
   };
   showEnumMember =
     v:

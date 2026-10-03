@@ -32,6 +32,8 @@ let
       # nixpkgs' analogue of a derivation is `base // { … }`, which keeps the base's phrase and class
       derive = b: spec: b // nl.optionalAttrs (spec ? description) { inherit (spec) description; };
       rederive = _b: el: np.listOf el;
+      # gen's `pathLike` is nixpkgs' unconstrained `pathWith`
+      pathLike = np.pathWith { };
     };
   };
   m1 = D: [ { options.a = D.mkOpt { type = D.int; }; } ];
@@ -58,6 +60,7 @@ let
     int = D: D.int;
     number = D: D.number;
     path = D: D.path;
+    pathLike = D: D.pathLike;
     raw = D: D.raw;
     str = D: D.str;
     "attrsOf int" = D: D.attrsOf D.int;
@@ -530,15 +533,15 @@ in
         "str,str,int,int" = "m3";
       };
     };
-    # Its live control: the table is the 55 constructions, and the departure set is empty of every
+    # Its live control: the table is the 56 constructions, and the departure set is empty of every
     # row but b47r5's, rather than every row reading the same refusal.
-    test-control-the-table-reads-55-rows-none-refused = {
+    test-control-the-table-reads-every-construction-none-refused = {
       expr = {
         rows = builtins.length (builtins.attrNames sides);
         refused = builtins.attrNames (nl.filterAttrs (_: s: s.gen == "REFUSED" || s.np == "REFUSED") sides);
       };
       expected = {
-        rows = 55;
+        rows = 56;
         refused = [ ];
       };
     };
