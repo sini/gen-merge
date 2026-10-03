@@ -207,7 +207,10 @@ the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]
 named `sub`) in addition to any `specialArgs` and `_module.args` entries. The engine's three win over
 an entry of the same name: a `specialArgs` key among them is refused by name, since the caller's value
 would reach no module, and a `_module.args` entry of that name stays readable as
-`config._module.args.<name>` but does not bind the formal. A nested tree's modules also receive
+`config._module.args.<name>` but does not bind the formal. Inside a module, `config._module` carries
+`args`, `check`, `freeformType` and `specialArgs`, as nixpkgs' does. `specialArgs` reads through a
+re-declared `type` or `apply`, while the arguments a module receives stay the caller's set. A nested
+tree's modules also receive
 `name`, the last step of their position: `types.submodule` and the tree-as-a-type state it as
 nixpkgs' `submoduleWith` does, an overridable `_module.args.name` definition. **That is the whole of the injected argument set, and it is the argument-side compat
 boundary:** nixpkgs injects `lib` at every
@@ -2028,18 +2031,23 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     fires only when the key is read: the engine's redeclaration refusal is eager everywhere, and the
     unread type nixpkgs passes is one that never runs.
   - *`readOnly` at `args`.* nixpkgs dies with a stack overflow; this engine refuses by name.
-  - *The door keys.* An `apply` or `readOnly` on `check`, and a `type`, `apply` or `readOnly` on
-    `specialArgs`, are refused by name (`` … is read only from `evalModuleTree { check = …; }' ``,
-    `` a module cannot read `_module.specialArgs' in this engine … ``), because the engine does not
-    run them; nixpkgs honours them. They wait on the door's own design and on a module read site
-    for `specialArgs`, which this engine does not have.
+  - *The door key.* An `apply` or `readOnly` on `check` is refused by name
+    (`` … is read only from `evalModuleTree { check = …; }' ``), because the engine does not run it;
+    nixpkgs honours it. It waits on the door's own design.
   - *The ordered fold.* Two `apply`s, at the group or inside the leaf, keep the later, as every
-    doubled field of a redeclaration does here; nixpkgs refuses the pair.
-  - *The module-visible `_module` view.* A module reading `config._module.<k>` for an owned key
-    other than `args` finds it absent or aborts, where nixpkgs reads a value; that waits on the
-    same module read site.
+    doubled field of a redeclaration does here, `specialArgs` included; nixpkgs refuses the pair.
+  - *`config._module.args` inside a module.* It holds the modules' arguments (and a nested child's
+    `name`) only. nixpkgs' also holds `extendModules` and `moduleType`; this engine has no
+    `extendModules`.
+  - *`config._module.check` in a child of an unchecked tree's `.type`.* The view reads the
+    strictness that governs the child's refusal of an undeclared key, which is nixpkgs' value under a
+    strict parent. Under a caller `check = false` that child runs lax, because this engine's `.type`
+    carries its evaluation's `check` and nixpkgs' does not, so the view reads `false` where nixpkgs
+    reads `true` (and refuses the key).
   - *Both refuse, by different causes.* Three inputs nixpkgs refuses as a parent or as already
-    declared are refused here as types that do not merge or as a single option.
+    declared are refused here as types that do not merge or as a single option. A re-declared `specialArgs` type the caller's
+    set does not satisfy refuses on the read in both, as `not of type`, naming `<gen-merge>` as the
+    definition where nixpkgs names `lib/modules.nix`.
   - *A redeclaration never read.* An ordinary option redeclared with clashing types refuses here and
     exits 0 in nixpkgs when it is not read; that is the engine's standing rule.
     `lint` refuses the three module-input refusals the engine fires before merging

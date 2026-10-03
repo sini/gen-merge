@@ -1004,8 +1004,8 @@ in
           msg = "^gen-merge: the option `_module\\.args' is read-only, but it is defined more than once \\(the engine defines it too\\); defined in /g/O\\.nix$";
         };
       };
-      # `check` and `specialArgs` are not read from a module, so a re-declaration that would act on
-      # either is refused by name.
+      # `check` is not read from a module, so a re-declaration that would act on it is refused by
+      # name.
       test-module-check-redeclared-with-an-apply-refused-by-name = {
         expr = realize {
           modules = moduleKey "/g/O.nix" { options._module.check = gm.mkOption { apply = _: false; }; };
@@ -1015,13 +1015,26 @@ in
           msg = "^gen-merge: `_module\\.check' is read only from `evalModuleTree \\{ check = …; }', so a module's `apply' on it would not run; declared in /g/O\\.nix$";
         };
       };
-      test-module-special-args-redeclared-with-a-type-refused-by-name = {
+      # A re-declared `specialArgs` type is honoured where a module reads `config._module.specialArgs`
+      # (den-hoag-eoka4): a type the caller's set does not satisfy refuses on that read, as nixpkgs'.
+      test-module-special-args-redeclared-with-a-type-refuses-a-read-it-does-not-admit = {
         expr = realize {
-          modules = moduleKey "/g/O.nix" { options._module.specialArgs = gm.mkOption { type = t.attrs; }; };
+          specialArgs.s = "S";
+          modules =
+            moduleKey "/g/O.nix" { options._module.specialArgs = gm.mkOption { type = t.attrsOf t.int; }; }
+            ++ [
+              (
+                { config, ... }:
+                {
+                  options.r = gm.mkOption { };
+                  config.r = config._module.specialArgs.s;
+                }
+              )
+            ];
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: a module cannot read `_module\\.specialArgs' in this engine, so a module's `type' on it would not run; declared in /g/O\\.nix$";
+          msg = "^gen-merge: a definition for option `_module\\.specialArgs\\.s' is not of the expected type: expected type 'int' but value \"S\" is of type 'string'$";
         };
       };
       # The lint refuses what the engine refuses before merging. An unknown `_module.<x>` is no lint
