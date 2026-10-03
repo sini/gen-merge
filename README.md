@@ -1056,6 +1056,13 @@ Two rules that look like details and are not:
 - **The predicate is `? verify`, not `? verify || ? name`.** A gen-types *helper* can return a
   `name`-bearing record that is not a type — `mkValidator name pred message` yields
   `{ message; name; pred; }`. Completing that would stamp `_type = "option-type"` onto a validator.
+- **The boundary re-ties a type's completion stamp.** A gen-types record carries a stamp tying its
+  identity to the record its constructor completed, and a `//` copy keeps the stamp while changing
+  what the identity stands for. This boundary rebuilds every record it imports and exports, so it
+  re-ties the stamp to the record it completes; a record failing the stamp on entry is imported and
+  served, but unminted, and gen-types' `typeEq` refuses it by name. The price: a description-only
+  `//` (`t // { description = …; }`) is a copy too, and `typeEq` refuses it; as an option type it
+  is still served.
 - **A completed parametric leaf merges only the SAME type, or two same-named `enum`s.** Sameness is
   decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
   textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,

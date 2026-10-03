@@ -231,6 +231,7 @@ let
       "__okAt"
       "__payload"
       "__sealed"
+      "__typeSelf"
     ];
     derived = exportFields ++ [
       "_checkWitness"
@@ -2129,7 +2130,54 @@ let
   # empty `nestedTypes` states no unroled key, so it is not re-read for one. `{ }` is the LEFT operand
   # of that test and of `unroledCollisionRefusal`'s: attrset `==` forces the left side's `type`, and a
   # nesting record's `nestedTypes` is not otherwise read to decide its import.
+  # ★ THE COMPLETION STAMP AT THE BOUNDARY (gate C3, ruled arm (c)). A gen-types record carries a
+  # completion stamp (`__typeSelf`, gen-types `completedType`) that a `//` copy keeps while the copy
+  # changes what the record's mark stands for. This boundary REBUILDS every record it imports and
+  # exports, and whatever completes a record ties its stamp, so the rebuilt record is RE-TIED here,
+  # on import and on export. A record that fails the stamp on entry is a `//` copy: it is imported
+  # and SERVES, but UNMINTED (owner Q3 ruling "A": the comparison site refuses an unminted pair by
+  # name), keeping the stale witness, so gen-types' `typeEq` refuses it by name. Nothing is refused at
+  # import. A vocabulary publishing no `stampOk` stamps nothing.
+  stampOk = types.stampOk or (_: true);
+  retied =
+    r:
+    let
+      s = r // {
+        __typeSelf = _: s;
+      };
+    in
+    s;
+  # The tag a demoted copy's `__mint` carries; the export reads it to keep the stale witness.
+  copyMint = {
+    unmintable = {
+      ctor = "a `//` copy";
+      reason = "a `//` over a type keeps its witness while changing what its mark stands for, so it is imported unminted";
+    };
+  };
+  # ★ LAZY IN EVERY DECISION: the key set is fixed by `? __mint` alone, and whether the record is a
+  # copy is read only when `__typeSelf` or `__mint` is. Deciding it at import would force the
+  # stamp's `==` (and so the mint) while a self-referential type is still being built, which is an
+  # uncatchable infinite recursion.
+  restamp =
+    src: r:
+    if !(isAttrs src && src ? __mint) then
+      r
+    else
+      let
+        copy = src ? __typeSelf && !(stampOk src);
+        s = r // {
+          __typeSelf = if copy then src.__typeSelf else (_: s);
+          __mint = if copy then copyMint else src.__mint;
+        };
+      in
+      s;
   importType =
+    t:
+    let
+      answer = importType0 t;
+    in
+    if answer ? imported then answer // { imported = restamp t answer.imported; } else answer;
+  importType0 =
     t:
     let
       read = readRoles t;
@@ -2684,7 +2732,12 @@ let
       };
 
       phrase = phraseOf t;
+      # the export completes the record, so it re-ties the stamp the import tied; a demoted copy keeps
+      # its stale witness (`restamp`). Lazy for the reason `restamp` is, and a key of the one attrset
+      # below rather than a `//` layer of its own (a null name adds no attribute).
       exported = t // {
+        ${if t ? __typeSelf then "__typeSelf" else null} =
+          if (t.__mint or null) == copyMint then t.__typeSelf else (_: exported);
         # this type's phrase within a budget, for a container reading it as a member (`phraseOfMember`)
         __phraseWithin = b: phraseOfWithin b t;
         _type = "option-type";

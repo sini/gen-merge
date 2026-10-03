@@ -115,6 +115,7 @@ let
         "__payload"
         "__phraseWithin"
         "__sealed"
+        "__typeSelf"
         "_checkWitness"
         "_protoLeafMerge"
         "substructure"
