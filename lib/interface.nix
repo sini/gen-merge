@@ -2201,6 +2201,33 @@ let
     else
       protoTypeMerge (pf // { inherit (self) name payload; }) pf;
 
+  # THE SAME JOIN FOR A CONTAINER, whose parameter is ONE carried role (`element`), against a RAW foreign
+  # partner (one that carries no gen role). Taken only where the partner's join keeps each operand's
+  # stated name (`joinRenames`), as `importedMerge` takes a foreign join; `null` otherwise, and the
+  # caller's own relation then answers as it did before. A partner whose payload names more than the
+  # role's own key (`importedOffered` null) is not read whole, so it is not joined here either.
+  joinCarriedInStatedRelation =
+    {
+      name,
+      role,
+      carried,
+      self,
+    }:
+    other:
+    let
+      joined =
+        if other ? carries || importedOffered role other == null then
+          null
+        else
+          joinInStatedRelation {
+            inherit name;
+            payload = {
+              ${roleSpelling.${role}.payloadKey} = carried;
+            };
+          } other;
+    in
+    if joined == null || joinRenames joined self || joinRenames joined other then null else joined;
+
   # The module-set payload a gen nesting type offers a foreign engine, as ONE binding read by
   # `exportType` and by `joinInStatedRelation`'s callers.
   moduleSetPayload =
@@ -3050,6 +3077,7 @@ in
     importedRehome
     isNesting
     joinInStatedRelation
+    joinCarriedInStatedRelation
     moduleSetPayload
     canNest
     declaresNesting

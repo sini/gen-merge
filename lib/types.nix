@@ -431,6 +431,12 @@ let
   # payload both sides must agree on the shape of, so a partner that spells its parameter some other
   # way is still a legible operand — its element is read through the boundary's import environment,
   # which is the one place that knows any spelling but this one.
+  #
+  # ★ ONE CARVE-OUT, against a RAW FOREIGN partner that states a relation and whose payload is just
+  # the element: the partner's own relation decides the pair (`interface.joinCarriedInStatedRelation`),
+  # so the merged type is that partner's record and not a gen one, whichever declaration came first.
+  # Every other pair is row-free as above. The test for a gen partner sits here, not in the binding,
+  # so a gen × gen pair builds nothing for it.
   elementRel =
     name: rebuild: element: other:
     if !(isAttrs other) || (keyOf other) != name then
@@ -438,8 +444,20 @@ let
     else
       let
         partnerElem = interface.importedOffered "element" other;
+        foreignJoin =
+          if other ? carries then
+            null
+          else
+            interface.joinCarriedInStatedRelation {
+              inherit name;
+              role = "element";
+              carried = element;
+              self = rebuild element;
+            } other;
       in
-      if partnerElem == null then
+      if foreignJoin != null then
+        { merged = foreignJoin; }
+      else if partnerElem == null then
         { refused = "`${name}' and a partner that states no element type of its own"; }
       else
         let
