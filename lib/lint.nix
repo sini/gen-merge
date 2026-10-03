@@ -115,10 +115,12 @@ let
   # path, as the engine's loader reads them) are `import`ed (pure); an attrset module contributes its
   # `imports`; a function (or `__functor`) module is an OPAQUE leaf; any other value is refused by the
   # engine's own refusal, as `callM` refuses it. `file` mirrors the engine's inherited `_file` rule (a
-  # path's provenance IS its path string, else the module's `_file`, else the file of the importer
-  # that reached it first, else the engine fallback at the root).
+  # path module's own `_file`, else its path string; else the module's `_file`, else the file of the
+  # importer that reached it first, else the engine fallback at the root).
   # RESIDUE: the lint applies no module, so a non-path function module whose `key` exists only after
-  # application is an anonymous node here and a keyed one to the engine.
+  # application is an anonymous node here and a keyed one to the engine, and a FUNCTION path module's
+  # in-file `_file` (visible only after application) is not read: the lint names its path where the
+  # engine names the `_file`.
   collect =
     parentFile: mods:
     let
@@ -134,7 +136,7 @@ let
               key = moduleKeyOf importer i m0 m;
               inherit fn;
               module = m;
-              file = if loaded then toString m0 else (m0._file or (m._file or importer.file));
+              file = if loaded then toString (m._file or m0) else (m0._file or (m._file or importer.file));
               next =
                 if fn then
                   [ ]
