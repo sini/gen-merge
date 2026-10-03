@@ -1035,7 +1035,7 @@ let
 
   # THE RECOGNITION DOOR: asked through it, `importedRehomeAt` answers its recognition and never
   # judges the payload's offer (`rehomeAgreed`), so it refuses nothing. The type-time mark
-  # (`mayFoldUnion`) asks through it, so the mark's foreign arm is the exact complement of what
+  # (`mayFoldNested`) asks through it, so the mark's foreign arm is the exact complement of what
   # re-homing recognises: ONE recognition, and a stock-named record whose payload or statement it
   # does not recognise is threaded, and is marked. A door rather than a second binding, so
   # re-homing's own call pays nothing for it (`homedAt` asks per position).
@@ -1155,29 +1155,64 @@ let
       else
         t;
 
-  # MAY this type be KEYED WHERE READ, at its own position or through a container below it? Gen's
-  # own union, or the stock foreign `either` that `homedAt` re-homes as one; a foreign container
-  # re-homing does not recognise (`importedRehomeAt`, asked through `recognitionDoor`), which
-  # `homedAt` threads; through a gen
-  # container's element and a stock foreign `nullOr`'s, which over-approximates, since `nullOr` is
-  # the one container besides a union that adds no step. Read without homing, so it refuses nothing:
-  # an exact container asks it once, when it is built, to decide whether its elements carry the
-  # container-node mark (`types.exactThread`).
-  mayFoldUnion =
+  # MAY this type be a CONTAINER NODE at an exact container's element, at its own position or
+  # through a container below it? Gen's own union, or the stock foreign `either` that `homedAt`
+  # re-homes as one; a split container other than `nullOr` and the attribute-keyed two (a `listOf`,
+  # or another split container such as gen-aspects' `aspectsRoot`), or the stock `listOf`; an
+  # `attrsOf` whose element may be a container (`mayBeContainer`), which `modules.keyedOverAt` makes
+  # a node where that element would itself key over-approximately; a foreign container re-homing does not recognise (`importedRehomeAt`, asked through
+  # `recognitionDoor`), which `homedAt` threads; through a gen container's element and a stock
+  # foreign `nullOr`'s, which over-approximates, since `nullOr` is the one container besides a union
+  # that adds no step. Read without homing, so it refuses nothing: an exact container asks it once,
+  # when it is built, to decide whether its elements carry the container-node mark
+  # (`types.exactThread`). The mark may over-approximate the walk's nodes, never under-approximate
+  # them: the fold re-asks the walk's own predicate where the mark is set (`modules.unionNodeAt`).
+  mayFoldNested =
     t:
     isAttrs t
     && !(isNesting t)
     && canNest t
     && (
       if t ? carries then
-        t ? choose || (t ? carries.element && mayFoldUnion t.carries.element)
+        t ? choose
+        || (
+          t ? split
+          && !(builtins.elem (t.name or null) [
+            "nullOr"
+            "attrsOf"
+            "lazyAttrsOf"
+          ])
+        )
+        || ((t.name or null) == "attrsOf" && mayBeContainer t.carries.element)
+        || (t ? carries.element && mayFoldNested t.carries.element)
       else
         let
           r = importedRehomeAt recognitionDoor null t;
         in
         # a record re-homing does not recognise is threaded (`threadedForeign`), and is keyed where
         # read under an exact container, as a union is (`keyWalk`, `unionNodeAt`)
-        r == null || r.container == "either" || (r.container == "nullOr" && mayFoldUnion r.element)
+        r == null
+        || r.container == "either"
+        || r.container == "listOf"
+        || (r.container == "attrsOf" && mayBeContainer r.element)
+        || (r.container == "nullOr" && mayFoldNested r.element)
+    );
+  # MAY this element be a container the key walk's `containerMemberAt` holds? The type-time
+  # answer, read without homing, which over-approximates: a split container other than `nullOr` (a
+  # gen union states `split`, so every union answers yes), or one looked through `nullOr`; a foreign
+  # record answers yes. An `attrsOf` over such an element may be a container node at an exact
+  # container's element (`modules.keyedOverAt`), so it is marked.
+  mayBeContainer =
+    e:
+    isAttrs e
+    && !(isNesting e)
+    && canNest e
+    && (
+      if e ? carries then
+        (e ? split && (e.name or null) != "nullOr")
+        || (e ? carries.element && mayBeContainer e.carries.element)
+      else
+        true
     );
 
   # ── THE ROOT FIX-UP: WHERE NIXPKGS REBUILDS A TYPE, GEN DOES (den-hoag-threadedforeign-parity-residue-0hew4, den-hoag-gijly) ─
@@ -2799,7 +2834,7 @@ in
     declaresNesting
     homedAt
     homedRootAt
-    mayFoldUnion
+    mayFoldNested
     bridge
     importedCarried
     importedOffered

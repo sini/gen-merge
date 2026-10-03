@@ -1436,4 +1436,325 @@ in
             }) { config.x = 2; }).imports;
       };
     };
+
+  # den-hoag-mda6f: gen's OWN container (or a stock one re-homed as gen's) at an EXACT container's
+  # element is keyed where it is READ, as a union and a foreign container are, so no sibling's read
+  # splits or forces that sibling's definitions: an attribute-keyed one over-approximately, by its
+  # definitions' attribute names, and any other one (an `attrsOf` over a container among them) as a
+  # container node. Every `expected` is nixpkgs' evalModules over the
+  # same types and definitions, never a literal. One test per cell, so an uncatchable abort errors
+  # its own cell only.
+  flake.tests.nesting-threaded-native-keyed-on-read =
+    let
+      npSub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+      optDefs =
+        type: defs:
+        (cfg ([ { options.h = gm.mkOption { inherit type; }; } ] ++ map (d: { config.h = d; }) defs)).h;
+      fwdDefs =
+        type: defs:
+        (nixpkgsLib.evalModules {
+          modules = [
+            { options.h = nixpkgsLib.mkOption { inherit type; }; }
+          ]
+          ++ map (d: { config.h = d; }) defs;
+        }).config.h;
+      pair = mk: defs: read: {
+        expr = read (optDefs (mk t sub) defs);
+        expected = read (fwdDefs (mk np npSub) defs);
+      };
+      caught = mk: defs: read: {
+        expr = (builtins.tryEval (builtins.deepSeq (read (optDefs (mk t sub) defs)) true)).success;
+        expected = (builtins.tryEval (builtins.deepSeq (read (fwdDefs (mk np npSub) defs)) true)).success;
+      };
+      forced = throw "mda6f: a sibling's definition was forced";
+      bk = v: v.b.k;
+      b0 = v: builtins.elemAt v.b 0;
+      i1k = v: (builtins.elemAt v 1).k;
+      i10 = v: builtins.elemAt (builtins.elemAt v 1) 0;
+      all = v: v;
+      nodesOf =
+        mk: def:
+        let
+          r = genMergeCore.evalModuleTreeExposed {
+            modules = [
+              { options.h = gm.mkOption { type = mk t sub; }; }
+              { config.h = def; }
+            ];
+          };
+          g = (r._evaluation.get "module-tree" "positions").nested."[\"h\"]";
+        in
+        builtins.deepSeq r.config.h (
+          builtins.filter (k: (g.${k}.mode or null) == "container") (builtins.attrNames g)
+        );
+    in
+    {
+      # the sibling outside the inner container's domain: nixpkgs serves the read beside it
+      test-attrsOf-attrsOf-sibling-not-a-set = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a = 5;
+          b.k.x = 5;
+        }
+      ] bk;
+      test-attrsOf-lazyAttrsOf-sibling-not-a-set = pair (T: S: T.attrsOf (T.lazyAttrsOf S)) [
+        {
+          a = 5;
+          b.k.x = 5;
+        }
+      ] bk;
+      test-attrsOf-listOf-sibling-not-a-list = pair (T: S: T.attrsOf (T.listOf S)) [
+        {
+          a = 5;
+          b = [ { x = 5; } ];
+        }
+      ] b0;
+      test-attrsOf-stock-listOf-sibling-not-a-list = pair (T: S: T.attrsOf (np.listOf S)) [
+        {
+          a = 5;
+          b = [ { x = 5; } ];
+        }
+      ] b0;
+      test-listOf-attrsOf-sibling-not-a-set = pair (T: S: T.listOf (T.attrsOf S)) [
+        [
+          5
+          { k.x = 5; }
+        ]
+      ] i1k;
+      test-listOf-listOf-sibling-not-a-list = pair (T: S: T.listOf (T.listOf S)) [
+        [
+          5
+          [ { x = 5; } ]
+        ]
+      ] i10;
+      test-attrsOf-nullOr-attrsOf-sibling-not-a-set = pair (T: S: T.attrsOf (T.nullOr (T.attrsOf S))) [
+        {
+          a = 5;
+          b.k.x = 5;
+        }
+      ] bk;
+      test-attrsOf-attrsOf-attrsOf-sibling-one-level-down =
+        pair (T: S: T.attrsOf (T.attrsOf (T.attrsOf S)))
+          [
+            {
+              b.a = 5;
+              b.c.d.x = 5;
+            }
+          ]
+          (v: v.b.c.d);
+      # a sibling's inner element is not forced: nixpkgs merges it only where it is read
+      test-attrsOf-attrsOf-sibling-element-not-forced = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a.k = forced;
+          b.k.x = 5;
+        }
+      ] bk;
+      test-listOf-listOf-sibling-element-not-forced = pair (T: S: T.listOf (T.listOf S)) [
+        [
+          [ forced ]
+          [ { x = 5; } ]
+        ]
+      ] i10;
+      # the position outside the domain still refuses, catchably, where it is read
+      test-attrsOf-attrsOf-position-not-a-set-refuses = caught (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a = 5;
+          b.k.x = 5;
+        }
+      ] (v: v.a);
+      test-listOf-attrsOf-position-not-a-set-refuses = caught (T: S: T.listOf (T.attrsOf S)) [
+        [
+          5
+          { k.x = 5; }
+        ]
+      ] (v: builtins.elemAt v 0);
+      # served today, served after: the whole value equals nixpkgs'
+      test-attrsOf-attrsOf-value = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a.k.x = 1;
+          b.k.x = 5;
+          b.j.x = 2;
+        }
+      ] all;
+      test-attrsOf-listOf-value = pair (T: S: T.attrsOf (T.listOf S)) [
+        {
+          a = [ { x = 1; } ];
+          b = [ { x = 5; } ];
+        }
+      ] all;
+      test-listOf-attrsOf-value = pair (T: S: T.listOf (T.attrsOf S)) [
+        [
+          { k.x = 1; }
+          { k.x = 5; }
+        ]
+      ] all;
+      test-attrsOf-attrsOf-attrsOf-value = pair (T: S: T.attrsOf (T.attrsOf (T.attrsOf S))) [
+        {
+          a.c.d.x = 1;
+          b.c.d.x = 5;
+          b.e = { };
+        }
+      ] all;
+      # depth 3: an `attrsOf` over a container is a node, one per outer element
+      test-attrsOf-attrsOf-attrsOf-sibling-not-a-set = pair (T: S: T.attrsOf (T.attrsOf (T.attrsOf S))) [
+        {
+          a = 5;
+          b.c.d.x = 5;
+        }
+      ] (v: v.b.c.d);
+      test-attrsOf-listOf-attrsOf-sibling-not-a-list = pair (T: S: T.attrsOf (T.listOf (T.attrsOf S))) [
+        {
+          a = 5;
+          b = [ { d.x = 5; } ];
+        }
+      ] (v: (builtins.elemAt v.b 0).d);
+      # the container-node mark (`interface.mayFoldNested`): an `attrsOf` whose element may be a
+      # container is marked, through a stock middle container, a foreign element and `nullOr`;
+      # served at base, served after
+      test-attrsOf-stock-attrsOf-attrsOf-value = pair (T: S: T.attrsOf (np.attrsOf (T.attrsOf S))) [
+        {
+          a.c.d.x = 1;
+          b.c.d.x = 5;
+        }
+      ] all;
+      test-attrsOf-stock-attrsOf-stock-attrsOf-value =
+        pair (T: S: T.attrsOf (np.attrsOf (np.attrsOf S)))
+          [
+            {
+              a.c.d.x = 1;
+              b.c.d.x = 5;
+            }
+          ]
+          all;
+      test-attrsOf-attrsOf-nullOr-attrsOf-value =
+        pair (T: S: T.attrsOf (T.attrsOf (T.nullOr (T.attrsOf S))))
+          [
+            {
+              a.c = null;
+              b.c.d.x = 5;
+              b.e.d.x = 1;
+            }
+          ]
+          all;
+      # an `attrsOf` over a list-keyed element keys over-approximately, and each element is a node
+      test-attrsOf-attrsOf-nullOr-listOf-value =
+        pair (T: S: T.attrsOf (T.attrsOf (T.nullOr (T.listOf S))))
+          [
+            {
+              a.c = null;
+              b.c = [ { x = 5; } ];
+              b.e = [
+                { x = 1; }
+                { x = 5; }
+              ];
+            }
+          ]
+          all;
+      test-attrsOf-attrsOf-nullOr-listOf-sibling-element-not-forced =
+        pair (T: S: T.attrsOf (T.attrsOf (T.nullOr (T.listOf S))))
+          [
+            {
+              a.c = [ forced ];
+              b.c = [ { x = 5; } ];
+            }
+          ]
+          (v: builtins.elemAt v.b.c 0);
+      test-attrsOf-attrsOf-nullOr-listOf-inner-sibling-not-forced =
+        pair (T: S: T.attrsOf (T.attrsOf (T.nullOr (T.listOf S))))
+          [
+            {
+              b.a = [ forced ];
+              b.c = [ { x = 5; } ];
+            }
+          ]
+          (v: builtins.elemAt v.b.c 0);
+      # an over-approximated position's elements key without forcing their definitions
+      test-attrsOf-attrsOf-nullOr-sibling-element-not-forced =
+        pair (T: S: T.attrsOf (T.attrsOf (T.nullOr S)))
+          [
+            {
+              a.c = forced;
+              b.c.x = 5;
+            }
+          ]
+          (v: v.b.c);
+      # candidate keys: an over-approximated key whose definitions all discharge is never read
+      test-attrsOf-attrsOf-sibling-element-mkIf-false = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a.k = nixpkgsLib.mkIf false { x = 1; };
+          a.j.x = 2;
+          b.k.x = 5;
+        }
+      ] all;
+      test-attrsOf-attrsOf-sibling-element-mkIf-false-not-forced = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a.k = nixpkgsLib.mkIf false forced;
+          b.k.x = 5;
+        }
+      ] bk;
+      test-attrsOf-attrsOf-sibling-overridden-not-a-set = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a = nixpkgsLib.mkForce { k.x = 1; };
+          b.k.x = 5;
+        }
+        { a = 5; }
+      ] all;
+      test-attrsOf-attrsOf-sibling-element-overridden = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a.k = nixpkgsLib.mkForce { x = 1; };
+          b.k.x = 5;
+        }
+        {
+          a.k.x = 2;
+          a.j.x = 3;
+        }
+      ] all;
+      test-attrsOf-attrsOf-sibling-mkMerge-not-a-set = pair (T: S: T.attrsOf (T.attrsOf S)) [
+        {
+          a = nixpkgsLib.mkMerge [
+            { k.x = 1; }
+            5
+          ];
+          b.k.x = 5;
+        }
+      ] bk;
+      # THE GRANULARITY: which of the root's positions are container nodes, read off the positions
+      # record (`nesting-placement.nix`'s `.mode` idiom). No nixpkgs reference states a node set, and
+      # every value below is equal under N3p's coarser predicate too, so the node set is the oracle:
+      # an `attrsOf` over a node-kind element mints one node per INNER element and none at the outer
+      # one, and `attrsOf^k S` at an exact element is a node exactly where k is even.
+      test-node-set-attrsOf-attrsOf-listOf = {
+        expr = nodesOf (T: S: T.attrsOf (T.attrsOf (T.listOf S))) {
+          p.a = [ { x = 1; } ];
+          p.b = [ { x = 2; } ];
+          q.a = [ { x = 3; } ];
+        };
+        expected = [
+          "[\"p\",\"a\"]"
+          "[\"p\",\"b\"]"
+          "[\"q\",\"a\"]"
+        ];
+      };
+      test-node-set-attrsOf-depth-3 = {
+        expr = nodesOf (T: S: T.attrsOf (T.attrsOf (T.attrsOf S))) {
+          p.a.m.x = 1;
+          p.b.m.x = 2;
+          q.a.m.x = 3;
+        };
+        expected = [
+          "[\"p\"]"
+          "[\"q\"]"
+        ];
+      };
+      test-node-set-attrsOf-depth-4 = {
+        expr = nodesOf (T: S: T.attrsOf (T.attrsOf (T.attrsOf (T.attrsOf S)))) {
+          p.a.m.n.x = 1;
+          p.b.m.n.x = 2;
+          q.a.m.n.x = 3;
+        };
+        expected = [
+          "[\"p\",\"a\"]"
+          "[\"p\",\"b\"]"
+          "[\"q\",\"a\"]"
+        ];
+      };
+    };
 }
