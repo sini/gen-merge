@@ -1993,9 +1993,14 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   - THE PRICE: a finite chain of 34 or more forwarding containers below the container asked refuses
     its spine where it was answered, a finite type nested 32 containers deep refuses its
     redeclaration, and a cycle through a stock nixpkgs container whose override stops forwarding
-    refuses its spine where the override was answered. All three are named refusals; the deepest
-    real family measured in nixpkgs' vocabulary is 2. A redeclaration pays one bounded walk per
-    operand, linear in its depth (`ci/tests/cyclic-types.nix`; den-hoag-iaram build report). THE
+    refuses its spine where the override was answered. So nixpkgs' `evalModules`, which reads
+    `getSubModules` when it declares an option, refuses a value through such a gen type where it
+    accepted it; gen's `evalModuleTree` still serves the value, the all-nixpkgs twin still accepts
+    it, and nixpkgs' own fix-up drops the override on its option path anyway. All three are named
+    refusals; the deepest real family measured in nixpkgs' vocabulary is 2. A redeclaration pays
+    one bounded walk per operand, linear in its depth (about 12 thunks per operand level); a single
+    declaration pays no thunk, and one attribute per forwarding container (`ci/tests/cyclic-types.nix`;
+    den-hoag-iaram build report). THE
     REMEDY is in the refusal: close a cycle through a union (`either`, `oneOf`) or a submodule, which
     answer for themselves, or nest a finite chain less deeply. THE ESCAPE HATCH: a gen record whose
     `substructure` states no `forward` answers for itself, which ends the spine walk there. The
