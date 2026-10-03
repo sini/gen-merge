@@ -5890,7 +5890,25 @@ in
       let
         np = nixpkgsLib.types;
         sub = t.submodule { options.x = gm.mkOption { type = t.int; }; };
-        # A hand-rolled two-position container that rebuilds both positions over the one list.
+        # A record built through gen's own `mkOptionType` door whose fold is its rebuild's (6yfat).
+        coherentDoor =
+          let
+            ySub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+            self = gm.mkOptionType {
+              name = "coherent";
+              check = builtins.isAttrs;
+              merge = loc: defs: ySub.merge loc defs;
+              inherit (ySub) getSubOptions;
+              getSubModules = [ ];
+              substSubModules = _: ySub;
+              functor = nixpkgsLib.types.defaultFunctor "coherent" // {
+                binOp = a: _: a;
+                payload = { };
+                type = _: self;
+              };
+            };
+          in
+          self;
         fanOut =
           l: r:
           nixpkgsLib.mkOptionType {
@@ -6108,6 +6126,160 @@ in
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `nullsub' states a module set [(]`getSubModules'[)], and its `substSubModules' rebuild over that set is not an option type[.]";
+          };
+        };
+        # 6yfat: a door record stating a module set whose rebuild is not an option type is refused by
+        # name, where nixpkgs aborts on the null type it mounts.
+        test-a-door-root-whose-rebuild-is-not-a-type-is-refused-by-name = {
+          expr = opt (
+            (
+              let
+                self = gm.mkOptionType {
+                  name = "nullsub";
+                  check = builtins.isAttrs;
+                  merge = _: _: "OWN-MERGE";
+                  getSubOptions = _: { };
+                  getSubModules = [ ];
+                  substSubModules = _: null;
+                  functor = nixpkgsLib.types.defaultFunctor "nullsub" // {
+                    binOp = a: _: a;
+                    payload = { };
+                    type = _: self;
+                  };
+                };
+              in
+              self
+            )
+          ) { x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `nullsub' states a module set [(]`getSubModules'[)], and its `substSubModules' rebuild over that set is not an option type[.]";
+          };
+        };
+        # 6yfat: a door record stating a v2 merge beside a plain `check` keeps the ad-hoc refusal
+        # (`adHocFold`), as a foreign root does: the mount never replaces that refusal.
+        test-a-door-root-with-an-adhoc-check-keeps-its-refusal = {
+          expr = opt (
+            let
+              ySub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+              self = gm.mkOptionType {
+                name = "adhoc";
+                check = builtins.isAttrs;
+                inherit (ySub) merge getSubOptions;
+                getSubModules = [ ];
+                substSubModules = _: ySub;
+                functor = nixpkgsLib.types.defaultFunctor "adhoc" // {
+                  binOp = a: _: a;
+                  payload = { };
+                  type = _: self;
+                };
+              };
+            in
+            self
+          ) { x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `h' has a type `adhoc' that uses an ad-hoc `type // [{] check = [.][.][.]; [}]' override";
+          };
+        };
+        # 6yfat: a door record stating `verify` is a gen leaf, never mounted: a refinement over a gen
+        # submodule (gen-schema's `refined` shape) still refuses what it rejects under a gen container.
+        test-a-door-record-stating-verify-keeps-its-refinement-under-a-gen-container = {
+          expr = opt (t.attrsOf (
+            let
+              self = gm.mkOptionType (
+                builtins.removeAttrs sub [
+                  "functor"
+                  "typeMerge"
+                  "__mint"
+                  "__id"
+                ]
+                // {
+                  verify = v: if (v.x or 0) > 5 then null else "x must exceed 5";
+                  functor = {
+                    name = "refined<submodule>";
+                    type = _: self;
+                    payload = null;
+                    binOp = _: _: null;
+                  };
+                }
+              );
+            in
+            self
+          )) { a.x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h[.]a' is not of the expected type: x must exceed 5";
+          };
+        };
+        # 6yfat: a door record's own `check` rides on its rebuild under a gen container, so the
+        # definition it rejects is refused, where nixpkgs' fix-up erases the check.
+        test-a-door-root-s-own-check-rides-on-its-rebuild-under-a-gen-container = {
+          expr = opt (t.attrsOf (
+            (
+              let
+                self = gm.mkOptionType {
+                  name = "strict";
+                  check = v: builtins.isAttrs v && v ? z;
+                  merge = _: _: "OWN-MERGE";
+                  getSubOptions = _: { };
+                  getSubModules = [ ];
+                  substSubModules = _: np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+                  functor = nixpkgsLib.types.defaultFunctor "strict" // {
+                    binOp = a: _: a;
+                    payload = { };
+                    type = _: self;
+                  };
+                };
+              in
+              self
+            )
+          )) { a.x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h[.]a' is not of type";
+          };
+        };
+        # 6yfat: a crossed door record passed through the door again outside the class keeps the
+        # `mount` its first crossing stated (`importedSubstructure` copies `substructure`), so the
+        # class is re-tested where the mark is read (`crossedRoot`): under a gen container, gen-schema's
+        # `refined` derivation of it still refuses what its refinement rejects.
+        test-a-re-doored-refined-door-record-keeps-its-refinement-under-a-gen-container = {
+          expr = opt (t.attrsOf (
+            let
+              self = gm.mkOptionType (
+                builtins.removeAttrs coherentDoor [
+                  "functor"
+                  "typeMerge"
+                  "__mint"
+                  "__id"
+                ]
+                // {
+                  verify = v: if builtins.isAttrs v && (v.x or 0) > 5 then null else "x must exceed 5";
+                  functor = {
+                    name = "refined<coherent>";
+                    type = _: self;
+                    payload = null;
+                    binOp = _: _: null;
+                  };
+                }
+              );
+            in
+            self
+          )) { a.x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h[.]a' is not of the expected type: x must exceed 5$";
+          };
+        };
+        # 6yfat: the same stale mark under an ad-hoc `// { check }` over a crossed door record: under a
+        # gen container the override's check still refuses what it rejects, because the mount's
+        # carriage is built from the record handed in (`mountOf`), never from its first crossing.
+        test-an-adhoc-override-of-a-door-record-keeps-its-refusal-under-a-gen-container = {
+          expr = opt (t.attrsOf (coherentDoor // { check = v: builtins.isAttrs v && v ? z; })) { a.x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h[.]a' is not of type";
           };
         };
         # gijly: the record's own `check` rides on the root's rebuild (4ifgb M-B), so an `addCheck`

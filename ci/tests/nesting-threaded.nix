@@ -1815,4 +1815,87 @@ in
           }) members;
         };
     };
+
+  # 6yfat: a record built through gen's own `mkOptionType` door whose author stated its fold apart
+  # from its rebuild is mounted as that rebuild at an option root, as nixpkgs mounts the same exported
+  # record; a door record whose fold is its rebuild's is served the value it was served before.
+  flake.tests.nesting-threaded-gen-door =
+    let
+      ySub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
+      door =
+        extra:
+        let
+          self = gm.mkOptionType (
+            {
+              name = "own";
+              check = builtins.isAttrs;
+              merge = _: _: "OWN-MERGE";
+              getSubOptions = ySub.getSubOptions;
+              getSubModules = [ ];
+              substSubModules = _: ySub;
+              functor = nixpkgsLib.types.defaultFunctor "own" // {
+                binOp = a: _: a;
+                payload = { };
+                type = _: self;
+              };
+            }
+            // extra
+          );
+        in
+        self;
+      own = door { };
+      cell = type: def: {
+        expr = opt type def;
+        expected = fwd type def;
+      };
+    in
+    {
+      test-a-door-root-is-mounted-as-its-rebuild-not-its-own-merge = cell own { x = 2; };
+      test-a-door-root-under-a-gen-container-is-mounted-as-its-rebuild = cell (t.attrsOf own) {
+        a.x = 2;
+      };
+      # the reference mounts the record inside nixpkgs' own submodule: one inside gen's would run
+      # gen's code and move with this tree
+      test-a-door-root-inside-a-gen-submodule-is-mounted-as-its-rebuild = {
+        expr = opt (t.submodule { options.i = gm.mkOption { type = own; }; }) { i.x = 2; };
+        expected = fwd (np.submodule { options.i = nixpkgsLib.mkOption { type = own; }; }) { i.x = 2; };
+      };
+      # a descriptor in gen's own vocabulary, stating its `substructure` beside its fold
+      test-a-gen-vocabulary-door-root-is-mounted-as-its-rebuild = cell (gm.mkOptionType {
+        name = "ownG";
+        mergeDefs = _: _: "OWN-MERGE";
+        substructure = {
+          declares = ySub.getSubOptions;
+          modules = [ ];
+          rebuild = _: ySub;
+        };
+      }) { x = 2; };
+      test-a-door-root-whose-fold-is-its-rebuild-s-is-served-as-before = cell (door {
+        merge = loc: defs: ySub.merge loc defs;
+      }) { x = 2; };
+      test-a-door-record-stating-no-module-set-keeps-its-own-merge = cell (door {
+        getSubModules = null;
+      }) { x = 2; };
+      # a crossed record whose module set is nulled by `//` keeps the mark its crossing stated; the
+      # class is re-tested where it is read, so under a gen container it keeps its own merge, as
+      # nixpkgs' own `attrsOf` over the same record serves it (nixpkgs fixes up no record stating no
+      # module set). The reference is nixpkgs' container, not gen's exported one: gen's `attrsOf`
+      # states its element's `substructure.modules`, which the `//` left in place.
+      test-a-gen-container-over-a-door-record-whose-module-set-is-nulled-keeps-its-own-merge = {
+        expr = opt (t.attrsOf (own // { getSubModules = null; })) { a.x = 2; };
+        expected = fwd (np.attrsOf (own // { getSubModules = null; })) { a.x = 2; };
+      };
+      # the mount carries the record's own `check` (`homedRootFixed` reads `mountOf`, never the bare
+      # `substSubModules`): under a gen container the definition the check rejects is refused, where
+      # nixpkgs' fix-up erases the check and serves it (the parity exception keeps the refusal)
+      test-a-door-root-s-own-check-rides-on-its-mount-under-a-gen-container = {
+        expr =
+          (builtins.tryEval (
+            builtins.deepSeq (opt (t.attrsOf (door {
+              check = v: builtins.isAttrs v && (v.x or 0) > 1;
+            })) { a.x = 0; }) null
+          )).success;
+        expected = false;
+      };
+    };
 }

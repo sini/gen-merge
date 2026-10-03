@@ -1716,6 +1716,17 @@ release-parity ruling, where nixpkgs serves:
 - a root whose fix-up result still declares a gen nesting element (a copy whose rebuild re-wraps
   itself).
 
+**A record built through gen-merge's own `mkOptionType` is mounted the same way** (den-hoag-6yfat). Its
+author stated its fold apart from its rebuild, as a foreign author does, so where the descriptor states a
+module set and no `verify` and is not ad-hoc checked, `importType` marks it (`substructure.mount`, a
+presence datum pending the owner's reading of whether it is a published field) and the root fix-up mounts
+it, alone or under gen's `listOf`, `attrsOf`, `lazyAttrsOf` and `nullOr`, each of which forwards its
+element's mount through its own `recarry`. The record's own `check` rides on the mount, built from the
+record handed in. The mark is re-tested where it is read (`crossedRoot`), so a marked record passed
+through the door again with a `verify`, overridden `// { check }`, or given `getSubModules = null` is
+judged as it now stands, not as it first crossed. Gen's own constructors state their fold and rebuild
+together and are never marked; a door record whose fold is its rebuild's serves what it served before.
+
 **The prices, stated.** A hand-rolled position the declarations do not show whose evaluation of the
 old empty marker module happened to equal nixpkgs' value is now refused by name. And a position the
 declarations do not show whose merge STORES the handed list (`deferredModule`) is served with gen's
