@@ -1083,7 +1083,7 @@ Two rules that look like details and are not:
   foreign mount — instead of a wrong type. A leaf with no mint at all (an `enum` over a path, a
   self-referential type) keeps refusing: its parameters live behind its own predicate. A **nullary** leaf keeps its self-merge: it has no
   parameters to compare.
-- **A composite is identified per component, and decides sameness first** (den-hoag-6orb8 U2).
+- **A composite is identified per component; its redeclaration keeps its own relation** (den-hoag-6orb8 U2).
   `listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr`, `either` (so `oneOf`), `submodule` and a `deriveType`
   derivation carry the identity fields built by gen-types' exported identity half (`mkIdentity`): a
   mark over the constructor, spelled `gen-merge.<name>`, and one tag per component (the element, the
@@ -1091,12 +1091,15 @@ Two rules that look like details and are not:
   sealed components in `__sealed` beside it. So `listOf int` built twice is one type, and is itself
   after transport through `anything`; gen-types' own `listOf int` and `option int` are other types,
   because they fold differently. The mint is lazy: a declaration never compared mints nothing, and a
-  kind's mark demands its option types' mints. A redeclaration asks `typeEq` first where the two
-  marks agree: `true` merges (so one submodule binding declared twice is one type, its module set not
-  doubled); a different mark, or a refused pair (two submodules over different module sets, which
-  share a mark), goes to the type's own relation, so two module sets still union and two `listOf`
-  over joinable elements still join. A `//` copy of a composite fails the completion stamp, as a
-  leaf's does.
+  kind's mark demands its option types' mints. Identity and a redeclaration's value are two
+  questions: one submodule binding declared twice is one type (`typeEq` `true`), and its
+  redeclaration is still decided by the type's own relation, so its module set is evaluated twice, as
+  nixpkgs `lib.evalModules` does (a doubled list option reads `[ 1 1 ]` in both; with a `default` on
+  the doubled option nixpkgs refuses `already declared` and gen-merge keeps the shadowing ruled under
+  den-hoag-00g). Two module sets still union and two `listOf` over joinable elements still join. Two
+  submodules over different module sets share a mark and differ at the sealed module set, so `typeEq`
+  of the pair refuses by name. A `//` copy of a composite fails the completion stamp, as a leaf's
+  does.
 
 ### `emptyValue` — when "nothing was defined" is not an error
 

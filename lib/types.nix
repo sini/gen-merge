@@ -16,8 +16,8 @@
 {
   prelude,
   core,
-  # The leaf vocabulary (gen-types), for its exported identity half (`mkIdentity`) and its sameness
-  # decision (`typeEq`). A vocabulary publishing neither leaves every composite here unminted.
+  # The leaf vocabulary (gen-types), for its exported identity half (`mkIdentity`). A vocabulary
+  # publishing none leaves every composite here unminted.
   types,
 }:
 let
@@ -199,23 +199,21 @@ let
   # ★ EACH FIELD IS A SELECTION, NEVER `t // ids`. A `//` forces the identity half's own record, and
   # every binding of its `let` with it, at every construction; a selection leaves it unentered until a
   # field is read. Measured on the hub bench's `aspects` workload (2805 constructions, no mint
-  # forced): `t // ids` cost about 22 thunks per construction, the selections about 10. For the same
-  # reason the sameness check lives in the relation's body (`sameAs`), which allocates nothing until a
-  # redeclaration asks it.
+  # forced): `t // ids` cost about 22 thunks per construction, the selections about 10.
   #
   # `__typeSelf` is the completion stamp's slot: the export ties it to the record it completes (gen-types
   # `completedType`, `lib/interface.nix` `exportType`), so a `//` copy of a composite is refused at
   # `typeEq` as a copy of a leaf is.
   #
-  # ★ SAMENESS FIRST, THEN THE TYPE'S OWN LAW (U2 item 4). The relation asks the vocabulary's `typeEq`
-  # first where both operands carry one mark: `true` merges, to the partner, which is the same type. A
-  # different mark, or a refused collision (two constructions differing at a sealed component the mark
-  # is blind to, such as two submodules' module sets), goes to the relation the constructor states,
-  # never to a refusal of its own, so every merge that relation admits (a submodule union, an element
-  # join) is kept. The pre-test reads the two marks, so a pair of different marks pays no `typeEq`.
+  # ★ IDENTITY AND VALUE ARE TWO QUESTIONS. These fields answer the first: one submodule binding
+  # declared twice IS one type (`typeEq` `true`). A redeclaration's VALUE is the second, and it stays
+  # the constructor's own relation, never "same type, so merge to the partner": a submodule's relation
+  # unions the two module sets, which is not idempotent, so one binding declared twice evaluates its
+  # module set twice, as nixpkgs `lib.evalModules` does (a doubled list option reads `[ 1 1 ]` there
+  # and here). Merging to the partner served `[ 1 ]`, a value nixpkgs never produces (ADR-0039).
   identified =
     ctor: members: mkArgs: sealed: t:
-    if types ? mkIdentity && types ? typeEq then
+    if types ? mkIdentity then
       let
         ids = types.mkIdentity "gen-merge.${ctor}" members mkArgs sealed (t.name or ctor);
       in
@@ -227,34 +225,9 @@ let
         __sealed = ids.__sealed;
         ${if members == [ ] then null else "__okAt"} = ids.__okAt;
         __typeSelf = null;
-        typeMergeRel =
-          other:
-          if isAttrs other && sameAs (t.name or ctor) ids other then
-            { merged = other; }
-          else
-            t.typeMergeRel other;
       }
     else
       t;
-  # Whether `other` is the type whose identity fields are `ids`: one mark, then the vocabulary's
-  # `typeEq`, which decides the sealed components and the partner's completion stamp. A refusal reads
-  # as "not shown the same", and the pair goes on to the constructor's relation.
-  sameAs =
-    name: ids: other:
-    let
-      mark = ids.__mint.minted or null;
-      theirs = other.__mint or null;
-    in
-    mark != null
-    && isAttrs theirs
-    && theirs ? minted
-    && theirs.minted == mark
-    && (
-      let
-        r = builtins.tryEval (types.typeEq (ids // { inherit name; }) other);
-      in
-      r.success && r.value
-    );
 
   # mkOptionType — the (loc,defs) custom-merge escape hatch (spec §1 item 6). Its descriptor is
   # written in the FOREIGN protocol's words (`check`, `merge`, `emptyValue`, …) because that is what

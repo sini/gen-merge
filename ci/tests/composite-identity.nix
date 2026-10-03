@@ -2,8 +2,9 @@
 # by gen-types' exported identity half, so two constructions of one composite over one component are
 # one type, directly and after transport through `anything`; a composite's constructor is spelled in
 # this library's namespace, so gen-types' own `listOf`/`option`/`attrsOf` stay other types; a `//` copy
-# is refused at `typeEq` by the completion stamp; and a redeclaration decides sameness first, then the
-# type's own relation.
+# is refused at `typeEq` by the completion stamp; and identity and a redeclaration's value are two
+# questions: one binding declared twice is one type, and its value is the type's own relation's, the one
+# nixpkgs `lib.evalModules` serves.
 {
   genMerge,
   genTypes,
@@ -16,16 +17,19 @@ let
   np = nixpkgsLib.types;
   inherit (builtins) deepSeq tryEval;
   refused = e: !(tryEval (deepSeq e e)).success;
-  ev =
-    tys: vals:
+  evWith =
+    evalModules: mkOption: tys: vals:
     let
       p =
-        (gm.evalModuleTree {
-          modules = map (ty: { options.p = gm.mkOption { type = ty; }; }) tys ++ map (v: { p = v; }) vals;
+        (evalModules {
+          modules = map (ty: { options.p = mkOption { type = ty; }; }) tys ++ map (v: { p = v; }) vals;
         }).config.p;
       r = tryEval (deepSeq p p);
     in
     if r.success then r.value else "REFUSED";
+  ev = evWith gm.evalModuleTree gm.mkOption;
+  # the same shape under nixpkgs `lib.evalModules`, the reference a redeclaration's value is held to
+  evN = evWith nixpkgsLib.evalModules nixpkgsLib.mkOption;
   via =
     ty: v:
     (gm.evalModuleTree {
@@ -66,7 +70,9 @@ let
       default = 2;
     };
   };
-  # one binding: its module declares an option and defines it, so a module set doubled reads `[ 1 1 ]`
+  # one binding: its module declares an option and defines it, so a module set doubled reads `[ 1 1 ]`.
+  # `bobbin` states a `default` on that option, so nixpkgs refuses it doubled (`already declared`);
+  # `spool` states none, so nixpkgs serves it doubled. Each has its nixpkgs twin.
   bobbin = t.submodule {
     options.l = gm.mkOption {
       type = t.listOf t.int;
@@ -74,6 +80,22 @@ let
     };
     config.l = [ 1 ];
   };
+  bobbinN = np.submodule {
+    options.l = nixpkgsLib.mkOption {
+      type = np.listOf np.int;
+      default = [ ];
+    };
+    config.l = [ 1 ];
+  };
+  spool = t.submodule {
+    options.l = gm.mkOption { type = t.listOf t.int; };
+    config.l = [ 1 ];
+  };
+  spoolN = np.submodule {
+    options.l = nixpkgsLib.mkOption { type = np.listOf np.int; };
+    config.l = [ 1 ];
+  };
+  lOf = r: if builtins.isAttrs r then r.l else r;
 in
 {
   flake.tests.composite-identity = {
@@ -135,6 +157,18 @@ in
             };
           in
           t.typeEq (t.submodule m) (t.submodule m);
+        # A FUNCTION module, the common authored form: the module set is one sealed component whose
+        # elements keep the caller's slot, so this is `true` on every evaluator (a slot per module is
+        # a fresh thunk, which upstream Nix and Determinate refuse and Lix accepts).
+        submoduleFunction =
+          let
+            f =
+              { ... }:
+              {
+                options.a = gm.mkOption { type = t.int; };
+              };
+          in
+          t.typeEq (t.submodule f) (t.submodule f);
         deriveType = t.typeEq (spoolOf t.int) (spoolOf t.int);
       };
       expected = {
@@ -145,6 +179,7 @@ in
         either = true;
         oneOf = true;
         submodule = true;
+        submoduleFunction = true;
         deriveType = true;
       };
     };
@@ -204,18 +239,50 @@ in
         };
       };
     };
-    # Sameness first: one submodule binding declared twice is one type, so its module set is not
-    # doubled (the union would read `[ 1 1 ]`).
+    # Identity and value are two questions. One submodule binding declared twice is one type, and its
+    # redeclaration's value is still the type's own relation's (the module-set union), so its module set
+    # is evaluated twice, as nixpkgs evaluates it: `spool` reads `[ 1 1 ]` in both engines, directly and
+    # inside a `listOf`. `bobbin`, whose doubled option states a `default`, is refused by nixpkgs
+    # (`already declared`) and served by gen-merge: the stated divergence of den-hoag-00g (ADR-0039,
+    # den-hoag-3mc93 open), which this relation neither causes nor decides.
     test-one-submodule-binding-redeclared-is-one-type = {
-      expr =
-        (ev
+      expr = {
+        typeEq = t.typeEq spool spool;
+        gen = lOf (ev [ spool spool ] [ { } ]);
+        nixpkgs = lOf (evN [ spoolN spoolN ] [ { } ]);
+        genListOf = map lOf (ev [ (t.listOf spool) (t.listOf spool) ] [ [ { } ] ]);
+        nixpkgsListOf = map lOf (evN [ (np.listOf spoolN) (np.listOf spoolN) ] [ [ { } ] ]);
+        genDefault = lOf (ev [ bobbin bobbin ] [ { } ]);
+        nixpkgsDefault = lOf (evN [ bobbinN bobbinN ] [ { } ]);
+      };
+      expected = {
+        typeEq = true;
+        gen = [
+          1
+          1
+        ];
+        nixpkgs = [
+          1
+          1
+        ];
+        genListOf = [
           [
-            bobbin
-            bobbin
+            1
+            1
           ]
-          [ { } ]
-        ).l;
-      expected = [ 1 ];
+        ];
+        nixpkgsListOf = [
+          [
+            1
+            1
+          ]
+        ];
+        genDefault = [
+          1
+          1
+        ];
+        nixpkgsDefault = "REFUSED";
+      };
     };
     # A `//` copy of a composite keeps the mark and is refused at `typeEq` by the completion stamp.
     test-a-slash-copy-of-a-composite-is-refused = {
