@@ -376,10 +376,25 @@ let
   refuseParametricMerge = t: other: {
     refused = "`${nameOf t}' and `${nameOf other}', whose parameters live behind their own predicate and cannot be compared";
   };
+  # The ONE-MARK refusal: two types that mint one mark and are not one type, because they differ at a
+  # SEALED component the mark is blind to (a caller-supplied predicate, a registered construction).
+  # `decided` says whether the vocabulary's `typeEq` answered `false` (two different registered
+  # constructions) or refused (two separately written lambdas, which no `==` tells apart from one); its
+  # own refusal text is caught by `tryEval`, so the reason and the way out are stated here.
+  refuseSharedMark = t: other: decided: {
+    refused =
+      "`${nameOf t}' and `${nameOf other}', which mint one identity and differ at a sealed component (a caller-supplied predicate or a registered construction) that identity is blind to"
+      + (
+        if decided then
+          ", and their sealed subjects decide them two types"
+        else
+          ", where two separately written predicates cannot be compared: declare one binding, or register the predicate (gen-algebra `mkIntensional`) so that two constructions of it decide"
+      );
+  };
   # The MINTED-but-differing refusal — same shape as `refuseParametricMerge`, a different reason,
-  # because the two are no longer the same failure. This one fires only when a digest was minted and
-  # the two did not match, so "cannot be compared" would be a lie: the mint compared them and they
-  # are not the same construction. `pa`/`pb` are the operands' certified payloads, or `null` where
+  # because the two are no longer the same failure. This one fires only when the two carry DIFFERENT
+  # marks (a pair sharing a mark takes `refuseSharedMark`), so "cannot be compared" would be a lie: the
+  # mint compared them and they are not the same construction. `pa`/`pb` are the operands' certified payloads, or `null` where
   # one could not be read, and the message says which of the two is missing: a readable payload, or
   # a law reconciling the constructions both payloads name.
   refuseUnreconciledMint = t: other: pa: pb: {
@@ -423,6 +438,13 @@ let
         # that decision read off the operands' own fields (equal marks, `{ } == { }`), as before;
         # it is also the arm a wrapper's `//` keeps (`addCheck` over a parametric leaf declared
         # twice from one value), whose rewritten `check` sends `typeEq` to the record.
+        markShared =
+          other:
+          builtins.isAttrs other
+          && other ? __mint
+          && builtins.isAttrs other.__mint
+          && other.__mint ? minted
+          && other.__mint.minted == digest;
         same =
           other:
           builtins.isAttrs other
@@ -445,6 +467,8 @@ let
             refuseParametricMerge base other
           else if same other then
             { merged = self; }
+          else if markShared other then
+            refuseSharedMark base other (builtins.tryEval (checkedTypes.typeEq base other)).success
           else
             let
               # ★ THE READ IS TOTAL. The vocabulary's `payloadOf` refuses by `throw` whatever it cannot
