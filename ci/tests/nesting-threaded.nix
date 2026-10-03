@@ -1756,5 +1756,70 @@ in
           "[\"q\",\"a\"]"
         ];
       };
+      # THE WALK AND THE FOLD AGREE AT THE DOOR: the walk keys an over-approximated position by
+      # `admitsAll` over the container's `admits`, the fold's door (`refusingOutside`) spells the same
+      # quantifier inline, and the two give one verdict on every definition list here, over every
+      # structural container's own `admits`. The definitions are every pair (and every single, and
+      # none) of values spanning each domain's split. LIVE CONTROL in the same cell: every member
+      # both admits and refuses some list, so the agreement is not over one verdict.
+      test-walk-and-fold-door-agree =
+        let
+          values = [
+            { }
+            { a = 1; }
+            [ ]
+            [ 1 ]
+            5
+            "s"
+            "/p/m.nix"
+            ./.
+            (x: x)
+            null
+            true
+          ];
+          defsOf = map (v: {
+            file = "/p/F.nix";
+            value = v;
+          });
+          lists = [
+            [ ]
+          ]
+          ++ map (v: defsOf [ v ]) values
+          ++ concatMap (
+            a:
+            map (
+              b:
+              defsOf [
+                a
+                b
+              ]
+            ) values
+          ) values;
+          concatMap = f: l: builtins.concatLists (map f l);
+          members = {
+            submodule = sub;
+            listOf = t.listOf t.int;
+            attrsOf = t.attrsOf t.int;
+            lazyAttrsOf = t.lazyAttrsOf t.int;
+            attrs = t.attrs;
+            deferredModule = t.deferredModule;
+          };
+          walk = ty: genMergeCore.admitsAll ty.admits;
+          fold =
+            ty: defs:
+            (builtins.tryEval (genMergeCore.refusingOutside "t" ty.admits (_: _: true) [ "o" ] defs)).success;
+        in
+        {
+          expr = builtins.mapAttrs (_: ty: {
+            disagree = builtins.length (builtins.filter (defs: walk ty defs != fold ty defs) lists);
+            bothVerdicts =
+              builtins.length (builtins.filter (walk ty) lists) != 0
+              && builtins.length (builtins.filter (defs: !(walk ty defs)) lists) != 0;
+          }) members;
+          expected = builtins.mapAttrs (_: _: {
+            disagree = 0;
+            bothVerdicts = true;
+          }) members;
+        };
     };
 }

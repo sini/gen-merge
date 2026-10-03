@@ -214,19 +214,23 @@ let
   # fold, passing the SAME binding it states as `admits`; its domain check therefore cannot disagree
   # with the `check` it exports. It tests the surviving definitions (after discharge, priority and
   # order), where nixpkgs' `checkedAndMerged` tests `defsFinal`, and forces each only to WHNF, which
-  # the engine's discharge has already done. The refusal list is built only on refusal.
+  # the engine's discharge has already done. The refusal list is built only on refusal. The
+  # quantifier is spelled inline rather than read from `admitsAll`: this door sits on every
+  # structural fold, the submodule fold among them, and the call through the binding is a measured
+  # allocation on the hub perf-bench's ratcheted `deepSubmodule` row (den-hoag-mda6f).
   refusingOutside =
     tyName: inDomain: fold: loc: defs:
-    if admitsAll inDomain defs then
+    if all (d: inDomain d.value) defs then
       fold loc defs
     else
       throw "gen-merge: option `${showOption loc}' has definitions `${tyName}' cannot consume (${
         concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: !(inDomain d.value)) defs))
       })";
 
-  # The door's quantifier, one binding for every reader of a container's domain: the fold's door
-  # above, and the key walk's over-approximated arm (`keyWalk`), which keys a position only where
-  # this door would let its fold run.
+  # The door's quantifier as the key walk's over-approximated arm (`keyWalk`) reads it: it keys a
+  # position only where the door above would let its fold run. The door spells the same quantifier
+  # inline, so the two are two spellings of one predicate, and `nesting-threaded-native-keyed-on-read`'s
+  # agreement cell pins that they give one verdict over every structural container's domain.
   admitsAll = inDomain: defs: all (d: inDomain d.value) defs;
 
   # The refusal of a value that is none of those shapes, one binding for every reader that loads a
@@ -5461,6 +5465,8 @@ in
     # module-valued types and by the tree's own `type`, so the two files state one domain.
     isModuleValue
     refusingOutside
+    # The walk's spelling of the door's quantifier, read by the agreement cell beside the door.
+    admitsAll
     mkCoreValue
     # `pureModule` (design spec §3 / §5) — the author's clean-module assertion; wraps a function module
     # in the `{ __pureModule = true; __functor = …; }` shape `classifyModule` reads pre-application.
