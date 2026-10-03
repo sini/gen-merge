@@ -1452,14 +1452,45 @@ let
     if
       !(isAttrs t)
       || t ? verify
-      || t ? carries
-      || t ? substructure
+      || (t ? carries || t ? substructure) && !(crossedRoot t)
       || isNesting t
       || !(isList (t.getSubModules or null))
     then
       homedAt door loc t
     else
       homedRootFixed door loc site t;
+  # Does this gen record state a `mount` (a module set that crossed the `mkOptionType` door,
+  # `importType`), or carry an element that does? Its root is mounted as a foreign one is. A
+  # container's module set IS its element's (`listOf`, `attrsOf`, `nullOr`), so it forwards the
+  # mount as nixpkgs' `substSubModules` forwards to the element's; `either` carries no element and
+  # states no module set, and is never mounted. The class is re-tested on the record handed in, never
+  # trusted from the door: `importedSubstructure` copies a stated `substructure` wholesale, so a
+  # crossed record passed through the door again with a `verify` (gen-schema's `refined`), overridden
+  # ad hoc (`// { check }`) or with its module set nulled (`// { getSubModules = null; }`) still
+  # states the mark it was given at its first crossing.
+  crossedRoot =
+    t:
+    isAttrs t
+    && (
+      t ? substructure.mount && !(t ? verify) && isList (t.getSubModules or null) && !(adHocChecked t)
+      ||
+        t ? recarry
+        && t ? carries.element
+        && (t.carries.element ? substructure.mount || t.carries.element ? carries.element)
+        && crossedRoot t.carries.element
+    );
+  # The mount over a module set: the door record's own rebuild with the record's own `check` riding on
+  # it (`carriedCheck`, den-hoag-4ifgb M-B), built from the record handed in, or the container rebuilt
+  # over its element's (`recarry`, the container's own rebuild over another payload).
+  mountOf =
+    t: m:
+    if t ? substructure.mount then
+      let
+        r = t.substructure.rebuild m;
+      in
+      if isAttrs r && r ? merge && r ? check && t ? check then r // { check = carriedCheck t r; } else r
+    else
+      t.recarry (t.carries // { element = mountOf t.carries.element m; });
   # Is the position an OPTION ROOT? An evaluation's option (its fold's mode states the `reader`) or
   # a declared option's group; not the freeform group, whose type is no option's, nor the value-only
   # `mergeOption`'s option. nixpkgs fixes up neither.
@@ -1468,7 +1499,7 @@ let
     door: loc: site: t:
     let
       mods = t.getSubModules;
-      s = t.substSubModules or null;
+      s = if crossedRoot t then mountOf t else t.substSubModules or null;
       threads = threadsAt door loc t;
       # the shape `mergeOptionDecls` hands a rebuild, labelled as nixpkgs labels a module that states
       # no file
@@ -2661,7 +2692,25 @@ let
           // {
             inherit name;
             whenEmpty = importedEmpty t;
-            substructure = importedOwnSubstructure t;
+            # ★ A MODULE SET THAT CROSSED THIS DOOR IS MOUNTED, NOT FOLDED (den-hoag-6yfat). Its author
+            # stated the fold and the rebuild apart, so the rebuild's merge is not this record's by
+            # construction, as it is for every constructor this library ships. `mount` marks the record
+            # for gen's root fix-up (`homedRootAt`), which mounts its rebuild as `fixupOptionType` mounts
+            # `substSubModules`, with the record's own `check` riding on it (`mountOf`); the published
+            # `substSubModules` stays the author's. Only its presence is read, and the class is re-tested
+            # where it is read (`crossedRoot`). An ad-hoc `check` keeps `adHocFold`, and a record stating
+            # `verify` is a gen leaf (`homedRootAt`): its refinement is its own fold's, which a rebuild
+            # would drop. Presence first, so a record outside the class pays no application.
+            substructure =
+              if
+                !(t ? verify)
+                && (t.substructure.modules or t.getSubModules or null) != null
+                && isList (t.substructure.modules or t.getSubModules)
+                && !(adHocChecked t)
+              then
+                importedOwnSubstructure t // { mount = true; }
+              else
+                importedOwnSubstructure t;
           }
           // (if t ? verify then { inherit (t) verify; } else { })
           // (if admits == null || t ? verify then { } else { inherit admits; })
@@ -3311,6 +3360,7 @@ in
     declaresNesting
     homedAt
     homedRootAt
+    crossedRoot
     mayFoldNested
     bridge
     importedCarried
