@@ -468,19 +468,6 @@ let
   # because the answer depends on which vocabulary the element states it in.
   carriesSub = interface.importedRebuilds;
 
-  # ── A CONTAINER'S SPINE, WITHIN THE WALK'S FUEL (den-hoag-iaram) ──────────────────────────────
-  # `listOf`, `attrsOf`/`lazyAttrsOf` and `nullOr` FORWARD their module set and their declarations to
-  # their element, adding `seg` to the path. `forward` states that step as data, and the spine walk
-  # (`interface.spineModules`, `interface.spineDeclares`) follows it within the walk's fuel, refusing
-  # by name at exhaustion. Substituting a module set rebuilds the container over the substituted
-  # element (`rebuild`).
-  forwardedSub = name: seg: element: rebuild: {
-    forward = { inherit name seg element; };
-    modules = interface.spineModules interface.importedTypeWalkFuel element;
-    declares = prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ seg);
-    inherit rebuild;
-  };
-
   # ── THE SPLIT: a container's element positions, stated ONCE (den-hoag-n6dh7 item 5) ────────────
   # `split : loc -> defs -> [ { step; loc; defs; type; } ]` — the per-element definitions the
   # container's fold computes, each with its POSITION segments (`step`: `[ k ]` for an attribute
@@ -801,9 +788,16 @@ let
       # Descend to the element type under the positional placeholder segment. A container's module
       # set IS its element's, and substituting one rebuilds the container over the substituted
       # element.
-      substructure = forwardedSub "listOf" [ "*" ] element (
-        m: listOf (if carriesSub element then (subOf element).rebuild m else element)
-      );
+      substructure = {
+        # The spine's step, stated as data (`interface.forwardStep`): the segment the container adds
+        # on its way to `carries.element`. The walk follows it within its fuel and refuses by name at
+        # exhaustion. A constant, so stating it allocates no thunk per container.
+        forward = "*";
+        modules = interface.spineModules interface.importedTypeWalkFuel element;
+        declares =
+          prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "*" ]);
+        rebuild = m: listOf (if carriesSub element then (subOf element).rebuild m else element);
+      };
       # A position whose every definition was discharged is DROPPED, as nixpkgs' `listOf` drops it.
       # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
       # loc (and a submodule element's `name`) is its source position whatever an earlier sibling's
@@ -930,9 +924,13 @@ let
       typeMergeRel = elementRel tyName (attrsOfWith tyName) element;
       # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
       # registry exposes its INSTANCE option surface to an introspecting consumer.
-      substructure = forwardedSub tyName [ "<name>" ] element (
-        m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element)
-      );
+      substructure = {
+        forward = "<name>";
+        modules = interface.spineModules interface.importedTypeWalkFuel element;
+        declares =
+          prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "<name>" ]);
+        rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
+      };
       inherit split;
       # `attrsOf`'s fold is the split's elements, each folded through the element type and placed at
       # its key.
@@ -1170,9 +1168,13 @@ let
       # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
       # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`. A nullable
       # declares exactly what its element declares, so it carries exactly its element's module set too.
-      substructure = forwardedSub "nullOr" [ ] element (
-        m: nullOr (if carriesSub element then (subOf element).rebuild m else element)
-      );
+      substructure = {
+        # the step adds no segment
+        forward = null;
+        modules = interface.spineModules interface.importedTypeWalkFuel element;
+        declares = interface.spineDeclares interface.importedTypeWalkFuel element;
+        rebuild = m: nullOr (if carriesSub element then (subOf element).rebuild m else element);
+      };
       admits = v: v == null || isValid element v;
       inherit split;
       # One fold over its element's, called or threaded (den-hoag-n6dh7 item 5).

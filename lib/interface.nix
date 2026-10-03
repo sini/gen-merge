@@ -612,8 +612,9 @@ let
   # submodule. The first node that does not forward (a submodule, a union, a leaf, an unrecognised
   # foreign record) answers from its own substructure, as before.
   #
-  # TWO KINDS OF STEP, AND ONLY ONE IS AN ANSWER. A gen container's step (`substructure.forward`) IS
-  # its answer, stated as data, so the walk answers for it. A stock foreign record that forwards both
+  # TWO KINDS OF STEP, AND ONLY ONE IS AN ANSWER. A gen container's step (`substructure.forward`, the
+  # segment it adds on its way to `carries.element`) IS its answer, stated as data, so the walk answers
+  # for it. A stock foreign record that forwards both
   # reads to one element (`listOf`, `nullOr`, `attrsWith`, `unique`, `functionTo`, `coercedTo`'s
   # `finalType`) is stepped for TERMINATION ONLY: once the rest of its chain is shown to bottom out,
   # the record answers for itself, so one whose sub-protocol was overridden after construction answers
@@ -630,7 +631,14 @@ let
     if !(isAttrs e) then
       null
     else if e ? substructure then
-      e.substructure.forward or null
+      if e.substructure ? forward then
+        {
+          name = nameOf e;
+          element = e.carries.element;
+          seg = if e.substructure.forward == null then [ ] else [ e.substructure.forward ];
+        }
+      else
+        null
     else
       let
         name = (e.functor or { }).name or null;
@@ -879,6 +887,12 @@ let
         # are not types and are not forced (den-hoag-iaram, the gen relation's pre-flight).
         else if evaluatesOwnRoles t || isNesting t then
           true
+        # A gen record carrying its element alone (a one-element container) steps straight to it, the
+        # node `importedWrapped` would list alone, without building that list (den-hoag-iaram: the
+        # walk is the gen relation's pre-flight on every redeclaration, so its per-level constant is
+        # paid there). A record with more than one role takes the general arm.
+        else if t ? carries && attrNames t.carries == [ "element" ] then
+          go (fuel - 1) t.carries.element
         else
           all (go (fuel - 1)) (importedWrapped t);
     in
