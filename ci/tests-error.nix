@@ -7507,5 +7507,68 @@ in
           };
         };
       };
+
+    # zvidt: a raw foreign container named like gen's `listOf` whose payload names MORE than the element
+    # (`attrsWith`'s shape) is not read whole, so the container relation does not hand the pair to its
+    # `binOp` (`interface.joinCarriedInStatedRelation`): it refuses by name, as it did before that rule,
+    # and does not abort on the payload key it never offered. `tryEval` cannot tell the two apart.
+    flake.testsError.mixed-container-redeclaration =
+      let
+        np = nixpkgsLib;
+        lazyList = np.mkOptionType {
+          name = "listOf";
+          description = "lazyList";
+          check = builtins.isList;
+          merge = (np.types.listOf np.types.int).merge;
+          functor = {
+            name = "listOf";
+            wrapped = null;
+            payload = {
+              elemType = np.types.int;
+              lazy = true;
+            };
+            type =
+              p:
+              np.mkOptionType {
+                name = "listOf";
+                description = if p.lazy then "lazy" else "strict";
+                check = builtins.isList;
+                merge = (np.types.listOf np.types.int).merge;
+                functor = lazyList.functor // {
+                  payload = p;
+                };
+                nestedTypes.elemType = p.elemType;
+              };
+            binOp =
+              a: b:
+              let
+                m = a.elemType.typeMerge b.elemType.functor;
+              in
+              if m == null then
+                null
+              else
+                {
+                  elemType = m;
+                  lazy = a.lazy;
+                };
+          };
+          nestedTypes.elemType = np.types.int;
+        };
+      in
+      {
+        test-extra-payload-partner-first-refuses-by-name = {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                { options.x = gm.mkOption { type = lazyList; }; }
+                { options.x = gm.mkOption { type = t.listOf t.int; }; }
+              ];
+            }).options.x.type.description;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x' is declared with types that do not merge \\(`listOf' and a partner that states no element type of its own\\); declared in <gen-merge>, <gen-merge>$";
+          };
+        };
+      };
   };
 }

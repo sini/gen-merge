@@ -725,7 +725,7 @@ The two vocabularies, kept apart on purpose:
 | `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another               | `nestedTypes`, `getSubModules`                      |
 | `unroledNested`       | an imported record's `nestedTypes` keys that name no role, verbatim   | `nestedTypes`                                       |
 | `substructure`        | `{ declares; modules; rebuild; }`                                     | `getSubOptions`, `getSubModules`, `substSubModules` |
-| `typeMergeRel`        | the **row-free** type-merge relation                                  | `typeMerge`, `functor`                              |
+| `typeMergeRel`        | the **row-free** type-merge relation (one carve-out, see below)       | `typeMerge`, `functor`                              |
 | `deprecated`          | the deprecation message, if any                                       | `deprecationMessage`                                |
 
 `exportType` publishes a **partition of the fourteen** as data (`exportClasses`), so it can be read
@@ -1229,7 +1229,9 @@ whole declared-type list, bracketed as nixpkgs brackets it, and refuses the decl
 answer is nothing. A refusal names the option path and *every* declaring file; the **non-type** fields keep their ordered bias (see
 "Redeclaring an option" below).
 
-**gen states this as `typeMergeRel`, and it is ROW-FREE — that is the whole difference.** nixpkgs
+**gen states this as `typeMergeRel`, and it is ROW-FREE — that is the whole difference.** (One
+carve-out, against a raw foreign partner that states a relation of its own: see "A foreign payload is
+read only where it is read WHOLE" below.) nixpkgs
 asks `a.typeMerge b.functor`: the second operand is a functor **payload**, a row whose shape both
 sides must agree on before the question can even be posed. The relation takes **the other type**. It
 is PARTIAL and its refusal is NAMED — `{ merged = <type>; }` or `{ refused = <reason>; }` — so the
@@ -1278,8 +1280,16 @@ more than the one parameter this side has a place for: nixpkgs' `submoduleWith` 
 container carries laziness and a placeholder beside its element. Lifting only the key this side knows
 would build a gen type out of a partner it did not understand and drop the rest with no diagnostic,
 so a payload naming anything beyond the role's own key answers "nothing to merge on". A foreign
-container whose payload IS just the element is unchanged, which is what keeps the two engines'
-one-parameter containers mutually legible. A gen nesting type (`submodule`, the tree) facing a
+container whose payload IS just the element is read whole, and then the PARTNER's relation decides the
+pair (`interface.joinCarriedInStatedRelation`, called from the container relation): the merged type is
+the partner's record at every container level, so a mixed nixpkgs/gen redeclaration of `listOf`
+or `nullOr` has nixpkgs' declared-type spine whichever declaration came first, under either
+engine, and refuses where nixpkgs' `binOp` refuses. It is taken only where it keeps each operand's
+stated name (`interface.joinRenames`), so a pair gen's own relation refuses (`ints.u8` beside `int`)
+stays refused. The cost is a property of this arm: a mixed redeclaration pays about +685 thunks per
+redeclared option (`nullOr (listOf int)`, linear, measured on Nix 2.34.8), a gen × gen pair pays about
++8, and the perf bench does not reach it. `either`/`oneOf` are not covered (their payload is a list and
+the partner overrides `typeMerge`). A gen nesting type (`submodule`, the tree) facing a
 same-named partner that offers it nothing is not refused for that: its parameters embed into the
 partner's richer `submoduleWith` payload, so it hands the pair to the protocol's default relation over
 the partner's PUBLISHED functor (`interface.joinInStatedRelation`, over `interface.moduleSetPayload`),

@@ -325,13 +325,208 @@ in
         };
       };
 
+    # zvidt: ONE option declared by a nixpkgs container and a gen container has ONE declared-type spine
+    # whichever declaration comes first, under either engine: nixpkgs' own. The partner's relation
+    # decides the record at every container level (`interface.joinCarriedInStatedRelation`), so no
+    # gen record survives into the declared type. `sig` reads whose record each level of the merged
+    # spine is, through `nestedTypes`; `ref` is the same table with the gen side replaced by its
+    # nixpkgs twin, live. `u8` pins the refusal the rule must not widen: a join that drops a wrapper's
+    # check is not taken (ADR-0025 item 1): gen's engine refuses `u8` beside `int` natively, so the mixed
+    # pair refuses too, and a rule that dropped the witness would serve it. `lazyList` is a raw foreign
+    # container named like gen's `listOf` whose payload names MORE than the element (`attrsWith`'s
+    # shape): gen does not read it whole, so the pair is not joined and answers as it did before the
+    # rule, in both orders under both engines. Its removal serves the gen-first gm pair.
+    test-mixed-container-redeclaration-outer-record-is-order-independent =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalModuleTree;
+            mk = mkOption;
+          };
+        };
+        sub = lib': lib'.submodule { options.y = np.mkOption { type = np.types.int; }; };
+        shapes = {
+          leaf = lib': lib'.listOf lib'.int;
+          null-leaf = lib': lib'.nullOr lib'.int;
+          list-list = lib': lib'.listOf (lib'.listOf lib'.int);
+          null-list = lib': lib'.nullOr (lib'.listOf lib'.int);
+          null-null = lib': lib'.nullOr (lib'.nullOr lib'.int);
+          list-sub = lib': lib'.listOf (sub lib');
+        };
+        sig =
+          fuel: ty:
+          (if ty ? carries then "G" else "N")
+          + (
+            if fuel == 0 || !(ty ? nestedTypes) then
+              ""
+            else
+              "("
+              + builtins.concatStringsSep "," (
+                map (k: sig (fuel - 1) ty.nestedTypes.${k}) (builtins.attrNames ty.nestedTypes)
+              )
+              + ")"
+          );
+        read =
+          eng: Ts:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts;
+            };
+            tried = builtins.tryEval (sig 4 r.options.x.type);
+          in
+          if tried.success then tried.value else "REFUSED";
+        table =
+          twin:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  k:
+                  let
+                    a = shapes.${k} np.types;
+                    b = shapes.${k} (if twin then np.types else t);
+                  in
+                  [
+                    {
+                      name = "${eng}-${k}-o12";
+                      value = read eng [
+                        a
+                        b
+                      ];
+                    }
+                    {
+                      name = "${eng}-${k}-o21";
+                      value = read eng [
+                        b
+                        a
+                      ];
+                    }
+                  ]
+                ) (builtins.attrNames shapes)
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        lazyList =
+          let
+            lazyList = np.mkOptionType {
+              name = "listOf";
+              description = "lazyList";
+              check = builtins.isList;
+              merge = (np.types.listOf np.types.int).merge;
+              functor = {
+                name = "listOf";
+                wrapped = null;
+                payload = {
+                  elemType = np.types.int;
+                  lazy = true;
+                };
+                type =
+                  p:
+                  np.mkOptionType {
+                    name = "listOf";
+                    description = if p.lazy then "lazy" else "strict";
+                    check = builtins.isList;
+                    merge = (np.types.listOf np.types.int).merge;
+                    functor = lazyList.functor // {
+                      payload = p;
+                    };
+                    nestedTypes.elemType = p.elemType;
+                  };
+                binOp =
+                  a: b:
+                  let
+                    m = a.elemType.typeMerge b.elemType.functor;
+                  in
+                  if m == null then
+                    null
+                  else
+                    {
+                      elemType = m;
+                      lazy = a.lazy;
+                    };
+              };
+              nestedTypes.elemType = np.types.int;
+            };
+            L = t.listOf t.int;
+            readD =
+              eng: Ts:
+              let
+                r = engines.${eng}.ev {
+                  modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts;
+                };
+                tried = builtins.tryEval r.options.x.type.description;
+              in
+              if tried.success then tried.value else "REFUSED";
+          in
+          {
+            np-o12 = readD "np" [
+              lazyList
+              L
+            ];
+            np-o21 = readD "np" [
+              L
+              lazyList
+            ];
+            gm-o12 = readD "gm" [
+              lazyList
+              L
+            ];
+            gm-o21 = readD "gm" [
+              L
+              lazyList
+            ];
+          };
+        u8 = {
+          ref = (
+            read "gm" [
+              (np.types.listOf np.types.ints.u8)
+              (np.types.listOf np.types.int)
+            ]
+          );
+          mixed = (
+            read "gm" [
+              (np.types.listOf np.types.ints.u8)
+              (t.listOf t.int)
+            ]
+          );
+        };
+      in
+      {
+        expr = {
+          mixed = table false;
+          ref = table true;
+          inherit u8 lazyList;
+        };
+        expected = {
+          mixed = table true;
+          ref = table true;
+          lazyList = {
+            np-o12 = "REFUSED";
+            np-o21 = "lazy";
+            gm-o12 = "REFUSED";
+            gm-o21 = "REFUSED";
+          };
+          u8 = {
+            ref = "REFUSED";
+            mixed = "REFUSED";
+          };
+        };
+      };
+
     # 4v489: ONE option declared by a nixpkgs nesting type and a gen one has ONE answer whichever
     # declaration comes first, under either engine: nixpkgs' answer. gen's parameters embed into the
     # partner's richer `submoduleWith` payload, so the pair is joined by the partner's own relation in
     # both orders (`interface.joinInStatedRelation`) and the nested element is a nixpkgs record either
     # way. `l` reads the module order the join built; `ref` is the same table with the gen side replaced
     # by its nixpkgs twin, live. A shared `specialArgs` key refuses in both orders, as nixpkgs refuses it.
-    # (A gen CONTAINER's own record, `listOf` here, is the container relation's and is not read.)
     test-mixed-nesting-redeclaration-is-order-independent =
       let
         npM = {
