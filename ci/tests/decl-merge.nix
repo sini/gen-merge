@@ -1844,6 +1844,331 @@ in
           };
       };
 
+    # caxcw + khltw: ONE option declared by a nixpkgs container and the gen constructor whose
+    # parameters embed in it under ANOTHER functor name (`attrsOf`/`lazyAttrsOf` in `attrsWith`,
+    # `deferredModule` in `deferredModuleWith`) has nixpkgs' answer in both orders, under either
+    # engine. `ref` is the same table with the gen side replaced by its nixpkgs twin, live. A foreign
+    # `staticModules` survives the join (`static`), a non-default `placeholder` is joined by nixpkgs'
+    # own rule (`ph`), and a `lazy` disagreement refuses in both orders as nixpkgs refuses it.
+    test-mixed-functor-name-redeclaration-is-nixpkgs-answer =
+      let
+        base = {
+          options.y = np.mkOption {
+            type = np.types.int;
+            default = 0;
+          };
+          options.z = np.mkOption {
+            type = np.types.int;
+            default = 0;
+          };
+        };
+        stat = {
+          z = 7;
+        };
+        rows = {
+          attrs = {
+            n = np.types.attrsOf np.types.int;
+            g = t.attrsOf t.int;
+            twin = np.types.attrsOf np.types.int;
+            def.k = 1;
+          };
+          lazy = {
+            n = np.types.lazyAttrsOf np.types.int;
+            g = t.lazyAttrsOf t.int;
+            twin = np.types.lazyAttrsOf np.types.int;
+            def.k = 1;
+          };
+          ph = {
+            n = np.types.attrsWith {
+              elemType = np.types.int;
+              placeholder = "host";
+            };
+            g = t.attrsOf t.int;
+            twin = np.types.attrsOf np.types.int;
+            def.k = 1;
+          };
+          lazyVsEager = {
+            n = np.types.attrsOf np.types.int;
+            g = t.lazyAttrsOf t.int;
+            twin = np.types.lazyAttrsOf np.types.int;
+            def.k = 1;
+          };
+          deferred = {
+            n = np.types.deferredModule;
+            g = t.deferredModule;
+            twin = np.types.deferredModule;
+            def.y = 5;
+          };
+          static = {
+            n = np.types.deferredModuleWith { staticModules = [ stat ]; };
+            g = t.deferredModule;
+            twin = np.types.deferredModule;
+            def.y = 5;
+          };
+        };
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalModuleTree;
+            mk = mkOption;
+          };
+        };
+        read =
+          eng: def: Ts:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            v = r.config.x;
+            out = {
+              value =
+                if v ? imports then
+                  { inherit ((np.evalModules { modules = [ base ] ++ v.imports; }).config) y z; }
+                else
+                  v;
+              functor = r.options.x.type.functor.name;
+              genRecord = r.options.x.type ? typeMergeRel;
+            };
+            tried = builtins.tryEval (builtins.deepSeq out out);
+          in
+          if tried.success then tried.value else "REFUSED";
+        table =
+          twin:
+          builtins.listToAttrs (
+            builtins.concatMap (
+              eng:
+              builtins.concatMap (
+                k:
+                let
+                  row = rows.${k};
+                  b = if twin then row.twin else row.g;
+                in
+                [
+                  {
+                    name = "${eng}-${k}-o12";
+                    value = read eng row.def [
+                      row.n
+                      b
+                    ];
+                  }
+                  {
+                    name = "${eng}-${k}-o21";
+                    value = read eng row.def [
+                      b
+                      row.n
+                    ];
+                  }
+                ]
+              ) (builtins.attrNames rows)
+            ) (builtins.attrNames engines)
+          );
+        answer = {
+          attrs = {
+            value.k = 1;
+            functor = "attrsWith";
+            genRecord = false;
+          };
+          lazy = answer.attrs;
+          ph = answer.attrs;
+          lazyVsEager = "REFUSED";
+          deferred = {
+            value = {
+              y = 5;
+              z = 0;
+            };
+            functor = "deferredModuleWith";
+            genRecord = false;
+          };
+          static = answer.deferred // {
+            value = {
+              y = 5;
+              z = 7;
+            };
+          };
+        };
+        expected = builtins.listToAttrs (
+          builtins.concatMap (
+            eng:
+            builtins.concatMap (k: [
+              {
+                name = "${eng}-${k}-o12";
+                value = answer.${k};
+              }
+              {
+                name = "${eng}-${k}-o21";
+                value = answer.${k};
+              }
+            ]) (builtins.attrNames rows)
+          ) (builtins.attrNames engines)
+        );
+        # THE WITNESS: a wrapped element (`ints.u8`) beside gen's `int`. Where gen's relation decides
+        # (nixpkgs' engine, nixpkgs' declaration first) the join renames past `u8' and refuses, as the
+        # same pair under `listOf` refuses; nixpkgs' relation deciding alone serves, as it does there.
+        # gen's engine refuses both orders, as it refuses the nixpkgs × nixpkgs twin.
+        u8 = np.types.attrsOf np.types.ints.u8;
+        g8 = t.attrsOf t.int;
+      in
+      {
+        expr = {
+          mixed = table false;
+          ref = table true;
+          witness = {
+            np-o12 = read "np" { k = 300; } [
+              u8
+              g8
+            ];
+            np-o21 = read "np" { k = 300; } [
+              g8
+              u8
+            ];
+            gm-o12 = read "gm" { k = 300; } [
+              u8
+              g8
+            ];
+            gm-o21 = read "gm" { k = 300; } [
+              g8
+              u8
+            ];
+          };
+        };
+        expected = {
+          mixed = expected;
+          ref = expected;
+          witness = {
+            np-o12 = "REFUSED";
+            np-o21 = answer.attrs // {
+              value.k = 300;
+            };
+            gm-o12 = "REFUSED";
+            gm-o21 = "REFUSED";
+          };
+        };
+      };
+
+    # THE PUBLISHED SURFACE of the three embedded constructors, pinned directly: the functor name a
+    # foreign engine keys a redeclaration on, and the payload keys its `binOp` reads. `listOf`, which
+    # embeds nowhere, is the unchanged control.
+    test-embedded-constructors-publish-the-richer-functor =
+      let
+        surface = ty: {
+          inherit (ty.functor) name;
+          payload = if ty.functor.payload == null then null else builtins.attrNames ty.functor.payload;
+        };
+      in
+      {
+        expr = {
+          attrsOf = surface (t.attrsOf t.int);
+          lazyAttrsOf = surface (t.lazyAttrsOf t.int);
+          deferredModule = surface t.deferredModule;
+          listOf = surface (t.listOf t.int);
+          params = {
+            attrsOf = { inherit ((t.attrsOf t.int).functor.payload) lazy placeholder; };
+            lazyAttrsOf = { inherit ((t.lazyAttrsOf t.int).functor.payload) lazy placeholder; };
+            deferredModule = t.deferredModule.functor.payload.staticModules;
+          };
+        };
+        expected = {
+          attrsOf = {
+            name = "attrsWith";
+            payload = [
+              "elemType"
+              "lazy"
+              "placeholder"
+            ];
+          };
+          lazyAttrsOf = {
+            name = "attrsWith";
+            payload = [
+              "elemType"
+              "lazy"
+              "placeholder"
+            ];
+          };
+          deferredModule = {
+            name = "deferredModuleWith";
+            payload = [ "staticModules" ];
+          };
+          listOf = {
+            name = "listOf";
+            payload = [ "elemType" ];
+          };
+          params = {
+            attrsOf = {
+              lazy = false;
+              placeholder = "name";
+            };
+            lazyAttrsOf = {
+              lazy = true;
+              placeholder = "name";
+            };
+            deferredModule = [ ];
+          };
+        };
+      };
+
+    # THE EMBEDDED `functor.type` IS TOTAL BY REFUSAL: handed a payload of the richer constructor at
+    # parameters that are not this type's own, it refuses rather than rebuilding at its own and
+    # dropping the caller's. Its own embedding rebuilds (the live control), for each constructor.
+    test-embedded-functor-type-refuses-a-payload-off-its-embedding =
+      let
+        rebuilt =
+          ty: p:
+          let
+            r = builtins.tryEval (builtins.deepSeq (ty.functor.type p).name (ty.functor.type p).name);
+          in
+          if r.success then r.value else "REFUSED";
+        off = {
+          elemType = t.int;
+          lazy = true;
+          placeholder = "x";
+        };
+      in
+      {
+        expr = {
+          attrsOf = {
+            own = rebuilt (t.attrsOf t.int) (t.attrsOf t.int).functor.payload;
+            lazy = rebuilt (t.attrsOf t.int) (off // { placeholder = "name"; });
+            placeholder = rebuilt (t.attrsOf t.int) (off // { lazy = false; });
+            both = rebuilt (t.attrsOf t.int) off;
+          };
+          lazyAttrsOf = {
+            own = rebuilt (t.lazyAttrsOf t.int) (t.lazyAttrsOf t.int).functor.payload;
+            eager = rebuilt (t.lazyAttrsOf t.int) (
+              off
+              // {
+                lazy = false;
+                placeholder = "name";
+              }
+            );
+            placeholder = rebuilt (t.lazyAttrsOf t.int) off;
+          };
+          deferredModule = {
+            own = rebuilt t.deferredModule t.deferredModule.functor.payload;
+            static = rebuilt t.deferredModule { staticModules = [ { z = 7; } ]; };
+          };
+        };
+        expected = {
+          attrsOf = {
+            own = "attrsOf";
+            lazy = "REFUSED";
+            placeholder = "REFUSED";
+            both = "REFUSED";
+          };
+          lazyAttrsOf = {
+            own = "lazyAttrsOf";
+            eager = "REFUSED";
+            placeholder = "REFUSED";
+          };
+          deferredModule = {
+            own = "deferredModule";
+            static = "REFUSED";
+          };
+        };
+      };
+
     # ── 1 · ROUTING ────────────────────────────────────────────────────────────────────────────
     # The whole table in one cell, so no row can pass while its neighbour is unread. The `algebra`
     # rows are the library's own `typeMerge`; the `routed` rows are the engine's declaration merge

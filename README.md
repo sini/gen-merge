@@ -1281,12 +1281,17 @@ relation — no payload-shape agreement is needed on gen's side. Inbound, it pub
 foreign engine can recover this type from, in the foreign spellings:
 
 ```nix
-# nullary — raw, anything, deferredModule, every gen-types leaf
+# nullary — raw, anything, every gen-types leaf
 { name; type; payload = null; binOp = _a: _b: null; }      # same name ⇒ the deciding side's own record;
                                                            # a gen leaf facing a raw foreign nullary leaf
                                                            # answers the partner's
-# one-element containers — listOf, attrsOf, lazyAttrsOf, nullOr  (gen role: `element`)
+# one-element containers — listOf, nullOr                   (gen role: `element`)
 { payload = { elemType; }; type = p: rebuild p.elemType; }
+# embedded in a richer foreign constructor (`interface.embeddings`): published under ITS name
+{ name = "attrsWith"; payload = { elemType; lazy = false; placeholder = "name"; }; }  # attrsOf
+{ name = "attrsWith"; payload = { elemType; lazy = true; placeholder = "name"; }; }   # lazyAttrsOf
+{ name = "deferredModuleWith"; payload = { staticModules = [ ]; }; }                  # deferredModule
+# `type` over a payload whose fixed parameters are not the type's own refuses by name
 # submodule — the parameter is the MODULE LIST              (gen role: `moduleSet`)
 { payload = { modules; }; }
 # either — the parameter is the member PAIR, positional     (gen role: `alternatives`)
@@ -1324,7 +1329,11 @@ refused; a `path` member, whose leaf pair is order-dependent on its own, keeps t
 A foreign answer that aborts is taken as no answer (`tryEval`), so the relation stays total. The
 partner's own `typeMerge` is never called. Price (Δ thunks per option, Nix 2.34.8): a gen × gen
 `listOf` pays +1 on nixpkgs' engine and 0 on gen's, a gen × gen `either` +2 and 0, and a mixed `either`
-about +300 against gen's engine's former (wrong-record) answer. A gen nesting type (`submodule`, the tree) facing a
+about +300 against gen's engine's former (wrong-record) answer. A partner stated under the RICHER constructor a gen type embeds in
+(nixpkgs `attrsWith` for `attrsOf`/`lazyAttrsOf`, `deferredModuleWith` for `deferredModule`) is joined
+in the same binding over the embedding (`interface.embeddings`): gen's parameters are a point of that
+payload, so the pair is decided by the partner's `binOp` under the same witness, a foreign
+`staticModules` survives it, and a refused `attrsOf` pair names its element pair. A gen nesting type (`submodule`, the tree) facing a
 same-named partner that offers it nothing is not refused for that: its parameters embed into the
 partner's richer `submoduleWith` payload, so it hands the pair to the protocol's default relation over
 the partner's PUBLISHED functor (`interface.joinInStatedRelation`, over `interface.moduleSetPayload`),
