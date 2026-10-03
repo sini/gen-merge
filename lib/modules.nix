@@ -1486,14 +1486,15 @@ let
   #
   # `_file` is an INHERITED attribute along the import edge that reached the node FIRST (Knuth 1968):
   # the importer's resolved file flows down, and a node's own attribution overrides it. Precedence,
-  # most specific first: a raw path leaf's own path string (nixpkgs-parity error location; `isPath` is
-  # guarded first so a non-attrset is never `._file`-selected), then the entry's own `_file`
-  # (pre-application `m0`, then the applied `m`), then the importer's file, then `"<gen-merge>"` at the
-  # root. So content passed through an unattributed wrapper (`setDefaultModuleLocation F m` =
-  # `{ _file = F; imports = [ m ]; }`) is attributed to its IMPORT site `F`, as nixpkgs'
-  # `collectStructuredModules` threads `parentFile`. That equivalence is of the IMPORT-site reading
-  # only: a path module whose content names its own `_file` is named by its path here and by the
-  # declared `_file` in nixpkgs. `_file` stays a thunk, forced only when a file surface is read. An
+  # most specific first: a raw path leaf's own `_file` (the applied `m`; `m._file or m0` falls through
+  # to the path for a non-attrset), else its path string (nixpkgs' `unifyModuleSyntax`: `toString
+  # m._file or file`), then the entry's own `_file` (pre-application `m0`, then the applied `m`), then
+  # the importer's file, then `"<gen-merge>"` at the root. So content passed through an unattributed
+  # wrapper (`setDefaultModuleLocation F m` = `{ _file = F; imports = [ m ]; }`) is attributed to its
+  # IMPORT site `F`, as nixpkgs'
+  # `collectStructuredModules` threads `parentFile`. A path module is never attributed to its
+  # importer: its own `_file` (a function path module's applied result included), else its path.
+  # `_file` stays a thunk, forced only when a file surface is read. An
   # entry's source class is decided on the PRE-application `m0` (design spec §3) where it is read
   # (`srcClassOf`), so collecting a module pays nothing for it.
   #
@@ -1515,7 +1516,7 @@ let
           inherit m0;
           _file =
             if builtins.isPath m0 || isPathString m0 then
-              toString m0
+              toString (m._file or m0)
             else
               (m0._file or (m._file or "<gen-merge>"));
           content = m;
@@ -1525,7 +1526,7 @@ let
           inherit m0;
           _file =
             if builtins.isPath m0 || isPathString m0 then
-              toString m0
+              toString (m._file or m0)
             else
               (m0._file or (m._file or importer._file));
           content = m;
@@ -1535,7 +1536,7 @@ let
           inherit m0;
           _file =
             if builtins.isPath m0 || isPathString m0 then
-              toString m0
+              toString (m._file or m0)
             else
               (m0._file or (m._file or importer._file));
           content = m;

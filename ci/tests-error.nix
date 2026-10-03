@@ -7435,5 +7435,77 @@ in
           expected = "a";
         };
       };
+    # A PATH module is named by the `_file` its own content sets, else by its path (ci/tests/
+    # path-module-own-file.nix, den-hoag-6fqay): the refusal TEXT of each reader that names a file.
+    # The module under test is a fixture file under `tests/_fixtures`, and each cell reads the
+    # fixture's in-file `_file`, never its path. Controls pair each refusal with the same eval minus
+    # the offending definition.
+    flake.testsError.path-module-own-file =
+      let
+        pConflict = ./tests/_fixtures/own-file-conflict.nix;
+        pArgs = ./tests/_fixtures/own-file-args.nix;
+        pArgsRo = ./tests/_fixtures/own-file-args-ro.nix;
+        oDecl = {
+          options.o = gm.mkOption { type = t.str; };
+        };
+        other = {
+          _file = "/real/B.nix";
+          config.o = "y";
+        };
+        pkgsAt = file: {
+          _file = file;
+          config._module.args.pkgs = "Q";
+        };
+      in
+      {
+        test-conflicting-definitions-name-the-path-modules-own-file = {
+          expr =
+            withControl
+              (realize {
+                modules = [
+                  oDecl
+                  pConflict
+                ];
+              })
+              null
+              (realize {
+                modules = [
+                  oDecl
+                  pConflict
+                  other
+                ];
+              });
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `/real/B\\.nix': \"y\"\n- In `/real/PF\\.nix': \"x\"$";
+          };
+        };
+        test-multiply-defined-module-argument-names-the-path-modules-own-file = {
+          expr = withControl (realize { modules = moduleArgsReader ++ [ pArgs ]; }) null (realize {
+            modules = moduleArgsReader ++ [
+              pArgs
+              (pkgsAt "/other.nix")
+            ];
+          });
+          expectedError = {
+            type = "ThrownError";
+            msg = moduleArgsDupMsg "/real/AR\\.nix, /other\\.nix";
+          };
+        };
+        test-read-only-module-args-refusal-names-the-path-modules-own-file = {
+          expr =
+            withControl
+              (realize { modules = [ { options._module.args = gm.mkOption { readOnly = true; }; } ]; })
+              null
+              (realize {
+                modules = [ pArgsRo ];
+                specialArgs.mkOption = gm.mkOption;
+              });
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `_module\\.args' is read-only, but it is defined more than once \\(the engine defines it too\\); defined in /real/AR\\.nix$";
+          };
+        };
+      };
   };
 }
