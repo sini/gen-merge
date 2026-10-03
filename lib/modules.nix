@@ -1002,12 +1002,13 @@ let
   #
   # Of what an accepted re-declaration may carry, nixpkgs reads `apply` and `readOnly` into a value,
   # and at `specialArgs` (which declares no type of its own) a `type`. This engine runs `apply` where
-  # it reads the key itself (`moduleArgs`, `freeform`), and `readOnly` here: nixpkgs' own module
-  # defines `args`, and both its own `freeformType` default and a re-declaration's `default` count as
-  # definitions, so a second one refuses. At `check` and `specialArgs` the engine runs none of the
-  # three, so a re-declaration carrying one is refused by name, never dropped. An owned key declared
-  # as a group of options would be the parent of options its own type cannot carry, and is refused
-  # as nixpkgs refuses it.
+  # it reads the key itself (`moduleArgs`, `freeform`, `moduleOwnSpecialArgs`), a `type` at
+  # `specialArgs` there too, and `readOnly` here: nixpkgs' own module defines `args`, and both its
+  # own `freeformType` default and a re-declaration's `default` count as definitions, so a second one
+  # refuses; at `specialArgs` the engine's is the only definition a module can make. At `check` the
+  # engine runs neither, so a re-declaration carrying one is refused by name, never dropped. An owned
+  # key declared as a group of options would be the parent of options its own type cannot carry, and
+  # is refused as nixpkgs refuses it.
   moduleOwnRedeclared =
     {
       sites,
@@ -1031,11 +1032,7 @@ let
               "apply"
               "readOnly"
             ];
-            specialArgs = [
-              "type"
-              "apply"
-              "readOnly"
-            ];
+            specialArgs = [ ];
           }
           .${k};
       defined =
@@ -1064,12 +1061,7 @@ let
       } is already declared by the engine's own `_module' options"
     else if unread != [ ] then
       throw (
-        "gen-merge: "
-        + {
-          check = "`${showOption loc}' is read only from `evalModuleTree { check = …; }'";
-          specialArgs = "a module cannot read `${showOption loc}' in this engine";
-        }
-        .${k}
+        "gen-merge: `${showOption loc}' is read only from `evalModuleTree { check = …; }'"
         + ", so a module's ${
           concatStringsSep ", " (map (f: "`${f}'") unread)
         } on it would not run; declared in ${files}"
@@ -1108,6 +1100,26 @@ let
     in
     moduleOwnApply sites (
       if positioned then stated // { name = positionNameOf prefix stated pushed; } else stated
+    );
+  # The `_module.specialArgs` a module reads where its evaluation's modules declare `options._module`:
+  # the caller's set, as nixpkgs' `internalModule` defines it, merged through a re-declared `type`
+  # (the last one stated, the ordered fold) and mapped by an accepted `apply`. Only the read changes:
+  # the arguments every module is applied to stay the caller's set, as in nixpkgs.
+  moduleOwnSpecialArgs =
+    loc: sites: specialArgs:
+    let
+      typed = filter (s: s.decl ? type) sites;
+    in
+    moduleOwnApply sites (
+      if typed == [ ] then
+        specialArgs
+      else
+        mergeOption loc { inherit ((prelude.last typed).decl) type; } [
+          {
+            file = "<gen-merge>";
+            value = specialArgs;
+          }
+        ]
     );
   moduleDefOf =
     file: attrs:
@@ -4511,50 +4523,62 @@ let
               recursiveUpdate freeformConfig declaredConfig
           );
 
-          # The MODULE-VISIBLE config (`baseArgs.config`, ~:888) re-surfaces `_module.args` as a
-          # readable path, matching nixpkgs (inside a module `config._module.args` resolves; the
-          # returned config drops it). Consumers read the WHOLE map to enumerate args dynamically:
-          # gen-schema's `mkInstanceType` sets `config._module.args.${kind} = config` and den's
-          # `resolvedCtxModule` reads `config._module.args` to build the entity resolution context (it
-          # can't enumerate `...` function args). ONLY `.args` (not the `_module.freeformType` gen-merge
-          # consumes internally), and ONLY when there is an arg — a module set one, or the evaluation is
-          # positioned and so has its `name` — else `config` is used unchanged. Where a module declares
-          # `options._module`, `moduleArgs` already holds that `name`, after any `apply` (`moduleOwnArgs`).
-          moduleConfig =
-            if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
-              if knot.positioned then
-                config
-                // {
-                  _module.args =
-                    if allOptions ? _module then
-                      moduleArgs
-                    else
-                      moduleArgs // { name = positionNameOf prefix moduleArgs pushed; };
-                }
-              else if moduleArgs == { } then
-                config
-              else
-                config // { _module.args = moduleArgs; }
-            else
-              config
-              // {
-                _module =
+          # The MODULE-VISIBLE config (`baseArgs.config`) carries `_module` as nixpkgs' does: the four
+          # keys its `internalModule` declares, every evaluation, beside whatever `_module.<x>` the
+          # modules' own declarations or freeform merged (the returned config drops it). Consumers read
+          # the WHOLE `args` map to enumerate args dynamically: gen-schema's `mkInstanceType` sets
+          # `config._module.args.${kind} = config` and den's `resolvedCtxModule` reads
+          # `config._module.args` to build the entity resolution context (it can't enumerate `...`
+          # function args). A positioned evaluation's `args` holds its `name`; where a module declares
+          # `options._module`, `moduleArgs` already holds it, after any `apply` (`moduleOwnArgs`).
+          # `check` is `strict`, the strictness that governs this evaluation's refusal of an undeclared
+          # key, which is what nixpkgs' option reports: a child of an unchecked tree's `.type` under a
+          # strict parent refuses as strict and reads `true`, as nixpkgs' (whose `.type` omits the
+          # legacy `check`). The view forces nothing it names.
+          # The view is one expression, never a binding of its own: a binding is a thunk allocated
+          # on every evaluation whether or not a module reads `config`. Each branch states its keys
+          # as plain references where it can, so only `args`' extension and `specialArgs`' merge
+          # are thunks.
+          moduleConfig = config // {
+            _module =
+              (
+                if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
+                  { }
+                else
                   recursiveUpdate (freeformConfig._module or { }) (declaredConfig._module or { })
-                  // (
-                    if knot.positioned then
-                      {
-                        args =
-                          if allOptions ? _module then
-                            moduleArgs
-                          else
-                            moduleArgs // { name = positionNameOf prefix moduleArgs pushed; };
-                      }
-                    else if moduleArgs == { } then
-                      { }
-                    else
-                      { args = moduleArgs; }
-                  );
-              };
+              )
+              // (
+                if allOptions ? _module then
+                  {
+                    args = moduleArgs;
+                    check = strict;
+                    freeformType = freeform;
+                    specialArgs = moduleOwnSpecialArgs (
+                      prefix
+                      ++ [
+                        "_module"
+                        "specialArgs"
+                      ]
+                    ) (moduleOwnSites sitesAt prefix allOptions null "specialArgs") specialArgs;
+                  }
+                else if knot.positioned then
+                  {
+                    args = moduleArgs // {
+                      name = positionNameOf prefix moduleArgs pushed;
+                    };
+                    check = strict;
+                    inherit specialArgs;
+                    freeformType = freeform;
+                  }
+                else
+                  {
+                    args = moduleArgs;
+                    check = strict;
+                    inherit specialArgs;
+                    freeformType = freeform;
+                  }
+              );
+          };
 
           # ── provenance (A2 spec §1) ────────────────────────────────────────────────────────────
           # A lazy tree mirroring `config`'s loc structure. Per DECLARED-option loc the rich record
