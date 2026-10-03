@@ -433,10 +433,11 @@ let
   # which is the one place that knows any spelling but this one.
   #
   # ★ ONE CARVE-OUT, against a RAW FOREIGN partner that states a relation and whose payload is just
-  # the element: the partner's own relation decides the pair (`interface.joinCarriedInStatedRelation`),
-  # so the merged type is that partner's record and not a gen one, whichever declaration came first.
-  # Every other pair is row-free as above. The test for a gen partner sits here, not in the binding,
-  # so a gen × gen pair builds nothing for it.
+  # the element, or is the payload of the richer constructor this container embeds in (`attrsOf` in
+  # `attrsWith`, `interface.embeddings`): the partner's own relation decides the pair
+  # (`interface.joinCarriedInStatedRelation`), so the merged type is that partner's record and not a
+  # gen one, whichever declaration came first. Every other pair is row-free as above. The test for a
+  # gen partner sits here, not in the binding, so a gen × gen pair builds nothing for it.
   elementRel =
     name: rebuild: element: other:
     if !(isAttrs other) || (keyOf other) != name then
@@ -454,28 +455,40 @@ let
               carried = element;
               self = rebuild element;
             } other;
+        # The element pair's own reason, where it states one, rides the refusal: the option is named
+        # at the top, and the cause sits one level down.
+        elementRefusal =
+          partner:
+          let
+            cause = core.mergeTypesReasonWithin element partner;
+          in
+          {
+            refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partner}', whose element types do not merge${
+              if cause == null then "" else ": ${cause}"
+            }";
+          };
       in
       if foreignJoin != null then
         { merged = foreignJoin; }
       else if partnerElem == null then
-        { refused = "`${name}' and a partner that states no element type of its own"; }
+        let
+          # A partner stated under the construction this one embeds in DOES state its element, beside
+          # parameters gen does not carry; its join refused above, so the refusal names that element.
+          embeddedElem = interface.embeddedOffered name "element" other;
+        in
+        if embeddedElem == null then
+          { refused = "`${name}' and a partner that states no element type of its own"; }
+        else if mergeElemTypes element embeddedElem == null then
+          elementRefusal embeddedElem
+        else
+          {
+            refused = "`${name}' over `${nameOf element}' and a partner over `${nameOf embeddedElem}' whose own relation does not join this one's parameters";
+          }
       else
         let
           merged = mergeElemTypes element partnerElem;
         in
-        # The element pair's own reason, where it states one, rides the refusal: the option is named
-        # at the top, and the cause sits one level down.
-        if merged == null then
-          let
-            cause = core.mergeTypesReasonWithin element partnerElem;
-          in
-          {
-            refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partnerElem}', whose element types do not merge${
-              if cause == null then "" else ": ${cause}"
-            }";
-          }
-        else
-          { merged = rebuild merged; };
+        if merged == null then elementRefusal partnerElem else { merged = rebuild merged; };
 
   # An element's substructure, whichever vocabulary it speaks. A gen type answers from its own
   # record; a foreign one is read through the import environment; a bare parametric constructor (a
@@ -937,8 +950,10 @@ let
       recarry = c: attrsOfWith tyName c.element;
       # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct type NAMES where nixpkgs unifies both
       # under one constructor discriminated by a payload field. Distinct names are the conservative
-      # direction: the two never merge with each other, and neither merges with the unified foreign
-      # one. The rebuild keeps THIS container's name, so the distinction survives substitution.
+      # direction: the two never merge with each other. Each is a POINT of the unified foreign
+      # constructor's payload, so it is published under that constructor and joins a same-named
+      # foreign partner in that partner's relation (`interface.embeddings`, through `elementRel`). The
+      # rebuild keeps THIS container's name, so the distinction survives substitution.
       typeMergeRel = elementRel tyName (attrsOfWith tyName) element;
       # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
       # registry exposes its INSTANCE option surface to an introspecting consumer.
@@ -1096,6 +1111,32 @@ let
               + "; it carries no static modules and dropping them would lose the declarations silently"
             );
       };
+      # Every same-named partner, gen's own included, is joined in its stated relation over this type's
+      # embedding (`interface.joinCarriedInStatedRelation`), so a foreign partner's static modules
+      # survive the join rather than being dropped by a nullary answer of `self`.
+      typeMergeRel =
+        other:
+        let
+          sameName = isAttrs other && (keyOf other) == "deferredModule";
+          joined =
+            if sameName then
+              interface.joinCarriedInStatedRelation {
+                name = "deferredModule";
+                role = null;
+                carried = null;
+                self = deferredModule;
+              } other
+            else
+              null;
+        in
+        if joined != null then
+          { merged = joined; }
+        else if !sameName then
+          { refused = "`deferredModule' and `${nameOf other}'"; }
+        else
+          {
+            refused = "`deferredModule' and a same-named partner that states no relation this type embeds in";
+          };
       mergeDefs = refusingOutside "deferredModule" admits (
         loc: defs: {
           imports = map (

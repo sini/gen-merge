@@ -7498,5 +7498,43 @@ in
           };
         };
       };
+
+    # caxcw: a mixed `attrsOf` pair whose join refuses states the ELEMENT pair's reason, as the same
+    # pair under `listOf` does (the control): the partner's element is read through the embedding
+    # (`interface.embeddedOffered`), so "a partner that states no element type of its own" would be false.
+    flake.testsError.mixed-embedded-redeclaration =
+      let
+        np = nixpkgsLib.types;
+        decl =
+          Ts:
+          (gm.evalModuleTree {
+            modules = map (T: { options.x = gm.mkOption { type = T; }; }) Ts;
+          }).options.x.type.description;
+        reason =
+          ctor:
+          "^gen-merge: option `x' is declared with types that do not merge \\(`${ctor}' over `int' and `${ctor}' over `str', whose element types do not merge: `int' and `str'\\); declared in <gen-merge>, <gen-merge>$";
+      in
+      {
+        test-attrs-element-mismatch-states-the-element-pair = {
+          expr = decl [
+            (np.attrsOf np.str)
+            (t.attrsOf t.int)
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = reason "attrsOf";
+          };
+        };
+        test-control-list-element-mismatch-states-the-element-pair = {
+          expr = decl [
+            (np.listOf np.str)
+            (t.listOf t.int)
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = reason "listOf";
+          };
+        };
+      };
   };
 }

@@ -322,6 +322,59 @@ let
     };
   };
 
+  # ── WHERE A GEN CONSTRUCTOR'S PARAMETERS EMBED IN A RICHER FOREIGN ONE ───────────────────────────
+  # The foreign protocol keys a redeclaration on the FUNCTOR name, and for three of gen's constructors
+  # it states the construction under another name with more parameters: `attrsOf`/`lazyAttrsOf` are
+  # one `attrsWith` discriminated by `lazy` (at the default `placeholder`), and `deferredModule` is
+  # `deferredModuleWith` with no `staticModules`. Each gen constructor's parameters are a point of that
+  # richer payload, so the export publishes the functor under the richer name with the fixed parameters
+  # beside the role's key, and a gen relation facing a partner under that name joins it in the
+  # partner's own relation over the same embedding (`joinCarriedInStatedRelation`). Keyed by gen type
+  # name; a name with no entry publishes under its own name, as before.
+  embeddings = {
+    attrsOf = {
+      name = "attrsWith";
+      params = {
+        lazy = false;
+        placeholder = "name";
+      };
+    };
+    lazyAttrsOf = {
+      name = "attrsWith";
+      params = {
+        lazy = true;
+        placeholder = "name";
+      };
+    };
+    deferredModule = {
+      name = "deferredModuleWith";
+      params.staticModules = [ ];
+    };
+  };
+  # total over a name that is not a string: such a type embeds nowhere, and its own refusals name it
+  embeddingOf = name: if builtins.isString name then embeddings.${name} or null else null;
+  # A derivation keeps its base's `name' but is keyed on its own identity, so it embeds nowhere.
+  embedsOf = t: if t ? __derivation then null else embeddingOf (t.name or "raw");
+  # The embedded payload: the role's key beside the embedding's fixed parameters. The one source for
+  # the export's published payload and for the join (`joinCarriedInStatedRelation`).
+  embeddedPayload =
+    e: role: carried:
+    (if role == null then { } else { ${roleSpelling.${role}.payloadKey} = carried; }) // e.params;
+  # What a RAW partner stating its relation under the richer name `name` embeds in offers at `role`:
+  # the role's key read out of that payload, beside parameters gen does not carry. `null` where `name`
+  # embeds nowhere or the partner is not stated under that name. Read only to NAME a refused pair, so
+  # its reason is the element pair's, never a merge path of its own.
+  embeddedOffered =
+    name: role: t:
+    let
+      e = embeddingOf name;
+      pf = t.functor or { };
+    in
+    if e == null || t ? carries || (pf.name or null) != e.name || !isAttrs (pf.payload or null) then
+      null
+    else
+      pf.payload.${roleSpelling.${role}.payloadKey} or null;
+
   roleOf =
     name: carries:
     let
@@ -2205,7 +2258,12 @@ let
   # partner (one that carries no gen role). Taken only where the partner's join keeps each operand's
   # stated name (`joinRenames`), as `importedMerge` takes a foreign join; `null` otherwise, and the
   # caller's own relation then answers as it did before. A partner whose payload names more than the
-  # role's own key (`importedOffered` null) is not read whole, so it is not joined here either.
+  # role's own key (`importedOffered` null) is not read whole, so it is not joined here either —
+  # UNLESS it is stated under the richer constructor `name` embeds in (`embeddings`): there gen's
+  # parameters are a point of the partner's payload (`embeddedPayload`), so the pair is joined in the
+  # partner's relation over that embedding, under the same witness. A role-less type (`role` null,
+  # `deferredModule`) is joined only that way, and a gen partner of it too: gen publishes the same
+  # embedding, so there is no gen-versus-foreign test.
   joinCarriedInStatedRelation =
     {
       name,
@@ -2215,16 +2273,24 @@ let
     }:
     other:
     let
+      e = embeddingOf name;
       joined =
-        if other ? carries || importedOffered role other == null then
+        if other ? carries then
           null
-        else
+        else if role != null && importedOffered role other != null then
           joinInStatedRelation {
             inherit name;
             payload = {
               ${roleSpelling.${role}.payloadKey} = carried;
             };
-          } other;
+          } other
+        else if e != null && ((other.functor or { }).name or null) == e.name then
+          joinInStatedRelation {
+            inherit (e) name;
+            payload = embeddedPayload e role carried;
+          } other
+        else
+          null;
     in
     if joined == null || joinRenames joined self || joinRenames joined other then null else joined;
 
@@ -2898,8 +2964,13 @@ let
       spelling = if role == null then null else roleSpelling.${role};
       carried = if role == null then null else t.carries.${role};
 
+      # The embedding is read INSIDE the two fields that use it, never as a binding of its own: a
+      # binding here is a thunk on every exported type, and the hub bench's schemaHosts row has no
+      # headroom for one.
       payload =
-        if role == null then
+        if embedsOf t != null then
+          embeddedPayload (embedsOf t) role carried
+        else if role == null then
           null
         else if role == "moduleSet" then
           moduleSetPayload {
@@ -2933,29 +3004,71 @@ let
       # `typeMerge` and `functor` are ONE derivation from ONE gen datum. The relation is row-free —
       # it takes the other TYPE — so the outbound half recovers a type from whatever functor arrives
       # and the inbound half publishes a functor a foreign engine can recover THIS type from.
-      functor = {
-        inherit payload;
-        # A derivation keeps its base's `name` and is keyed on its own identity (`keyOf`).
-        name = if t ? __derivation then t.__derivation.id else name;
-        type = if role == null then exported else (p: exportType (recarried p));
-        binOp =
-          if role == null then
-            (_a: _b: null)
-          else
-            (
-              a: b:
-              let
-                ra = recarried a;
-                rb = recarried b;
-                # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
-                answer = if importedDecidable ra && importedDecidable rb then ra.typeMergeRel rb else { };
-              in
-              if !(answer ? merged) || !(answer.merged ? carries) then
-                null
-              else
-                { ${spelling.payloadKey} = answer.merged.carries.${role}; }
-            );
-      };
+      functor =
+        let
+          embeds = embedsOf t;
+          extrasAgree = p: builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames embeds.params);
+        in
+        {
+          inherit payload;
+          # A derivation keeps its base's `name` and is keyed on its own identity (`keyOf`).
+          name =
+            if t ? __derivation then
+              t.__derivation.id
+            else if embeds != null then
+              embeds.name
+            else
+              name;
+          # Over an embedding, a payload whose fixed parameters are not this type's is a construction
+          # this type cannot be rebuilt as: refused by name, as `substructure.rebuild` refuses static
+          # modules, never rebuilt at its own parameters with the caller's dropped. The refusal is
+          # spelled in each arm rather than bound, so the export carries no thunk for it.
+          type =
+            if role == null && embeds == null then
+              exported
+            else if role == null then
+              (
+                p:
+                if extrasAgree p then
+                  exported
+                else
+                  throw "gen-merge: `${name}' cannot be rebuilt over a `${embeds.name}' payload other than its own embedding"
+              )
+            else if embeds == null then
+              (p: exportType (recarried p))
+            else
+              (
+                p:
+                if extrasAgree p then
+                  exportType (recarried p)
+                else
+                  throw "gen-merge: `${name}' cannot be rebuilt over a `${embeds.name}' payload other than its own embedding"
+              );
+          binOp =
+            if role == null && embeds == null then
+              (_a: _b: null)
+            else if role == null then
+              (a: b: if extrasAgree a && extrasAgree b then embeds.params else null)
+            else
+              (
+                a: b:
+                let
+                  ra = recarried a;
+                  rb = recarried b;
+                  # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
+                  answer = if importedDecidable ra && importedDecidable rb then ra.typeMergeRel rb else { };
+                in
+                if embeds != null && !(extrasAgree a && extrasAgree b) then
+                  null
+                else if !(answer ? merged) || !(answer.merged ? carries) then
+                  null
+                else
+                  (if embeds == null then { } else embeds.params)
+                  // {
+                    ${spelling.payloadKey} = answer.merged.carries.${role};
+                  }
+              );
+        };
 
       phrase = phraseOf t;
       # the export completes the record, so it re-ties the stamp the import tied; a demoted copy keeps
@@ -3078,6 +3191,7 @@ in
     isNesting
     joinInStatedRelation
     joinCarriedInStatedRelation
+    embeddedOffered
     moduleSetPayload
     canNest
     declaresNesting
