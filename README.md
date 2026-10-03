@@ -660,7 +660,7 @@ agree-or-refuse leaf fold, which is also `raw`'s. **An attrset carrying `__mint`
 when every definition carries it: it takes `mergeLeaf` too, so one definition passes through as it is,
 several pass if all are `==` to the first, and a conflict is refused at the option itself
 (`` `o' ``). `__mint` is the mark a substrate constructor writes (a gen-types checker or refined type,
-a gen-schema kind, a gen-algebra intensional value). A rebuild would keep a digest but move every
+a gen-merge composite or derivation, a gen-schema kind, a gen-algebra intensional value). A rebuild would keep a digest but move every
 closure into a fresh Value cell, so a value whose identity is DECIDED by `==` over its record would
 stop equalling itself on upstream Nix and Determinate. Carried whole, a transported construction is
 the same value on all three evaluators. Definitions mixing marked and plain attrsets are rebuilt.
@@ -669,7 +669,9 @@ The carry fold's stated costs, all of them `mergeLeaf`'s:
 
 - **Twins are refused.** Two independent constructions of one identity (one digest, distinct
   closures) are `==`-unequal, so defining both at one `anything` slot refuses the whole value, where
-  the rebuild returned one whose digest read cleanly. One value defined twice still folds to it.
+  the rebuild returned one whose digest read cleanly. One value defined twice still folds to it. This
+  reaches gen-merge's own composites: two constructions of `listOf int` defined in one `anything`
+  slot are refused by name.
 - **Two definitions of one sealed value split as `raw` does.** A sealed gen-types type carries
   throwing fields, so `==` reaches a throw on upstream Nix and Determinate and short-circuits on Lix;
   `anything` and `raw` give the same answer on every evaluator.
@@ -678,10 +680,10 @@ The carry fold's stated costs, all of them `mergeLeaf`'s:
   in [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate), extended to whole
   attrsets.
 - **Unmarked values are still rebuilt.** A value carrying no `__mint` takes the per-key rebuild, so
-  its compared parts do not survive transport: a gen-merge composite (`attrsOf int`) carried through
-  `anything` gives `typeEq` `false` on upstream Nix and Determinate (Lix `true`), and so does `==`
-  on `{ f = g; }`. This residue is enumerated, not decided: gen-merge's composites carry no
-  `__mint` yet.
+  its compared parts do not survive transport: a record with no mark (a nixpkgs composite, a custom
+  `mkOptionType`) carried through `anything` can give `typeEq` `false` on upstream Nix and
+  Determinate, and so does `==` on `{ f = g; }`. gen-merge's own composites carry `__mint` and are
+  carried whole, so `listOf int` is itself after transport on all three evaluators.
 
 **The `types` argument is the gen-types library**, bound by its roster key, and not a pluggable leaf
 vocabulary. The core builds every exported type through gen-types' check-witness protocol
@@ -775,7 +777,7 @@ deriveType base {
   key = { … };                    # default null: plain data two derivations of one `id` must agree on
   fields = b: { __tag = "t"; };   # default `_: { }`: metadata, a function of the base it applies to
   name = "…"; description = "…";  # default: the base's
-  mint = { minted = …; };         # default sealed
+  mint = { minted = …; };         # default: minted per component
 }
 ```
 
@@ -807,10 +809,13 @@ record, an option descriptor); `fields` setting anything but metadata — a type
 relation differs is a new type (`mkOptionType`); no string `id`; a `key` holding an option type,
 which Nix `==` cannot compare totally (key a derivation by plain data).
 
-**Identity.** A derivation never inherits its base's mint. With no `mint` it is sealed:
-`typeEq` compares the reified value, and `__id` is the named refusal. A caller that passes a
-`mint` owes a preimage covering the `id`, the `key` and the base's identity; one that omits the
-`key` mints two different derivations as one.
+**Identity.** A derivation never inherits its base's mint. With no `mint` it is minted per
+component through gen-types' identity half: the `id` and the `key` inert, the base by its mark (or
+sealed, where it carries none or a wrapper rewrote its `check`), so `deriveType (listOf t) { … }` is
+one type wherever it is built over one `t`, and `__id` refuses by name only where the base hands up
+a sealed component. A caller that passes a `mint` keeps that meaning and owes a preimage covering
+the `id`, the `key` and the base's identity; one that omits the `key` mints two different
+derivations as one.
 
 **The name.** "Derive" is Bracha & Cook 1990 §2.1's word for this operation — inheritance as
 "incremental derivation", `C = Δ(P) ⊕ P` with the delta parametric in the parent (hence `fields`
@@ -1078,6 +1083,20 @@ Two rules that look like details and are not:
   foreign mount — instead of a wrong type. A leaf with no mint at all (an `enum` over a path, a
   self-referential type) keeps refusing: its parameters live behind its own predicate. A **nullary** leaf keeps its self-merge: it has no
   parameters to compare.
+- **A composite is identified per component, and decides sameness first** (den-hoag-6orb8 U2).
+  `listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr`, `either` (so `oneOf`), `submodule` and a `deriveType`
+  derivation carry the identity fields built by gen-types' exported identity half (`mkIdentity`): a
+  mark over the constructor, spelled `gen-merge.<name>`, and one tag per component (the element, the
+  alternatives in order; a submodule's module set sealed and its `withArgs` arguments inert), with the
+  sealed components in `__sealed` beside it. So `listOf int` built twice is one type, and is itself
+  after transport through `anything`; gen-types' own `listOf int` and `option int` are other types,
+  because they fold differently. The mint is lazy: a declaration never compared mints nothing, and a
+  kind's mark demands its option types' mints. A redeclaration asks `typeEq` first where the two
+  marks agree: `true` merges (so one submodule binding declared twice is one type, its module set not
+  doubled); a different mark, or a refused pair (two submodules over different module sets, which
+  share a mark), goes to the type's own relation, so two module sets still union and two `listOf`
+  over joinable elements still join. A `//` copy of a composite fails the completion stamp, as a
+  leaf's does.
 
 ### `emptyValue` — when "nothing was defined" is not an error
 

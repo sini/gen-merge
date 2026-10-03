@@ -196,6 +196,13 @@ let
   # fold differently (a concatenation here, the leaf fold there), so one spelling would decide two
   # types one. The fields are lazy, so a declaration that is never compared mints nothing.
   #
+  # ★ EACH FIELD IS A SELECTION, NEVER `t // ids`. A `//` forces the identity half's own record, and
+  # every binding of its `let` with it, at every construction; a selection leaves it unentered until a
+  # field is read. Measured on the hub bench's `aspects` workload (2805 constructions, no mint
+  # forced): `t // ids` cost about 22 thunks per construction, the selections about 10. For the same
+  # reason the sameness check lives in the relation's body (`sameAs`), which allocates nothing until a
+  # redeclaration asks it.
+  #
   # `__typeSelf` is the completion stamp's slot: the export ties it to the record it completes (gen-types
   # `completedType`, `lib/interface.nix` `exportType`), so a `//` copy of a composite is refused at
   # `typeEq` as a copy of a leaf is.
@@ -210,34 +217,44 @@ let
     ctor: members: mkArgs: sealed: t:
     if types ? mkIdentity && types ? typeEq then
       let
-        name = t.name or ctor;
-        ids = types.mkIdentity "gen-merge.${ctor}" members mkArgs sealed name;
-        mark = ids.__mint.minted or null;
-        same =
-          other:
-          let
-            theirs = other.__mint or null;
-          in
-          mark != null
-          && isAttrs theirs
-          && theirs ? minted
-          && theirs.minted == mark
-          && (
-            let
-              r = builtins.tryEval (types.typeEq (ids // { inherit name; }) other);
-            in
-            r.success && r.value
-          );
+        ids = types.mkIdentity "gen-merge.${ctor}" members mkArgs sealed (t.name or ctor);
       in
       t
-      // ids
       // {
+        __mint = ids.__mint;
+        __id = ids.__id;
+        __payload = ids.__payload;
+        __sealed = ids.__sealed;
+        ${if members == [ ] then null else "__okAt"} = ids.__okAt;
         __typeSelf = null;
         typeMergeRel =
-          other: if isAttrs other && same other then { merged = other; } else t.typeMergeRel other;
+          other:
+          if isAttrs other && sameAs (t.name or ctor) ids other then
+            { merged = other; }
+          else
+            t.typeMergeRel other;
       }
     else
       t;
+  # Whether `other` is the type whose identity fields are `ids`: one mark, then the vocabulary's
+  # `typeEq`, which decides the sealed components and the partner's completion stamp. A refusal reads
+  # as "not shown the same", and the pair goes on to the constructor's relation.
+  sameAs =
+    name: ids: other:
+    let
+      mark = ids.__mint.minted or null;
+      theirs = other.__mint or null;
+    in
+    mark != null
+    && isAttrs theirs
+    && theirs ? minted
+    && theirs.minted == mark
+    && (
+      let
+        r = builtins.tryEval (types.typeEq (ids // { inherit name; }) other);
+      in
+      r.success && r.value
+    );
 
   # mkOptionType — the (loc,defs) custom-merge escape hatch (spec §1 item 6). Its descriptor is
   # written in the FOREIGN protocol's words (`check`, `merge`, `emptyValue`, …) because that is what
