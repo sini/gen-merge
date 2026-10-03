@@ -5723,6 +5723,32 @@ in
             msg = "^gen-merge: a definition for option `h' is not of type `submodule'";
           };
         };
+        # gijly: the check rides on the rebuild of a payload-null copy of a freeform submodule too,
+        # so the definition the `addCheck` rejects is refused, where nixpkgs' fix-up erases the check.
+        test-a-copied-freeform-submodule-root-s-own-check-rides-on-its-rebuild = {
+          expr = opt (np.addCheck (
+            let
+              ff = np.submodule { freeformType = np.attrsOf sub; };
+            in
+            nixpkgsLib.mkOptionType {
+              name = "submodule";
+              inherit (ff)
+                check
+                merge
+                getSubOptions
+                getSubModules
+                substSubModules
+                nestedTypes
+                emptyValue
+                description
+                ;
+            }
+          ) (v: v ? k)) { q.x = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `h' is not of type `open submodule of attribute set of [(]submodule[)]'";
+          };
+        };
         # gijly: a rebuild stating a `merge` but no `check` is no option type, refused by name.
         test-a-root-whose-rebuild-states-no-check-is-refused-by-name = {
           expr = opt (nixpkgsLib.mkOptionType {
