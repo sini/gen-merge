@@ -427,6 +427,22 @@ in
     };
     test-nullable-and-union-add-no-step = {
       expr = {
+        # null beside a value has no element to merge through: the position's member is `null`.
+        nullOrMember =
+          (builtins.head (
+            (t.nullOr t.int).split
+              [ "o" ]
+              [
+                {
+                  file = "/a.nix";
+                  value = null;
+                }
+                {
+                  file = "/b.nix";
+                  value = 1;
+                }
+              ]
+          )).type;
         nullOr =
           splitOf (t.nullOr t.int)
             [ "o" ]
@@ -467,11 +483,16 @@ in
             );
       };
       expected = {
+        nullOrMember = null;
         nullOr = [
           {
             step = [ ];
             loc = [ "o" ];
             defs = [
+              {
+                file = "/a.nix";
+                value = null;
+              }
               {
                 file = "/b.nix";
                 value = 1;

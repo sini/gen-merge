@@ -1097,30 +1097,40 @@ let
       if foreign == null then true else foreign v;
 
   # nullOr / option — a MERGE-aware nullable (NOT a gen-types verify-only `option`, which would drop
-  # a wrapped merge-type's behaviour, e.g. a ref field's coercion). null defs drop; non-null defs
-  # merge through the element type (leaf verify or ref/submodule merge, via mergeDefs).
+  # a wrapped merge-type's behaviour, e.g. a ref field's coercion). Every definition null serves
+  # null; none null merges through the element type (leaf verify or ref/submodule merge, via
+  # mergeDefs); null beside a value is refused by name, as nixpkgs' `nullOr` refuses it.
   nullOr =
     element:
     let
-      # One element position, adding no step, over the non-null definitions; none when every
-      # definition is null.
+      # One element position, adding no step; none when every definition is null. A set holding null
+      # BESIDE a value has no element to merge through, as nixpkgs' `nullOr` reports a head error for
+      # it: the position's member is `null` (the fold's refusal, as `either`'s is), and it carries the
+      # definitions whole so the refusal names every file.
       split =
         loc: defs:
         let
-          nonNull = filter (d: d.value != null) defs;
+          nulls = length (filter (d: d.value == null) defs);
         in
-        optional (nonNull != [ ]) {
+        optional (nulls != length defs) {
           step = [ ];
-          inherit loc;
-          defs = nonNull;
-          type = element;
+          inherit loc defs;
+          type = if nulls == 0 then element else null;
         };
       foldWith =
         foldE: loc: defs:
         let
           elements = split loc defs;
+          e = head elements;
         in
-        if elements == [ ] then null else foldE (head elements);
+        if elements == [ ] then
+          null
+        else if e.type == null then
+          throw "gen-merge: option `${showOption loc}' is defined both null and not null (${
+            concatStringsSep ", " (map (d: toString (d.file or "<def>")) defs)
+          })"
+        else
+          foldE e;
       called = foldWith foldElement;
     in
     defineType {

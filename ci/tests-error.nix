@@ -1936,6 +1936,30 @@ in
           msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`listOf' rejects str\\.nix; `string' rejects list\\.nix\\)$";
         };
       };
+      # `nullOr` over null BESIDE a value refuses by name, as nixpkgs' `nullOr` head-errors for it
+      # (den-hoag-azdne), naming the option and every file that wrote a definition.
+      test-a-mixed-nullOr-set-is-refused-naming-every-file = {
+        expr =
+          builtins.deepSeq
+            (gm.evalModuleTree {
+              modules = [
+                { options.x = gm.mkOption { type = t.nullOr genTypes.int; }; }
+                {
+                  _file = "a.nix";
+                  x = null;
+                }
+                {
+                  _file = "b.nix";
+                  x = 5;
+                }
+              ];
+            }).config.x
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is defined both null and not null \\(b\\.nix, a\\.nix\\)$";
+        };
+      };
       # A `oneOf` of three members is `either (either int str) bool`, and the refusal names every
       # LEAF member with the definitions it rejects, through the nested `either` (den-hoag-b47r5).
       # Asked pointwise, the nested `either` would have rejected nothing and been named bare.
