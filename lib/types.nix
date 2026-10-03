@@ -325,8 +325,8 @@ let
           { refused = "${pair}, whose keys differ"; }
         else
           let
-            joined = core.mergeTypes base theirs.base;
-            cause = core.mergeTypesReason base theirs.base;
+            joined = core.mergeTypesWithin base theirs.base;
+            cause = core.mergeTypesReasonWithin base theirs.base;
           in
           if joined == null then
             { refused = "${pair}, whose bases do not merge${if cause == null then "" else ": ${cause}"}"; }
@@ -419,8 +419,10 @@ let
   # Merge two ELEMENT types — the element stratum's name for `core.mergeTypes` (lib/modules.nix),
   # which is guarded on both halves and stated there. It is the SAME binding the DECLARATION stratum
   # consults when one option is declared twice, which is what makes "these two types do not merge"
-  # one answer in this library rather than two that can drift apart.
-  mergeElemTypes = core.mergeTypes;
+  # one answer in this library rather than two that can drift apart. It is that binding's DESCENT
+  # (`mergeTypesWithin`): a relation is entered past the pre-flight, which walked every element pair
+  # it can meet (`lib/modules.nix` `relationMerge`), so it is not asked again at each level.
+  mergeElemTypes = core.mergeTypesWithin;
 
   # A CONTAINER'S RELATION, shared by every type parameterised by one element. Two containers merge
   # iff their elements merge, and the result is this container rebuilt over the merged element.
@@ -447,7 +449,7 @@ let
         # at the top, and the cause sits one level down.
         if merged == null then
           let
-            cause = core.mergeTypesReason element partnerElem;
+            cause = core.mergeTypesReasonWithin element partnerElem;
           in
           {
             refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partnerElem}', whose element types do not merge${
@@ -465,6 +467,19 @@ let
   # Whether an element has a substructure of its own to substitute into — asked at the boundary,
   # because the answer depends on which vocabulary the element states it in.
   carriesSub = interface.importedRebuilds;
+
+  # ── A CONTAINER'S SPINE, WITHIN THE WALK'S FUEL (den-hoag-iaram) ──────────────────────────────
+  # `listOf`, `attrsOf`/`lazyAttrsOf` and `nullOr` FORWARD their module set and their declarations to
+  # their element, adding `seg` to the path. `forward` states that step as data, and the spine walk
+  # (`interface.spineModules`, `interface.spineDeclares`) follows it within the walk's fuel, refusing
+  # by name at exhaustion. Substituting a module set rebuilds the container over the substituted
+  # element (`rebuild`).
+  forwardedSub = name: seg: element: rebuild: {
+    forward = { inherit name seg element; };
+    modules = interface.spineModules interface.importedTypeWalkFuel element;
+    declares = prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ seg);
+    inherit rebuild;
+  };
 
   # ── THE SPLIT: a container's element positions, stated ONCE (den-hoag-n6dh7 item 5) ────────────
   # `split : loc -> defs -> [ { step; loc; defs; type; } ]` — the per-element definitions the
@@ -783,14 +798,12 @@ let
       carries.element = element;
       recarry = c: listOf c.element;
       typeMergeRel = elementRel "listOf" listOf element;
-      substructure = {
-        # Descend to the element type under the positional placeholder segment.
-        declares = prefix: (subOf element).declares (prefix ++ [ "*" ]);
-        # A container's module set IS its element's, and substituting one rebuilds the container over
-        # the substituted element.
-        modules = (subOf element).modules;
-        rebuild = m: listOf (if carriesSub element then (subOf element).rebuild m else element);
-      };
+      # Descend to the element type under the positional placeholder segment. A container's module
+      # set IS its element's, and substituting one rebuilds the container over the substituted
+      # element.
+      substructure = forwardedSub "listOf" [ "*" ] element (
+        m: listOf (if carriesSub element then (subOf element).rebuild m else element)
+      );
       # A position whose every definition was discharged is DROPPED, as nixpkgs' `listOf` drops it.
       # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
       # loc (and a submodule element's `name`) is its source position whatever an earlier sibling's
@@ -915,13 +928,11 @@ let
       # direction: the two never merge with each other, and neither merges with the unified foreign
       # one. The rebuild keeps THIS container's name, so the distinction survives substitution.
       typeMergeRel = elementRel tyName (attrsOfWith tyName) element;
-      substructure = {
-        # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
-        # registry exposes its INSTANCE option surface to an introspecting consumer.
-        declares = prefix: (subOf element).declares (prefix ++ [ "<name>" ]);
-        modules = (subOf element).modules;
-        rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
-      };
+      # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
+      # registry exposes its INSTANCE option surface to an introspecting consumer.
+      substructure = forwardedSub tyName [ "<name>" ] element (
+        m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element)
+      );
       inherit split;
       # `attrsOf`'s fold is the split's elements, each folded through the element type and placed at
       # its key.
@@ -1155,16 +1166,13 @@ let
       carries.element = element;
       recarry = c: nullOr c.element;
       typeMergeRel = elementRel "nullOr" nullOr element;
-      substructure = {
-        # Pass straight through to the element, adding NO path segment. A nullable introduces no path
-        # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
-        # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`.
-        declares = (subOf element).declares;
-        # A nullable declares exactly what its element declares, so it carries exactly its element's
-        # module set too.
-        modules = (subOf element).modules;
-        rebuild = m: nullOr (if carriesSub element then (subOf element).rebuild m else element);
-      };
+      # Pass straight through to the element, adding NO path segment. A nullable introduces no path
+      # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
+      # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`. A nullable
+      # declares exactly what its element declares, so it carries exactly its element's module set too.
+      substructure = forwardedSub "nullOr" [ ] element (
+        m: nullOr (if carriesSub element then (subOf element).rebuild m else element)
+      );
       admits = v: v == null || isValid element v;
       inherit split;
       # One fold over its element's, called or threaded (den-hoag-n6dh7 item 5).

@@ -353,6 +353,38 @@ let
         _module.args.q = name;
       }
     );
+
+    # A TYPE THAT IS ITS OWN DERIVATION (den-hoag-iaram): `d = deriveType d { … }` states no
+    # constructor between `d` and itself, so it denotes no type, and `deriveType` reading its base
+    # at construction reads `d` while `d` is being built. Nix black-holes the thunk before any gen
+    # code observes a value: the infinite-recursion channel, as nixpkgs' `d = d // { … }` does. The
+    # README's "Known byte-mode boundaries" states the argument.
+    cyclic-derive-self =
+      let
+        d = m.types.deriveType d { id = "d"; };
+      in
+      builtins.seq d true;
+    # AN UNGUARDED (NON-CONTRACTIVE) CYCLE (den-hoag-iaram): `r = either int r` passes no
+    # constructor that consumes the value, so `check` of a value outside `int` asks `r` the same
+    # question again, without end: the call-depth channel, as nixpkgs' twin does.
+    cyclic-unguarded =
+      let
+        r = m.types.either m.types.int r;
+      in
+      r.check "s";
+    # Their live control, same wiring: a cycle closed through a container, inside a derivation, checks
+    # a value in its domain and refuses one outside it.
+    cyclic-guarded-control =
+      let
+        d = m.types.deriveType (m.types.either m.types.int (m.types.listOf d)) { id = "d"; };
+      in
+      [
+        (d.check [
+          1
+          [ 2 ]
+        ])
+        (d.check "s")
+      ];
   };
 in
 cells.${arm}

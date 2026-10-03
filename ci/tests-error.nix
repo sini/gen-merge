@@ -3861,6 +3861,70 @@ in
         };
       };
     };
+    # ── WHICH REFUSAL FIRES ON A CYCLIC TYPE (den-hoag-iaram) ──────────────────────────────────
+    # The containment is asserted on the value plane (`tests/cyclic-types.nix`); these pin the
+    # message. Before the spine and the relation took the fuel, each cyclic cell aborted uncatchably
+    # (`infinite recursion encountered`, `max-call-depth exceeded`) instead of refusing, and the
+    # finite chain was answered.
+    flake.testsError.cyclic-types =
+      let
+        spine = gm.types.nullOr (gm.types.listOf spine);
+        json = gm.types.nullOr (
+          gm.types.oneOf [
+            gm.types.int
+            (gm.types.attrsOf json)
+            (gm.types.listOf json)
+          ]
+        );
+        nest =
+          n: c: x:
+          if n == 0 then x else c (nest (n - 1) c x);
+        sub = gm.types.submodule { options.y = gm.mkOption { type = gm.types.int; }; };
+        spent =
+          field:
+          "^gen-merge: cannot read `${field}' of the option type `listOf': its element chain forwards through more containers than the walk's fuel \\(32\\), as a cycle through containers alone does and as a finite chain nested that deep does\\. Close a cycle through a union \\(either, oneOf\\) or a submodule, which answer for themselves; nest a finite chain less deeply$";
+      in
+      {
+        test-a-container-only-cycle-refuses-getSubModules-by-name = {
+          expr = spine.getSubModules;
+          expectedError = {
+            type = "ThrownError";
+            msg = spent "getSubModules";
+          };
+        };
+        test-a-container-only-cycle-refuses-getSubOptions-by-name = {
+          expr = spine.getSubOptions [ ];
+          expectedError = {
+            type = "ThrownError";
+            msg = spent "getSubOptions";
+          };
+        };
+        # The same text serves a FINITE chain past the fuel, the price's other cause: 34 nested
+        # containers over a submodule.
+        test-a-finite-chain-past-the-fuel-refuses-getSubModules-by-name = {
+          expr = (nest 34 gm.types.listOf sub).getSubModules;
+          expectedError = {
+            type = "ThrownError";
+            msg = spent "getSubModules";
+          };
+        };
+        test-a-cyclic-type-declared-twice-refuses-by-name = {
+          expr = declaredTwice json json;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x' is declared with types that do not merge \\(`nullOr' and `nullOr', whose structure does not bottom out within the boundary's type-walk fuel \\(32\\)\\); declared in a\\.nix, b\\.nix$";
+          };
+        };
+        # LIVE CONTROL, read as a value for the reason `foreign-selfmerge` gives: a guard refusing
+        # every pair would score green on the three above.
+        test-control-a-union-closed-cycle-answers-its-spine = {
+          expr = builtins.tryEval json.getSubModules;
+          expected = {
+            success = true;
+            value = null;
+          };
+        };
+      };
     # File threading (ci/tests/file-thread.nix): the refusal TEXT names the file a wrapped
     # declaration came from, at top level and inside a `submodule` def (`lib/types.nix`
     # `defToModule` wraps each def with `setDefaultModuleLocation`). Each wrapped arm has a

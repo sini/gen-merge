@@ -601,6 +601,103 @@ let
   # The three sub-protocol answers, as gen's `substructure`. A type that answers none of them is a
   # leaf and gets a leaf's three answers — it declares nothing, it has NO module-set concept (which
   # is what `null` says, and the only thing it says), and it has nothing to rebuild.
+  # ── THE SPINE: A FORWARDING CONTAINER'S MODULE SET AND DECLARATIONS, WITHIN FUEL (den-hoag-iaram) ─
+  # A one-element container answers `getSubModules` and `getSubOptions` with its element's, the
+  # second under the segment it adds. Both are observations of the TYPE, with no value to consume, so
+  # on a cycle through containers alone (`r = nullOr (listOf r)`, contractive, so every value
+  # observation of it serves) the forward never meets a node that answers for itself, and nixpkgs'
+  # twin diverges on the same reads. The walk follows each forwarding step within the walk's fuel and
+  # REFUSES BY NAME at exhaustion: neither `null` (no module set) nor `{ }` (no declarations) is
+  # available there, since either is a silent wrong answer for a finite chain that deep over a
+  # submodule. The first node that does not forward (a submodule, a union, a leaf, an unrecognised
+  # foreign record) answers from its own substructure, as before.
+  #
+  # TWO KINDS OF STEP, AND ONLY ONE IS AN ANSWER. A gen container's step (`substructure.forward`) IS
+  # its answer, stated as data, so the walk answers for it. A stock foreign record that forwards both
+  # reads to one element (`listOf`, `nullOr`, `attrsWith`, `unique`, `functionTo`, `coercedTo`'s
+  # `finalType`) is stepped for TERMINATION ONLY: once the rest of its chain is shown to bottom out,
+  # the record answers for itself, so one whose sub-protocol was overridden after construction answers
+  # its override, as nixpkgs' own container over it does. A cycle that crosses the import boundary on
+  # every lap is bounded, because each crossing is a step of the same walk.
+  #
+  # ★ THE PRICE, STATED: a FINITE chain of more than `importedTypeWalkFuel` forwarding steps below a
+  # container is refused on these two reads where it was answered, and so is a cycle passing through a
+  # stock foreign container whose override stops forwarding (base answered the override). Both are
+  # refusals by name. ★ THE ESCAPE HATCH (S2's posture, den-hoag-n6dh7): a record whose `substructure`
+  # states no `forward` answers for itself, so stating a container's substructure ends the walk there.
+  forwardStep =
+    e:
+    if !(isAttrs e) then
+      null
+    else if e ? substructure then
+      e.substructure.forward or null
+    else
+      let
+        name = (e.functor or { }).name or null;
+        nested = e.nestedTypes or { };
+        element =
+          if name == "coercedTo" then
+            nested.finalType or null
+          else if
+            name == "listOf"
+            || name == "nullOr"
+            || name == "attrsWith"
+            || name == "unique"
+            || name == "functionTo"
+          then
+            nested.elemType or null
+          else
+            null;
+      in
+      if isAttrs element then { inherit name element; } else null;
+  forwardSpentRefusal =
+    field: name:
+    "gen-merge: cannot read `${field}' of the option type `${name}': its element chain forwards through "
+    + "more containers than the walk's fuel (${toString importedTypeWalkFuel}), as a cycle through "
+    + "containers alone does and as a finite chain nested that deep does. Close a cycle through a "
+    + "union (either, oneOf) or a submodule, which answer for themselves; nest a finite chain less "
+    + "deeply";
+  # Does the chain from `e` reach a node that answers for itself within `fuel`? `true`, or the refusal.
+  spineEnds =
+    field: fuel: e:
+    let
+      st = forwardStep e;
+    in
+    if st == null then
+      true
+    else if fuel <= 0 then
+      throw (forwardSpentRefusal field st.name)
+    else
+      spineEnds field (fuel - 1) st.element;
+  spineModules =
+    fuel: e:
+    let
+      st = forwardStep e;
+    in
+    if st == null then
+      (importedSubstructure e).modules
+    else if fuel <= 0 then
+      throw (forwardSpentRefusal "getSubModules" st.name)
+    else if e ? substructure then
+      spineModules (fuel - 1) st.element
+    else
+      builtins.seq (spineEnds "getSubModules" (fuel - 1) st.element) (importedSubstructure e).modules;
+  spineDeclares =
+    fuel: e: prefix:
+    let
+      st = forwardStep e;
+    in
+    if st == null then
+      (importedSubstructure e).declares prefix
+    else if fuel <= 0 then
+      throw (forwardSpentRefusal "getSubOptions" st.name)
+    else if e ? substructure then
+      spineDeclares (fuel - 1) st.element (prefix ++ st.seg)
+    else
+      builtins.seq (spineEnds "getSubOptions" (fuel - 1) st.element) (
+        (importedSubstructure e).declares prefix
+      );
+
   importedSubstructure =
     t:
     if t ? substructure then
@@ -764,7 +861,9 @@ let
   # ★ THE PRICE, STATED: a FINITE type nested `importedTypeWalkFuel` or more containers deep is
   # refused where an unguarded merge would have answered. The deepest real family measured in
   # nixpkgs' own vocabulary is 2, so the constant carries 16x headroom; raising it is a one-constant
-  # change and this is the only site that states it.
+  # change and this is the only site that states it. Its readers include this pre-flight, which is
+  # also the gen relation's at each of its entries (`lib/modules.nix` `relationMerge`,
+  # `exportType`'s `typeMerge` and `binOp`), and the spine (`spineModules`, `spineDeclares`).
   importedTypeWalkFuel = 32;
 
   importedDecidable =
@@ -775,7 +874,10 @@ let
           true
         else if fuel <= 0 then
           false
-        else if evaluatesOwnRoles t then
+        # A gen nesting type's relation unions module SETS and descends into no type, so the walk
+        # stops there as it does at a foreign record evaluating its own roles: its carried modules
+        # are not types and are not forced (den-hoag-iaram, the gen relation's pre-flight).
+        else if evaluatesOwnRoles t || isNesting t then
           true
         else
           all (go (fuel - 1)) (importedWrapped t);
@@ -1163,22 +1265,31 @@ let
   # the one container besides a union that adds no step. Read without homing, so it refuses nothing:
   # an exact container asks it once, when it is built, to decide whether its elements carry the
   # container-node mark (`types.exactThread`).
+  # Bounded by `importedTypeWalkFuel` and `true` AT EXHAUSTION, `canNest`'s posture: a wrong `true`
+  # marks a position that folds no union, which allocates the mark and nothing else, where an
+  # unbounded descent through a cycle of containers alone never returns (den-hoag-iaram).
   mayFoldUnion =
-    t:
-    isAttrs t
-    && !(isNesting t)
-    && canNest t
-    && (
-      if t ? carries then
-        t ? choose || (t ? carries.element && mayFoldUnion t.carries.element)
-      else
-        let
-          r = importedRehomeAt recognitionDoor null t;
-        in
-        # a record re-homing does not recognise is threaded (`threadedForeign`), and is keyed where
-        # read under an exact container, as a union is (`keyWalk`, `unionNodeAt`)
-        r == null || r.container == "either" || (r.container == "nullOr" && mayFoldUnion r.element)
-    );
+    let
+      go =
+        fuel: t:
+        isAttrs t
+        && !(isNesting t)
+        && canNest t
+        && (
+          if t ? carries then
+            t ? choose || (t ? carries.element && (fuel <= 0 || go (fuel - 1) t.carries.element))
+          else
+            let
+              r = importedRehomeAt recognitionDoor null t;
+            in
+            # a record re-homing does not recognise is threaded (`threadedForeign`), and is keyed where
+            # read under an exact container, as a union is (`keyWalk`, `unionNodeAt`)
+            r == null
+            || r.container == "either"
+            || (r.container == "nullOr" && (fuel <= 0 || go (fuel - 1) r.element))
+        );
+    in
+    go importedTypeWalkFuel;
 
   # ── THE ROOT FIX-UP: WHERE NIXPKGS REBUILDS A TYPE, GEN DOES (den-hoag-threadedforeign-parity-residue-0hew4, den-hoag-gijly) ─
   # nixpkgs' `fixupOptionType` mounts a declared option's type as `t.substSubModules` over the
@@ -2707,7 +2818,10 @@ let
             (
               a: b:
               let
-                answer = (recarried a).typeMergeRel (recarried b);
+                ra = recarried a;
+                rb = recarried b;
+                # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
+                answer = if importedDecidable ra && importedDecidable rb then ra.typeMergeRel rb else { };
               in
               if !(answer ? merged) || !(answer.merged ? carries) then
                 null
@@ -2787,6 +2901,9 @@ let
               null
             else if partner == null then
               null
+            # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
+            else if !(importedDecidable t && importedDecidable partner) then
+              null
             else
               (t.typeMergeRel partner).merged or null
           );
@@ -2855,6 +2972,8 @@ in
     importedPartner
     importedRebuilds
     importedSubstructure
+    spineModules
+    spineDeclares
     importedTypeWalkFuel
     importedWrapped
     isOptionType

@@ -419,7 +419,19 @@ let
   # against. The arm is the boundary's IMPORT ENVIRONMENT, reached here and spelled there: this is
   # the engine's own read of a foreign type, and it is why the inbound half is load-bearing rather
   # than decorative.
-  relationMerge =
+  #
+  # ★ THE GEN ARM TAKES THE FOREIGN ARM'S PRE-FLIGHT, ONCE PER ENTRY (den-hoag-iaram). A gen relation
+  # descends one carried role per call (`elementRel`, the union's pairwise members), so over a cyclic
+  # type (`r = either int (listOf r)` declared twice) it never bottoms out, and nixpkgs' twin
+  # overflows the stack on the same pair. Both operands are asked `importedDecidable` first, the
+  # foreign arm's own walk and fuel; a pair that passes is a finite tree within the fuel, so the
+  # relation's descent ends, and one that does not is `null`, named by `mergeTypesReason` below. The
+  # descent itself (`relationMergeWithin`, reached through `mergeTypesWithin`, the element stratum's
+  # `mergeElemTypes`) asks no pre-flight again: each operand it meets is a sub-tree of one already
+  # walked, so asking again would re-walk every sub-tree once per level, quadratic in depth. Every
+  # other ENTRY to a gen relation asks it too: `declaredPair`'s veto below, and `exportType`'s
+  # `typeMerge` and `binOp` (`lib/interface.nix`), which a foreign engine calls.
+  relationMergeWithin =
     a: b:
     if a ? typeMergeRel then
       let
@@ -428,6 +440,12 @@ let
       if answer ? merged then answer.merged else null
     else
       interface.importedMerge a b;
+  relationMerge =
+    a: b:
+    if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then
+      null
+    else
+      relationMergeWithin a b;
 
   # ★★ A MERGE THAT DROPS A WRAPPER'S CHECK REFUSES, AT EVERY DEPTH. nixpkgs' `addCheck` is
   # `elemType // { check = …; }`: it keeps its base's name and relation, so the relation above answers
@@ -452,10 +470,10 @@ let
   # path where a witnessed rewrite would be dropped; a record with no witness short-circuits.
   sameTypeValue = x: y: interface.closuresFirst [ x ] x == interface.closuresFirst [ y ] y;
   dropsWrappedCheck = m: o: interface.rewritesCheck o && !(sameTypeValue m o);
-  mergeTypes =
-    a: b:
+  mergeTypesBy =
+    relation: a: b:
     let
-      m = relationMerge a b;
+      m = relation a b;
     in
     if m == null || !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       m
@@ -463,6 +481,8 @@ let
       a
     else
       null;
+  mergeTypes = mergeTypesBy relationMerge;
+  mergeTypesWithin = mergeTypesBy relationMergeWithin;
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -484,10 +504,10 @@ let
   # Whose is said by POSITION in the pair the reason names, not as "later"/"earlier": inside a
   # container the pair arrives in whichever order the deciding relation asked it, and `declaredPair`'s
   # veto asks the earlier operand's relation first.
-  mergeTypesReason =
-    a: b:
+  mergeTypesReasonBy =
+    within: a: b:
     let
-      m = relationMerge a b;
+      m = (if within then relationMergeWithin else relationMerge) a b;
       dA = m != null && dropsWrappedCheck m a;
       dB = m != null && dropsWrappedCheck m b;
     in
@@ -500,12 +520,16 @@ let
         else
           "the second"
       }"
-    else if a ? typeMergeRel then
+    else if
+      a ? typeMergeRel && (within || interface.importedDecidable a && interface.importedDecidable b)
+    then
       (a.typeMergeRel b).refused or null
     else if !(interface.importedDecidable a) || !(interface.importedDecidable b) then
       "`${interface.nameOf a}' and `${interface.nameOf b}', whose structure does not bottom out within the boundary's type-walk fuel (${toString interface.importedTypeWalkFuel})"
     else
       interface.importedMergeReason a b;
+  mergeTypesReason = mergeTypesReasonBy false;
+  mergeTypesReasonWithin = mergeTypesReasonBy true;
 
   # ── the declared-type LIST: how N declarations of one option (or N freeform winners) merge ──
   #
@@ -531,8 +555,10 @@ let
   declaredPair =
     earlier: later:
     let
-      veto = if earlier ? typeMergeRel then earlier.typeMergeRel later else { };
-      m = mergeTypes later earlier;
+      # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
+      decidable = interface.importedDecidable earlier && interface.importedDecidable later;
+      veto = if earlier ? typeMergeRel && decidable then earlier.typeMergeRel later else { };
+      m = if decidable then mergeTypesWithin later earlier else null;
     in
     if veto ? refused then
       {
@@ -5395,6 +5421,10 @@ in
     mergeTypes
     # The same relation answering with its REASON — for a caller that reports rather than dispatches.
     mergeTypesReason
+    # Their descent past the pre-flight, for a relation's own recursion (`lib/types.nix`
+    # `mergeElemTypes`): an operand there is a sub-tree of one the entry already walked.
+    mergeTypesWithin
+    mergeTypesReasonWithin
     # A nested tree's position record and the report mode its child evaluates in (den-hoag-n6dh7),
     # on the internal seam for the key walk that mints the children.
     nestedPosition
