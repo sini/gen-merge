@@ -154,6 +154,26 @@ in
         refusal = true;
       };
     };
+    # The union mark's posture at exhaustion is `true`: a union below 33 nullables under an exact
+    # container is still marked, so the key walk's container node is read off its node. A `false`
+    # there loses the mark and the read refuses (`gen-scope.nta` has no key for `p`'s tree) where
+    # the unbounded walk served.
+    test-the-union-mark-is-true-at-exhaustion = {
+      expr =
+        let
+          xsub = t.submodule { options.x = gm.mkOption { type = t.int; }; };
+        in
+        genEval (t.attrsOf (nest 33 t.nullOr (t.either (t.attrsOf xsub) t.str))) [
+          {
+            p.a.x = 1;
+            q = "s";
+          }
+        ];
+      expected = {
+        p.a.x = 1;
+        q = "s";
+      };
+    };
     # THE PRICE AT ITS BOUNDARY: 33 nested containers over a submodule still answer the spine; 34
     # refuse (33 forwarding steps below the container asked exceed the fuel of 32). A redeclaration
     # takes the boundary's own walk: 31 nested containers merge, 32 refuse. THE ESCAPE HATCH: a
