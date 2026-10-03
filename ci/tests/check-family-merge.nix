@@ -467,9 +467,10 @@ in
         mixed-either-12 = "either";
         mixed-either-21 = "either";
         mixed-submodule-12 = "submodule";
-        # the gen operand decides through its own `typeMergeRel`, so the witness is never reached
+        # the gen operand decides through its own `typeMergeRel`, which hands the pair to the partner's
+        # relation (4v489), so both orders answer nixpkgs' `submodule` and the witness is never reached
 
-        mixed-submodule-21 = "REFUSED";
+        mixed-submodule-21 = "submodule";
       };
     };
   };

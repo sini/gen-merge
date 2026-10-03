@@ -2012,6 +2012,45 @@ let
       in
       if mergedPayload == null then null else f.type mergedPayload;
 
+  # THE JOIN IN THE PARTNER'S OWN RELATION, for a gen nesting type facing a same-named foreign partner
+  # whose module set is stated BESIDE parameters gen's relation does not carry (nixpkgs
+  # `submoduleWith`'s `specialArgs`, `shorthandOnlyDefinesConfig`, `description`, `class`). gen's
+  # parameters embed into that richer payload (`moduleSetPayload`, the payload `exportType` already
+  # publishes), so the pair has a join there and only there, in the partner's parameter space.
+  #
+  # The join is the protocol's DEFAULT relation over the partner's PUBLISHED functor (`protoTypeMerge`,
+  # nixpkgs' `defaultTypeMerge`), NOT the partner's own `typeMerge`: the default relation over its
+  # functor is what nixpkgs' twin of this type applies when the twin decides. So for a partner whose
+  # `functor.binOp`/`functor.type` are `submoduleWith`'s, the answer equals nixpkgs' in both orders.
+  # A partner stating a `typeMerge` of its own is order-dependent here exactly as it is beside
+  # nixpkgs' twin (the twin ignores it too), and a partner whose `functor.binOp` disagrees with its
+  # own `typeMerge` gets that functor's relation in the order where this side decides.
+  # `self` is `{ name; payload; }`, this type's functor name and payload; `null` where the partner
+  # states no applicable relation.
+  joinInStatedRelation =
+    self: other:
+    let
+      pf = other.functor or null;
+    in
+    if !(statesRelation other) || !(isFunction (pf.type or null)) then
+      null
+    else
+      protoTypeMerge (pf // { inherit (self) name payload; }) pf;
+
+  # The module-set payload a gen nesting type offers a foreign engine, as ONE binding read by
+  # `exportType` and by `joinInStatedRelation`'s callers.
+  moduleSetPayload =
+    {
+      modules,
+      specialArgs,
+      shorthandOnlyDefinesConfig,
+    }:
+    {
+      inherit modules specialArgs shorthandOnlyDefinesConfig;
+      description = null;
+      class = null;
+    };
+
   # The caller's stated relation, however they stated it: their derived accessor where they had one,
   # the protocol's own default over their `functor' where they did not.
   callerTypeMerge = t: t.typeMerge or (protoTypeMerge t.functor);
@@ -2624,21 +2663,16 @@ let
       payload =
         if role == null then
           null
+        else if role == "moduleSet" then
+          moduleSetPayload {
+            modules = carried;
+            specialArgs = t.specialArgs or { };
+            shorthandOnlyDefinesConfig = t.shorthandOnlyDefinesConfig or null;
+          }
         else
           {
             ${spelling.payloadKey} = carried;
-          }
-          // (
-            if role == "moduleSet" then
-              {
-                specialArgs = t.specialArgs or { };
-                shorthandOnlyDefinesConfig = t.shorthandOnlyDefinesConfig or null;
-                description = null;
-                class = null;
-              }
-            else
-              { }
-          );
+          };
       # Rebuild this type over a payload in the protocol's spelling — the inverse of the line above,
       # and the only inversion needed, because the role is fixed by the type rather than guessed.
       recarried = p: t.recarry { ${role} = p.${spelling.payloadKey}; };
@@ -2793,6 +2827,8 @@ in
     importedAdmits
     importedRehome
     isNesting
+    joinInStatedRelation
+    moduleSetPayload
     canNest
     declaresNesting
     homedAt

@@ -338,7 +338,9 @@ in
     # THE READ-WHOLE GUARD HOLDS FOR AN IMPORTED PARTNER AS FOR A RAW ONE: nixpkgs' `attrsOf` and
     # `submodule` payloads state more than the one parameter a gen relation merges on, so neither is
     # offered to one, imported or not, in either declaration order. A `listOf` payload is just its
-    # element and still merges.
+    # element and still merges. A `submodule` partner offering nothing is not refused for it: gen's
+    # nesting relation hands the pair to the partner's OWN relation, which reads its payload whole
+    # (`interface.joinInStatedRelation`, 4v489), so the pair merges in both orders as nixpkgs merges it.
     test-an-imported-partner-is-read-whole = {
       expr = {
         attrsOfSub = ev [
@@ -366,9 +368,9 @@ in
         };
       };
       expected = {
-        attrsOfSub = "REFUSED";
-        attrsOfSubRev = "REFUSED";
-        subTop = "REFUSED";
+        attrsOfSub = "MERGED attrsOf / ACCEPTED";
+        attrsOfSubRev = "MERGED attrsOf / ACCEPTED";
+        subTop = "MERGED submodule / ACCEPTED";
         ctlListOf = "MERGED attrsOf / ACCEPTED";
         ctlListOfRev = "MERGED attrsOf / ACCEPTED";
       };

@@ -1442,7 +1442,8 @@ in
     #              string type `string` and nixpkgs names it `str`, so they do not merge.
     #   submodule— names agree, payload SHAPES do not (nixpkgs `submoduleWith` carries `class`/
     #              `specialArgs`/… beside `modules`); truncating that into a gen-merge submodule would
-    #              drop them silently, so the answer is "not mergeable".
+    #              drop them silently, so gen's relation hands the pair to the partner's own `binOp`,
+    #              which reads both payloads whole, and the answer is nixpkgs' `submodule` (4v489).
     #   enumElem — a gen-types PARAMETRIC leaf IS protocol-completed, so it has a `functor`. Post-k1uv
     #              (43adfdc), its `typeMerge` decides by MINTED CONSTRUCTION: the two element enums here
     #              are separately-built but IDENTICAL, so they mint the same digest and merge — and the
@@ -1467,7 +1468,7 @@ in
       };
       expected = {
         listOf = "<not-mergeable>";
-        submodule = "<not-mergeable>";
+        submodule = "submodule";
         enumElem = "attrsOf of e";
         completeElem = "attrsOf of string";
       };

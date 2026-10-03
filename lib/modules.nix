@@ -5243,9 +5243,22 @@ let
               if (other.name or null) != "submodule" then
                 { refused = "`submodule' and `${interface.nameOf other}'"; }
               else if pm == null then
-                {
-                  refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry";
-                }
+                let
+                  joined = interface.joinInStatedRelation {
+                    name = "submodule";
+                    payload = interface.moduleSetPayload {
+                      modules = modList;
+                      inherit specialArgs;
+                      shorthandOnlyDefinesConfig = false;
+                    };
+                  } other;
+                in
+                if joined == null then
+                  {
+                    refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                  }
+                else
+                  { merged = joined; }
               # The one datum two `submodule' declarations must agree on beside the name, and the
               # reason names it, since the names agree.
               else if (other.shorthandOnlyDefinesConfig or null) != false then

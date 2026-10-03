@@ -325,6 +325,211 @@ in
         };
       };
 
+    # 4v489: ONE option declared by a nixpkgs nesting type and a gen one has ONE answer whichever
+    # declaration comes first, under either engine: nixpkgs' answer. gen's parameters embed into the
+    # partner's richer `submoduleWith` payload, so the pair is joined by the partner's own relation in
+    # both orders (`interface.joinInStatedRelation`) and the nested element is a nixpkgs record either
+    # way. `l` reads the module order the join built; `ref` is the same table with the gen side replaced
+    # by its nixpkgs twin, live. A shared `specialArgs` key refuses in both orders, as nixpkgs refuses it.
+    # (A gen CONTAINER's own record, `listOf` here, is the container relation's and is not read.)
+    test-mixed-nesting-redeclaration-is-order-independent =
+      let
+        npM = {
+          options.l = np.mkOption { type = np.types.listOf np.types.str; };
+          config.l = [ "np-listed" ];
+        };
+        genM = {
+          config.l = [ "gen-listed" ];
+        };
+        npReads =
+          { foo, ... }:
+          {
+            options.l = np.mkOption {
+              type = np.types.listOf np.types.str;
+              default = [ "foo=${toString foo}" ];
+            };
+          };
+        nixpkgsSide = {
+          sub = np.types.submodule [ npM ];
+          tree = (np.evalModules { modules = [ npM ]; }).type;
+          args = np.types.submoduleWith {
+            modules = [ npM ];
+            shorthandOnlyDefinesConfig = true;
+            specialArgs.foo = 1;
+          };
+          clash = np.types.submoduleWith {
+            modules = [ npReads ];
+            shorthandOnlyDefinesConfig = true;
+            specialArgs.foo = 1;
+          };
+        };
+        genSide = {
+          sub = t.submodule [ genM ];
+          tree = (evalModuleTree { modules = [ genM ]; }).type;
+          args = (t.submodule [ genM ]).withArgs { bar = 2; };
+          clash = (t.submodule [ genM ]).withArgs { foo = 1; };
+        };
+        twinSide = {
+          sub = np.types.submodule [ genM ];
+          tree = (np.evalModules { modules = [ genM ]; }).type;
+          args = np.types.submoduleWith {
+            modules = [ genM ];
+            shorthandOnlyDefinesConfig = true;
+            specialArgs.bar = 2;
+          };
+          clash = np.types.submoduleWith {
+            modules = [ genM ];
+            shorthandOnlyDefinesConfig = true;
+            specialArgs.foo = 1;
+          };
+        };
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalModuleTree;
+            mk = mkOption;
+          };
+        };
+        read =
+          eng: wrapped: Ts:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [
+                { x = if wrapped then [ { } ] else { }; }
+              ];
+            };
+            x = if wrapped then builtins.head r.config.x else r.config.x;
+            element = if wrapped then r.options.x.type.nestedTypes.elemType else r.options.x.type;
+            out = {
+              inherit (x) l;
+              genRecord = element ? carries;
+            };
+            tried = builtins.tryEval (builtins.deepSeq out out);
+          in
+          if tried.success then tried.value else "REFUSED";
+        table =
+          twin:
+          let
+            other = if twin then twinSide else genSide;
+          in
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap
+                  (
+                    wrap:
+                    builtins.concatMap
+                      (
+                        k:
+                        let
+                          w = wrap == "listOf";
+                          a = if w then np.types.listOf nixpkgsSide.${k} else nixpkgsSide.${k};
+                          b = if w then (if twin then np.types.listOf else t.listOf) other.${k} else other.${k};
+                        in
+                        [
+                          {
+                            name = "${eng}-${wrap}-${k}-o12";
+                            value = read eng w [
+                              a
+                              b
+                            ];
+                          }
+                          {
+                            name = "${eng}-${wrap}-${k}-o21";
+                            value = read eng w [
+                              b
+                              a
+                            ];
+                          }
+                        ]
+                      )
+                      [
+                        "sub"
+                        "tree"
+                        "args"
+                        "clash"
+                      ]
+                  )
+                  [
+                    "bare"
+                    "listOf"
+                  ]
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        # nixpkgs' engine lists the LATER declaration's modules first; gen's engine, over a foreign
+        # pair, the earlier's. The `gm` literal pins that earlier-first module order, which is
+        # den-hoag-z75vj's known divergence from nixpkgs (later-first); z75vj re-pins the `gm` rows.
+        served = eng: o: {
+          l =
+            if (eng == "np") == (o == "o12") then
+              [
+                "gen-listed"
+                "np-listed"
+              ]
+            else
+              [
+                "np-listed"
+                "gen-listed"
+              ];
+          genRecord = false;
+        };
+        expected = builtins.listToAttrs (
+          builtins.concatMap
+            (
+              eng:
+              builtins.concatMap
+                (
+                  wrap:
+                  builtins.concatMap
+                    (
+                      k:
+                      map
+                        (o: {
+                          name = "${eng}-${wrap}-${k}-${o}";
+                          value = if k == "clash" then "REFUSED" else served eng o;
+                        })
+                        [
+                          "o12"
+                          "o21"
+                        ]
+                    )
+                    [
+                      "sub"
+                      "tree"
+                      "args"
+                      "clash"
+                    ]
+                )
+                [
+                  "bare"
+                  "listOf"
+                ]
+            )
+            [
+              "np"
+              "gm"
+            ]
+        );
+      in
+      {
+        expr = {
+          mixed = table false;
+          ref = table true;
+        };
+        expected = {
+          mixed = expected;
+          ref = expected;
+        };
+      };
+
     # ── 1 · ROUTING ────────────────────────────────────────────────────────────────────────────
     # The whole table in one cell, so no row can pass while its neighbour is unread. The `algebra`
     # rows are the library's own `typeMerge`; the `routed` rows are the engine's declaration merge

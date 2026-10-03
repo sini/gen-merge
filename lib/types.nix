@@ -642,7 +642,8 @@ let
             # with themselves: no conflict can be seen there and the left declaration's args win
             # silently. That path is not reachable with a gen partner anyway — `importedCarried`
             # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
-            # its own parameters beside it, which the arm above already refuses by name.
+            # its own parameters beside it, so the arm below hands that pair to the partner's
+            # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
             partnerArgs = other.specialArgs or { };
             # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
             # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
@@ -656,9 +657,22 @@ let
             conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
           in
           if partnerMods == null then
-            {
-              refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry";
-            }
+            let
+              joined = interface.joinInStatedRelation {
+                name = "submodule";
+                payload = interface.moduleSetPayload {
+                  modules = mods;
+                  specialArgs = args;
+                  shorthandOnlyDefinesConfig = true;
+                };
+              } other;
+            in
+            if joined == null then
+              {
+                refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+              }
+            else
+              { merged = joined; }
           # The module sets UNION, so the args must too — and two declarations that disagree about
           # what a base module argument IS are a conflict this library names rather than resolves by
           # declaration order.
