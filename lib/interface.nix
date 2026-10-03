@@ -726,6 +726,28 @@ let
         rebuild = t.substSubModules or (_m: null);
       };
 
+  # A descriptor carrying a `substructure` BESIDE a callable `substSubModules` is a copy of a built
+  # record (`base // Δ`, gen-schema's `refined`). Its `substructure.rebuild` is TIED, closed over
+  # the record it was copied from (`deriveType`'s note), so it rebuilds the base and drops the
+  # copy's own layer. The stated `substSubModules` is the copy's own rebuild, the one nixpkgs'
+  # `fixupOptionType` calls on the outer type, so it is the one imported. The module set and the
+  # declarations are data, not tied, and cross as carried. The fields are bound as formals, so the
+  # rebuild is the descriptor's own value and the import allocates no thunk for it: this runs once per
+  # imported instance (perf-bench `schemaHosts`).
+  importedOwnSubstructure =
+    {
+      substructure ? null,
+      substSubModules ? null,
+      ...
+    }@t:
+    if
+      substructure != null
+      && (isFunction substSubModules || isAttrs substSubModules && substSubModules ? __functor)
+    then
+      substructure // { rebuild = substSubModules; }
+    else
+      importedSubstructure t;
+
   # ── AN OPERAND'S NAME, AS A REFUSAL SAYS IT ─────────────────────────────────────────────────────
   # The one reader every refusal in this library names a merge operand through — gen's relations
   # (./types.nix), the parametric-leaf refusals (./default.nix), the declaration plane's reasons
@@ -2490,7 +2512,7 @@ let
           // {
             inherit name;
             whenEmpty = importedEmpty t;
-            substructure = importedSubstructure t;
+            substructure = importedOwnSubstructure t;
           }
           // (if t ? verify then { inherit (t) verify; } else { })
           // (if admits == null || t ? verify then { } else { inherit admits; })

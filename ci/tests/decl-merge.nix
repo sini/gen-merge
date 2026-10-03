@@ -1102,6 +1102,118 @@ in
           rows = 252;
         };
       };
+    # A WRAPPER over a nesting type keeps its own layer through the rebuild. The wrapper is built as
+    # gen-schema's `refined` is: a `//` copy of a submodule with a layer of its own (`__wrapped`), a
+    # relation joining the bases and re-wrapping, and a `substSubModules` re-wrapping the base's
+    # rebuild. The copy carries the base's `substructure`, whose rebuild is the base's alone, so the
+    # import takes the copy's own `substSubModules` (nixpkgs' `fixupOptionType` calls the outer
+    # type's). `kept` reads the layer on the merged option type, `l` the union order; the `np` arm is
+    # the same types mounted in `lib.evalModules`, which rebuilds through the exported protocol.
+    test-redeclared-wrapper-over-nesting-keeps-its-layer =
+      let
+        wrapped =
+          base:
+          let
+            self = t.mkOptionType (
+              builtins.removeAttrs base [
+                "functor"
+                "typeMerge"
+                "__mint"
+                "__id"
+                "__okAt"
+                "__payload"
+                "__sealed"
+                "__typeSelf"
+              ]
+              // {
+                __wrapped = base;
+                typeMerge =
+                  f:
+                  if f.type ? __wrapped then
+                    (
+                      let
+                        j = base.typeMerge f.type.__wrapped.functor;
+                      in
+                      if j == null then null else wrapped j
+                    )
+                  else
+                    null;
+                functor = {
+                  name = "wrapped";
+                  type = self;
+                  payload = null;
+                  binOp = _: _: null;
+                };
+                substSubModules =
+                  m:
+                  let
+                    r = base.substSubModules m;
+                  in
+                  if r == null then null else wrapped r;
+              }
+            );
+          in
+          self;
+        decl = {
+          A = {
+            options.l = mkOption { type = t.listOf t.str; };
+            config.l = [ "A" ];
+          };
+          B.config.l = [ "B" ];
+        };
+        run =
+          ev: mk: order:
+          let
+            r = ev {
+              modules = map (k: { options.x = mk { type = wrapped (t.submodule [ decl.${k} ]); }; }) order ++ [
+                { x = { }; }
+              ];
+            };
+          in
+          {
+            kept = r.options.x.type ? __wrapped;
+            inherit (r.config.x) l;
+          };
+        both = ev: mk: {
+          AB = run ev mk [
+            "A"
+            "B"
+          ];
+          BA = run ev mk [
+            "B"
+            "A"
+          ];
+        };
+      in
+      {
+        expr = {
+          gm = both evalModuleTree mkOption;
+          np = both np.evalModules np.mkOption;
+        };
+        expected =
+          let
+            rows = {
+              AB = {
+                kept = true;
+                l = [
+                  "B"
+                  "A"
+                ];
+              };
+              BA = {
+                kept = true;
+                l = [
+                  "A"
+                  "B"
+                ];
+              };
+            };
+          in
+          {
+            gm = rows;
+            np = rows;
+          };
+      };
 
     # ── 1 · ROUTING ────────────────────────────────────────────────────────────────────────────
     # The whole table in one cell, so no row can pass while its neighbour is unread. The `algebra`
