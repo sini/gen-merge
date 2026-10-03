@@ -335,7 +335,9 @@ owner's, at the owner's level, when that level is read (nixpkgs' per-level rule)
 or deeper refuses, a sibling read does not, and neither does an `apply` that discards the nested value.
 A lax tree under a strict carrier refuses as
 `` gen-merge: option `nest.z' is not declared by the nested tree that owns it ``; a tree at
-`check = true` refuses in its own words, `` option `nest.z' does not exist (no freeformType to absorb it) ``.
+`check = true` refuses in nixpkgs' words, `` The option `nest.z' does not exist. Definition values: ``
+followed by the one definition's `` - In `file': value `` line, as nixpkgs names it (a compound or
+property-wrapped value prints as `<a set>`, a list as `<a list>`, and a value that throws is omitted).
 The domain is exactly
 the leaves whose declared type carries `mergeDefs.reported`; a nested tree inside a wrapper (an `attrsOf`
 of a moduleTree) has no report channel, so it refuses its own level's findings by name when that level

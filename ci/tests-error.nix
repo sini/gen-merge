@@ -504,7 +504,9 @@ let
     { options.x = gm.mkOption { default = "dflt"; }; }
     ({ _file = file; } // m)
   ];
-  orphanMsg = p: "^gen-merge: option `${p}' does not exist \\(no freeformType to absorb it\\)$";
+  orphanMsg =
+    p: file: v:
+    "^The option `${p}' does not exist\\. Definition values:\n- In `${file}': ${v}$";
   checkMsg =
     file:
     "^gen-merge: `_module\\.check' is not read from a module: pass it as `evalModuleTree \\{ check = …; }'; defined in ${file}$";
@@ -532,7 +534,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: option `rack\\.stray' does not exist \\(no freeformType to absorb it\\)$";
+          msg = "^The option `rack\\.stray' does not exist\\. Definition values:\n- In `<gen-merge>': 1$";
         };
       };
       # The collision refusal names the option that collided, which is the one piece of the
@@ -732,21 +734,21 @@ in
         expr = realize { modules = moduleKey "/g/B.nix" { config._module.bogus = 1; }; };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus";
+          msg = orphanMsg "_module\\.bogus" "/g/B.nix" "1";
         };
       };
       test-module-unknown-key-shorthand-refused-by-name = {
         expr = realize { modules = moduleKey "/g/B.nix" { _module.bogus = 1; }; };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus";
+          msg = orphanMsg "_module\\.bogus" "/g/B.nix" "1";
         };
       };
       test-module-misspelt-args-refused-by-name = {
         expr = realize { modules = moduleKey "/g/A.nix" { config._module.arg.pkgs = 1; }; };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.arg";
+          msg = orphanMsg "_module\\.arg" "/g/A.nix" "<a set>";
         };
       };
       test-module-unknown-key-under-mkif-false-refused-by-name = {
@@ -755,7 +757,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus";
+          msg = orphanMsg "_module\\.bogus" "/g/B.nix" "<a set>";
         };
       };
       test-module-unknown-key-beside-args-refused-by-name = {
@@ -769,7 +771,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus";
+          msg = orphanMsg "_module\\.bogus" "/g/A.nix" "1";
         };
       };
       test-module-unknown-key-in-a-submodule-refused-by-name = {
@@ -781,7 +783,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "n\\._module\\.bogus";
+          msg = orphanMsg "n\\._module\\.bogus" "/g/N.nix" "1";
         };
       };
       # Under a `_module.freeformType` the key is absorbed (`./tests/module-key.nix`), so a pair
@@ -4449,7 +4451,7 @@ in
           }).t;
         notModuleMsg = "^gen-merge: a module must be a path, a function or an attribute set, and this one is string \\(an `imports' element, or a nesting type's definition read as a module\\)$";
         undeclaredMsg =
-          key: "^gen-merge: option `t\\.${key}' does not exist \\(no freeformType to absorb it\\)$";
+          key: v: "^The option `t\\.${key}' does not exist\\. Definition values:\n- In `/real/F.nix': ${v}$";
         # An option named `imports', so the def `{ imports = [ "x" ]; }` is a value at `submodule`
         # and a module whose import is not a module at the tree type.
         importsTree =
@@ -4506,21 +4508,21 @@ in
           expr = builtins.deepSeq (valueAt sub { config.a = 2; }) null;
           expectedError = {
             type = "ThrownError";
-            msg = undeclaredMsg "config";
+            msg = undeclaredMsg "config" "<a set>";
           };
         };
         test-submodule-imports-key-is-an-undeclared-option = {
           expr = builtins.deepSeq (valueAt sub { imports = [ { a = 4; } ]; }) null;
           expectedError = {
             type = "ThrownError";
-            msg = undeclaredMsg "imports";
+            msg = undeclaredMsg "imports" "<a list>";
           };
         };
         test-submodule-functor-key-is-an-undeclared-option = {
           expr = builtins.deepSeq (valueAt sub { __functor = _: { ... }: { a = 6; }; }) null;
           expectedError = {
             type = "ThrownError";
-            msg = undeclaredMsg "__functor";
+            msg = undeclaredMsg "__functor" "<a lambda>";
           };
         };
         # The top level: nixpkgs aborts on `import "x"`; this refuses by name.
@@ -4823,7 +4825,7 @@ in
           };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: option `x\\.sub\\.bogus' does not exist \\(no freeformType to absorb it\\)$";
+            msg = "^The option `x\\.sub\\.bogus' does not exist\\. Definition values:\n- In `/real/F.nix': 1$";
           };
         };
       };
@@ -7504,6 +7506,182 @@ in
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: the option `_module\\.args' is read-only, but it is defined more than once \\(the engine defines it too\\); defined in /real/AR\\.nix$";
+          };
+        };
+      };
+    # The undeclared-option refusal names ONE definition's file, as nixpkgs' `showDefs [ firstDef ]`
+    # does (den-hoag-igmxf): the root's LAST module definition of a name, a submodule's FIRST, and
+    # among several names the first by NAME across a level's own keys and declared groups. Every
+    # cell pairs its refusal with the same evaluation minus the offending definition (a live arm).
+    flake.testsError.undeclared-file =
+      let
+        declX = {
+          _file = "/virtual/decl.nix";
+          options.x = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        declSub = {
+          _file = "/virtual/decl.nix";
+          options.s = gm.mkOption {
+            type = t.submodule {
+              options.k = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+            };
+            default = { };
+          };
+        };
+        declGrp = {
+          _file = "/virtual/decl.nix";
+          options.a.k = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+          options.x = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        declDeep = {
+          _file = "/virtual/decl.nix";
+          options.a.b.k = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        at = file: config: {
+          _file = "/virtual/${file}.nix";
+          inherit config;
+        };
+        refuse =
+          base: mods:
+          withControl (realize { modules = base; }) null (realize {
+            modules = base ++ mods;
+          });
+        msg =
+          opt: file: tail:
+          "^The option `${opt}' does not exist\\. Definition values:\n- In `/virtual/${file}\\.nix'${tail}$";
+      in
+      {
+        test-one-definition-names-its-file = {
+          expr = refuse [ declX ] [ (at "d" { y = 1; }) ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "y" "d" ": 1";
+          };
+        };
+        # At the root nixpkgs names the LAST module's definition.
+        test-root-two-files-names-the-last-module = {
+          expr =
+            refuse
+              [ declX ]
+              [
+                (at "d" { y = 1; })
+                (at "e" { y = 2; })
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "y" "e" ": 2";
+          };
+        };
+        test-root-three-files-names-the-last-module = {
+          expr =
+            refuse
+              [ declX ]
+              [
+                (at "f" { y = 3; })
+                (at "e" { y = 2; })
+                (at "d" { y = 1; })
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "y" "d" ": 1";
+          };
+        };
+        test-submodule-key-names-its-file = {
+          expr = refuse [ declSub ] [ (at "d" { s.bogus = 1; }) ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "s\\.bogus" "d" ": 1";
+          };
+        };
+        # In a submodule nixpkgs names the FIRST definition, the reverse of the root.
+        test-submodule-two-files-names-the-first-module = {
+          expr =
+            refuse
+              [ declSub ]
+              [
+                (at "d" { s.bogus = 1; })
+                (at "e" { s.bogus = 2; })
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "s\\.bogus" "d" ": 1";
+          };
+        };
+        # A path module is named by the `_file` its own content sets (den-hoag-6fqay M1).
+        test-path-module-is-named-by-its-own-file = {
+          expr = refuse [ declX ] [ ./tests/_fixtures/own-file-bogus.nix ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^The option `bogus' does not exist\\. Definition values:\n- In `/real/PF\\.nix': 1$";
+          };
+        };
+        # The head is the first by NAME across a level's own keys and declared groups, as nixpkgs'
+        # `head merged.unmatchedDefns`: group `a` sorts before the root key `z`, so `a.bogus` is named
+        # (file d), where the own-keys-first order named `z` (file e).
+        test-group-sorting-before-an-own-key-is-named-first = {
+          expr =
+            refuse
+              [ declGrp ]
+              [
+                (at "d" { a.bogus = 1; })
+                (at "e" { z = 2; })
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "a\\.bogus" "d" ": 1";
+          };
+        };
+        test-own-key-sorting-before-a-group-is-named-first = {
+          expr =
+            refuse
+              [ declGrp ]
+              [
+                (at "d" { a.bogus = 1; })
+                (at "e" { "0" = 2; })
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "\"0\"" "e" ": 2";
+          };
+        };
+        # The same order one level down: group `b` sorts before the own key `m` inside `a`.
+        test-nested-group-sorting-before-an-own-key-is-named-first = {
+          expr =
+            refuse
+              [ declDeep ]
+              [
+                (at "d" {
+                  a.m = 1;
+                  a.b.q = 2;
+                })
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "a\\.b\\.q" "d" ": 2";
+          };
+        };
+        # nixpkgs renders the value under `tryEval` and omits it when that throws, so a `throw` in
+        # the misplaced key's value never replaces the refusal that names the key (ADR-0025 item 1).
+        test-a-throwing-value-is-omitted-and-the-key-is-still-named = {
+          expr = refuse [ declX ] [ (at "d" { y = throw "VALUEBOOM"; }) ];
+          expectedError = {
+            type = "ThrownError";
+            msg = msg "y" "d" "";
           };
         };
       };
