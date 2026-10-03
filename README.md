@@ -1740,7 +1740,7 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   `attrsOf^k S` at an exact element alternates with k: over-approximated where k is odd, a node where
   k is even.
   A sibling's definition outside a container's domain, or a sibling whose element throws, never
-  breaks another key's read, as in nixpkgs (den-hoag-mda6f).
+  breaks another key's read, as in nixpkgs.
 - **Candidates.** An over-approximated child the fold never selected (a union position under a lazy
   container whose `choose` picks a non-nesting member) is enumerated, and reading its `result` refuses
   by name before any of its member's modules is applied.
@@ -2004,8 +2004,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     it, and nixpkgs' own fix-up drops the override on its option path anyway. All three are named
     refusals; the deepest real family measured in nixpkgs' vocabulary is 2. A redeclaration pays
     one bounded walk per operand, linear in its depth (about 12 thunks per operand level); a single
-    declaration pays no thunk, and one attribute per forwarding container (`ci/tests/cyclic-types.nix`;
-    den-hoag-iaram build report). THE
+    declaration pays no thunk, and one attribute per forwarding container (`ci/tests/cyclic-types.nix`). THE
     REMEDY is in the refusal: close a cycle through a union (`either`, `oneOf`) or a submodule, which
     answer for themselves, or nest a finite chain less deeply. THE ESCAPE HATCH: a gen record whose
     `substructure` states no `forward` answers for itself, which ends the spine walk there. The
@@ -2029,8 +2028,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     refusals that read it, and for `either r int` even the in-domain check, die in the call-depth
     channel (`stack overflow; max-call-depth exceeded`) on all three evaluators, as nixpkgs' twins
     do. A construction exists that would refuse it by name, a lazily-forced contractiveness walk per
-    union node, and it is not taken, by priority and cost (*defaulted, reversible*, den-hoag-iaram
-    OQ1): nixpkgs aborts identically and serves no value to keep parity with; the walk's cost on
+    union node, and it is not taken, by priority and cost (*defaulted, reversible*): nixpkgs aborts identically and serves no value to keep parity with; the walk's cost on
     `check`'s hot path is unmeasured; it would refuse a flat `oneOf` of 34 or more members that
     serves today unless union width is charged apart; and it would leave a cycle alternating foreign
     and gen unions unbounded.
