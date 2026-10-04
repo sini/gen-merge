@@ -14,13 +14,20 @@
 # option declared in n modules costs what n options declared once cost, plus the fold's own step.
 # The guard re-running the redeclaration fold reads 45 here. `nrThunks` only; no cpu row is read.
 # The guard deleted outright ALSO reads within bound, so this row never stands alone: the
-# `one-evaluator` stratification cell in `./ci#tests` is its pair. Exit status is read UNPIPED.
+# `one-evaluator` stratification cell in `./ci#tests` is its pair.
+#
+# A second row reads BYTES, which a thunk count cannot see: the published `overridden` list
+# (`sameOv`) and the `provenance` of undeclared keys (`provSame`, `provDist`), forced. Each reads
+# `log2(bytes(BIG) / bytes(SMALL))` against XBOUND = 1.1; a `++` per step or a `//` accumulator
+# reads 1.4 to 1.6 there. Determinate's bytes move in ~256 KiB quanta, so read its exponent, never
+# its absolute bytes. Exit status is read UNPIPED.
 set -u
 cd "$(dirname "$0")/../.." || exit 99
 
 STATS_DIR=$(mktemp -d)
 trap 'rm -rf "$STATS_DIR"' EXIT
 BOUND=2
+XBOUND=1.1
 
 # stat <arm> <n> <field>: the field of NIX_SHOW_STATS, or -1 when the arm failed to evaluate
 stat() {
@@ -74,12 +81,29 @@ if [ "$fail" -eq 0 ]; then
 fi
 
 echo
+echo "== gc.totalBytes growth exponent, log2(bytes(n=$BIG) / bytes(n=$SMALL)), bound $XBOUND =="
+over=""
+for arm in sameOv provSame provDist; do
+  bs=$(stat "$arm" "$SMALL" bytes)
+  bb=$(stat "$arm" "$BIG" bytes)
+  if [ "$bs" = "-1" ] || [ "$bb" = "-1" ]; then
+    note "INVALID: $arm failed to evaluate under stats collection"
+    continue
+  fi
+  x=$(python3 -c "import math,sys; print('%.2f' % math.log2(int(sys.argv[2]) / int(sys.argv[1])))" "$bs" "$bb")
+  printf '  %-8s n=%-4s %12s   n=%-4s %12s   exponent %s\n' "$arm" "$SMALL" "$bs" "$BIG" "$bb" "$x"
+  python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) <= float(sys.argv[2]) else 1)" "$x" "$XBOUND" ||
+    over="$over $arm=$x"
+done
+
+echo
 if [ "$fail" -ne 0 ]; then
   echo "INVALID ($fail readings did not hold)"
   exit 1
-elif [ "$d" -gt "$BOUND" ]; then
-  echo "OVER BOUND: a redeclaration costs $d thunks per declaring module, bound $BOUND"
+elif [ "$d" -gt "$BOUND" ] || [ -n "$over" ]; then
+  [ "$d" -gt "$BOUND" ] && echo "OVER BOUND: a redeclaration costs $d thunks per declaring module, bound $BOUND"
+  [ -n "$over" ] && echo "OVER BOUND: bytes grow super-linearly:$over (bound $XBOUND)"
   exit 6
 else
-  echo "WITHIN BOUND: a redeclaration costs $d thunks per declaring module (bound $BOUND)"
+  echo "WITHIN BOUND: a redeclaration costs $d thunks per declaring module (bound $BOUND), and every bytes exponent is <= $XBOUND"
 fi

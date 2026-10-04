@@ -726,6 +726,19 @@ let
   # int`, `fo` a `B` whose functor is renamed and `Fk` a `B` whose relation admits any partner,
   # `[fo, B, Fk]` merges to `attrsOf` on both engines). A later UNTYPED site does not defer the
   # decision.
+  # The shadow chain `redeclareDecl` threads, as the published oldest-first list: one
+  # `genericClosure` walk back along `prev` (each node's `key` is its depth), reversed once. The
+  # functional queue: a `++` per step would copy every earlier entry, quadratic in bytes when forced.
+  shadowChainList =
+    c:
+    map (n: n.entry) (
+      reverse (
+        builtins.genericClosure {
+          startSet = [ c ];
+          operator = n: if n.prev == null then [ ] else [ n.prev ];
+        }
+      )
+    );
   redeclareDecl =
     sitesAt: lk:
     let
@@ -753,15 +766,35 @@ let
       # — shadow events and declaring modules are different counts. `<unknown-file>` where there is
       # no earlier site (a decl tree assembled outside the module fold): a sentinel in the shape of
       # `<default>`/`<def>`, never a guess.
-      overridden = (av.overridden or [ ]) ++ [
-        {
-          file = if j == 0 then "<unknown-file>" else (prelude.elemAt sites (j - 1)).file;
-          declaration = builtins.removeAttrs av [ "overridden" ];
-        }
-      ];
+      #
       # `overridden` appears ONLY where a declaration really was shadowed: a layering module that
-      # merely ADDS fields leaves the record exactly what the plain union produced.
-      kept = if shadowed == [ ] then merged else merged // { inherit overridden; };
+      # merely ADDS fields leaves the record exactly what the plain union produced. An intermediate
+      # step's `overridden` is a chain node (`shadowChainList`), cons-ed in constant space; nothing
+      # observes it, since each entry's `declaration` drops the field and only the next step reads
+      # it. The last step (`j + 1 == length sites`, the alignment `elemAt sites j` already rests on)
+      # publishes the list, oldest first.
+      kept =
+        if shadowed == [ ] then
+          if av ? overridden && j + 1 == length sites then
+            merged // { overridden = shadowChainList av.overridden; }
+          else
+            merged
+        else
+          merged
+          // {
+            overridden =
+              let
+                c = {
+                  key = (av.overridden.key or 0) + 1;
+                  entry = {
+                    file = if j == 0 then "<unknown-file>" else (prelude.elemAt sites (j - 1)).file;
+                    declaration = builtins.removeAttrs av [ "overridden" ];
+                  };
+                  prev = av.overridden or null;
+                };
+              in
+              if j + 1 == length sites then shadowChainList c else c;
+          };
     in
     if (av ? type) && (bv ? type) then
       let
@@ -4853,36 +4886,51 @@ let
           # does NOT re-walk modules and does NOT force config VALUES (reads only `file`/`path`). It
           # may be OVER-INCLUSIVE: a false-`mkIf`-wrapped freeform def still shows here (the freeform
           # pass, like nixpkgs, discharges per key only inside its own `.merge`, which provenance does
-          # not enter). Records are grouped by their (joined) loc then reshaped to the nested attrset
-          # via `setAttrByPath` — a depth-1 undeclared key and a deeper one can never collide (a key
-          # undeclared HERE is captured whole and never descended; cf. `buildModuleUnmatched`).
+          # not enter). Records are grouped by their (joined) loc with one `builtins.groupBy`, which
+          # keeps each group in list order and copies nothing (as `coalesceUnmatched`), then nested
+          # into the attrset by a `zipAttrsWith` trie, one level per path step (as
+          # `mergeOptionDeclTrees`), so no step copies a growing accumulator. A depth-1 undeclared key
+          # and a deeper one can never collide (a key undeclared HERE is captured whole and never
+          # descended; cf. `buildModuleUnmatched`); the mixed arm keeps `recursiveUpdate`'s answer for
+          # that case anyway, so the construction is total.
           freeformProvCold =
             let
-              byPath = foldl' (
-                acc: u:
-                let
-                  key = showOption u.path;
-                in
-                acc
-                // {
-                  ${key} = {
-                    inherit (u) path;
-                    files = (acc.${key}.files or [ ]) ++ [ { inherit (u) file; } ];
-                  };
-                }
-              ) { } realized.unmatched;
+              byPath = builtins.groupBy (u: showOption u.path) realized.unmatched;
+              nest =
+                rs:
+                builtins.zipAttrsWith
+                  (
+                    _: sub:
+                    let
+                      here = filter (r: r.rest == [ ]) sub;
+                      deeper = filter (r: r.rest != [ ]) sub;
+                    in
+                    if deeper == [ ] then
+                      (head here).record
+                    else if here == [ ] then
+                      nest deeper
+                    else
+                      recursiveUpdate (head here).record (nest deeper)
+                  )
+                  (
+                    map (r: {
+                      ${head r.rest} = r // {
+                        rest = tail r.rest;
+                      };
+                    }) rs
+                  );
             in
-            foldl' (
-              acc: k:
-              recursiveUpdate acc (
-                setAttrByPath byPath.${k}.path {
-                  defs = byPath.${k}.files;
+            nest (
+              map (us: {
+                rest = (head us).path;
+                record = {
+                  defs = map (u: { inherit (u) file; }) us;
                   winners = null;
                   priority = null;
                   defaulted = null;
-                }
-              )
-            ) { } (attrNames byPath);
+                };
+              }) (builtins.attrValues byPath)
+            );
           # Warm: the freeform provenance layer rides the same reuse decision as its config layer.
           freeformProv = if reuseFreeform then warmFrom.freeformProv else freeformProvCold;
 

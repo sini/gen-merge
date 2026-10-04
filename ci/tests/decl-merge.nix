@@ -2177,5 +2177,53 @@ in
         ]).options.q.type.name;
       expected = "string";
     };
+    # `overridden` in authored order when the LAST declaration shadows nothing: `p2` shadows `p1`'s
+    # type, `p3` adds a field, `p4` shadows `p3`'s description and `p5` only adds `apply`. The list is
+    # published at the last step, which here records no entry of its own.
+    test-overridden-is-published-when-the-last-declaration-shadows-nothing = {
+      expr =
+        let
+          decl =
+            (evalModuleTree { } [
+              {
+                _file = "p1";
+                options.p = mkOption {
+                  type = t.str;
+                  description = "a";
+                };
+              }
+              {
+                _file = "p2";
+                options.p = mkOption { type = t.str; };
+              }
+              {
+                _file = "p3";
+                options.p = mkOption { example = "x"; };
+              }
+              {
+                _file = "p4";
+                options.p = mkOption { description = "b"; };
+              }
+              {
+                _file = "p5";
+                options.p = mkOption { apply = x: x; };
+              }
+            ]).options.p;
+        in
+        map (o: {
+          inherit (o) file;
+          description = o.declaration.description or null;
+        }) decl.overridden;
+      expected = [
+        {
+          file = "p1";
+          description = "a";
+        }
+        {
+          file = "p3";
+          description = "a";
+        }
+      ];
+    };
   };
 }

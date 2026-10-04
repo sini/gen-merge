@@ -1482,10 +1482,15 @@ the fold's depth does not grow with `n` (one loc declared in 102,400 modules eva
 `NIX_SHOW_STATS` on Nix 2.34.8, one option declared `str` in all `n` modules, reading `config.p`: the
 growth exponent over `n = 1600 → 6400` is 0.93 / 0.96 / 0.93 (thunks / calls / bytes), and 1.00 at
 `n = 25,600 → 102,400`; nixpkgs reads 0.99 / 1.00 / 0.99 on the same shape. The hub perf-bench row
-`sameLocFanIn` gates that linearity. **What is not linear:** the published `overridden` list and the
-`provenance` of undeclared keys read quadratic in BYTES when forced (thunks stay linear), and every
-provisional prefix type (`overridden[].declaration.type`) is quadratic when forced, because `⊳` is not
-associative; the latter is inherent to keeping the provenance. `n` distinct submodule-typed options, one
+`sameLocFanIn` gates that linearity. The declaration guard forces each declaring module's key set and
+never the merged record, so one option declared in `n` modules costs 2 thunks per module beyond `n`
+options declared once each. The published `overridden` list is threaded as a chain and listed once, at
+the last step, and the `provenance` of undeclared keys is grouped once and nested by a trie, so both
+read linear in BYTES when forced: exponents 0.97 (`overridden`), 0.95 (one undeclared key in `n`
+modules) and 0.96 (`n` distinct keys) over `n = 1600 → 3200`, on Nix 2.34.8, where the `++` chain and
+the `//` accumulator they replace read 1.51, 1.69 and 1.47 (`ci/bench/redeclaration-cost.sh`). **What is not linear:** every provisional prefix type
+(`overridden[].declaration.type`) is quadratic when forced, because `⊳` is not associative; that is
+inherent to keeping the provenance. `n` distinct submodule-typed options, one
 per module, read 1.49 in bytes (nixpkgs 1.61) with thunks and calls at 0.98.
 
 **Against nixpkgs, on the other fields.** The engines part on the **other** fields — nixpkgs refuses a redeclaration

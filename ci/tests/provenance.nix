@@ -189,6 +189,67 @@ in
       };
     };
 
+    # 5b — freeform locs defined MORE THAN ONCE, so `defs` has an order to keep: one key in three
+    # modules (reverse module order, as the declared record's `defs`), distinct keys, and an
+    # undeclared key under a declared group defined twice. The cell above defines its loc once and
+    # cannot see the order.
+    test-freeform-records-keep-defs-order =
+      let
+        p = prov {
+          modules = [
+            { freeformType = t.attrsOf t.str; }
+            {
+              options.g.c = mkOption {
+                type = t.str;
+                default = "c";
+              };
+            }
+          ]
+          ++ builtins.genList (i: {
+            _file = "u${toString i}";
+            config.u = "v${toString i}";
+          }) 3
+          ++ builtins.genList (i: {
+            _file = "k${toString i}";
+            config."k${toString i}" = "v";
+          }) 2
+          ++ [
+            {
+              _file = "gd1";
+              config.g.d = "x";
+            }
+            {
+              _file = "gd2";
+              config.g.d = "y";
+            }
+          ];
+        };
+        files = r: map (d: d.file) r.defs;
+      in
+      {
+        expr = {
+          u = files p.u;
+          k0 = files p.k0;
+          k1 = files p.k1;
+          gd = files p.g.d;
+          gc = p.g.c.defaulted;
+        };
+        expected = {
+          u = [
+            "u2"
+            "u1"
+            "u0"
+          ];
+          k0 = [ "k0" ];
+          k1 = [ "k1" ];
+          gd = [
+            "gd2"
+            "gd1"
+          ];
+          gc = true;
+        };
+      };
+
     # 6 — nested-group loc: `options.a.b.c` puts the rich record at `provenance.a.b.c` (the tree
     # mirrors config's nested structure, assembled by the same recursive descent as `value`).
     test-nested-group-record = {
