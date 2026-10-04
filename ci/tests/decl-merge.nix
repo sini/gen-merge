@@ -326,7 +326,8 @@ in
       };
 
     # zvidt: ONE option declared by a nixpkgs container and a gen container has ONE declared-type spine
-    # whichever declaration comes first, under either engine: nixpkgs' own. The partner's relation
+    # whichever declaration comes first, under either engine: nixpkgs' own. `sig` asks `? typeMergeRel`,
+    # which every gen record states (a `? carries` test never reads a gen leaf: den-hoag-x4j3w). The partner's relation
     # decides the record at every container level (`interface.joinCarriedInStatedRelation`), so no
     # gen record survives into the declared type. `sig` reads whose record each level of the merged
     # spine is, through `nestedTypes`; `ref` is the same table with the gen side replaced by its
@@ -359,7 +360,7 @@ in
         };
         sig =
           fuel: ty:
-          (if ty ? carries then "G" else "N")
+          (if ty ? typeMergeRel then "G" else "N")
           + (
             if fuel == 0 || !(ty ? nestedTypes) then
               ""
@@ -517,6 +518,301 @@ in
           u8 = {
             ref = "REFUSED";
             mixed = "REFUSED";
+          };
+        };
+      };
+
+    # x4j3w: ONE option declared by a nixpkgs LEAF and by its gen twin has ONE declared-type record
+    # whichever declaration comes first, under either engine: nixpkgs'. `sig` asks `? typeMergeRel`, which
+    # EVERY gen record states and no nixpkgs record does; the zvidt cell above asked `? carries`, which a
+    # gen leaf never states, so it could not read a gen record at a leaf. The domain is the leaves whose
+    # functor name and payload agree with their nixpkgs twin's (`str` publishes `string`, `number` is not
+    # nixpkgs' `either`, `path` states a payload nixpkgs' does not: den-hoag-46zga; `attrs` is a stated
+    # divergence, not a defect: gen's `attrs` fold refuses a same-key collision and nixpkgs' `//` takes the
+    # last, so a foreign `attrs` stays refused, owner-ruled in den-hoag-241d7, specs/2026-09-16-gen-attrs-empty-value-spec.md §4.1). `expected` is a LITERAL spine, and `ref` (the gen
+    # side replaced by its nixpkgs twin, live) must equal the same literal, so a `ref` broken in step with
+    # `mixed` cannot pass. `gg` is the control that the predicate sees a gen record at all.
+    test-mixed-leaf-redeclaration-record-is-order-independent =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalModuleTree;
+            mk = mkOption;
+          };
+        };
+        leaves = {
+          anything = 1;
+          bool = true;
+          float = 1.5;
+          int = 1;
+          raw = 1;
+        };
+        shapes = {
+          bare = {
+            wrap = lib': ty: ty;
+            def = v: v;
+            lit = rec': "${rec'}";
+          };
+          list = {
+            wrap = lib': ty: lib'.listOf ty;
+            def = v: [ v ];
+            lit = rec': "${rec'}(${rec'})";
+          };
+          null = {
+            wrap = lib': ty: lib'.nullOr ty;
+            def = v: v;
+            lit = rec': "${rec'}(${rec'})";
+          };
+        };
+        sig =
+          ty:
+          (if ty ? typeMergeRel then "G" else "N")
+          + (if ty ? nestedTypes.elemType then "(${sig ty.nestedTypes.elemType})" else "");
+        read =
+          eng: Ts: def:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            tried = builtins.tryEval (
+              builtins.deepSeq r.config.x "${sig r.options.x.type} v=${builtins.toJSON r.config.x}"
+            );
+          in
+          if tried.success then tried.value else "REFUSED";
+        table =
+          side: lit: lit':
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  leaf:
+                  builtins.concatMap (
+                    shape:
+                    let
+                      s = shapes.${shape};
+                      aLib = if side == "gg" then t else np.types;
+                      bLib = if side == "nn" then np.types else t;
+                      a' = s.wrap aLib aLib.${leaf};
+                      b = s.wrap bLib bLib.${leaf};
+                      v = " v=${builtins.toJSON (s.def leaves.${leaf})}";
+                      want = (s.lit (if side == "gg" then "G" else "N")) + v;
+                    in
+                    [
+                      {
+                        name = "${eng}-${leaf}-${shape}-o12";
+                        value = [
+                          (read eng [ a' b ] (s.def leaves.${leaf}))
+                          want
+                        ];
+                      }
+                      {
+                        name = "${eng}-${leaf}-${shape}-o21";
+                        value = [
+                          (read eng [ b a' ] (s.def leaves.${leaf}))
+                          want
+                        ];
+                      }
+                    ]
+                  ) (builtins.attrNames shapes)
+                ) (builtins.attrNames leaves)
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        pairs = tbl: builtins.mapAttrs (_: v: builtins.elemAt v 0) tbl;
+        wants = tbl: builtins.mapAttrs (_: v: builtins.elemAt v 1) tbl;
+        mixed = table "mixed" null null;
+        ref = table "nn" null null;
+        gg = table "gg" null null;
+        # PIN OF THE PARTNER'S OWN DIVERGENCE, not of a gen property: the partner's `typeMerge` refuses
+        # where its functor's relation serves. A partner whose own `typeMerge` disagrees with the relation its functor states: where gen
+        # decides it gets the FUNCTOR's relation (4v489), never the partner's own `typeMerge`. Where the
+        # partner decides it refuses, as it does beside nixpkgs' own `int`, so that order stays refused.
+        hand = np.types.int // {
+          typeMerge = _: null;
+        };
+        # PIN OF THE PARTNER'S OWN DIVERGENCE (nixpkgs' own `int` beside it is order-dependent too). A
+        # partner named like the leaf whose functor republishes a differently named type: the join
+        # renames it, so it is not taken and the pair answers as it did before (`joinRenames`).
+        alias = np.types.mkOptionType {
+          name = "int";
+          description = "alias";
+          check = builtins.isInt;
+          merge = np.types.int.merge;
+          functor = np.types.int.functor // {
+            type = np.types.str;
+          };
+        };
+        # A raw foreign leaf whose functor omits `type`: the protocol's default would abort reading it,
+        # so the join is not taken and gen's own relation answers, as it did before (C1).
+        notype = np.types.int // {
+          functor = builtins.removeAttrs np.types.int.functor [ "type" ];
+        };
+        # The same pair at TWO definitions. The join hands the partner's record to the merge, so a pair
+        # nixpkgs refuses at two definitions is refused np-first too, where gen's own record served it:
+        # `raw` at two equal definitions or two list definitions, `anything` at two unequal list
+        # definitions, bare and under `nullOr`, in both engines (12 rows moved from served to REFUSED).
+        # That is nixpkgs' answer in the order where it decides, and `ref` reads it live.
+        twoCases = {
+          int = [ "eq2" ];
+          raw = [
+            "eq2"
+            "lst2"
+          ];
+          anything = [
+            "eq2"
+            "lst2"
+            "lst2b"
+          ];
+        };
+        twoDefs =
+          side:
+          let
+            defsOf = v: {
+              eq2 = [
+                v
+                v
+              ];
+              lst2 = [
+                [ v ]
+                [ v ]
+              ];
+              lst2b = [
+                [ v ]
+                [
+                  v
+                  v
+                ]
+              ];
+            };
+          in
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  leaf:
+                  builtins.concatMap (
+                    ds:
+                    builtins.concatMap
+                      (
+                        shape:
+                        let
+                          s = shapes.${shape};
+                          aLib = if side == "nn" then np.types else t;
+                          a' = s.wrap aLib aLib.${leaf};
+                          b = s.wrap np.types np.types.${leaf};
+                          rd =
+                            Ts:
+                            let
+                              r = engines.${eng}.ev {
+                                modules =
+                                  map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts
+                                  ++ map (d: { x = d; }) (defsOf leaves.${leaf}).${ds};
+                              };
+                              tried = builtins.tryEval (builtins.deepSeq r.config.x "served");
+                            in
+                            if tried.success then tried.value else "REFUSED";
+                        in
+                        [
+                          {
+                            name = "${eng}-${leaf}-${ds}-${shape}-o12";
+                            value = rd [
+                              a'
+                              b
+                            ];
+                          }
+                          {
+                            name = "${eng}-${leaf}-${ds}-${shape}-o21";
+                            value = rd [
+                              b
+                              a'
+                            ];
+                          }
+                        ]
+                      )
+                      [
+                        "bare"
+                        "null"
+                      ]
+                  ) twoCases.${leaf}
+                ) (builtins.attrNames twoCases)
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        twoWant = builtins.mapAttrs (
+          k: _:
+          let
+            parts = builtins.match "(np|gm)-([a-z]+)-([a-z0-9]+)-(bare|null)-(o12|o21)" k;
+            leaf = builtins.elemAt parts 1;
+            ds = builtins.elemAt parts 2;
+          in
+          if leaf == "raw" || (leaf == "anything" && ds == "lst2b") then "REFUSED" else "served"
+        ) (twoDefs "nn");
+        partnerRows =
+          p:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (eng: [
+                {
+                  name = "${eng}-o12";
+                  value = read eng [ p t.int ] 1;
+                }
+                {
+                  name = "${eng}-o21";
+                  value = read eng [ t.int p ] 1;
+                }
+              ])
+              [
+                "np"
+                "gm"
+              ]
+          );
+      in
+      {
+        expr = {
+          mixed = pairs mixed;
+          ref = pairs ref;
+          gg = pairs gg;
+          hand = partnerRows hand;
+          alias = partnerRows alias;
+          notype = partnerRows notype;
+          two = twoDefs "mixed";
+          twoRef = twoDefs "nn";
+        };
+        expected = {
+          mixed = wants mixed;
+          ref = wants ref;
+          gg = wants gg;
+          hand = {
+            np-o12 = "N v=1";
+            np-o21 = "REFUSED";
+            gm-o12 = "N v=1";
+            gm-o21 = "REFUSED";
+          };
+          notype = {
+            np-o12 = "REFUSED";
+            np-o21 = "N v=1";
+            gm-o12 = "G v=1";
+            gm-o21 = "N v=1";
+          };
+          two = twoWant;
+          twoRef = twoWant;
+          alias = {
+            np-o12 = "REFUSED";
+            np-o21 = "REFUSED";
+            gm-o12 = "G v=1";
+            gm-o21 = "REFUSED";
           };
         };
       };
@@ -732,7 +1028,7 @@ in
             path = {
               rel = [ "merged" ];
               union = np.mapAttrs (
-                _: np.mapAttrs (_: l: if l == "REFUSED" then "REFUSED" else "${l}(${l},${l})")
+                _: np.mapAttrs (_: l: if l == "REFUSED" then "REFUSED" else "${l}(${l},N)")
               ) epath.leaf;
             };
           };

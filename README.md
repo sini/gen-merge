@@ -1092,8 +1092,9 @@ Two rules that look like details and are not:
   constructions (`struct`, two enum names) or a payload could not be read (a sealed or foreign
   partner) — gen-merge's own refusal on the declaration path, nixpkgs' `already declared` under a
   foreign mount — instead of a wrong type. A leaf with no mint at all (an `enum` over a path, a
-  self-referential type) keeps refusing: its parameters live behind its own predicate. A **nullary** leaf keeps its self-merge: it has no
-  parameters to compare.
+  self-referential type) keeps refusing: its parameters live behind its own predicate. A **nullary** leaf has no
+  parameters to compare: a gen × gen pair keeps its self-merge, and a gen leaf facing a raw foreign nullary
+  leaf answers the partner's record (see "A foreign payload is read only where it is read WHOLE").
 
 ### `emptyValue` — when "nothing was defined" is not an error
 
@@ -1278,7 +1279,9 @@ foreign engine can recover this type from, in the foreign spellings:
 
 ```nix
 # nullary — raw, anything, deferredModule, every gen-types leaf
-{ name; type; payload = null; binOp = _a: _b: null; }      # same name ⇒ the type itself
+{ name; type; payload = null; binOp = _a: _b: null; }      # same name ⇒ the deciding side's own record;
+                                                           # a gen leaf facing a raw foreign nullary leaf
+                                                           # answers the partner's
 # one-element containers — listOf, attrsOf, lazyAttrsOf, nullOr  (gen role: `element`)
 { payload = { elemType; }; type = p: rebuild p.elemType; }
 # submodule — the parameter is the MODULE LIST              (gen role: `moduleSet`)
@@ -1329,6 +1332,22 @@ own stays order-dependent, as it is beside nixpkgs' twin; and a partner whose `f
 with its own `typeMerge` gets that functor's relation in the order where gen decides. For the same reason an element that states no parameter at
 all — a gen-types **parametric** leaf (`enum`, `struct`, `union`) reaches the unified namespace as a
 bare constructor — makes its container not mergeable instead of aborting on a missing attribute.
+
+**A nullary leaf pair is joined in the partner's published functor** (`interface.joinLeafInStatedRelation`,
+called from the leaf relation behind `other ? typeMergeRel`, so a gen × gen pair builds nothing). A gen
+leaf facing a RAW foreign leaf of the same key (equal `functor.name`, both payloads null, a `type` the
+functor names) answers the protocol's default over that functor, which is the record the partner's twin
+answers in the order where it decides: a mixed `int`/`bool`/`float`/`raw`/`anything` redeclaration, bare
+or under `listOf`/`nullOr`, has nixpkgs' declared type in both orders and under both engines. It refuses
+nothing it did not refuse: the join is taken only where it keeps each operand's stated name, and a
+partner whose functor states a payload (nixpkgs `path`) or no `type` is answered by gen's own relation
+as before. The partner's own `typeMerge` is never called. Two stated scopes. **A pair nixpkgs refuses at
+two definitions is refused np-first too** (`raw` at two equal or two list definitions, `anything` at two
+unequal lists; both engines), where gen's own record served it: that is nixpkgs' answer in the order
+where it decides. **`attrs` is a stated divergence**: gen's `attrs` fold refuses a same-key collision
+(owner-ruled, `den-hoag-241d7`: union with refusal; the last-wins fold is rejected), nixpkgs' `//` takes
+the last, so a foreign `attrs` stays refused and nixpkgs' engine stays order-dependent for it. Leaves
+whose functor disagrees on identity (`str`, `number`, `path`, `deferredModule`) are `den-hoag-46zga`'s.
 
 **The relation is published as `genMerge.mergeTypes a b`** — the merged type or `null` — the one
 binding the declaration stratum and the structural element folds both answer through. It asks a gen

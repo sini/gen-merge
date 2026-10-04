@@ -140,10 +140,22 @@ let
       missingRecarry =
         if declaresRole && !(t ? recarry) && !(t ? retainedRelation) then [ "recarry" ] else [ ];
       missing = missingSub ++ missingRecarry;
+      # ONE CARVE-OUT, as `elementRel`'s: a RAW foreign nullary partner of the same key is joined in its
+      # own published functor (`interface.joinLeafInStatedRelation`), so the declared type is the partner's
+      # record in both orders. A gen partner, a payload-bearing one and a refused join answer `self`.
       nullaryRel =
         other:
         if isAttrs other && (keyOf other) == name then
-          { merged = self; }
+          {
+            merged =
+              if other ? typeMergeRel then
+                self
+              else
+                let
+                  foreignJoin = interface.joinLeafInStatedRelation { inherit name self; } other;
+                in
+                if foreignJoin == null then self else foreignJoin;
+          }
         else
           { refused = "`${nameOf t}' and `${nameOf other}'"; };
     in

@@ -2311,6 +2311,27 @@ let
     in
     if joined == null || joinRenames joined self || joinRenames joined other then null else joined;
 
+  # THE SAME JOIN FOR A LEAF, against a RAW foreign partner that is a leaf too (nullary: no payload). The
+  # protocol's default relation over the partner's PUBLISHED functor answers `f.type`, the deciding
+  # side's own record; here the partner is the decider's twin, so the answer is the record the partner's
+  # functor names, which is what nixpkgs' twin answers in the order where it decides. Taken only where
+  # the join keeps each operand's stated name (`joinRenames`), as `joinCarriedInStatedRelation` does;
+  # `null` otherwise, and the caller's own relation then answers as it did before. A partner stating a
+  # payload (nixpkgs `path`) is not a nullary leaf and is not joined here, and neither is one whose
+  # functor names no `type` (the protocol's default would abort reading it): gen's own relation answers.
+  joinLeafInStatedRelation =
+    { name, self }:
+    other:
+    let
+      pf = other.functor or null;
+      joined =
+        if !(statesRelation other) || !(pf ? type) || (pf.payload or null) != null then
+          null
+        else
+          protoTypeMerge (pf // { inherit name; }) pf;
+    in
+    if !(isAttrs joined) || joinRenames joined self || joinRenames joined other then null else joined;
+
   # The module-set payload a gen nesting type offers a foreign engine, as ONE binding read by
   # `exportType` and by `joinInStatedRelation`'s callers.
   moduleSetPayload =
@@ -3170,6 +3191,7 @@ in
     joinInStatedRelation
     joinCarriedInStatedRelation
     joinInRebuiltPartner
+    joinLeafInStatedRelation
     moduleSetPayload
     canNest
     declaresNesting
