@@ -493,7 +493,10 @@ reusing the previous result's declared-leaf values/provenance for locs provably 
 re-merging only the rest inside the normal fixpoint:
 
 ```nix
-evalModuleTree { warmFrom = prevResult; editedModules = edited; } (base ++ edited)
+evalModuleTree {
+  warmFrom      = prevResult;     # the PREVIOUS evalModuleTree result (its config/provenance/freeform ARE the memo)
+  editedModules = edited;         # the APPENDED module list
+} (base ++ edited)                # the full list
 ```
 
 Default (`warmFrom = null`, `editedModules = [ ]`) ⇒ **zero behaviour change**: the decision is never
