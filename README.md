@@ -1345,9 +1345,9 @@ as before. The partner's own `typeMerge` is never called. Two stated scopes. **A
 two definitions is refused np-first too** (`raw` at two equal or two list definitions, `anything` at two
 unequal lists; both engines), where gen's own record served it: that is nixpkgs' answer in the order
 where it decides. **`attrs` is a stated divergence**: gen's `attrs` fold refuses a same-key collision
-(owner-ruled, `den-hoag-241d7`: union with refusal; the last-wins fold is rejected), nixpkgs' `//` takes
+(union with refusal; the last-wins fold is rejected as silent and order-dependent), nixpkgs' `//` takes
 the last, so a foreign `attrs` stays refused and nixpkgs' engine stays order-dependent for it. Leaves
-whose functor disagrees on identity (`str`, `number`, `path`, `deferredModule`) are `den-hoag-46zga`'s.
+whose functor disagrees on identity (`str`, `number`, `path`, `deferredModule`) are outside this rule.
 
 **The relation is published as `genMerge.mergeTypes a b`** — the merged type or `null` — the one
 binding the declaration stratum and the structural element folds both answer through. It asks a gen
