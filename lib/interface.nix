@@ -1946,9 +1946,11 @@ let
 
   # A partner type RECOVERED from its own functor. This is the whole reason gen's relation can stay
   # row-free: nixpkgs hands the second operand as a functor — a payload row both sides must agree on
-  # — but `f.type` is by construction a function of `f`'s OWN payload, so reconstructing the partner
-  # from its own functor is well-typed whatever shape that payload has, foreign or ours. The row is
-  # consumed here and a TYPE is what leaves.
+  # — and `f.type` is the partner's own constructor, so reconstructing the partner from its own
+  # functor is well-typed whatever shape that payload has, foreign or ours. The protocol's spelling
+  # makes `f.type` a function of the payload; nixpkgs' `either`/`oneOf` instead leave it the
+  # constructor curried over the member pair, so an ALTERNATIVES payload is applied positionally
+  # (`rebuiltFromPayload`). The row is consumed here and a TYPE is what leaves.
   importedPartner =
     f:
     if !(isAttrs f) || !(f ? type) || f.type == null then
@@ -1960,9 +1962,26 @@ let
       if payload == null then
         (if isFunction f.type then null else f.type)
       else if isFunction f.type then
-        f.type payload
+        (if payloadRole payload == "alternatives" then rebuiltFromPayload f payload else f.type payload)
       else
         null;
+
+  # `f.type` APPLIED TO AN ALTERNATIVES PAYLOAD (the caller tests the role, so no other payload pays
+  # for this), with the one foreign spelling where that is not the protocol: nixpkgs' `either` states
+  # its relation in an overridden `typeMerge` and leaves `functor.type` as the constructor itself,
+  # curried over the member pair, so `f.type payload` is a FUNCTION awaiting a second member. An
+  # application that answers a function is therefore applied positionally, the way
+  # `roleSpelling.alternatives` already reads that payload. Keyed on the role and the application's
+  # result, never on a constructor name.
+  rebuiltFromPayload =
+    f: payload:
+    let
+      applied = f.type payload;
+    in
+    if isFunction applied && length payload.elemType == 2 then
+      f.type (head payload.elemType) (elemAt payload.elemType 1)
+    else
+      applied;
 
   # importType — the inbound arm as one translation, for a foreign record entering this library
   # whole: a consumer's `mkOptionType` descriptor, or a leaf vocabulary injected in place of gen's.
@@ -2258,6 +2277,37 @@ let
               ${roleSpelling.${role}.payloadKey} = carried;
             };
           } other;
+    in
+    if joined == null || joinRenames joined self || joinRenames joined other then null else joined;
+
+  # THE JOIN FOR A UNION, against a RAW foreign partner whose relation is NOT in its functor: nixpkgs'
+  # `either` overrides `typeMerge` and publishes a `binOp` its own payload (a member LIST) cannot be
+  # applied to, so the protocol's default over that functor (`joinInStatedRelation`) is not the
+  # relation its constructor states. The partner is REBUILT from its published functor
+  # (`importedPartner`), and the rebuilt record's relation is applied to this type's published
+  # functor: the application nixpkgs makes in the order where the partner's constructor decides, so
+  # both orders compute one function of one pair — ORDER-INDEPENDENT BY CONSTRUCTION ONLY WHERE THAT
+  # RELATION ANSWERS a join the witness keeps; elsewhere the pair falls back to the caller's own
+  # relation and keeps that relation's order behaviour (an `ints.u8` member, a `path` member). As with
+  # `joinInStatedRelation`, the partner's OWN `typeMerge` is never called: a partner whose `typeMerge`
+  # disagrees with its functor gets its functor's constructor. Held to the same witness as every
+  # foreign join. A FOREIGN ANSWER THAT ABORTS IS NO ANSWER: the rebuilt relation runs foreign code
+  # over gen's members (nixpkgs' `path` asserts on gen `path`'s null payload), so it is taken through
+  # `tryEval`, the idiom `lib/default.nix` uses, and this relation stays a value or a named refusal
+  # (ADR-0025 item 1).
+  joinInRebuiltPartner =
+    { role, self }:
+    other:
+    let
+      partner =
+        if other ? carries || importedOffered role other == null then
+          null
+        else
+          importedPartner (other.functor or null);
+      asked =
+        if !(isAttrs partner) || !(partner ? typeMerge) then null else partner.typeMerge self.functor;
+      tried = builtins.tryEval asked;
+      joined = if tried.success then tried.value else null;
     in
     if joined == null || joinRenames joined self || joinRenames joined other then null else joined;
 
@@ -3119,6 +3169,7 @@ in
     isNesting
     joinInStatedRelation
     joinCarriedInStatedRelation
+    joinInRebuiltPartner
     moduleSetPayload
     canNest
     declaresNesting

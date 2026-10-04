@@ -1200,6 +1200,26 @@ let
     };
   option = nullOr;
 
+  # `either a b`'s own relation over a partner that offers its member pair: both members merge
+  # pairwise or the pair refuses. Bound at file level, not inside `either`, so it costs a gen × gen
+  # pair no thunk per construction or per call.
+  eitherMemberwise =
+    a: b: other:
+    let
+      alts = interface.importedOffered "alternatives" other;
+    in
+    if alts == null || !(isList alts) || length alts != 2 then
+      { refused = "`either' and a partner that states no member pair"; }
+    else
+      let
+        left = mergeElemTypes a (head alts);
+        right = mergeElemTypes b (elemAt alts 1);
+      in
+      if left == null || right == null then
+        { refused = "`either' and `either', whose members do not merge pairwise"; }
+      else
+        { merged = either left right; };
+
   # either A B — recursion-safe lazy union: merge through the member that accepts EVERY definition,
   # or refuse by name (byte-mode best-effort; the surface's only use is aspectOrFn where A's domain
   # is total).
@@ -1274,25 +1294,24 @@ let
         b
       ];
       recarry = c: either (head c.alternatives) (elemAt c.alternatives 1);
+      # ★ ONE CARVE-OUT, against a RAW FOREIGN partner (nixpkgs' `either`, whose relation is in its
+      # `typeMerge` and not its functor): the partner rebuilt from its published functor decides
+      # (`interface.joinInRebuiltPartner`), as `elementRel`'s carve-out does for a container. The
+      # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
       typeMergeRel =
         other:
         if !(isAttrs other) || (keyOf other) != "either" then
           { refused = "`either' and `${nameOf other}'"; }
+        else if other ? carries then
+          eitherMemberwise a b other
         else
           let
-            alts = interface.importedOffered "alternatives" other;
+            foreignJoin = interface.joinInRebuiltPartner {
+              role = "alternatives";
+              self = either a b;
+            } other;
           in
-          if alts == null || !(isList alts) || length alts != 2 then
-            { refused = "`either' and a partner that states no member pair"; }
-          else
-            let
-              left = mergeElemTypes a (head alts);
-              right = mergeElemTypes b (elemAt alts 1);
-            in
-            if left == null || right == null then
-              { refused = "`either' and `either', whose members do not merge pairwise"; }
-            else
-              { merged = either left right; };
+          if foreignJoin != null then { merged = foreignJoin; } else eitherMemberwise a b other;
       substructure = {
         # A union's members introduce no path level, so it declares nothing of its own — stated
         # rather than inherited, because the pair lives in `carries` and this does not read it.

@@ -1269,8 +1269,10 @@ predicate.
 The boundary derives **both** `typeMerge` and `functor` from the one relation, except where the
 record stated its own relation — that pair is retained under a gen name at import and republished
 verbatim, the author's functor name governing. Outbound, it recovers
-the partner from that partner's OWN functor (`f.type` is by construction a function of `f`'s own
-payload, so the reconstruction is well-typed whatever shape the payload has) and hands a TYPE to the
+the partner from that partner's OWN functor (`f.type` is the partner's own constructor: a function of
+the payload in the protocol's spelling, or, for an alternatives payload whose application answers a
+function, as nixpkgs' `either`/`oneOf` publish it, the constructor applied positionally to its
+members; so the reconstruction is well-typed whatever shape the payload has) and hands a TYPE to the
 relation — no payload-shape agreement is needed on gen's side. Inbound, it publishes a functor a
 foreign engine can recover this type from, in the foreign spellings:
 
@@ -1304,8 +1306,19 @@ engine, and refuses where nixpkgs' `binOp` refuses. It is taken only where it ke
 stated name (`interface.joinRenames`), so a pair gen's own relation refuses (`ints.u8` beside `int`)
 stays refused. The cost is a property of this arm: a mixed redeclaration pays about +685 thunks per
 redeclared option (`nullOr (listOf int)`, linear, measured on Nix 2.34.8), a gen × gen pair pays about
-+8, and the perf bench does not reach it. `either`/`oneOf` are not covered (their payload is a list and
-the partner overrides `typeMerge`). A gen nesting type (`submodule`, the tree) facing a
++8, and the perf bench does not reach it. `either`/`oneOf` are covered by their own rule, because the
+partner's relation is in its overridden `typeMerge` and not its functor: gen's `either` facing a raw
+foreign partner that offers its member pair whole REBUILDS that partner from its published functor and
+asks the rebuilt record's relation over gen's own functor (`interface.joinInRebuiltPartner`), the
+application nixpkgs makes in the other order, so the merged type is nixpkgs' record, leaves included,
+in both orders and under both engines (`either`, `oneOf`, a union inside a container). It is
+order-independent by construction only where that relation answers a join the witness keeps;
+elsewhere the pair falls back to gen's own relation and keeps its order behaviour (`ints.u8` stays
+refused; a `path` member, whose leaf pair is order-dependent on its own, keeps that leaf's behaviour).
+A foreign answer that aborts is taken as no answer (`tryEval`), so the relation stays total. The
+partner's own `typeMerge` is never called. Price (Δ thunks per option, Nix 2.34.8): a gen × gen
+`listOf` pays +1 on nixpkgs' engine and 0 on gen's, a gen × gen `either` +2 and 0, and a mixed `either`
+about +300 against gen's engine's former (wrong-record) answer. A gen nesting type (`submodule`, the tree) facing a
 same-named partner that offers it nothing is not refused for that: its parameters embed into the
 partner's richer `submoduleWith` payload, so it hands the pair to the protocol's default relation over
 the partner's PUBLISHED functor (`interface.joinInStatedRelation`, over `interface.moduleSetPayload`),

@@ -521,6 +521,223 @@ in
         };
       };
 
+    # zcufn: ONE option declared by a nixpkgs union (`either`, `oneOf`) and a gen one has ONE declared
+    # type whichever declaration comes first, under either engine: nixpkgs' own, at every member.
+    # nixpkgs' `either` states its relation in `typeMerge` and publishes a functor whose `binOp` its
+    # list payload cannot feed and whose `type` is the constructor curried over the members, so the
+    # partner is REBUILT from that functor and the rebuilt record's relation decides
+    # (`interface.joinInRebuiltPartner`). `sig` reads whose record each level is, by `typeMergeRel`,
+    # which a gen LEAF states too (a `carries` test is blind at the leaf). `ref` is the gen side
+    # replaced by its nixpkgs twin, live, and pinned. `hand` is a partner named `either` whose own
+    # `typeMerge` refuses everything: the rebuild never calls it, so the pair answers as the twin does.
+    # `u8` pins the refusal the witness keeps (ADR-0025 item 1); nixpkgs' engine serves it gen-first,
+    # deciding alone (zvidt §2.4 item 1).
+    test-mixed-union-redeclaration-record-is-order-independent =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalModuleTree;
+            mk = mkOption;
+          };
+        };
+        shapes = {
+          int-bool = lib': lib'.either lib'.int lib'.bool;
+          list-bool = lib': lib'.either (lib'.listOf lib'.int) lib'.bool;
+          nested = lib': lib'.either (lib'.either lib'.int lib'.bool) (lib'.nullOr lib'.int);
+          one-of =
+            lib':
+            lib'.oneOf [
+              lib'.int
+              lib'.bool
+              (lib'.listOf lib'.int)
+            ];
+          list-of-either = lib': lib'.listOf (lib'.either lib'.int lib'.bool);
+        };
+        sig =
+          fuel: ty:
+          let
+            n = ty.nestedTypes or { };
+            kids = builtins.filter (
+              k:
+              builtins.elem k [
+                "left"
+                "right"
+                "elemType"
+              ]
+            ) (builtins.attrNames n);
+          in
+          (if ty ? typeMergeRel then "G" else "N")
+          + (
+            if fuel == 0 || kids == [ ] then
+              ""
+            else
+              "(" + builtins.concatStringsSep "," (map (k: sig (fuel - 1) n.${k}) kids) + ")"
+          );
+        read =
+          eng: Ts:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts;
+            };
+            tried = builtins.tryEval (sig 4 r.options.x.type);
+          in
+          if tried.success then tried.value else "REFUSED";
+        pairs =
+          f:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  k:
+                  let
+                    ab = f k;
+                  in
+                  [
+                    {
+                      name = "${eng}-${k}-o12";
+                      value = read eng [
+                        ab.a
+                        ab.b
+                      ];
+                    }
+                    {
+                      name = "${eng}-${k}-o21";
+                      value = read eng [
+                        ab.b
+                        ab.a
+                      ];
+                    }
+                  ]
+                ) (builtins.attrNames shapes)
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        table =
+          twin:
+          pairs (k: {
+            a = shapes.${k} np.types;
+            b = shapes.${k} (if twin then np.types else t);
+          });
+        orders = eng: a: b: {
+          o12 = read eng [
+            a
+            b
+          ];
+          o21 = read eng [
+            b
+            a
+          ];
+        };
+        hand = np.types.either np.types.int np.types.bool // {
+          typeMerge = _: null;
+        };
+        u8 = np.types.either np.types.ints.u8 np.types.bool;
+        # A foreign answer that ABORTS is no answer: nixpkgs' `either` relation asks nixpkgs' `path`
+        # about gen's `path`, whose null payload trips nixpkgs' `defaultTypeMerge` assertion. The
+        # relation stays total (`rel`), and the union mirrors its bare `path` member pair (`leaf`),
+        # whatever that pair answers (its order dependence is the leaf's own, den-hoag-46zga).
+        epath = {
+          rel =
+            let
+              r = builtins.tryEval (
+                builtins.attrNames (
+                  (t.either t.path t.int).typeMergeRel (np.types.either np.types.path np.types.int)
+                )
+              );
+            in
+            if r.success then r.value else "ABORT";
+          leaf = np.genAttrs [ "np" "gm" ] (eng: orders eng np.types.path t.path);
+          union = np.genAttrs [ "np" "gm" ] (
+            eng: orders eng (np.types.either np.types.path np.types.int) (t.either t.path t.int)
+          );
+        };
+      in
+      {
+        expr = {
+          mixed = table false;
+          ref = table true;
+          hand = {
+            np = orders "np" hand (t.either t.int t.bool);
+            gm = orders "gm" hand (t.either t.int t.bool);
+            ref = orders "gm" hand (np.types.either np.types.int np.types.bool);
+          };
+          u8 = {
+            np = orders "np" u8 (t.either t.int t.bool);
+            gm = orders "gm" u8 (t.either t.int t.bool);
+          };
+          path = {
+            inherit (epath) rel union;
+          };
+        };
+        expected =
+          let
+            spine = {
+              int-bool = "N(N,N)";
+              list-bool = "N(N(N),N)";
+              nested = "N(N(N,N),N(N))";
+              one-of = "N(N(N,N),N(N))";
+              list-of-either = "N(N(N,N))";
+            };
+            pinned = builtins.listToAttrs (
+              builtins.concatMap
+                (
+                  eng:
+                  builtins.concatMap (k: [
+                    {
+                      name = "${eng}-${k}-o12";
+                      value = spine.${k};
+                    }
+                    {
+                      name = "${eng}-${k}-o21";
+                      value = spine.${k};
+                    }
+                  ]) (builtins.attrNames shapes)
+                )
+                [
+                  "np"
+                  "gm"
+                ]
+            );
+            handPair = {
+              o12 = "N(N,N)";
+              o21 = "REFUSED";
+            };
+          in
+          {
+            mixed = pinned;
+            ref = pinned;
+            hand = {
+              np = handPair;
+              gm = handPair;
+              ref = handPair;
+            };
+            u8 = {
+              np = {
+                o12 = "REFUSED";
+                o21 = "N(N,N)";
+              };
+              gm = {
+                o12 = "REFUSED";
+                o21 = "REFUSED";
+              };
+            };
+            path = {
+              rel = [ "merged" ];
+              union = np.mapAttrs (
+                _: np.mapAttrs (_: l: if l == "REFUSED" then "REFUSED" else "${l}(${l},${l})")
+              ) epath.leaf;
+            };
+          };
+      };
+
     # 4v489: ONE option declared by a nixpkgs nesting type and a gen one has ONE answer whichever
     # declaration comes first, under either engine: nixpkgs' answer. gen's parameters embed into the
     # partner's richer `submoduleWith` payload, so the pair is joined by the partner's own relation in

@@ -1178,6 +1178,27 @@ in
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
         };
       };
+      # zcufn: a mixed nixpkgs/gen union whose members do not merge pairwise keeps GEN's named reason in
+      # both orders. The rebuilt nixpkgs `either` relation answers nothing for this pair, so gen's own
+      # member-wise relation decides, and `tryEval` alone could not tell this reason from an abort.
+      test-mixed-union-members-that-do-not-merge-keep-gen-reason-np-first = {
+        expr = declaredTwice (nixpkgsLib.types.either nixpkgsLib.types.int nixpkgsLib.types.bool) (
+          t.either t.int (t.listOf t.int)
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`either' and `either', whose members do not merge pairwise\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
+      test-mixed-union-members-that-do-not-merge-keep-gen-reason-gen-first = {
+        expr = declaredTwice (t.either t.int (t.listOf t.int)) (
+          nixpkgsLib.types.either nixpkgsLib.types.int nixpkgsLib.types.bool
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`either' and `either', whose members do not merge pairwise\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
       # THE PARAMETRIC ARM. A gen-types parametric leaf's `typeMergeRel` decides by MINTED
       # CONSTRUCTION, not by name, and two same-named `enum`s over different value sets now merge to
       # their union (the value cells are in ./tests/decl-merge.nix). What still refuses says WHICH of
