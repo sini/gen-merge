@@ -382,7 +382,7 @@ let
         v;
 
   # ── fixed-input core marker (design spec §2.5) ────────────────────────────
-  # A def value that CARRIES an already-merged subtree: `mkCoreValue { digest; values; }` tags
+  # A def value that CARRIES an already-merged subtree: `mkCoreValue digest values` tags
   # `values` (the by-contract full-merge output for a whole loc) so a consumer (gen-class tier-2)
   # can hand the engine a pre-computed result and skip the discharge/fold/verify spine for that loc.
   # This is a DIFFERENT insertion point from the README's per-option combine-kernel seam (that swaps
@@ -4906,7 +4906,7 @@ let
           # the scope here; it is NOT that the nested view is unreachable. A consumer that wants it
           # re-derives it at the DECLARATION stratum, which the protocol already exposes: the type's
           # `getSubModules` are the sub-modules and `getSubOptions` is the nested decl tree, so
-          # `evalModuleTree { modules = ty.getSubModules; }` yields the nested records without
+          # `evalModuleTree { } ty.getSubModules` yields the nested records without
           # touching `merge` at all. Worth knowing before reaching for it: those re-derived records
           # report `declarations = [ "<gen-merge>" ]`, because sub-modules carry no `_file` — which
           # is a reason for the parent not to fold that view into its own report rather than a

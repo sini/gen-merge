@@ -319,7 +319,7 @@ let
     else
       "unset";
 
-  # `bandedLeaves { scope; result; }`: per leaf of one `evalModuleTree` result, the record its
+  # `bandedLeaves scope result`: per leaf of one `evalModuleTree` result, the record its
   # contributor moves or the record of why it moves nothing. An attrset mirroring `provenance`, so it
   # is LAZY PER LOC: the walk decides leafness from the declaration (`result.options`) and never
   # forces a declared leaf's record to build the tree. Reading one leaf costs what reading its

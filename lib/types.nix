@@ -745,7 +745,7 @@ let
             { merged = mkSubmodule (args // partnerArgs) (partnerMods ++ mods); };
       substructure = {
         # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
-        #   declares = prefix: (evalModuleTree { inherit modules prefix; }).options
+        #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
         # Reads `.options` off the same nested fixpoint the fold builds, with no defs supplied, so
         # the two halves cannot disagree about what a submodule declares and no instance-authored
         # value is forced.
