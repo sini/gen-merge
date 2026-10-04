@@ -279,28 +279,41 @@ in
       expr = perRecord (n: r: (gm.${n} (r.good // { ${stranger} = 1; })).name == (gm.${n} r.good).name);
       expected = perRecord (_: _: true);
     };
-    # The roles are read by name: the relation is asked of `deciding`. A gen type deciding over a
-    # partner it refuses answers `null` in either place, and a merge answers in both.
-    test-the-record-reads-its-operands-by-role = {
-      expr = {
-        same =
-          (gm.mergeTypes {
+    # The roles are read by name: the relation is asked of `deciding`. `greedy` is a gen type whose
+    # own relation merges with anything, so it answers only where it decides; in the partner's place
+    # `int`'s relation decides, and refuses. A door that swapped or ignored the roles reads the same
+    # answer both ways. The `int`/`int` pair is the live control that the door answers at all.
+    test-the-relation-is-asked-of-deciding = {
+      expr =
+        let
+          greedy = t.defineType (
+            t.str
+            // {
+              name = "greedy";
+              typeMergeRel = _: { merged = t.str; };
+            }
+          );
+        in
+        {
+          control =
+            (gm.mergeTypes {
+              deciding = t.int;
+              partner = t.int;
+            }).name;
+          greedyDecides =
+            (gm.mergeTypes {
+              deciding = greedy;
+              partner = t.int;
+            }).name;
+          intDecides = gm.mergeTypes {
             deciding = t.int;
-            partner = t.int;
-          }).name;
-        refusedOneWay = gm.mergeTypes {
-          deciding = t.int;
-          partner = t.str;
+            partner = greedy;
+          };
         };
-        refusedOtherWay = gm.mergeTypes {
-          deciding = t.str;
-          partner = t.int;
-        };
-      };
       expected = {
-        same = t.int.name;
-        refusedOneWay = null;
-        refusedOtherWay = null;
+        control = t.int.name;
+        greedyDecides = t.str.name;
+        intDecides = null;
       };
     };
     # D3.
