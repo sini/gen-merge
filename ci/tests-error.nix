@@ -1199,6 +1199,46 @@ in
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`either' and `either', whose members do not merge pairwise\\); declared in a\\.nix, b\\.nix$";
         };
       };
+      # zcufn: a definition no member accepts, under a mixed nixpkgs/gen `either int bool`, is refused
+      # with the nixpkgs × nixpkgs twin's text in both orders, because the declared type IS nixpkgs'
+      # record. Where nixpkgs' declaration comes first, base read gen's own fold refusal ("no single
+      # `either' member accepts") off the gen record it built.
+      test-mixed-union-bad-definition-has-the-twin-text-np-first =
+        let
+          npE = nixpkgsLib.types.either nixpkgsLib.types.int nixpkgsLib.types.bool;
+        in
+        {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                { options.x = gm.mkOption { type = npE; }; }
+                { options.x = gm.mkOption { type = t.either t.int t.bool; }; }
+                { x = "s"; }
+              ];
+            }).config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of type `signed integer or boolean'\\. TypeError: The option `x` is neither a value of type `signed integer` nor `boolean`";
+          };
+        };
+      test-mixed-union-bad-definition-has-the-twin-text-gen-first =
+        let
+          npE = nixpkgsLib.types.either nixpkgsLib.types.int nixpkgsLib.types.bool;
+        in
+        {
+          expr =
+            (gm.evalModuleTree {
+              modules = [
+                { options.x = gm.mkOption { type = t.either t.int t.bool; }; }
+                { options.x = gm.mkOption { type = npE; }; }
+                { x = "s"; }
+              ];
+            }).config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of type `signed integer or boolean'\\. TypeError: The option `x` is neither a value of type `signed integer` nor `boolean`";
+          };
+        };
       # THE PARAMETRIC ARM. A gen-types parametric leaf's `typeMergeRel` decides by MINTED
       # CONSTRUCTION, not by name, and two same-named `enum`s over different value sets now merge to
       # their union (the value cells are in ./tests/decl-merge.nix). What still refuses says WHICH of
