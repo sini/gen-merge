@@ -117,10 +117,12 @@ let
   # engine's own refusal, as `callM` refuses it. `file` mirrors the engine's inherited `_file` rule (a
   # path module's own `_file`, else its path string; else the module's `_file`, else the file of the
   # importer that reached it first, else the engine fallback at the root).
-  # RESIDUE: the lint applies no module, so a non-path function module whose `key` exists only after
-  # application is an anonymous node here and a keyed one to the engine, and a FUNCTION path module's
-  # in-file `_file` (visible only after application) is not read: the lint names its path where the
-  # engine names the `_file`.
+  # RESIDUE: the lint applies no module, so a key or `_file` that exists only after application is
+  # not read. A non-path function module is an anonymous node here and a keyed one to the engine; a
+  # FUNCTION path module is opaque and keyed apart (its own `"f"` namespace over its path), so it meets
+  # only itself, where the engine keys it by its in-file `key`; and its in-file `_file` is not read: the
+  # lint names its path where the engine names the `_file`. Either way the lint over-reports (two nodes
+  # where the engine has one) and never drops a module the engine evaluates.
   collect =
     parentFile: mods:
     let
@@ -133,10 +135,11 @@ let
             m = if loaded then import m0 else m0;
             fn = isFunction m || (isAttrs m && m ? __functor);
             self = {
-              key = moduleKeyOf importer i m0 m;
+              key = if loaded && fn then "f" + toString m0 else moduleKeyOf importer i m0 m;
               inherit fn;
               module = m;
-              file = if loaded then toString (m._file or m0) else (m0._file or (m._file or importer.file));
+              file =
+                if loaded then toString (m._file or m0) else toString (m0._file or (m._file or importer.file));
               next =
                 if fn then
                   [ ]

@@ -1867,8 +1867,8 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 ## Known byte-mode boundaries (deliberate)
 
 - **An explicit `key` spelled like an anonymous module's never meets it.** Module imports are graph
-  edges and a module is a node, identified by nixpkgs' key rule: an explicit `key` or a path module's
-  path in one namespace, an anonymous module (`<importer>:anon-<n>`) in another. nixpkgs keeps the
+  edges and a module is a node, identified by nixpkgs' key rule: an explicit `key` (a path module's
+  own, read after application, else its path) in one namespace, an anonymous module (`<importer>:anon-<n>`) in another. nixpkgs keeps the
   two in one string namespace, so a module with `key = ":anon-2"` merges there with the second
   anonymous top-level module (`[ { l = [ "a" ]; } { key = ":anon-2"; l = [ "b" ]; } ]` after a
   declaring module reads `[ "a" ]` in nixpkgs); here they are two nodes and read `[ "b" "a" ]`
@@ -1882,9 +1882,9 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   module; false, a non-boolean, or only one of the two publishing it is refused by name, the same in
   both import orders wherever both occurrences publish one symmetric `decide`, as gen-schema's do;
   gen-merge applies the kept occurrence's `decide`. A throw inside `decide` propagates. Where neither
-  publishes it, nixpkgs' rule holds and the later occurrence is dropped. Two path-keyed occurrences
-  are the one file and keep nixpkgs' rule; a path import sharing its key with a content module is
-  decided like any other pair. A module publishing `__keyEq` without a `key` is refused by name. gen-schema keys a
+  publishes it, nixpkgs' rule holds and the later occurrence is dropped. Two occurrences of one
+  spelled path are the one file and keep nixpkgs' rule; two different path files sharing an in-file
+  key, or a path import sharing its key with a content module, are decided like any other pair. A module publishing `__keyEq` without a `key` is refused by name. gen-schema keys a
   kind with parents by its mark and publishes its sealed comparison here (`ci/tests/key-eq.nix`).
 
 - **An import cycle terminates.** A keyed or path cycle (`a` imports `b` imports `a`, or a module
