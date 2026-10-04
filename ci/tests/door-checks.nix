@@ -55,8 +55,10 @@ let
         "specialArgs"
         "prefix"
       ];
-      apply = f: f [ declaresA ];
-      observe = r: r.a.loc;
+      # The declaration reads the `prefix` the stratum binds, so the option reaches the fold itself,
+      # not only the stamp on the declared record.
+      apply = f: f [ ({ prefix, ... }: { options.a = gm.mkOption { default = prefix; }; }) ];
+      observe = r: r.a.default;
       opt.prefix = [ "under" ];
     };
     deriveType = {
