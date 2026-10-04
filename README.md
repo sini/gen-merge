@@ -1395,6 +1395,20 @@ throw if forced, since a later declaration may merge the whole list: with `B = a
 whose `overridden` types then read `attrsOf` and the throw. A later **untyped** declaration does not defer the
 decision. The freeform plane reads its winner list through the same fold.
 
+**A type-merge refusal surfaces on the read that reaches the option**, so the result is as lazy as
+`declaredOptions` and nixpkgs. The declaration guard (ADR-0033) forces the key set and the `imports`
+expansion of every level, deciding leaf or group per declaring module, and never merges a
+redeclared leaf: a declared `type` is a descriptor field. So with `p` declared `str` in one module
+and `int` in another, `config.p` and `options.p` refuse with the type-merge text, while
+`options.q.type.name` of an unrelated `q` reads its answer. Which declarations are admitted does not
+depend on how many modules declare an option: a `type` read from a `_module.args` argument is
+admitted whether one module declares the option or several. **The cyclic case aborts uncatchably,
+a declared exception to the rule that every refusal is catchable**: where that argument's own value
+reads the option it types (`_module.args.ty = if config.p == … then str else int` beside
+`options.p.type = ty`), the read dies with `infinite recursion encountered` at any declaration
+count, as nixpkgs does. Refusing it by name would mean refusing every stratum-2 read in a declared
+`type`, including the common `(pkgs.formats.json { }).type`, which the guard admits.
+
 **An earlier gen-native relation's refusal is never overruled.** Each fold step first asks the
 earlier operand's `typeMergeRel`, if it has one, about the type every later declaration jointly
 became; a refusal there is the answer. So `[gt.int, Fint, str]` refuses as nixpkgs does. The veto

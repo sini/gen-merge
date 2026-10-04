@@ -1164,6 +1164,33 @@ in
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
         };
       };
+      # f010k's control: the declaration guard no longer merges a redeclared leaf, so the refusal
+      # surfaces from the value fold, whose key walk reaches every leaf. Reading only an unrelated
+      # option's VALUE still refuses with the same text; reading its descriptor does not
+      # (`decl-merge.test-a-type-clash-leaves-an-unrelated-options-type-readable`).
+      test-unmergeable-redeclaration-refuses-a-read-of-an-unrelated-value = {
+        expr =
+          (gm.evalModuleTree { } [
+            {
+              _file = "a.nix";
+              options.x = gm.mkOption { type = t.str; };
+            }
+            {
+              _file = "b.nix";
+              options.x = gm.mkOption { type = t.int; };
+            }
+            {
+              options.q = gm.mkOption {
+                type = t.str;
+                default = "q";
+              };
+            }
+          ]).config.q;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
+        };
+      };
       # zcufn: a mixed nixpkgs/gen union whose members do not merge pairwise keeps GEN's named reason in
       # both orders. The rebuilt nixpkgs `either` relation answers nothing for this pair, so gen's own
       # member-wise relation decides, and `tryEval` alone could not tell this reason from an abort.

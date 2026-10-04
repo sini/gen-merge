@@ -2603,8 +2603,16 @@ let
     else
       (positionArgsAt prefix).name;
 
-  declarationStratum = declarationStratumWith false;
-  declarationStratumPositioned = declarationStratumWith true;
+  declarationStratum = declarationStratumWith false redeclareDecl;
+  declarationStratumPositioned = declarationStratumWith true redeclareDecl;
+  declarationSpine = declarationStratumWith false spineRedeclare;
+  declarationSpinePositioned = declarationStratumWith true spineRedeclare;
+  # The guard's redeclaration step: keep the later operand. Its arity is `redeclareDecl`'s (sitesAt,
+  # loc, position, accumulated, later); the merge of k leaves is a leaf by construction, so the spine
+  # needs no merged record.
+  spineRedeclare =
+    _: _: _: _: bv:
+    bv;
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
@@ -3561,10 +3569,15 @@ let
   #
   # `positioned`: a positioned evaluation's `name` is a key of `declArgs` too, refusing as any
   # value-stratum argument does unless a caller supplied it, so a module reading `name` takes
-  # `callD`'s elided application. A curried flag, bound twice below, and not a key of the argument
-  # set: every nested evaluation's guard builds that set, and a key on it is paid per evaluation.
+  # `callD`'s elided application. A curried flag, and not a key of the argument set: every nested
+  # evaluation's guard builds that set, and a key on it is paid per evaluation.
+  #
+  # `onRedeclare`: the redeclaration step, curried the same way. `declarationStratum` and
+  # `declarationStratumPositioned` pass `redeclareDecl`; the guard's `declarationSpine` and
+  # `declarationSpinePositioned` pass `spineRedeclare`, which keeps the later operand and merges no
+  # type. The four bindings sit beside `namePlaceholder`.
   declarationStratumWith =
-    positioned:
+    positioned: onRedeclare:
     {
       modules,
       specialArgs ? { },
@@ -3665,7 +3678,7 @@ let
       # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
       # traced back to it, so guarding the producer here covers all five tags at any nesting depth
       # on both the `.options` and `.config` planes.
-      options = mergeOptionDeclTrees (redeclareDecl sitesAt) sitesAt prefix (
+      options = mergeOptionDeclTrees (onRedeclare sitesAt) sitesAt prefix (
         map (e: validateDeclSubtree prefix e.options) declEntries
       );
     };
@@ -4228,7 +4241,7 @@ let
         };
 
       # ── THE DECLARATION GUARD ─────────────────────────────────────────────────────────────────
-      # ADR-0033's stratification, enforced rather than arranged. `declarationStratum` applies this
+      # ADR-0033's stratification, enforced rather than arranged. `declarationSpine` applies this
       # module set with `config`, `options` and the module args bound to named refusals, and this
       # forces its declaration SPINE — every merged option path and every `imports` expansion, and
       # no descriptor field. A module whose option KEY SET or whose `imports` TARGETS are a function
@@ -4243,6 +4256,10 @@ let
       # same group recursion, so the same set of forced nodes — answered as a boolean rather than as
       # `deepSeq (declLeafPaths …)`, which builds and then forces a loc list per declared leaf that
       # nothing reads. Forcing is the whole of the guard; no path is its product.
+      #
+      # The spine needs leafness per declaring module and never the merged record, so the guard
+      # reads `declarationSpine`, whose redeclaration step keeps the later operand, and forces no
+      # type. A type-merge refusal surfaces from the value fold, on the read that reaches the option.
       declarationGuard =
         let
           spine =
@@ -4261,7 +4278,7 @@ let
             ) (attrNames t);
         in
         builtins.seq (spine
-          ((if knot.positioned then declarationStratumPositioned else declarationStratum) {
+          ((if knot.positioned then declarationSpinePositioned else declarationSpine) {
             inherit specialArgs prefix;
             modules = modList;
           }).options
@@ -4393,8 +4410,9 @@ let
           #
           # ★ THE SHAPE HERE IS `declarationStratum`'s, over the VALUE stratum's arguments, and the
           # guard above is what makes the two agree on everything a declaration is: the key set and
-          # the imports expansion. Where they could differ is the one place a descriptor is allowed
-          # to hold a stratum-2 value — its `default` — and that difference is the point.
+          # the imports expansion. Where they could differ is a descriptor field, which may hold a
+          # stratum-2 value (its `default`, `apply`, or a `type` read from a module argument), and
+          # that difference is the point.
           declEntries = prelude.imap0 declEntry flat;
           sitesAt = declaringSitesAt (length prefix) declEntries;
           # ONE door for the whole engine: every downstream reader (`mergeTree`'s

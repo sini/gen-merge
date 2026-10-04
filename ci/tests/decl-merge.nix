@@ -2139,5 +2139,43 @@ in
         alone = false;
       };
     };
+
+    # f010k: THE DECLARATION GUARD FORCES THE SPINE, NEVER THE MERGED RECORD. A declared `type` is a
+    # descriptor field, so the guard decides leaf or group per declaring module and merges no
+    # redeclared leaf. Two observable consequences, each a cell; the control (a read that reaches
+    # the clashing option still refuses with the type-merge text) is on `../tests-error.nix`.
+    #
+    # A `type` read from a `_module.args` argument is admitted however many modules declare the
+    # option. Declared once it always was; declared twice the guard once refused it with the
+    # stratification text, because forcing the merged type read the argument under the poisoned
+    # declaration-stratum arguments.
+    test-module-args-typed-option-declared-twice-is-admitted = {
+      expr =
+        (evalModuleTree { } [
+          ({ ty, ... }: { options.p = mkOption { type = ty; }; })
+          ({ ty, ... }: { options.p = mkOption { type = ty; }; })
+          {
+            config._module.args.ty = t.str;
+            config.p = "v";
+          }
+        ]).config.p;
+      expected = "v";
+    };
+    # A type clash on `p` is not on the read path of an unrelated option's descriptor: the answer
+    # `declaredOptions` gives, and nixpkgs'.
+    test-a-type-clash-leaves-an-unrelated-options-type-readable = {
+      expr =
+        (evalModuleTree { } [
+          { options.p = mkOption { type = t.str; }; }
+          { options.p = mkOption { type = t.int; }; }
+          {
+            options.q = mkOption {
+              type = t.str;
+              default = "x";
+            };
+          }
+        ]).options.q.type.name;
+      expected = "string";
+    };
   };
 }
