@@ -725,8 +725,9 @@ let
   #
   # THE TYPE IS DECIDED ONCE, AT THE LAST TYPED DECLARATION. The record fold is left and binary
   # (ADR-0029) and `⊳` is not associative, so the fold cannot compute (c ⊳ b) ⊳ a step by step.
-  # Each step instead reads the typed sites up to its own module from `sitesAt`; the step with no
-  # typed site after it is `final`, and only there does a refusal throw. An earlier step's `type` is
+  # The loc's typed sites and the index of the last of them are read from `sitesAt` once per loc, and
+  # each step is told its position `j` in the loc's declaration list; the step with no typed site
+  # after it (`modIndex >= lastTypedIdx`) is `final`, and only there does a refusal throw. An earlier step's `type` is
   # the prefix's answer — lazy, so `overridden[].declaration.type` keeps its meaning of "the
   # accumulated earlier declaration" — and a prefix that does not merge on its own reads as a named
   # throw if forced, since a later declaration may still merge the whole list (with `B = attrsOf
@@ -734,14 +735,23 @@ let
   # `[fo, B, Fk]` merges to `attrsOf` on both engines). A later UNTYPED site does not defer the
   # decision.
   redeclareDecl =
-    sitesAt: modIndex: lk: av: bv:
+    sitesAt: lk:
     let
+      sites = sitesAt lk;
+      # the loc's typed sites and the index of the last of them, bound ONCE per loc: the step function
+      # below is applied to the loc's whole declaration list, so a scan of `sites` inside it would run
+      # once per declaring module
+      typed = filter (s: s.decl ? type) sites;
+      lastTypedIdx = if typed == [ ] then -1 else (prelude.last typed).idx;
+    in
+    j: av: bv:
+    let
+      modIndex = (prelude.elemAt sites j).idx;
       merged = av // bv;
       # PRESENCE, never value equality: deciding "did B restate this field" by comparison would
       # force declaration values nothing has asked for. `_type` is the metadata every option record
       # carries — identical by construction, so never a shadow.
       shadowed = filter (k: k != "_type" && bv ? ${k}) (attrNames av);
-      sites = sitesAt lk;
       # `av` is an ACCUMULATION of every earlier module that declared `lk`, and `file` names the one
       # that most recently contributed to it — the last declaring site before this merge. It is NOT
       # "the file that declared every field in the record": a module that only ADDS a field shadows
@@ -751,10 +761,9 @@ let
       # — shadow events and declaring modules are different counts. `<unknown-file>` where there is
       # no earlier site (a decl tree assembled outside the module fold): a sentinel in the shape of
       # `<default>`/`<def>`, never a guess.
-      earlier = filter (s: s.idx < modIndex) sites;
       overridden = (av.overridden or [ ]) ++ [
         {
-          file = if earlier == [ ] then "<unknown-file>" else (prelude.last earlier).file;
+          file = if j == 0 then "<unknown-file>" else (prelude.elemAt sites (j - 1)).file;
           declaration = builtins.removeAttrs av [ "overridden" ];
         }
       ];
@@ -764,9 +773,8 @@ let
     in
     if (av ? type) && (bv ? type) then
       let
-        typed = filter (s: s.decl ? type) sites;
         # the LAST typed declaration decides the whole list; an earlier step's prefix is provisional
-        final = all (s: s.idx <= modIndex) typed;
+        final = modIndex >= lastTypedIdx;
         prior = filter (s: s.idx <= modIndex) typed;
         declaredTypes = map (s: s.decl.type) prior;
         upTo = mergeDeclaredTypes declaredTypes;
@@ -832,10 +840,13 @@ let
   # with `zipAttrsWith`, so no step copies a growing accumulator (a `//` fold copies it once per
   # module). A key declared once is that declaration; a group recurses; a leaf/group mix throws the
   # binary fold's collision text; a leaf declared k times folds `onRedeclare` from the left, as the
-  # binary fold does, through a non-strict accumulator, so each step stays unforced until read. The
+  # binary fold does, forcing each step to WHNF as it is made (a lazy accumulator would be forced from
+  # the outside, to depth k; the record's fields, `type` among them, stay unforced). The
   # j-th declaration of a leaf is the j-th declaring site at its loc (both are the entries carrying
   # that loc as a leaf, in entry order), so its module index is read from `sitesAt` rather than
-  # carried on a per-key record. The binary `mergeOptionDecls` stays the lint's fold.
+  # carried on a per-key record. Here `onRedeclare lk` is bound ONCE per leaf and applied as
+  # `step j acc y`, `j` being the position of `y` in the loc's list. The binary `mergeOptionDecls` stays
+  # the lint's fold, and applies `onRedeclare lk av bv`.
   mergeOptionDeclTrees =
     onRedeclare: sitesAt: loc: trees:
     let
@@ -860,10 +871,15 @@ let
           else if leaf then
             let
               sites = sitesAt lk;
+              step = onRedeclare lk;
             in
-            (foldl' (acc: j: {
-              v = onRedeclare (prelude.elemAt sites j).idx lk acc.v (prelude.elemAt ys j);
-            }) { v = head ys; } (prelude.genList (j: j + 1) (length ys - 1))).v
+            (foldl' (
+              acc: j:
+              let
+                v = step j acc.v (prelude.elemAt ys j);
+              in
+              builtins.seq v { inherit v; }
+            ) { v = head ys; } (prelude.genList (j: j + 1) (length ys - 1))).v
           else
             mergeOptionDeclTrees onRedeclare sitesAt lk ys
       ) xs;
