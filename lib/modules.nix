@@ -1473,15 +1473,16 @@ let
   # ── THE MODULE GRAPH (den-hoag-470xp, arm F) ────────────────────────────────────────────────────
   # Module imports are graph edges and a module is a node; a diamond is two edges into one node, so a
   # module imported twice contributes once by construction. Node identity is nixpkgs' key rule, split
-  # into two namespaces: an explicit `key` and a path module's path share the group `key` (a key that
-  # spells a path IS that path's module), and an anonymous module is the group `anon`, keyed
+  # into two namespaces: an explicit `key` and a path module's identity (its own `key`, else its path)
+  # share the group `key` (a key that spells a path IS that path's module), and an anonymous module is the group `anon`, keyed
   # `<importer's id>:anon-<n>` (1-based; the importer is the tree itself at the top level). The anon
   # rule is compositional, since an anonymous module under a shared node is itself shared, and
   # injective, since a minted id is length-prefixed. An explicit key spelled like an anonymous one
   # stays apart from it, where nixpkgs merges the two: a named byte-mode boundary (README).
   #
-  # A path module is identified BEFORE application; any other module by its applied result's `key`.
-  # A lambda carries no identity (ADR-0034).
+  # A module is identified by its applied result's `key`; a path module without one by its path, as
+  # nixpkgs' `unifyModuleSyntax` (`key = toString m.key or key`, the path for a path module). A lambda
+  # carries no identity (ADR-0034): the key is data read off the applied result.
   #
   # THE CLOSURE KEYS BY A LOCAL SPELLING OF THAT IDENTITY, and mints only when the graph is read. The
   # merge path needs identity to decide which occurrence is a node and never reads a node, so it pays
@@ -1494,7 +1495,7 @@ let
   moduleKeyOf =
     importer: i: m0: m:
     if builtins.isPath m0 || isPathString m0 then
-      "k" + toString m0
+      "k" + toString (m.key or m0)
     else if isAttrs m && m ? key then
       "k" + toString m.key
     else
@@ -1588,7 +1589,9 @@ let
   # most specific first: a raw path leaf's own `_file` (the applied `m`; `m._file or m0` falls through
   # to the path for a non-attrset), else its path string (nixpkgs' `unifyModuleSyntax`: `toString
   # m._file or file`), then the entry's own `_file` (pre-application `m0`, then the applied `m`), then
-  # the importer's file, then `"<gen-merge>"` at the root. So content passed through an unattributed
+  # the importer's file, then `"<gen-merge>"` at the root. Every arm is a string: a `_file` given as a
+  # path value is `toString`ed at this one origin, so an inherited child's file is a string because its
+  # importer's is (nixpkgs' `toString m._file or file`). So content passed through an unattributed
   # wrapper (`setDefaultModuleLocation F m` = `{ _file = F; imports = [ m ]; }`) is attributed to its
   # IMPORT site `F`, as nixpkgs'
   # `collectStructuredModules` threads `parentFile`. A path module is never attributed to its
@@ -1617,7 +1620,7 @@ let
             if builtins.isPath m0 || isPathString m0 then
               toString (m._file or m0)
             else
-              (m0._file or (m._file or "<gen-merge>"));
+              toString (m0._file or (m._file or "<gen-merge>"));
           content = m;
         }
       else if (importer.content.__reservedKeys or (importer.reserved or null)) == null then
@@ -1627,7 +1630,7 @@ let
             if builtins.isPath m0 || isPathString m0 then
               toString (m._file or m0)
             else
-              (m0._file or (m._file or importer._file));
+              toString (m0._file or (m._file or importer._file));
           content = m;
         }
       else
@@ -1637,17 +1640,17 @@ let
             if builtins.isPath m0 || isPathString m0 then
               toString (m._file or m0)
             else
-              (m0._file or (m._file or importer._file));
+              toString (m0._file or (m._file or importer._file));
           content = m;
           reserved = importer.content.__reservedKeys or importer.reserved;
         }
     ) mods;
   # A node key is an attribute name, which may carry no string context: a path module's store path
-  # names its node, and the context is not part of the name.
+  # (or a key computed from one) names its node, and the context is not part of the name.
   nodeKeyOf =
     { m0, content, ... }:
     if builtins.isPath m0 || isPathString m0 then
-      "k" + builtins.unsafeDiscardStringContext (toString m0)
+      "k" + builtins.unsafeDiscardStringContext (toString (content.key or m0))
     else if isAttrs content && content ? key then
       "k" + builtins.unsafeDiscardStringContext (toString content.key)
     else
@@ -1658,18 +1661,17 @@ let
   # either does, the pair is decided, the same in both orders (ADR-0022) wherever both publish one
   # symmetric `decide`, since the kept entry's is applied: only one publishing is refused,
   # `decide w.subject x.subject` true is the one module, and false or a non-boolean is
-  # refused by name; a throw inside `decide` propagates. Two path-keyed occurrences are the one file,
-  # so they keep nixpkgs' rule and neither content is read; a path sharing its key with a content
-  # module is decided like any other pair. The key is read off the node key, because a path's content
+  # refused by name; a throw inside `decide` propagates. Two occurrences of one spelled path are the one
+  # file, so they keep nixpkgs' rule and neither content is read; two different path files sharing an
+  # in-file key, or a path sharing its key with a content module, are decided like any other pair. The key is read off the node key, because a path's content
   # need carry no `key`. Bound here, never per level: `moduleLevels` runs once per level of every tree.
+  isPathModule = m0: builtins.isPath m0 || isPathString m0;
   keyedDrop =
     w: x:
     let
       key = builtins.substring 1 (builtins.stringLength x.k) x.k;
     in
-    if
-      (builtins.isPath x.e.m0 || isPathString x.e.m0) && (builtins.isPath w.e.m0 || isPathString w.e.m0)
-    then
+    if isPathModule x.e.m0 && isPathModule w.e.m0 && toString x.e.m0 == toString w.e.m0 then
       false
     else if !(w.e.content ? __keyEq || x.e.content ? __keyEq) then
       false
