@@ -27,7 +27,7 @@ let
       options.r = mkOption { };
       config.r = pkgs;
     };
-  cfgOf = modules: (evalModuleTree { inherit modules; }).config;
+  cfgOf = modules: (evalModuleTree { } modules).config;
   # A child at `n.k`, reading its `name`, under an `apply` that rewrites it.
   readName =
     { name, ... }:
@@ -35,7 +35,7 @@ let
       options.v = mkOption { default = name; };
     };
   renameApply.options._module.args = mkOption { apply = a: a // { name = "Q"; }; };
-  childTree = modules: (evalModuleTree { inherit modules; }).type;
+  childTree = modules: (evalModuleTree { } modules).type;
   nestedName =
     child:
     (cfgOf [
@@ -53,13 +53,12 @@ let
   warmCold =
     base: edit:
     let
-      prev = evalModuleTree { modules = base; };
+      prev = evalModuleTree { } base;
       warm = evalModuleTree {
-        modules = base ++ [ edit ];
         warmFrom = prev;
         editedModules = [ edit ];
-      };
-      cold = evalModuleTree { modules = base ++ [ edit ]; };
+      } (base ++ [ edit ]);
+      cold = evalModuleTree { } (base ++ [ edit ]);
     in
     {
       warm = warm.config.r;
@@ -168,12 +167,10 @@ in
         let
           lint =
             m:
-            gm.lint {
-              modules = [
-                decl
-                m
-              ];
-            };
+            gm.lint [
+              decl
+              m
+            ];
         in
         {
           bogus = lint { config._module.bogus = 1; };
@@ -220,13 +217,10 @@ in
     test-control-caller-check-false-lists-an-undeclared-key = {
       expr =
         map (u: u.path)
-          (evalModuleTree {
-            check = false;
-            modules = [
-              decl
-              { y = 1; }
-            ];
-          }).undeclared;
+          (evalModuleTree { check = false; } [
+            decl
+            { y = 1; }
+          ]).undeclared;
       expected = [ [ "y" ] ];
     };
     test-control-empty-module-attrset = {

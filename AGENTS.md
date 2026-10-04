@@ -54,13 +54,20 @@ defaulted evaluator could not refuse, and the door that names a non-evaluator is
 
 **Engine + the shared fold**
 
-| Export            | Signature                                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `evalModuleTree`  | `{ modules; specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; } -> result` |
-| `declaredOptions` | `{ modules; specialArgs ? {}; prefix ? []; } -> options` (stratum 1 alone — the declaration fold, no fixpoint driven)                |
-| `mergeDefs`       | `loc -> type\|null -> [{ file; value; }] -> value` (the `(loc, defs)` escape hatch; never short-circuits)                            |
-| `mergeOneOption`  | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw)                                                         |
-| `showOption`      | `[string] -> string` (dot-join)                                                                                                      |
+| Export            | Signature                                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `evalModuleTree`  | `{ specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; } -> modules -> result` (options closed, first) |
+| `declaredOptions` | `{ specialArgs ? {}; prefix ? []; } -> modules -> options` (stratum 1 alone — the declaration fold, no fixpoint driven)                                        |
+| `mergeDefs`       | `loc -> type\|null -> [{ file; value; }] -> value` (the `(loc, defs)` escape hatch; never short-circuits)                                                      |
+| `mergeOneOption`  | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw)                                                                                   |
+| `showOption`      | `[string] -> string` (dot-join)                                                                                                                                |
+| `mergeTypes`      | `{ deciding; partner; } -> type\|null` (one open record of the two types; the relation is asked of `deciding`)                                                 |
+| `deriveType`      | `{ key ? null; fields ? _: {}; mint ? sealed; name ? …; description ? …; } -> id -> base -> type` (options closed, first)                                      |
+| `bandedLeaves`    | `scope -> result -> { <loc> = leaf record; }` (`scope` stamped on every record; `result` an `evalModuleTree` result)                                           |
+
+Every record-taking step above is a `prelude.door` (den-hoag-7gp66 P2): an unknown option, or a missing
+`mergeTypes` operand, is refused BY NAME and catchably at that step's own application, and each door
+publishes its contract as data (`__contract`). An unmigrated one-record call (`evalModuleTree { modules = …; }`) is refused naming `modules` as an option the door lacks.
 
 `result` = `{ config; options; provenance; undeclared; deprecations; type; freeformConfig; freeformProv; warmDecision; }`.
 `config` is the merged output, `options` the merged decl tree, `provenance` a lazy per-loc record,
@@ -111,14 +118,14 @@ decision trace.
 
 | Export        | Signature                                                                                                          |
 | ------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `mkCoreValue` | `{ digest; values; } -> { __coreValue = true; digest; values; }` — recognised only under `coreShortCircuit = true` |
+| `mkCoreValue` | `digest -> values -> { __coreValue = true; digest; values; }` — recognised only under `coreShortCircuit = true`    |
 | `pureModule`  | `fn -> { __pureModule = true; __functor = self: fn; }` — the author's clean-module assertion, read pre-application |
 
 **Portability lint** — `lib/lint.nix`
 
-| Export | Signature                                                                                                                                                        |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lint` | `{ modules; } -> [ { kind; loc; file; detail; } ]` (empty ⇒ portable). Kinds: `order-pass`, `options-introspection`, `type-merge`, `function-to`, `unverifiable` |
+| Export | Signature                                                                                                                                                   |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lint` | `modules -> [ { kind; loc; file; detail; } ]` (empty ⇒ portable). Kinds: `order-pass`, `options-introspection`, `type-merge`, `function-to`, `unverifiable` |
 
 **Exported `optionType` shape** (14 fields, `lib/interface.nix` `exportType`, applied at the one
 crossing site `lib/types.nix` `defineType`): `_type`, `name`, `description`, `descriptionClass`,
@@ -147,7 +154,7 @@ first line of each).
 
 | Task                                                     | Reach for                                                                                                                |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Evaluate a module tree                                   | `evalModuleTree { modules = […]; }` → `.config`                                                                          |
+| Evaluate a module tree                                   | `evalModuleTree { } […]` → `.config`                                                                                     |
 | Declare a typed option                                   | `mkOption { type = types.X; default? ; apply? ; readOnly? ; }`                                                           |
 | Override / conditionalise a definition                   | `mkForce` / `mkDefault` / `mkOverride N` / `mkIf` / `mkMerge`                                                            |
 | Custom `(loc, defs)` combine for one option              | `mkOptionType { name = "…"; merge = loc: defs: …; }`                                                                     |
@@ -158,10 +165,10 @@ first line of each).
 | Absorb undeclared keys                                   | a top-level `freeformType = types.lazyAttrsOf types.raw`, or `_module.freeformType` (lower priority)                     |
 | Nest a whole tree inside a parent tree                   | `(evalModuleTree …).type` as an option's `type` — inside gen-merge's own eval; it is not mountable elsewhere (see traps) |
 | Ask where a value came from                              | `.provenance.<path>` → `{ defs; winners; priority; defaulted; }`                                                         |
-| Re-evaluate after an APPENDED edit                       | `evalModuleTree { modules = base ++ edited; warmFrom = prev; editedModules = edited; }`                                  |
+| Re-evaluate after an APPENDED edit                       | `evalModuleTree { warmFrom = prev; editedModules = edited; } (base ++ edited)`                                           |
 | Assert a function module reads only specialArgs          | `pureModule (args: …)`                                                                                                   |
-| Hand the engine a pre-merged subtree                     | `mkCoreValue { digest; values; }` + `coreShortCircuit = true`                                                            |
-| Check a module set stays inside the byte-mode surface    | `lint { modules = […]; }`                                                                                                |
+| Hand the engine a pre-merged subtree                     | `mkCoreValue digest values` + `coreShortCircuit = true`                                                                  |
+| Check a module set stays inside the byte-mode surface    | `lint […]`                                                                                                               |
 | Mount a gen type inside a real nixpkgs `lib.evalModules` | any `types.*` value — already protocol-completed. NOT the tree-as-type: it refuses by name (see traps)                   |
 
 ## Measured traps

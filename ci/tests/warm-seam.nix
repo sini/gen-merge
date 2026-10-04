@@ -84,14 +84,13 @@ let
           a = gm.mkForce "ea";
         }
       ];
-      coldOf = mods: gm.evalModuleTree { modules = mods; };
+      coldOf = mods: gm.evalModuleTree { } mods;
       warmOf =
         b: e:
         gm.evalModuleTree {
-          modules = b ++ e;
           warmFrom = coldOf b;
           editedModules = e;
-        };
+        } (b ++ e);
     in
     {
       inherit base edited;

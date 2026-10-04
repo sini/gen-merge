@@ -12,24 +12,20 @@ let
   inherit (gm) evalModuleTree mkOption submodule;
 
   # A submodule at option `sub` — its body reads `prefix`, which must be its option path `[ "sub" ]`.
-  nested = evalModuleTree {
-    modules = [
-      {
-        options.sub = mkOption {
-          type = submodule ({ prefix, ... }: { options.p = mkOption { default = prefix; }; });
-          default = { };
-        };
-      }
-      { config.sub = { }; }
-    ];
-  };
+  nested = evalModuleTree { } [
+    {
+      options.sub = mkOption {
+        type = submodule ({ prefix, ... }: { options.p = mkOption { default = prefix; }; });
+        default = { };
+      };
+    }
+    { config.sub = { }; }
+  ];
 
   # A root module reads `prefix == [ ]` (no throw — the additive arg is present at the root too).
-  root = evalModuleTree {
-    modules = [
-      ({ prefix, ... }: { options.q = mkOption { default = prefix; }; })
-    ];
-  };
+  root = evalModuleTree { } [
+    ({ prefix, ... }: { options.q = mkOption { default = prefix; }; })
+  ];
 in
 {
   flake.tests.prefix.test-submodule-reads-own-prefix = {

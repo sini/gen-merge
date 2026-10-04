@@ -5,6 +5,7 @@
 # and the controls (every definition null, none null, a null discharged by `mkIf` or out-prioritised)
 # arm the refusal against swallowing a set nixpkgs serves.
 {
+  evalRequest,
   genMerge,
   genTypes,
   nixpkgsLib,
@@ -19,9 +20,9 @@ let
   gen =
     ty: defs:
     try
-      (gm.evalModuleTree {
-        modules = [ { options.x = gm.mkOption { type = ty; }; } ] ++ map (v: { x = v; }) defs;
-      }).config.x;
+      (gm.evalModuleTree { } (
+        [ { options.x = gm.mkOption { type = ty; }; } ] ++ map (v: { x = v; }) defs
+      )).config.x;
   np =
     evalModules: mkOption: ty: defs:
     try
@@ -88,7 +89,7 @@ let
         native = gen gty defs == r;
         mount = mount gty (sets nixpkgsLib).${k} == r;
         freeform =
-          ff gm.evalModuleTree (t.attrsOf gty) defs
+          ff evalRequest (t.attrsOf gty) defs
           == ff nixpkgsLib.evalModules (nt.attrsOf nty) (sets nixpkgsLib).${k};
       }
     ) (sets gm);
@@ -212,13 +213,11 @@ in
         ];
         lazy =
           try
-            (gm.evalModuleTree {
-              modules = [
-                { options.x = gm.mkOption { type = t.lazyAttrsOf (t.nullOr sub); }; }
-                { x.k = null; }
-                { x.k.a = 1; }
-              ];
-            }).config.x.k.a;
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = t.lazyAttrsOf (t.nullOr sub); }; }
+              { x.k = null; }
+              { x.k.a = 1; }
+            ]).config.x.k.a;
         served = gen (t.nullOr sub) [ { a = 1; } ];
       };
       expected = {
@@ -235,17 +234,15 @@ in
     test-a-null-default-beside-a-definition-serves-the-definition = {
       expr =
         try
-          (gm.evalModuleTree {
-            modules = [
-              {
-                options.x = gm.mkOption {
-                  type = t.nullOr genTypes.int;
-                  default = null;
-                };
-              }
-              { x = 5; }
-            ];
-          }).config.x;
+          (gm.evalModuleTree { } [
+            {
+              options.x = gm.mkOption {
+                type = t.nullOr genTypes.int;
+                default = null;
+              };
+            }
+            { x = 5; }
+          ]).config.x;
       expected = 5;
     };
   };

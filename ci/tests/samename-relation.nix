@@ -22,9 +22,9 @@ let
   verdict =
     engine: tys: val:
     let
-      res = engine.evalModuleTree {
-        modules = map (ty: { options.p = engine.mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
-      };
+      res = engine.evalModuleTree { } (
+        map (ty: { options.p = engine.mkOption { type = ty; }; }) tys ++ [ { p = val; } ]
+      );
       v = tryEval (deepSeq res.config.p res.config.p);
     in
     if v.success then "ACCEPTED" else "REFUSED";

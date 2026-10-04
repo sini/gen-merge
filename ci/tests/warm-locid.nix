@@ -36,14 +36,13 @@ let
       "a.b".c = mkForce "dirty-edited";
     }
   ];
-  coldOf = mods: evalModuleTree { modules = mods; };
+  coldOf = mods: evalModuleTree { } mods;
   warmOf =
     b: e:
     evalModuleTree {
-      modules = b ++ e;
       warmFrom = coldOf b;
       editedModules = e;
-    };
+    } (b ++ e);
 
   w = warmOf base edited;
   c = coldOf (base ++ edited);

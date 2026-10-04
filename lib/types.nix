@@ -284,7 +284,29 @@ let
   # ★ ITS COST IS ONE COMPLETION PER LIFT: a merge, a `recarry' or a rebuild of a derivation
   # re-completes it through `defineType', so a fold over N derivation levels pays N completions and
   # N relation frames, the price gen-schema's `refined' pays for its own lifted relation today.
+  #
+  # ★ THE PUBLISHED DOOR IS OPTIONS FIRST, then the `id`, then the base (den-hoag-7gp66 P2, R7):
+  # `deriveType { key = …; } "tagged" str`. The options are closed and refused by name at
+  # `deriveType opts`; `id` is required, so it is a positional operand, configuration before the
+  # base the derivation is taken from. A lift re-derives through the core with the spec it holds.
+  deriveTypeOptions = [
+    "key"
+    "fields"
+    "mint"
+    "name"
+    "description"
+  ];
   deriveType =
+    prelude.door
+      {
+        name = "gen-merge.deriveType";
+        optional = deriveTypeOptions;
+      }
+      (
+        o: id: base:
+        deriveTypeCore base (o // { inherit id; })
+      );
+  deriveTypeCore =
     base: spec:
     let
       classes = interface.deriveClasses;
@@ -319,7 +341,7 @@ let
         else
           interface.typeDefect base;
       named = "`deriveType' over `${nameOf base}'";
-      lift = b: deriveType b spec;
+      lift = b: deriveTypeCore b spec;
       relation =
         other:
         let

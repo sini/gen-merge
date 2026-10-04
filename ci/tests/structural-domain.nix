@@ -12,15 +12,15 @@ let
   };
   run =
     ty: defs:
-    (evalModuleTree {
-      modules = [
+    (evalModuleTree { } (
+      [
         { options.o = mkOption { type = ty; }; }
       ]
       ++ map (v: {
         _file = "/p/F.nix";
         o = v;
-      }) defs;
-    }).config.o;
+      }) defs
+    )).config.o;
   # `false` is a CATCHABLE refusal. An uncatchable abort does not return `false`: it escapes
   # `tryEval` and takes the whole cell down, which is how this cell reads on a fold that lets a
   # wrong-kind definition reach the interpreter.

@@ -199,7 +199,7 @@ let
   acceptTests = lib.mapAttrs' (name: fx: {
     name = "test-accept-${name}";
     value = {
-      expr = lint { modules = fx gmP; };
+      expr = lint (fx gmP);
       expected = [ ];
     };
   }) fixtures;
@@ -208,41 +208,35 @@ in
   flake.tests.lint = acceptTests // {
     # ACCEPT — extra portable shapes beyond the corpus.
     test-accept-empty = {
-      expr = lint { modules = [ ]; };
+      expr = lint [ ];
       expected = [ ];
     };
     test-accept-deferred-not-function-to = {
-      expr = lint { modules = deferredMods; };
+      expr = lint deferredMods;
       expected = [ ];
     };
     test-accept-config-arg-is-not-options-introspection = {
-      expr = lint { modules = configArgMods; };
+      expr = lint configArgMods;
       expected = [ ];
     };
     test-accept-apply-redeclare-is-not-type-merge = {
-      expr = lint { modules = applyRedeclareMods; };
+      expr = lint applyRedeclareMods;
       expected = [ ];
     };
 
     # TOTALITY — the lint inherits the engine's forcing profile (deepSeq would throw under a naive walk).
     test-accept-lazy-data-leaf-not-forced = {
-      expr = strict (lint {
-        modules = lazyDataLeafMods;
-      });
+      expr = strict (lint lazyDataLeafMods);
       expected = [ ];
     };
     test-accept-mkif-false-guarded-throw-not-forced = {
-      expr = strict (lint {
-        modules = mkIfFalseThrowMods;
-      });
+      expr = strict (lint mkIfFalseThrowMods);
       expected = [ ];
     };
 
     # REJECT — one construct per fixture, exact finding (kind + loc + file) pinned.
     test-reject-order-pass-in-config = {
-      expr = proj (lint {
-        modules = orderConfigMods;
-      });
+      expr = proj (lint orderConfigMods);
       expected = [
         {
           kind = "order-pass";
@@ -253,9 +247,7 @@ in
     };
     # order markers at two leaves, deterministic sorted order.
     test-reject-order-pass-multi = {
-      expr = proj (lint {
-        modules = multiOrderMods;
-      });
+      expr = proj (lint multiOrderMods);
       expected = [
         {
           kind = "order-pass";
@@ -271,9 +263,7 @@ in
     };
     # order marker discharged out of mkMerge/mkIf-true (engine-faithful discharge).
     test-reject-order-pass-under-merge = {
-      expr = proj (lint {
-        modules = orderUnderMergeMods;
-      });
+      expr = proj (lint orderUnderMergeMods);
       expected = [
         {
           kind = "order-pass";
@@ -283,9 +273,7 @@ in
       ];
     };
     test-reject-options-introspection = {
-      expr = proj (lint {
-        modules = optionsArgMods;
-      });
+      expr = proj (lint optionsArgMods);
       expected = [
         {
           kind = "options-introspection";
@@ -295,9 +283,7 @@ in
       ];
     };
     test-reject-type-merge = {
-      expr = proj (lint {
-        modules = typeMergeMods;
-      });
+      expr = proj (lint typeMergeMods);
       expected = [
         {
           kind = "type-merge";
@@ -311,9 +297,7 @@ in
     };
     # count-3: one finding, file list of all three declaring modules.
     test-reject-type-merge-count-3 = {
-      expr = proj (lint {
-        modules = typeMerge3Mods;
-      });
+      expr = proj (lint typeMerge3Mods);
       expected = [
         {
           kind = "type-merge";
@@ -327,9 +311,7 @@ in
       ];
     };
     test-reject-function-to = {
-      expr = proj (lint {
-        modules = functionToMods;
-      });
+      expr = proj (lint functionToMods);
       expected = [
         {
           kind = "function-to";
@@ -340,9 +322,7 @@ in
     };
     # functionTo nested under a structural type (listOf) — proves the recursive type walk.
     test-reject-function-to-nested = {
-      expr = proj (lint {
-        modules = nestedFunctionToMods;
-      });
+      expr = proj (lint nestedFunctionToMods);
       expected = [
         {
           kind = "function-to";
@@ -353,9 +333,7 @@ in
     };
     # a type past the walk fuel is UNVERIFIABLE (fails toward reject, not silent-accept).
     test-reject-unverifiable-deep-type = {
-      expr = proj (lint {
-        modules = unverifiableMods;
-      });
+      expr = proj (lint unverifiableMods);
       expected = [
         {
           kind = "unverifiable";
@@ -367,9 +345,7 @@ in
 
     # PROVENANCE — findings carry the declaring module's `_file` (MAJOR-2).
     test-finding-file-provenance = {
-      expr = proj (lint {
-        modules = provFunctionToMods;
-      });
+      expr = proj (lint provFunctionToMods);
       expected = [
         {
           kind = "function-to";
@@ -381,9 +357,7 @@ in
 
     # AGGREGATION — findings across modules, in a deterministic order (per-module, then order, then typeMerge).
     test-reject-aggregates-in-order = {
-      expr = proj (lint {
-        modules = combinedMods;
-      });
+      expr = proj (lint combinedMods);
       expected = [
         {
           kind = "function-to";
@@ -415,12 +389,8 @@ in
           fx = ./_fixtures/lint-options-arg.nix;
         in
         {
-          pathString = proj (lint {
-            modules = [ "${fx}" ];
-          });
-          pathLiteral = builtins.length (lint {
-            modules = [ fx ];
-          });
+          pathString = proj (lint [ "${fx}" ]);
+          pathLiteral = builtins.length (lint [ fx ]);
         };
       expected = {
         pathString = [
@@ -436,11 +406,7 @@ in
 
     # SHAPE — a finding is a `{ detail; file; kind; loc }` attrset (attrNames sorted).
     test-finding-shape = {
-      expr = builtins.attrNames (
-        builtins.head (lint {
-          modules = functionToMods;
-        })
-      );
+      expr = builtins.attrNames (builtins.head (lint functionToMods));
       expected = [
         "detail"
         "file"

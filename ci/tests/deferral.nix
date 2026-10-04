@@ -28,7 +28,12 @@
 # The REFERENCE side runs the identical scenario through den's approach — `lib.evalModules` + real
 # `lib.types` — and we assert gen-merge's resolved terminal == nixpkgs' resolved terminal, byte for
 # byte. nixpkgs `lib` enters ONLY here on the reference side; the library (../lib) stays lib-free.
-{ lib, genMerge, ... }:
+{
+  evalRequest,
+  lib,
+  genMerge,
+  ...
+}:
 let
   gm = genMerge;
 
@@ -41,7 +46,7 @@ let
   };
 
   stripModule = c: builtins.removeAttrs c [ "_module" ];
-  gmEval = args: (gm.evalModuleTree args).config;
+  gmEval = args: (evalRequest args).config;
   npEval = args: stripModule (lib.evalModules args).config;
 
   # ── minimal faithful model of den's config-thunk marker ────────────────────────────────────────────

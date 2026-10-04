@@ -53,9 +53,9 @@ let
   };
 
   stripModule = c: builtins.removeAttrs c [ "_module" ];
-  compatCfg = mods: stripModule (genMerge.evalModuleTree { modules = mods; }).config;
+  compatCfg = mods: stripModule (genMerge.evalModuleTree { } mods).config;
   npCfg = mods: stripModule (npLib.evalModules { modules = mods; }).config;
-  gmCfg = mods: stripModule (genMerge.evalModuleTree { modules = mods; }).config;
+  gmCfg = mods: stripModule (genMerge.evalModuleTree { } mods).config;
 
   # (a) leaf shim — nixpkgs leaf types (str/int/enum/listOf/nullOr) driven through the compat engine.
   leafFixture = P: [

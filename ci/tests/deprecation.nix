@@ -35,17 +35,15 @@ let
   # One declared option `d` of the given type, declared in `DECL.nix`.
   reportFor =
     ty:
-    (evalModuleTree {
-      modules = [
-        {
-          _file = "DECL.nix";
-          options.d = mkOption {
-            type = ty;
-            default = 1;
-          };
-        }
-      ];
-    }).deprecations;
+    (evalModuleTree { } [
+      {
+        _file = "DECL.nix";
+        options.d = mkOption {
+          type = ty;
+          default = 1;
+        };
+      }
+    ]).deprecations;
 in
 {
   flake.tests.deprecation = {
@@ -75,18 +73,15 @@ in
     # leaf declared inside option GROUPS (the decl tree is walked, not just its top level).
     test-path-is-absolute-against-prefix-and-multi-segment = {
       expr =
-        (evalModuleTree {
-          prefix = [ "sub" ];
-          modules = [
-            {
-              _file = "P.nix";
-              options.a.b.d = mkOption {
-                type = deprecatedType;
-                default = 1;
-              };
-            }
-          ];
-        }).deprecations;
+        (evalModuleTree { prefix = [ "sub" ]; } [
+          {
+            _file = "P.nix";
+            options.a.b.d = mkOption {
+              type = deprecatedType;
+              default = 1;
+            };
+          }
+        ]).deprecations;
       expected = [
         {
           path = [
@@ -108,21 +103,19 @@ in
     # the case where "the file that declared the type" and "the files that declare the option" differ.
     test-record-names-every-declaring-site = {
       expr =
-        (evalModuleTree {
-          modules = [
-            {
-              _file = "A.nix";
-              options.grp.d = mkOption {
-                type = deprecatedType;
-                default = 1;
-              };
-            }
-            {
-              _file = "B.nix";
-              options.grp.d = mkOption { apply = x: x; };
-            }
-          ];
-        }).deprecations;
+        (evalModuleTree { } [
+          {
+            _file = "A.nix";
+            options.grp.d = mkOption {
+              type = deprecatedType;
+              default = 1;
+            };
+          }
+          {
+            _file = "B.nix";
+            options.grp.d = mkOption { apply = x: x; };
+          }
+        ]).deprecations;
       expected = [
         {
           path = [
@@ -144,18 +137,16 @@ in
     # pass by the report having failed silently.
     test-untyped-declaration-reports-nothing = {
       expr =
-        (evalModuleTree {
-          modules = [
-            {
-              _file = "U.nix";
-              options.untyped = mkOption { default = 1; };
-              options.d = mkOption {
-                type = deprecatedType;
-                default = 1;
-              };
-            }
-          ];
-        }).deprecations;
+        (evalModuleTree { } [
+          {
+            _file = "U.nix";
+            options.untyped = mkOption { default = 1; };
+            options.d = mkOption {
+              type = deprecatedType;
+              default = 1;
+            };
+          }
+        ]).deprecations;
       expected = [
         {
           path = [ "d" ];
@@ -172,18 +163,16 @@ in
     test-report-does-not-force-definition-values = {
       expr =
         let
-          r = evalModuleTree {
-            modules = [
-              {
-                _file = "D.nix";
-                options.d = mkOption { type = deprecatedType; };
-              }
-              {
-                _file = "V.nix";
-                config.d = throw "BOOM";
-              }
-            ];
-          };
+          r = evalModuleTree { } [
+            {
+              _file = "D.nix";
+              options.d = mkOption { type = deprecatedType; };
+            }
+            {
+              _file = "V.nix";
+              config.d = throw "BOOM";
+            }
+          ];
           forced = x: (builtins.tryEval (builtins.deepSeq x null)).success;
         in
         {
@@ -201,17 +190,15 @@ in
     test-report-stays-out-of-config = {
       expr =
         let
-          r = evalModuleTree {
-            modules = [
-              {
-                _file = "C.nix";
-                options.d = mkOption {
-                  type = deprecatedType;
-                  default = 1;
-                };
-              }
-            ];
-          };
+          r = evalModuleTree { } [
+            {
+              _file = "C.nix";
+              options.d = mkOption {
+                type = deprecatedType;
+                default = 1;
+              };
+            }
+          ];
         in
         {
           keys = builtins.attrNames r.config;
@@ -270,22 +257,17 @@ in
         in
         {
           throughSubmodule =
-            (evalModuleTree {
-              modules = [
-                {
-                  _file = "S.nix";
-                  options.s = mkOption {
-                    type = subTy;
-                    default = { };
-                  };
-                }
-              ];
-            }).deprecations;
+            (evalModuleTree { } [
+              {
+                _file = "S.nix";
+                options.s = mkOption {
+                  type = subTy;
+                  default = { };
+                };
+              }
+            ]).deprecations;
           reDerivedFromTheDeclarationStratum =
-            (evalModuleTree {
-              prefix = [ "s" ];
-              modules = subTy.getSubModules;
-            }).deprecations;
+            (evalModuleTree { prefix = [ "s" ]; } subTy.getSubModules).deprecations;
         };
       expected = {
         throughSubmodule = [ ];
@@ -309,21 +291,19 @@ in
     # that reads it, whichever library minted the type.
     test-a-nixpkgs-type-carrying-a-deprecation-is-reported = {
       expr =
-        (evalModuleTree {
-          modules = [
-            {
-              _file = "N.nix";
-              options.d = mkOption {
-                type = nixpkgsLib.mkOptionType {
-                  name = "depNp";
-                  check = _: true;
-                  deprecationMessage = "a nixpkgs-minted deprecation";
-                };
-                default = 1;
+        (evalModuleTree { } [
+          {
+            _file = "N.nix";
+            options.d = mkOption {
+              type = nixpkgsLib.mkOptionType {
+                name = "depNp";
+                check = _: true;
+                deprecationMessage = "a nixpkgs-minted deprecation";
               };
-            }
-          ];
-        }).deprecations;
+              default = 1;
+            };
+          }
+        ]).deprecations;
       expected = [
         {
           path = [ "d" ];

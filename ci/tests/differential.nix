@@ -46,6 +46,7 @@
 # a bare `==` cannot. And it adds the DIVERGENCE REGISTER, so a deliberate grammar change becomes a
 # named divergence with its ruling attached rather than a red nobody can attribute.
 {
+  evalRequest,
   lib,
   genMerge,
   differential,
@@ -87,7 +88,7 @@ let
   genMergeBody = {
     name = "gen-merge";
     vocab = packOf genMerge;
-    evalModules = genMerge.evalModuleTree;
+    evalModules = evalRequest;
   };
 
   # ── THE SEAM ──────────────────────────────────────────────────────────────────────────────────
@@ -348,7 +349,7 @@ let
     reference = referenceArm;
     candidate = installEvaluator {
       name = "gen-merge+nixpkgs-leaves";
-      evalModules = genMerge.evalModuleTree;
+      evalModules = evalRequest;
     };
     seam = evaluatorSeam;
     claim = claimB;
@@ -492,7 +493,7 @@ let
     eval =
       req:
       let
-        r = genMerge.evalModuleTree { inherit (req) modules specialArgs; };
+        r = genMerge.evalModuleTree { specialArgs = req.specialArgs; } req.modules;
       in
       r
       // {

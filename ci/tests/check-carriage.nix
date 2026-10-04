@@ -27,12 +27,10 @@ let
 
   opt =
     T: V:
-    (gm.evalModuleTree {
-      modules = [
-        { options.s = gm.mkOption { type = T; }; }
-        { s = V; }
-      ];
-    }).config.s;
+    (gm.evalModuleTree { } [
+      { options.s = gm.mkOption { type = T; }; }
+      { s = V; }
+    ]).config.s;
   served = T: V: tryEval (deepSeq (opt T V) (opt T V));
   accepted = T: V: (served T V).success;
 
@@ -44,7 +42,7 @@ let
       };
     }
   ];
-  tree = (gm.evalModuleTree { modules = treeMods; }).type;
+  tree = (gm.evalModuleTree { } treeMods).type;
   sub = gt.submodule { imports = treeMods; };
   eitherTree = gt.either tree gt.str;
   m = {

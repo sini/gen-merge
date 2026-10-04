@@ -17,21 +17,16 @@ let
   # A contributor's definitions carry its own `_file`, so a winner's file names its contributor.
   evalAs =
     scope: defs:
-    gm.evalModuleTree {
-      modules = [
+    gm.evalModuleTree { } (
+      [
         optDecl
       ]
       ++ map (d: {
         _file = "${scope}.nix";
         config.x = d;
-      }) defs;
-    };
-  bandOf =
-    scope: defs:
-    (gm.bandedLeaves {
-      inherit scope;
-      result = evalAs scope defs;
-    }).x;
+      }) defs
+    );
+  bandOf = scope: defs: (gm.bandedLeaves scope (evalAs scope defs)).x;
   cases = {
     k1 = {
       host = [ "R" ];
@@ -80,36 +75,29 @@ let
   };
 
   # The C1 leaves, beside ordinary ones, in one evaluation.
-  c1 = gm.evalModuleTree {
-    modules = [
-      {
-        freeformType = t.attrsOf t.str;
-        options.undefined = gm.mkOption { type = t.str; };
-        options.empty = gm.mkOption { type = t.attrsOf t.str; };
-        options.planted = gm.mkOption {
-          type = t.str;
-          default = throw "PLANTED";
-        };
-        options.g.x = gm.mkOption {
-          type = t.str;
-          default = "d";
-        };
-      }
-      { free = "f"; }
-    ];
-  };
-  c1Bands = gm.bandedLeaves {
-    scope = "c";
-    result = c1;
-  };
+  c1 = gm.evalModuleTree { } [
+    {
+      freeformType = t.attrsOf t.str;
+      options.undefined = gm.mkOption { type = t.str; };
+      options.empty = gm.mkOption { type = t.attrsOf t.str; };
+      options.planted = gm.mkOption {
+        type = t.str;
+        default = throw "PLANTED";
+      };
+      options.g.x = gm.mkOption {
+        type = t.str;
+        default = "d";
+      };
+    }
+    { free = "f"; }
+  ];
+  c1Bands = gm.bandedLeaves "c" c1;
   files = rec': map (w: w.file) rec'.winners;
-  conflicting = gm.evalModuleTree {
-    modules = [
-      { options.x = gm.mkOption { type = t.str; }; }
-      { x = "a"; }
-      { x = "b"; }
-    ];
-  };
+  conflicting = gm.evalModuleTree { } [
+    { options.x = gm.mkOption { type = t.str; }; }
+    { x = "a"; }
+    { x = "b"; }
+  ];
 in
 {
   flake.tests.bands = {
@@ -274,21 +262,18 @@ in
     # Lazy per loc: a leaf whose definition throws on discharge is never touched by reading another.
     test-reading-one-leaf-forces-no-other = {
       expr =
-        (gm.bandedLeaves {
-          scope = "r";
-          result = gm.evalModuleTree {
-            modules = [
-              {
-                options.x = gm.mkOption { type = t.str; };
-                options.y = gm.mkOption { type = t.str; };
-              }
-              {
-                x = "v";
-                y = throw "UNREAD";
-              }
-            ];
-          };
-        }).x.band;
+        (gm.bandedLeaves "r" (
+          gm.evalModuleTree { } [
+            {
+              options.x = gm.mkOption { type = t.str; };
+              options.y = gm.mkOption { type = t.str; };
+            }
+            {
+              x = "v";
+              y = throw "UNREAD";
+            }
+          ]
+        )).x.band;
       expected = "set";
     };
 
@@ -297,11 +282,7 @@ in
     # `test-a-conflicting-leaf-value-refuses-where-its-band-reads`).
     test-a-conflicting-leaf-bands-without-forcing-its-value =
       let
-        b =
-          (gm.bandedLeaves {
-            scope = "r";
-            result = conflicting;
-          }).x;
+        b = (gm.bandedLeaves "r" conflicting).x;
       in
       {
         expr = {
@@ -322,12 +303,7 @@ in
           "r"
           "t"
         ];
-        swapped = files (
-          (gm.bandedLeaves {
-            scope = "r";
-            result = evalAs "t" [ "T" ];
-          }).x
-        );
+        swapped = files ((gm.bandedLeaves "r" (evalAs "t" [ "T" ])).x);
       };
       expected = {
         honest = [

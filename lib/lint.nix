@@ -223,10 +223,10 @@ let
         exhausted = any (r: r.exhausted) subs;
       };
 
+  # One positional operand, the module or module list it reads (den-hoag-7gp66 P2, R7).
   lint =
-    args:
+    modules:
     let
-      modules = (prelude.checkRequired "gen-merge.lint" [ "modules" ] args).modules;
       modList = if isList modules then modules else [ modules ];
       collected = collect "<gen-merge>" modList;
       attrsetEntries = filter (e: !e.fn) collected;

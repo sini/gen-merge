@@ -7,19 +7,21 @@
 # from nixpkgs' types over nixpkgs' own `(evalModules …).type`, and `mount` hands the gen-merge
 # construction to a real nixpkgs `lib.evalModules`. The first two are parity (inside gen's eval union
 # membership is not mounting); the last is the foreign face.
-{ genMerge, nixpkgsLib }:
+{
+  evalRequest,
+  genMerge,
+  nixpkgsLib,
+}:
 let
   ts = genMerge.types;
-  tree = genMerge.evalModuleTree {
-    modules = [
-      {
-        options.a = genMerge.mkOption {
-          type = ts.int;
-          default = 0;
-        };
-      }
-    ];
-  };
+  tree = genMerge.evalModuleTree { } [
+    {
+      options.a = genMerge.mkOption {
+        type = ts.int;
+        default = 0;
+      };
+    }
+  ];
   referenceTree = nixpkgsLib.evalModules {
     modules = [
       {
@@ -123,7 +125,7 @@ in
 {
   inherit forms constructions definitions;
   T = tree.type;
-  gen = at genMerge.evalModuleTree genMerge.mkOption;
+  gen = at evalRequest genMerge.mkOption;
   foreign = at nixpkgsLib.evalModules nixpkgsLib.mkOption;
   cells = builtins.concatMap (
     c:

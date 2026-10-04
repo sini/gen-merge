@@ -12,6 +12,7 @@
 # (there the defs are merged, and nothing was dropped). A nested tree's findings are never absorbed,
 # so they are reported under every regime (cells 16-19).
 {
+  evalRequest,
   genMerge,
   nixpkgsLib,
   ...
@@ -27,7 +28,7 @@ let
       default = "d";
     };
   };
-  report = args: (evalModuleTree args).undeclared;
+  report = args: (evalRequest args).undeclared;
 
   # Does forcing `e` whole succeed? Cells 11-15 are about WHAT THE CHANNEL FORCES, so they read a
   # success/failure bit rather than a value: the defect they pin turns a readable sibling into a throw.
@@ -36,18 +37,15 @@ let
   # Cells 16-19: a lax nested tree (`check = false`), a definition of it carrying the undeclared key
   # `z`, and a freeform parent declaring it as `nest`.
   laxNest =
-    (evalModuleTree {
-      check = false;
-      modules = [
-        {
-          options.a = mkOption { type = t.str; };
-          options.id_hash = mkOption {
-            type = t.str;
-            default = "nest:0";
-          };
-        }
-      ];
-    }).type;
+    (evalModuleTree { check = false; } [
+      {
+        options.a = mkOption { type = t.str; };
+        options.id_hash = mkOption {
+          type = t.str;
+          default = "nest:0";
+        };
+      }
+    ]).type;
   laxNestDropping = {
     a = "declared";
     z = "dropped";
@@ -58,7 +56,7 @@ let
   };
 
   # Cells 20-22: a type with no fold of its own as the `freeformType`, read at `config.q`.
-  underFreeform = T: defs: (evalModuleTree { modules = [ { freeformType = T; } ] ++ defs; }).config;
+  underFreeform = T: defs: (evalModuleTree { } ([ { freeformType = T; } ] ++ defs)).config;
   underNixpkgs =
     T: defs: (nixpkgsLib.evalModules { modules = [ { freeformType = T; } ] ++ defs; }).config;
   foldless = {
@@ -113,13 +111,10 @@ in
     test-report-stays-out-of-config = {
       expr =
         builtins.attrNames
-          (evalModuleTree {
-            modules = [
-              declared
-              { config.orphan = "a"; }
-            ];
-            check = false;
-          }).config;
+          (evalModuleTree { check = false; } [
+            declared
+            { config.orphan = "a"; }
+          ]).config;
       expected = [ "declared" ];
     };
 
@@ -202,17 +197,14 @@ in
     test-freeform-absorbs-and-reports-nothing = {
       expr =
         let
-          r = evalModuleTree {
-            modules = [
-              declared
-              { freeformType = t.lazyAttrsOf t.str; }
-              {
-                _file = "F";
-                config.orphan = "a";
-              }
-            ];
-            check = false;
-          };
+          r = evalModuleTree { check = false; } [
+            declared
+            { freeformType = t.lazyAttrsOf t.str; }
+            {
+              _file = "F";
+              config.orphan = "a";
+            }
+          ];
         in
         {
           configKeys = builtins.attrNames r.config;
@@ -255,12 +247,7 @@ in
               config.orphan = "a";
             }
           ];
-          ev =
-            check:
-            evalModuleTree {
-              modules = mods;
-              inherit check;
-            };
+          ev = check: evalModuleTree { check = check; } mods;
           force = check: (builtins.tryEval (builtins.deepSeq (ev check).config null)).success;
         in
         {
@@ -292,26 +279,20 @@ in
           reportOk =
             (builtins.tryEval (
               builtins.deepSeq
-                (evalModuleTree {
-                  modules = [
-                    declared
-                    bomb
-                  ];
-                  check = false;
-                }).undeclared
+                (evalModuleTree { check = false; } [
+                  declared
+                  bomb
+                ]).undeclared
                 null
             )).success;
           absorbedAborts =
             (builtins.tryEval (
               builtins.deepSeq
-                (evalModuleTree {
-                  modules = [
-                    declared
-                    { freeformType = t.lazyAttrsOf t.str; }
-                    bomb
-                  ];
-                  check = false;
-                }).config
+                (evalModuleTree { check = false; } [
+                  declared
+                  { freeformType = t.lazyAttrsOf t.str; }
+                  bomb
+                ]).config
                 null
             )).success;
         in
@@ -335,35 +316,29 @@ in
     test-nested-tree-as-type-leaf-reports-its-own-orphan =
       let
         innerType =
-          (evalModuleTree {
-            modules = [
-              {
-                options.known = mkOption {
-                  type = t.str;
-                  default = "k";
-                };
-              }
-            ];
-            check = false;
-          }).type;
-        r = evalModuleTree {
-          modules = [
+          (evalModuleTree { check = false; } [
             {
-              options.nest = mkOption {
-                type = innerType;
-                default = { };
+              options.known = mkOption {
+                type = t.str;
+                default = "k";
               };
             }
-            {
-              _file = "C";
-              config.nest = {
-                known = "k2";
-                bogus = "B";
-              };
-            }
-          ];
-          check = false;
-        };
+          ]).type;
+        r = evalModuleTree { check = false; } [
+          {
+            options.nest = mkOption {
+              type = innerType;
+              default = { };
+            };
+          }
+          {
+            _file = "C";
+            config.nest = {
+              known = "k2";
+              bogus = "B";
+            };
+          }
+        ];
         control = report {
           modules = [
             declared
@@ -415,16 +390,13 @@ in
     # also passes on an engine that has stopped refusing undefined options altogether.
     test-undeclared-report-does-not-force-an-undefined-sibling =
       let
-        r = evalModuleTree {
-          check = true;
-          modules = [
-            {
-              options.defined = mkOption { type = t.str; };
-              options.never = mkOption { type = t.str; };
-              config.defined = "ok";
-            }
-          ];
-        };
+        r = evalModuleTree { check = true; } [
+          {
+            options.defined = mkOption { type = t.str; };
+            options.never = mkOption { type = t.str; };
+            config.defined = "ok";
+          }
+        ];
       in
       {
         expr = {
@@ -444,21 +416,18 @@ in
     # still refuses.
     test-undeclared-report-does-not-force-a-readonly-arbiter =
       let
-        r = evalModuleTree {
-          check = true;
-          modules = [
-            {
-              options.locked = mkOption {
-                type = t.str;
-                readOnly = true;
-              };
-              options.other = mkOption { type = t.str; };
-              config.other = "ok";
-            }
-            { config.locked = "a"; }
-            { config.locked = "b"; }
-          ];
-        };
+        r = evalModuleTree { check = true; } [
+          {
+            options.locked = mkOption {
+              type = t.str;
+              readOnly = true;
+            };
+            options.other = mkOption { type = t.str; };
+            config.other = "ok";
+          }
+          { config.locked = "a"; }
+          { config.locked = "b"; }
+        ];
       in
       {
         expr = {
@@ -484,18 +453,15 @@ in
     # `realized.unmatched` had something in it to force, not one where there was nothing.
     test-undeclared-report-does-not-force-a-sibling-under-a-freeformtype =
       let
-        r = evalModuleTree {
-          check = false;
-          modules = [
-            {
-              config._module.freeformType = t.lazyAttrsOf t.str;
-              options.defined = mkOption { type = t.str; };
-              options.never = mkOption { type = t.str; };
-              config.defined = "ok";
-              config.loose = "absorbed";
-            }
-          ];
-        };
+        r = evalModuleTree { check = false; } [
+          {
+            config._module.freeformType = t.lazyAttrsOf t.str;
+            options.defined = mkOption { type = t.str; };
+            options.never = mkOption { type = t.str; };
+            config.defined = "ok";
+            config.loose = "absorbed";
+          }
+        ];
       in
       {
         expr = {
@@ -521,22 +487,16 @@ in
     # firing and not the report having been silenced along with it.
     test-a-lax-nested-tree-is-still-refused-by-a-strict-parent =
       let
-        innerLax = evalModuleTree {
-          check = false;
-          modules = [ { options.a = mkOption { type = t.str; }; } ];
-        };
-        r = evalModuleTree {
-          check = true;
-          modules = [
-            {
-              options.nest = mkOption { type = innerLax.type; };
-              config.nest = {
-                a = "declared";
-                z = "dropped";
-              };
-            }
-          ];
-        };
+        innerLax = evalModuleTree { check = false; } [ { options.a = mkOption { type = t.str; }; } ];
+        r = evalModuleTree { check = true; } [
+          {
+            options.nest = mkOption { type = innerLax.type; };
+            config.nest = {
+              a = "declared";
+              z = "dropped";
+            };
+          }
+        ];
       in
       {
         expr = {
@@ -564,23 +524,20 @@ in
     # edit that makes a config-derived type recurse again, which is the only thing it is here to do.
     test-a-config-derived-leaf-type-is-a-declared-divergence =
       let
-        r = evalModuleTree {
-          check = true;
-          modules = [
-            {
-              options.kindName = mkOption {
-                type = t.str;
-                default = "igloo";
-              };
-              options.registry = mkOption {
-                type = t.attrsOf (if r.config.kindName == "igloo" then t.str else t.int);
-                default = { };
-              };
-              options.plain = mkOption { type = t.str; };
-              config.plain = "ok";
-            }
-          ];
-        };
+        r = evalModuleTree { check = true; } [
+          {
+            options.kindName = mkOption {
+              type = t.str;
+              default = "igloo";
+            };
+            options.registry = mkOption {
+              type = t.attrsOf (if r.config.kindName == "igloo" then t.str else t.int);
+              default = { };
+            };
+            options.plain = mkOption { type = t.str; };
+            config.plain = "ok";
+          }
+        ];
       in
       {
         expr = {
@@ -624,9 +581,9 @@ in
       in
       {
         expr = {
-          dropped = read (evalModuleTree (ff laxNestDropping));
+          dropped = read (evalRequest (ff laxNestDropping));
           control = read (
-            evalModuleTree (ff {
+            evalRequest (ff {
               a = "declared";
             })
           );
@@ -662,16 +619,13 @@ in
     # the report still names the finding while `config` refuses.
     test-a-nested-finding-under-a-freeformtype-is-refused-at-check =
       let
-        r = evalModuleTree {
-          check = true;
-          modules = [
-            freeformNestDecl
-            {
-              _file = "C";
-              config.nest = laxNestDropping;
-            }
-          ];
-        };
+        r = evalModuleTree { check = true; } [
+          freeformNestDecl
+          {
+            _file = "C";
+            config.nest = laxNestDropping;
+          }
+        ];
       in
       {
         expr = {
@@ -696,18 +650,20 @@ in
     test-a-nested-finding-is-absolute-and-not-prefixed-twice = {
       expr =
         map (u: u.path)
-          (evalModuleTree {
-            check = false;
-            prefix = [ "sub" ];
-            modules = [
+          (evalModuleTree
+            {
+              check = false;
+              prefix = [ "sub" ];
+            }
+            [
               { options.nest = mkOption { type = laxNest; }; }
               {
                 _file = "C";
                 config.nest = laxNestDropping;
                 config.orphan = "o";
               }
-            ];
-          }).undeclared;
+            ]
+          ).undeclared;
       expected = [
         [
           "sub"
@@ -725,21 +681,14 @@ in
     # named once, `a.b.z`. LIVE CONTROL, same cell: `.config` is the two declared keys only.
     test-a-finding-two-nesting-levels-down-is-named-once =
       let
-        middle =
-          (evalModuleTree {
-            check = false;
-            modules = [ { options.b = mkOption { type = laxNest; }; } ];
-          }).type;
-        r = evalModuleTree {
-          check = false;
-          modules = [
-            { options.a = mkOption { type = middle; }; }
-            {
-              _file = "C";
-              config.a.b = laxNestDropping;
-            }
-          ];
-        };
+        middle = (evalModuleTree { check = false; } [ { options.b = mkOption { type = laxNest; }; } ]).type;
+        r = evalModuleTree { check = false; } [
+          { options.a = mkOption { type = middle; }; }
+          {
+            _file = "C";
+            config.a.b = laxNestDropping;
+          }
+        ];
       in
       {
         expr = {
@@ -770,19 +719,15 @@ in
     test-a-foldless-freeformtype-folds-the-undeclared-plane = {
       expr = builtins.mapAttrs (_: T: (underFreeform T [ { q = "a"; } ]).q) foldless // {
         moduleForm =
-          (evalModuleTree {
-            modules = [
-              { _module.freeformType = t.raw; }
-              { q = "a"; }
-            ];
-          }).config.q;
+          (evalModuleTree { } [
+            { _module.freeformType = t.raw; }
+            { q = "a"; }
+          ]).config.q;
         nested =
-          (evalModuleTree {
-            modules = [
-              { options.s = mkOption { type = t.submodule { freeformType = t.raw; }; }; }
-              { s.q = "a"; }
-            ];
-          }).config.s.q;
+          (evalModuleTree { } [
+            { options.s = mkOption { type = t.submodule { freeformType = t.raw; }; }; }
+            { s.q = "a"; }
+          ]).config.s.q;
       };
       expected = {
         raw = "a";
@@ -847,13 +792,10 @@ in
     test-a-module-unknown-key-is-listed-under-check-false = {
       expr =
         let
-          r = evalModuleTree {
-            check = false;
-            modules = [
-              declared
-              { config._module.bogus = 1; }
-            ];
-          };
+          r = evalModuleTree { check = false; } [
+            declared
+            { config._module.bogus = 1; }
+          ];
         in
         {
           undeclared = map (u: u.path) r.undeclared;

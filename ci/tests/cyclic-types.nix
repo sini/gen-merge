@@ -81,17 +81,15 @@ let
     );
   genEval =
     ty: defs:
-    (gm.evalModuleTree {
-      modules = [ { options.s = gm.mkOption { type = ty; }; } ] ++ map (d: { s = d; }) defs;
-    }).config.s;
+    (gm.evalModuleTree { } (
+      [ { options.s = gm.mkOption { type = ty; }; } ] ++ map (d: { s = d; }) defs
+    )).config.s;
   declaredTwice =
     ty:
-    (gm.evalModuleTree {
-      modules = [
-        { options.x = gm.mkOption { type = ty; }; }
-        { options.x = gm.mkOption { type = ty; }; }
-      ];
-    }).options.x.type.name;
+    (gm.evalModuleTree { } [
+      { options.x = gm.mkOption { type = ty; }; }
+      { options.x = gm.mkOption { type = ty; }; }
+    ]).options.x.type.name;
 in
 {
   flake.tests.cyclic-types = {

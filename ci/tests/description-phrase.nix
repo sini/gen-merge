@@ -7,7 +7,12 @@
 # elides to `…` (nixpkgs never elides), and a self-referential type renders a finite phrase where
 # nixpkgs' own twin diverges. The cycle closed through a FOREIGN record's `description` is an
 # uncatchable abort, so its cells live in `../tests-process-cells.nix`.
-{ genMerge, nixpkgsLib, ... }:
+{
+  evalRequest,
+  genMerge,
+  nixpkgsLib,
+  ...
+}:
 let
   gm = genMerge;
   gt = gm.types;
@@ -20,9 +25,9 @@ let
       enum' = vs: gt.enum "e" vs;
       mods = m: gt.submodule m;
       mkOpt = gm.mkOption;
-      tree = m: (gm.evalModuleTree { modules = m; }).type;
-      derive = b: spec: gt.deriveType b spec;
-      rederive = b: el: (gt.deriveType b { id = "d"; }).recarry { element = el; };
+      tree = m: (gm.evalModuleTree { } m).type;
+      derive = b: spec: gt.deriveType (builtins.removeAttrs spec [ "id" ]) spec.id b;
+      rederive = b: el: (gt.deriveType { } "d" b).recarry { element = el; };
     };
     np = np // {
       enum' = vs: np.enum vs;
@@ -301,7 +306,7 @@ let
     let
       r =
         builtins.tryEval
-          ((if gen then gm.evalModuleTree else nl.evalModules) {
+          ((if gen then evalRequest else nl.evalModules) {
             modules = [
               { options.x = (if gen then gm.mkOption else nl.mkOption) { type = ty; }; }
             ]
@@ -404,17 +409,19 @@ let
   );
   ffself = gt.submodule [ { freeformType = ffself; } ];
   # The same shape with its cycle closed THROUGH a derivation, and closed outside one it holds.
-  vd = gt.deriveType (gt.nullOr (
-    gt.oneOf [
-      gt.str
-      (gt.attrsOf vd)
-      (gt.listOf vd)
-    ]
-  )) { id = "d"; };
+  vd = gt.deriveType { } "d" (
+    gt.nullOr (
+      gt.oneOf [
+        gt.str
+        (gt.attrsOf vd)
+        (gt.listOf vd)
+      ]
+    )
+  );
   vdIn = gt.nullOr (
     gt.oneOf [
       gt.str
-      (gt.attrsOf (gt.deriveType vdIn { id = "d"; }))
+      (gt.attrsOf (gt.deriveType { } "d" vdIn))
       (gt.listOf vdIn)
     ]
   );
@@ -652,7 +659,7 @@ in
           row =
             k:
             let
-              d = (gt.deriveType (nest gt.listOf gt.int k) { id = "d"; }).description;
+              d = (gt.deriveType { } "d" (nest gt.listOf gt.int k)).description;
             in
             {
               equal = d == (nest gt.listOf gt.int k).description;
@@ -679,7 +686,7 @@ in
       expr =
         let
           b = nest gt.listOf gt.int 3;
-          chain = n: if n == 0 then b else gt.deriveType (chain (n - 1)) { id = "d"; };
+          chain = n: if n == 0 then b else gt.deriveType { } "d" (chain (n - 1));
         in
         {
           "126" = (chain 126).description;

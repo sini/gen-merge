@@ -47,7 +47,7 @@ let
     type = m.types.str;
     default = "on";
   };
-  eval = modules: m.evalModuleTree { inherit modules; };
+  eval = modules: m.evalModuleTree { } modules;
   # `<name>:<q>` read off the child `x` of an `attrsOf (submodule …)` whose second module is `extra`.
   nameAt =
     extra:
@@ -100,9 +100,9 @@ let
   sub = st.submodule { options.x = spied.mkOption { type = st.int; }; };
   spiedAt =
     type: defs:
-    (spied.evalModuleTree {
-      modules = [ { options.o = spied.mkOption { inherit type; }; } ] ++ map (d: { config.o = d; }) defs;
-    }).config.o;
+    (spied.evalModuleTree { } (
+      [ { options.o = spied.mkOption { inherit type; }; } ] ++ map (d: { config.o = d; }) defs
+    )).config.o;
   # U2-l: a module that traces `label` each time it is APPLIED, in a member's shared module set.
   tracedSub = st.submodule (
     _:
@@ -143,14 +143,12 @@ let
   cells = {
     # U2-g: ONE evaluation, however many nested trees the value holds (each reads 1).
     one-eval-flat =
-      (spied.evalModuleTree {
-        modules = [
-          {
-            options.a = spied.mkOption { type = st.int; };
-            config.a = 1;
-          }
-        ];
-      }).config.a;
+      (spied.evalModuleTree { } [
+        {
+          options.a = spied.mkOption { type = st.int; };
+          config.a = 1;
+        }
+      ]).config.a;
     one-eval-sub-one = spiedAt sub [ { x = 2; } ];
     one-eval-attrs-two = spiedAt (st.attrsOf sub) [
       {
@@ -269,16 +267,15 @@ let
     # its base's `description' reads the phrase its own member renders, as a foreign composer does.
     phrase-cycle-stated-from-base =
       let
-        d = m.types.deriveType (m.types.either m.types.int (m.types.listOf d)) {
-          id = "d";
-          fields = b: { inherit (b) description; };
-        };
+        d = m.types.deriveType { fields = b: { inherit (b) description; }; } "d" (
+          m.types.either m.types.int (m.types.listOf d)
+        );
       in
       d.description;
     # Its live control: the derivation stating nothing renders its base's phrase within the budget.
     phrase-cycle-stated-from-base-control =
       let
-        d = m.types.deriveType (m.types.either m.types.int (m.types.listOf d)) { id = "d"; };
+        d = m.types.deriveType { } "d" (m.types.either m.types.int (m.types.listOf d));
       in
       builtins.substring 0 40 d.description;
     # Their live control, same wiring: the same shapes over a foreign member that holds no cycle answer.
@@ -308,7 +305,7 @@ let
     foreign-knot-derivetype =
       let
         np = (import "${nixpkgsSrc}/lib").types;
-        d = m.deriveType (np.either np.int (np.listOf d)) { id = "d"; };
+        d = m.deriveType { } "d" (np.either np.int (np.listOf d));
       in
       d.check [
         1
@@ -363,7 +360,7 @@ let
     # README's "Known byte-mode boundaries" states the argument.
     cyclic-derive-self =
       let
-        d = m.types.deriveType d { id = "d"; };
+        d = m.types.deriveType { } "d" d;
       in
       builtins.seq d true;
     # AN UNGUARDED (NON-CONTRACTIVE) CYCLE (den-hoag-iaram): `r = either int r` passes no
@@ -378,7 +375,7 @@ let
     # a value in its domain and refuses one outside it.
     cyclic-guarded-control =
       let
-        d = m.types.deriveType (m.types.either m.types.int (m.types.listOf d)) { id = "d"; };
+        d = m.types.deriveType { } "d" (m.types.either m.types.int (m.types.listOf d));
       in
       [
         (d.check [

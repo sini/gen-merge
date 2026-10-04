@@ -154,7 +154,7 @@ let
 
   run =
     pn: l: v:
-    accepted (gm.evalModuleTree { modules = positions.${pn} (builtins.elemAt l 0) v; }).config.p;
+    accepted (gm.evalModuleTree { } (positions.${pn} (builtins.elemAt l 0) v)).config.p;
   cells = concatMap (pn: map (ln: { inherit pn ln; }) (attrNames foreign)) (attrNames positions);
   table = which: filter (c: run c.pn foreign.${c.ln} (builtins.elemAt foreign.${c.ln} which)) cells;
   controlAccepted =
@@ -167,13 +167,11 @@ let
   roundTripped = gm.mkOptionType listOfInt;
   twoDefs =
     T: a: b:
-    (gm.evalModuleTree {
-      modules = [
-        { options.p = gm.mkOption { type = T; }; }
-        { p = a; }
-        { p = b; }
-      ];
-    }).config.p;
+    (gm.evalModuleTree { } [
+      { options.p = gm.mkOption { type = T; }; }
+      { p = a; }
+      { p = b; }
+    ]).config.p;
 
   # A descriptor stating a foreign `check` and a gen `mergeDefs`, but no `merge`: the check wraps the
   # author's fold, never a leaf fold in its place.
@@ -208,12 +206,10 @@ let
   compatRun =
     T: v:
     accepted
-      (compat.evalModuleTree {
-        modules = [
-          { options.p = compat.mkOption { type = T; }; }
-          { p = v; }
-        ];
-      }).config.p;
+      (compat.evalModuleTree { } [
+        { options.p = compat.mkOption { type = T; }; }
+        { p = v; }
+      ]).config.p;
 
   # A nixpkgs v2 type (its `merge` carries `v2`) given an ad-hoc `check` by `//`: nixpkgs refuses
   # it at every definition (`checkV2MergeCoherence`); the stock type beside it is the control.
@@ -256,11 +252,9 @@ let
     filter (
       c:
       accepted
-        (gm.evalModuleTree {
-          modules = positions.${c.pn} (wrap (builtins.elemAt rows.${c.ln} 0)) (
-            builtins.elemAt rows.${c.ln} 1
-          );
-        }).config.p
+        (gm.evalModuleTree { } (
+          positions.${c.pn} (wrap (builtins.elemAt rows.${c.ln} 0)) (builtins.elemAt rows.${c.ln} 1)
+        )).config.p
     ) (cellsOf rows);
   v2Accepted = acceptedOf v2Stock;
   # A submodule-bearing v2 type: nixpkgs rebuilds it at declaration (`substSubModules`) and so ERASES
@@ -282,12 +276,10 @@ let
   replacedAt = T: {
     freeform = freeformRead T 1;
     option =
-      (gm.evalModuleTree {
-        modules = [
-          { options.p = gm.mkOption { type = T; }; }
-          { p.a = 1; }
-        ];
-      }).config.p.p;
+      (gm.evalModuleTree { } [
+        { options.p = gm.mkOption { type = T; }; }
+        { p.a = 1; }
+      ]).config.p.p;
   };
   forged = f: {
     __functor = _: f;
@@ -311,12 +303,10 @@ let
     T: v:
     let
       p =
-        (gm.evalModuleTree {
-          modules = [
-            { freeformType = T; }
-            { p = v; }
-          ];
-        }).config.p;
+        (gm.evalModuleTree { } [
+          { freeformType = T; }
+          { p = v; }
+        ]).config.p;
       r = tryEval (deepSeq p p);
     in
     if r.success then r.value else "REFUSED";
@@ -386,12 +376,10 @@ let
   topAccepted =
     T: v:
     accepted
-      (gm.evalModuleTree {
-        modules = [
-          { options.p = gm.mkOption { type = T; }; }
-          { p = v; }
-        ];
-      }).config.p;
+      (gm.evalModuleTree { } [
+        { options.p = gm.mkOption { type = T; }; }
+        { p = v; }
+      ]).config.p;
 in
 {
   flake.tests.foreign-leaf-check = {

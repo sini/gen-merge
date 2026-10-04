@@ -8,6 +8,7 @@
 # moves it (U2-i's stated price, OQ11 (d)'s refusals, S2's opt-out). `ci/tests-error.nix`'s
 # `nesting-threaded` suite pins the refusals' text.
 {
+  evalRequest,
   genMerge,
   genMergeCore,
   interface,
@@ -49,11 +50,8 @@ let
       { tag = "w"; };
   # The tree record, lax, and its called mode `{ false; false; }`.
   tree =
-    (gm.evalModuleTree {
-      modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
-      check = false;
-    }).type;
-  cfg = mods: (gm.evalModuleTree { modules = mods; }).config;
+    (gm.evalModuleTree { check = false; } [ { options.x = gm.mkOption { type = t.int; }; } ]).type;
+  cfg = mods: (gm.evalModuleTree { } mods).config;
   opt =
     type: def:
     (cfg [
@@ -418,15 +416,12 @@ in
           rep =
             check: type: def:
             let
-              r = gm.evalModuleTree {
-                modules = [
-                  {
-                    options.t = gm.mkOption { inherit type; };
-                    config.t = def;
-                  }
-                ];
-                inherit check;
-              };
+              r = gm.evalModuleTree { check = check; } [
+                {
+                  options.t = gm.mkOption { inherit type; };
+                  config.t = def;
+                }
+              ];
             in
             {
               inherit (r.config) t;
@@ -688,7 +683,7 @@ in
     test-a-stock-foreign-container-over-a-gen-union-folds-in-gen = {
       expr =
         let
-          family = import ./_fixtures/tree-union-family.nix { inherit genMerge nixpkgsLib; };
+          family = import ./_fixtures/tree-union-family.nix { inherit evalRequest genMerge nixpkgsLib; };
         in
         family.gen (np.attrsOf (t.either family.T t.str)) { k.a = 5; };
       expected = {
@@ -704,16 +699,14 @@ in
   flake.tests.nesting-threaded-stock-six-over-tree =
     let
       strictTree =
-        (gm.evalModuleTree {
-          modules = [
-            {
-              options.a = gm.mkOption {
-                type = t.int;
-                default = 0;
-              };
-            }
-          ];
-        }).type;
+        (gm.evalModuleTree { } [
+          {
+            options.a = gm.mkOption {
+              type = t.int;
+              default = 0;
+            };
+          }
+        ]).type;
     in
     {
       test-the-stock-six-over-the-tree-give-values = {

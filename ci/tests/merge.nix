@@ -1,5 +1,10 @@
 # The 7-item merge primitive (design spec §1) + the priority subset (§7). Pure — no nixpkgs.
-{ genMerge, genTypes, ... }:
+{
+  evalRequest,
+  genMerge,
+  genTypes,
+  ...
+}:
 let
   inherit (genMerge)
     evalModuleTree
@@ -15,7 +20,7 @@ let
     deferredModule
     ;
   t = genMerge.types;
-  cfg = args: (evalModuleTree args).config;
+  cfg = args: (evalRequest args).config;
 
   # ── freeform-selection fixtures (den-hoag-5r1a7) ───────────────────────────────────────────────
   # Shared by the cells near `test-freeformType-priority`. Each carries its own `_file` because the
@@ -686,13 +691,11 @@ in
       # being destroyed, so on its own this literal discriminates nothing — it is asserted HERE,
       # beside the value it is a claim about, and not as a cell of its own.
       undeclared =
-        (evalModuleTree {
-          modules = [
-            ffSubA
-            ffSubB
-            ffUseK
-          ];
-        }).undeclared;
+        (evalModuleTree { } [
+          ffSubA
+          ffSubB
+          ffUseK
+        ]).undeclared;
     };
     expected = {
       ab = {

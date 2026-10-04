@@ -25,7 +25,7 @@ let
   l =
     mods:
     let
-      v = (gm.evalModuleTree { modules = [ decl ] ++ mods; }).config.l;
+      v = (gm.evalModuleTree { } ([ decl ] ++ mods)).config.l;
       r = builtins.tryEval (builtins.deepSeq v v);
     in
     if r.success then r.value else "REFUSED";

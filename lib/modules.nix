@@ -389,20 +389,12 @@ let
   # byte-vs-confluent HOW defs join; this short-circuits WHETHER they are joined at all). Recognised
   # ONLY when `evalModuleTree` runs with `coreShortCircuit = true` — default-off leaves the marker an
   # ordinary attrset value, so the engine is byte-for-byte unchanged (spec §2.5 opt-in constraint).
-  mkCoreValue =
-    args:
-    let
-      checked = prelude.checkRequired "gen-merge.mkCoreValue" [ "digest" "values" ] args;
-    in
-    # `seq checked` (den-hoag-7gp66 P1 lazy-doors fix): `__coreValue = true` is a literal, so the
-    # return's own WHNF forced neither `digest` nor `values` -- `isCoreValue`'s `.__coreValue or
-    # false` read is exactly the consumer pattern that would never touch `checked` either, admitting
-    # a bad record at the marker's own construction. Same idiom gen-settings' door fix (0474486)
-    # and gen-class's applyCoreFixed already use.
-    builtins.seq checked {
-      __coreValue = true;
-      inherit (checked) digest values;
-    };
+  # Two positional operands (den-hoag-7gp66 P2, R7): the digest names the subtree, `values` is the
+  # subject it tags. Positional arity is structural, so there is no field to check.
+  mkCoreValue = digest: values: {
+    __coreValue = true;
+    inherit digest values;
+  };
   isCoreValue = v: isAttrs v && (v.__coreValue or false) == true;
 
   # Merge two TYPES through the `functor`/`typeMerge` protocol the library already ships
@@ -3686,12 +3678,25 @@ let
   #
   # It is the SAME fold the full result's `options` field is, published twice rather than computed
   # twice: a second definition of "which options are declared" is a second answer, free to disagree.
+  #
+  # Its options lead and `modules` comes last, as at `evalModuleTree` (den-hoag-7gp66 P2): the same
+  # two of that door's options it reads, closed, refused by name at `declaredOptions opts`.
   declaredOptions =
-    args:
-    let
-      s = declarationStratum args;
-    in
-    stampOptions s.sitesAt (args.prefix or [ ]) s.options;
+    prelude.door
+      {
+        name = "gen-merge.declaredOptions";
+        optional = [
+          "specialArgs"
+          "prefix"
+        ];
+      }
+      (
+        o: modules:
+        let
+          s = declarationStratum (o // { inherit modules; });
+        in
+        stampOptions s.sitesAt (o.prefix or [ ]) s.options
+      );
 
   # ── THE ONE DRIVER — this library declares no fixpoint of its own ─────────────────────────────
   # ADR-0006 / ADR-0008 §1. What was `prelude.fix (result: …)` is the SAME knot, driven by the
@@ -5525,15 +5530,13 @@ let
   # mints nothing, because its tree is a position of the evaluation that holds it.
   evalModuleTreeNested = evalModuleTreeWith knotNested true false;
 
-  # The published door is MIXED (§v1.2): `modules` required, the rest closed options. It takes the
-  # record whole rather than as native formals, whose refusal of an unknown or missing field Nix
-  # raises past `tryEval`, and refuses through gen-prelude's `checkOptions` over `checkRequired`
-  # so the text is the shared one. The admitted record is decided first by a test that allocates
-  # no list and creates no thunk — `removeAttrs` against the hoisted name set leaves nothing — and
-  # the prelude composition runs only on the record that test rejects, where it throws by name.
-  # The nesting seam calls `evalModuleTreeWith` directly: its record is built here, not a caller's.
+  # The published door is OPTIONS FIRST, `modules` LAST (den-hoag-7gp66 P2, R7): the closed options
+  # set is a `prelude.door`, refused by name and catchably at `evalModuleTree opts`'s own WHNF, so
+  # `evalModuleTree { specialArgs = …; }` is a value a caller can map over module lists. The module
+  # list is the subject, a positional operand with no field contract. The `{ }` options call takes
+  # the constructor's fast path and runs no check. The nesting seam and every internal caller call
+  # `evalModuleTreeUnchecked` (or `evalModuleTreeWith`) with a record built here, not a caller's.
   evalModuleTreeOptions = [
-    "modules"
     "specialArgs"
     "check"
     "prefix"
@@ -5541,16 +5544,10 @@ let
     "warmFrom"
     "editedModules"
   ];
-  evalModuleTree =
-    args:
-    if isAttrs args && args ? modules && builtins.removeAttrs args evalModuleTreeOptions == { } then
-      evalModuleTreeUnchecked args
-    else
-      evalModuleTreeUnchecked (
-        prelude.checkOptions "gen-merge.evalModuleTree" evalModuleTreeOptions (
-          prelude.checkRequired "gen-merge.evalModuleTree" [ "modules" ] args
-        )
-      );
+  evalModuleTree = prelude.door {
+    name = "gen-merge.evalModuleTree";
+    optional = evalModuleTreeOptions;
+  } (o: modules: evalModuleTreeUnchecked (o // { inherit modules; }));
 in
 {
   inherit

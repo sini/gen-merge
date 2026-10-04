@@ -255,12 +255,10 @@ in
   # therefore evidence about the whole delegation rather than about one half of it.
   flake.tests.entry.test-the-shims-library-is-live = {
     expr =
-      (standalone.evalModuleTree {
-        modules = [
-          { options.x = standalone.mkOption { type = standalone.types.str; }; }
-          { config.x = "through-the-shim"; }
-        ];
-      }).config.x;
+      (standalone.evalModuleTree { } [
+        { options.x = standalone.mkOption { type = standalone.types.str; }; }
+        { config.x = "through-the-shim"; }
+      ]).config.x;
     expected = "through-the-shim";
   };
 

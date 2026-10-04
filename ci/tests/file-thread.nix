@@ -8,7 +8,12 @@
 # Every wrapped arm reads `F`; each has a DIRECT-`_file` control that reads `F` without any
 # flatten involved. The refusal-TEXT arms (`declared in …`, `defined in …`) assert an error message
 # and so live on `testsError` (`../tests-error.nix`, `file-thread`).
-{ genMerge, nixpkgsLib, ... }:
+{
+  evalRequest,
+  genMerge,
+  nixpkgsLib,
+  ...
+}:
 let
   gm = genMerge;
   inherit (gm) evalModuleTree mkOption lint;
@@ -22,20 +27,14 @@ let
   body = {
     config.bogus = 1;
   };
-  und =
-    mods:
-    map (u: u.file)
-      (evalModuleTree {
-        modules = mods;
-        check = false;
-      }).undeclared;
+  und = mods: map (u: u.file) (evalModuleTree { check = false; } mods).undeclared;
   declX = {
     options.x = mkOption { type = t.int; };
   };
   provFiles =
     mods:
     let
-      p = (evalModuleTree { modules = [ declX ] ++ mods; }).provenance.x;
+      p = (evalModuleTree { } ([ declX ] ++ mods)).provenance.x;
     in
     {
       defs = map (d: d.file) p.defs;
@@ -44,17 +43,15 @@ let
   pathMod = ./_fixtures/file-thread-path.nix;
 
   # A nested tree, for the moduleTree arm (U1) and the `.config` fence (C).
-  tree = evalModuleTree {
-    modules = [
-      {
-        _file = "/real/T.nix";
-        options.a = mkOption {
-          type = t.int;
-          default = 0;
-        };
-      }
-    ];
-  };
+  tree = evalModuleTree { } [
+    {
+      _file = "/real/T.nix";
+      options.a = mkOption {
+        type = t.int;
+        default = 0;
+      };
+    }
+  ];
 
   # nixpkgs order marker, built directly (gen-merge exports no `mkOrder`; see lint.nix).
   mkAfter = content: {
@@ -70,13 +67,9 @@ let
   };
   lintFiles =
     mods:
-    map
-      (f: {
-        inherit (f) kind file;
-      })
-      (lint {
-        modules = [ xsDecl ] ++ mods;
-      });
+    map (f: {
+      inherit (f) kind file;
+    }) (lint ([ xsDecl ] ++ mods));
 
   # Laziness fixture: a wrapper whose own `_file` throws. Reading `.config` must not force it.
   zDecl = {
@@ -196,15 +189,13 @@ in
     test-deferred-module-reads-defining-file = {
       expr =
         let
-          outer = evalModuleTree {
-            modules = [
-              { options.d = mkOption { type = t.deferredModule; }; }
-              {
-                _file = F;
-                config.d = body;
-              }
-            ];
-          };
+          outer = evalModuleTree { } [
+            { options.d = mkOption { type = t.deferredModule; }; }
+            {
+              _file = F;
+              config.d = body;
+            }
+          ];
         in
         und [ outer.config.d ];
       expected = [ "/real/F.nix, via option d" ];
@@ -216,18 +207,15 @@ in
           (u: {
             inherit (u) file path;
           })
-          (evalModuleTree {
-            check = false;
-            modules = [
-              { options.t = mkOption { type = tree.type; }; }
-              {
-                _file = F;
-                config.t = {
-                  bogus = 1;
-                };
-              }
-            ];
-          }).undeclared;
+          (evalModuleTree { check = false; } [
+            { options.t = mkOption { type = tree.type; }; }
+            {
+              _file = F;
+              config.t = {
+                bogus = 1;
+              };
+            }
+          ]).undeclared;
       expected = [
         {
           file = F;
@@ -285,34 +273,32 @@ in
     test-config-digest-unmoved-by-file-threading = {
       expr = builtins.hashString "sha256" (
         builtins.toJSON
-          (evalModuleTree {
-            modules = [
-              {
-                options.p = mkOption { type = t.int; };
-                options.q = mkOption {
-                  type = t.listOf t.str;
-                  default = [ ];
-                };
-                options.t = mkOption { type = tree.type; };
-              }
-              (sdml "/real/P1.nix" { config.p = gm.mkOverride 90 1; })
-              (sdml "/real/P2.nix" ({ ... }: { config.p = 2; }))
-              {
-                _file = "/real/Q.nix";
-                config.q = [ "own" ];
-                imports = [
-                  { config.q = [ "a" ]; }
-                  (sdml "/real/Q2.nix" { config.q = [ "b" ]; })
-                ];
-              }
-              {
-                _file = "/real/T.nix";
-                config.t = {
-                  a = 7;
-                };
-              }
-            ];
-          }).config
+          (evalModuleTree { } [
+            {
+              options.p = mkOption { type = t.int; };
+              options.q = mkOption {
+                type = t.listOf t.str;
+                default = [ ];
+              };
+              options.t = mkOption { type = tree.type; };
+            }
+            (sdml "/real/P1.nix" { config.p = gm.mkOverride 90 1; })
+            (sdml "/real/P2.nix" ({ ... }: { config.p = 2; }))
+            {
+              _file = "/real/Q.nix";
+              config.q = [ "own" ];
+              imports = [
+                { config.q = [ "a" ]; }
+                (sdml "/real/Q2.nix" { config.q = [ "b" ]; })
+              ];
+            }
+            {
+              _file = "/real/T.nix";
+              config.t = {
+                a = 7;
+              };
+            }
+          ]).config
       );
       expected = "d1ff1d5864fdc673ce5f713279d566830959c29f3fc1db8c803277a10d133c27";
     };
@@ -321,12 +307,10 @@ in
     test-config-read-does-not-force-parent-file = {
       expr =
         (builtins.tryEval
-          (evalModuleTree {
-            modules = [
-              zDecl
-              zWrapped
-            ];
-          }).config.a
+          (evalModuleTree { } [
+            zDecl
+            zWrapped
+          ]).config.a
         ).value;
       expected = 1;
     };
@@ -338,7 +322,7 @@ in
     test-nixpkgs-equivalence-wrapped-and-direct = {
       expr = builtins.mapAttrs (_: mods: genMergeFiles mods == nixpkgsFiles mods) f1Arms // {
         deferred =
-          genMergeFiles [ (deferredOf evalModuleTree mkOption t) ]
+          genMergeFiles [ (deferredOf evalRequest mkOption t) ]
           == nixpkgsFiles [ (deferredOf nixpkgsLib.evalModules nixpkgsLib.mkOption nixpkgsLib.types) ];
         referenceReadsF = map (mods: nixpkgsFiles mods) (builtins.attrValues f1Arms);
       };

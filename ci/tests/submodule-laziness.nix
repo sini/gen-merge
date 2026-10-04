@@ -38,14 +38,8 @@ let
       );
     in
     if r.success then r.value else "refused";
-  gen = served (modules: gm.evalModuleTree { inherit modules; });
-  genL = served (
-    modules:
-    gm.evalModuleTree {
-      inherit modules;
-      specialArgs = { inherit lib; };
-    }
-  );
+  gen = served (modules: gm.evalModuleTree { } modules);
+  genL = served (modules: gm.evalModuleTree { specialArgs = { inherit lib; }; } modules);
   ref = served (modules: lib.evalModules { inherit modules; });
   y = c: c.s.y;
 
@@ -497,13 +491,7 @@ in
     test-the-lint-does-not-scan-a-submodule-freeformType = {
       expr =
         let
-          lintOf =
-            t:
-            map (f: f.kind) (
-              gm.lint {
-                modules = [ { options.s = lib.mkOption { type = t; }; } ];
-              }
-            );
+          lintOf = t: map (f: f.kind) (gm.lint [ { options.s = lib.mkOption { type = t; }; } ]);
         in
         {
           lintFreeformFn = lintOf (np.submodule { freeformType = np.attrsOf (np.functionTo np.int); });

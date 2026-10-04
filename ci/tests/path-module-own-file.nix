@@ -4,7 +4,12 @@
 # (the tree's root, an unscoped importer, a scoped importer): one cell per branch, since a revert of
 # one branch alone is invisible to a cell that only imports at the root. The refusal-TEXT arms live on
 # `testsError` (`../tests-error.nix`, `path-module-own-file`).
-{ genMerge, nixpkgsLib, ... }:
+{
+  evalRequest,
+  genMerge,
+  nixpkgsLib,
+  ...
+}:
 let
   gm = genMerge;
   inherit (gm) evalModuleTree mkOption lint;
@@ -44,26 +49,15 @@ let
     unscoped = underUnscoped;
     scoped = underScoped;
   };
-  defsOf = mods: map (d: d.file) (evalModuleTree { modules = [ declX ] ++ mods; }).provenance.x.defs;
-  winnersOf =
-    mods: map (d: d.file) (evalModuleTree { modules = [ declX ] ++ mods; }).provenance.x.winners;
-  und =
-    mods:
-    map (u: u.file)
-      (evalModuleTree {
-        modules = mods;
-        check = false;
-      }).undeclared;
-  lintFiles =
-    mods:
-    map (f: f.file) (lint {
-      modules = [ xsDecl ] ++ mods;
-    });
+  defsOf = mods: map (d: d.file) (evalModuleTree { } ([ declX ] ++ mods)).provenance.x.defs;
+  winnersOf = mods: map (d: d.file) (evalModuleTree { } ([ declX ] ++ mods)).provenance.x.winners;
+  und = mods: map (u: u.file) (evalModuleTree { check = false; } mods).undeclared;
+  lintFiles = mods: map (f: f.file) (lint ([ xsDecl ] ++ mods));
   # The engine's definition files of `xs`, less the option's own default.
   xsDefs =
     mods:
     builtins.filter (f: f != "<default>") (
-      map (d: d.file) (evalModuleTree { modules = [ xsDecl ] ++ mods; }).provenance.xs.defs
+      map (d: d.file) (evalModuleTree { } ([ xsDecl ] ++ mods)).provenance.xs.defs
     );
   # The reference side: the same path module through nixpkgs' `evalModules`.
   nixpkgsDefs =
@@ -165,7 +159,7 @@ in
     # An option declared by a path module: `declarations` reads its `_file`, as nixpkgs'.
     test-declarations-read-the-path-modules-own-file = {
       expr = {
-        genMerge = declsOf evalModuleTree mkOption t;
+        genMerge = declsOf evalRequest mkOption t;
         nixpkgs = declsOf nixpkgsLib.evalModules nixpkgsLib.mkOption nixpkgsLib.types;
       };
       expected = {

@@ -14,6 +14,7 @@
 #      result: sweeping every surface of a two-declaration eval for the losing default matched
 #      nothing, with the winner's own default matching in the same sweep as the live control.
 {
+  evalRequest,
   genMerge,
   nixpkgsLib,
   ...
@@ -44,18 +45,16 @@ let
     let
       r =
         builtins.tryEval
-          (evalModuleTree {
-            modules = [
-              {
-                _file = "a.nix";
-                options.x = mkOption { type = a; };
-              }
-              {
-                _file = "b.nix";
-                options.x = mkOption { type = b; };
-              }
-            ];
-          }).options.x.type.name;
+          (evalModuleTree { } [
+            {
+              _file = "a.nix";
+              options.x = mkOption { type = a; };
+            }
+            {
+              _file = "b.nix";
+              options.x = mkOption { type = b; };
+            }
+          ]).options.x.type.name;
     in
     if r.success then "MERGED:" + r.value else "REFUSED";
 
@@ -187,13 +186,13 @@ in
       in
       {
         expr = {
-          gm = table evalModuleTree mkOption;
+          gm = table evalRequest mkOption;
           ref = table np.evalModules np.mkOption;
           # the gen-native veto across a fold step it is not adjacent to by position
-          gen-first-int-Fint-str = read evalModuleTree mkOption [ t.int Fint np.types.str ] n;
+          gen-first-int-Fint-str = read evalRequest mkOption [ t.int Fint np.types.str ] n;
           # the one departure, by refusing: `Fx`'s relation answers `int` for `str`, which keeps
           # neither operand's name (nixpkgs answers `int`)
-          renaming-int-str-Fx = read evalModuleTree mkOption [ np.types.int np.types.str Fx ] n;
+          renaming-int-str-Fx = read evalRequest mkOption [ np.types.int np.types.str Fx ] n;
         };
         expected = {
           gm = expected;
@@ -262,9 +261,9 @@ in
       in
       {
         expr = {
-          gm = table evalModuleTree;
+          gm = table evalRequest;
           ref = table np.evalModules;
-          ff-renaming-21 = read evalModuleTree [ Bf Ar ] "s";
+          ff-renaming-21 = read evalRequest [ Bf Ar ] "s";
         };
         expected = {
           gm = expected;
@@ -316,7 +315,7 @@ in
       in
       {
         expr = {
-          gm = table evalModuleTree mkOption;
+          gm = table evalRequest mkOption;
           ref = table np.evalModules np.mkOption;
         };
         expected = {
@@ -345,7 +344,7 @@ in
             mk = np.mkOption;
           };
           gm = {
-            ev = evalModuleTree;
+            ev = evalRequest;
             mk = mkOption;
           };
         };
@@ -540,7 +539,7 @@ in
             mk = np.mkOption;
           };
           gm = {
-            ev = evalModuleTree;
+            ev = evalRequest;
             mk = mkOption;
           };
         };
@@ -836,7 +835,7 @@ in
             mk = np.mkOption;
           };
           gm = {
-            ev = evalModuleTree;
+            ev = evalRequest;
             mk = mkOption;
           };
         };
@@ -1073,7 +1072,7 @@ in
         };
         genSide = {
           sub = t.submodule [ genM ];
-          tree = (evalModuleTree { modules = [ genM ]; }).type;
+          tree = (evalModuleTree { } [ genM ]).type;
           args = (t.submodule [ genM ]).withArgs { bar = 2; };
           clash = (t.submodule [ genM ]).withArgs { foo = 1; };
         };
@@ -1097,7 +1096,7 @@ in
             mk = np.mkOption;
           };
           gm = {
-            ev = evalModuleTree;
+            ev = evalRequest;
             mk = mkOption;
           };
         };
@@ -1274,7 +1273,7 @@ in
           };
           G = {
             sub = tag: t.submodule [ (genDecl tag) ];
-            tree = tag: (evalModuleTree { modules = [ (genDecl tag) ]; }).type;
+            tree = tag: (evalModuleTree { } [ (genDecl tag) ]).type;
           };
         };
         wrap =
@@ -1311,7 +1310,7 @@ in
             mk = np.mkOption;
           };
           gm = {
-            ev = evalModuleTree;
+            ev = evalRequest;
             mk = mkOption;
           };
         };
@@ -1700,7 +1699,7 @@ in
       in
       {
         expr = {
-          gm = both evalModuleTree mkOption;
+          gm = both evalRequest mkOption;
           np = both np.evalModules np.mkOption;
         };
         expected =
@@ -1813,7 +1812,7 @@ in
       in
       {
         expr = {
-          gm = both evalModuleTree mkOption;
+          gm = both evalRequest mkOption;
           np = both np.evalModules np.mkOption;
         };
         expected =
@@ -1905,7 +1904,7 @@ in
     # A mergeable redeclaration still EVALUATES, all the way to a value. The refusal cells prove
     # that something now throws; only this proves that it throws on the right inputs.
     test-mergeable-redeclaration-still-evaluates = {
-      expr = (evalModuleTree shadowing).config.x;
+      expr = (evalRequest shadowing).config.x;
       expected = "from-B";
     };
     # Two same-named `enum`s over different value sets merge to their ordered union (nixpkgs' `enum`
@@ -1920,8 +1919,7 @@ in
             options.x = mk { type = ty "e" e; };
           }) sets
           ++ [ { config.x = v; } ];
-        gen =
-          sets: v: builtins.tryEval (evalModuleTree { modules = enumsOf mkOption t.enum sets v; }).config.x;
+        gen = sets: v: builtins.tryEval (evalModuleTree { } (enumsOf mkOption t.enum sets v)).config.x;
         ref =
           sets: v:
           builtins.tryEval
@@ -1965,7 +1963,7 @@ in
     # …and the layering shape reaches its `apply`, which is the pattern the ordered fold exists for.
     # (Its lint-side twin is `test-accept-apply-redeclare-is-not-type-merge`, ci/tests/lint.nix.)
     test-apply-layering-is-not-a-redeclaration = {
-      expr = (evalModuleTree layering).config.x;
+      expr = (evalRequest layering).config.x;
       expected = "from-A!";
     };
 
@@ -1976,7 +1974,7 @@ in
     test-shadowed-declaration-stays-reachable = {
       expr =
         let
-          decl = (evalModuleTree shadowing).options.x;
+          decl = (evalRequest shadowing).options.x;
         in
         {
           winner = {
@@ -2008,31 +2006,29 @@ in
       expr =
         let
           decl =
-            (evalModuleTree {
-              modules = [
-                {
-                  _file = "a.nix";
-                  options.x = mkOption {
-                    type = t.str;
-                    default = "A";
-                  };
-                }
-                {
-                  _file = "b.nix";
-                  options.x = mkOption {
-                    type = t.str;
-                    default = "B";
-                  };
-                }
-                {
-                  _file = "c.nix";
-                  options.x = mkOption {
-                    type = t.str;
-                    default = "C";
-                  };
-                }
-              ];
-            }).options.x;
+            (evalModuleTree { } [
+              {
+                _file = "a.nix";
+                options.x = mkOption {
+                  type = t.str;
+                  default = "A";
+                };
+              }
+              {
+                _file = "b.nix";
+                options.x = mkOption {
+                  type = t.str;
+                  default = "B";
+                };
+              }
+              {
+                _file = "c.nix";
+                options.x = mkOption {
+                  type = t.str;
+                  default = "C";
+                };
+              }
+            ]).options.x;
         in
         {
           winner = decl.default;
@@ -2063,29 +2059,27 @@ in
       expr =
         let
           decl =
-            (evalModuleTree {
-              modules = [
-                {
-                  _file = "a.nix";
-                  options.x = mkOption {
-                    type = t.str;
-                    default = "A";
-                  };
-                }
-                {
-                  _file = "b.nix";
-                  options.x = mkOption { description = "desc-from-B"; };
-                }
-                {
-                  _file = "c.nix";
-                  options.x = mkOption { description = "desc-from-C"; };
-                }
-                {
-                  _file = "d.nix";
-                  options.x = mkOption { default = "D"; };
-                }
-              ];
-            }).options.x;
+            (evalModuleTree { } [
+              {
+                _file = "a.nix";
+                options.x = mkOption {
+                  type = t.str;
+                  default = "A";
+                };
+              }
+              {
+                _file = "b.nix";
+                options.x = mkOption { description = "desc-from-B"; };
+              }
+              {
+                _file = "c.nix";
+                options.x = mkOption { description = "desc-from-C"; };
+              }
+              {
+                _file = "d.nix";
+                options.x = mkOption { default = "D"; };
+              }
+            ]).options.x;
         in
         {
           winner = {
@@ -2124,21 +2118,19 @@ in
     # that never populates.
     test-overridden-appears-only-where-a-field-was-shadowed = {
       expr = {
-        layered = (evalModuleTree layering).options.x ? overridden;
-        shadowed = (evalModuleTree shadowing).options.x ? overridden;
+        layered = (evalRequest layering).options.x ? overridden;
+        shadowed = (evalRequest shadowing).options.x ? overridden;
         # A single declaration is not a redeclaration.
         alone =
-          (evalModuleTree {
-            modules = [
-              {
-                _file = "a.nix";
-                options.x = mkOption {
-                  type = t.str;
-                  default = "A";
-                };
-              }
-            ];
-          }).options.x
+          (evalModuleTree { } [
+            {
+              _file = "a.nix";
+              options.x = mkOption {
+                type = t.str;
+                default = "A";
+              };
+            }
+          ]).options.x
             ? overridden;
       };
       expected = {

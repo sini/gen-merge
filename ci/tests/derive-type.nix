@@ -23,8 +23,8 @@ let
   inherit (gm) deriveType mergeTypes;
   inherit (builtins) tryEval deepSeq mapAttrs;
 
+  # The options every derivation below shares; each passes its `id` positionally.
   tagged = {
-    id = "tagged";
     fields = _: {
       __tag = "tagged";
       description = "a tagged type";
@@ -56,30 +56,26 @@ let
     attrs = t.attrs;
     either = t.either t.str t.int;
   };
-  derived = mapAttrs (_: b: deriveType b tagged) families;
+  derived = mapAttrs (_: b: deriveType tagged "tagged" b) families;
 
   # One option declared twice; `true` iff the declaration path merged the pair.
   declares =
     a: b:
     (tryEval (
       deepSeq
-        (gm.evalModuleTree {
-          modules = [
-            { options.o = gm.mkOption { type = a; }; }
-            { options.o = gm.mkOption { type = b; }; }
-          ];
-        }).options.o.type.name
+        (gm.evalModuleTree { } [
+          { options.o = gm.mkOption { type = a; }; }
+          { options.o = gm.mkOption { type = b; }; }
+        ]).options.o.type.name
         null
     )).success;
   value = b: if b.name == "listOf" then [ "a" ] else "a";
   fold =
     d: v:
-    (gm.evalModuleTree {
-      modules = [
-        { options.o = gm.mkOption { type = d; }; }
-        { o = v; }
-      ];
-    }).config.o;
+    (gm.evalModuleTree { } [
+      { options.o = gm.mkOption { type = d; }; }
+      { o = v; }
+    ]).config.o;
   checks =
     d:
     map (v: d.check v) [
@@ -93,8 +89,14 @@ let
   # orders, and the declaration path both orders.
   separation = b: d: {
     raw = [
-      (idOf (mergeTypes b d))
-      (idOf (mergeTypes d b))
+      (idOf (mergeTypes {
+        deciding = b;
+        partner = d;
+      }))
+      (idOf (mergeTypes {
+        deciding = d;
+        partner = b;
+      }))
     ];
     foreign = [
       (idOf (b.typeMerge d.functor))
@@ -151,19 +153,31 @@ let
     builtins.match ".*\\.name( or [^)]*)?\\)? *(==|!=).*" l != null
     || builtins.match ".*(==|!=) *\\(?[a-zA-Z_.]*\\.name([^a-zA-Z_].*)?" l != null;
 
-  keyed = k: deriveType t.str (tagged // { key = k; });
-  minted = deriveType t.str (tagged // { mint.minted = "tagged-over-str"; });
+  keyed = k: deriveType (tagged // { key = k; }) "tagged" t.str;
+  minted = deriveType (tagged // { mint.minted = "tagged-over-str"; }) "tagged" t.str;
 in
 {
   flake.tests.derive-type = {
     # C1 — idempotence on gen's own path: d ⊔ d answers the derivation.
     test-merging-a-derivation-with-itself-keeps-it = {
-      expr = mapAttrs (_: b: idOf (mergeTypes (deriveType b tagged) (deriveType b tagged))) bases;
+      expr = mapAttrs (
+        _: b:
+        idOf (mergeTypes {
+          deciding = (deriveType tagged "tagged" b);
+          partner = (deriveType tagged "tagged" b);
+        })
+      ) bases;
       expected = mapAttrs (_: _: "tagged") bases;
     };
     # C8 — the same predicate over `//`: the base answers, or the twin is refused.
     test-control-a-naive-derivation-merged-with-itself-loses-it = {
-      expr = mapAttrs (_: b: tagOf (mergeTypes (naive b) (naive b))) bases;
+      expr = mapAttrs (
+        _: b:
+        tagOf (mergeTypes {
+          deciding = (naive b);
+          partner = (naive b);
+        })
+      ) bases;
       expected = {
         leaf = "LOST";
         container = "LOST";
@@ -175,7 +189,7 @@ in
       expr = mapAttrs (
         _: b:
         let
-          d = deriveType b tagged;
+          d = deriveType tagged "tagged" b;
         in
         idOf (d.typeMerge d.functor)
       ) bases;
@@ -201,7 +215,13 @@ in
       expected = mapAttrs (_: _: true) families;
     };
     test-control-a-naive-derivation-is-absorbed-by-its-base = {
-      expr = mapAttrs (_: b: tagOf (mergeTypes b (naive b))) bases;
+      expr = mapAttrs (
+        _: b:
+        tagOf (mergeTypes {
+          deciding = b;
+          partner = (naive b);
+        })
+      ) bases;
       expected = {
         leaf = "LOST";
         container = "LOST";
@@ -272,9 +292,16 @@ in
     };
     test-control-derivations-whose-keys-agree-merge = {
       expr = {
-        raw = idOf (mergeTypes (keyed "a") (keyed "a"));
+        raw = idOf (mergeTypes {
+          deciding = (keyed "a");
+          partner = (keyed "a");
+        });
         declared = declares (keyed "a") (keyed "a");
-        key = (mergeTypes (keyed "a") (keyed "a")).__derivation.key;
+        key =
+          (mergeTypes {
+            deciding = (keyed "a");
+            partner = (keyed "a");
+          }).__derivation.key;
       };
       expected = {
         raw = "tagged";
@@ -283,7 +310,7 @@ in
       };
     };
     test-control-derivations-of-two-ids-never-merge = {
-      expr = separation derived.leaf (deriveType t.str (tagged // { id = "other"; }));
+      expr = separation derived.leaf (deriveType tagged "other" t.str);
       expected = separated;
     };
     # C10 — a supplied mint is the derivation's identity.
@@ -304,11 +331,17 @@ in
       expr =
         let
           np = nixpkgsLib.types.str;
-          d = deriveType np tagged;
+          d = deriveType tagged "tagged" np;
         in
         {
-          self = idOf (mergeTypes d d);
-          base = idOf (mergeTypes d np);
+          self = idOf (mergeTypes {
+            deciding = d;
+            partner = d;
+          });
+          base = idOf (mergeTypes {
+            deciding = d;
+            partner = np;
+          });
           check = checks d == checks np;
           fold = fold d "a";
         };
@@ -322,12 +355,22 @@ in
     test-a-derivation-of-a-derivation-keeps-both = {
       expr =
         let
-          dd = deriveType derived.leaf (tagged // { id = "outer"; });
+          dd = deriveType tagged "outer" derived.leaf;
         in
         {
-          self = idOf (mergeTypes dd dd);
-          inner = (mergeTypes dd dd).__derivation.base.__derivation.id;
-          base = idOf (mergeTypes dd derived.leaf);
+          self = idOf (mergeTypes {
+            deciding = dd;
+            partner = dd;
+          });
+          inner =
+            (mergeTypes {
+              deciding = dd;
+              partner = dd;
+            }).__derivation.base.__derivation.id;
+          base = idOf (mergeTypes {
+            deciding = dd;
+            partner = derived.leaf;
+          });
         };
       expected = {
         self = "outer";
@@ -338,7 +381,7 @@ in
     test-the-metadata-and-name-are-the-callers = {
       expr =
         let
-          d = deriveType t.str (tagged // { name = "label"; });
+          d = deriveType (tagged // { name = "label"; }) "tagged" t.str;
         in
         {
           inherit (d) name description __tag;
@@ -356,7 +399,7 @@ in
       expr = [
         (gm ? deriveType)
         (t ? deriveType)
-        ((t.deriveType t.str tagged).functor.name)
+        ((t.deriveType tagged "tagged" t.str).functor.name)
       ];
       expected = [
         true

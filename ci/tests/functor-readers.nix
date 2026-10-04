@@ -37,13 +37,13 @@ let
   };
   tree =
     mods:
-    (evalModuleTree {
-      modules = [
+    (evalModuleTree { } (
+      [
         { options.out = mkOption { }; }
         { config._module.args.flavour = "flavour-passed"; }
       ]
-      ++ mods;
-    }).config.out;
+      ++ mods
+    )).config.out;
 
   # nixpkgs `lib.setFunctionArgs f (functionArgs f)`, the wrapper a lowering puts around a module
   wrap = f: np.setFunctionArgs (args: f args) (builtins.functionArgs f);
@@ -54,7 +54,7 @@ let
   onConfig = { config, ... }: { config.x = "config-only"; };
   gmX =
     mods:
-    (evalModuleTree { modules = [ { options.x = mkOption { type = genMerge.types.str; }; } ] ++ mods; })
+    (evalModuleTree { } ([ { options.x = mkOption { type = genMerge.types.str; }; } ] ++ mods))
     .config.x;
   npX =
     mods:
@@ -87,8 +87,8 @@ let
   checkOnly =
     vs:
     builtins.tryEval
-      (evalModuleTree {
-        modules = [
+      (evalModuleTree { } (
+        [
           {
             options.x = mkOption {
               type = genMerge.mkOptionType {
@@ -98,8 +98,8 @@ let
             };
           }
         ]
-        ++ map (v: { x = v; }) vs;
-      }).config.x;
+        ++ map (v: { x = v; }) vs
+      )).config.x;
 in
 {
   flake.tests.functor-readers = {
@@ -248,11 +248,11 @@ in
       expected = "from-module-args";
     };
     test-the-declaration-stratum-applies-a-wrapped-module-by-its-formals = {
-      expr = (genMerge.declaredOptions { modules = [ (wrap declaring) ]; }).y.default;
+      expr = (genMerge.declaredOptions { } [ (wrap declaring) ]).y.default;
       expected = "declared";
     };
     test-lint-reads-a-wrapped-module-options-formal = {
-      expr = map (f: f.kind) (genMerge.lint { modules = [ (wrap ({ options, ... }: { })) ]; });
+      expr = map (f: f.kind) (genMerge.lint [ (wrap ({ options, ... }: { })) ]);
       expected = [ "options-introspection" ];
     };
   };

@@ -143,17 +143,15 @@ else if arm == "declaration-guarded" then
   # Under the guard it is a catchable `throw` naming the ceiling; the message itself is pinned in
   # ci/tests-error.nix, and what this arm reads is that the evaluation SURVIVES it.
   catch
-    (gm.evalModuleTree {
-      modules = [
-        {
-          _file = "a.nix";
-          options.x = gm.mkOption { type = undecidable; };
-        }
-        {
-          _file = "b.nix";
-          options.x = gm.mkOption { type = undecidable; };
-        }
-      ];
-    }).options.x.type.name
+    (gm.evalModuleTree { } [
+      {
+        _file = "a.nix";
+        options.x = gm.mkOption { type = undecidable; };
+      }
+      {
+        _file = "b.nix";
+        options.x = gm.mkOption { type = undecidable; };
+      }
+    ]).options.x.type.name
 else
   throw "unknown arm"

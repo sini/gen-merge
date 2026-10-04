@@ -6,68 +6,53 @@ let
 
   # A lax tree, `known` its one option.
   mt =
-    (evalModuleTree {
-      check = false;
-      modules = [
-        {
-          options.known = mkOption {
-            type = t.str;
-            default = "k";
-          };
-        }
-      ];
-    }).type;
+    (evalModuleTree { check = false; } [
+      {
+        options.known = mkOption {
+          type = t.str;
+          default = "k";
+        };
+      }
+    ]).type;
   # A lax tree whose leaf `sub` is itself a lax tree.
   t2 =
-    (evalModuleTree {
-      check = false;
-      modules = [
-        {
-          options.k = mkOption {
-            type = t.str;
-            default = "d";
-          };
-        }
-      ];
-    }).type;
+    (evalModuleTree { check = false; } [
+      {
+        options.k = mkOption {
+          type = t.str;
+          default = "d";
+        };
+      }
+    ]).type;
   t1 =
-    (evalModuleTree {
-      check = false;
-      modules = [
-        {
-          options.known = mkOption {
-            type = t.str;
-            default = "k";
-          };
-          options.flag = mkOption {
-            type = t.bool;
-            default = false;
-          };
-          options.sub = mkOption { type = t2; };
-        }
-      ];
-    }).type;
+    (evalModuleTree { check = false; } [
+      {
+        options.known = mkOption {
+          type = t.str;
+          default = "k";
+        };
+        options.flag = mkOption {
+          type = t.bool;
+          default = false;
+        };
+        options.sub = mkOption { type = t2; };
+      }
+    ]).type;
   run =
     ty: def:
-    evalModuleTree {
-      check = false;
-      modules = [
-        { options.x = mkOption { type = ty; }; }
-        {
-          _file = "/real/F.nix";
-          config.x = def;
-        }
-      ];
-    };
+    evalModuleTree { check = false; } [
+      { options.x = mkOption { type = ty; }; }
+      {
+        _file = "/real/F.nix";
+        config.x = def;
+      }
+    ];
   runM =
     ty: m:
-    evalModuleTree {
-      check = false;
-      modules = [
-        { options.x = mkOption { type = ty; }; }
-        m
-      ];
-    };
+    evalModuleTree { check = false; } [
+      { options.x = mkOption { type = ty; }; }
+      m
+    ];
   forces = e: (builtins.tryEval (builtins.deepSeq e null)).success;
   bad = {
     known = "v";
@@ -180,27 +165,21 @@ in
     test-a-tree-empty-value-reports-where-a-report-is-carried =
       let
         zzTree =
-          (evalModuleTree {
-            check = false;
-            modules = [
-              {
-                options.b = mkOption {
-                  type = t.int;
-                  default = 7;
-                };
-                options.c = mkOption {
-                  type = t.str;
-                  default = "c";
-                };
-              }
-              ({ prefix, ... }: { config.c = builtins.concatStringsSep "." prefix; })
-              { config.zz = 1; }
-            ];
-          }).type;
-        e = evalModuleTree {
-          check = false;
-          modules = [ { options.o = mkOption { type = zzTree; }; } ];
-        };
+          (evalModuleTree { check = false; } [
+            {
+              options.b = mkOption {
+                type = t.int;
+                default = 7;
+              };
+              options.c = mkOption {
+                type = t.str;
+                default = "c";
+              };
+            }
+            ({ prefix, ... }: { config.c = builtins.concatStringsSep "." prefix; })
+            { config.zz = 1; }
+          ]).type;
+        e = evalModuleTree { check = false; } [ { options.o = mkOption { type = zzTree; }; } ];
       in
       {
         expr = {

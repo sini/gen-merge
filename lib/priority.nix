@@ -343,8 +343,11 @@ let
   # here can see that pairing.
   #
   # `loc` is the path within `config` (and within `provenance`), relative to any `prefix`.
+  #
+  # Two positional operands, configuration first (den-hoag-7gp66 P2, R7): the scope is stamped, the
+  # result is the subject read, so `bandedLeaves scope` maps over one contributor's results.
   bandedLeaves =
-    { scope, result }:
+    scope: result:
     let
       freeformLeaf = loc: {
         inherit scope loc;

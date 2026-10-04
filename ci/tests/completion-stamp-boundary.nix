@@ -15,20 +15,18 @@ let
     tys: val:
     let
       p =
-        (gm.evalModuleTree {
-          modules = map (ty: { options.p = gm.mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
-        }).config.p;
+        (gm.evalModuleTree { } (
+          map (ty: { options.p = gm.mkOption { type = ty; }; }) tys ++ [ { p = val; } ]
+        )).config.p;
       r = tryEval (deepSeq p p);
     in
     if r.success then r.value else "REFUSED";
   via =
     ty: v:
-    (gm.evalModuleTree {
-      modules = [
-        { options.k = gm.mkOption { type = ty; }; }
-        { config.k = v; }
-      ];
-    }).config.k;
+    (gm.evalModuleTree { } [
+      { options.k = gm.mkOption { type = ty; }; }
+      { config.k = v; }
+    ]).config.k;
   posT = t.refined t.int {
     check = v: v > 0;
     message = "positive";

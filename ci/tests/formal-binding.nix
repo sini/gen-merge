@@ -25,12 +25,7 @@ let
       default = { };
     };
   };
-  run =
-    modules:
-    (evalModuleTree {
-      specialArgs.foo = 7;
-      modules = [ decl ] ++ modules;
-    }).config;
+  run = modules: (evalModuleTree { specialArgs.foo = 7; } ([ decl ] ++ modules)).config;
 
   # every formal in the base arguments: the elided arm
   baseFormals = run [
@@ -71,24 +66,21 @@ let
   ];
   # the declaration stratum, applied by `callD`: `declaredOptions` is its own publication, while
   # `.config` reads the declarations `callM` applied
-  declared = gm.declaredOptions {
-    specialArgs.foo = 7;
-    modules = [
-      (
-        { foo, prefix, ... }:
-        {
-          options.d = mkOption {
-            type = types.int;
-            default = foo;
-          };
-          options.p = mkOption {
-            type = types.anything;
-            default = prefix;
-          };
-        }
-      )
-    ];
-  };
+  declared = gm.declaredOptions { specialArgs.foo = 7; } [
+    (
+      { foo, prefix, ... }:
+      {
+        options.d = mkOption {
+          type = types.int;
+          default = foo;
+        };
+        options.p = mkOption {
+          type = types.anything;
+          default = prefix;
+        };
+      }
+    )
+  ];
 in
 {
   flake.tests.formal-binding = {

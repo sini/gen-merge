@@ -52,7 +52,7 @@ let
     mods:
     map (d: builtins.typeOf d.file) (
       builtins.filter (d: d.file != "<default>")
-        (evalModuleTree { modules = [ (declOf gm) ] ++ mods; }).provenance.y.defs
+        (evalModuleTree { } ([ (declOf gm) ] ++ mods)).provenance.y.defs
     );
   np =
     mods:
@@ -98,26 +98,21 @@ in
       expr = {
         undeclared =
           map (u: builtins.typeOf u.file)
-            (evalModuleTree {
-              modules = [
-                {
-                  _file = pv;
-                  config.bogus = 1;
-                }
-              ];
-              check = false;
-            }).undeclared;
+            (evalModuleTree { check = false; } [
+              {
+                _file = pv;
+                config.bogus = 1;
+              }
+            ]).undeclared;
         declarations = {
           gen =
             map builtins.typeOf
-              (evalModuleTree {
-                modules = [
-                  {
-                    _file = pv;
-                    options.w = gm.mkOption { type = gm.types.int; };
-                  }
-                ];
-              }).options.w.declarations;
+              (evalModuleTree { } [
+                {
+                  _file = pv;
+                  options.w = gm.mkOption { type = gm.types.int; };
+                }
+              ]).options.w.declarations;
           nixpkgs =
             map builtins.typeOf
               (nixpkgsLib.evalModules {
@@ -129,19 +124,17 @@ in
                 ];
               }).options.w.declarations;
         };
-        lint = map (f: builtins.typeOf f.file) (lint {
-          modules = [
-            (declOf gm)
-            {
-              _file = pv;
-              config.y = {
-                _type = "order";
-                priority = 1500;
-                content = [ 1 ];
-              };
-            }
-          ];
-        });
+        lint = map (f: builtins.typeOf f.file) (lint [
+          (declOf gm)
+          {
+            _file = pv;
+            config.y = {
+              _type = "order";
+              priority = 1500;
+              content = [ 1 ];
+            };
+          }
+        ]);
       };
       expected = {
         undeclared = [ "string" ];

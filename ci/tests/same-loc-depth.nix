@@ -11,13 +11,12 @@ in
   flake.tests.same-loc-depth = {
     test-one-loc-declared-in-n-modules-evaluates = {
       expr =
-        (evalModuleTree {
-          modules =
-            builtins.genList (_: {
-              options.p = mkOption { type = types.str; };
-            }) n
-            ++ [ { config.p = "v"; } ];
-        }).config.p;
+        (evalModuleTree { } (
+          builtins.genList (_: {
+            options.p = mkOption { type = types.str; };
+          }) n
+          ++ [ { config.p = "v"; } ]
+        )).config.p;
       expected = "v";
     };
   };

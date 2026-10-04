@@ -25,12 +25,12 @@ let
       };
     }
   );
-  tree = (gm.evalModuleTree { modules = [ subMod ]; }).type;
+  tree = (gm.evalModuleTree { } [ subMod ]).type;
   at =
     type: defs:
-    (gm.evalModuleTree {
-      modules = [ { options.o = mkOption { inherit type; }; } ] ++ map (d: { config.o = d; }) defs;
-    }).config.o;
+    (gm.evalModuleTree { } (
+      [ { options.o = mkOption { inherit type; }; } ] ++ map (d: { config.o = d; }) defs
+    )).config.o;
 in
 {
   flake.tests.empty-definitions = {

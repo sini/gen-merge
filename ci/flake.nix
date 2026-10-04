@@ -62,6 +62,11 @@
         memo = genMemo;
         scope = genScope;
       };
+      # The engine as a nixpkgs-shaped REQUEST function, `{ modules; specialArgs?; … }`. The published
+      # door takes its options first and the module list last (den-hoag-7gp66 P2), and nixpkgs'
+      # `lib.evalModules` takes one record; the suites that run the two engines side by side, or that
+      # build a request as data, call this bridge for the gen arm so both arms take one request.
+      evalRequest = r: genMerge.evalModuleTree (removeAttrs r [ "modules" ]) r.modules;
       # nixpkgs' `lib`, for the reference side of the oracles and for nixpkgs types run on the engine
       # (ci/tests/compat-nixpkgs-types.nix). A nixpkgs type enters as a FOREIGN VALUE at an option,
       # through the protocol boundary, and never as the `types` vocabulary: that slot is gen-types'
@@ -145,6 +150,7 @@
       specialArgs = {
         inherit
           genMerge
+          evalRequest
           genTypes
           prelude
           nixpkgsLib

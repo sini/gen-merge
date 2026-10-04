@@ -30,7 +30,7 @@ let
       default = [ ];
     };
   };
-  l = modules: (gm.evalModuleTree { modules = [ decl ] ++ modules; }).config.l;
+  l = modules: (gm.evalModuleTree { } ([ decl ] ++ modules)).config.l;
   cyA = {
     key = "a";
     l = [ "a" ];
@@ -100,13 +100,11 @@ in
     # a nested tree has its own module graph: the diamond inside a submodule value is one node there
     test-s1-a-nested-tree-deduplicates-in-its-own-graph = {
       expr =
-        (gm.evalModuleTree {
-          modules = [
-            { options.s = gm.mkOption { type = t.submodule decl; }; }
-            { s = { ... }: { imports = [ leaf ]; }; }
-            { s = { ... }: { imports = [ leaf ]; }; }
-          ];
-        }).config.s.l;
+        (gm.evalModuleTree { } [
+          { options.s = gm.mkOption { type = t.submodule decl; }; }
+          { s = { ... }: { imports = [ leaf ]; }; }
+          { s = { ... }: { imports = [ leaf ]; }; }
+        ]).config.s.l;
       expected = [ "leaf" ];
     };
     # the breadth-first winner: the first occurrence reached is the node's content
@@ -280,10 +278,9 @@ in
           ];
           edited = [ { imports = [ leaf ]; } ];
           w = gm.evalModuleTree {
-            modules = base ++ edited;
-            warmFrom = gm.evalModuleTree { modules = base; };
+            warmFrom = gm.evalModuleTree { } base;
             editedModules = edited;
-          };
+          } (base ++ edited);
         in
         {
           inherit (w.warmDecision) mode reason;

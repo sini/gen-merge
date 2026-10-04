@@ -71,19 +71,17 @@ let
     else
       throw "unknown arm";
 in
-(gm.evalModuleTree {
-  modules = [
-    {
-      options = builtins.listToAttrs (
-        map (i: {
-          name = "o${toString i}";
-          value = gm.mkOption {
-            type = gm.types.int;
-            default = 0;
-          };
-        }) idx
-      );
-    }
-    importer
-  ];
-}).config
+(gm.evalModuleTree { } [
+  {
+    options = builtins.listToAttrs (
+      map (i: {
+        name = "o${toString i}";
+        value = gm.mkOption {
+          type = gm.types.int;
+          default = 0;
+        };
+      }) idx
+    );
+  }
+  importer
+]).config

@@ -184,17 +184,15 @@ let
   inherit (genMerge) evalModuleTree mkOption mkForce;
   t = genMerge.types;               # gen-types leaves ⊎ gen-merge structural strategies
 
-  result = evalModuleTree {
-    modules = [
-      { options.name = mkOption { type = t.str; default = "anon"; }; }
-      { name = mkForce "pinned"; }
-    ];
-  };
+  result = evalModuleTree { } [
+    { options.name = mkOption { type = t.str; default = "anon"; }; }
+    { name = mkForce "pinned"; }
+  ];
 in
   result.config                     # ⇒ { name = "pinned"; }
 ```
 
-`evalModuleTree { modules; specialArgs ? {}; check ? true; prefix ? [] } → { config; options; type; provenance; undeclared; deprecations }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
+`evalModuleTree { specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? [] } modules → { config; options; type; provenance; undeclared; deprecations }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
 recursion) — and it is an option type named `submodule`, which a real nixpkgs `lib.evalModules`
 mounts (see below);
@@ -264,7 +262,7 @@ winning def's value to WHNF (`isOrderMarker`), so reading `winners` fires a decl
 
 ## Priority bands
 
-`priorityBand p` maps an override number to the band a contributor moves it at. `bandedLeaves { scope; result; }` maps every leaf of one `evalModuleTree` result to a record.
+`priorityBand p` maps an override number to the band a contributor moves it at. `bandedLeaves scope result` maps every leaf of one `evalModuleTree` result to a record.
 
 The bands follow the owner's ruling, on the numbers above:
 
@@ -324,7 +322,7 @@ fully declared config reports `[ ]`. A `_module.<x>` the engine does not own (an
 is listed as `[ "_module" "bogus" ]`.
 
 **A nested tree's findings.** A leaf whose declared type carries `mergeDefs.reported` — a tree merged as a
-type, `(evalModuleTree { … }).type` — reports the definitions *its own* eval did not merge, and they
+type, `(evalModuleTree { … } modules).type` — reports the definitions *its own* eval did not merge, and they
 surface here with their full absolute path (`nest.z`, or `sub.nest.z` at `prefix = [ "sub" ]`). Such a
 finding is **never absorbed** by an outer `freeformType`: its key has an associated option (the
 declared leaf `nest`), so it is outside the freeform domain (nixpkgs: *"merge all definitions that
@@ -421,7 +419,7 @@ declaration stratum is already exposed by the protocol, so a consumer that wants
 without touching `merge` —
 
 ```nix
-(evalModuleTree { modules = ty.getSubModules; }).deprecations
+(evalModuleTree { } ty.getSubModules).deprecations
 # ⇒ [ { path = [ "inner" ]; type = "depA"; message = "…"; declarations = [ "<gen-merge>" ]; } ]
 ```
 
@@ -495,11 +493,7 @@ reusing the previous result's declared-leaf values/provenance for locs provably 
 re-merging only the rest inside the normal fixpoint:
 
 ```nix
-evalModuleTree {
-  modules       = base ++ edited; # the full list
-  warmFrom      = prevResult;     # the PREVIOUS evalModuleTree result (its config/provenance/freeform ARE the memo)
-  editedModules = edited;         # the APPENDED module list
-}
+evalModuleTree { warmFrom = prevResult; editedModules = edited; } (base ++ edited)
 ```
 
 Default (`warmFrom = null`, `editedModules = [ ]`) ⇒ **zero behaviour change**: the decision is never
@@ -772,13 +766,14 @@ Published as `types.deriveType` and as top-level `deriveType`, one value under o
 placement owner-ruled 2026-10-01.
 
 ```nix
-deriveType base {
-  id = "tagged";                  # required: the derivation's merge identity and functor name
+deriveType {
   key = { … };                    # default null: plain data two derivations of one `id` must agree on
   fields = b: { __tag = "t"; };   # default `_: { }`: metadata, a function of the base it applies to
   name = "…"; description = "…";  # default: the base's
   mint = { minted = …; };         # default sealed
-}
+} "tagged" base                   # the `id` (required: the derivation's merge identity and functor
+                                  # name), then the base; the options are closed, refused by name
+
 ```
 
 **Why not `base // { … }`.** A completed type is a fixpoint: `defineType` ties the knot once, and
@@ -795,7 +790,7 @@ merges only a derivation of the same `id` and `key`, answering the bases' own jo
 again. No protocol field is stated by hand, the phrase included: a derivation stating no
 `description` is described by its base's phrase, rendered from `read` within the export's node
 budget and costing one node, so a type whose cycle closes through the derivation
-(`d = deriveType (nullOr (oneOf [ str (listOf d) ])) …`) has a finite phrase, docs and refusals,
+(`d = deriveType { … } "d" (nullOr (oneOf [ str (listOf d) ]))`) has a finite phrase, docs and refusals,
 as the same shape without the derivation does. Which field of the base goes where is
 `interface.deriveClasses`, and `ci/tests/derive-type.nix` fails by name on a field no class names.
 
@@ -847,7 +842,7 @@ one a type constructor over a TYPE, and neither is reachable where the other is.
   foreign leaf derives.
 - A derivation OF a consumer type whose relation keys on an inherited marker field is absorbed by
   that type: gen-schema's `refined` decides by `partner ? __schema`, which a derivation of a
-  refined type inherits, so `mergeTypes R (deriveType R …)` and the foreign `R.typeMerge` answer
+  refined type inherits, so `mergeTypes { deciding = R; partner = deriveType { … } "id" R; }` and the foreign `R.typeMerge` answer
   `R`. Separation holds over bases whose relation reads identity through `keyOf`; it closes for
   `refined` once `refined` is itself a `deriveType`.
 
@@ -910,7 +905,7 @@ nixpkgs', the vocabulary is gen's:
 
 ```nix
 # submodule
-declares = prefix: (evalModuleTree { inherit modules prefix specialArgs; }).options;
+declares = prefix: (evalModuleTree { inherit prefix specialArgs; } modules).options;
 # attrsOf / lazyAttrsOf
 declares = prefix: (subOf element).declares (prefix ++ [ "<name>" ]);
 # listOf
@@ -1259,7 +1254,7 @@ typeMergeRel = other: if <compatible> then { merged = <type>; } else { refused =
 ```
 
 The engine dispatches **gen-native first, foreign second**. On a declaration plane that has two
-meanings, one per operand. The LATER declaration's type decides (`mergeTypes later earlier`, nixpkgs'
+meanings, one per operand. The LATER declaration's type decides (`mergeTypes { deciding = later; partner = earlier; }`, nixpkgs'
 `later.typeMerge earlier.functor`), and an EARLIER gen-native relation is asked first whether it
 refuses the later type, a refusal no later relation overrules. The foreign arm stays and is not legacy:
 gen-merge meets foreign functors by construction — a gen type mounted in a foreign module system can
@@ -1349,7 +1344,7 @@ where it decides. **`attrs` is a stated divergence**: gen's `attrs` fold refuses
 the last, so a foreign `attrs` stays refused and nixpkgs' engine stays order-dependent for it. Leaves
 whose functor disagrees on identity (`str`, `number`, `path`, `deferredModule`) are outside this rule.
 
-**The relation is published as `genMerge.mergeTypes a b`** — the merged type or `null` — the one
+**The relation is published as `genMerge.mergeTypes { deciding = a; partner = b; }`** — the merged type or `null` — the one
 binding the declaration stratum and the structural element folds both answer through. It asks a gen
 type's `typeMergeRel` first and a foreign type's own `a.typeMerge b.functor` otherwise, behind the
 type-walk fuel guard. A consumer holding two types it did not build
@@ -1376,7 +1371,7 @@ Two modules may declare the same option loc. The merge splits the record in two:
   is still reachable, so a merged record that actually shadowed a field carries what it shadowed:
 
 ```nix
-(evalModuleTree { modules = [ a b ]; }).options.x
+(evalModuleTree { } [ a b ]).options.x
 # ⇒ { _type = "option"; type = <str>; default = "from-B";
 #     overridden = [ { file = "a.nix"; declaration = { type = <str>; default = "from-A"; }; } ]; }
 ```
@@ -1830,12 +1825,10 @@ nixpkgs option types run on the **same byte-mode engine** as FOREIGN VALUES at i
 and with zero adapter code:
 
 ```nix
-genMerge.evalModuleTree {
-  modules = [
+genMerge.evalModuleTree { } [
     { options.name = lib.mkOption { type = lib.types.str; default = "d"; }; }
     { name = lib.mkForce "x"; }
-  ];
-}
+  ]
 ```
 
 nixpkgs option types already speak the `(loc, defs)` merge contract `mergeDefs` dispatches on — a
@@ -2088,13 +2081,13 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 - **A type that is its own derivation, and an unguarded cycle, abort uncatchably, a declared
   exception to the rule that every refusal is catchable.**
 
-  - `d = deriveType d { … }` states no constructor between `d` and itself: it is the equation
+  - `d = deriveType { … } "d" d` states no constructor between `d` and itself: it is the equation
     `d = d`, and denotes no type. `deriveType` reads its base when it is built, so Nix black-holes
     the thunk (`infinite recursion encountered`) before any gen code observes a value, as nixpkgs'
     `d = d // { … }` dies. Neither serving nor refusing is available: a lazy `deriveType` would die
     the same way at its first read, since every field of `d` is read off `d`.
   - A NON-CONTRACTIVE cycle, one whose back-edge passes no constructor that consumes the value
-    (`r = either int r`, `either r int`, `nullOr r`, `deriveType (either int d)`), has no unique
+    (`r = either int r`, `either r int`, `nullOr r`, `deriveType { … } "d" (either int d)`), has no unique
     fixpoint: the least is `int`, the greatest admits everything. Its out-of-domain `check`, the
     refusals that read it, and for `either r int` even the in-domain check, die in the call-depth
     channel (`stack overflow; max-call-depth exceeded`) on all three evaluators, as nixpkgs' twins
@@ -2107,7 +2100,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     their channels, with a live control (`cyclic-guarded-control`).
 
 - **A foreign knot closed through a gen door aborts uncatchably at construction, a declared
-  exception to the rule that every refusal is catchable.** `r = mkOptionType (np.either np.int (np.listOf r))` and `d = deriveType (np.either np.int (np.listOf d)) { … }` die with `infinite recursion encountered` on every reader, where nixpkgs' twin (`np.mkOptionType` over the record,
+  exception to the rule that every refusal is catchable.** `r = mkOptionType (np.either np.int (np.listOf r))` and `d = deriveType { … } "d" (np.either np.int (np.listOf d))` die with `infinite recursion encountered` on every reader, where nixpkgs' twin (`np.mkOptionType` over the record,
   `base // { … }`) constructs and serves its check. The import decides at construction whether a
   stock foreign container crosses as gen's own container (it may nest) or as itself (it cannot),
   and the two records differ in their key set: `split` and `recarry` against `phraseClass` and
@@ -2401,7 +2394,7 @@ These boundaries are mechanically checkable — see [Portable-subset lint](#port
 
 ## Portable-subset lint
 
-`genMerge.lint { modules } → [ findings ]` (empty list ⇒ portable) statically flags the modules that
+`genMerge.lint modules → [ findings ]` (empty list ⇒ portable) statically flags the modules that
 step outside the byte-mode surface, so the "runs on gen-merge and `lib.evalModules` byte-identically"
 claim is verifiable, not asserted. The flagged kinds:
 
@@ -2448,20 +2441,16 @@ Run it over a module list (or wire it into CI as an accept-gate — `ci/tests/li
 accepts the whole equivalence corpus and rejects one fixture per construct):
 
 ```nix
-genMerge.lint {
-  modules = [
+genMerge.lint [
     { options.tags = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; default = [ ]; }; }
     { tags = genMerge.mkForce [ "a" ]; }                       # portable — a plain override
-  ];
-}
+  ]
 # ⇒ [ ]   (portable)
 
-genMerge.lint {
-  modules = [
+genMerge.lint [
     { options.tags = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; default = [ ]; }; }
     { tags = lib.mkAfter [ "z" ]; }                            # flagged — an order marker (see the ⚠ above)
-  ];
-}
+  ]
 # ⇒ [ { kind = "order-pass"; loc = [ "tags" ]; file = "<gen-merge>"; detail = "…"; } ]
 ```
 

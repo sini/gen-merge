@@ -78,15 +78,18 @@ let
   merged =
     a: b:
     let
-      r = gm.mergeTypes a b;
+      r = gm.mergeTypes {
+        deciding = a;
+        partner = b;
+      };
     in
     if r == null then "REFUSED" else r.name;
   ev =
     tys: val:
     let
-      res = evalModuleTree {
-        modules = map (ty: { options.p = mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
-      };
+      res = evalModuleTree { } (
+        map (ty: { options.p = mkOption { type = ty; }; }) tys ++ [ { p = val; } ]
+      );
       ty = builtins.tryEval (builtins.deepSeq res.options.p.type.name res.options.p.type.name);
       v = builtins.tryEval (builtins.deepSeq res.config.p res.config.p);
     in
@@ -110,7 +113,14 @@ let
             f:
             let
               p = f.type or null;
-              j = if p ? __base then gm.mergeTypes b p.__base else null;
+              j =
+                if p ? __base then
+                  gm.mergeTypes {
+                    deciding = b;
+                    partner = p.__base;
+                  }
+                else
+                  null;
             in
             if j == null then null else refinedLike j;
           functor = {
@@ -156,7 +166,17 @@ let
       functor = {
         name = "bobbin";
         payload = el;
-        binOp = a: b: if gm.mergeTypes a b == null then null else a;
+        binOp =
+          a: b:
+          if
+            gm.mergeTypes {
+              deciding = a;
+              partner = b;
+            } == null
+          then
+            null
+          else
+            a;
         type = bobbin;
       };
     };
@@ -173,14 +193,13 @@ let
       config.id_hash = "thimble:" + builtins.hashString "sha256" config.spool;
     };
   idSub = gt.submodule idMod;
-  coldOf = mods: evalModuleTree { modules = mods; };
+  coldOf = mods: evalModuleTree { } mods;
   warmOf =
     base: edited:
     evalModuleTree {
-      modules = base ++ edited;
       warmFrom = coldOf base;
       editedModules = edited;
-    };
+    } (base ++ edited);
   anchor = [
     { options.reg = mkOption { type = gt.attrsOf idSub; }; }
     {
@@ -746,12 +765,10 @@ in
         shape = r: if r == null then null else "${r.container}:${r.element.name}";
         value =
           ty: v:
-          (evalModuleTree {
-            modules = [
-              { options.h = mkOption { type = ty; }; }
-              { config.h = v; }
-            ];
-          }).config.h;
+          (evalModuleTree { } [
+            { options.h = mkOption { type = ty; }; }
+            { config.h = v; }
+          ]).config.h;
       in
       {
         expr = {

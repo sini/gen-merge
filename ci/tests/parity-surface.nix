@@ -120,7 +120,7 @@ let
       types
       ;
   };
-  gmCfg = fx: (gm.evalModuleTree { modules = fx gmP; }).config;
+  gmCfg = fx: (gm.evalModuleTree { } (fx gmP)).config;
   npCfg = fx: builtins.removeAttrs (np.evalModules { modules = fx npP; }).config [ "_module" ];
   bothCfg = fx: attr: {
     gen = (gmCfg fx).${attr};

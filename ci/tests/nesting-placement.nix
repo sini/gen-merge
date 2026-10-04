@@ -70,42 +70,42 @@ in
   flake.tests.nesting-placement-children = {
     test-each-shape-folds-its-children-to-the-called-value = {
       expr = {
-        sub-one = (gm.evalModuleTree { modules = host sub [ { x = 2; } ]; }).config.o;
+        sub-one = (gm.evalModuleTree { } (host sub [ { x = 2; } ])).config.o;
         attrs-two =
-          (gm.evalModuleTree {
-            modules = host (t.attrsOf sub) [
+          (gm.evalModuleTree { } (
+            host (t.attrsOf sub) [
               {
                 a.x = 1;
                 b.x = 2;
               }
-            ];
-          }).config.o;
+            ]
+          )).config.o;
         list-two =
-          (gm.evalModuleTree {
-            modules = host (t.listOf sub) [
+          (gm.evalModuleTree { } (
+            host (t.listOf sub) [
               [
                 { x = 1; }
                 { x = 2; }
               ]
-            ];
-          }).config.o;
+            ]
+          )).config.o;
         sub-empty =
-          (gm.evalModuleTree {
-            modules = host (t.submodule {
+          (gm.evalModuleTree { } (
+            host (t.submodule {
               options.x = gm.mkOption {
                 type = t.int;
                 default = 0;
               };
-            }) [ ];
-          }).config.o;
+            }) [ ]
+          )).config.o;
         list-two-defs =
           map (e: e.n)
-            (gm.evalModuleTree {
-              modules = host (t.listOf named) [
+            (gm.evalModuleTree { } (
+              host (t.listOf named) [
                 [ { } ]
                 [ { } ]
-              ];
-            }).config.o;
+              ]
+            )).config.o;
       };
       expected = {
         sub-one.x = 2;
@@ -155,10 +155,7 @@ in
     test-the-tree-record-is-a-child-too = {
       expr =
         let
-          tree =
-            (gm.evalModuleTree {
-              modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
-            }).type;
+          tree = (gm.evalModuleTree { } [ { options.x = gm.mkOption { type = t.int; }; } ]).type;
           r = evalExposed (host tree [ { x = 3; } ]);
         in
         {
@@ -376,19 +373,13 @@ in
   flake.tests.nesting-placement-mode =
     let
       tree =
-        (gm.evalModuleTree {
-          check = false;
-          modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
-        }).type;
+        (gm.evalModuleTree { check = false; } [ { options.x = gm.mkOption { type = t.int; }; } ]).type;
       at =
         check: type: def:
-        gm.evalModuleTree {
-          inherit check;
-          modules = [
-            { options.t = gm.mkOption { inherit type; }; }
-            { config.t = def; }
-          ];
-        };
+        gm.evalModuleTree { check = check; } [
+          { options.t = gm.mkOption { inherit type; }; }
+          { config.t = def; }
+        ];
       bogus = {
         x = 1;
         bogus = 2;
@@ -478,7 +469,7 @@ in
           default = 7;
         };
       };
-      r = gm.evalModuleTree { modules = host recsub [ ]; };
+      r = gm.evalModuleTree { } (host recsub [ ]);
       down = d: v: if d == 0 then v else down (d - 1) v.x;
     in
     {

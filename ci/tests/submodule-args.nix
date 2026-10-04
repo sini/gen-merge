@@ -58,12 +58,10 @@ let
   # `mergeDefs`.
   mountedAt =
     type:
-    (evalModuleTree {
-      modules = [
-        { options.o = mkOption { inherit type; }; }
-        { config.o = { }; }
-      ];
-    }).config.o;
+    (evalModuleTree { } [
+      { options.o = mkOption { inherit type; }; }
+      { config.o = { }; }
+    ]).config.o;
 
   withLib = mods: (t.submodule mods).withArgs { lib = tagged; };
 in
@@ -158,14 +156,11 @@ in
               options.o = mkOption { type = (t.submodule [ forcesLib ]).withArgs { inherit lib; }; };
             };
         in
-        (evalModuleTree {
-          specialArgs.lib = nixpkgsLib;
-          modules = [
-            (declares "/warp.nix")
-            (declares "/weft.nix")
-            { config.o = { }; }
-          ];
-        }).config.o.seen;
+        (evalModuleTree { specialArgs.lib = nixpkgsLib; } [
+          (declares "/warp.nix")
+          (declares "/weft.nix")
+          { config.o = { }; }
+        ]).config.o.seen;
       expected = "LIB-ARRIVED";
     };
     # One function bound once and passed by both declarations is one value: it merges.
@@ -216,17 +211,15 @@ in
     # signature is unchanged.
     test-a-submodule-with-no-args-still-binds-name-control = {
       expr =
-        (evalModuleTree {
-          modules = [
-            {
-              options.sub = mkOption {
-                type = t.submodule ({ name, ... }: { options.n = mkOption { default = name; }; });
-                default = { };
-              };
-            }
-            { config.sub = { }; }
-          ];
-        }).config.sub.n;
+        (evalModuleTree { } [
+          {
+            options.sub = mkOption {
+              type = t.submodule ({ name, ... }: { options.n = mkOption { default = name; }; });
+              default = { };
+            };
+          }
+          { config.sub = { }; }
+        ]).config.sub.n;
       expected = "sub";
     };
   };

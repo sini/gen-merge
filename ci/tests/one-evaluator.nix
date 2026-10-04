@@ -21,6 +21,7 @@
 #     nothing about the two folds answering alike on a shape that is ADMITTED, which is the
 #     property every `.options`-only consumer rests on when it drops the fixpoint.
 {
+  evalRequest,
   genMerge,
   genMergeCore,
   genPrelude,
@@ -108,8 +109,7 @@ let
   ];
 
   # Force the whole config tree and report CONTAINMENT. A shallow force would not reach the fold.
-  probe =
-    mods: builtins.tryEval (builtins.deepSeq (gm.evalModuleTree { modules = mods; }).config "ok");
+  probe = mods: builtins.tryEval (builtins.deepSeq (gm.evalModuleTree { } mods).config "ok");
 
   # ── the source scan, for the driver census ──────────────────────────────────────────────────
   # Comment-stripped, LINES unit. The same strip `ci/tests/purity.nix` runs over the same domain,
@@ -338,8 +338,8 @@ in
     # (den-hoag-7fw1u). The `tryEval`-in-a-declaration-plane conjunction has not been swept.
     test-declaredOptions-and-the-full-result-agree-on-the-declared-key-set = {
       expr = {
-        declared = declPaths (gm.declaredOptions ordinary);
-        evaluated = declPaths (gm.evalModuleTree ordinary).options;
+        declared = declPaths (gm.declaredOptions (removeAttrs ordinary [ "modules" ]) ordinary.modules);
+        evaluated = declPaths (evalRequest ordinary).options;
       };
       expected = {
         declared = ordinaryPaths;

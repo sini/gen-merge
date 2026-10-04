@@ -11,44 +11,35 @@ let
   # T2: a leaf tree. T1: a tree whose `sub` is a T2. `check` is per tree.
   t2Of =
     check:
-    (evalModuleTree {
-      inherit check;
-      modules = [
-        {
-          options.k = mkOption {
-            type = t.str;
-            default = "d";
-          };
-        }
-      ];
-    }).type;
+    (evalModuleTree { check = check; } [
+      {
+        options.k = mkOption {
+          type = t.str;
+          default = "d";
+        };
+      }
+    ]).type;
   t1Of =
     check:
-    (evalModuleTree {
-      inherit check;
-      modules = [
-        {
-          options.known = mkOption {
-            type = t.str;
-            default = "k";
-          };
-          options.flag = mkOption {
-            type = t.bool;
-            default = false;
-          };
-          options.sub = mkOption { type = t2Of check; };
-        }
-      ];
-    }).type;
+    (evalModuleTree { check = check; } [
+      {
+        options.known = mkOption {
+          type = t.str;
+          default = "k";
+        };
+        options.flag = mkOption {
+          type = t.bool;
+          default = false;
+        };
+        options.sub = mkOption { type = t2Of check; };
+      }
+    ]).type;
   run =
     check: ty: m:
-    evalModuleTree {
-      inherit check;
-      modules = [
-        { options.x = mkOption { type = ty; }; }
-        m
-      ];
-    };
+    evalModuleTree { check = check; } [
+      { options.x = mkOption { type = ty; }; }
+      m
+    ];
   # the nested tree's definition reads the outer tree's own config
   selfRef =
     { config, ... }:
@@ -110,19 +101,10 @@ let
     prev: next: base:
     evalModuleTree {
       check = next;
-      modules = base ++ edited;
-      warmFrom = evalModuleTree {
-        check = prev;
-        modules = base;
-      };
+      warmFrom = evalModuleTree { check = prev; } base;
       editedModules = edited;
-    };
-  coldAt =
-    c: base:
-    evalModuleTree {
-      check = c;
-      modules = base ++ edited;
-    };
+    } (base ++ edited);
+  coldAt = c: base: evalModuleTree { check = c; } (base ++ edited);
   ownBad = {
     _file = "/real/F.nix";
     config.x = {
@@ -165,23 +147,20 @@ in
     # through the same walk of the nested-findings channel.
     test-a-config-derived-bare-leaf-type-reads-at-check =
       let
-        r = evalModuleTree {
-          check = true;
-          modules = [
-            {
-              options.kindName = mkOption {
-                type = t.str;
-                default = "igloo";
-              };
-              options.registry = mkOption {
-                type = if r.config.kindName == "igloo" then t.str else t.int;
-                default = "r";
-              };
-              options.plain = mkOption { type = t.str; };
-              config.plain = "ok";
-            }
-          ];
-        };
+        r = evalModuleTree { check = true; } [
+          {
+            options.kindName = mkOption {
+              type = t.str;
+              default = "igloo";
+            };
+            options.registry = mkOption {
+              type = if r.config.kindName == "igloo" then t.str else t.int;
+              default = "r";
+            };
+            options.plain = mkOption { type = t.str; };
+            config.plain = "ok";
+          }
+        ];
       in
       {
         expr = {
@@ -293,18 +272,15 @@ in
     # nothing refuses; nixpkgs gives the same value. The finding is still reported.
     test-a-strict-parent-whose-apply-discards-a-lax-nested-tree-reads-the-apply-value =
       let
-        r = evalModuleTree {
-          check = true;
-          modules = [
-            {
-              options.x = mkOption {
-                type = t1Of false;
-                apply = _: "const";
-              };
-            }
-            subBad
-          ];
-        };
+        r = evalModuleTree { check = true; } [
+          {
+            options.x = mkOption {
+              type = t1Of false;
+              apply = _: "const";
+            };
+          }
+          subBad
+        ];
       in
       {
         expr = {

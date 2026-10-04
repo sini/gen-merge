@@ -4,7 +4,11 @@
 # priority=null; defaulted=null }). This suite pins the record shapes AND the values-untouched tooth
 # (forcing provenance disturbs nothing — the byte-parity of the value path is proven by the oracle +
 # merge + core-kernel suites running UNMODIFIED). TDD-first; RED before the engine half lands.
-{ genMerge, ... }:
+{
+  evalRequest,
+  genMerge,
+  ...
+}:
 let
   gm = genMerge;
   inherit (gm)
@@ -16,7 +20,7 @@ let
     mkCoreValue
     ;
   t = gm.types;
-  prov = args: (evalModuleTree args).provenance;
+  prov = args: (evalRequest args).provenance;
 in
 {
   flake.tests.provenance = {
@@ -227,24 +231,22 @@ in
     test-provenance-does-not-disturb-values = {
       expr =
         let
-          r = evalModuleTree {
-            modules = [
-              {
-                options.x = mkOption { type = t.str; };
-                options.a.b.c = mkOption {
-                  type = t.int;
-                  default = 1;
-                };
-                freeformType = t.lazyAttrsOf t.str;
-              }
-              {
-                _file = "A";
-                x = mkForce "v";
-                a.b.c = 9;
-                extra = "e";
-              }
-            ];
-          };
+          r = evalModuleTree { } [
+            {
+              options.x = mkOption { type = t.str; };
+              options.a.b.c = mkOption {
+                type = t.int;
+                default = 1;
+              };
+              freeformType = t.lazyAttrsOf t.str;
+            }
+            {
+              _file = "A";
+              x = mkForce "v";
+              a.b.c = 9;
+              extra = "e";
+            }
+          ];
         in
         builtins.deepSeq r.provenance r.config;
       expected = {
@@ -259,21 +261,15 @@ in
     # defaulted=false) — the skip stays a skip, no spine re-run.
     test-core-synthesized-record = {
       expr =
-        (evalModuleTree {
-          coreShortCircuit = true;
-          modules = [
-            { options.z = mkOption { type = t.anything; }; }
-            {
-              _file = "C";
-              z = mkCoreValue {
-                digest = "d";
-                values = {
-                  real = 1;
-                };
-              };
-            }
-          ];
-        }).provenance.z;
+        (evalModuleTree { coreShortCircuit = true; } [
+          { options.z = mkOption { type = t.anything; }; }
+          {
+            _file = "C";
+            z = mkCoreValue "d" {
+              real = 1;
+            };
+          }
+        ]).provenance.z;
       expected = {
         defs = [
           {

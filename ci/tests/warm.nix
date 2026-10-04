@@ -11,6 +11,7 @@
 #     dirtiness, the three freeform scenarios, the group-splice hazard, the two adversarial markers,
 #     disabledModules fallback, and chained warm.
 {
+  evalRequest,
   genMerge,
   genMergeCore,
   nixpkgsLib,
@@ -63,14 +64,13 @@ let
   # `warmOf base edited` = re-eval of `base ++ edited` warm-started from cold(`base`), with `edited` the
   # appended list. `coldOf` is the reference. The tooth: warm result toJSON == cold result toJSON on
   # VALUES and PROVENANCE (toJSON drops nothing here — the fixtures are function-free data).
-  coldOf = mods: evalModuleTree { modules = mods; };
+  coldOf = mods: evalModuleTree { } mods;
   warmOf =
     base: edited:
     evalModuleTree {
-      modules = base ++ edited;
       warmFrom = coldOf base;
       editedModules = edited;
-    };
+    } (base ++ edited);
   jsonEq = a: b: builtins.toJSON a == builtins.toJSON b;
   byteOracle =
     base: edited:
@@ -1165,10 +1165,9 @@ in
         ];
         warm1 = warmOf base edit1;
         warm2 = evalModuleTree {
-          modules = base ++ edit1 ++ edit2;
           warmFrom = warm1;
           editedModules = edit2;
-        };
+        } (base ++ edit1 ++ edit2);
         cold2 = coldOf (base ++ edit1 ++ edit2);
       in
       {
@@ -1193,17 +1192,15 @@ in
     # pins the always-present trace's cold shape).
     test-cold-path-trace-shape =
       let
-        r = evalModuleTree {
-          modules = [
-            {
-              options.a = mkOption { type = t.str; };
-            }
-            {
-              _file = "m";
-              a = "av";
-            }
-          ];
-        };
+        r = evalModuleTree { } [
+          {
+            options.a = mkOption { type = t.str; };
+          }
+          {
+            _file = "m";
+            a = "av";
+          }
+        ];
       in
       {
         expr = {
@@ -1784,14 +1781,11 @@ in
     test-reused-module-tree-leaf-reports-its-dropped-def =
       let
         inner =
-          (evalModuleTree {
-            check = false;
-            modules = [
-              {
-                options.known = mkOption { type = t.str; };
-              }
-            ];
-          }).type;
+          (evalModuleTree { check = false; } [
+            {
+              options.known = mkOption { type = t.str; };
+            }
+          ]).type;
         base = [
           {
             options.nest = mkOption { type = inner; };
@@ -1812,18 +1806,12 @@ in
             config.other = "o";
           }
         ];
-        coldLax =
-          mods:
-          evalModuleTree {
-            check = false;
-            modules = mods;
-          };
+        coldLax = mods: evalModuleTree { check = false; } mods;
         w = evalModuleTree {
           check = false;
-          modules = base ++ edited;
           warmFrom = coldLax base;
           editedModules = edited;
-        };
+        } (base ++ edited);
         c = coldLax (base ++ edited);
       in
       {
@@ -1856,10 +1844,7 @@ in
     test-identity-walk-stops-at-a-seam-element =
       let
         inner =
-          (evalModuleTree {
-            check = false;
-            modules = [ { options.known = mkOption { type = t.str; }; } ];
-          }).type;
+          (evalModuleTree { check = false; } [ { options.known = mkOption { type = t.str; }; } ]).type;
         ok = e: (builtins.tryEval (builtins.deepSeq e e)).success;
         other = [
           {
@@ -1920,18 +1905,15 @@ in
     test-reused-module-tree-leaf-reports-its-finding-under-freeform-and-prefix =
       let
         inner =
-          (evalModuleTree {
-            check = false;
-            modules = [
-              {
-                options.a = mkOption { type = t.str; };
-                options.id_hash = mkOption {
-                  type = t.str;
-                  default = "nest:0";
-                };
-              }
-            ];
-          }).type;
+          (evalModuleTree { check = false; } [
+            {
+              options.a = mkOption { type = t.str; };
+              options.id_hash = mkOption {
+                type = t.str;
+                default = "nest:0";
+              };
+            }
+          ]).type;
         def = {
           _file = "C";
           config.nest = {
@@ -1965,7 +1947,7 @@ in
         ];
         lax =
           extra: mods:
-          evalModuleTree (
+          evalRequest (
             {
               check = false;
               modules = mods;
@@ -2058,18 +2040,11 @@ in
           prefix:
           let
             w = evalModuleTree {
-              inherit prefix;
-              modules = base ++ edited;
-              warmFrom = evalModuleTree {
-                inherit prefix;
-                modules = base;
-              };
+              prefix = prefix;
+              warmFrom = evalModuleTree { prefix = prefix; } base;
               editedModules = edited;
-            };
-            c = evalModuleTree {
-              inherit prefix;
-              modules = base ++ edited;
-            };
+            } (base ++ edited);
+            c = evalModuleTree { prefix = prefix; } (base ++ edited);
           in
           {
             inherit (w.warmDecision) mode reused;

@@ -19,7 +19,11 @@
 #   core (coreShortCircuit on)  : nrFunctionCalls =  623   nrThunks = 1069   nrPrimOpCalls = 306
 # ⇒ 78.7% fewer function calls / 63.7% fewer thunks on THIS fixture — the discharge/fold/verify
 # spine is genuinely skipped (the deterministic firing proof below confirms it independent of these).
-{ genMerge, ... }:
+{
+  evalRequest,
+  genMerge,
+  ...
+}:
 let
   gm = genMerge;
   inherit (gm)
@@ -32,7 +36,7 @@ let
     ;
   t = gm.types;
   toJSON = builtins.toJSON;
-  cfg = args: (evalModuleTree args).config;
+  cfg = args: (evalRequest args).config;
 
   # ── rehost-shaped skeleton ────────────────────────────────────────────────
   # nested declared options (a.b.c), an attrsOf collection, a priority-resolved leaf (mkForce over a
@@ -73,19 +77,16 @@ let
   ];
 
   fullDef = mkMerge pieces;
-  coreDef = mkCoreValue {
-    digest = "correct";
-    values = sharedMerged;
-  };
-  wrongDef = mkCoreValue {
-    digest = "wrong";
-    values = sharedMerged // {
+  coreDef = mkCoreValue "correct" sharedMerged;
+  wrongDef = mkCoreValue "wrong" (
+    sharedMerged
+    // {
       k0 = {
         v = 999;
         tag = "WRONG";
       };
-    };
-  };
+    }
+  );
 
   fullCfg = cfg { modules = skeleton fullDef; }; # coreShortCircuit defaults off
   coreCfg = cfg {
@@ -108,10 +109,7 @@ let
       modules = [
         { options.z = mkOption { type = boomType; }; }
         {
-          z = mkCoreValue {
-            digest = "d";
-            values = "SKIPPED";
-          };
+          z = mkCoreValue "d" "SKIPPED";
         }
       ];
     }
@@ -121,10 +119,7 @@ let
     modules = [
       { options.z = mkOption { type = boomType; }; }
       {
-        z = mkCoreValue {
-          digest = "d";
-          values = "A";
-        };
+        z = mkCoreValue "d" "A";
       }
       { z = "B"; }
     ];
@@ -151,12 +146,11 @@ let
       }
       // (if coreSC then { coreShortCircuit = true; } else { })
     );
-  ftCore = fallThroughCfg true (mkCoreValue {
-    digest = "d";
-    values = {
+  ftCore = fallThroughCfg true (
+    mkCoreValue "d" {
       a = 1;
-    };
-  });
+    }
+  );
   ftRef = fallThroughCfg false { a = 1; };
 
   # priority fall-through: a core marker (bare prio) loses to a competing mkForce — reference uses the
@@ -165,10 +159,7 @@ let
     modules = [
       { options.s = mkOption { type = t.str; }; }
       {
-        s = mkCoreValue {
-          digest = "d";
-          values = "lo";
-        };
+        s = mkCoreValue "d" "lo";
       }
       { s = mkForce "hi"; }
     ];
@@ -187,11 +178,8 @@ let
     modules = [
       { options.w = mkOption { type = t.anything; }; }
       {
-        w = mkCoreValue {
-          digest = "d";
-          values = {
-            real = 1;
-          };
+        w = mkCoreValue "d" {
+          real = 1;
         };
       }
     ];

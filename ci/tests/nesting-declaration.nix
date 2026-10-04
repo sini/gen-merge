@@ -104,16 +104,14 @@ let
   );
 
   tree =
-    (gm.evalModuleTree {
-      modules = [
-        {
-          options.x = gm.mkOption {
-            type = t.int;
-            default = 0;
-          };
-        }
-      ];
-    }).type;
+    (gm.evalModuleTree { } [
+      {
+        options.x = gm.mkOption {
+          type = t.int;
+          default = 0;
+        };
+      }
+    ]).type;
   subMods = [
     (
       { name, ... }:
@@ -744,13 +742,12 @@ in
           ];
         in
         (gm.evalModuleTree {
-          modules = n.modules ++ map n.entry [ entryDef ];
           prefix = loc;
           specialArgs = n.specialArgs // {
             name = "k";
           };
-          inherit (n) check;
-        }).config;
+          check = n.check;
+        } (n.modules ++ map n.entry [ entryDef ])).config;
       expected = {
         n = "k";
         x = 3;

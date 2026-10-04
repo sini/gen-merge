@@ -92,28 +92,26 @@ let
   # the constructor and say nothing about whether the engine can use what it built.
   run =
     mk:
-    (gm.evalModuleTree {
-      modules = [
-        {
-          _file = "decl.nix";
-          options = builtins.listToAttrs (
-            map (i: {
-              name = "o${toString i}";
-              value = gm.mkOption { type = mk i; };
-            }) idx
-          );
-        }
-        {
-          _file = "def.nix";
-          config = builtins.listToAttrs (
-            map (i: {
-              name = "o${toString i}";
-              value = i;
-            }) idx
-          );
-        }
-      ];
-    }).config;
+    (gm.evalModuleTree { } [
+      {
+        _file = "decl.nix";
+        options = builtins.listToAttrs (
+          map (i: {
+            name = "o${toString i}";
+            value = gm.mkOption { type = mk i; };
+          }) idx
+        );
+      }
+      {
+        _file = "def.nix";
+        config = builtins.listToAttrs (
+          map (i: {
+            name = "o${toString i}";
+            value = i;
+          }) idx
+        );
+      }
+    ]).config;
 in
 if arm == "gen" then
   run (i: vocab.mkType (descriptor i))

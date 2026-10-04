@@ -4,7 +4,11 @@
 # caller's set, through a re-declared `type` or `apply`). Each expected value is nixpkgs' `evalModules` on
 # the same input, except the one cell named `departure`. The view is stated per branch (a module declares
 # `options._module`, the evaluation is positioned, or neither), so each key is read on each branch.
-{ genMerge, ... }:
+{
+  evalRequest,
+  genMerge,
+  ...
+}:
 let
   gm = genMerge;
   inherit (gm) evalModuleTree mkOption;
@@ -22,11 +26,11 @@ let
     };
   rootRead =
     args: f: modules:
-    (evalModuleTree (args // { modules = [ decl ] ++ modules ++ [ (reader f) ]; })).config.r;
+    (evalRequest (args // { modules = [ decl ] ++ modules ++ [ (reader f) ]; })).config.r;
   # A child at `n`, its modules reading their own view.
   childRead =
     args: ty: f:
-    (evalModuleTree (
+    (evalRequest (
       args
       // {
         modules = [
@@ -44,7 +48,7 @@ let
   # `defined`, the option has a definition (its default), so its child is positioned.
   uncheckedTreeRead =
     args: defined: f: childModules:
-    (evalModuleTree (
+    (evalRequest (
       args
       // {
         modules = [
@@ -52,11 +56,7 @@ let
           {
             options.n = mkOption (
               {
-                type =
-                  (evalModuleTree {
-                    check = false;
-                    modules = childModules ++ [ (reader f) ];
-                  }).type;
+                type = (evalModuleTree { check = false; } (childModules ++ [ (reader f) ])).type;
               }
               // (if defined then { default = { }; } else { })
             );

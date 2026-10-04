@@ -60,38 +60,38 @@ let
   # contributes `b`; both defs land in config. This pins the `callM` path — the wrapper's `__functor`
   # is applied and CONSUMED before its content entry is recorded, so `__pureModule` is gone from config
   # by construction (NOT via the `configOf` strip, which the separate `stripFixture` below pins).
-  e2e = evalModuleTree {
-    specialArgs = {
-      u = "U";
-    };
-    modules = [
+  e2e =
+    evalModuleTree
       {
-        options.a = mkOption { type = t.str; };
-        options.b = mkOption { type = t.int; };
+        specialArgs = {
+          u = "U";
+        };
       }
-      (pureModule (
-        { u, ... }:
+      [
         {
-          config.a = u;
-          imports = [ ({ ... }: { config.b = 7; }) ];
+          options.a = mkOption { type = t.str; };
+          options.b = mkOption { type = t.int; };
         }
-      ))
-    ];
-  };
+        (pureModule (
+          { u, ... }:
+          {
+            config.a = u;
+            imports = [ ({ ... }: { config.b = 7; }) ];
+          }
+        ))
+      ];
 
   # ── defensive `configOf` strip — the ONLY test that fails if the strip line is deleted ────────────
   # A raw config-shorthand attrset carrying `__pureModule` WITHOUT the `__functor` wrapper path: `callM`
   # never consumes it (it is a plain attrset, not a marked wrapper), so the marker would leak into config
   # as a freeform key unless `configOf` strips it. Freeform absorbs `x`; the marker must NOT survive.
-  stripFixture = evalModuleTree {
-    modules = [
-      { freeformType = t.lazyAttrsOf t.anything; }
-      {
-        __pureModule = true;
-        x = 1;
-      }
-    ];
-  };
+  stripFixture = evalModuleTree { } [
+    { freeformType = t.lazyAttrsOf t.anything; }
+    {
+      __pureModule = true;
+      x = 1;
+    }
+  ];
 in
 {
   flake.tests.classify = {

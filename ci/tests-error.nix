@@ -29,6 +29,7 @@
 #   nix-unit --flake ./ci#tests        # the suites
 #   nix-unit --flake ./ci#testsError   # these cells
 {
+  evalRequest,
   lib,
   genMerge,
   genMergeCore,
@@ -46,7 +47,7 @@
 let
   gm = genMerge;
   t = gm.types;
-  cfg = args: (gm.evalModuleTree args).config;
+  cfg = args: (evalRequest args).config;
   # `deepSeq` is the forcing idiom the ./tests suites use: the refusals below fire while the
   # config tree is realized, so a shallow force would not reach them.
   realize = args: builtins.deepSeq (cfg args) null;
@@ -126,18 +127,16 @@ let
   # from merge is the type algebra's answer about the pair and nothing else.
   declaredTwice =
     aType: bType:
-    (gm.evalModuleTree {
-      modules = [
-        {
-          _file = "a.nix";
-          options.x = gm.mkOption { type = aType; };
-        }
-        {
-          _file = "b.nix";
-          options.x = gm.mkOption { type = bType; };
-        }
-      ];
-    }).options.x.type.name;
+    (gm.evalModuleTree { } [
+      {
+        _file = "a.nix";
+        options.x = gm.mkOption { type = aType; };
+      }
+      {
+        _file = "b.nix";
+        options.x = gm.mkOption { type = bType; };
+      }
+    ]).options.x.type.name;
 
   # gen-types' `attrs`, PROTOCOL-COMPLETED by the library's own export path rather than hand-built,
   # and reached under a non-colliding key so the linkset does not shadow it with the strategy that
@@ -182,8 +181,8 @@ let
   # set — not the type, not the declaration, and not which file declared it.
   unionOf =
     loc: defs:
-    (gm.evalModuleTree {
-      modules = [
+    (gm.evalModuleTree { } (
+      [
         {
           _file = "decl.nix";
           options = lib.setAttrByPath loc (gm.mkOption { type = t.either (t.listOf t.str) t.str; });
@@ -192,8 +191,8 @@ let
       ++ map (d: {
         _file = d.file;
         config = lib.setAttrByPath loc d.value;
-      }) defs;
-    }).config;
+      }) defs
+    )).config;
 
   # Declaring `thing` as a leaf in one module and as an option-group in another: the decl merge
   # cannot `//` these together without emitting wrong bytes, so it refuses.
@@ -313,10 +312,7 @@ let
   # reason.
   # A lax nested tree (`check = false`) and a definition of it that carries a key it does not declare.
   laxNest =
-    (gm.evalModuleTree {
-      check = false;
-      modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
-    }).type;
+    (gm.evalModuleTree { check = false; } [ { options.a = gm.mkOption { type = t.str; }; } ]).type;
   laxNestDef = {
     _file = "C";
     config.nest = {
@@ -324,14 +320,13 @@ let
       z = "dropped";
     };
   };
-  coldOf = mods: gm.evalModuleTree { modules = mods; };
+  coldOf = mods: gm.evalModuleTree { } mods;
   warmOf =
     base: edited:
     gm.evalModuleTree {
-      modules = base ++ edited;
       warmFrom = coldOf base;
       editedModules = edited;
-    };
+    } (base ++ edited);
   warmBase = [
     {
       _file = "base";
@@ -380,13 +375,10 @@ let
   viaTopLax =
     m:
     map (u: u.path)
-      (gm.evalModuleTree {
-        modules = [
-          readerDecl
-          m
-        ];
-        check = false;
-      }).undeclared;
+      (gm.evalModuleTree { check = false; } [
+        readerDecl
+        m
+      ]).undeclared;
   viaSubmodule =
     m:
     (cfg {
@@ -416,12 +408,10 @@ let
     };
   viaLint =
     m:
-    gm.lint {
-      modules = [
-        readerDecl
-        ({ _file = "/real/L.nix"; } // m)
-      ];
-    };
+    gm.lint [
+      readerDecl
+      ({ _file = "/real/L.nix"; } // m)
+    ];
   surplusKeyMsg =
     file: key:
     "^gen-merge: module `${file}' has an unsupported attribute `${key}'\\. A module carrying a top-level `config' or `options' reads only the module keys; move ${key} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level\\.$";
@@ -452,21 +442,17 @@ let
   readerOptionNames =
     m:
     builtins.attrNames
-      (gm.evalModuleTree {
-        modules = [
-          readerDecl
-          m
-        ];
-      }).options;
+      (gm.evalModuleTree { } [
+        readerDecl
+        m
+      ]).options;
   readerDeclaredNames =
     m:
     builtins.attrNames (
-      gm.declaredOptions {
-        modules = [
-          readerDecl
-          m
-        ];
-      }
+      gm.declaredOptions { } [
+        readerDecl
+        m
+      ]
     );
   readerPathA =
     p:
@@ -1209,13 +1195,11 @@ in
         in
         {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                { options.x = gm.mkOption { type = npE; }; }
-                { options.x = gm.mkOption { type = t.either t.int t.bool; }; }
-                { x = "s"; }
-              ];
-            }).config.x;
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = npE; }; }
+              { options.x = gm.mkOption { type = t.either t.int t.bool; }; }
+              { x = "s"; }
+            ]).config.x;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: a definition for option `x' is not of type `signed integer or boolean'\\. TypeError: The option `x` is neither a value of type `signed integer` nor `boolean`";
@@ -1227,13 +1211,11 @@ in
         in
         {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                { options.x = gm.mkOption { type = t.either t.int t.bool; }; }
-                { options.x = gm.mkOption { type = npE; }; }
-                { x = "s"; }
-              ];
-            }).config.x;
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = t.either t.int t.bool; }; }
+              { options.x = gm.mkOption { type = npE; }; }
+              { x = "s"; }
+            ]).config.x;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: a definition for option `x' is not of type `signed integer or boolean'\\. TypeError: The option `x` is neither a value of type `signed integer` nor `boolean`";
@@ -1285,22 +1267,20 @@ in
       # modules they have to reconcile.
       test-refusal-names-the-full-path-and-every-declaring-file = {
         expr =
-          (gm.evalModuleTree {
-            modules = [
-              {
-                _file = "a.nix";
-                options.rack.slot = gm.mkOption { type = t.str; };
-              }
-              {
-                _file = "b.nix";
-                options.rack.slot = gm.mkOption { type = t.str; };
-              }
-              {
-                _file = "c.nix";
-                options.rack.slot = gm.mkOption { type = t.int; };
-              }
-            ];
-          }).options.rack.slot.type.name;
+          (gm.evalModuleTree { } [
+            {
+              _file = "a.nix";
+              options.rack.slot = gm.mkOption { type = t.str; };
+            }
+            {
+              _file = "b.nix";
+              options.rack.slot = gm.mkOption { type = t.str; };
+            }
+            {
+              _file = "c.nix";
+              options.rack.slot = gm.mkOption { type = t.int; };
+            }
+          ]).options.rack.slot.type.name;
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: option `rack\\.slot' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix, c\\.nix$";
@@ -1446,10 +1426,7 @@ in
       test-a-relation-worded-refusal-names-the-deciding-type-first = {
         expr =
           declaredTwice
-            (gm.evalModuleTree {
-              check = false;
-              modules = [ { options.known = gm.mkOption { type = t.str; }; } ];
-            }).type
+            (gm.evalModuleTree { check = false; } [ { options.known = gm.mkOption { type = t.str; }; } ]).type
             (t.submodule { options.known = gm.mkOption { type = t.str; }; });
         expectedError = {
           type = "ThrownError";
@@ -2057,19 +2034,17 @@ in
       test-a-mixed-nullOr-set-is-refused-naming-every-file = {
         expr =
           builtins.deepSeq
-            (gm.evalModuleTree {
-              modules = [
-                { options.x = gm.mkOption { type = t.nullOr genTypes.int; }; }
-                {
-                  _file = "a.nix";
-                  x = null;
-                }
-                {
-                  _file = "b.nix";
-                  x = 5;
-                }
-              ];
-            }).config.x
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = t.nullOr genTypes.int; }; }
+              {
+                _file = "a.nix";
+                x = null;
+              }
+              {
+                _file = "b.nix";
+                x = 5;
+              }
+            ]).config.x
             null;
         expectedError = {
           type = "ThrownError";
@@ -2082,27 +2057,25 @@ in
       test-a-oneOf-refusal-names-every-leaf-member = {
         expr =
           builtins.deepSeq
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.x = gm.mkOption {
-                    type = t.oneOf [
-                      t.int
-                      t.str
-                      t.bool
-                    ];
-                  };
-                }
-                {
-                  _file = "a.nix";
-                  x = 1;
-                }
-                {
-                  _file = "b.nix";
-                  x = "s";
-                }
-              ];
-            }).config.x
+            (gm.evalModuleTree { } [
+              {
+                options.x = gm.mkOption {
+                  type = t.oneOf [
+                    t.int
+                    t.str
+                    t.bool
+                  ];
+                };
+              }
+              {
+                _file = "a.nix";
+                x = 1;
+              }
+              {
+                _file = "b.nix";
+                x = "s";
+              }
+            ]).config.x
             null;
         expectedError = {
           type = "ThrownError";
@@ -2115,19 +2088,17 @@ in
       test-a-refined-either-member-rejected-by-its-refinement-is-named-whole = {
         expr =
           builtins.deepSeq
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.x = gm.mkOption {
-                    type = t.either (nixpkgsLib.types.addCheck (t.either t.int t.str) (v: v != 1)) t.bool;
-                  };
-                }
-                {
-                  _file = "a.nix";
-                  x = 1;
-                }
-              ];
-            }).config.x
+            (gm.evalModuleTree { } [
+              {
+                options.x = gm.mkOption {
+                  type = t.either (nixpkgsLib.types.addCheck (t.either t.int t.str) (v: v != 1)) t.bool;
+                };
+              }
+              {
+                _file = "a.nix";
+                x = 1;
+              }
+            ]).config.x
             null;
         expectedError = {
           type = "ThrownError";
@@ -2793,6 +2764,7 @@ in
     flake.testsError.tree-type =
       let
         family = import ./tests/_fixtures/tree-union-family.nix {
+          inherit evalRequest;
           genMerge = gm;
           inherit nixpkgsLib;
         };
@@ -2874,16 +2846,14 @@ in
         test-a-bare-tree-mounts-in-nixpkgs = {
           expr =
             let
-              tree = gm.evalModuleTree {
-                modules = [
-                  {
-                    options.a = gm.mkOption {
-                      type = t.str;
-                      default = "x";
-                    };
-                  }
-                ];
-              };
+              tree = gm.evalModuleTree { } [
+                {
+                  options.a = gm.mkOption {
+                    type = t.str;
+                    default = "x";
+                  };
+                }
+              ];
             in
             (nixpkgsLib.evalModules {
               modules = [
@@ -2901,10 +2871,9 @@ in
         # each stamped with its `loc`.
         test-protocol-read-answers-the-field = {
           expr = builtins.mapAttrs (_: o: o.loc) (
-            (gm.evalModuleTree {
-              modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
-            }).type.getSubOptions
-              [ "x" ]
+            (gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.str; }; } ]).type.getSubOptions [
+              "x"
+            ]
           );
           expected = {
             a = [
@@ -2918,12 +2887,9 @@ in
         # its reader could not catch. One key here; the record carries all nine.
         test-an-evaluated-option-key-is-refused-by-name = {
           expr =
-            (
-              (gm.evalModuleTree {
-                modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
-              }).type.getSubOptions
-                [ "x" ]
-            ).a.definitions;
+            ((gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.str; }; } ]).type.getSubOptions [
+              "x"
+            ]).a.definitions;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: a gen option record does not answer `definitions': it is the declaration, not the evaluated option; read the value off the evaluation's `config' and its definitions off `provenance'$";
@@ -2933,12 +2899,9 @@ in
           expr =
             let
               o =
-                (
-                  (gm.evalModuleTree {
-                    modules = [ { options.a = gm.mkOption { type = t.str; }; } ];
-                  }).type.getSubOptions
-                    [ "x" ]
-                ).a;
+                ((gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.str; }; } ]).type.getSubOptions [
+                  "x"
+                ]).a;
             in
             builtins.filter (k: !(o ? ${k})) [
               "value"
@@ -2976,16 +2939,14 @@ in
         test-tree-still-nests-in-gen-merge-control = {
           expr =
             let
-              child = gm.evalModuleTree {
-                modules = [
-                  {
-                    options.a = gm.mkOption {
-                      type = t.str;
-                      default = "x";
-                    };
-                  }
-                ];
-              };
+              child = gm.evalModuleTree { } [
+                {
+                  options.a = gm.mkOption {
+                    type = t.str;
+                    default = "x";
+                  };
+                }
+              ];
             in
             cfg {
               modules = [
@@ -3077,17 +3038,15 @@ in
             functor = T.mergeDefs ? __functor;
             undeclared =
               map (u: u.path)
-                (gm.evalModuleTree {
-                  modules = [
-                    { options.s = gm.mkOption { type = T; }; }
-                    {
-                      config.s = {
-                        a = 1;
-                        zz = 2;
-                      };
-                    }
-                  ];
-                }).undeclared;
+                (gm.evalModuleTree { } [
+                  { options.s = gm.mkOption { type = T; }; }
+                  {
+                    config.s = {
+                      a = 1;
+                      zz = 2;
+                    };
+                  }
+                ]).undeclared;
           };
           expected = {
             reported = true;
@@ -3341,19 +3300,17 @@ in
       let
         heddle =
           descriptor: a: b:
-          (genMerge.evalModuleTree {
-            modules = [
-              { options.heddle = genMerge.mkOption { type = genMerge.mkOptionType descriptor; }; }
-              {
-                _file = "/demo/warp.nix";
-                heddle = a;
-              }
-              {
-                _file = "/demo/weft.nix";
-                heddle = b;
-              }
-            ];
-          }).config.heddle;
+          (genMerge.evalModuleTree { } [
+            { options.heddle = genMerge.mkOption { type = genMerge.mkOptionType descriptor; }; }
+            {
+              _file = "/demo/warp.nix";
+              heddle = a;
+            }
+            {
+              _file = "/demo/weft.nix";
+              heddle = b;
+            }
+          ]).config.heddle;
         thread = {
           name = "thread";
           check = v: v != null;
@@ -3685,12 +3642,10 @@ in
           };
         under =
           type: defs:
-          (gm.evalModuleTree {
-            modules = [
-              { options.s = gm.mkOption { inherit type; }; }
-              { s = defs; }
-            ];
-          }).config.s;
+          (gm.evalModuleTree { } [
+            { options.s = gm.mkOption { inherit type; }; }
+            { s = defs; }
+          ]).config.s;
         twice = files: {
           type = "ThrownError";
           msg = "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in ${files}$";
@@ -3820,18 +3775,8 @@ in
             default = args.${k};
           };
         };
-        engine =
-          sa: k:
-          (gm.evalModuleTree {
-            modules = [ (reads k) ];
-            specialArgs = sa;
-          }).options.sel.default;
-        declared =
-          sa: k:
-          (gm.declaredOptions {
-            modules = [ (reads k) ];
-            specialArgs = sa;
-          }).sel.default;
+        engine = sa: k: (gm.evalModuleTree { specialArgs = sa; } [ (reads k) ]).options.sel.default;
+        declared = sa: k: (gm.declaredOptions { specialArgs = sa; } [ (reads k) ]).sel.default;
         msg =
           keys:
           "^gen-merge: `specialArgs' cannot supply the base module ${keys}; the engine injects its own value there, so the caller's would be discarded rather than used$";
@@ -4058,12 +4003,10 @@ in
         };
         redeclare =
           m:
-          (gm.evalModuleTree {
-            modules = [
-              declA
-              m
-            ];
-          }).options.a.type.name;
+          (gm.evalModuleTree { } [
+            declA
+            m
+          ]).options.a.type.name;
         strA = {
           options.a = gm.mkOption { type = t.str; };
         };
@@ -4099,24 +4042,22 @@ in
         };
         test-declared-in-inside-submodule-names-def-file = {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.s = gm.mkOption {
-                    type = t.submodule {
-                      _file = "/real/SUB.nix";
-                      options.a = gm.mkOption { type = t.int; };
-                    };
+            (gm.evalModuleTree { } [
+              {
+                options.s = gm.mkOption {
+                  type = t.submodule {
+                    _file = "/real/SUB.nix";
+                    options.a = gm.mkOption { type = t.int; };
                   };
-                }
-                # A FUNCTION def: a submodule reads an attrset def as config, and only a module
-                # can declare an option.
-                {
-                  _file = F;
-                  config.s = _: strA;
-                }
-              ];
-            }).config.s.a;
+                };
+              }
+              # A FUNCTION def: a submodule reads an attrset def as config, and only a module
+              # can declare an option.
+              {
+                _file = F;
+                config.s = _: strA;
+              }
+            ]).config.s.a;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: option `s\\.a' is declared with types that do not merge \\(`int' and `string'\\); declared in /real/SUB\\.nix, /real/F\\.nix$";
@@ -4151,9 +4092,7 @@ in
         read =
           T: defs:
           builtins.deepSeq
-            (gm.evalModuleTree {
-              modules = [ { options.p = gm.mkOption { type = T; }; } ] ++ defs;
-            }).config.p
+            (gm.evalModuleTree { } ([ { options.p = gm.mkOption { type = T; }; } ] ++ defs)).config.p
             null;
         bad = v: [
           {
@@ -4428,10 +4367,10 @@ in
       # Before, the typo's declaration `c` vanished from these answers without a word (`[ "b" ]`),
       # where the reference refuses the module.
       test-declaration-only-read-of-a-typo-key-refused-by-name = {
-        expr = withControl (builtins.attrNames (gm.declaredOptions { modules = [ readerRight ]; })) [
+        expr = withControl (builtins.attrNames (gm.declaredOptions { } [ readerRight ])) [
           "b"
           "c"
-        ] (builtins.attrNames (gm.declaredOptions { modules = [ readerTypo ]; }));
+        ] (builtins.attrNames (gm.declaredOptions { } [ readerTypo ]));
         expectedError = {
           type = "ThrownError";
           msg = surplusKeyMsg "/real/T\\.nix" "option";
@@ -4440,12 +4379,10 @@ in
       test-declaration-only-options-read-of-a-typo-key-refused-by-name = {
         expr =
           builtins.attrNames
-            (gm.evalModuleTree {
-              modules = [
-                readerDecl
-                readerTypo
-              ];
-            }).options;
+            (gm.evalModuleTree { } [
+              readerDecl
+              readerTypo
+            ]).options;
         expectedError = {
           type = "ThrownError";
           msg = surplusKeyMsg "/real/T\\.nix" "option";
@@ -4464,21 +4401,17 @@ in
       # Where the reference REMOVES `x` (`[ "_module" ]`), the declaration read answered `[ "x" ]`:
       # a changed meaning on a module set the reference accepts. It is refused by name instead.
       test-declaration-only-read-of-disabled-modules-refused-by-name = {
-        expr =
-          withControl (builtins.attrNames (gm.declaredOptions { modules = [ readerKeyed ]; })) [ "x" ]
-            (
-              builtins.attrNames (
-                gm.declaredOptions {
-                  modules = [
-                    readerKeyed
-                    {
-                      _file = "/real/DK.nix";
-                      disabledModules = [ { key = "B"; } ];
-                    }
-                  ];
-                }
-              )
-            );
+        expr = withControl (builtins.attrNames (gm.declaredOptions { } [ readerKeyed ])) [ "x" ] (
+          builtins.attrNames (
+            gm.declaredOptions { } [
+              readerKeyed
+              {
+                _file = "/real/DK.nix";
+                disabledModules = [ { key = "B"; } ];
+              }
+            ]
+          )
+        );
         expectedError = {
           type = "ThrownError";
           msg = disabledMsg "/real/DK\\.nix";
@@ -4493,7 +4426,7 @@ in
     # attrset def as config, so a module key in one is an undeclared option.
     flake.testsError.def-reading =
       let
-        tree = (gm.evalModuleTree { modules = [ { options.a = int0; } ]; }).type;
+        tree = (gm.evalModuleTree { } [ { options.a = int0; } ]).type;
         sub = t.submodule { options.a = int0; };
         int0 = gm.mkOption {
           type = t.int;
@@ -4516,9 +4449,7 @@ in
         # An option named `imports', so the def `{ imports = [ "x" ]; }` is a value at `submodule`
         # and a module whose import is not a module at the tree type.
         importsTree =
-          (gm.evalModuleTree {
-            modules = [ { options.imports = gm.mkOption { type = t.listOf t.str; }; } ];
-          }).type;
+          (gm.evalModuleTree { } [ { options.imports = gm.mkOption { type = t.listOf t.str; }; } ]).type;
       in
       {
         # Uncatchable at the tree type before the landing: the def was read as config.
@@ -4548,11 +4479,9 @@ in
         # `lint` refuses a value that is not a module as the engine does, where it answered "no
         # findings" (`[ ]`) for a module set the engine refuses. The path-literal control is collected.
         test-lint-module-that-is-not-a-module-refused = {
-          expr = withControl (builtins.length (
-            gm.lint {
-              modules = [ ./tests/_fixtures/lint-options-arg.nix ];
-            }
-          )) 1 (builtins.deepSeq (gm.lint { modules = [ "m.nix" ]; }) null);
+          expr = withControl (builtins.length (gm.lint [ ./tests/_fixtures/lint-options-arg.nix ])) 1 (
+            builtins.deepSeq (gm.lint [ "m.nix" ]) null
+          );
           expectedError = {
             type = "ThrownError";
             msg = notModuleMsg;
@@ -4610,12 +4539,10 @@ in
       {
         test-submodule-empty-value-refuses-an-undefined-sub-option = {
           expr =
-            (genMerge.evalModuleTree {
-              modules = [
-                { options.o = genMerge.mkOption { type = sub; }; }
-                { config.o = genMerge.mkIf false { a = 1; }; }
-              ];
-            }).config.o.a;
+            (genMerge.evalModuleTree { } [
+              { options.o = genMerge.mkOption { type = sub; }; }
+              { config.o = genMerge.mkIf false { a = 1; }; }
+            ]).config.o.a;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: the option `a' is used but not defined$";
@@ -4629,26 +4556,22 @@ in
         decl = {
           options.x = gm.mkOption { type = t.str; };
         };
-        undefined = gm.evalModuleTree { modules = [ decl ]; };
+        undefined = gm.evalModuleTree { } [ decl ];
         # `x` IS defined by the third module; the second module's own error is raised while `x`'s
         # definitions are collected.
-        userError = gm.evalModuleTree {
-          modules = [
-            decl
-            { config = throw "USER-ERROR"; }
-            { x = "v"; }
-          ];
-        };
-        planted = gm.evalModuleTree {
-          modules = [
-            {
-              options.x = gm.mkOption {
-                type = t.str;
-                default = throw "PLANTED";
-              };
-            }
-          ];
-        };
+        userError = gm.evalModuleTree { } [
+          decl
+          { config = throw "USER-ERROR"; }
+          { x = "v"; }
+        ];
+        planted = gm.evalModuleTree { } [
+          {
+            options.x = gm.mkOption {
+              type = t.str;
+              default = throw "PLANTED";
+            };
+          }
+        ];
       in
       {
         # The provenance record became total; the value did not.
@@ -4668,11 +4591,7 @@ in
         };
         # ...and in the band: the defined leaf is never recorded as "unset: no definition".
         test-a-user-error-propagates-from-the-band-never-reads-as-unset = {
-          expr =
-            (gm.bandedLeaves {
-              scope = "u";
-              result = userError;
-            }).x.reason;
+          expr = (gm.bandedLeaves "u" userError).x.reason;
           expectedError = {
             type = "ThrownError";
             msg = "^USER-ERROR$";
@@ -4683,15 +4602,12 @@ in
         # classification of `x` meets it, which is where a `tryEval` would have read "no definition".
         test-a-user-error-in-the-leafs-own-definition-propagates-from-its-band = {
           expr =
-            (gm.bandedLeaves {
-              scope = "u";
-              result = gm.evalModuleTree {
-                modules = [
-                  decl
-                  { x = gm.mkIf (throw "USER-ERROR") "v"; }
-                ];
-              };
-            }).x.reason;
+            (gm.bandedLeaves "u" (
+              gm.evalModuleTree { } [
+                decl
+                { x = gm.mkIf (throw "USER-ERROR") "v"; }
+              ]
+            )).x.reason;
           expectedError = {
             type = "ThrownError";
             msg = "^USER-ERROR$";
@@ -4701,13 +4617,11 @@ in
         # value refuses, so a band read that forced it would refuse too.
         test-a-conflicting-leaf-value-refuses-where-its-band-reads = {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                decl
-                { x = "a"; }
-                { x = "b"; }
-              ];
-            }).config.x;
+            (gm.evalModuleTree { } [
+              decl
+              { x = "a"; }
+              { x = "b"; }
+            ]).config.x;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: the option `x' has conflicting definitions:";
@@ -4729,24 +4643,14 @@ in
           };
         };
         test-a-scope-that-is-not-a-string-is-refused = {
-          expr = builtins.attrNames (
-            gm.bandedLeaves {
-              scope = null;
-              result = undefined;
-            }
-          );
+          expr = builtins.attrNames (gm.bandedLeaves null undefined);
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge[.]bandedLeaves: `scope' is a null, not the contributor's scope id$";
           };
         };
         test-a-result-that-is-not-an-evaluation-is-refused = {
-          expr = builtins.attrNames (
-            gm.bandedLeaves {
-              scope = "u";
-              result = undefined.config;
-            }
-          );
+          expr = builtins.attrNames (gm.bandedLeaves "u" undefined.config);
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge[.]bandedLeaves: `result' is not an `evalModuleTree' result [(]it needs `options', `provenance' and `config'[)]$";
@@ -4758,29 +4662,23 @@ in
     flake.testsError.container-element =
       let
         el =
-          (gm.evalModuleTree {
-            check = false;
-            modules = [
-              {
-                options.known = gm.mkOption {
-                  type = t.str;
-                  default = "k";
-                };
-              }
-            ];
-          }).type;
+          (gm.evalModuleTree { check = false; } [
+            {
+              options.known = gm.mkOption {
+                type = t.str;
+                default = "k";
+              };
+            }
+          ]).type;
         cx =
           ty: def:
-          (gm.evalModuleTree {
-            check = false;
-            modules = [
-              { options.x = gm.mkOption { type = ty; }; }
-              {
-                _file = "/real/F.nix";
-                config.x = def;
-              }
-            ];
-          }).config.x;
+          (gm.evalModuleTree { check = false; } [
+            { options.x = gm.mkOption { type = ty; }; }
+            {
+              _file = "/real/F.nix";
+              config.x = def;
+            }
+          ]).config.x;
         bad = {
           known = "v";
           bogus = 1;
@@ -4819,18 +4717,15 @@ in
           expr =
             let
               zzTree =
-                (gm.evalModuleTree {
-                  check = false;
-                  modules = [
-                    {
-                      options.b = gm.mkOption {
-                        type = t.int;
-                        default = 7;
-                      };
-                    }
-                    { config.zz = 1; }
-                  ];
-                }).type;
+                (gm.evalModuleTree { check = false; } [
+                  {
+                    options.b = gm.mkOption {
+                      type = t.int;
+                      default = 7;
+                    };
+                  }
+                  { config.zz = 1; }
+                ]).type;
             in
             builtins.deepSeq (cx (t.lazyAttrsOf zzTree) { a = gm.mkIf false { b = 9; }; }).a.b null;
           expectedError = {
@@ -4852,22 +4747,15 @@ in
     flake.testsError.bare-site =
       let
         t2 =
-          (gm.evalModuleTree {
-            check = true;
-            modules = [
-              {
-                options.k = gm.mkOption {
-                  type = t.str;
-                  default = "d";
-                };
-              }
-            ];
-          }).type;
-        t1 =
-          (gm.evalModuleTree {
-            check = true;
-            modules = [ { options.sub = gm.mkOption { type = t2; }; } ];
-          }).type;
+          (gm.evalModuleTree { check = true; } [
+            {
+              options.k = gm.mkOption {
+                type = t.str;
+                default = "d";
+              };
+            }
+          ]).type;
+        t1 = (gm.evalModuleTree { check = true; } [ { options.sub = gm.mkOption { type = t2; }; } ]).type;
       in
       {
         test-a-strict-nested-tree-refuses-its-own-finding-in-its-own-words = {
@@ -5916,14 +5804,12 @@ in
         opt =
           type: def:
           force
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.h = gm.mkOption { inherit type; };
-                  config.h = def;
-                }
-              ];
-            }).config.h;
+            (gm.evalModuleTree { } [
+              {
+                options.h = gm.mkOption { inherit type; };
+                config.h = def;
+              }
+            ]).config.h;
         protocol = {
           inherit (sub) getSubOptions getSubModules;
           substSubModules = _: sub;
@@ -5942,14 +5828,12 @@ in
         call =
           type: def:
           force (
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.h = gm.mkOption { inherit type; };
-                  config.h = def;
-                }
-              ];
-            }).config.h
+            (gm.evalModuleTree { } [
+              {
+                options.h = gm.mkOption { inherit type; };
+                config.h = def;
+              }
+            ]).config.h
               null
           );
         # The verdict on a refined gen element under a threaded container and under its sibling.
@@ -5995,11 +5879,7 @@ in
           in
           v;
         # A strict tree record, built once per call: two calls are two distinct constructions.
-        tree =
-          _:
-          (gm.evalModuleTree {
-            modules = [ { options.a = gm.mkOption { type = t.int; }; } ];
-          }).type;
+        tree = _: (gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.int; }; } ]).type;
       in
       {
         # F2 α (M3): a rebuild that drops its argument does not bring the threaded element back marked
@@ -6326,16 +6206,14 @@ in
         # `check` is its module-value domain), so a passing one serves.
         test-a-unique-refinement-that-reads-the-tree-is-served = {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.h = gm.mkOption { type = np.addCheck (np.uniq (tree null)) (_: true); };
-                  config.h = {
-                    a = 1;
-                  };
-                }
-              ];
-            }).config.h;
+            (gm.evalModuleTree { } [
+              {
+                options.h = gm.mkOption { type = np.addCheck (np.uniq (tree null)) (_: true); };
+                config.h = {
+                  a = 1;
+                };
+              }
+            ]).config.h;
           expected = {
             a = 1;
           };
@@ -6354,16 +6232,14 @@ in
         # A `coercedTo` over a union holding the tree is served: the union's check reads only the value.
         test-a-coerced-to-over-a-tree-union-is-served = {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.h = gm.mkOption { type = np.coercedTo np.bool (_: null) (t.either (tree null) t.str); };
-                  config.h = {
-                    a = 1;
-                  };
-                }
-              ];
-            }).config.h;
+            (gm.evalModuleTree { } [
+              {
+                options.h = gm.mkOption { type = np.coercedTo np.bool (_: null) (t.either (tree null) t.str); };
+                config.h = {
+                  a = 1;
+                };
+              }
+            ]).config.h;
           expected = {
             a = 1;
           };
@@ -6568,27 +6444,22 @@ in
         };
         test-a-lax-tree-inside-a-submodule-refuses-its-finding-as-today = {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                {
-                  options.s = gm.mkOption {
-                    type = t.submodule {
-                      options.t = gm.mkOption {
-                        type =
-                          (gm.evalModuleTree {
-                            modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
-                            check = false;
-                          }).type;
-                      };
+            (gm.evalModuleTree { } [
+              {
+                options.s = gm.mkOption {
+                  type = t.submodule {
+                    options.t = gm.mkOption {
+                      type =
+                        (gm.evalModuleTree { check = false; } [ { options.x = gm.mkOption { type = t.int; }; } ]).type;
                     };
                   };
-                  config.s.t = {
-                    x = 1;
-                    bogus = 2;
-                  };
-                }
-              ];
-            }).config.s.t.x;
+                };
+                config.s.t = {
+                  x = 1;
+                  bogus = 2;
+                };
+              }
+            ]).config.s.t.x;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: option `s[.]t[.]bogus' is not declared by the nested tree that owns it$";
@@ -6665,15 +6536,9 @@ in
             { options.o = gm.mkOption { inherit type; }; }
           ]
           ++ map (d: { config.o = d; }) defs;
-        tree =
-          (gm.evalModuleTree {
-            modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
-          }).type;
+        tree = (gm.evalModuleTree { } [ { options.x = gm.mkOption { type = t.int; }; } ]).type;
         laxTree =
-          (gm.evalModuleTree {
-            check = false;
-            modules = [ { options.x = gm.mkOption { type = t.int; }; } ];
-          }).type;
+          (gm.evalModuleTree { check = false; } [ { options.x = gm.mkOption { type = t.int; }; } ]).type;
         recsub = t.submodule {
           options.x = gm.mkOption { type = recsub; };
           options.v = gm.mkOption {
@@ -6749,7 +6614,7 @@ in
         };
         # U2-s: growth over empty seeds past the fuel.
         test-growth-over-empty-seeds-names-the-fuel-and-the-remedy = {
-          expr = force (down 32 (gm.evalModuleTree { modules = host recsub [ ]; }).config.o);
+          expr = force (down 32 (gm.evalModuleTree { } (host recsub [ ])).config.o);
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: `evalModuleTree': option `x' holds a nested tree with no definition inside 32 enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of 32 rather than hang[.] Define the position, or reach the recursion through a container whose keys are data [(]`attrsOf', `listOf'[)]$";
@@ -6804,22 +6669,20 @@ in
         test-a-lax-tree-inside-a-submodule-refuses-with-todays-message = {
           expr =
             force
-              (gm.evalModuleTree {
-                modules = [
-                  {
-                    options.s = gm.mkOption {
-                      type = t.submodule { options.t = gm.mkOption { type = laxTree; }; };
-                    };
-                  }
-                  {
-                    _file = "/r1";
-                    config.s.t = {
-                      x = 1;
-                      bogus = 2;
-                    };
-                  }
-                ];
-              }).config.s.t;
+              (gm.evalModuleTree { } [
+                {
+                  options.s = gm.mkOption {
+                    type = t.submodule { options.t = gm.mkOption { type = laxTree; }; };
+                  };
+                }
+                {
+                  _file = "/r1";
+                  config.s.t = {
+                    x = 1;
+                    bogus = 2;
+                  };
+                }
+              ]).config.s.t;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: option `s[.]t[.]bogus' is not declared by the nested tree that owns it$";
@@ -6836,16 +6699,14 @@ in
         np = nixpkgsLib.types;
         no = _: false;
         tree =
-          (gm.evalModuleTree {
-            modules = [
-              {
-                options.a = gm.mkOption {
-                  type = t.int;
-                  default = 0;
-                };
-              }
-            ];
-          }).type;
+          (gm.evalModuleTree { } [
+            {
+              options.a = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+            }
+          ]).type;
         sub = t.submodule { options.a = gm.mkOption { type = t.int; }; };
         opt =
           T: V:
@@ -6910,12 +6771,13 @@ in
         };
       };
 
-    # den-hoag-7gp66 P1: which message fires for gen-merge's three closed doors — evalModuleTree
-    # (mixed), lint (record), mkCoreValue (record) — now that each routes through gen-prelude's
-    # shared `checkOptions` / `checkRequired` (R6: names the door first, the construct last).
-    # `ci/tests/door-checks.nix` pins that each refusal is catchable and that a record door still
-    # admits an extra field; this suite pins the exact wording. evalModuleTree's cells force only
-    # the application, since the door refuses there.
+    # den-hoag-7gp66 P2: which message fires at gen-merge's doors — the options steps of
+    # `evalModuleTree`, `declaredOptions` and `deriveType`, and the R7 (b) record of `mergeTypes` —
+    # each through `prelude.door`'s shared checks (R6: names the door first, the construct last).
+    # `ci/tests/door-checks.nix` pins that each refusal is catchable and that the record still admits
+    # an extra field; this suite pins the exact wording. Every cell forces only the application,
+    # since each door refuses there. `lint`, `mkCoreValue` and `bandedLeaves` are positional and
+    # carry no field check.
     flake.testsError.door-checks =
       let
         pin = door: msg: {
@@ -6925,27 +6787,30 @@ in
       in
       {
         test-eval-module-tree-unknown-option-named = {
-          expr = builtins.seq (gm.evalModuleTree {
-            modules = [ ];
-            notAnOption = 1;
-          }) null;
-          expectedError = pin "gen-merge[.]evalModuleTree" "'notAnOption' is not an option of this door; the options are closed [(]accepted: 'modules', 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
+          expr = builtins.seq (gm.evalModuleTree { notAnOption = 1; }) null;
+          expectedError = pin "gen-merge[.]evalModuleTree" "'notAnOption' is not an option of this door; the options are closed [(]accepted: 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
         };
-        test-eval-module-tree-missing-modules-named = {
-          expr = builtins.seq (gm.evalModuleTree { }) null;
-          expectedError = pin "gen-merge[.]evalModuleTree" "required field 'modules' is missing [(]required: 'modules'[)] [(]in prelude[.]checkRequired[)]";
+        # The unmigrated one-record call: `modules` is refused by name, as an option this door lacks.
+        test-eval-module-tree-old-one-record-shape-named = {
+          expr = builtins.seq (gm.evalModuleTree { modules = [ ]; }) null;
+          expectedError = pin "gen-merge[.]evalModuleTree" "'modules' is not an option of this door; the options are closed [(]accepted: 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
         };
-        test-eval-module-tree-non-set-named = {
+        test-eval-module-tree-non-set-options-named = {
           expr = builtins.seq (gm.evalModuleTree "modules") null;
-          expectedError = pin "gen-merge[.]evalModuleTree" "the argument must be an attrset, not a string [(]required: 'modules'[)] [(]in prelude[.]checkRequired[)]";
+          expectedError = pin "gen-merge[.]evalModuleTree" "the options must be an attrset, not a string [(]accepted: 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
         };
-        test-lint-missing-modules-named = {
-          expr = force (gm.lint { });
-          expectedError = pin "gen-merge[.]lint" "required field 'modules' is missing [(]required: 'modules'[)] [(]in prelude[.]checkRequired[)]";
+        test-declared-options-old-one-record-shape-named = {
+          expr = builtins.seq (gm.declaredOptions { modules = [ ]; }) null;
+          expectedError = pin "gen-merge[.]declaredOptions" "'modules' is not an option of this door; the options are closed [(]accepted: 'specialArgs', 'prefix'[)] [(]in prelude[.]checkOptions[)]";
         };
-        test-mk-core-value-missing-values-named = {
-          expr = force (gm.mkCoreValue { digest = "d"; });
-          expectedError = pin "gen-merge[.]mkCoreValue" "required field 'values' is missing [(]required: 'digest', 'values'[)] [(]in prelude[.]checkRequired[)]";
+        # The unmigrated `deriveType base spec` call: the base, a type record, is read as the options.
+        test-derive-type-old-base-first-shape-named = {
+          expr = builtins.seq (gm.deriveType t.str) null;
+          expectedError = pin "gen-merge[.]deriveType" "'[^']+' is not an option of this door; the options are closed [(]accepted: 'key', 'fields', 'mint', 'name', 'description'[)] [(]in prelude[.]checkOptions[)]";
+        };
+        test-merge-types-missing-partner-named = {
+          expr = builtins.seq (gm.mergeTypes { deciding = t.str; }) null;
+          expectedError = pin "gen-merge[.]mergeTypes" "required field 'partner' is missing [(]required: 'deciding', 'partner'[)] [(]in prelude[.]checkRequired[)]";
         };
       };
 
@@ -7413,8 +7278,9 @@ in
     # through the declaration plane; `ci/tests/derive-type.nix` holds the refusals as values.
     flake.testsError.derive-type =
       let
+        # The fixtures state a spec with its `id`; the door takes the `id` positionally.
         tagged.id = "tagged";
-        derive = gm.deriveType;
+        derive = b: spec: gm.deriveType (builtins.removeAttrs spec [ "id" ]) spec.id b;
         declared =
           a: b:
           realize {
@@ -7457,7 +7323,7 @@ in
           expectedError = refusal "^gen-merge: `deriveType' over `string' as `tagged': `fields' sets `check', `mergeDefs', which are not metadata; a type whose behaviour or relation differs is a new type \\(`mkOptionType'\\), not a derivation$";
         };
         test-a-derivation-without-an-id-is-refused = {
-          expr = force (derive t.str { });
+          expr = force (gm.deriveType { } null t.str);
           expectedError = refusal "^gen-merge: `deriveType' over `string' states no string `id'; a derivation's merge identity is the string it names$";
         };
         test-a-key-holding-a-type-is-refused = {
@@ -7488,13 +7354,11 @@ in
             let
               d = derive t.str tagged;
             in
-            (gm.evalModuleTree {
-              modules = [
-                { options.o = gm.mkOption { type = d; }; }
-                { options.o = gm.mkOption { type = d; }; }
-                { o = "a"; }
-              ];
-            }).config.o;
+            (gm.evalModuleTree { } [
+              { options.o = gm.mkOption { type = d; }; }
+              { options.o = gm.mkOption { type = d; }; }
+              { o = "a"; }
+            ]).config.o;
           expected = "a";
         };
       };
@@ -7797,12 +7661,10 @@ in
       {
         test-extra-payload-partner-first-refuses-by-name = {
           expr =
-            (gm.evalModuleTree {
-              modules = [
-                { options.x = gm.mkOption { type = lazyList; }; }
-                { options.x = gm.mkOption { type = t.listOf t.int; }; }
-              ];
-            }).options.x.type.description;
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = lazyList; }; }
+              { options.x = gm.mkOption { type = t.listOf t.int; }; }
+            ]).options.x.type.description;
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: option `x' is declared with types that do not merge \\(`listOf' and a partner that states no element type of its own\\); declared in <gen-merge>, <gen-merge>$";

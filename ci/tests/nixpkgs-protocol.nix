@@ -8,6 +8,7 @@
 # `error: attribute 'deprecationMessage' missing` reading the type. gen-merge now stamps the full
 # nixpkgs optionType shape (purely, no nixpkgs import) so the SAME type value serves both engines.
 {
+  evalRequest,
   genMerge,
   genTypes,
   nixpkgsLib,
@@ -349,7 +350,7 @@ let
           };
         treeOf =
           mods: specialArgs:
-          (if isRef then nixpkgsLib.evalModules else genMerge.evalModuleTree) {
+          (if isRef then nixpkgsLib.evalModules else evalRequest) {
             modules = mods;
             inherit specialArgs;
           };
@@ -374,7 +375,7 @@ let
         docs = false;
       }
       // cell e;
-      engine = if side == "own" then genMerge.evalModuleTree else nixpkgsLib.evalModules;
+      engine = if side == "own" then evalRequest else nixpkgsLib.evalModules;
       r =
         if c.docs then
           (e.T.getSubOptions [ "s" ]).a.default
@@ -465,7 +466,7 @@ in
       in
       {
         expr = {
-          gen = builtins.mapAttrs (_: twice genMerge.evalModuleTree genMerge.mkOption) lists;
+          gen = builtins.mapAttrs (_: twice evalRequest genMerge.mkOption) lists;
           nixpkgs = builtins.mapAttrs (_: twice nixpkgsLib.evalModules nixpkgsLib.mkOption) lists;
         };
         expected = {
@@ -984,13 +985,11 @@ in
             );
           redeclare =
             ty:
-            (genMerge.evalModuleTree {
-              modules = [
-                { options.tree = genMerge.mkOption { type = ty; }; }
-                { options.tree = genMerge.mkOption { type = ty; }; }
-                { config.tree = [ 1 ]; }
-              ];
-            }).config.tree;
+            (genMerge.evalModuleTree { } [
+              { options.tree = genMerge.mkOption { type = ty; }; }
+              { options.tree = genMerge.mkOption { type = ty; }; }
+              { config.tree = [ 1 ]; }
+            ]).config.tree;
         in
         {
           selfReferential = rel r;
@@ -1752,9 +1751,7 @@ in
     test-tree-type-is-an-option-type = {
       expr =
         let
-          tree = genMerge.evalModuleTree {
-            modules = [ { options.a = genMerge.mkOption { type = gmT.str; }; } ];
-          };
+          tree = genMerge.evalModuleTree { } [ { options.a = genMerge.mkOption { type = gmT.str; }; } ];
           ty = tree.type;
         in
         {
@@ -1794,50 +1791,42 @@ in
     test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys = {
       expr =
         let
-          child = genMerge.evalModuleTree {
-            modules = [
-              {
-                options.a = genMerge.mkOption {
-                  type = gmT.str;
-                  default = "x";
-                };
-              }
-            ];
-          };
-          parentTree = genMerge.evalModuleTree {
-            modules = [
-              { options.inner = genMerge.mkOption { type = child.type; }; }
-              {
-                config.inner = {
-                  a = "set";
-                };
-              }
-            ];
-          };
-          parentSub = genMerge.evalModuleTree {
-            modules = [
-              {
-                options.inner = genMerge.mkOption {
-                  type = gmT.submodule {
-                    options.a = genMerge.mkOption {
-                      type = gmT.str;
-                      default = "x";
-                    };
+          child = genMerge.evalModuleTree { } [
+            {
+              options.a = genMerge.mkOption {
+                type = gmT.str;
+                default = "x";
+              };
+            }
+          ];
+          parentTree = genMerge.evalModuleTree { } [
+            { options.inner = genMerge.mkOption { type = child.type; }; }
+            {
+              config.inner = {
+                a = "set";
+              };
+            }
+          ];
+          parentSub = genMerge.evalModuleTree { } [
+            {
+              options.inner = genMerge.mkOption {
+                type = gmT.submodule {
+                  options.a = genMerge.mkOption {
+                    type = gmT.str;
+                    default = "x";
                   };
                 };
-              }
-            ];
-          };
-          parentPlain = genMerge.evalModuleTree {
-            modules = [
-              {
-                options.inner = genMerge.mkOption {
-                  type = gmT.str;
-                  default = "p";
-                };
-              }
-            ];
-          };
+              };
+            }
+          ];
+          parentPlain = genMerge.evalModuleTree { } [
+            {
+              options.inner = genMerge.mkOption {
+                type = gmT.str;
+                default = "p";
+              };
+            }
+          ];
           declarationOnly = builtins.mapAttrs (
             _: o:
             builtins.removeAttrs o [
@@ -1878,27 +1867,23 @@ in
     test-tree-type-still-nests-in-gen-merge-control = {
       expr =
         let
-          child = genMerge.evalModuleTree {
-            modules = [
-              {
-                options.a = genMerge.mkOption {
-                  type = gmT.str;
-                  default = "x";
-                };
-              }
-            ];
-          };
-        in
-        (genMerge.evalModuleTree {
-          modules = [
-            { options.inner = genMerge.mkOption { type = child.type; }; }
+          child = genMerge.evalModuleTree { } [
             {
-              config.inner = {
-                a = "set";
+              options.a = genMerge.mkOption {
+                type = gmT.str;
+                default = "x";
               };
             }
           ];
-        }).config;
+        in
+        (genMerge.evalModuleTree { } [
+          { options.inner = genMerge.mkOption { type = child.type; }; }
+          {
+            config.inner = {
+              a = "set";
+            };
+          }
+        ]).config;
       expected = {
         inner = {
           a = "set";
@@ -1919,7 +1904,7 @@ in
     # binary union and a three-member one.
     test-tree-union-member-parity-over-the-class =
       let
-        family = import ./_fixtures/tree-union-family.nix { inherit genMerge nixpkgsLib; };
+        family = import ./_fixtures/tree-union-family.nix { inherit evalRequest genMerge nixpkgsLib; };
         try =
           v:
           let
@@ -1997,10 +1982,7 @@ in
     test-tree-type-states-its-module-domain = {
       expr =
         let
-          ty =
-            (genMerge.evalModuleTree {
-              modules = [ { options.a = genMerge.mkOption { type = gmT.str; }; } ];
-            }).type;
+          ty = (genMerge.evalModuleTree { } [ { options.a = genMerge.mkOption { type = gmT.str; }; } ]).type;
         in
         {
           admits = map ty.admits [
@@ -2419,12 +2401,10 @@ in
         in
         {
           gen =
-            (genMerge.evalModuleTree {
-              modules = [
-                { options.s = genMerge.mkOption { type = j; }; }
-                { config.s = def; }
-              ];
-            }).config.s;
+            (genMerge.evalModuleTree { } [
+              { options.s = genMerge.mkOption { type = j; }; }
+              { config.s = def; }
+            ]).config.s;
           mounted = mount j def;
         };
       expected = {
@@ -2515,7 +2495,7 @@ in
       in
       {
         expr = {
-          tree = run (genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).type;
+          tree = run (genMerge.evalModuleTree { } (mods genMerge.mkOption)).type;
           submodule = run (gmT.submodule (mods genMerge.mkOption));
         };
         expected = {
@@ -2539,7 +2519,7 @@ in
             };
           }
         ];
-        tree = (genMerge.evalModuleTree { modules = mods genMerge.mkOption gmT; }).type;
+        tree = (genMerge.evalModuleTree { } (mods genMerge.mkOption gmT)).type;
         sub = gmT.submodule (mods genMerge.mkOption gmT);
         treeN = (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption np; }).type;
         subN = np.submodule (mods nixpkgsLib.mkOption np);
@@ -2561,7 +2541,7 @@ in
             );
           in
           if r.success then r.value else "REFUSED";
-        gen = twice genMerge.evalModuleTree genMerge.mkOption;
+        gen = twice evalRequest genMerge.mkOption;
         foreign = twice nixpkgsLib.evalModules nixpkgsLib.mkOption;
       in
       {
@@ -2628,11 +2608,7 @@ in
         sides = {
           tree = {
             gen =
-              shape:
-              (genMerge.evalModuleTree {
-                modules = modsOf genMerge.mkOption shape;
-                specialArgs = args;
-              }).type;
+              shape: (genMerge.evalModuleTree { specialArgs = args; } (modsOf genMerge.mkOption shape)).type;
             ref =
               shape:
               (nixpkgsLib.evalModules {
@@ -2740,7 +2716,7 @@ in
       in
       {
         expr = {
-          tree = read (genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).type;
+          tree = read (genMerge.evalModuleTree { } (mods genMerge.mkOption)).type;
           submodule = read (gmT.submodule (mods genMerge.mkOption));
         };
         expected = {
@@ -2766,9 +2742,9 @@ in
       in
       {
         expr = {
-          tree = read (genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).type;
+          tree = read (genMerge.evalModuleTree { } (mods genMerge.mkOption)).type;
           submodule = read (gmT.submodule (mods genMerge.mkOption));
-          evaluation = "${(genMerge.evalModuleTree { modules = mods genMerge.mkOption; }).options.a}";
+          evaluation = "${(genMerge.evalModuleTree { } (mods genMerge.mkOption)).options.a}";
         };
         expected = {
           tree = read (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }).type;

@@ -37,7 +37,7 @@ let
   k =
     mods:
     let
-      r = builtins.tryEval (gm.evalModuleTree { modules = [ decl ] ++ mods; }).config.k;
+      r = builtins.tryEval (gm.evalModuleTree { } ([ decl ] ++ mods)).config.k;
     in
     if r.success then r.value else "REFUSED";
 in

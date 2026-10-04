@@ -558,6 +558,21 @@ in
   # subject `mkOptionType`'s own relation decides by (lib/interface.nix, den-hoag-bfc0k).
   inherit (core.interface) closuresFirst;
 
+  # The type relation, published as one record of its two operands (den-hoag-7gp66 P2, R7 (b)): two
+  # types, one sort. The record names their roles, because the relation is asked of `deciding`, whose
+  # own `typeMergeRel` answers (a foreign operand there answers through the import boundary), and
+  # `partner` is what it is asked about — on a declaration plane the later declaration decides, as
+  # nixpkgs' `later.typeMerge earlier.functor` does. An open record (R5): a missing operand is refused by name at application. The
+  # engine and the type vocabulary call the positional core, never this door.
+  mergeTypes = prelude.door {
+    name = "gen-merge.mergeTypes";
+    required = [
+      "deciding"
+      "partner"
+    ];
+    open = true;
+  } (r: core.mergeTypes r.deciding r.partner);
+
   # The engine + the shared fold (spec §2) + module-system helpers consumers need.
   inherit (core)
     evalModuleTree
@@ -569,10 +584,9 @@ in
     # than a divergence if the declarations it is asking about turn out to need the value stratum.
     declaredOptions
     mergeDefs
-    mergeTypes
     mergeOneOption
     showOption
-    # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; }`.
+    # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; } modules`.
     mkCoreValue
     # Source-class substrate (design spec §3): the author's `pureModule` clean-module marker. Its
     # companion `classifyModule` predicate stays on the INTERNAL core seam (lib/modules.nix) — the

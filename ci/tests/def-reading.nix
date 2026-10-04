@@ -6,7 +6,11 @@
 # A module is a path, a string naming an absolute path, a function or an attrset (the reference's
 # `loadModule` imports whatever is not a function or an attrset). The refusals are
 # `ci/tests-error.nix`'s `def-reading` group.
-{ genMerge, ... }:
+{
+  evalRequest,
+  genMerge,
+  ...
+}:
 let
   gm = genMerge;
   t = gm.types;
@@ -14,7 +18,7 @@ let
     type = t.int;
     default = 0;
   };
-  tree = (gm.evalModuleTree { modules = [ { options.a = int0; } ]; }).type;
+  tree = (gm.evalModuleTree { } [ { options.a = int0; } ]).type;
   sub = t.submodule { options.a = int0; };
   outer = check: type: def: {
     inherit check;
@@ -26,10 +30,9 @@ let
       }
     ];
   };
-  valueAt = type: def: (gm.evalModuleTree (outer true type def)).config.t;
+  valueAt = type: def: (evalRequest (outer true type def)).config.t;
   undeclaredAt =
-    type: def:
-    map (u: { inherit (u) file path; }) (gm.evalModuleTree (outer false type def)).undeclared;
+    type: def: map (u: { inherit (u) file path; }) (evalRequest (outer false type def)).undeclared;
   keyOpt = {
     options.key = gm.mkOption {
       type = t.str;
@@ -37,7 +40,7 @@ let
     };
   };
   a5 = ./_fixtures/def-reading-a5.nix;
-  topA = modules: (gm.evalModuleTree { modules = [ { options.a = int0; } ] ++ modules; }).config.a;
+  topA = modules: (gm.evalModuleTree { } ([ { options.a = int0; } ] ++ modules)).config.a;
 in
 {
   flake.tests.def-reading = {
@@ -81,7 +84,7 @@ in
     };
     # `key' is module identity, as at the top level (den-hoag-470xp owns whether it is refused).
     test-tree-key-is-module-identity = {
-      expr = valueAt (gm.evalModuleTree { modules = [ keyOpt ]; }).type { key = "k1"; };
+      expr = valueAt (gm.evalModuleTree { } [ keyOpt ]).type { key = "k1"; };
       expected = {
         key = "k0";
       };

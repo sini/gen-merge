@@ -77,7 +77,7 @@ let
   gen =
     mods:
     let
-      r = gm.evalModuleTree { modules = [ (declOf gm) ] ++ mods; };
+      r = gm.evalModuleTree { } ([ (declOf gm) ] ++ mods);
       v = builtins.tryEval (builtins.deepSeq [ r.config.x r.config.y ] [ r.config.x r.config.y ]);
     in
     if v.success then v.value else "REFUSED";
@@ -267,23 +267,19 @@ in
     test-lint-reads-a-path-modules-own-key = {
       expr = {
         lint = map (f: f.file) (
-          gm.lint {
-            modules = [
-              (declOf gm)
-              la
-              lb
-            ];
-          }
+          gm.lint [
+            (declOf gm)
+            la
+            lb
+          ]
         );
         engine = map (d: d.file) (
           builtins.filter (d: d.file != "<default>")
-            (gm.evalModuleTree {
-              modules = [
-                (declOf gm)
-                la
-                lb
-              ];
-            }).provenance.y.defs
+            (gm.evalModuleTree { } [
+              (declOf gm)
+              la
+              lb
+            ]).provenance.y.defs
         );
       };
       expected = {
@@ -305,8 +301,8 @@ in
           ];
         in
         {
-          lintFindings = builtins.length (gm.lint { modules = mods; });
-          engine = (gm.evalModuleTree { modules = mods; }).config.y;
+          lintFindings = builtins.length (gm.lint mods);
+          engine = (gm.evalModuleTree { } mods).config.y;
         };
       expected = {
         lintFindings = 2;
@@ -328,8 +324,8 @@ in
           }
         ];
         read = ikey: {
-          lint = map (f: f.kind) (gm.lint { modules = arm gm ikey; });
-          gen = (gm.evalModuleTree { modules = arm gm ikey; }).config.y;
+          lint = map (f: f.kind) (gm.lint (arm gm ikey));
+          gen = (gm.evalModuleTree { } (arm gm ikey)).config.y;
           nixpkgs = (nixpkgsLib.evalModules { modules = arm nixpkgsLib ikey; }).config.y;
         };
         kept = {

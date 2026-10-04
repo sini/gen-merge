@@ -16,7 +16,11 @@
 # cell 2 there (the foreign throw on Nix and Determinate); cells 6 and 7 again with only the
 # `sharedKeyDiffers` edit (no `callM` edit). Cells 5 and 8 with a fold that calls every shared function
 # equal (false on Nix and Determinate) and with one that refuses every function (false on Lix).
-{ genMerge, ... }:
+{
+  evalRequest,
+  genMerge,
+  ...
+}:
 let
   gm = genMerge;
   ty = gm.mkOptionType {
@@ -26,8 +30,7 @@ let
   decl = {
     options.heddle = gm.mkOption { type = ty; };
   };
-  heddleOf =
-    args: modules: (gm.evalModuleTree (args // { modules = [ decl ] ++ modules; })).config.heddle;
+  heddleOf = args: modules: (evalRequest (args // { modules = [ decl ] ++ modules; })).config.heddle;
   # two files, each defining `heddle = <a> / <b>`
   pair =
     a: b:

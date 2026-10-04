@@ -35,12 +35,10 @@ let
   overV = genMergeWith V;
   readV =
     v:
-    (overV.evalModuleTree {
-      modules = [
-        { options.p = overV.mkOption { type = overV.types.str; }; }
-        { p = v; }
-      ];
-    }).config.p;
+    (overV.evalModuleTree { } [
+      { options.p = overV.mkOption { type = overV.types.str; }; }
+      { p = v; }
+    ]).config.p;
   # The same vocabulary padded with every allowlist name (`foreign-leaf-check.nix`'s `compat` shape).
   padded = V // {
     inherit (np) attrs listOf attrsOf;
@@ -229,12 +227,10 @@ in
         W = genMergeWith (protocol // { inherit (np) str nullOr; });
         read =
           type: v:
-          (W.evalModuleTree {
-            modules = [
-              { options.p = W.mkOption { inherit type; }; }
-              { p = v; }
-            ];
-          }).config.p;
+          (W.evalModuleTree { } [
+            { options.p = W.mkOption { inherit type; }; }
+            { p = v; }
+          ]).config.p;
       in
       {
         names = builtins.attrNames W.types;

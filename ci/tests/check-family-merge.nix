@@ -24,9 +24,9 @@ let
   ev =
     tys: val:
     let
-      res = gm.evalModuleTree {
-        modules = map (ty: { options.p = gm.mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
-      };
+      res = gm.evalModuleTree { } (
+        map (ty: { options.p = gm.mkOption { type = ty; }; }) tys ++ [ { p = val; } ]
+      );
       ty = tryEval (deepSeq res.options.p.type.name res.options.p.type.name);
       v = tryEval (deepSeq res.config.p res.config.p);
     in
@@ -39,7 +39,10 @@ let
   merged =
     a: b:
     let
-      r = gm.mergeTypes a b;
+      r = gm.mergeTypes {
+        deciding = a;
+        partner = b;
+      };
     in
     if r == null then "REFUSED" else r.name;
 
@@ -74,7 +77,14 @@ let
             f:
             let
               p = f.type or null;
-              j = if p ? __base then gm.mergeTypes base p.__base else null;
+              j =
+                if p ? __base then
+                  gm.mergeTypes {
+                    deciding = base;
+                    partner = p.__base;
+                  }
+                else
+                  null;
             in
             if j == null then null else refinedLike j;
           functor = {

@@ -33,7 +33,7 @@ let
   fixtures = import ./_fixtures/corpus.nix;
 
   stripModule = c: builtins.removeAttrs c [ "_module" ];
-  gmConfigOf = fx: (gm.evalModuleTree { modules = fx gmP; }).config;
+  gmConfigOf = fx: (gm.evalModuleTree { } (fx gmP)).config;
   npConfigOf = fx: stripModule (lib.evalModules { modules = fx npP; }).config;
   byteIdentical = fx: gmConfigOf fx == npConfigOf fx;
 
@@ -77,7 +77,7 @@ in
   flake.tests.oracle = oracleTests // {
     test-deferred-import-equivalent = {
       expr =
-        materialize (gm.evalModuleTree { modules = deferredFixture gmP; }).config.c
+        materialize (gm.evalModuleTree { } (deferredFixture gmP)).config.c
         == materialize (lib.evalModules { modules = deferredFixture npP; }).config.c;
       expected = true;
     };

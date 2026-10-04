@@ -105,8 +105,8 @@ let
   # compared over identical input.
   valueOf =
     ty: values:
-    (gm.evalModuleTree {
-      modules = [
+    (gm.evalModuleTree { } (
+      [
         {
           _file = "decl.nix";
           options.x = gm.mkOption { type = ty; };
@@ -115,8 +115,8 @@ let
       ++ prelude.imap0 (i: v: {
         _file = "def${toString i}.nix";
         config.x = v;
-      }) values;
-    }).config.x;
+      }) values
+    )).config.x;
 
   # THE DEFINITION SET IS ONE SET IN TWO AUTHORED ORDERS, and the order matters to the arms below
   # for a reason worth stating: the fold hands a merge its definitions in the REVERSE of authored

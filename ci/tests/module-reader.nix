@@ -18,12 +18,10 @@ let
     m:
     let
       c =
-        (gm.evalModuleTree {
-          modules = [
-            decl
-            m
-          ];
-        }).config;
+        (gm.evalModuleTree { } [
+          decl
+          m
+        ]).config;
     in
     {
       inherit (c) a foo;
@@ -48,17 +46,15 @@ in
     };
     test-declaration-only-read-control-spelled-right = {
       expr = builtins.attrNames (
-        gm.declaredOptions {
-          modules = [
-            (
-              removeAttrs typo [ "option" ]
-              // {
-                options.b = int0;
-                options.c = int0;
-              }
-            )
-          ];
-        }
+        gm.declaredOptions { } [
+          (
+            removeAttrs typo [ "option" ]
+            // {
+              options.b = int0;
+              options.c = int0;
+            }
+          )
+        ]
       );
       expected = [
         "b"
