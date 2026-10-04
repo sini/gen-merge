@@ -89,14 +89,8 @@ let
   # orders, and the declaration path both orders.
   separation = b: d: {
     raw = [
-      (idOf (mergeTypes {
-        deciding = b;
-        partner = d;
-      }))
-      (idOf (mergeTypes {
-        deciding = d;
-        partner = b;
-      }))
+      (idOf (mergeTypes b d))
+      (idOf (mergeTypes d b))
     ];
     foreign = [
       (idOf (b.typeMerge d.functor))
@@ -161,23 +155,13 @@ in
     # C1 — idempotence on gen's own path: d ⊔ d answers the derivation.
     test-merging-a-derivation-with-itself-keeps-it = {
       expr = mapAttrs (
-        _: b:
-        idOf (mergeTypes {
-          deciding = (deriveType tagged "tagged" b);
-          partner = (deriveType tagged "tagged" b);
-        })
+        _: b: idOf (mergeTypes (deriveType tagged "tagged" b) (deriveType tagged "tagged" b))
       ) bases;
       expected = mapAttrs (_: _: "tagged") bases;
     };
     # C8 — the same predicate over `//`: the base answers, or the twin is refused.
     test-control-a-naive-derivation-merged-with-itself-loses-it = {
-      expr = mapAttrs (
-        _: b:
-        tagOf (mergeTypes {
-          deciding = (naive b);
-          partner = (naive b);
-        })
-      ) bases;
+      expr = mapAttrs (_: b: tagOf (mergeTypes (naive b) (naive b))) bases;
       expected = {
         leaf = "LOST";
         container = "LOST";
@@ -215,13 +199,7 @@ in
       expected = mapAttrs (_: _: true) families;
     };
     test-control-a-naive-derivation-is-absorbed-by-its-base = {
-      expr = mapAttrs (
-        _: b:
-        tagOf (mergeTypes {
-          deciding = b;
-          partner = (naive b);
-        })
-      ) bases;
+      expr = mapAttrs (_: b: tagOf (mergeTypes b (naive b))) bases;
       expected = {
         leaf = "LOST";
         container = "LOST";
@@ -292,16 +270,9 @@ in
     };
     test-control-derivations-whose-keys-agree-merge = {
       expr = {
-        raw = idOf (mergeTypes {
-          deciding = (keyed "a");
-          partner = (keyed "a");
-        });
+        raw = idOf (mergeTypes (keyed "a") (keyed "a"));
         declared = declares (keyed "a") (keyed "a");
-        key =
-          (mergeTypes {
-            deciding = (keyed "a");
-            partner = (keyed "a");
-          }).__derivation.key;
+        key = (mergeTypes (keyed "a") (keyed "a")).__derivation.key;
       };
       expected = {
         raw = "tagged";
@@ -334,14 +305,8 @@ in
           d = deriveType tagged "tagged" np;
         in
         {
-          self = idOf (mergeTypes {
-            deciding = d;
-            partner = d;
-          });
-          base = idOf (mergeTypes {
-            deciding = d;
-            partner = np;
-          });
+          self = idOf (mergeTypes d d);
+          base = idOf (mergeTypes d np);
           check = checks d == checks np;
           fold = fold d "a";
         };
@@ -358,19 +323,9 @@ in
           dd = deriveType tagged "outer" derived.leaf;
         in
         {
-          self = idOf (mergeTypes {
-            deciding = dd;
-            partner = dd;
-          });
-          inner =
-            (mergeTypes {
-              deciding = dd;
-              partner = dd;
-            }).__derivation.base.__derivation.id;
-          base = idOf (mergeTypes {
-            deciding = dd;
-            partner = derived.leaf;
-          });
+          self = idOf (mergeTypes dd dd);
+          inner = (mergeTypes dd dd).__derivation.base.__derivation.id;
+          base = idOf (mergeTypes dd derived.leaf);
         };
       expected = {
         self = "outer";

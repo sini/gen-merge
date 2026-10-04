@@ -845,7 +845,7 @@ one a type constructor over a TYPE, and neither is reachable where the other is.
   foreign leaf derives.
 - A derivation OF a consumer type whose relation keys on an inherited marker field is absorbed by
   that type: gen-schema's `refined` decides by `partner ? __schema`, which a derivation of a
-  refined type inherits, so `mergeTypes { deciding = R; partner = deriveType { … } "id" R; }` and the foreign `R.typeMerge` answer
+  refined type inherits, so `mergeTypes R (deriveType { … } "id" R)` and the foreign `R.typeMerge` answer
   `R`. Separation holds over bases whose relation reads identity through `keyOf`; it closes for
   `refined` once `refined` is itself a `deriveType`.
 
@@ -1257,7 +1257,7 @@ typeMergeRel = other: if <compatible> then { merged = <type>; } else { refused =
 ```
 
 The engine dispatches **gen-native first, foreign second**. On a declaration plane that has two
-meanings, one per operand. The LATER declaration's type decides (`mergeTypes { deciding = later; partner = earlier; }`, nixpkgs'
+meanings, one per operand. The LATER declaration's type decides (`mergeTypes later earlier`, nixpkgs'
 `later.typeMerge earlier.functor`), and an EARLIER gen-native relation is asked first whether it
 refuses the later type, a refusal no later relation overrules. The foreign arm stays and is not legacy:
 gen-merge meets foreign functors by construction — a gen type mounted in a foreign module system can
@@ -1347,7 +1347,7 @@ where it decides. **`attrs` is a stated divergence**: gen's `attrs` fold refuses
 the last, so a foreign `attrs` stays refused and nixpkgs' engine stays order-dependent for it. Leaves
 whose functor disagrees on identity (`str`, `number`, `path`, `deferredModule`) are outside this rule.
 
-**The relation is published as `genMerge.mergeTypes { deciding = a; partner = b; }`** — the merged type or `null` — the one
+**The relation is published as `genMerge.mergeTypes a b`** — the merged type or `null` — the one
 binding the declaration stratum and the structural element folds both answer through. It asks a gen
 type's `typeMergeRel` first and a foreign type's own `a.typeMerge b.functor` otherwise, behind the
 type-walk fuel guard. A consumer holding two types it did not build

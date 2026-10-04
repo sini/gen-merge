@@ -78,10 +78,7 @@ let
   merged =
     a: b:
     let
-      r = gm.mergeTypes {
-        deciding = a;
-        partner = b;
-      };
+      r = gm.mergeTypes a b;
     in
     if r == null then "REFUSED" else r.name;
   ev =
@@ -113,14 +110,7 @@ let
             f:
             let
               p = f.type or null;
-              j =
-                if p ? __base then
-                  gm.mergeTypes {
-                    deciding = b;
-                    partner = p.__base;
-                  }
-                else
-                  null;
+              j = if p ? __base then gm.mergeTypes b p.__base else null;
             in
             if j == null then null else refinedLike j;
           functor = {
@@ -166,17 +156,7 @@ let
       functor = {
         name = "bobbin";
         payload = el;
-        binOp =
-          a: b:
-          if
-            gm.mergeTypes {
-              deciding = a;
-              partner = b;
-            } == null
-          then
-            null
-          else
-            a;
+        binOp = a: b: if gm.mergeTypes a b == null then null else a;
         type = bobbin;
       };
     };

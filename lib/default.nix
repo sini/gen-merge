@@ -558,20 +558,13 @@ in
   # subject `mkOptionType`'s own relation decides by (lib/interface.nix, den-hoag-bfc0k).
   inherit (core.interface) closuresFirst;
 
-  # The type relation, published as one record of its two operands (den-hoag-7gp66 P2, R7 (b)): two
-  # types, one sort. The record names their roles, because the relation is asked of `deciding`, whose
-  # own `typeMergeRel` answers (a foreign operand there answers through the import boundary), and
-  # `partner` is what it is asked about — on a declaration plane the later declaration decides, as
-  # nixpkgs' `later.typeMerge earlier.functor` does. An open record (R5): a missing operand is refused by name at application. The
-  # engine and the type vocabulary call the positional core, never this door.
-  mergeTypes = prelude.door {
-    name = "gen-merge.mergeTypes";
-    required = [
-      "deciding"
-      "partner"
-    ];
-    open = true;
-  } (r: core.mergeTypes r.deciding r.partner);
+  # The type relation, two positional operands in their order (den-hoag-7gp66 P2, rule 4): the
+  # relation is asked of the FIRST, whose own `typeMergeRel` answers (a foreign operand there answers
+  # through the import boundary), about the second. On a declaration plane the later declaration
+  # decides, as nixpkgs' `later.typeMerge earlier.functor` does. Swapping the operands can change the
+  # answer, so the order is the contract; positional arity carries it, with no field to check. It is
+  # the engine's own binding, the one the declaration and element strata consult.
+  inherit (core) mergeTypes;
 
   # The engine + the shared fold (spec §2) + module-system helpers consumers need.
   inherit (core)

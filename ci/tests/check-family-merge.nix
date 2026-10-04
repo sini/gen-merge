@@ -39,10 +39,7 @@ let
   merged =
     a: b:
     let
-      r = gm.mergeTypes {
-        deciding = a;
-        partner = b;
-      };
+      r = gm.mergeTypes a b;
     in
     if r == null then "REFUSED" else r.name;
 
@@ -77,14 +74,7 @@ let
             f:
             let
               p = f.type or null;
-              j =
-                if p ? __base then
-                  gm.mergeTypes {
-                    deciding = base;
-                    partner = p.__base;
-                  }
-                else
-                  null;
+              j = if p ? __base then gm.mergeTypes base p.__base else null;
             in
             if j == null then null else refinedLike j;
           functor = {

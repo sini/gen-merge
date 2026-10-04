@@ -61,12 +61,12 @@ defaulted evaluator could not refuse, and the door that names a non-evaluator is
 | `mergeDefs`       | `loc -> type\|null -> [{ file; value; }] -> value` (the `(loc, defs)` escape hatch; never short-circuits)                                                      |
 | `mergeOneOption`  | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw)                                                                                   |
 | `showOption`      | `[string] -> string` (dot-join)                                                                                                                                |
-| `mergeTypes`      | `{ deciding; partner; } -> type\|null` (one open record of the two types; the relation is asked of `deciding`)                                                 |
+| `mergeTypes`      | `type -> type -> type\|null` (positional; the relation is asked of the FIRST operand, so swapping them can change the answer)                                  |
 | `deriveType`      | `{ key ? null; fields ? _: {}; mint ? sealed; name ? …; description ? …; } -> id -> base -> type` (options closed, first)                                      |
 | `bandedLeaves`    | `scope -> result -> { <loc> = leaf record; }` (`scope` stamped on every record; `result` an `evalModuleTree` result)                                           |
 
-Every record-taking step above is a `prelude.door` (den-hoag-7gp66 P2): an unknown option, or a missing
-`mergeTypes` operand, is refused BY NAME and catchably at that step's own application, and each door
+Every record-taking step above is a `prelude.door` (den-hoag-7gp66 P2): an unknown option is refused BY
+NAME and catchably at that step's own application, and each door
 publishes its contract as data (`__contract`). An unmigrated one-record call (`evalModuleTree { modules = …; }`) is refused naming `modules` as an option the door lacks.
 
 `result` = `{ config; options; provenance; undeclared; deprecations; type; freeformConfig; freeformProv; warmDecision; }`.

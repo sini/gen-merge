@@ -237,12 +237,7 @@ in
         a: b:
         if !(genMerge ? mergeTypes) then
           "unpublished"
-        else if
-          genMerge.mergeTypes {
-            deciding = a;
-            partner = b;
-          } == null
-        then
+        else if genMerge.mergeTypes a b == null then
           "null"
         else
           "merged";

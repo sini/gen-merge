@@ -6772,12 +6772,12 @@ in
       };
 
     # den-hoag-7gp66 P2: which message fires at gen-merge's doors — the options steps of
-    # `evalModuleTree`, `declaredOptions` and `deriveType`, and the R7 (b) record of `mergeTypes` —
+    # `evalModuleTree`, `declaredOptions` and `deriveType` —
     # each through `prelude.door`'s shared checks (R6: names the door first, the construct last).
     # `ci/tests/door-checks.nix` pins that each refusal is catchable and that the record still admits
     # an extra field; this suite pins the exact wording. Every cell forces only the application,
-    # since each door refuses there. `lint`, `mkCoreValue` and `bandedLeaves` are positional and
-    # carry no field check.
+    # since each door refuses there. `lint`, `mkCoreValue`, `bandedLeaves` and `mergeTypes` are
+    # positional and carry no field check.
     flake.testsError.door-checks =
       let
         pin = door: msg: {
@@ -6807,10 +6807,6 @@ in
         test-derive-type-old-base-first-shape-named = {
           expr = builtins.seq (gm.deriveType t.str) null;
           expectedError = pin "gen-merge[.]deriveType" "'[^']+' is not an option of this door; the options are closed [(]accepted: 'key', 'fields', 'mint', 'name', 'description'[)] [(]in prelude[.]checkOptions[)]";
-        };
-        test-merge-types-missing-partner-named = {
-          expr = builtins.seq (gm.mergeTypes { deciding = t.str; }) null;
-          expectedError = pin "gen-merge[.]mergeTypes" "required field 'partner' is missing [(]required: 'deciding', 'partner'[)] [(]in prelude[.]checkRequired[)]";
         };
       };
 

@@ -6,11 +6,9 @@
 #   · an OPTIONS step — one closed set, first in the call: `evalModuleTree { specialArgs?; check?;
 #     prefix?; coreShortCircuit?; warmFrom?; editedModules?; } modules`, `declaredOptions
 #     { specialArgs?; prefix?; } modules` and `deriveType { key?; fields?; mint?; name?;
-#     description?; } id base`;
-#   · a RECORD by R7 (b) — open (R5), every field required, two operands of one sort:
-#     `mergeTypes { deciding; partner; }`.
-# `lint modules`, `mkCoreValue digest values` and `bandedLeaves scope result` are positional (rule
-# 4): their arity is structural and they carry no row. No record step sits behind an options step
+#     description?; } id base`.
+# `lint modules`, `mkCoreValue digest values`, `bandedLeaves scope result` and `mergeTypes deciding
+# partner` are positional (rule 4; `mergeTypes`' order is the relation's own, pinned below): their arity is structural and they carry no row. No record step sits behind an options step
 # here, so no door carries `optionsStep` (G10 has no row). `types.mkValidator` is gen-types' door,
 # re-exported as the identical value: its row is gen-types'.
 #
@@ -75,30 +73,11 @@ let
     };
   };
 
-  # The record rows: the door, its required fields, and a `good` record that answers (each row's
-  # live control, so a refusal below is the check firing, not a broken fixture).
-  recordRows = {
-    mergeTypes = {
-      required = [
-        "deciding"
-        "partner"
-      ];
-      good = {
-        deciding = t.str;
-        partner = t.str;
-      };
-    };
-  };
-
   # A field name no door declares, generated per evaluation from the door names themselves, so it is
   # never a name any contract below lists.
-  stranger =
-    "not-a-field-of-"
-    + builtins.concatStringsSep "-" (builtins.attrNames optionsRows ++ builtins.attrNames recordRows);
+  stranger = "not-a-field-of-" + builtins.concatStringsSep "-" (builtins.attrNames optionsRows);
 
   perOptions = f: builtins.mapAttrs f optionsRows;
-  perRecord = f: builtins.mapAttrs f recordRows;
-  allTrue = rows: builtins.all (x: x) (builtins.attrValues rows);
 
   # Every published value that is a door (a functor carrying `__contract`), at the top level and in
   # `types`, less gen-types' own doors the vocabulary re-exports.
@@ -127,9 +106,7 @@ in
     # row — or a row whose door reverted to a lambda — reds here.
     test-the-door-table-equals-the-surface-doors = {
       expr = surfaceDoors;
-      expected = builtins.sort (a: b: a < b) (
-        builtins.attrNames optionsRows ++ builtins.attrNames recordRows
-      );
+      expected = builtins.sort (a: b: a < b) (builtins.attrNames optionsRows);
     };
     # `types` holds gen-merge's own `deriveType` (the same value) and gen-types' doors, re-exported.
     test-the-vocabulary-holds-no-other-own-door = {
@@ -145,8 +122,10 @@ in
         "lint"
         "mkCoreValue"
         "bandedLeaves"
+        "mergeTypes"
       ];
       expected = [
+        true
         true
         true
         true
@@ -259,33 +238,12 @@ in
       expected = true;
     };
 
-    # ── RECORDS BY R7 (b) ──
-    test-control-each-good-record-answers = {
-      expr = perRecord (n: r: answers (gm.${n} r.good).name);
-      expected = perRecord (_: _: true);
-    };
-    # D2: EVERY required field, dropped alone, is refused at the application.
-    test-each-missing-field-is-refused-at-the-application = {
-      expr = perRecord (
-        n: r:
-        allTrue (prelude.genAttrs r.required (f: firesAtApplication (gm.${n} (removeAttrs r.good [ f ]))))
-      );
-      expected = perRecord (_: _: true);
-    };
-    test-a-non-set-record-is-refused-at-the-application = {
-      expr = perRecord (n: _: firesAtApplication (gm.${n} 1));
-      expected = perRecord (_: _: true);
-    };
-    # G2: R5's price — an extra field is admitted, and the answer is unchanged.
-    test-an-extra-field-is-admitted = {
-      expr = perRecord (n: r: (gm.${n} (r.good // { ${stranger} = 1; })).name == (gm.${n} r.good).name);
-      expected = perRecord (_: _: true);
-    };
-    # The roles are read by name: the relation is asked of `deciding`. `greedy` is a gen type whose
-    # own relation merges with anything, so it answers only where it decides; in the partner's place
-    # `int`'s relation decides, and refuses. A door that swapped or ignored the roles reads the same
-    # answer both ways. The `int`/`int` pair is the live control that the door answers at all.
-    test-the-relation-is-asked-of-deciding = {
+    # ── mergeTypes: TWO POSITIONAL OPERANDS, IN ORDER ──
+    # The relation is asked of the FIRST operand. `greedy` is a gen type whose own relation merges with
+    # anything, so it answers where it comes first; second, `int`'s relation decides, and refuses. A
+    # door that swapped or ignored the order reads the same answer both ways. The `int`/`int` pair is
+    # the live control that the door answers at all.
+    test-swapping-the-operands-changes-the-answer = {
       expr =
         let
           greedy = t.defineType (
@@ -297,43 +255,15 @@ in
           );
         in
         {
-          control =
-            (gm.mergeTypes {
-              deciding = t.int;
-              partner = t.int;
-            }).name;
-          greedyDecides =
-            (gm.mergeTypes {
-              deciding = greedy;
-              partner = t.int;
-            }).name;
-          intDecides = gm.mergeTypes {
-            deciding = t.int;
-            partner = greedy;
-          };
+          control = (gm.mergeTypes t.int t.int).name;
+          greedyFirst = (gm.mergeTypes greedy t.int).name;
+          intFirst = gm.mergeTypes t.int greedy;
         };
       expected = {
         control = t.int.name;
-        greedyDecides = t.str.name;
-        intDecides = null;
+        greedyFirst = t.str.name;
+        intFirst = null;
       };
-    };
-    # D3.
-    test-each-record-door-publishes-its-contract = {
-      expr = perRecord (
-        n: _: {
-          inherit (gm.${n}.__contract) required optional open;
-          args = prelude.functionArgs gm.${n};
-        }
-      );
-      expected = perRecord (
-        _: r: {
-          inherit (r) required;
-          optional = [ ];
-          open = true;
-          args = builtins.listToAttrs (map (f: prelude.nameValuePair f false) r.required);
-        }
-      );
     };
   };
 }
