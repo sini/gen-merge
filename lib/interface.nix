@@ -1445,6 +1445,16 @@ let
   #     homing threads or refuses by name as before.
   # `site` is the caller's own record, read only past the presence tests (`isOptionRoot`). A gen
   # record (`substructure`, `carries`, `verify`, a nesting type) is gen's own fold, unchanged.
+  # The mount's cost, and its measured out (den-ag-design
+  # reports/den-hoag-gijly-oq2-mount-cost-scout-v0.md, gen-merge 359a36f, nix/Determinate/Lix): on
+  # stock submodule roots, against nixpkgs' own evaluation of the same workload, the full mount costs
+  # +4.8% thunks and +2.5-3.7% bytes. The alternative, skipping the rebuild for a recognised intact
+  # v2 record (`unifiedR`), is 10% cheaper than nixpkgs there, and saves nothing on `attrsOf
+  # submodule`. It is not taken: it serves nixpkgs' value silently wrong over a class no witness
+  # detects, any record whose `substSubModules`, `getSubModules` or functor payload differs from its
+  # rebuild, an override assembled from stock parts included (`ySub // intersectAttrs {
+  # substSubModules = null; } donor` reads as intact). Adopting it needs a fresh owner reading, and
+  # its ADR-0025 item 1 exception must name that whole class (den-hoag-gijly).
   homedRootAt =
     door: loc: site: t:
     # presence first, with no binding: every option's root passes here, and a gen root or a leaf

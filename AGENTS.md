@@ -336,6 +336,18 @@ Cells: `ci/tests/nesting-placement.nix` (`nesting-placement-containers`: the mod
 `ci/tests/nesting-keys.nix` `nesting-keys-lazy-over-strict`, `ci/tests-error.nix` `nesting-placement.*`, and the
 process cells `one-eval-*` and `candidate-modules*` (`ci/tests-process.nix`).
 
+## Design notes
+
+- **The root mount's measured out** (`homedRootAt`; den-hoag-gijly). Against nixpkgs on the same
+  workload, stock submodule roots, nix/Determinate/Lix at 359a36f, the full mount costs +4.8% thunks
+  and +2.5–3.7% bytes; arm (b), wt-unifiedR (skip the rebuild for a recognised intact v2 record), is
+  10% cheaper than nixpkgs, and saves nothing on `attrsOf submodule`. (b) is the out if the mount's
+  cost becomes an issue. Adopting it needs a fresh owner reading, and its ADR-0025 item 1 exception
+  must name the WHOLE undetectable class it serves silently: an overridden `substSubModules` /
+  `getSubModules` / functor payload, AND a stock-part `//` override
+  (`ySub // intersectAttrs { substSubModules = null; } donor` reads as intact). Measurement:
+  den-ag-design `reports/den-hoag-gijly-oq2-mount-cost-scout-v0.md`.
+
 ## Theory
 
 `README.md` states its claims as one flat **Theoretical foundations** list (no Implements /
