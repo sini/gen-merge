@@ -1356,9 +1356,10 @@ partner whose functor states a payload (nixpkgs `path`) or no `type` is answered
 as before. The partner's own `typeMerge` is never called. Two stated scopes. **A pair nixpkgs refuses at
 two definitions is refused np-first too** (`raw` at two equal or two list definitions, `anything` at two
 unequal lists; both engines), where gen's own record served it: that is nixpkgs' answer in the order
-where it decides. **`attrs` is a stated divergence**: gen's `attrs` fold refuses a same-key collision
-(union with refusal; the last-wins fold is rejected as silent and order-dependent), nixpkgs' `//` takes
-the last, so a foreign `attrs` stays refused and nixpkgs' engine stays order-dependent for it. Leaves
+where it decides. **`attrs` is a stated divergence**: gen's `attrs` fold refuses definitions that set
+one key to different values and serves a key they set to equal values (union with refusal of a
+disagreement; the last-wins fold is rejected as silent and order-dependent), nixpkgs' `//` takes the
+last, so a foreign `attrs` stays refused and nixpkgs' engine stays order-dependent for it. Leaves
 whose functor disagrees on identity (`str`, `number`, `path`, `deferredModule`) are outside this rule.
 
 **The relation is published as `genMerge.mergeTypes a b`** — the merged type or `null` — the one
@@ -1987,6 +1988,25 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `mergeLeaf` and `leafFold` answer as nixpkgs' `mergeEqualOption` does on the same evaluator, this
   split included.
 
+  The `attrs` fold is a second site of the same rule, through the same binding (`slotsDiffer`):
+  definitions that set one key to equal values serve that key, and different values refuse it by
+  name (`ci/tests-error.nix` `attrs-container`). "Equal" is the evaluator's `==` on each definer's
+  own value, so the split above holds there too, and so do `==`'s two equations of values that are
+  not identical: an int against the same float, and two derivations with one `outPath`, serve the
+  value nixpkgs' `//` keeps and drop the other definer's (its numeric type; its attributes besides
+  `outPath`), exactly as nixpkgs does. A function at a shared key against another function in a
+  different slot refuses with its own text, since `==` cannot show two functions to agree; against a
+  non-function it is a different value. The comparison is per key: a disagreement refuses where its
+  key is read, so the key set and every other key still read as nixpkgs' do. The price, paid once per
+  evaluation of the option, on the first read of that key: `==` walks two equal copies held in
+  different slots in full, where nixpkgs' `//` forces neither; a value in one slot is decided
+  unwalked. **An interpreter error inside two equal copies aborts uncatchably at that read, a
+  declared exception to the rule that every refusal is catchable**: `{ a = { p = 1; q = ({ }).nope; }; }`
+  written at two sites aborts with `attribute 'nope' missing` where nixpkgs serves `p`. `tryEval`
+  catches only `throw` and `assert`, so no compare turns the error into a refusal, and the one
+  construction that avoids forcing it, an equality that compares nested sets per sub-key, is a new
+  relation in place of `==` that only moves the abort to the nested read a realization forces anyway.
+
   The same rule, through the same binding (`slotsDiffer`), decides the base module arguments two
   `(submodule …).withArgs` declarations of one option state: one bound value passed by both (one
   nixpkgs `lib`, one function, a `specialArgs` formal each declaring module hands on) merges on
@@ -2015,15 +2035,17 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   every refusal is catchable.** Nix `==` is not total, and it recurses without bound on a pair of
   pointer-distinct, structurally equal cyclic values — `{ a = r; }`,`{ a = r'; }` with `r` and `r'`
   separate bindings of `{ s = r; n = 1; }` — or on any pair whose lockstep `==` reaches a back edge
-  before a difference. The class has three members, all exiting
+  before a difference. The class has four members, all exiting
   `stack overflow; max-call-depth exceeded`, which `tryEval` does not catch: the check-only
   `mkOptionType` default's shared-key compare (`mergeDescriptorDefault`/`sharedKeyDiffers`, above),
-  the no-fold leaf combine (`mergeLeaf`), and its exported twin (`leafFold`). 6a508e3 aborts on the
-  same input at all three sites, so this is a boundary the fold inherits, not one it introduced.
+  the `attrs` fold's shared-key compare (above), the no-fold leaf combine (`mergeLeaf`), and its
+  exported twin (`leafFold`). 6a508e3 aborts on the same input at the first, third and fourth, so
+  this is a boundary the folds inherit, not one they introduced; the `attrs` fold reaches the abort
+  at the read of the shared key.
   `mergeLeaf` and `leafFold` are byte-parity with nixpkgs: its own `mergeEqualOption` aborts
-  uncatchably on the identical input. `mergeDescriptorDefault` is the one departure — nixpkgs' `//`
-  never compares the shared key, so it silently keeps the last file's cyclic value where this fold
-  aborts. The exception is argued, not merely declared: no pure-Nix observation (`typeOf`, attribute
+  uncatchably on the identical input. `mergeDescriptorDefault` and the `attrs` fold are the
+  departures — nixpkgs' `//` never compares the shared key, so it silently keeps the last file's
+  cyclic value where these folds abort. The exception is argued, not merely declared: no pure-Nix observation (`typeOf`, attribute
   names, selection, `==` on non-container leaves) tells a cyclic binding shared by both definitions
   apart from two freshly built, structurally identical cycles — both unfold to the same infinite
   tree, so a bounded pre-flight that refuses the latter also refuses the former, which nixpkgs
@@ -2242,7 +2264,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   that declare one option with a type, in thunks and calls ("Redeclaring an option", **Cost**). Measured members:
 
   - `gt.attrs` against `lib.types.attrs`, in the order nixpkgs accepts (the foreign `attrs` fold is
-    `//`; gen's `attrs` refuses a collision, so it refuses a partner that states no fold of its own);
+    `//`; gen's `attrs` refuses a disagreement, so it refuses a partner that states no fold of its own);
   - the same pair under a gen container;
   - an earlier gen relation vetoing a later foreign relation that answers another type
     (`[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`, and a refined type before `Fx`);

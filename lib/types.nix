@@ -1067,26 +1067,40 @@ let
       # type error naming neither the option nor the file, an abort no caller can turn into a
       # diagnostic. The check is `refusingOutside`, the one every structural container here uses.
       #
-      # ★ A SURVIVING SAME-KEY COLLISION IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029). By the
-      # time this fold runs the priority pass has already resolved every INTENDED override, so a key two
-      # definitions still both set is a disagreement nobody expressed, and letting fold order drop one
-      # side is the silent-loss shape this project refuses. Disjoint keys union; a collision refuses by
-      # name, and names the key — which is the part the author has to go and reconcile.
+      # ★ A SURVIVING SAME-KEY DISAGREEMENT IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029). By
+      # the time this fold runs the priority pass has already resolved every INTENDED override, so two
+      # definitions setting one key to different values is a disagreement nobody expressed, and letting
+      # fold order drop one side is the silent-loss shape this project refuses. Definitions that set a
+      # key to EQUAL values lose nothing, so that key serves the value nixpkgs' `//` fold serves
+      # (den-hoag-t1j4z, ADR-0039). Equality is `slotsDiffer`, the definers' own value slots under `==`.
+      # The function text is for two functions only, the pair `==` cannot show to agree; a function
+      # against a non-function is shown to disagree, and reads as different values.
+      #
+      # ★ DECIDED PER KEY, WHERE THE KEY IS READ. The key set is the union's, forced as before; each
+      # shared key's comparison sits inside its own value, so reading one key never forces another's
+      # `==` — the strictness nixpkgs does not have stays confined to the key that is read.
       mergeDefs = refusingOutside "attrs" admits (
         loc: defs:
         let
-          keys = attrNames (foldl' (acc: d: acc // d.value) { } defs);
-          collided = filter (k: length (filter (d: d.value ? ${k}) defs) > 1) keys;
-          collidingFiles = map (d: toString (d.file or "<def>")) (
-            filter (d: filter (k: d.value ? ${k}) collided != [ ]) defs
-          );
+          merged = foldl' (res: d: res // d.value) { } defs;
+          slots = builtins.zipAttrsWith (_: vs: vs) (map (d: d.value) defs);
+          filesAt =
+            k: concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: d.value ? ${k}) defs));
+          refusal =
+            k: vs:
+            let
+              cells = map (v: [ v ]) vs;
+              other = head (head (filter (c: c != head cells) cells));
+            in
+            if prelude.isFunction (head vs) && prelude.isFunction other then
+              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to a function, and Nix compares functions only by identity, so these cannot be shown to agree (${filesAt k})"
+            else
+              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to different values (${filesAt k})";
         in
-        if collided != [ ] then
-          throw "gen-merge: option `${showOption loc}' has `attrs' definitions that collide at ${
-            concatStringsSep ", " (map (k: "`${k}'") collided)
-          } (${concatStringsSep ", " collidingFiles})"
+        if length defs < 2 then
+          merged
         else
-          foldl' (res: d: res // d.value) { } defs
+          builtins.mapAttrs (k: v: if slotsDiffer slots.${k} then throw (refusal k slots.${k}) else v) merged
       );
     };
 

@@ -1403,10 +1403,11 @@ in
           msg = "^gen-merge: option `x' has definitions `attrsOf' cannot consume \\(a\\.nix\\)$";
         };
       };
-      # A SURVIVING SAME-KEY COLLISION IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029): the
-      # priority pass has already resolved every intended override by the time this fold runs. The
-      # message names the KEY, which is the part the author has to go and reconcile and the part the
-      # engine's own `has conflicting definitions` never carried.
+      # A SURVIVING SAME-KEY DISAGREEMENT IS AN UNRESOLVED AMBIGUITY, NOT AN OVERRIDE (ADR-0029): the
+      # priority pass has already resolved every intended override by the time this fold runs, and
+      # these definitions disagree. nixpkgs' `//` keeps one value silently; this is the recorded
+      # divergence (ADR-0039's exception). The message names the KEY, which is the part the author has
+      # to go and reconcile and the part the engine's own `has conflicting definitions` never carried.
       test-attrs-same-key-collision-refuses-naming-the-key = {
         expr = realize {
           modules = [
@@ -1423,7 +1424,75 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' has `attrs' definitions that collide at `a' \\(b\\.nix, a\\.nix\\)$";
+          msg = "^gen-merge: option `x' has `attrs' definitions that set `a' to different values \\(b\\.nix, a\\.nix\\)$";
+        };
+      };
+      # A FUNCTION AT A SHARED KEY, WRITTEN AT EACH SITE, CANNOT BE SHOWN TO AGREE: `==` compares
+      # functions by identity, so two lambdas of one text are unequal on every evaluator. The
+      # refusal says so rather than calling them different values, which is all the author can
+      # act on: bind the function once and write that binding at both sites.
+      test-attrs-two-written-functions-refuse-naming-the-function-case = {
+        expr = realize {
+          modules = [
+            { options.x = gm.mkOption { type = t.attrs; }; }
+            {
+              _file = "a.nix";
+              x.a = n: n;
+            }
+            {
+              _file = "b.nix";
+              x.a = n: n;
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has `attrs' definitions that set `a' to a function, and Nix compares functions only by identity, so these cannot be shown to agree \\(b\\.nix, a\\.nix\\)$";
+        };
+      };
+      # A FUNCTION AGAINST A NON-FUNCTION IS SHOWN TO DISAGREE: no function equals an int, so the
+      # pair is a disagreement like any other, and "bind it once" is not its remedy. Only a pair of
+      # functions gets the function text.
+      test-attrs-function-against-an-int-refuses-as-different-values = {
+        expr = realize {
+          modules = [
+            { options.x = gm.mkOption { type = t.attrs; }; }
+            {
+              _file = "a.nix";
+              x.a = 1;
+            }
+            {
+              _file = "b.nix";
+              x.a = n: n;
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has `attrs' definitions that set `a' to different values \\(b\\.nix, a\\.nix\\)$";
+        };
+      };
+      # A NESTED DISAGREEMENT IS A DISAGREEMENT AT THE TOP KEY. nixpkgs' `//` keeps the first file's
+      # `{ p = 1; }` and drops `{ q = 2; }` without a word, which is the silent value this fold
+      # refuses (ADR-0039's exception): `attrs` has no element type, so `a` is one value, not a
+      # tree to merge.
+      test-attrs-nested-disagreement-refuses-at-the-top-key = {
+        expr = realize {
+          modules = [
+            { options.x = gm.mkOption { type = t.attrs; }; }
+            {
+              _file = "a.nix";
+              x.a.p = 1;
+            }
+            {
+              _file = "b.nix";
+              x.a.q = 2;
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has `attrs' definitions that set `a' to different values \\(b\\.nix, a\\.nix\\)$";
         };
       };
       # THE NAME COLLISION, END TO END, IN BOTH ORDERS. A redeclaration step asks the EARLIER

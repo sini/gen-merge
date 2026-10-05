@@ -437,6 +437,167 @@ in
         };
       };
     };
+    # THE AGREEMENT HALF OF THE SAME FOLD (den-hoag-t1j4z, owner sitting ruling 2026-10-05, arm (i)).
+    # Definitions that set one key to EQUAL values lose nothing, so the key serves the value nixpkgs'
+    # `//` fold serves; only a disagreement refuses (`ci/tests-error.nix` `attrs-container`). Equal is
+    # `==` on each definer's own value slot (`slotsDiffer`), so one function bound once and written at
+    # both sites agrees, as does one value holding a throwing attribute, which is decided at its slot
+    # without being walked. `==` equates some values that are not identical, and those serve with a
+    # drop exactly as nixpkgs' do: two derivations with one `outPath` are `==`, so the derivation
+    # served is the one `//` keeps and the other definer's attributes besides `outPath` are dropped
+    # (here its `v = 2`), as an int against an equal float serves whichever `//` keeps.
+    test-attrs-serves-a-key-its-definitions-agree-on =
+      let
+        decl = {
+          options.x = mkOption { type = t.attrs; };
+        };
+        x =
+          defs:
+          (cfg {
+            modules = [ decl ] ++ map (d: { config.x = d; }) defs;
+          }).x;
+        f = n: n;
+        shared = {
+          p = 1;
+          q = throw "never forced";
+        };
+      in
+      {
+        expr = {
+          scalar = x [
+            { a = 1; }
+            { a = 1; }
+          ];
+          three = x [
+            { a = 1; }
+            {
+              a = 1;
+              b = 2;
+            }
+            { a = 1; }
+          ];
+          nested = x [
+            { a.p.q = [ { s = 1; } ]; }
+            { a.p.q = [ { s = 1; } ]; }
+          ];
+          sharedFunction =
+            (x [
+              { a = f; }
+              { a = f; }
+            ]).a
+              5;
+          sharedThrowingValue =
+            (x [
+              { a = shared; }
+              { a = shared; }
+            ]).a.p;
+          derivationByOutPath =
+            (x [
+              {
+                a = {
+                  type = "derivation";
+                  outPath = "/nix/store/x";
+                  v = 1;
+                };
+              }
+              {
+                a = {
+                  type = "derivation";
+                  outPath = "/nix/store/x";
+                  v = 2;
+                };
+              }
+            ]).a.v;
+        };
+        expected = {
+          scalar = {
+            a = 1;
+          };
+          three = {
+            a = 1;
+            b = 2;
+          };
+          nested = {
+            a.p.q = [ { s = 1; } ];
+          };
+          sharedFunction = 5;
+          sharedThrowingValue = 1;
+          derivationByOutPath = 1;
+        };
+      };
+    # ★ DECIDED PER KEY, WHERE THE KEY IS READ. A disagreement at one key refuses that key and
+    # nothing else: its sibling reads, the key set reads, and a key whose equal definitions read
+    # ANOTHER key of the same option resolves. A fold deciding every shared key before returning
+    # the set refuses the first three and recurses, uncatchably, on the fourth, where nixpkgs serves
+    # all four.
+    test-attrs-a-disagreement-refuses-only-the-key-it-is-at =
+      let
+        decl = {
+          options.x = mkOption { type = t.attrs; };
+        };
+      in
+      {
+        expr = {
+          sibling =
+            (cfg {
+              modules = [
+                decl
+                {
+                  x = {
+                    a = 1;
+                    b = 0;
+                  };
+                }
+                { x.a = 2; }
+              ];
+            }).x.b;
+          keys =
+            builtins.attrNames
+              (cfg {
+                modules = [
+                  decl
+                  {
+                    x = {
+                      a = 1;
+                      b = 0;
+                    };
+                  }
+                  { x.a = 2; }
+                ];
+              }).x;
+          throwingSibling =
+            (cfg {
+              modules = [
+                decl
+                {
+                  x = {
+                    a = throw "a is never read";
+                    b = 1;
+                  };
+                }
+                { x.a = throw "a is never read"; }
+              ];
+            }).x.b;
+          readsAnotherKey =
+            (cfg {
+              modules = [
+                decl
+                ({ config, ... }: { x.a = config.x.b; })
+                ({ config, ... }: { x.a = config.x.b; })
+                { x.b = 1; }
+              ];
+            }).x.a;
+        };
+        expected = {
+          sibling = 0;
+          keys = [
+            "a"
+            "b"
+          ];
+          throwingSibling = 1;
+          readsAnotherKey = 1;
+        };
+      };
     test-mkIf-attrset-pushdown = {
       expr = cfg {
         modules = [
