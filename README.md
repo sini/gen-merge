@@ -1724,6 +1724,17 @@ nixpkgs silently, and evaluating it refuses by name. No predicate reaches it wit
 payload: it is the half of arm (T)'s stated domain (a merge that does not inspect element values)
 that has no predicate here.
 
+**Design note: the root mount's cost, and its measured out.** Measured against nixpkgs' own
+evaluation of the same workload on stock submodule roots, on nix, Determinate and Lix, the full
+mount costs +4.8% thunks and +2.5–3.7% bytes. The measured alternative skips the rebuild for a
+recognised intact record: it is 10% cheaper than nixpkgs there, and on `attrsOf submodule` it saves
+nothing. It is not taken, because it serves a wrong value silently over a class no witness can
+detect: any record whose `substSubModules`, `getSubModules` or functor payload differs from its
+rebuild, including an override assembled from stock parts with attrset algebra
+(`ySub // intersectAttrs { substSubModules = null; } donor` reads as intact). Adopting it is a new
+ruling, and that ruling must state the whole class as an exception to the rule that every read
+yields a value or a named refusal.
+
 Two more records are
 refused by name (*defaulted, reversible*): one that states no element but whose functor payload
 OFFERS a type declaring a gen nesting type (a hand-rolled `functor.payload.elemType`, or a stock
