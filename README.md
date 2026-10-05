@@ -1401,7 +1401,7 @@ whose `overridden` types then read `attrsOf` and the throw. A later **untyped** 
 decision. The freeform plane reads its winner list through the same fold.
 
 **A type-merge refusal surfaces on the read that reaches the option**, so the result is as lazy as
-`declaredOptions` and nixpkgs. The declaration guard (ADR-0033) forces the key set and the `imports`
+`declaredOptions` and nixpkgs. The declaration guard forces the key set and the `imports`
 expansion of every level, deciding leaf or group per declaring module, and never merges a
 redeclared leaf: a declared `type` is a descriptor field. So with `p` declared `str` in one module
 and `int` in another, `config.p` and `options.p` refuse with the type-merge text, while
