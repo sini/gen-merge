@@ -959,8 +959,10 @@ let
   # would not be: with no O(1) cons/insert, accumulating per-module lists (`++`) or subtrees (`//`)
   # copies the growing value each step (measured: 27× CPU / 52× alloc at a 4× width step, hidden from
   # a thunk count because the copies are lazy). A builtin grouping copies nothing.
+  # `withIndex` keeps each module's `modIndex` on its record, for the nested walk's declaration
+  # addresses (`nestedDeclAts`); the freeform fold's own call takes the bare record.
   coalesceUnmatched =
-    moduleCount: unmatched:
+    withIndex: moduleCount: unmatched:
     let
       byModule = builtins.groupBy (u: toString u.modIndex) unmatched;
     in
@@ -969,10 +971,19 @@ let
       let
         entries = byModule.${toString i} or [ ];
       in
-      optional (entries != [ ]) {
-        file = (head entries).file;
-        value = buildModuleUnmatched entries;
-      }
+      optional (entries != [ ]) (
+        if withIndex then
+          {
+            file = (head entries).file;
+            value = buildModuleUnmatched entries;
+            modIndex = i;
+          }
+        else
+          {
+            file = (head entries).file;
+            value = buildModuleUnmatched entries;
+          }
+      )
     ) (prelude.genList (i: i) moduleCount);
 
   # ── module classification: the reference's `unifyModuleSyntax`, key list for key list ─────────
@@ -3174,15 +3185,40 @@ let
         ]
     ) r.declaredPairs;
 
-  # The `nested` NTA's product for one tree: `definitions`, the host attribute every seed addresses
-  # (one list per group, by group ordinal), and per group its position records (`nestedPosition`,
-  # which decides each position's report mode) and the builder's key → seed map. A group is an
-  # option path, `toJSON`-encoded, and the freeform plane's reserved `freeform` (never a JSON list).
-  # An option group's definitions are the fold's: the routed definitions and the option's default,
-  # discharged, priority-resolved and ordered. The freeform plane's are the coalesced definitions its
-  # fold takes whole, with nothing discharged above its container.
+  # ONE OPTION GROUP'S DECLARATION ADDRESSES (den-hoag-8hlo3 U1), aligned with its `definitions`: the
+  # same discharge, priority and order passes in their path-carrying twin (`addressedDefs`), seeded
+  # with each definition's declaring module's anchor (`anchorOf modIndex`; `anchorOf null` for the
+  # option's default) and the option path, so a surviving definition keeps the address it was
+  # written at, never its merge position.
+  declAtsOfGroup =
+    normalize: anchorOf: l:
+    if l.defs == [ ] && !(l.opt ? default) then
+      [ ]
+    else
+      map (d: d.at) (
+        addressedDefs (
+          map (d: d // { at = anchorOf (d.modIndex or null) ++ l.path; }) (
+            normalize (
+              l.defs
+              ++ optional (l.opt ? default) {
+                file = "<default>";
+                value = mkOptionDefault l.opt.default;
+              }
+            )
+          )
+        )
+      );
+
+  # The `nested` NTA's groups for one tree: per group its `definitions` (`nestedDefinitions` reads
+  # them into the host attribute every seed addresses, one list per group, by group ordinal) and its
+  # position records (`nestedPosition`, which decides each position's report mode), from which the
+  # builder's key → seed map is read where it is asked. A group is an option path, `toJSON`-encoded,
+  # and the freeform plane's reserved `freeform` (never a JSON list). An option group's definitions
+  # are the fold's: the routed definitions and the option's default, discharged, priority-resolved
+  # and ordered. The freeform plane's are the coalesced definitions its fold takes whole, with nothing
+  # discharged above its container.
   nestedGroups =
-    {
+    args@{
       prefix,
       carried,
       strict,
@@ -3317,11 +3353,21 @@ let
         }) groups
       );
     in
+    # Every field is a binding the walk already holds, so the record costs no thunk: the per-group
+    # `definitions` (`nestedDefinitions`) and the `nta.nested` product are derived where they are
+    # read, and `inputs`, the groups' own inputs, is read back by `seedDeclAts` alone
+    # (`nestedDeclAts`, den-hoag-8hlo3 U1).
     {
-      definitions = map (g: g.definitions) groups;
-      inherit positions;
-      product = mapAttrs (_: mapAttrs (_: p: p.address)) positions;
+      inherit groups positions;
+      inputs = args;
     };
+  nestedDefinitions = n: map (g: g.definitions) n.groups;
+  # Each group's seed declaration addresses (den-hoag-8hlo3 U1), aligned with `definitions`, given
+  # the tree's module anchors (`declAnchorOf`).
+  nestedDeclAts =
+    inputs: anchorOf:
+    map (declAtsOfGroup inputs.normalize anchorOf) inputs.leaves
+    ++ optional inputs.freeform.declared (map (d: anchorOf d.modIndex) inputs.freeform.defs);
 
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
   # (mergeEqualOption), else a conflict. Byte-mode does not deep-merge unknown leaves.
@@ -3896,7 +3942,7 @@ let
             || interface.isNesting (self.getHostAt "positions").member
             || (self.getHostAt "positions").mode == "container"
           then
-            (self.get id knotAttr)._nested.product
+            mapAttrs (_: mapAttrs (_: q: q.address)) (self.get id knotAttr)._nested.positions
           else
             { };
         # ITS MODULE GRAPH (den-hoag-470xp): every tree, the root and each nested one, mints the
@@ -3938,13 +3984,13 @@ let
     let
       r = self.get id knotAttr;
     in
-    moduleFamily id (length r._nested.definitions) r._flat (moduleTop r._callM r._modList);
+    moduleFamily id (length r._nested.groups) r._flat (moduleTop r._callM r._modList);
   knotDefinitions =
     self: id:
     let
       r = self.get id knotAttr;
     in
-    if r ? _flat then r._nested.definitions ++ [ r._flat ] else r._nested.definitions;
+    if r ? _flat then nestedDefinitions r._nested ++ [ r._flat ] else nestedDefinitions r._nested;
   knotPositions =
     self: id:
     let
@@ -3954,6 +4000,111 @@ let
       nested = r._nested.positions;
       modules = if r ? _flat then (knotModules self id).positions else { };
     };
+  # ── THE DECLARATION ADDRESS OF A SEED (den-hoag-8hlo3 U1; design 2026-09-30 §1, ADR-0034's rider) ──
+  # Each position's seed definitions, as `positions` holds them, each spelled as the place it was
+  # DECLARED: the declaring module's anchor, the option path, and the structural path the discharge
+  # took (`declAtsOfGroup`, then the key walk's own steps past the group ordinal and `"value"`). A
+  # nesting type that declares `nests.declAt = true` receives its seed's as `declAt` (`childTree`);
+  # nothing else reads them, so every other evaluation pays for none of it.
+  #
+  # An anchor is gen-merge's local spelling of a module's identity (`moduleKeyOf`), chained so that it
+  # is injective over the whole evaluation, every child tree included, never only within one tree:
+  # - a ROOT's top-level or keyed module is its own spelling (`[ "a:<i>" ]`, `[ "k<key>" ]`);
+  # - a CHILD's seed module is its host's address for that seed, so the address chains from the
+  #   root through every nesting; its OWN modules (the nesting type's, which every child of that type
+  #   shares) and its keyed imports sit under the child's own address, `{ module = <i | key>; }`
+  #   appended, where that address is the seed's for a single-seed position and `{ loc = <loc>; }`
+  #   otherwise;
+  # - an anonymous import is its importer's anchor, `imports`, its index;
+  # - an option default is the tree's address (none for a root) with `{ default = true; }`.
+  # The attrset markers are never an option name, an attribute step or an index, so no two
+  # declarations share an address. The spelling carries module identity without the mint (7gp66 OQ4
+  # (b′)): keyed and path modules keep their address under reorder, an anonymous module moves with
+  # its own position in its importer (design §1 item 2).
+  declAnchorOf =
+    r: p: seeds:
+    let
+      flat = r._flat;
+      nFlat = length flat;
+      nTop = length r._modList;
+      nOwn = nTop - length seeds;
+      tree =
+        if p == null then
+          null
+        else if length seeds == 1 then
+          head seeds
+        else
+          [ { inherit (p) loc; } ];
+      under = x: if tree == null then [ x ] else tree ++ [ { module = x; } ];
+      top =
+        i: k:
+        if tree == null then
+          [ k ]
+        else if i >= nOwn then
+          builtins.elemAt seeds (i - nOwn)
+        else
+          tree ++ [ { module = i; } ];
+      graph = alignedGraph "the declaration anchors" flat (
+        closeModules (moduleTop r._callM r._modList).roots
+      );
+      anch =
+        g:
+        if g.importer.key == "" then
+          top g.i g.key
+        else if builtins.substring 0 1 g.key == "k" then
+          under g.key
+        else
+          anch g.importer
+          ++ [
+            "imports"
+            g.i
+          ];
+      # The closure keeps every unkeyed top-level module, in order, ahead of every import
+      # (`moduleLevels`), so where no top-level module is keyed a top-level module's anchor is read
+      # off its index, with no closure walk.
+      topPlain = all (e: nodeKeyOf e == null) (
+        prelude.genList (builtins.elemAt flat) (if nTop < nFlat then nTop else nFlat)
+      );
+    in
+    mi:
+    if mi == null then
+      (if tree == null then [ ] else tree) ++ [ { default = true; } ]
+    else
+      let
+        fi = nFlat - 1 - mi;
+      in
+      if fi < nTop && topPlain then top fi "a:${toString fi}" else anch (builtins.elemAt graph fi);
+  # The position record that placed the nested node `id`, read off its host's `positions` at the
+  # coordinates its identifier was minted from (the record its own reader answers as
+  # `getHostAt "positions"`); `null` for the root.
+  placedBy =
+    self: id:
+    if id == knotId then
+      null
+    else
+      let
+        c = scope.decodeNta id;
+      in
+      (self.get c.host "positions").${c.name}.${c.group}.${c.key};
+  # The declaration addresses of the seeds of `id`, the nested node placed by `p`, aligned with
+  # `p.defs`: its host's group addresses (`nestedDeclAts`) under the host's own anchors, the host's
+  # seeds' addresses in turn, then the key walk's steps past the group ordinal and `"value"`. Read
+  # where a nesting type asks for it (`childTree`) and nowhere else, so it is DERIVED where it is read
+  # and no evaluation stores any of it: the bench's `deepSubmodule` row prices every per-tree slot.
+  seedDeclAts =
+    self: id: p:
+    let
+      host = (scope.decodeNta id).host;
+      r = self.get host knotAttr;
+      hp = placedBy self host;
+      hostSeeds = if hp == null then [ ] else seedDeclAts self host hp;
+      groups =
+        if hp != null && hp.mode == "container" then
+          [ hostSeeds ]
+        else
+          nestedDeclAts r._nested.inputs (declAnchorOf r hp hostSeeds);
+    in
+    map (a: builtins.elemAt (builtins.elemAt groups a.def) (head a.at) ++ drop 2 a.at) p.address;
   driveKnot =
     f:
     (scope.eval { } {
@@ -4056,9 +4207,8 @@ let
     {
       value = mergeDefsThreaded (evAt self "container") p.loc p.member defs;
       _nested = {
-        definitions = [ defs ];
+        groups = [ { definitions = defs; } ];
         inherit positions;
-        product = mapAttrs (_: mapAttrs (_: q: q.address)) positions;
       };
     };
   childTree =
@@ -4089,7 +4239,25 @@ let
       } self (self.get id knotAttr)
     else
       evalModuleTreeWith knotChildPositioned m.carried m.inherited {
-        modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
+        # A nesting type that declares `nests.declAt` receives each seed's declaration address
+        # (`seedDeclAts`); every other child is built exactly as before, with no `declAt` attribute.
+        modules =
+          n.modules
+          ++ (
+            if n.declAt or false then
+              let
+                declAts = seedDeclAts self id p;
+              in
+              prelude.imap0 (
+                k: d:
+                n.entry {
+                  inherit (d) file value;
+                  declAt = builtins.elemAt declAts k;
+                }
+              ) p.defs
+            else
+              map (d: n.entry { inherit (d) file value; }) p.defs
+          );
         prefix = p.loc;
         inherit (n) specialArgs check coreShortCircuit;
       } self (self.get id knotAttr);
@@ -4918,7 +5086,7 @@ let
                   threadedAs (evAt self "freeform") (interface.homedAt "evalModuleTree" prefix freeform)
                 else
                   freeform
-              ) prefix (coalesceUnmatched (length topDefs) realized.unmatched);
+              ) prefix (coalesceUnmatched false (length topDefs) realized.unmatched);
           # Warm: reuse prev's whole freeform layer (byte-identical when `reuseFreeform`), skipping the
           # freeform fold's re-run; else the cold layer. The cold thunk stays unforced under reuse.
           freeformConfig = if reuseFreeform then warmFrom.freeformConfig else freeformConfigCold;
@@ -5472,7 +5640,7 @@ let
                     if freeform == null || realized.unmatched == [ ] then
                       [ ]
                     else
-                      coalesceUnmatched (length topDefs) realized.unmatched;
+                      coalesceUnmatched true (length topDefs) realized.unmatched;
                 };
               }
             else
