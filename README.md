@@ -2061,7 +2061,10 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     held in one slot by both definitions serves whole.
 
   An untyped attrset pair reaches the cyclic-value abort below through the constructor default's
-  shared-key compare rather than through `mergeLeaf`, and so only at the read of the cyclic key.
+  shared-key compare rather than through `mergeLeaf`, and so only at the read of the cyclic key. The
+  price, measured with every value forced: about five thunks and nine calls per key of an attrset
+  pair over the leaf fold's one `==`; five to ten thunks and three to seven calls per option for two
+  scalar definitions; one thunk per option with one definition (the length test).
 
 - **A module formal that `specialArgs`, `config`, `options` or `prefix` supplies is that attribute
   itself, not a copy**, in both strata: the value stratum's `callM` and the declaration stratum's
