@@ -56,8 +56,9 @@ let
   # the door-check refusal directly.
   force = v: builtins.deepSeq v null;
   # `lazyAttrsOf` under another name, for the S1 class (a) refusals (den-hoag-9d80v): the key walk
-  # reads an over-approximating container by its name, so this one stands for every one but
-  # `lazyAttrsOf`, whose positions are container nodes.
+  # reads an over-approximating container by its name, so this one stands for every one that adds a
+  # step but `lazyAttrsOf`, whose positions are container nodes; a step-free wrapper at the walk's
+  # root is walked as the root (den-hoag-t1j4z).
   overRoot = e: t.lazyAttrsOf e // { name = "overRoot"; };
 
   # ── the refusal pair and its control share one skeleton ────────────────────────────────────
@@ -6508,9 +6509,11 @@ in
       };
 
     # den-hoag-n6dh7 Unit 2.4: S1 class (a), RULED (iii). A container that keys its elements by
-    # reading their definitions, holding nested trees, under an over-approximating container other
-    # than `lazyAttrsOf` (under `lazyAttrsOf` it is a container node, den-hoag-9d80v), is refused by
-    # name where its positions are keyed, naming the option, both containers and the upgrade path.
+    # reading their definitions, holding nested trees, below a step under an over-approximating
+    # container other than `lazyAttrsOf` (under `lazyAttrsOf` it is a container node, den-hoag-9d80v;
+    # at the walk's root under a step-free wrapper it is walked as the root, den-hoag-t1j4z), is
+    # refused by name where its positions are keyed, naming the option, both containers and the
+    # upgrade path.
     # `overRoot` is `lazyAttrsOf` under another name: the walk reads a container by its name, so it
     # stands for every other split container whose fold sets no mark (gen-aspects' `aspectsRoot`, or
     # a freeform plane typed by one).
@@ -6530,6 +6533,35 @@ in
             };
           in
           force r._evaluation.allNodeIds;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it$";
+        };
+      };
+      # den-hoag-t1j4z Build 1, THE HAZARD CELL: below a step (`overRoot` keys its elements by name and
+      # adds one), keying the inner container would read every sibling's definition, and a sibling whose
+      # key set reads the read tree would recurse where nixpkgs, mounting the same type, serves. The
+      # door stays closed there: refused by name, catchably, a stated shortfall against ADR-0039's serve
+      # half.
+      test-a-siblings-key-set-reading-the-read-tree-below-a-step-is-refused-not-recursed = {
+        expr =
+          force
+            (gm.evalModuleTree { } [
+              {
+                options.o = gm.mkOption {
+                  type = overRoot (t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }));
+                };
+              }
+              (
+                { config, ... }:
+                {
+                  config.o = {
+                    foo.k.x = 1;
+                    bar = if config.o.foo.k.x == 1 then { k.x = 2; } else { };
+                  };
+                }
+              )
+            ]).config.o.foo.k.x;
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it$";

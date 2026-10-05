@@ -1822,8 +1822,13 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   position is a **container node**, a child whose own `container` group
   keys the inner trees over that position's definitions only, so no sibling is forced to key them,
   and whose `result` is `{ value; _nested; }`, the inner container's fold, not a tree's evaluation.
-  Under any other over-approximating container — a split container whose fold sets no mark
-  (gen-aspects' `aspectsRoot`, or a freeform plane typed by one) — the shape is refused by name.
+  At the walk's own root (an option's position, or a container node's) under a container that adds
+  no step (`uniq`, `unique`, `coercedTo`), the position is walked as the root is, and the shape
+  serves nixpkgs' value: that container's fold is its element's over the same definitions, so keying
+  forces nothing a read does not. Below a step under any other over-approximating container — a
+  split container whose fold sets no mark (gen-aspects' `aspectsRoot`, or a freeform plane typed by
+  one) — the shape is refused by name. nixpkgs serves it there, so the refusal is a stated shortfall
+  against ADR-0039's serve half, not a divergence.
   At an EXACT container's element, every container is keyed where it is READ. An attribute-keyed one
   (`lazyAttrsOf`, or an `attrsOf` whose element would not itself key so) keys over-approximately, by
   its definitions' attribute names, through its fold's door. Every other one is a container node: a

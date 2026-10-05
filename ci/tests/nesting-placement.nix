@@ -238,9 +238,10 @@ in
         ];
       };
     };
-    # Under a lazy container a union with a container member is S1's class (a): its position is a
-    # container node (arm (v), den-hoag-9d80v), whose own walk takes the union rule above over its
-    # definitions only, so a sibling of another shape keys nothing and is not read.
+    # Under a lazy container, below its step, a union with a container member is S1's class (a): its
+    # position is a container node (arm (v), den-hoag-9d80v), whose own walk takes the union rule above
+    # over its definitions only, so a sibling of another shape keys nothing and is not read. (At the
+    # walk's root under a step-free wrapper it is walked as the root, den-hoag-t1j4z.)
     test-a-union-over-a-strict-container-under-a-lazy-one-is-a-container-node = {
       expr = row (t.lazyAttrsOf (t.either (t.attrsOf sub) t.str)) [
         {

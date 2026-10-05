@@ -396,8 +396,8 @@ in
   # S1 class (a), arm (v) (den-hoag-9d80v): a container that keys its elements by reading them,
   # holding nested trees, under `lazyAttrsOf`, is a CONTAINER NODE at the lazy position, whose own
   # `container` group keys its elements over its own definitions only, so no sibling is read to key
-  # it. Under another over-approximating container it is refused by name, catchably; the message is
-  # `ci/tests-error.nix`'s. A lazy container under an exact one is keyed.
+  # it. Below a step under another over-approximating container it is refused by name, catchably; the
+  # message is `ci/tests-error.nix`'s. A lazy container under an exact one is keyed.
   flake.tests.nesting-keys-lazy-over-strict = {
     test-a-strict-container-of-trees-under-a-lazy-one-is-a-container-node = {
       expr = childrenOf (evalExposed (host (t.lazyAttrsOf (t.attrsOf sub)) [ { j.k.x = 1; } ]));
@@ -450,6 +450,96 @@ in
       expected."[\"o\"]" = [ "[\"j\",\"k\"]" ];
     };
   };
+
+  # den-hoag-t1j4z Build 1 (ADR-0039, the serve half): a container that keys its elements by reading
+  # them, holding nested trees, under a container that ADDS NO STEP (`unique`, `coercedTo`), at the
+  # walk's own root (an option's position, or a container node's), is walked as the root is and serves
+  # nixpkgs' value. The expected values are nixpkgs' own, read off `lib.evalModules` over the same
+  # declaration in nixpkgs' types. Below a step the refusal stands (`testsError.nesting-keys`).
+  flake.tests.nesting-keys-step-free-wrapper =
+    let
+      cfgOf = modules: (gm.evalModuleTree { } modules).config.o;
+      opt = type: { options.o = gm.mkOption { inherit type; }; };
+    in
+    {
+      test-an-attrs-container-of-trees-under-unique-serves = {
+        expr = cfgOf (host (np.uniq (t.attrsOf sub)) [ { j.x = 1; } ]);
+        expected.j.x = 1;
+      };
+      test-a-list-of-trees-under-coercedTo-serves-the-coerced-definition = {
+        expr = cfgOf (
+          host (np.coercedTo np.str (_: [ { x = 2; } ]) (t.listOf sub)) [
+            [ { x = 1; } ]
+            "s"
+          ]
+        );
+        # nixpkgs' order: the later module's definition first
+        expected = [
+          { x = 2; }
+          { x = 1; }
+        ];
+      };
+      test-a-lazy-container-of-trees-under-unique-serves = {
+        expr = cfgOf (host (np.uniq (t.lazyAttrsOf sub)) [ { j.x = 1; } ]);
+        expected.j.x = 1;
+      };
+      # A union holding a container member, at the wrapper's root, keys the member its `choose` takes,
+      # as at any root.
+      test-a-unions-container-member-under-unique-serves = {
+        expr = cfgOf (host (np.uniq (t.either (t.attrsOf sub) t.str)) [ { j.x = 1; } ]);
+        expected.j.x = 1;
+      };
+      test-a-unions-string-member-under-unique-serves-beside-a-nested-sibling = {
+        expr =
+          let
+            o = cfgOf (
+              host (t.attrsOf (np.uniq (t.either (t.attrsOf sub) t.str))) [
+                {
+                  p = "s";
+                  q.j.x = 5;
+                }
+              ]
+            );
+          in
+          [
+            o.p
+            o.q.j.x
+          ];
+        expected = [
+          "s"
+          5
+        ];
+      };
+      # Enumerating the node set forces the group's key walk: the string definition takes the union's
+      # string member, so no container member is walked over it.
+      test-a-unions-string-definition-under-unique-enumerates-its-node-set = {
+        expr =
+          let
+            ids =
+              (evalExposed (host (np.uniq (t.either (t.attrsOf sub) t.str)) [ "s" ]))._evaluation.allNodeIds;
+          in
+          (builtins.tryEval (builtins.deepSeq ids ids)).success;
+        expected = true;
+      };
+      # The sibling-forcing reason, at the root: a sibling's key set reads the read element's nested
+      # config. nixpkgs keys a lazy container without reading it, and so does the walk.
+      test-a-siblings-key-set-reading-the-read-tree-serves-under-unique = {
+        expr =
+          (gm.evalModuleTree { } [
+            (opt (np.uniq (t.lazyAttrsOf (t.attrsOf sub))))
+            (
+              { config, ... }:
+              {
+                config.o = {
+                  foo.k.x = 1;
+                  bar = if config.o.foo.k.x == 1 then { k.x = 2; } else { };
+                };
+              }
+            )
+          ]).config.o.foo.k.x;
+        expected = 1;
+      };
+    };
 
   # ONE DISCHARGE (den-hoag-i4c0n C1, with L5f's freeform half): the walk reads the fold's own
   # `typeDefs` off the option's merge record, except where forcing that record would meet the "used

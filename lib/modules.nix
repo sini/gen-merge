@@ -2841,7 +2841,11 @@ let
   # sibling's definition. Under `lazyAttrsOf` the shape is a container node instead (arm (v),
   # den-hoag-9d80v, `containerAt`), so these refuse only under an over-approximating container whose
   # fold sets no mark (gen-aspects' `aspectsRoot`, or a freeform plane typed by one). `nullOr` has no
-  # keys and is looked through.
+  # keys and is looked through. The refusal stands below a step only: at the walk's own root (an
+  # option's position, or a container node's) under a container that added no step (`unique`,
+  # `coercedTo`), the position is walked as the root is (ADR-0039, den-hoag-t1j4z). Below a step,
+  # nixpkgs serves the shape, so the refusal is a stated shortfall against ADR-0039's serve half, not a
+  # divergence.
   classAReason =
     lazy: t:
     if (t.name or null) == "attrsOf" || (t.name or null) == "listOf" then
@@ -2868,7 +2872,8 @@ let
   # trees forces no sibling's. The one predicate is read by the walk (`keyWalk`) and by the fold
   # (`mergeDefsThreaded`), so a node the walk mints is the node the fold reads. `nullOr` at the
   # position itself adds no step and is looked through by both, never promoted. Other
-  # over-approximating containers set no mark in their fold and keep the class (a) refusal.
+  # over-approximating containers set no mark in their fold and keep the class (a) refusal below a
+  # step.
   containerAt =
     loc: t:
     isAttrs t
@@ -2957,8 +2962,12 @@ let
   #   · at the walk's own root, a container is walked through its `split`, where it keys exactly;
   #   · under `lazyAttrsOf`, a position `containerAt` holds is a CONTAINER NODE (arm (v)): one
   #     record, marked `container`, whose own walk keys it over its own definitions (`containerNode`);
-  #   · under another over-approximating container, `nullOr` adds no step and is looked through, and
-  #     a container that keys exactly is refused (class (a)): its key set is its elements' data.
+  #   · under another over-approximating container that ADDED NO STEP (`unique`, `coercedTo`, so the
+  #     position is the walk's own root), the position is walked as the root is: that container's
+  #     fold is its element's over the same definitions, so keying forces nothing the read does not;
+  #   · below a step under another over-approximating container, `nullOr` adds no step and is looked
+  #     through, and a container that keys exactly is refused (class (a)): its key set is its
+  #     elements' data.
   # Only an EXACT container's elements have their definitions forced to key them, as that
   # container's own fold forces them; an over-approximated position's definitions are a thunk,
   # read when its seed is.
@@ -2975,6 +2984,12 @@ let
           inherit loc defs;
         }
       ]
+    else if under != null && pos == [ ] then
+      # AT THE WALK'S OWN ROOT (an option's position, or a container node's), UNDER A CONTAINER THAT
+      # ADDED NO STEP (`unique`, `coercedTo`): the position is the one read, and its container's fold is
+      # its element's over the same definitions, so keying the element forces nothing the read does
+      # not (den-hoag-t1j4z, ADR-0039). It is walked as the root is. Below a step, class (a) refuses.
+      keyWalk null group t pos loc defs
     else if under == "lazyAttrsOf" && containerAt loc t then
       [
         {
@@ -3086,7 +3101,8 @@ let
   # two members key is ONE key (`listToAttrs` keeps the first). Under an
   # over-approximating container nothing is read: a container member that keys exactly is class
   # (a), refused naming the union's position (under `lazyAttrsOf` that position is a container node
-  # instead, `containerAt`, whose own walk takes this rule with `under = null`).
+  # instead, `containerAt`, whose own walk takes this rule with `under = null`). This walk is reached
+  # under one only below a step: at the walk's own root `keyWalk` walks the union as the root is.
   unionKeys =
     under: group: u: pos: loc: defs: t:
     concatMap (
