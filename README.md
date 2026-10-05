@@ -1828,7 +1828,7 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   forces nothing a read does not. Below a step under any other over-approximating container — a
   split container whose fold sets no mark (gen-aspects' `aspectsRoot`, or a freeform plane typed by
   one) — the shape is refused by name. nixpkgs serves it there, so the refusal is a stated shortfall
-  against ADR-0039's serve half, not a divergence.
+  against serving nixpkgs' value, not a divergence from it.
   At an EXACT container's element, every container is keyed where it is READ. An attribute-keyed one
   (`lazyAttrsOf`, or an `attrsOf` whose element would not itself key so) keys over-approximately, by
   its definitions' attribute names, through its fold's door. Every other one is a container node: a
