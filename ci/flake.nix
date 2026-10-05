@@ -145,7 +145,7 @@
       # batch asserter behind `checks.default` quantifies over. Cells that assert an ERROR cannot
       # live there — the asserter forces `expr` unconditionally, so a throwing `expr` crashes the
       # gate rather than failing a cell. They are therefore outside this tree by construction, on
-      # their own output: `./tests-error.nix`, read by `nix-unit --flake ./ci#testsError`.
+      # their own output: `./tests-error.nix`, read by `ci --tests-error` and `checks.tests-error`.
       testModules = ./tests;
       specialArgs = {
         inherit
@@ -169,6 +169,9 @@
       };
       extraModules = [
         ./tests-error.nix
+        # P5's scanner: one generated error-plane cell per (public operation, wrong-shape arm), and
+        # its exceptions register beside it.
+        ./tests-error-p5-scan.nix
         # The per-process cells: verdicts that are PROCESS EXITS (uncatchable aborts), one
         # fixture per evaluator process. Exposed as `apps.<system>.tests-process` and run by
         # `ci --tests-process` under the column's evaluator, never as a sandboxed check.
