@@ -334,8 +334,13 @@ or deeper refuses, a sibling read does not, and neither does an `apply` that dis
 A lax tree under a strict carrier refuses as
 `` gen-merge: option `nest.z' is not declared by the nested tree that owns it ``; a tree at
 `check = true` refuses in nixpkgs' words, `` The option `nest.z' does not exist. Definition values: ``
-followed by the one definition's `` - In `file': value `` line, as nixpkgs names it (a compound or
-property-wrapped value prints as `<a set>`, a list as `<a list>`, and a value that throws is omitted).
+followed by the one definition's `` - In `file': value `` line, the value pretty-printed as nixpkgs'
+`showDefs` prints it (its first 5 lines, nested deeper than 10 as `"<unevaluated>"`; a value whose print
+throws is omitted), then nixpkgs' `` Did you mean `x'? `` over the sibling option names and, where the
+evaluation declares no option, its hint paragraph. That print renders deeper than gen-prelude's
+`renderValue`, whose WHNF-only contract the conflict refusal keeps: a nested `abort`, missing attribute,
+type error, infinite recursion or missing import in the misplaced value aborts the refusal, as in
+nixpkgs, with nixpkgs' two trace lines naming the option and the defining file.
 The domain is exactly
 the leaves whose declared type carries `mergeDefs.reported`; a nested tree inside a wrapper (an `attrsOf`
 of a moduleTree) has no report channel, so it refuses its own level's findings by name when that level

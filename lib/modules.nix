@@ -86,10 +86,10 @@ let
     defaultPriority
     ;
 
-  # nixpkgs' `lib.options.showOption`: a segment that is not a Nix identifier, or is a keyword,
-  # prints as a string literal (`escapeNixIdentifier`, `$` escaped as `escapeNixString` does), so
-  # `a."b.c"` and `a.b.c` stay two paths; the placeholders `*` and `<...>` print bare.
-  showOption =
+  # nixpkgs' `lib.strings.escapeNixIdentifier`: a name that is not a Nix identifier, or is a keyword,
+  # prints as a string literal (`$` escaped as `escapeNixString` does). The one home of the keyword
+  # list, read by `showOption` and by the undeclared-option refusal's value print.
+  escapeIdentifier =
     let
       keywords = [
         "assert"
@@ -103,16 +103,19 @@ let
         "then"
         "with"
       ];
+    in
+    s:
+    if builtins.match "[a-zA-Z_][a-zA-Z0-9_'-]*" s != null && !(builtins.elem s keywords) then
+      s
+    else
+      builtins.replaceStrings [ "$" ] [ "\\$" ] (builtins.toJSON s);
+
+  # nixpkgs' `lib.options.showOption`: each segment through `escapeIdentifier`, so `a."b.c"` and
+  # `a.b.c` stay two paths; the placeholders `*` and `<...>` print bare.
+  showOption =
+    let
       showPart =
-        part:
-        if
-          part == "*"
-          || builtins.match "<(.*)>" part != null
-          || (builtins.match "[a-zA-Z_][a-zA-Z0-9_'-]*" part != null && !(builtins.elem part keywords))
-        then
-          part
-        else
-          builtins.replaceStrings [ "$" ] [ "\\$" ] (builtins.toJSON part);
+        part: if part == "*" || builtins.match "<(.*)>" part != null then part else escapeIdentifier part;
     in
     loc: concatStringsSep "." (map showPart loc);
 
@@ -129,25 +132,14 @@ let
   # attribute) would first be forced INSIDE the refusal, turning this catchable, named refusal into
   # an uncatchable abort (ADR-0025 item 1). Forcing no element keeps the refusal total on every list.
   #
-  # `showDefs` is the "- In `file': value" block, shared with the undeclared-option refusal
-  # (`_orphanCheck`), which names ONE definition as nixpkgs' `showDefs [ firstDef ]` does.
+  # `showDefLine` is the "- In `file'" line, shared with the undeclared-option refusal (`_orphanCheck`,
+  # `lib/undeclared-text.nix`), which names ONE definition as nixpkgs' `showDefs [ firstDef ]` does and
+  # renders its value as nixpkgs' `showDefs` does, not through `showValue`.
   showValue = v: if builtins.isList v then "<a list>" else prelude.renderValue v;
   showDefLine = d: rest: "\n- In `${toString (d.file or "<unknown-file>")}'${rest}";
   showDefs = defs: concatStringsSep "" (map (d: showDefLine d ": ${showValue d.value}") defs);
   showConflict =
     loc: defs: "gen-merge: the option `${showOption loc}' has conflicting definitions:" + showDefs defs;
-
-  # The undeclared-option refusal's definition line. The conflict fold has forced every value
-  # already; an unmatched definition's value is merged by nothing, so rendering it can raise. As
-  # nixpkgs' `showDefs` does, the value is rendered under `tryEval` and omitted when it throws, so a
-  # `throw` in the misplaced key's value never replaces the refusal that names the key (ADR-0025
-  # item 1). `abort` and a missing attribute are not catchable by `tryEval`, here as in nixpkgs.
-  showUnmatchedDef =
-    d:
-    let
-      shown = builtins.tryEval ": ${showValue d.value}";
-    in
-    showDefLine d (if shown.success then shown.value else "");
 
   # The definition the undeclared-option refusal names: nixpkgs takes `head merged.unmatchedDefns`
   # (modules.nix), which is NAME-SORTED per level across a level's own undeclared keys and its
@@ -4722,11 +4714,39 @@ let
           _orphanCheck =
             if check && freeform == null && realized.unmatched != [ ] then
               let
+                # imported here, on the refusal path only, so no success path allocates it
+                undeclaredText = import ./undeclared-text.nix { inherit prelude showDefLine escapeIdentifier; };
                 first = firstUnmatched realized.unmatched;
+                optText = showOption (prefix ++ first.path);
+                file = toString (first.file or "<unknown-file>");
+                # nixpkgs' two contexts: a value that aborts uncatchably inside the print still names
+                # the option and its file in the trace
+                defText = builtins.addErrorContext "while evaluating the error message for definitions for `${optText}', which is an option that does not exist" (
+                  builtins.addErrorContext "while evaluating a definition from `${file}'" (
+                    undeclaredText.showDef first
+                  )
+                );
+                parent = prelude.init first.path;
+                # the engine-owned `_module.<k>` are declared options in nixpkgs' tree, and in this one
+                # only when a module redeclares them, so they join the group's names
+                siblings = attrNames (
+                  foldl' (acc: seg: if isAttrs acc && acc ? ${seg} then acc.${seg} else { }) allOptions parent
+                  // (if parent == [ "_module" ] then prelude.genAttrs moduleOwnKeys (_: null) else { })
+                );
+                head' = "The option `${optText}' does not exist. Definition values:${defText}${
+                  undeclaredText.suggestion (s: showOption (prefix ++ parent ++ [ s ])) (prelude.last first.path) (
+                    filter (n: parent != [ ] || n != "_module") siblings
+                  )
+                }";
               in
-              throw "The option `${
-                showOption (prefix ++ first.path)
-              }' does not exist. Definition values:${showUnmatchedDef first}"
+              # nixpkgs' hint test is `attrNames options == [ "_module" ]`; this tree carries `_module`
+              # only when a module declares under it
+              if attrNames (builtins.removeAttrs allOptions [ "_module" ]) != [ ] then
+                throw head'
+              else if prefix == [ ] then
+                throw "${head'}\n\nIt seems as if you're trying to declare an option by placing it into `config' rather than `options'!\n"
+              else
+                throw "${head'}\n\nHowever there are no options defined in `${showOption prefix}'. Are you sure you've\ndeclared your options properly? This can happen if you e.g. declared your options in `types.submodule'\nunder `config' rather than `options'.\n"
             else if inherited && freeform == null && realized.unmatched != [ ] then
               throw "gen-merge: option `${
                 showOption (prefix ++ (head realized.unmatched).path)

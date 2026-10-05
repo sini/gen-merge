@@ -491,8 +491,8 @@ let
     ({ _file = file; } // m)
   ];
   orphanMsg =
-    p: file: v:
-    "^The option `${p}' does not exist\\. Definition values:\n- In `${file}': ${v}$";
+    p: file: rest:
+    "^The option `${p}' does not exist\\. Definition values:\n- In `${file}'${nixpkgsLib.escapeRegex rest}$";
   checkMsg =
     file:
     "^gen-merge: `_module\\.check' is not read from a module: pass it as `evalModuleTree \\{ check = …; }'; defined in ${file}$";
@@ -520,7 +520,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^The option `rack\\.stray' does not exist\\. Definition values:\n- In `<gen-merge>': 1$";
+          msg = "^The option `rack\\.stray' does not exist\\. Definition values:\n- In `<gen-merge>': 1\n\nDid you mean `rack.slot'\\?$";
         };
       };
       # The collision refusal names the option that collided, which is the one piece of the
@@ -720,21 +720,27 @@ in
         expr = realize { modules = moduleKey "/g/B.nix" { config._module.bogus = 1; }; };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus" "/g/B.nix" "1";
+          msg =
+            orphanMsg "_module\\.bogus" "/g/B.nix"
+              ": 1\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
         };
       };
       test-module-unknown-key-shorthand-refused-by-name = {
         expr = realize { modules = moduleKey "/g/B.nix" { _module.bogus = 1; }; };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus" "/g/B.nix" "1";
+          msg =
+            orphanMsg "_module\\.bogus" "/g/B.nix"
+              ": 1\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
         };
       };
       test-module-misspelt-args-refused-by-name = {
         expr = realize { modules = moduleKey "/g/A.nix" { config._module.arg.pkgs = 1; }; };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.arg" "/g/A.nix" "<a set>";
+          msg =
+            orphanMsg "_module\\.arg" "/g/A.nix"
+              ":\n    {\n      pkgs = 1;\n    }\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
         };
       };
       test-module-unknown-key-under-mkif-false-refused-by-name = {
@@ -743,7 +749,9 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus" "/g/B.nix" "<a set>";
+          msg =
+            orphanMsg "_module\\.bogus" "/g/B.nix"
+              ":\n    {\n      _type = \"if\";\n      condition = false;\n      content = 1;\n    }\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
         };
       };
       test-module-unknown-key-beside-args-refused-by-name = {
@@ -757,7 +765,9 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "_module\\.bogus" "/g/A.nix" "1";
+          msg =
+            orphanMsg "_module\\.bogus" "/g/A.nix"
+              ": 1\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
         };
       };
       test-module-unknown-key-in-a-submodule-refused-by-name = {
@@ -769,7 +779,9 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = orphanMsg "n\\._module\\.bogus" "/g/N.nix" "1";
+          msg =
+            orphanMsg "n\\._module\\.bogus" "/g/N.nix"
+              ": 1\n\nDid you mean `n._module.args', `n._module.check' or `n._module.specialArgs'?";
         };
       };
       # Under a `_module.freeformType` the key is absorbed (`./tests/module-key.nix`), so a pair
@@ -4472,7 +4484,8 @@ in
           }).t;
         notModuleMsg = "^gen-merge: a module must be a path, a function or an attribute set, and this one is string \\(an `imports' element, or a nesting type's definition read as a module\\)$";
         undeclaredMsg =
-          key: v: "^The option `t\\.${key}' does not exist\\. Definition values:\n- In `/real/F.nix': ${v}$";
+          key: rest:
+          "^The option `t\\.${key}' does not exist\\. Definition values:\n- In `/real/F.nix'${nixpkgsLib.escapeRegex rest}$";
         # An option named `imports', so the def `{ imports = [ "x" ]; }` is a value at `submodule`
         # and a module whose import is not a module at the tree type.
         importsTree =
@@ -4525,21 +4538,21 @@ in
           expr = builtins.deepSeq (valueAt sub { config.a = 2; }) null;
           expectedError = {
             type = "ThrownError";
-            msg = undeclaredMsg "config" "<a set>";
+            msg = undeclaredMsg "config" ":\n    {\n      a = 2;\n    }\n\nDid you mean `t.a'?";
           };
         };
         test-submodule-imports-key-is-an-undeclared-option = {
           expr = builtins.deepSeq (valueAt sub { imports = [ { a = 4; } ]; }) null;
           expectedError = {
             type = "ThrownError";
-            msg = undeclaredMsg "imports" "<a list>";
+            msg = undeclaredMsg "imports" ":\n    [\n      {\n        a = 4;\n      }\n    ]\n\nDid you mean `t.a'?";
           };
         };
         test-submodule-functor-key-is-an-undeclared-option = {
           expr = builtins.deepSeq (valueAt sub { __functor = _: { ... }: { a = 6; }; }) null;
           expectedError = {
             type = "ThrownError";
-            msg = undeclaredMsg "__functor" "<a lambda>";
+            msg = undeclaredMsg "__functor" ": <function>\n\nDid you mean `t.a'?";
           };
         };
         # The top level: nixpkgs aborts on `import "x"`; this refuses by name.
@@ -4801,7 +4814,7 @@ in
           };
           expectedError = {
             type = "ThrownError";
-            msg = "^The option `x\\.sub\\.bogus' does not exist\\. Definition values:\n- In `/real/F.nix': 1$";
+            msg = "^The option `x\\.sub\\.bogus' does not exist\\. Definition values:\n- In `/real/F.nix': 1\n\nDid you mean `x.sub.k'\\?$";
           };
         };
       };
@@ -7457,6 +7470,661 @@ in
           };
         };
       };
+    # The undeclared-option refusal's text beyond its defs block is nixpkgs': the `Did you mean`
+    # suggestion, the two hint paragraphs, and the pretty-printed definition value
+    # (den-hoag-95i5r). Every fixture is evaluated by this engine AND by nixpkgs' `lib.evalModules`
+    # against the one expected text.
+    flake.testsError.undeclared-diagnostic =
+      let
+        # The fixtures are engine-neutral: `L` is the engine's own library (`mkOption`, `types`,
+        # `mkIf`, `mkDefault`, `mkMerge`, `mkForce`).
+        fixtures =
+          L:
+          let
+            int = L.types.int;
+            mkOption = L.mkOption;
+            decl = {
+              _file = "/virtual/decl.nix";
+              options.x = mkOption {
+                type = int;
+                default = 0;
+              };
+            };
+            declSub = {
+              _file = "/virtual/decl.nix";
+              options.s = mkOption {
+                type = L.types.submodule {
+                  options.k = mkOption {
+                    type = int;
+                    default = 0;
+                  };
+                };
+                default = { };
+              };
+            };
+            declGrp = {
+              _file = "/virtual/decl.nix";
+              options.a.k = mkOption {
+                type = int;
+                default = 0;
+              };
+              options.x = mkOption {
+                type = int;
+                default = 0;
+              };
+            };
+            d = v: {
+              _file = "/virtual/d.nix";
+              config = v;
+            };
+            e = v: {
+              _file = "/virtual/e.nix";
+              config = v;
+            };
+            f = v: {
+              _file = "/virtual/f.nix";
+              config = v;
+            };
+            declN = names: {
+              _file = "/virtual/decl.nix";
+              options = builtins.listToAttrs (
+                map (n: {
+                  name = n;
+                  value = mkOption {
+                    type = int;
+                    default = 0;
+                  };
+                }) names
+              );
+            };
+          in
+          {
+            a = [
+              decl
+              (d { y = 1; })
+            ];
+            near = [
+              decl
+              (d { xx = 1; })
+            ];
+            noopts = [ (d { y = 1; }) ];
+            noopts_modonly = [
+              {
+                _file = "/virtual/decl.nix";
+                options._module.extra = mkOption {
+                  type = int;
+                  default = 0;
+                };
+              }
+              (d { y = 1; })
+            ];
+            emptysub = [
+              {
+                _file = "/virtual/decl.nix";
+                options.s = mkOption {
+                  type = L.types.submodule { };
+                  default = { };
+                };
+              }
+              (d { s.bogus = 1; })
+            ];
+            emptysub2 = [
+              {
+                _file = "/virtual/decl.nix";
+                options.s = mkOption {
+                  type = L.types.submodule {
+                    options.t = mkOption {
+                      type = L.types.submodule { };
+                      default = { };
+                    };
+                  };
+                  default = { };
+                };
+              }
+              (d { s.t.bogus = 1; })
+            ];
+            noopts_deep = [ (d { y.q = 1; }) ];
+            sg_far = [
+              (declN [ "x" ])
+              (d { qqqqqqqq = 1; })
+            ];
+            sg_two = [
+              (declN [
+                "alpha"
+                "alphb"
+              ])
+              (d { alphc = 1; })
+            ];
+            sg_three = [
+              (declN [
+                "alpha"
+                "alphb"
+                "alphd"
+              ])
+              (d { alphc = 1; })
+            ];
+            sg_four = [
+              (declN [
+                "alpha"
+                "alphb"
+                "alphd"
+                "alphe"
+                "zzzzz"
+              ])
+              (d { alphc = 1; })
+            ];
+            sg_tie = [
+              (declN [
+                "ba"
+                "ab"
+                "aa"
+                "bb"
+              ])
+              (d { cc = 1; })
+            ];
+            sg_99 = [
+              (declN ((builtins.genList (i: "opt${toString i}") 98) ++ [ "target" ]))
+              (d { targat = 1; })
+            ];
+            sg_100 = [
+              (declN ((builtins.genList (i: "opt${toString i}") 99) ++ [ "target" ]))
+              (d { targat = 1; })
+            ];
+            sg_100far = [
+              (declN ((builtins.genList (i: "opt${toString i}") 99) ++ [ "target" ]))
+              (d { zzzzzzzzzz = 1; })
+            ];
+            # `levenshteinAtMost 2 "abaa" "aabaa"` is false although their distance is 1 (the common
+            # prefix and suffix overlap): nixpkgs suggests nothing, and so must the port
+            sg_100lv = [
+              (declN ((builtins.genList (i: "opt${toString i}") 99) ++ [ "aabaa" ]))
+              (d { abaa = 1; })
+            ];
+            sg_100three = [
+              (declN ((builtins.genList (i: "optionname${toString i}") 100)))
+              (d { optionnam1 = 1; })
+            ];
+            sg_quote = [
+              {
+                _file = "/virtual/decl.nix";
+                options."a.b" = mkOption {
+                  type = int;
+                  default = 0;
+                };
+                options."if" = mkOption {
+                  type = int;
+                  default = 0;
+                };
+              }
+              (d { "a.c" = 1; })
+            ];
+            sg_grp = [
+              declGrp
+              (d { a.kk = 1; })
+            ];
+            sg_grproot = [
+              declGrp
+              (d { xa = 1; })
+            ];
+            sg_modroot = [
+              decl
+              (d { _modul = 1; })
+            ];
+            sg_modsub = [
+              declSub
+              (d { s._modul = 1; })
+            ];
+            sg_subnear = [
+              declSub
+              (d { s.kk = 1; })
+            ];
+            mod_arg = [
+              decl
+              {
+                _file = "/virtual/d.nix";
+                config._module.arg = {
+                  pkgs = 1;
+                };
+              }
+            ];
+            mod_bogus = [
+              decl
+              {
+                _file = "/virtual/d.nix";
+                config._module.bogus = 1;
+              }
+            ];
+            mod_far = [
+              decl
+              {
+                _file = "/virtual/d.nix";
+                config._module.qqqqqq = 1;
+              }
+            ];
+            mod_sub = [
+              declSub
+              {
+                _file = "/virtual/d.nix";
+                config.s._module.bogus = 1;
+              }
+            ];
+            mod_user = [
+              decl
+              {
+                _file = "/virtual/u.nix";
+                options._module.extra = mkOption {
+                  type = int;
+                  default = 0;
+                };
+              }
+              {
+                _file = "/virtual/d.nix";
+                config._module.extr = 1;
+              }
+            ];
+            attrv = [
+              decl
+              (d {
+                y = {
+                  a = 1;
+                  b = 2;
+                  c = [
+                    1
+                    2
+                    3
+                  ];
+                };
+              })
+            ];
+            deep = [
+              decl
+              (d { y.q.r = 1; })
+            ];
+            mkif = [
+              decl
+              (d (L.mkIf false { y = 1; }))
+            ];
+            mkdef = [
+              decl
+              (d { y = L.mkDefault 1; })
+            ];
+            mkmerge = [
+              decl
+              (d (
+                L.mkMerge [
+                  { y = 1; }
+                  { z = 2; }
+                ]
+              ))
+            ];
+            mkover = [
+              decl
+              (d { y = L.mkForce 1; })
+              (e { y = 2; })
+            ];
+            v_str = [
+              decl
+              (d { y = "a\nb"; })
+            ];
+            v_strq = [
+              decl
+              (d { y = "he said \"hi\" \\ \${x}"; })
+            ];
+            v_strml = [
+              decl
+              (d { y = "line1\nline'' two\${z}\n"; })
+            ];
+            v_strmlnt = [
+              decl
+              (d { y = "line1\nline2"; })
+            ];
+            v_emptyset = [
+              decl
+              (d { y = { }; })
+            ];
+            v_emptylist = [
+              decl
+              (d { y = [ ]; })
+            ];
+            v_fn = [
+              decl
+              (d { y = x: x; })
+            ];
+            v_fnargs = [
+              decl
+              (d {
+                y =
+                  {
+                    a,
+                    b ? 1,
+                    ...
+                  }:
+                  a;
+              })
+            ];
+            v_functor = [
+              decl
+              (d {
+                y = {
+                  __functor = self: x: x;
+                };
+              })
+            ];
+            v_functorargs = [
+              decl
+              (d {
+                y = {
+                  __functor = self: { a }: a;
+                };
+              })
+            ];
+            v_drv = [
+              decl
+              (d {
+                y = {
+                  type = "derivation";
+                  name = "hello-1.0";
+                  outPath = "/x";
+                };
+              })
+            ];
+            v_float = [
+              decl
+              (d { y = 1.5; })
+            ];
+            v_int = [
+              decl
+              (d { y = 7; })
+            ];
+            v_null = [
+              decl
+              (d { y = null; })
+            ];
+            v_bool = [
+              decl
+              (d { y = true; })
+            ];
+            v_long = [
+              decl
+              (d {
+                y = {
+                  a = 1;
+                  b = 2;
+                  c = 3;
+                  d = 4;
+                  e = 5;
+                  f = 6;
+                  g = 7;
+                };
+              })
+            ];
+            v_five = [
+              decl
+              (d {
+                y = {
+                  a = 1;
+                  b = 2;
+                  c = 3;
+                };
+              })
+            ];
+            v_six = [
+              decl
+              (d {
+                y = {
+                  a = 1;
+                  b = 2;
+                  c = 3;
+                  d = 4;
+                };
+              })
+            ];
+            v_deep11 = [
+              decl
+              (d {
+                y = {
+                  a.b.c.d.e.f.g.h.i.j.k.l.m = 1;
+                };
+              })
+            ];
+            v_deeplist = [
+              decl
+              (d { y = builtins.foldl' (acc: _: [ acc ]) 1 (builtins.genList (x: x) 12); })
+            ];
+            v_cyc = [
+              decl
+              (d {
+                y =
+                  let
+                    a = {
+                      self = a;
+                    };
+                  in
+                  a;
+              })
+            ];
+            v_names = [
+              decl
+              (d {
+                y = {
+                  "a.b" = 1;
+                  "if" = 2;
+                  "9x" = 3;
+                  ok_1 = 4;
+                  "x'y" = 5;
+                  "$z" = 6;
+                };
+              })
+            ];
+            v_listsets = [
+              decl
+              (d {
+                y = [
+                  { a = 1; }
+                  "s"
+                  [
+                    1
+                    2
+                  ]
+                ];
+              })
+            ];
+            v_throwin = [
+              decl
+              (d {
+                y = {
+                  a = 1;
+                  b = throw "INNER";
+                };
+              })
+            ];
+            v_listthrowin = [
+              decl
+              (d {
+                y = [
+                  1
+                  (throw "ELEM2")
+                ];
+              })
+            ];
+            v_special = [
+              decl
+              (d {
+                y = {
+                  __toString = self: "s";
+                  v = 1;
+                };
+              })
+            ];
+            v_nestdeep = [
+              declSub
+              (d {
+                s.bogus = {
+                  p = {
+                    q = [
+                      1
+                      2
+                    ];
+                  };
+                };
+              })
+            ];
+            v_dthrow10 = [
+              decl
+              (d {
+                y = {
+                  a.b.c.d.e.f.g.h.i.j = throw "DEEP10";
+                };
+              })
+            ];
+            v_dthrow11 = [
+              decl
+              (d {
+                y = {
+                  a.b.c.d.e.f.g.h.i.j.k = throw "DEEP11";
+                };
+              })
+            ];
+            v_dthrowlist = [
+              decl
+              (d { y = builtins.foldl' (acc: _: [ acc ]) (throw "DEEPL") (builtins.genList (x: x) 11); })
+            ];
+            vthrow = [
+              decl
+              (d { y = throw "VALUEBOOM"; })
+            ];
+            vlist = [
+              decl
+              (d { y = [ (throw "ELEM") ]; })
+            ];
+          };
+        expect = {
+          a = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `x'?";
+          near = "The option `xx' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `x'?";
+          noopts = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nIt seems as if you're trying to declare an option by placing it into `config' rather than `options'!\n";
+          noopts_modonly = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nIt seems as if you're trying to declare an option by placing it into `config' rather than `options'!\n";
+          emptysub = "The option `s.bogus' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nHowever there are no options defined in `s'. Are you sure you've\ndeclared your options properly? This can happen if you e.g. declared your options in `types.submodule'\nunder `config' rather than `options'.\n";
+          emptysub2 = "The option `s.t.bogus' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nHowever there are no options defined in `s.t'. Are you sure you've\ndeclared your options properly? This can happen if you e.g. declared your options in `types.submodule'\nunder `config' rather than `options'.\n";
+          noopts_deep = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      q = 1;\n    }\n\nIt seems as if you're trying to declare an option by placing it into `config' rather than `options'!\n";
+          sg_far = "The option `qqqqqqqq' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `x'?";
+          sg_two = "The option `alphc' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `alpha' or `alphb'?";
+          sg_three = "The option `alphc' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `alpha', `alphb' or `alphd'?";
+          sg_four = "The option `alphc' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `alpha', `alphb' or `alphd'?";
+          sg_tie = "The option `cc' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `aa', `ab' or `ba'?";
+          sg_99 = "The option `targat' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `target', `opt0' or `opt1'?";
+          sg_100 = "The option `targat' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `target'?";
+          sg_100far = "The option `zzzzzzzzzz' does not exist. Definition values:\n- In `/virtual/d.nix': 1";
+          sg_100lv = "The option `abaa' does not exist. Definition values:\n- In `/virtual/d.nix': 1";
+          sg_100three = "The option `optionnam1' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `optionname1', `optionname0' or `optionname10'?";
+          sg_quote = "The option `\"a.c\"' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `\"a.b\"' or `\"if\"'?";
+          sg_grp = "The option `a.kk' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `a.k'?";
+          sg_grproot = "The option `xa' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `a' or `x'?";
+          sg_modroot = "The option `_modul' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `x'?";
+          sg_modsub = "The option `s._modul' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `s.k'?";
+          sg_subnear = "The option `s.kk' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `s.k'?";
+          mod_arg = "The option `_module.arg' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      pkgs = 1;\n    }\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
+          mod_bogus = "The option `_module.bogus' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
+          mod_far = "The option `_module.qqqqqq' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `_module.args', `_module.check' or `_module.specialArgs'?";
+          mod_sub = "The option `s._module.bogus' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `s._module.args', `s._module.check' or `s._module.specialArgs'?";
+          mod_user = "The option `_module.extr' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `_module.extra', `_module.args' or `_module.check'?";
+          attrv = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      a = 1;\n      b = 2;\n      c = [\n        1\n    ...\n\nDid you mean `x'?";
+          deep = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      q = {\n        r = 1;\n      };\n    }\n\nDid you mean `x'?";
+          mkif = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      _type = \"if\";\n      condition = false;\n      content = 1;\n    }\n\nDid you mean `x'?";
+          mkdef = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      _type = \"override\";\n      content = 1;\n      priority = 1000;\n    }\n\nDid you mean `x'?";
+          mkmerge = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': 1\n\nDid you mean `x'?";
+          mkover = "The option `y' does not exist. Definition values:\n- In `/virtual/e.nix': 2\n\nDid you mean `x'?";
+          v_str = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    ''\n      a\n      b''\n\nDid you mean `x'?";
+          v_strq = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': \"he said \\\"hi\\\" \\\\ \\\${x}\"\n\nDid you mean `x'?";
+          v_strml = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    ''\n      line1\n      line''' two''\${z}\n    ''\n\nDid you mean `x'?";
+          v_strmlnt = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    ''\n      line1\n      line2''\n\nDid you mean `x'?";
+          v_emptyset = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': { }\n\nDid you mean `x'?";
+          v_emptylist = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': [ ]\n\nDid you mean `x'?";
+          v_fn = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': <function>\n\nDid you mean `x'?";
+          v_fnargs = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': <function, args: {a, b?}>\n\nDid you mean `x'?";
+          v_functor = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': <function>\n\nDid you mean `x'?";
+          v_functorargs = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': <function, args: {a}>\n\nDid you mean `x'?";
+          v_drv = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': <derivation hello-1.0>\n\nDid you mean `x'?";
+          v_float = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': 1.5\n\nDid you mean `x'?";
+          v_int = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': 7\n\nDid you mean `x'?";
+          v_null = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': null\n\nDid you mean `x'?";
+          v_bool = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix': true\n\nDid you mean `x'?";
+          v_long = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      a = 1;\n      b = 2;\n      c = 3;\n      d = 4;\n    ...\n\nDid you mean `x'?";
+          v_five = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      a = 1;\n      b = 2;\n      c = 3;\n    }\n\nDid you mean `x'?";
+          v_six = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      a = 1;\n      b = 2;\n      c = 3;\n      d = 4;\n    ...\n\nDid you mean `x'?";
+          v_deep11 = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      a = {\n        b = {\n          c = {\n            d = {\n    ...\n\nDid you mean `x'?";
+          v_deeplist = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    [\n      [\n        [\n          [\n            [\n    ...\n\nDid you mean `x'?";
+          v_cyc = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      self = {\n        self = {\n          self = {\n            self = {\n    ...\n\nDid you mean `x'?";
+          v_names = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      \"\\$z\" = 6;\n      \"9x\" = 3;\n      \"a.b\" = 1;\n      \"if\" = 2;\n    ...\n\nDid you mean `x'?";
+          v_listsets = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    [\n      {\n        a = 1;\n      }\n      \"s\"\n    ...\n\nDid you mean `x'?";
+          v_throwin = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix'\n\nDid you mean `x'?";
+          v_listthrowin = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix'\n\nDid you mean `x'?";
+          v_special = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      __toString = <function>;\n      v = 1;\n    }\n\nDid you mean `x'?";
+          v_nestdeep = "The option `s.bogus' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      p = {\n        q = [\n          1\n          2\n    ...\n\nDid you mean `s.k'?";
+          v_dthrow10 = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix'\n\nDid you mean `x'?";
+          v_dthrow11 = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    {\n      a = {\n        b = {\n          c = {\n            d = {\n    ...\n\nDid you mean `x'?";
+          v_dthrowlist = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix':\n    [\n      [\n        [\n          [\n            [\n    ...\n\nDid you mean `x'?";
+          vthrow = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix'\n\nDid you mean `x'?";
+          vlist = "The option `y' does not exist. Definition values:\n- In `/virtual/d.nix'\n\nDid you mean `x'?";
+        };
+        # The whole message, anchored. A hint paragraph ends in a newline, which nix-unit reads in the
+        # thrown message and `ci --tests-error` cannot (it reads stderr, trailing whitespace stripped),
+        # so that one newline is optional; the differential sweep holds it byte for byte.
+        anchored =
+          text:
+          if nixpkgsLib.hasSuffix "\n" text then
+            "^${nixpkgsLib.escapeRegex (nixpkgsLib.removeSuffix "\n" text)}\n?$"
+          else
+            "^${nixpkgsLib.escapeRegex text}$";
+        # One cell per engine per fixture: the SAME anchored text is expected of this engine and of
+        # nixpkgs' `lib.evalModules`, so the parity is asserted by the pair and a nixpkgs bump that
+        # moves its text turns the second red. Each is paired with its own live arm: the fixture with
+        # `check` off must evaluate.
+        genCell = n: {
+          expr =
+            withControl
+              (realize {
+                modules = (fixtures gm).${n};
+                check = false;
+              })
+              null
+              (realize {
+                modules = (fixtures gm).${n};
+              });
+          expectedError = {
+            type = "ThrownError";
+            msg = anchored expect.${n};
+          };
+        };
+        npCell = n: {
+          expr =
+            withControl
+              (builtins.deepSeq
+                (nixpkgsLib.evalModules {
+                  modules = (fixtures nixpkgsLib).${n} ++ [ { _module.check = false; } ];
+                }).config
+                null
+              )
+              null
+              (builtins.deepSeq (nixpkgsLib.evalModules { modules = (fixtures nixpkgsLib).${n}; }).config null);
+          expectedError = {
+            type = "ThrownError";
+            msg = anchored expect.${n};
+          };
+        };
+      in
+      builtins.listToAttrs (
+        builtins.concatMap (n: [
+          {
+            name = "test-${n}-engine";
+            value = genCell n;
+          }
+          {
+            name = "test-${n}-nixpkgs";
+            value = npCell n;
+          }
+        ]) (builtins.attrNames expect)
+      );
+
     # The undeclared-option refusal names ONE definition's file, as nixpkgs' `showDefs [ firstDef ]`
     # does (den-hoag-igmxf): the root's LAST module definition of a name, a submodule's FIRST, and
     # among several names the first by NAME across a level's own keys and declared groups. Every
@@ -7518,7 +8186,7 @@ in
           expr = refuse [ declX ] [ (at "d" { y = 1; }) ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "y" "d" ": 1";
+            msg = msg "y" "d" ": 1\n\nDid you mean `x'\\?";
           };
         };
         # At the root nixpkgs names the LAST module's definition.
@@ -7532,7 +8200,7 @@ in
               ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "y" "e" ": 2";
+            msg = msg "y" "e" ": 2\n\nDid you mean `x'\\?";
           };
         };
         test-root-three-files-names-the-last-module = {
@@ -7546,14 +8214,14 @@ in
               ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "y" "d" ": 1";
+            msg = msg "y" "d" ": 1\n\nDid you mean `x'\\?";
           };
         };
         test-submodule-key-names-its-file = {
           expr = refuse [ declSub ] [ (at "d" { s.bogus = 1; }) ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "s\\.bogus" "d" ": 1";
+            msg = msg "s\\.bogus" "d" ": 1\n\nDid you mean `s.k'\\?";
           };
         };
         # In a submodule nixpkgs names the FIRST definition, the reverse of the root.
@@ -7567,7 +8235,7 @@ in
               ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "s\\.bogus" "d" ": 1";
+            msg = msg "s\\.bogus" "d" ": 1\n\nDid you mean `s.k'\\?";
           };
         };
         # A path module is named by the `_file` its own content sets (den-hoag-6fqay M1).
@@ -7575,7 +8243,7 @@ in
           expr = refuse [ declX ] [ ./tests/_fixtures/own-file-bogus.nix ];
           expectedError = {
             type = "ThrownError";
-            msg = "^The option `bogus' does not exist\\. Definition values:\n- In `/real/PF\\.nix': 1$";
+            msg = "^The option `bogus' does not exist\\. Definition values:\n- In `/real/PF\\.nix': 1\n\nDid you mean `x'\\?$";
           };
         };
         # The head is the first by NAME across a level's own keys and declared groups, as nixpkgs'
@@ -7591,7 +8259,7 @@ in
               ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "a\\.bogus" "d" ": 1";
+            msg = msg "a\\.bogus" "d" ": 1\n\nDid you mean `a.k'\\?";
           };
         };
         test-own-key-sorting-before-a-group-is-named-first = {
@@ -7604,7 +8272,7 @@ in
               ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "\"0\"" "e" ": 2";
+            msg = msg "\"0\"" "e" ": 2\n\nDid you mean `a' or `x'\\?";
           };
         };
         # The same order one level down: group `b` sorts before the own key `m` inside `a`.
@@ -7620,7 +8288,7 @@ in
               ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "a\\.b\\.q" "d" ": 2";
+            msg = msg "a\\.b\\.q" "d" ": 2\n\nDid you mean `a.b.k'\\?";
           };
         };
         # nixpkgs renders the value under `tryEval` and omits it when that throws, so a `throw` in
@@ -7629,7 +8297,7 @@ in
           expr = refuse [ declX ] [ (at "d" { y = throw "VALUEBOOM"; }) ];
           expectedError = {
             type = "ThrownError";
-            msg = msg "y" "d" "";
+            msg = msg "y" "d" "\n\nDid you mean `x'\\?";
           };
         };
       };
