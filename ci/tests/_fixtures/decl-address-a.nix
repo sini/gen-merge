@@ -1,0 +1,1 @@
+{ config.xs = [ { tag = "p"; } ]; }
