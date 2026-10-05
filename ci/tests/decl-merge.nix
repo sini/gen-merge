@@ -1912,7 +1912,7 @@ in
             mk = np.mkOption;
           };
           gm = {
-            ev = evalModuleTree;
+            ev = evalRequest;
             mk = mkOption;
           };
         };

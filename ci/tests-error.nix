@@ -8403,9 +8403,8 @@ in
         np = nixpkgsLib.types;
         decl =
           Ts:
-          (gm.evalModuleTree {
-            modules = map (T: { options.x = gm.mkOption { type = T; }; }) Ts;
-          }).options.x.type.description;
+          (gm.evalModuleTree { } (map (T: { options.x = gm.mkOption { type = T; }; }) Ts))
+          .options.x.type.description;
         reason =
           ctor:
           "^gen-merge: option `x' is declared with types that do not merge \\(`${ctor}' over `int' and `${ctor}' over `str', whose element types do not merge: `int' and `str'\\); declared in <gen-merge>, <gen-merge>$";
