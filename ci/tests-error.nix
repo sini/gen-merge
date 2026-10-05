@@ -3399,6 +3399,72 @@ in
       };
     };
 
+    # THE UNTYPED OPTION'S REFUSALS (den-hoag-yu8sa). An option stating no `type` folds as nixpkgs'
+    # `types.unspecified` at the four combining shapes and by the leaf fold elsewhere
+    # (`mergeUntyped`); every refusal is the ONE conflict text, naming every definition's file
+    # (ADR-0025 item 1). Three cells are green at gen-merge 8db2b9f, whose untyped fold was
+    # agree-or-refuse and refused them by the same text: they pin that the text survives the new
+    # fold. The shared-key cell carries its `mkoptiontype-default-merge` twin's text, which names the
+    # key (den-hoag-11c5o), so the two move together. RED for each was driven by a planted mutant,
+    # recorded per cell.
+    flake.testsError.untyped-default-merge =
+      let
+        heddle =
+          a: b:
+          (genMerge.evalModuleTree { } [
+            { options.heddle = genMerge.mkOption { }; }
+            {
+              _file = "/demo/warp.nix";
+              heddle = a;
+            }
+            {
+              _file = "/demo/weft.nix";
+              heddle = b;
+            }
+          ]).config.heddle;
+      in
+      {
+        # nixpkgs' own law refuses here too. RED (a fold serving the last definition): ❌, a value and
+        # no error.
+        test-differing-ints-refuse-naming-files = {
+          expr = heddle 1 2;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': 2\\n- In `/demo/warp\\.nix': 1$";
+          };
+        };
+        # THE CARVE-OUT (parity criterion, owner 2026-09-25): nixpkgs' shallow `//` keeps warp's
+        # `{ a = 1; }` and drops weft's without a word. The fold decides the key where it is read, so
+        # the refusal names `heddle.a`. RED (the untyped fold as `mergeDefaultOption` unmodified): ❌,
+        # a value and no error; (agree-or-refuse, 8db2b9f): ❌, the whole option refused unnamed.
+        test-differing-values-at-a-shared-attrset-key-refuse-naming-files = {
+          expr = heddle { a = 1; } { a = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle\\.a' has conflicting definitions:\\n- In `/demo/weft\\.nix': 2\\n- In `/demo/warp\\.nix': 1$";
+          };
+        };
+        # nixpkgs applies functions pointwise and then aborts uncatchably or silently unwraps a
+        # `{ value = …; }` result, so there is no value to take. RED (the untyped fold as
+        # `mergeDefaultOption` unmodified): ❌, a function and no error.
+        test-functions-refuse-naming-files = {
+          expr = heddle (x: [ x ]) (x: [ (x + 1) ]);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a lambda>\\n- In `/demo/warp\\.nix': <a lambda>$";
+          };
+        };
+        # Mixed shapes: nixpkgs' law refuses too. RED (a fold serving the last definition): ❌, a value
+        # and no error.
+        test-a-string-beside-an-int-refuses-naming-files = {
+          expr = heddle "warp" 1;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': 1\\n- In `/demo/warp\\.nix': \"warp\"$";
+          };
+        };
+      };
+
     # The REFUSING arms of a check-only `mkOptionType`'s default fold (lib/interface.nix
     # `importDescriptor`; the combining arms are ci/tests/parity-surface.nix's). Each refusal is the
     # ONE conflict text, naming every definition's file (ADR-0025 item 1). An attrset disagreement is

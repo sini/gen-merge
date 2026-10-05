@@ -125,6 +125,19 @@ let
     }
   ];
 
+  # The UNTYPED option, declared through each engine's own `mkOption` with no `type` (den-hoag-yu8sa).
+  untypedFx = a: b: P: [
+    { options.heddle = P.mkOption { }; }
+    {
+      _file = "/demo/warp.nix";
+      config.heddle = a;
+    }
+    {
+      _file = "/demo/weft.nix";
+      config.heddle = b;
+    }
+  ];
+
   gmP = {
     inherit (gm)
       mkOption
@@ -569,6 +582,211 @@ in
         nixpkgs = 3;
       };
     };
+
+    # ── the UNTYPED option: nixpkgs' `types.unspecified`, the constructor's default (den-hoag-yu8sa) ──
+    # nixpkgs gives an option stating no `type` `types.unspecified` (`fixupOptionType`), a
+    # `mkOptionType` stating `name` alone. Here the four combining shapes take the default the
+    # check-only cells above take (`mergeUntyped`, lib/modules.nix); every other shape keeps the leaf
+    # fold, so unlike a check-only descriptor an untyped option still serves equal nulls, floats and
+    # paths (the fences below). RED for each cell was evaluated at gen-merge 8db2b9f, where an untyped
+    # option folded agree-or-refuse, and is recorded per cell; the refusals are on the error plane
+    # (ci/tests-error.nix `untyped-default-merge`).
+    #
+    # RED: ❌ gen `"a"` — agree-or-refuse passed equal strings through, a changed value with no word.
+    test-untyped-equal-strings-concatenate = {
+      expr = bothCfg (untypedFx "a" "a") "heddle";
+      expected = {
+        gen = "aa";
+        nixpkgs = "aa";
+      };
+    };
+    # RED: ☢ refused.
+    test-untyped-differing-strings-concatenate = {
+      expr = bothCfg (untypedFx "warp" "weft") "heddle";
+      expected = {
+        gen = "weftwarp";
+        nixpkgs = "weftwarp";
+      };
+    };
+    # RED: ☢ refused, lists are not equal.
+    test-untyped-lists-concatenate = {
+      expr = bothCfg (untypedFx [ "warp" ] [ "weft" ]) "heddle";
+      expected = {
+        gen = [
+          "weft"
+          "warp"
+        ];
+        nixpkgs = [
+          "weft"
+          "warp"
+        ];
+      };
+    };
+    # The LAST definition read is `false`: OR gives `true`, last-wins would not. RED: ☢ refused.
+    test-untyped-differing-bools-are-ored = {
+      expr = bothCfg (untypedFx false true) "heddle";
+      expected = {
+        gen = true;
+        nixpkgs = true;
+      };
+    };
+    # RED: ☢ refused.
+    test-untyped-disjoint-attrsets-union = {
+      expr = bothCfg (untypedFx { a = 1; } { b = 2; }) "heddle";
+      expected = {
+        gen = {
+          a = 1;
+          b = 2;
+        };
+        nixpkgs = {
+          a = 1;
+          b = 2;
+        };
+      };
+    };
+    # RED: ☢ refused (the whole values differ).
+    test-untyped-attrsets-sharing-an-equal-key-union = {
+      expr = bothCfg (untypedFx
+        {
+          a = 1;
+          b = 1;
+        }
+        {
+          a = 1;
+          c = 2;
+        }
+      ) "heddle";
+      expected = {
+        gen = {
+          a = 1;
+          b = 1;
+          c = 2;
+        };
+        nixpkgs = {
+          a = 1;
+          b = 1;
+          c = 2;
+        };
+      };
+    };
+    # One key reads a sibling through `config`: nixpkgs' `//` never forces a value, so `a` is 1. The
+    # fold decides a shared key where that key is read (den-hoag-11c5o), so the read does not recurse.
+    # RED: ☢ refused (agree-or-refuse, catchably); with the constructor default still spine-strict
+    # (this landing without den-hoag-11c5o's per-key placement), ☢ an UNCATCHABLE infinite recursion.
+    test-untyped-a-key-reading-its-sibling-serves = {
+      expr = bothCfg (P: [
+        { options.heddle = P.mkOption { }; }
+        (
+          { config, ... }:
+          {
+            config.heddle.a = config.heddle.b;
+          }
+        )
+        (
+          { config, ... }:
+          {
+            config.heddle.a = config.heddle.b;
+          }
+        )
+        { config.heddle.b = 1; }
+      ]) "heddle";
+      expected = {
+        gen = {
+          a = 1;
+          b = 1;
+        };
+        nixpkgs = {
+          a = 1;
+          b = 1;
+        };
+      };
+    };
+    # One level down, inside a submodule, the nested tree folds its untyped option alike.
+    # RED: ❌ gen `"a"`.
+    test-untyped-option-in-a-submodule-concatenates = {
+      expr = bothCfg (P: [
+        { options.bolt = P.mkOption { type = P.types.submodule { options.heddle = P.mkOption { }; }; }; }
+        { config.bolt.heddle = "a"; }
+        { config.bolt.heddle = "a"; }
+      ]) "bolt";
+      expected = {
+        gen.heddle = "aa";
+        nixpkgs.heddle = "aa";
+      };
+    };
+    # THE FENCES. Equal ints pass in both laws (green at 8db2b9f by design; RED driven with a planted
+    # fold refusing every int: ☢). Equal nulls and equal floats are SERVED here where nixpkgs' law
+    # refuses them: gen accepting more is ADR-0039's stated refuse half, and the untyped fold keeps
+    # the leaf fold's agreement there rather than narrowing. RED (every untyped option folded by the
+    # constructor default, or by `mergeDefaultOption`, unmodified): ☢ refused.
+    test-untyped-equal-ints-pass = {
+      expr = bothCfg (untypedFx 3 3) "heddle";
+      expected = {
+        gen = 3;
+        nixpkgs = 3;
+      };
+    };
+    test-untyped-equal-nulls-and-floats-keep-the-agreement = {
+      expr = {
+        gen = map (v: (gmCfg (untypedFx v v)).heddle) [
+          null
+          1.5
+        ];
+        nixpkgs = map (v: (builtins.tryEval (npCfg (untypedFx v v)).heddle).success) [
+          null
+          1.5
+        ];
+      };
+      expected = {
+        gen = [
+          null
+          1.5
+        ];
+        nixpkgs = [
+          false
+          false
+        ];
+      };
+    };
+    # THE NARROWING, ENUMERATED. Two derivations equal by `outPath` but built separately, so their
+    # `override` closures are distinct. nixpkgs' `//` keeps the last; the leaf fold's `==` compares
+    # derivations by `outPath` alone and served the first whole. The fold decides the pair key by key,
+    # so `outPath` serves and `override` is refused by name where it is read (README, *Known byte-mode
+    # boundaries*). RED at 8db2b9f (agree-or-refuse): ❌ `override` served; with the constructor
+    # default still spine-strict (this landing without den-hoag-11c5o): ❌ `outPath` refused too.
+    test-untyped-outpath-equal-derivations-are-decided-per-key =
+      let
+        drv =
+          _:
+          np.makeOverridable (
+            _:
+            derivation {
+              name = "heddle";
+              system = "x86_64-linux";
+              builder = "/bin/sh";
+            }
+          ) { };
+        read = cfg: {
+          outPath = (builtins.tryEval cfg.heddle.outPath).success;
+          override = (builtins.tryEval (builtins.typeOf cfg.heddle.override)).success;
+        };
+      in
+      {
+        expr = {
+          gen = read (gmCfg (untypedFx (drv "warp") (drv "weft")));
+          nixpkgs = read (npCfg (untypedFx (drv "warp") (drv "weft")));
+        };
+        expected = {
+          gen = {
+            outPath = true;
+            override = false;
+          };
+          nixpkgs = {
+            outPath = true;
+            override = true;
+          };
+        };
+      };
 
     # ── O13: the SINGLE-DEF order-marker LEAK — the cheapest demonstration of the pass ──────────
     # It needs no multi-def and it tests the UNWRAP ALONE.

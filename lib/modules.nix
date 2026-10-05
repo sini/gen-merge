@@ -2408,6 +2408,11 @@ let
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if fold != null then
           fold loc typeDefs
+        # The untyped option with several definitions (`mergeUntyped`, below). One definition is
+        # its own value under both folds, so the single-definition case stays on the leaf fold's
+        # fast path and pays one length test.
+        else if type == null && length sorted > 1 then
+          mergeUntyped loc sorted
         # A declared type that brought no fold and no `verify` is where a value that is not a type
         # lands, and the leaf fold would return the definition unchecked. It is judged HERE, on this
         # arm alone: the gen-typed path has already answered, and pays nothing for the question.
@@ -3320,9 +3325,10 @@ let
   #
   # ★★★ IT SITS BESIDE `mergeLeaf`, NOT IN PLACE OF IT, AND IT IS AN INTERIM SURFACE. `mergeLeaf`
   # above remains this engine's no-`.merge` default and keeps its agree-or-refuse posture, and no
-  # existing consumer's merge semantics move. The one route inside this library is `mkOptionType`'s
-  # default for a descriptor stating no fold (`mergeDescriptorDefault`, below), which is nixpkgs'
-  # constructor default rather than a leaf default.
+  # typed option's merge semantics move. Two routes inside this library reach it, both through
+  # `mergeDescriptorDefault` below: `mkOptionType`'s default for a descriptor stating no fold, which
+  # is nixpkgs' constructor default rather than a leaf default, and an untyped option defined more
+  # than once at the four combining shapes (`mergeUntyped`, below).
   # The full statement of what the marker means and does not claim is at the public export
   # (lib/default.nix), which is where a caller meets it.
   #
@@ -3448,6 +3454,30 @@ let
       ) defs
     else
       mergeDefaultOption loc defs;
+
+  # The UNTYPED option's fold. nixpkgs gives an option that states no type `types.unspecified`
+  # (`fixupOptionType`), a `mkOptionType` stating `name` alone, so it folds by the constructor
+  # default, which here is `mergeDescriptorDefault` above. It is taken at the four shapes nixpkgs
+  # serves by combining: lists concatenate, strings concatenate, bools OR, attrsets union (an equal
+  # shared key serves, a differing one is refused by name). Every other shape keeps the leaf fold:
+  # null, floats, paths, ints and mixed shapes serve an agreement and refuse a disagreement, which
+  # accepts more than nixpkgs' law does (ADR-0039's stated refuse half), and functions are compared,
+  # never applied, since nixpkgs' function arm aborts or silently unwraps. Its one caller
+  # (`mergeDefsRichWith`) hands it two or more definitions.
+  mergeUntyped =
+    loc: defs:
+    let
+      list = map (d: d.value) defs;
+    in
+    if
+      all isList list
+      || all builtins.isString list
+      || all builtins.isBool list
+      || all isAttrs list && !all prelude.isFunction list
+    then
+      mergeDescriptorDefault loc defs
+    else
+      mergeLeaf loc defs;
 
   # mergeOneOption — the nixpkgs `lib.mergeOneOption` helper: exactly one definition permitted
   # (else throw). Exported for consumers whose custom `(loc, defs)` merges want unique-def semantics

@@ -121,8 +121,9 @@ value · anything else ⇒ a named refusal. **Only differing ints and type-heter
 refuse**; differing bools and strings combine.
 
 ★ **It is an INTERIM surface and it does NOT replace `mergeLeaf`.** `mergeLeaf` remains the engine's
-no-`.merge` default with its agree-or-refuse posture, and no existing consumer's merge semantics move.
-The one route inside this library is `mkOptionType`'s default, below. It claims one law at one arm, never
+no-`.merge` default with its agree-or-refuse posture. Two routes inside this library reach the law, both
+below: `mkOptionType`'s default, and an option that states no `type`, at four shapes. The second moves
+the value of an untyped option defined more than once; no typed option's merge semantics move. It claims one law at one arm, never
 whole-pipeline parity: nixpkgs' own `attrsOf`/`listOf` merge each key *through* the element type where
 this law's attrset arm never consults it, so two definitions of `attrsOf (listOf str)` sharing a key
 concatenate under nixpkgs and drop the first here.
@@ -160,6 +161,20 @@ deciding a shared key forces its values, so `{ a = 1; b = 1; }`,`{ a = throw …
 `mergeLeaf`. Cells: `ci/tests/parity-surface.nix` (both engines) and `ci/tests-error.nix`
 `mkoptiontype-default-merge`. The price is listed under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate).
+
+**An option stating no `type` takes that default at four shapes, and the leaf fold elsewhere.**
+nixpkgs gives such an option `types.unspecified` (`fixupOptionType`), a `mkOptionType` stating `name`
+alone, so it folds by the constructor default. Here an untyped option defined more than once
+(`mergeUntyped`, lib/modules.nix) takes the default above when every definition is a list, every one a
+string, every one a bool, or every one an attrset and not every one a functor: `"s"`,`"s"` ⇒ `"ss"`,
+`[ 1 ]`,`[ 1 ]` ⇒ `[ 1 1 ]`, disjoint attrsets ⇒ their union, with the shared-key refusal above. Every
+other shape keeps `mergeLeaf`. That makes it a third fold, not the check-only descriptor's: equal
+nulls, floats and paths, and `1` beside `1.0`, are **served** by an untyped option and **refused** by a
+check-only descriptor. The check-only descriptor's narrowing was ruled (2026-09-25);
+nixpkgs' refusal of those shapes is ADR-0039's refuse half, which is not ruled, so the untyped option
+keeps the leaf fold's agreement there. Functions and functors stay compared, never applied. A single
+definition is its own value under both folds and stays on the leaf fold. Cells:
+`ci/tests/parity-surface.nix` `test-untyped-*` and `ci/tests-error.nix` `untyped-default-merge`.
 
 **The parity claim is watched live, not stamped.** Every law cell in `ci/tests/parity-surface.nix` runs
 through `bothLaws`, whose `nixpkgs` arm calls `nixpkgsLib.mergeDefaultOption` at whatever rev
@@ -2023,6 +2038,30 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `lib // { }` at each site), Nix and Determinate throw the value's own error and Lix merges. It is
   stated, not converted into a named refusal: a `tryEval` there would turn the split into a
   quieter one (refused on two evaluators, merged on the third).
+
+- **An option stating no `type` departs from nixpkgs' `types.unspecified` in four stated places**
+  (`mergeUntyped`, lib/modules.nix; cells `ci/tests/parity-surface.nix` `test-untyped-*` and
+  `ci/tests-error.nix` `untyped-default-merge`):
+
+  - *Equal floats, nulls and paths, and `1` beside `1.0`, are served* where nixpkgs' law refuses
+    (`Cannot merge definitions`). This is ADR-0039's refuse half, not ruled: gen accepts more, and
+    accepting more never breaks a nixpkgs-valid config. A check-only `mkOptionType` refuses the same
+    shapes, so the two folds differ there by design.
+  - *Function and functor definitions are compared, never applied.* nixpkgs returns a merged lambda
+    that aborts uncatchably, or silently unwraps a `{ value; }` result, when applied. This is the
+    function carve-out of the constructor default above; one function bound once and written twice
+    keeps the evaluator split stated there.
+  - *A shared attrset key whose values differ is refused by name* (`heddle.a`) where it is read,
+    where nixpkgs' `//` keeps one value without a word: the parity criterion's carve-out.
+  - *Two derivations equal by `outPath` that differ at another attribute are decided key by key.*
+    Built separately (two `makeOverridable` results), their `outPath` serves and their `override`
+    refuses where it is read. nixpkgs' `//` serves the last whole; the leaf fold this option used
+    before compared them by `outPath` alone and served the first whole, so this is a narrowing of
+    what was served, the shared-key carve-out applied to the attrsets a derivation is. A derivation
+    held in one slot by both definitions serves whole.
+
+  An untyped attrset pair reaches the cyclic-value abort below through the constructor default's
+  shared-key compare rather than through `mergeLeaf`, and so only at the read of the cyclic key.
 
 - **A module formal that `specialArgs`, `config`, `options` or `prefix` supplies is that attribute
   itself, not a copy**, in both strata: the value stratum's `callM` and the declaration stratum's

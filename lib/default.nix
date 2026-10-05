@@ -604,13 +604,17 @@ in
   #
   # ★★★ MARKER — INTERIM (ADR-0031 F1's marker discipline). `mergeDefaultOption` is a NEW EXPORTED
   # SURFACE BESIDE `mergeLeaf`, NOT a replacement for it. `mergeLeaf` (lib/modules.nix) REMAINS this
-  # engine's no-`.merge` default and keeps its agree-or-refuse posture, so no existing consumer's
-  # merge semantics move on that axis. The caller it exists for is gen-aspects' freeform primitive
-  # arm. Inside this library one route reaches it: `mkOptionType`'s default for a descriptor stating
+  # engine's no-`.merge` default and keeps its agree-or-refuse posture, so no typed option's merge
+  # semantics move on that axis. The caller it exists for is gen-aspects' freeform primitive arm.
+  # Inside this library two routes reach it. One is `mkOptionType`'s default for a descriptor stating
   # `name` and no fold (`mergeDescriptorDefault`, lib/modules.nix), which is nixpkgs' CONSTRUCTOR
   # default (`merge ? mergeDefaultOption`), not a leaf default, and keeps a named refusal at the two
   # arms where nixpkgs' answer is silent (owner parity criterion, 2026-09-25). A descriptor stating
-  # `verify` is a gen leaf and keeps `mergeLeaf`.
+  # `verify` is a gen leaf and keeps `mergeLeaf`. The other is an option stating no `type` and
+  # defined more than once (`mergeUntyped`): nixpkgs' `types.unspecified`, which takes that same
+  # default where every definition is a list, a string, a bool or an attrset, and keeps `mergeLeaf`
+  # at every other shape (ADR-0039's serve half; its refuse half is not ruled). The untyped option's
+  # value moves there: `"s"`,`"s"` reads `"ss"` where it read `"s"`.
   # **What it explicitly does NOT claim: whole-pipeline nixpkgs parity.** It is ONE law at ONE arm.
   # Replacing `mergeLeaf` with it would not have bought parity either — nixpkgs' own
   # `attrsOf`/`listOf` merge each key THROUGH the element type, where this law's attrset arm is a
