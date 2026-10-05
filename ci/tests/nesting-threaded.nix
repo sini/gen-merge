@@ -1844,6 +1844,21 @@ in
         in
         self;
       own = door { };
+      stripped = builtins.removeAttrs (door {
+        verify = v: if (v.x or 0) > 5 then null else "x must exceed 5";
+      }) [ "verify" ];
+      # a v2 fold that is not the rebuild's, restated beside a check that is not the coherent one
+      wSub = np.submodule {
+        options.x = nixpkgsLib.mkOption { type = np.int; };
+        options.w = nixpkgsLib.mkOption {
+          type = np.int;
+          default = 9;
+        };
+      };
+      adHocV2 = door { inherit (wSub) merge check; } // {
+        inherit (wSub) merge;
+        check = builtins.isAttrs;
+      };
       cell = type: def: {
         expr = opt type def;
         expected = fwd type def;
@@ -1896,6 +1911,21 @@ in
             })) { a.x = 0; }) null
           )).success;
         expected = false;
+      };
+      # the door marks a record stating `verify` too, and the class is re-tested where it is read: a
+      # copy that drops the `verify` is mounted as nixpkgs mounts the same copy, never served its own
+      # merge
+      test-a-door-record-that-drops-its-verify-is-mounted-as-its-rebuild = cell stripped { x = 7; };
+      test-a-door-record-that-drops-its-verify-under-a-gen-container-is-mounted-as-its-rebuild =
+        cell (t.attrsOf stripped)
+          { a.x = 7; };
+      # an ad-hoc override restating a v2 merge (`adHocChecked`) is re-tested where it is read, so a
+      # gen container serves it what its root serves it: the container forwards the root's decision
+      test-a-gen-container-over-an-adhoc-v2-door-record-serves-what-its-root-serves = {
+        expr = opt (t.attrsOf adHocV2) { a.x = 2; };
+        expected = {
+          a = opt adHocV2 { x = 2; };
+        };
       };
     };
 }

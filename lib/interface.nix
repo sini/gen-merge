@@ -1468,17 +1468,27 @@ let
   # crossed record passed through the door again with a `verify` (gen-schema's `refined`), overridden
   # ad hoc (`// { check }`) or with its module set nulled (`// { getSubModules = null; }`) still
   # states the mark it was given at its first crossing.
+  #
+  # Bounded by `importedTypeWalkFuel`, and `false` AT EXHAUSTION: a cycle through containers alone
+  # (`cyclic-types`) reaches no crossed record, and `mountOf` follows only a walk that found one. THE
+  # PRICE, stated: a crossed record nested that many containers deep keeps its own merge, as before
+  # the mount.
   crossedRoot =
-    t:
-    isAttrs t
-    && (
-      t ? substructure.mount && !(t ? verify) && isList (t.getSubModules or null) && !(adHocChecked t)
-      ||
-        t ? recarry
-        && t ? carries.element
-        && (t.carries.element ? substructure.mount || t.carries.element ? carries.element)
-        && crossedRoot t.carries.element
-    );
+    let
+      go =
+        fuel: t:
+        isAttrs t
+        && (
+          t ? substructure.mount && !(t ? verify) && isList (t.getSubModules or null) && !(adHocChecked t)
+          ||
+            fuel > 0
+            && t ? recarry
+            && t ? carries.element
+            && (t.carries.element ? substructure.mount || t.carries.element ? carries.element)
+            && go (fuel - 1) t.carries.element
+        );
+    in
+    go importedTypeWalkFuel;
   # The mount over a module set: the door record's own rebuild with the record's own `check` riding on
   # it (`carriedCheck`, den-hoag-4ifgb M-B), built from the record handed in, or the container rebuilt
   # over its element's (`recarry`, the container's own rebuild over another payload).
@@ -2698,13 +2708,14 @@ let
             # for gen's root fix-up (`homedRootAt`), which mounts its rebuild as `fixupOptionType` mounts
             # `substSubModules`, with the record's own `check` riding on it (`mountOf`); the published
             # `substSubModules` stays the author's. Only its presence is read, and the class is re-tested
-            # where it is read (`crossedRoot`). An ad-hoc `check` keeps `adHocFold`, and a record stating
-            # `verify` is a gen leaf (`homedRootAt`): its refinement is its own fold's, which a rebuild
-            # would drop. Presence first, so a record outside the class pays no application.
+            # where it is read (`crossedRoot`). An ad-hoc `check` keeps `adHocFold`. A record stating
+            # `verify` is marked too and never mounted while it states it (`crossedRoot`, `homedRootAt`):
+            # its refinement is its own fold's, which a rebuild would drop, and a copy that drops the
+            # `verify` is mounted as nixpkgs mounts the same copy. Presence first, so a record outside
+            # the class pays no application.
             substructure =
               if
-                !(t ? verify)
-                && (t.substructure.modules or t.getSubModules or null) != null
+                (t.substructure.modules or t.getSubModules or null) != null
                 && isList (t.substructure.modules or t.getSubModules)
                 && !(adHocChecked t)
               then
