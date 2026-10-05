@@ -3401,10 +3401,11 @@ in
 
     # The REFUSING arms of a check-only `mkOptionType`'s default fold (lib/interface.nix
     # `importDescriptor`; the combining arms are ci/tests/parity-surface.nix's). Each refusal is the
-    # ONE conflict text, naming every definition's file (ADR-0025 item 1). Every cell here is green at
-    # gen-merge 6a508e3, whose constructor folded agree-or-refuse and so refused all three by the
-    # same text: they pin that the text SURVIVES the new default. Each RED was driven by a planted
-    # mutant, recorded per cell. Both patterns anchor `^…$` and carry the whole multi-line message.
+    # ONE conflict text, naming every definition's file (ADR-0025 item 1). An attrset disagreement is
+    # refused where its key is read (`unionAgreeing`), so its text is at the key's path (`heddle.a`)
+    # and shows the definers' values at that key; the whole-option refusals (scalars, functions) stay
+    # at `heddle`. Each RED was driven by a planted mutant, recorded per cell. Both patterns anchor
+    # `^…$` and carry the whole multi-line message.
     flake.testsError.mkoptiontype-default-merge =
       let
         heddle =
@@ -3442,7 +3443,7 @@ in
           expr = heddle thread { a = 1; } { a = 2; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
+            msg = "^gen-merge: the option `heddle\\.a' has conflicting definitions:\\n- In `/demo/weft\\.nix': 2\\n- In `/demo/warp\\.nix': 1$";
           };
         };
         # nixpkgs' function arm aborts uncatchably, or silently unwraps a `{ value = …; }` result, so
@@ -3469,7 +3470,7 @@ in
               msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
             };
           };
-        # A shared key compares each definer's own value slot (`sharedKeyDiffers`), and identity is
+        # A shared key compares each definer's own value slot (`slotsDiffer`), and identity is
         # sound only while DISTINCT closures stay unequal: two closures of one lambda over different
         # environments, and two function literals, refuse on all three evaluators. RED (a fold that
         # calls every shared function equal): ☢, a value and no error, ×3.
@@ -3481,14 +3482,24 @@ in
             heddle thread { a = mkF 1; } { a = mkF 2; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
+            msg = "^gen-merge: the option `heddle\\.a' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a lambda>\\n- In `/demo/warp\\.nix': <a lambda>$";
           };
         };
         test-two-function-literals-refuse-naming-files = {
           expr = heddle thread { a = y: y; } { a = y: y; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `heddle' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
+            msg = "^gen-merge: the option `heddle\\.a' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a lambda>\\n- In `/demo/warp\\.nix': <a lambda>$";
+          };
+        };
+        # A NESTED disagreement: nixpkgs' shallow `//` keeps `{ p = 1; }` (warp's) and drops weft's `q`
+        # without a word, so it is refused, at the top key the definitions disagree on. RED (the fold
+        # deciding every shared key before it returns the set): ❌, the refusal named `heddle'.
+        test-a-nested-disagreement-refuses-at-the-top-key = {
+          expr = heddle thread { a.p = 1; } { a.q = 2; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `heddle\\.a' has conflicting definitions:\\n- In `/demo/weft\\.nix': <a set>\\n- In `/demo/warp\\.nix': <a set>$";
           };
         };
         # R-4's FENCE: a descriptor stating `verify` is a gen leaf, whose no-fold default stays

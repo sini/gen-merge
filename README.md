@@ -1955,14 +1955,21 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   the key (`{ a = 1; }` in the first file, `{ a = 2; }` in the second ⇒ `{ a = 1; }`: its
   definitions list runs in reverse file order and `//` is last-wins over that list), and for
   functions aborts uncatchably or unwraps a `{ value = …; }` result. Every other arm of the default is nixpkgs' value, with "equal"
-  meaning the evaluator's `==` on each definer's own value, and shared keys' values are forced
-  where nixpkgs forces none. The price, stated with the 2026-09-25 ruling: a nixpkgs module relying
-  on silent last-wins attrset merging under a check-only type is refused here.
+  meaning the evaluator's `==` on each definer's own value, and a shared key's values are forced
+  where nixpkgs forces none, at the read of that key. The attrset refusal fires where its key is
+  read and names that key's path (`heddle.a`), with the values the files set there; the key set and
+  every other key read as nixpkgs' do, so a key whose definitions read a sibling of the same option
+  (`x.a = config.x.b` in two files, `x.b = 1` in a third) serves `1` as nixpkgs does. The fold is
+  `unionAgreeing`, the `attrs` fold's own construction. The price, stated with the 2026-09-25
+  ruling: a nixpkgs module relying on silent last-wins attrset merging under a check-only type is
+  refused here. The price of deciding per key, measured with every value forced: about one thunk
+  and two calls per key over deciding every shared key before returning the set; a read of the key
+  set or of one sibling is cheaper, since it pays no other key's `==`.
 
 - **At that shared key the three evaluators split in one stated case.** `==`'s identity
   short-circuit (the Nix manual, *Value identity optimization*) compares value *slots* on upstream
   Nix and Determinate and object identity on Lix. The fold compares each definer's own slot
-  (`sharedKeyDiffers`), so between functions "equal" is identity, which is sound: no evaluator
+  (`slotsDiffer`), so between functions "equal" is identity, which is sound: no evaluator
   accepts two different functions (`ci/tests-error.nix` `mkoptiontype-default-merge`, distinct
   closures). `==` also treats an int as equal to the same float, and two derivations with one
   `outPath` as equal, on every evaluator. The three agree wherever the definitions hold one value in
@@ -2036,12 +2043,14 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   pointer-distinct, structurally equal cyclic values — `{ a = r; }`,`{ a = r'; }` with `r` and `r'`
   separate bindings of `{ s = r; n = 1; }` — or on any pair whose lockstep `==` reaches a back edge
   before a difference. The class has four members, all exiting
-  `stack overflow; max-call-depth exceeded`, which `tryEval` does not catch: the check-only
-  `mkOptionType` default's shared-key compare (`mergeDescriptorDefault`/`sharedKeyDiffers`, above),
+  `stack overflow; max-call-depth exceeded` (Lix: `stack overflow (possible infinite recursion)`),
+  which `tryEval` does not catch: the check-only
+  `mkOptionType` default's shared-key compare (`mergeDescriptorDefault`, above),
   the `attrs` fold's shared-key compare (above), the no-fold leaf combine (`mergeLeaf`), and its
   exported twin (`leafFold`). 6a508e3 aborts on the same input at the first, third and fourth, so
-  this is a boundary the folds inherit, not one they introduced; the `attrs` fold reaches the abort
-  at the read of the shared key.
+  this is a boundary the folds inherit, not one they introduced. The two attrset folds decide per
+  key (`unionAgreeing`), so they reach the abort only at the read of the cyclic key itself; the key
+  set and every sibling serve.
   `mergeLeaf` and `leafFold` are byte-parity with nixpkgs: its own `mergeEqualOption` aborts
   uncatchably on the identical input. `mergeDescriptorDefault` and the `attrs` fold are the
   departures — nixpkgs' `//` never compares the shared key, so it silently keeps the last file's

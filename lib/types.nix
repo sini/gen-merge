@@ -45,6 +45,7 @@ let
     mergeDefsThreaded
     mergeLeaf
     slotsDiffer
+    unionAgreeing
     isDefinedValue
     isDefinedBy
     showOption
@@ -1083,7 +1084,6 @@ let
         loc: defs:
         let
           merged = foldl' (res: d: res // d.value) { } defs;
-          slots = builtins.zipAttrsWith (_: vs: vs) (map (d: d.value) defs);
           filesAt =
             k: concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: d.value ? ${k}) defs));
           refusal =
@@ -1097,10 +1097,7 @@ let
             else
               "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to different values (${filesAt k})";
         in
-        if length defs < 2 then
-          merged
-        else
-          builtins.mapAttrs (k: v: if slotsDiffer slots.${k} then throw (refusal k slots.${k}) else v) merged
+        if length defs < 2 then merged else unionAgreeing refusal defs
       );
     };
 

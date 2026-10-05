@@ -81,15 +81,16 @@ let
 
   # A CHECK-ONLY `mkOptionType`, declared through each engine's OWN constructor: no fold is stated, so
   # the fold is the constructor's default. Two files define the option, in the order given.
-  threadFx = a: b: P: [
-    {
-      options.heddle = P.mkOption {
-        type = P.mkOptionType {
-          name = "thread";
-          check = v: v != null;
-        };
+  threadDecl = P: {
+    options.heddle = P.mkOption {
+      type = P.mkOptionType {
+        name = "thread";
+        check = v: v != null;
       };
-    }
+    };
+  };
+  threadFx = a: b: P: [
+    (threadDecl P)
     {
       _file = "/demo/warp.nix";
       config.heddle = a;
@@ -97,6 +98,30 @@ let
     {
       _file = "/demo/weft.nix";
       config.heddle = b;
+    }
+  ];
+
+  # The same option, where the two files' definitions read the option's own value (`a` and `b` are
+  # functions of it) and a third file, selvage.nix, defines `c`.
+  threadReadFx = a: b: c: P: [
+    (threadDecl P)
+    (
+      { config, ... }:
+      {
+        _file = "/demo/warp.nix";
+        config.heddle = a config.heddle;
+      }
+    )
+    (
+      { config, ... }:
+      {
+        _file = "/demo/weft.nix";
+        config.heddle = b config.heddle;
+      }
+    )
+    {
+      _file = "/demo/selvage.nix";
+      config.heddle = c;
     }
   ];
 
@@ -431,6 +456,110 @@ in
         };
       };
     };
+    # ── decided PER KEY, where the key is read (den-hoag-11c5o) ──────────────────────────────────
+    # One key's definitions read another key of the same option. RED (the fold deciding every shared
+    # key before it returns the set): ☢, infinite recursion, uncatchable.
+    test-mkoptiontype-default-a-key-reading-a-sibling-key-serves = {
+      expr = bothCfg (threadReadFx (h: { a = h.b; }) (h: { a = h.b; }) { b = 1; }) "heddle";
+      expected = {
+        gen = {
+          a = 1;
+          b = 1;
+        };
+        nixpkgs = {
+          a = 1;
+          b = 1;
+        };
+      };
+    };
+    # A disagreement at `a` stops no read of another key, nor of the key set: each field reads the
+    # sibling `b`, or `attrNames`. RED (the same strict fold): ☢, every field refused, one a throw of
+    # the definitions' own `a`, one infinite recursion.
+    test-mkoptiontype-default-a-disagreement-refuses-only-its-own-key =
+      let
+        read = fx: f: {
+          gen = f (gmCfg fx).heddle;
+          nixpkgs = f (npCfg fx).heddle;
+        };
+        b = h: h.b;
+      in
+      {
+        expr = {
+          sibling = read (threadFx {
+            a = 1;
+            b = 0;
+          } { a = 2; }) b;
+          keys = read (threadFx {
+            a = 1;
+            b = 0;
+          } { a = 2; }) builtins.attrNames;
+          throwingSibling = read (threadFx {
+            a = throw "parity-surface: the disagreeing key was forced";
+            b = 1;
+          } { a = throw "parity-surface: the disagreeing key was forced"; }) b;
+          functionSibling = read (threadFx {
+            a = y: y;
+            b = 3;
+          } { a = y: y; }) b;
+          readingSibling = read (threadReadFx (h: { a = h.b; }) (_: { a = 2; }) { b = 1; }) b;
+        };
+        expected = {
+          sibling = {
+            gen = 0;
+            nixpkgs = 0;
+          };
+          keys = {
+            gen = [
+              "a"
+              "b"
+            ];
+            nixpkgs = [
+              "a"
+              "b"
+            ];
+          };
+          throwingSibling = {
+            gen = 1;
+            nixpkgs = 1;
+          };
+          functionSibling = {
+            gen = 3;
+            nixpkgs = 3;
+          };
+          readingSibling = {
+            gen = 1;
+            nixpkgs = 1;
+          };
+        };
+      };
+    # Two structurally equal CYCLIC values at `a` (README "Known byte-mode boundaries"): Nix `==` does
+    # not terminate on them, and that is now confined to a read of `a`. RED (the same strict fold): ☢,
+    # stack overflow, uncatchable.
+    test-mkoptiontype-default-a-cyclic-shared-key-does-not-stop-a-sibling = {
+      expr =
+        let
+          cyc =
+            _:
+            let
+              r = {
+                s = r;
+                n = 1;
+              };
+            in
+            r;
+        in
+        builtins.mapAttrs (_: h: h.b) (
+          bothCfg (threadFx {
+            a = cyc 0;
+            b = 1;
+          } { a = cyc 1; }) "heddle"
+        );
+      expected = {
+        gen = 1;
+        nixpkgs = 1;
+      };
+    };
+
     # Equal ints pass through in both laws, so this cell is green at 6a508e3 by design; it fences
     # the change from over-reaching. RED driven with a planted default that refuses every int.
     test-mkoptiontype-default-equal-ints-pass = {

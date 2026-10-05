@@ -3392,13 +3392,28 @@ let
   # here and not at a caller, because every key of a union reaches this binding at the `withArgs`
   # relation (lib/types.nix `mkSubmodule`), and without the guard `[ v ] == head cells` forces a
   # single definer's value on Nix and Determinate and not on Lix. Its two callers are
-  # `sharedKeyDiffers` below and that relation; the core export says why they share it.
+  # `unionAgreeing` below and that relation; the core export says why they share it.
   slotsDiffer =
     vs:
     let
       cells = map (v: [ v ]) vs;
     in
     length vs > 1 && !all (c: c == head cells) cells;
+
+  # The union of several attrset definitions, nixpkgs' `//` fold over them, with each shared key's
+  # agreement (`slotsDiffer`) decided INSIDE that key's own value. The key set is the union's; reading
+  # one key never forces another key's `==`, so a key that reads a sibling of the same option serves
+  # as nixpkgs serves it, and a disagreement is refused where its key is read. `refusal k vs` is the
+  # caller's text for key `k`, whose definers' values are `vs`. The price of the placement: with every
+  # value forced, about one thunk and two calls per key over a fold that decides every shared key
+  # before returning the set; a read of the key set or of one sibling pays no other key's `==`.
+  unionAgreeing =
+    refusal: defs:
+    let
+      merged = foldl' (res: d: res // d.value) { } defs;
+      slots = builtins.zipAttrsWith (_: vs: vs) (map (d: d.value) defs);
+    in
+    builtins.mapAttrs (k: v: if slotsDiffer slots.${k} then throw (refusal k slots.${k}) else v) merged;
 
   # The CONSTRUCTOR'S default: the fold a `mkOptionType` descriptor stating no fold receives, as
   # nixpkgs' `mkOptionType` takes `merge ? mergeDefaultOption` (lib/interface.nix `importDescriptor`
@@ -3412,21 +3427,25 @@ let
   #     Functors are functions here as in the law above; the conflict text renders one as `<a set>`.
   # The price, stated with the ruling: a nixpkgs module relying on silent last-wins attrset merging
   # under a check-only type is refused here. The exported law keeps both arms, because its ruled
-  # caller (gen-aspects' freeform arm) is not this one.
+  # caller (gen-aspects' freeform arm) is not this one. A disagreement is refused at the key's own
+  # path (`unionAgreeing`), so a key whose definitions read a sibling of the same option serves as
+  # nixpkgs does; deciding every key before returning the set would recurse uncatchably there.
   mergeDescriptorDefault =
     loc: defs:
     let
       list = map (d: d.value) defs;
-      # Compare each definer's OWN value slot. `==`'s identity short-circuit (the Nix manual's
-      # "Value identity optimization") compares value SLOTS on upstream Nix and Determinate and
-      # object identity on Lix, so comparing fresh copies (`v == head vs`) would refuse one bound
-      # function on the first two and keep it on Lix. A singleton list keeps its element's slot
-      # (`head` is a primop, whose result is a copy), so the three agree wherever the definitions
-      # hold one value in one slot. The split that remains is stated in the README.
-      sharedKeyDiffers = any slotsDiffer (builtins.attrValues (builtins.zipAttrsWith (_: vs: vs) list));
     in
-    if length list > 1 && (all prelude.isFunction list || (all isAttrs list && sharedKeyDiffers)) then
+    if length list > 1 && all prelude.isFunction list then
       throw (showConflict loc defs)
+    # Attrsets fold by `unionAgreeing`, so a disagreement is refused at its key, by the one conflict
+    # text at that key's path, naming the files that set it.
+    else if length list > 1 && all isAttrs list then
+      unionAgreeing (
+        k: _:
+        showConflict (loc ++ [ k ]) (
+          map (d: d // { value = d.value.${k}; }) (filter (d: d.value ? ${k}) defs)
+        )
+      ) defs
     else
       mergeDefaultOption loc defs;
 
@@ -4403,7 +4422,7 @@ let
               else
                 # `baseArgs` is the RIGHT operand, so a formal it holds (specialArgs, `config`,
                 # `options`, `prefix`) binds to `baseArgs`' OWN attribute: every module sees one value
-                # slot and `==` answers alike on the three evaluators (see `sharedKeyDiffers`). This
+                # slot and `==` answers alike on the three evaluators (see `slotsDiffer`). This
                 # departs from nixpkgs' `applyModuleArgs`, which copies every formal: `[ fa ] == box`
                 # reads true on every evaluator here. The answer is `baseArgs // extra //
                 # intersectAttrs formals baseArgs` with the middle set elided, at no thunk and no
@@ -5675,10 +5694,13 @@ in
     # binding is what keeps the vocabulary's answer and the engine's from drifting apart. Internal
     # seam only — the public `lib/default.nix` surface is unchanged.
     mergeLeaf
-    # The shared-key "differ" notion, exported for the same reason: `mergeDescriptorDefault`'s
-    # shared keys and the `withArgs` relation's base arguments (lib/types.nix `mkSubmodule`) ask
-    # one question, and one binding keeps the two answers from drifting apart.
+    # The shared-key "differ" notion, exported for the same reason: `unionAgreeing`'s shared keys
+    # and the `withArgs` relation's base arguments (lib/types.nix `mkSubmodule`) ask one question,
+    # and one binding keeps the two answers from drifting apart.
     slotsDiffer
+    # The per-key union both attrset folds return: `mergeDescriptorDefault` here and the `attrs`
+    # type (lib/types.nix). They differ only in the refusal text, which each passes in.
+    unionAgreeing
     isDefinedValue
     isDefinedBy
     # The shape-directed default-merge law (nixpkgs `lib.mergeDefaultOption` parity) — an INTERIM

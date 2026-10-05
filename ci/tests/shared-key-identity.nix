@@ -1,5 +1,6 @@
 # ONE ANSWER PER INPUT ACROSS NIX, DETERMINATE AND LIX at a check-only `mkOptionType`'s shared-key
-# `==` (lib/modules.nix `sharedKeyDiffers`, and `callM`'s binding of a `baseArgs` formal).
+# `==` (lib/modules.nix `slotsDiffer` through `unionAgreeing`, and `callM`'s binding of a `baseArgs`
+# formal). The fold decides a shared key where that key is read, so every observer reads the key `a`.
 #
 # `==`'s identity short-circuit (the Nix manual's "Value identity optimization") compares value
 # SLOTS on upstream Nix and Determinate and object identity on Lix. So one function, or one value
@@ -14,8 +15,10 @@
 #
 # RED, evaluated: cells 1, 6 and 7 at gen-merge ef21648 (the named refusal on Nix and Determinate);
 # cell 2 there (the foreign throw on Nix and Determinate); cells 6 and 7 again with only the
-# `sharedKeyDiffers` edit (no `callM` edit). Cells 5 and 8 with a fold that calls every shared function
-# equal (false on Nix and Determinate) and with one that refuses every function (false on Lix).
+# fold's shared-key edit (no `callM` edit). Cells 5 and 8 with a fold that calls every shared function
+# equal (false on Nix and Determinate) and with one that refuses every function (false on Lix). Cells 1,
+# 2, 6 and 7 with a fold that refuses every shared key (`unionAgreeing`'s test replaced by
+# `length slots.${k} > 1`): refused at `heddle.a`, ×3; observing only `attrNames`, they read true there.
 {
   evalRequest,
   genMerge,
@@ -64,8 +67,10 @@ let
       a = bigArg;
     };
   };
-  keptKeys = v: builtins.attrNames v;
-  accepted = v: (builtins.tryEval (builtins.typeOf v)).success;
+  # Both observers read the shared key `a` itself: the fold decides a key where it is read, so the
+  # key set alone (`attrNames`) is served whatever `a` decides.
+  keptAt = v: builtins.typeOf v.a;
+  accepted = v: (builtins.tryEval (builtins.typeOf v.a)).success;
   # the observers: each evaluator's own `==` on the input's shape, with no gen-merge in it
   lb = {
     id = x: x;
@@ -78,13 +83,13 @@ in
   flake.tests.shared-key-identity = {
     # 1. One bound function written at each site: one slot, kept ×3.
     test-a-function-bound-once-at-a-shared-key-is-kept = {
-      expr = keptKeys (pair { a = f; } { a = f; });
-      expected = [ "a" ];
+      expr = keptAt (pair { a = f; } { a = f; });
+      expected = "lambda";
     };
     # 2. One bound value with a throwing attribute: one slot, so `==` never descends into it. Kept ×3.
     test-one-value-with-a-throwing-attribute-bound-once-is-kept = {
-      expr = keptKeys (pair { a = big; } { a = big; });
-      expected = [ "a" ];
+      expr = keptAt (pair { a = big; } { a = big; });
+      expected = "set";
     };
     # 5. The stated split, user-made copies: a selection written at each site is a fresh slot per site.
     # Nix and Determinate refuse, Lix keeps; each answers as its own `==` on `{ a = s.id; }` twice.
@@ -94,23 +99,23 @@ in
     };
     # 6. A `specialArgs` formal binds to `baseArgs`' own slot, so two modules reading it agree ×3.
     test-a-function-passed-as-a-special-arg-is-kept = {
-      expr = keptKeys (
+      expr = keptAt (
         heddleOf { specialArgs.fa = f; } [
           (modFa "/demo/warp.nix")
           (modFa "/demo/weft.nix")
         ]
       );
-      expected = [ "a" ];
+      expected = "lambda";
     };
     # 7. The same for a value with a throwing attribute (the nixpkgs `pkgs` stand-in).
     test-a-value-with-a-throwing-attribute-passed-as-a-special-arg-is-kept = {
-      expr = keptKeys (
+      expr = keptAt (
         heddleOf { specialArgs.bigArg = big; } [
           (modBig "/demo/warp.nix")
           (modBig "/demo/weft.nix")
         ]
       );
-      expected = [ "a" ];
+      expected = "set";
     };
     # 8. THE CHOSEN RESIDUE. A `_module.args` formal is copied per module application, so each module
     # holds its own slot: Nix and Determinate refuse, Lix keeps, each as its own `==` on `callM`'s
