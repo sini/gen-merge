@@ -1733,13 +1733,16 @@ release-parity ruling, where nixpkgs serves:
 
 **A record built through gen-merge's own `mkOptionType` is mounted the same way** (den-hoag-6yfat). Its
 author stated its fold apart from its rebuild, as a foreign author does, so where the descriptor states a
-module set and no `verify` and is not ad-hoc checked, `importType` marks it (`substructure.mount`, a
+module set and is not ad-hoc checked, `importType` marks it (`substructure.mount`, a
 presence datum pending the owner's reading of whether it is a published field) and the root fix-up mounts
 it, alone or under gen's `listOf`, `attrsOf`, `lazyAttrsOf` and `nullOr`, each of which forwards its
 element's mount through its own `recarry`. The record's own `check` rides on the mount, built from the
 record handed in. The mark is re-tested where it is read (`crossedRoot`), so a marked record passed
 through the door again with a `verify`, overridden `// { check }`, or given `getSubModules = null` is
-judged as it now stands, not as it first crossed. Gen's own constructors state their fold and rebuild
+judged as it now stands, not as it first crossed: a record stating `verify` is never mounted while it
+states it, and a copy that drops it is mounted as nixpkgs mounts the same copy. The walk to a crossed
+element takes the type walk's fuel and answers no at exhaustion, so a cycle through containers alone is
+served as before. Gen's own constructors state their fold and rebuild
 together and are never marked; a door record whose fold is its rebuild's serves what it served before.
 
 **The prices, stated.** A hand-rolled position the declarations do not show whose evaluation of the
