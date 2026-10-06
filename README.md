@@ -1233,6 +1233,16 @@ refuses it by name there too, a deliberate departure from a silent answer. An ad
 non-v2 submodule-bearing type (`deferredModule`, `attrTag`, `functionTo`, `uniq`) cannot be told from
 the one its constructor shipped, and is applied.
 
+**An exported gen type answers nixpkgs' `merge.v2` too**, as nixpkgs' own `either`, `nullOr` and
+`addCheck` do: `merge` is `{ __functor; v2; }`, the functor calling the fold directly, and `check`
+carries `isV2MergeCoherent = true`, without which nixpkgs' `checkV2MergeCoherence` refuses the mount.
+The `headError` is the published `check` over each definition (nixpkgs' `Definition values:` form,
+naming files), then the type's head judgement. So a nixpkgs union holding a gen type takes its next
+member where gen's own fold would refuse the definitions whole: `lib.types.either (either int str) x`
+over `1` and `"s"` gives `x`'s value under `lib.evalModules`, as the all-nixpkgs composition does
+(den-hoag-c2z7q, `ci/tests/nixpkgs-protocol.nix`). Under v2 nixpkgs applies only the `headError`, so
+its pointwise half is what keeps a gen leaf checked there.
+
 **A foreign type used as the `freeformType` is merged by its raw `merge`**, as nixpkgs' freeform site
 merges it (`freeformType.merge prefix defs`): no `check`, no coherence guard, no `headError` apply
 there. The keys it owns are still checked by that merge. A record that crossed `mkOptionType` has lost
@@ -1252,10 +1262,15 @@ gen-merge: option `x' has definitions no single `either' member accepts
 ```
 
 Picking from the first definition instead handed the rest to a member that could not consume them.
-`oneOf` is left-nested `either`, as nixpkgs folds it, and inherits the rule. A member that is
-itself an `either` accepts when every definition passes its check and its own choice takes them,
-as nixpkgs' `either` takes a member whose merge reports no head error, and a refusal names every
-leaf member with the files it rejected.
+`oneOf` is left-nested `either`, as nixpkgs folds it, and inherits the rule. A member accepts when
+every definition passes its check and its **head judgement** takes them whole, as nixpkgs' `either`
+takes a member whose merge reports no head error. The judgement is published beside the fold, as
+`mergeDefs.headJudge` (`null` when the type takes the definitions whole, else why not): an
+`either`'s is its own choice, a `nullOr`'s is its split (null beside a value is refused, a set with
+no null is its element's to judge), and a derivation or a refinement of either carries it with the
+fold. A foreign member is judged by its own `merge.v2` `headError`; every other member judges no
+further than its check (den-hoag-e6m9d). A refusal walks every member whose judgement refused and
+names each leaf member with the files it rejected, the later members included.
 
 A definition set that merged before merges to the same value: the member selected from the first
 definition *is* the member that accepts them all whenever one does. **The refusal reaches every

@@ -2745,6 +2745,171 @@ in
         };
       };
 
+    # den-hoag-c2z7q: a gen type inside a nixpkgs reader of `merge.v2`, under nixpkgs'
+    # `lib.evalModules`, gives the all-nixpkgs composition's value. Each reader (`either`, `oneOf`,
+    # `addCheck` and `coercedTo` in an `either`, `nullOr` in an `either`, the option itself, a
+    # `listOf`) holds the gen member and, on the expected side, its nixpkgs twin, over the definition
+    # sets that member is read with. `int` over `"s"` is the planted pointwise violation: under v2
+    # nixpkgs reads only the `headError`, so a headError without the pointwise check serves `"s"`.
+    test-a-gen-type-in-a-nixpkgs-v2-reader-gives-nixpkgs-value =
+      let
+        np = nixpkgsLib.types;
+        tag =
+          T: n: p:
+          T.mkOptionType {
+            name = n;
+            check = p;
+            merge = _: _: n;
+          };
+        family = T: {
+          eitherIS = T.either (tag T "mI" builtins.isInt) (tag T "mS" builtins.isString);
+          nullInt = T.nullOr T.int;
+          oneOfIS = T.oneOf [
+            (tag T "mI" builtins.isInt)
+            (tag T "mS" builtins.isString)
+          ];
+          attrsInt = T.attrsOf T.int;
+          int = T.int;
+        };
+        all = tag np "mAll" (_: true);
+        readers = {
+          eitherFirst = m: np.either m all;
+          oneOfFirst =
+            m:
+            np.oneOf [
+              m
+              np.bool
+              all
+            ];
+          nullOrInEither = m: np.either (np.nullOr m) all;
+          addCheckInEither = m: np.either (np.addCheck m (_: true)) all;
+          coercedFinalInEither = m: np.either (np.coercedTo np.float toString m) all;
+          topLevel = m: m;
+          listElem = m: np.listOf m;
+        };
+        sets = {
+          mixedIS = [
+            1
+            "s"
+          ];
+          mixedNull = [
+            null
+            5
+          ];
+          homInt = [
+            1
+            1
+          ];
+          bad = [ "s" ];
+          attrsMixed = [
+            { a = 1; }
+            { a = "s"; }
+          ];
+        };
+        pairs = {
+          eitherIS = [
+            "mixedIS"
+            "homInt"
+          ];
+          oneOfIS = [ "mixedIS" ];
+          nullInt = [
+            "mixedNull"
+            "homInt"
+          ];
+          attrsInt = [ "attrsMixed" ];
+          int = [ "bad" ];
+        };
+        run =
+          ty: d:
+          let
+            v =
+              (nixpkgsLib.evalModules {
+                modules = [ { options.x = nixpkgsLib.mkOption { type = ty; }; } ] ++ map (v: { x = v; }) d;
+              }).config.x;
+            r = builtins.tryEval (builtins.deepSeq v v);
+          in
+          if r.success then r.value else "REFUSED";
+        census =
+          F:
+          builtins.mapAttrs (
+            r: reader:
+            builtins.mapAttrs (
+              m: ss:
+              nixpkgsLib.genAttrs ss (
+                s: run (reader (F.${m})) (if r == "listElem" then [ sets.${s} ] else sets.${s})
+              )
+            ) pairs
+          ) readers;
+      in
+      {
+        expr = census (family gmT);
+        expected = census (family np);
+      };
+    # Its live control: the census reads nixpkgs' later member, its refusal and the gen member's own
+    # value, so the cell above is not all one answer.
+    test-control-the-v2-reader-census-reads-distinct-answers = {
+      expr =
+        let
+          np = nixpkgsLib.types;
+          all = np.mkOptionType {
+            name = "mAll";
+            check = _: true;
+            merge = _: _: "mAll";
+          };
+          read =
+            ty: d:
+            let
+              r = builtins.tryEval (
+                (nixpkgsLib.evalModules {
+                  modules = [ { options.x = nixpkgsLib.mkOption { type = ty; }; } ] ++ map (v: { x = v; }) d;
+                }).config.x
+              );
+            in
+            if r.success then r.value else "REFUSED";
+        in
+        {
+          later = read (np.either (gmT.either gmT.int gmT.str) all) [
+            1
+            "s"
+          ];
+          own = read (np.either (gmT.either gmT.int gmT.str) all) [
+            1
+            1
+          ];
+          refused = read gmT.int [ "s" ];
+          nullBeside = read (np.either (gmT.nullOr gmT.int) all) [
+            null
+            5
+          ];
+        };
+      expected = {
+        later = "mAll";
+        own = 1;
+        refused = "REFUSED";
+        nullBeside = "mAll";
+      };
+    };
+    # The export answers nixpkgs' v2 protocol: a `merge.v2` beside the callable fold, and a `check`
+    # stating it is the coherent one, without which nixpkgs' `checkV2MergeCoherence` refuses every
+    # mount.
+    test-an-exported-type-answers-merge-v2-with-a-coherent-check = {
+      expr =
+        builtins.mapAttrs
+          (_: t: {
+            v2 = t.merge ? v2;
+            coherent = t.check.isV2MergeCoherent or false;
+          })
+          {
+            inherit (gmT) int str;
+            either = gmT.either gmT.int gmT.str;
+            nullOr = gmT.nullOr gmT.int;
+            attrsOf = gmT.attrsOf gmT.int;
+          };
+      expected = nixpkgsLib.genAttrs [ "int" "str" "either" "nullOr" "attrsOf" ] (_: {
+        v2 = true;
+        coherent = true;
+      });
+    };
     # A published option record reads as its path in a string, as nixpkgs' does
     # (`"${options.path.to.it}"`, nixpkgs' `__toString = _: showOption loc`).
     test-a-published-option-record-coerces-to-its-path =

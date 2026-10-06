@@ -179,11 +179,15 @@ let
     t:
     let
       own = t.witnessedCheck (_: true);
-      # `exportType`'s spelling, restated: `witnessRecord`'s one record under both fields.
+      # `exportType`'s spelling, restated: `witnessRecord`'s one record, extended by the v2
+      # coherence key, under both fields.
       record = t.witnessRecord (_: true);
+      exported = record // {
+        isV2MergeCoherent = true;
+      };
       spelled = {
-        check = record;
-        _checkWitness = record;
+        check = exported;
+        _checkWitness = exported;
       };
       # The inline test, spelled as the sites spell it: positively, and as `isValid` asks it.
       inline = r: r ? _checkWitness && r ? check && r.check != r._checkWitness;
