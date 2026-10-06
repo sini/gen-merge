@@ -77,6 +77,10 @@ let
   // mB;
   fA = ./_fixtures/decl-address-a.nix;
   fB = ./_fixtures/decl-address-b.nix;
+  # The same module as a path value and as a string carrying context (`"${input}/modules/x.nix"`).
+  ctxFile = builtins.toFile "decl-address-ctx.nix" ''{ config.xs = [ { tag = "p"; } ]; }'';
+  ctxStr = "${ctxFile}";
+  ctxPath = /. + builtins.unsafeDiscardStringContext ctxStr;
   ord = c: {
     config.xs = gm.mkMerge [
       (gm.mkIf c [ { tag = "r"; } ])
@@ -164,6 +168,27 @@ in
             ]
           ]
         ];
+        anchor = true;
+      };
+    };
+    # A string module path carrying context (the common `"${input}/modules/x.nix"`) is the same
+    # address as its path value, and the address holds no context, so it renders as an id.
+    test-string-with-context-path-is-the-path-value = {
+      expr =
+        let
+          str = seenOf "p" (evList E [ ctxStr ]);
+          pv = seenOf "p" (evList E [ ctxPath ]);
+        in
+        {
+          same = str == pv;
+          bare = builtins.getContext (builtins.toJSON str) == { };
+          anchor =
+            (builtins.head (builtins.head (builtins.head str)))
+            == "k${builtins.unsafeDiscardStringContext ctxStr}";
+        };
+      expected = {
+        same = true;
+        bare = true;
         anchor = true;
       };
     };
