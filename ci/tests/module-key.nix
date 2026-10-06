@@ -1,6 +1,7 @@
 # `_module.<x>` — THE VALUES (den-hoag-lnleu). nixpkgs declares four `_module` options; this engine
-# reads `args` and `freeformType`, takes `check` and `specialArgs` at `evalModuleTree`'s door, and
-# meets every other sub-key in the realizer as an ordinary config path (`moduleDefOf`). Its refusals
+# reads `args` and `freeformType`, takes `specialArgs` at `evalModuleTree`'s door, honours `check` as
+# the option it is, at this level only, and meets every other sub-key in the realizer as an ordinary
+# config path (`moduleDefOf`). Its refusals
 # are `ci/tests-error.nix`'s `refusal-messages` group; here, what a `freeformType` absorbs, what a
 # declared `options._module.<x>` merges, that warm agrees with cold, and the controls that read the
 # same before and after. Each expected value is nixpkgs' on the same input.
@@ -48,6 +49,22 @@ let
       }
     ]).n.k.v;
   names = modules: builtins.attrNames (cfgOf modules);
+  # An evaluation beside an undeclared `y`: what it reports, and what its `config` carries.
+  checkRead =
+    args: modules:
+    let
+      r = evalModuleTree args (
+        [
+          decl
+          { y = 1; }
+        ]
+        ++ modules
+      );
+    in
+    {
+      und = map (u: u.path) r.undeclared;
+      names = builtins.attrNames r.config;
+    };
 
   # V7, V8: a base evaluation, the same set plus one edited module warm from it, and the cold control.
   warmCold =
@@ -184,6 +201,132 @@ in
       };
     };
 
+    # `_module.check` IS HONOURED AT THIS LEVEL ONLY (H′). It is an option of the evaluation's own
+    # `_module` group: a module's value merges with priorities over the door's `mkDefault`, decides
+    # this level's refusal of an undeclared key, and a nested tree keeps the door's strictness
+    # (`test-a-lax-nested-tree-is-still-refused-by-a-strict-parent`). Each value is nixpkgs'.
+    test-a-module-check-false-lists-an-undeclared-key = {
+      expr = checkRead { } [ { config._module.check = false; } ];
+      expected = {
+        und = [ [ "y" ] ];
+        names = [ "x" ];
+      };
+    };
+    test-a-shorthand-module-check-false-lists-an-undeclared-key = {
+      expr = checkRead { } [ { _module.check = false; } ];
+      expected = {
+        und = [ [ "y" ] ];
+        names = [ "x" ];
+      };
+    };
+    test-a-forced-module-check-false-lists-an-undeclared-key = {
+      expr = checkRead { } [ { config._module.check = gm.mkForce false; } ];
+      expected = {
+        und = [ [ "y" ] ];
+        names = [ "x" ];
+      };
+    };
+    test-a-module-check-under-mkif-false-changes-nothing = {
+      expr = names [
+        decl
+        { config._module = gm.mkIf false { check = false; }; }
+      ];
+      expected = [ "x" ];
+    };
+    # computed from `config`: modules read this level's unchecked merge, so the read is no cycle
+    test-a-module-check-computed-from-config-lists-an-undeclared-key = {
+      expr = checkRead { } [
+        { options.flag = mkOption { default = false; }; }
+        ({ config, ... }: { config._module.check = config.flag; })
+      ];
+      expected = {
+        und = [ [ "y" ] ];
+        names = [
+          "flag"
+          "x"
+        ];
+      };
+    };
+    # the door's `check` is a `mkDefault`, so a weaker module definition yields to it
+    test-a-module-check-weaker-than-the-callers-yields-to-it = {
+      expr = checkRead { check = false; } [ { config._module.check = gm.mkOverride 1200 true; } ];
+      expected = {
+        und = [ [ "y" ] ];
+        names = [ "x" ];
+      };
+    };
+    # a check computed from a lax nested tree's value, under a caller's `false`: a value, the nested
+    # finding reported
+    test-a-module-check-from-a-lax-nested-value-under-a-caller-false-reports-it = {
+      expr =
+        map (u: u.path)
+          (evalModuleTree { check = false; } [
+            decl
+            {
+              options.nest = mkOption {
+                type = (evalModuleTree { check = false; } [ { options.a = mkOption { type = t.str; }; } ]).type;
+              };
+              config.nest = {
+                a = "declared";
+                z = "dropped";
+              };
+            }
+            ({ config, ... }: { config._module.check = config.nest.a == "declared"; })
+          ]).undeclared;
+      expected = [
+        [
+          "nest"
+          "z"
+        ]
+      ];
+    };
+    # Both engines honour it, so it is no lint finding. Live control, same instrument: `mkAfter`.
+    test-a-module-check-is-not-a-lint-finding = {
+      expr = {
+        check = gm.lint [
+          decl
+          { config._module.check = false; }
+        ];
+        control = builtins.length (
+          gm.lint [
+            decl
+            { config.x = gm.mkAfter "a"; }
+          ]
+        );
+      };
+      expected = {
+        check = [ ];
+        control = 1;
+      };
+    };
+    # An edited `_module.check` refuses warm: the prior's `config` carries the prior's refusal, so a
+    # reused leaf would refuse here where cold lists `y`.
+    test-warm-is-refused-when-an-edited-module-sets-check = {
+      expr =
+        let
+          base = [
+            decl
+            { y = 1; }
+            (reader (c: c.x))
+          ];
+          edit = {
+            config._module.check = false;
+          };
+          warm = evalModuleTree {
+            warmFrom = evalModuleTree { } base;
+            editedModules = [ edit ];
+          } (base ++ [ edit ]);
+        in
+        {
+          r = warm.config.r;
+          inherit (warm.warmDecision) mode reason;
+        };
+      expected = {
+        r = "dflt";
+        mode = "cold";
+        reason = "_module.check on an edited module (warm refused)";
+      };
+    };
     # CONTROLS: what reads the same before and after.
     test-control-module-args-read = {
       expr =

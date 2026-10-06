@@ -683,13 +683,13 @@ let
       nests = {
         modules = mods;
         specialArgs = args;
-        check = true;
+        check = null;
         coreShortCircuit = false;
         entry = d: head (defsAsModules true [ d ]);
         empty = {
           prefix = [ ];
           specialArgs = args;
-          check = true;
+          check = null;
         };
         calledMode = {
           carried = true;
@@ -838,7 +838,7 @@ let
                 modules = mods ++ [ namePlaceholder ];
                 inherit prefix;
                 specialArgs = args;
-                check = true;
+                check = null;
               }).options;
             modules = mods;
             # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT

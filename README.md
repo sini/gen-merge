@@ -2298,14 +2298,25 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   the value a foreign leaf gives at this site (`ci/tests/undeclared.nix` cell 22). Whether the
   plane should discharge or refuse such properties is an open design question.
 
-- **A module's `_module.check` is refused by presence; nixpkgs honours it.** nixpkgs declares four
-  `_module` options. gen-merge reads `args` and `freeformType` itself and takes `check` and
-  `specialArgs` at `evalModuleTree`'s door, so a module defining either is refused by name, any
-  value, `mkIf false` included:
-  `` gen-merge: `_module.check' is not read from a module: pass it as `evalModuleTree { check = …; }'; defined in <file> ``.
-  The refusal fires before the realizer, so it is what an undeclared sibling meets first. Whether to
-  honour the option as nixpkgs does is an open design question.
-  `_module.specialArgs` is refused the same way (`… is set by the caller, never by a module …`):
+- **A module's `_module.check` is honoured at its own level only; nixpkgs' reaches nested trees
+  too.** nixpkgs declares four `_module` options. gen-merge reads `args` and `freeformType` itself
+  and declares `check` per evaluation as the `bool` option it is (default `true`), so a module's
+  definition merges with priorities, a conflicting pair is refused by `bool`'s merge, and
+  `evalModuleTree { check = …; }`, when passed, enters as one `mkDefault` definition, as nixpkgs'
+  deprecated `check` argument does. The merged value decides whether this evaluation refuses an
+  undeclared key, and a module reads it back as `config._module.check`. Modules receive this level's
+  merge before its refusal, as nixpkgs hands them its unchecked fixpoint, so a `check` computed from
+  `config` is no cycle. The departure: a nested tree inherits the door's strictness, never the
+  module-computed one. nixpkgs' `.type` carries no strictness, while this engine refuses a lax
+  child's undeclared key under a strict parent
+  (`test-a-lax-nested-tree-is-still-refused-by-a-strict-parent`), and keying that on a value
+  computed from `config` cycles uncatchably where the parent's check reads the child's value. So
+  under a module's `false` a lax child's key is still refused by its owner, and under a module's
+  `true` with a caller `false` it is reported on `.undeclared`, where nixpkgs drops both. A
+  `submodule` value's own `_module.check = false` drops its undeclared key silently, as nixpkgs
+  does, where a named refusal is owed. Warm
+  re-evaluation is refused when an edited module defines `_module.check`.
+  `_module.specialArgs` is refused by presence (`… is set by the caller, never by a module …`):
   nixpkgs drops a module's definition silently, and a silent drop is not a value. A non-attrset
   `_module` is refused (`` `_module' must be an attribute set, and this one is <type>; defined in <file> ``),
   as nixpkgs refuses it. Every other `_module.<x>` is an ordinary config path, as in nixpkgs: refused
