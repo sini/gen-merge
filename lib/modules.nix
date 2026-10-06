@@ -2117,12 +2117,6 @@ let
       ) editedEntries;
       reuseAllFreeform = freeContribs == [ ] && !editedFreeformType;
       disabledRefusal = prelude.any (e: e.content ? disabledModules) editedEntries;
-      # An edited `_module.check` changes this evaluation's refusal of an undeclared key while the
-      # prior's `config` carries the prior's (the `strict` key's reason), so reuse is refused. Only
-      # edited entries are read: `inert` forces classification, never a base module's `config`.
-      checkRefusal = prelude.any (
-        e: (pushDownProperties ((pushDownProperties (configOf e))._module or { })) ? check
-      ) editedEntries;
 
       # ── bipartite contribution relation (design spec §2.1) — the FACT gen-memo decides over ──────
       # Nodes: one per dirty/edited ENTRY (`"entry:<n>"` — cannot collide with a JSON array string,
@@ -2164,7 +2158,6 @@ let
         freeContribs
         reuseAllFreeform
         disabledRefusal
-        checkRefusal
         ;
       # `identitiesHeld` is the plane's THIRD decision (see gen-memo `lib/warm.nix`): given the two
       # per-instance identity maps this engine builds from `warmFrom.config` and the new `config`, it
@@ -4821,14 +4814,13 @@ let
             warmFrom != null
             && warmFrom.warmDecision.strict or null == strict
             && !decision.disabledRefusal
-            && !decision.checkRefusal
             && !origin.collision;
           warmCtx =
             if warmActive then
               {
                 active = true;
                 inherit (decision) isClean;
-                prevConfig = warmFrom.config;
+                prevConfig = warmFrom.warmDecision.uncheckedConfig;
                 prevProv = warmFrom.provenance;
                 # The prior eval's OWN undeclared report, read by `mergeTree`'s reused leaf only when
                 # the leaf's type carries `mergeDefs.reported` (see there). Its paths are absolute, the
@@ -5375,8 +5367,10 @@ let
           # `reused`/`remerged` are O(declared-locs) SPINE-forcing when read (they enumerate the loc
           # partition — never leaf values). Cold (`warmFrom == null`, a prior whose `strict` is not
           # this evaluation's, or a disabledModules refusal) ⇒ nothing spliced ⇒ `reused = [ ]`,
-          # `remerged = { }`, with the cold `reason` stated. `strict` is the effective strictness this
-          # result was evaluated under, which the next warm admission reads.
+          # `remerged = { }`, with the cold `reason` stated. `strict` is the door-keyed strictness this
+          # result was evaluated under, which the next warm admission reads (the effective check can differ).
+          # `uncheckedConfig` is the config before its refusal, which a warm evaluation reads for a reused
+          # leaf and the identity walk: a prior's refusal is never the next evaluation's.
           #
           # `mode` reports ADMISSION, not reuse: a warm run over a base with no clean module reads
           # "warm" and reuses nothing. `inert` says so at the cheap cost: `true` ⇔ warm was admitted
@@ -5410,13 +5404,11 @@ let
                   "check differs from warmFrom's (warm refused)"
                 else if decision.disabledRefusal then
                   "disabledModules on an edited module (warm refused)"
-                else if decision.checkRefusal then
-                  "_module.check on an edited module (warm refused)"
                 else if origin.collision then
                   "an edited module reaches a module node the base also reaches (warm refused)"
                 else
                   null;
-              inherit strict;
+              inherit strict uncheckedConfig;
               reused = if warmActive then map showOption reusableLeaves else [ ];
               remerged = if warmActive then remerged else { };
               inherit (decision) modules;
@@ -5671,7 +5663,7 @@ let
                   # Using `allOptions` for both would be wrong and silently so: a decl-side edit that
                   # ADDS an option is the discrimination the warm path exists to make, and one that
                   # REMOVES an option leaves the next tree under-describing the prior config.
-                  priorIdentities = identityMapOf warmFrom.options warmFrom.config;
+                  priorIdentities = identityMapOf warmFrom.options warmFrom.warmDecision.uncheckedConfig;
                   nextIdentities = identityMapOf allOptions config;
                 };
 
@@ -5736,7 +5728,7 @@ let
         # ── the refusal's ONE forcing site ────────────────────────────────────────────────────────
         # Interposed on the EXPORTED config, never on `result.config`. The two are the same value, and
         # the difference is who reads which: modules inside the fixpoint see `result.moduleConfig`,
-        # which is built FROM `result.config`, so seq-ing the identity verdict onto the inner binding
+        # which is built FROM the unchecked config, so seq-ing the identity verdict onto the inner binding
         # would make a module's ordinary `config.x` read force a walk over the config that read is
         # helping to produce — infinite recursion, not a refusal. Out here nothing in the fixpoint can
         # reach it, and every consumer of a warm re-compose goes through this attribute.

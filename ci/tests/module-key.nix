@@ -82,6 +82,39 @@ let
       cold = cold.config.r;
       mode = warm.warmDecision.mode;
     };
+  # The whole config, or REFUSED, under `tryEval`: a refusal is a value to compare, not an abort.
+  settled =
+    r:
+    let
+      v = builtins.tryEval (builtins.deepSeq r.config r.config);
+    in
+    if v.success then v.value else "REFUSED";
+  # Warm against cold over the whole config, refusals included, and whether warm reused anything.
+  warmEqCold =
+    base: edit:
+    let
+      warm = evalModuleTree {
+        warmFrom = evalModuleTree { } base;
+        editedModules = [ edit ];
+      } (base ++ [ edit ]);
+      cold = evalModuleTree { } (base ++ [ edit ]);
+    in
+    {
+      equal = settled warm == settled cold;
+      inherit (warm.warmDecision) mode;
+      reuses = warm.warmDecision.reused != [ ];
+    };
+  flagOpt = d: { options.flag = mkOption { default = d; }; };
+  fromFlag =
+    { config, ... }:
+    {
+      config._module.check = config.flag;
+    };
+  warmServed = {
+    equal = true;
+    mode = "warm";
+    reuses = true;
+  };
 in
 {
   flake.tests.module-key = {
@@ -299,33 +332,53 @@ in
         control = 1;
       };
     };
-    # An edited `_module.check` refuses warm: the prior's `config` carries the prior's refusal, so a
-    # reused leaf would refuse here where cold lists `y`.
-    test-warm-is-refused-when-an-edited-module-sets-check = {
-      expr =
-        let
-          base = [
-            decl
-            { y = 1; }
-            (reader (c: c.x))
-          ];
-          edit = {
-            config._module.check = false;
-          };
-          warm = evalModuleTree {
-            warmFrom = evalModuleTree { } base;
-            editedModules = [ edit ];
-          } (base ++ [ edit ]);
-        in
-        {
-          r = warm.config.r;
-          inherit (warm.warmDecision) mode reason;
-        };
-      expected = {
-        r = "dflt";
-        mode = "cold";
-        reason = "_module.check on an edited module (warm refused)";
-      };
+    # Warm reads a reused leaf from the prior's UNCHECKED config, so a prior's refusal is not the
+    # next evaluation's: each arm below is served warm (`mode` "warm", `reused` non-empty) and equals
+    # cold, the refusal included. `declares` and `freeform` carry no `_module.check` at all: the edit
+    # dissolves the prior's refusal of `y`.
+    test-warm-equals-cold-when-an-edited-module-sets-check = {
+      expr = warmEqCold [
+        decl
+        { y = 1; }
+        (reader (c: c.x))
+      ] { config._module.check = false; };
+      expected = warmServed;
+    };
+    test-warm-equals-cold-when-an-edit-relaxes-a-computed-check = {
+      expr = warmEqCold [
+        decl
+        (flagOpt true)
+        fromFlag
+        { y = 1; }
+        (reader (c: c.x))
+      ] { config.flag = false; };
+      expected = warmServed;
+    };
+    test-warm-equals-cold-when-an-edit-tightens-a-computed-check = {
+      expr = warmEqCold [
+        decl
+        (flagOpt false)
+        fromFlag
+        { y = 1; }
+        (reader (c: c.x))
+      ] { config.flag = true; };
+      expected = warmServed;
+    };
+    test-warm-equals-cold-when-an-edit-declares-the-refused-key = {
+      expr = warmEqCold [
+        decl
+        { y = 1; }
+        (reader (c: c.x))
+      ] { options.y = mkOption { }; };
+      expected = warmServed;
+    };
+    test-warm-equals-cold-when-an-edit-absorbs-the-refused-key-by-freeformtype = {
+      expr = warmEqCold [
+        decl
+        { y = 1; }
+        (reader (c: c.x))
+      ] { _module.freeformType = t.attrsOf t.int; };
+      expected = warmServed;
     };
     # CONTROLS: what reads the same before and after.
     test-control-module-args-read = {
