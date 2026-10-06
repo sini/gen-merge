@@ -92,6 +92,14 @@ let
   # The element type's own module declares an inner element, so every element holds one.
   Own = elemWith true [ { config.inner = [ { tag = "own"; } ]; } ];
   innerSeen = cfg: map (e: map (i: i.seen) e.inner) cfg.xs;
+  # The declaration-address tree's keys (den-hoag-mg94o): a node's entry sits at its host, group
+  # and key, so a sibling host, a sibling group sharing the key, and a deeper level never stand in.
+  withOpts = opts: mods: (gm.evalModuleTree { } ([ { options = opts; } ] ++ mods)).config;
+  listOpt = gm.mkOption {
+    type = t.listOf E;
+    default = [ ];
+  };
+  hostT = t.submodule { options.xs = listOpt; };
 in
 {
   flake.tests.declaration-address = {
@@ -300,6 +308,112 @@ in
               0
               "inner"
               0
+            ]
+          ]
+        ]
+      ];
+    };
+    # Two unflagged sibling hosts, each declared in its own module: each element's address runs
+    # through its own host, never the other's.
+    test-sibling-hosts-keep-their-own-addresses = {
+      expr =
+        builtins.mapAttrs (_: h: map (e: e.seen) h.xs)
+          (withOpts
+            {
+              hosts = gm.mkOption {
+                type = t.attrsOf hostT;
+                default = { };
+              };
+            }
+            [
+              { hosts.p.xs = [ { } ]; }
+              { hosts.q.xs = [ { } ]; }
+            ]
+          ).hosts;
+      expected = {
+        p = [
+          [
+            [
+              "a:1"
+              "hosts"
+              "p"
+              "xs"
+              0
+            ]
+          ]
+        ];
+        q = [
+          [
+            [
+              "a:2"
+              "hosts"
+              "q"
+              "xs"
+              0
+            ]
+          ]
+        ];
+      };
+    };
+    # Two root groups holding one key: the inner element of `xs`'s element 0 chains through it,
+    # never through `ys`'s element 0.
+    test-sibling-groups-sharing-a-key-keep-their-own-addresses = {
+      expr = innerSeen (
+        withOpts
+          {
+            xs = listOpt;
+            ys = listOpt;
+          }
+          [
+            {
+              xs = [ { inner = [ { tag = "i"; } ]; } ];
+              ys = [ { inner = [ { tag = "j"; } ]; } ];
+            }
+          ]
+      );
+      expected = [
+        [
+          [
+            [
+              "a:1"
+              "xs"
+              0
+              "imports"
+              0
+              "inner"
+              0
+            ]
+          ]
+        ]
+      ];
+    };
+    # Depth three: the address chains through every level, each read off its own host's groups. The
+    # root holds a second group, so a level read off the wrong host's groups reads a wrong address
+    # rather than overrunning a one-group list.
+    test-depth-three-chains-through-every-level = {
+      expr =
+        map (a: map (b: map (c: c.seen) b.inner) a.inner)
+          (withOpts {
+            xs = listOpt;
+            ys = listOpt;
+          } [ { xs = [ { inner = [ { inner = [ { tag = "deep"; } ]; } ]; } ]; } ]).xs;
+      expected = [
+        [
+          [
+            [
+              [
+                "a:1"
+                "xs"
+                0
+                "imports"
+                0
+                "inner"
+                0
+                "imports"
+                0
+                "inner"
+                0
+              ]
             ]
           ]
         ]
