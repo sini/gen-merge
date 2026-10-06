@@ -329,6 +329,66 @@ let
         D: D.either (np.addCheck (D.either (m D).i (m D).s) p) (m D).all;
       "either (addCheck i) all" = D: D.either (np.addCheck (m D).i p) (m D).all;
     };
+  # den-hoag-e6m9d: a first member that covers the definitions pointwise and refuses them whole,
+  # whatever built it — a derivation, nixpkgs' own `either`, a `nullOr` around a union, a derivation
+  # of that, and the same member second in a `oneOf` — over a mixed set and over null beside a value.
+  # Each row is spelled once per side (`g` gen's, `n` nixpkgs'), a derivation's nixpkgs twin being its
+  # base, and the gen rows' foreign `either` holds gen members as a mounted gen record does.
+  headRows =
+    let
+      g = mixedMembers gt;
+      n = mixedMembers np;
+      nullOrIS = D: m: D.nullOr (D.either m.i m.s);
+    in
+    {
+      derived = {
+        g = gt.either (gt.deriveType { } "d" (gt.either g.i g.s)) g.all;
+        n = np.either (np.either n.i n.s) n.all;
+      };
+      foreignEither = {
+        g = gt.either (np.either g.i g.s) g.all;
+        n = np.either (np.either n.i n.s) n.all;
+      };
+      nullOrEither = {
+        g = gt.either (nullOrIS gt g) g.all;
+        n = np.either (nullOrIS np n) n.all;
+      };
+      derivedNullOr = {
+        g = gt.either (gt.deriveType { } "dn" (nullOrIS gt g)) g.all;
+        n = np.either (nullOrIS np n) n.all;
+      };
+      nullOrSecond = {
+        g = gt.oneOf [
+          g.b
+          (nullOrIS gt g)
+          g.all
+        ];
+        n = np.oneOf [
+          n.b
+          (nullOrIS np n)
+          n.all
+        ];
+      };
+      nullOrInt = {
+        g = gt.either (gt.nullOr g.i) g.all;
+        n = np.either (np.nullOr n.i) n.all;
+      };
+    };
+  headSets = {
+    mixed = [
+      1
+      "s"
+    ];
+    nullMix = [
+      null
+      5
+    ];
+  };
+  headCells =
+    gen:
+    builtins.mapAttrs (
+      _: r: builtins.mapAttrs (_: vs: winnerOver vs gen (if gen then r.g else r.n)) headSets
+    ) headRows;
   memberOrders = with builtins; {
     "str,int,int" = [
       isString
@@ -530,6 +590,19 @@ in
         "either (either i s) all" = "mAll";
         "[i s b]" = "REFUSED";
       };
+    };
+    # den-hoag-e6m9d: a first member of any kind is asked for its HEAD JUDGEMENT, so one that takes
+    # the definitions pointwise and refuses them whole is passed over for the member that takes them,
+    # as nixpkgs' `either` passes over a member whose `merge.v2` reports a `headError`.
+    test-a-union-member-of-any-kind-is-passed-over-when-its-head-judgement-refuses = {
+      expr = headCells true;
+      expected = headCells false;
+    };
+    # Its live control: nixpkgs serves the later member on every cell, so no cell matches by both
+    # sides refusing.
+    test-control-the-head-rows-pick-the-later-member = {
+      expr = nl.unique (nl.concatMap builtins.attrValues (builtins.attrValues (headCells false)));
+      expected = [ "mAll" ];
     };
     test-control-the-member-orders-pick-distinct-winners = {
       expr = builtins.mapAttrs (_: p: winner np p) memberOrders;

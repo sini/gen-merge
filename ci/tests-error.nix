@@ -2213,6 +2213,50 @@ in
           msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`int' rejects b\\.nix; `string' rejects a\\.nix; `bool' rejects b\\.nix, a\\.nix\\)$";
         };
       };
+      # den-hoag-e6m9d: a member whose HEAD JUDGEMENT refuses is walked into through its judgement,
+      # whatever built it, so a `nullOr` around a union names the union's leaves, and the later member
+      # is named beside them. Thrown from the inner union, the refusal named `int' and `string' only.
+      test-a-refusal-walks-a-nullOr-member-and-names-the-later-member = {
+        expr =
+          builtins.deepSeq
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = t.either (t.nullOr (t.either t.int t.str)) t.bool; }; }
+              {
+                _file = "a.nix";
+                x = 1;
+              }
+              {
+                _file = "b.nix";
+                x = "s";
+              }
+            ]).config.x
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`int' rejects b\\.nix; `string' rejects a\\.nix; `bool' rejects b\\.nix, a\\.nix\\)$";
+        };
+      };
+      # Null beside a value: the `nullOr` member's own judgement is the text.
+      test-a-refusal-names-a-nullOr-member-holding-null-beside-a-value = {
+        expr =
+          builtins.deepSeq
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = t.either (t.nullOr t.int) t.bool; }; }
+              {
+                _file = "a.nix";
+                x = null;
+              }
+              {
+                _file = "b.nix";
+                x = 5;
+              }
+            ]).config.x
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' has definitions no single `either' member accepts \\(`nullOr' takes null beside a value \\(b\\.nix, a\\.nix\\); `bool' rejects b\\.nix, a\\.nix\\)$";
+        };
+      };
       # A refined `either` (nixpkgs' `addCheck`, which keeps the key and `choose`) whose own choice
       # takes the definitions and whose refinement rejects them is named WHOLE, with the files its
       # check rejects. Walked into, its `int' leaf would be named rejecting nothing.
@@ -2960,7 +3004,7 @@ in
                     type = "ThrownError";
                     msg =
                       if nullableOnly then
-                        "^A definition for option `s' is not of type `${nixpkgsLib.escapeRegex c.reference.description}'\\. Definition values:"
+                        "^A definition for option `s' is not of type `${nixpkgsLib.escapeRegex c.reference.description}'\\. TypeError: Definition values:"
                       else
                         riderRefusal (builtins.concatStringsSep "\\." (
                           [ "s" ] ++ builtins.concatMap segment parts

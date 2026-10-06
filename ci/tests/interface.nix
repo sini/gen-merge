@@ -389,7 +389,16 @@ in
     test-control-c2-poisoning-a-gen-source-does-detonate = {
       expr = {
         verifyPoisoned = caught ((ifc.exportType (probeGen // { verify = poison "verify"; })).check 3);
-        foldPoisoned = caught (ifc.exportType (probeGen // { mergeDefs = poison "mergeDefs"; })).merge;
+        foldPoisoned = caught (
+          (ifc.exportType (probeGen // { mergeDefs = poison "mergeDefs"; })).merge
+            [ "x" ]
+            [
+              {
+                file = "f";
+                value = 1;
+              }
+            ]
+        );
         emptyPoisoned =
           caught
             (ifc.exportType (probeGen // { whenEmpty = poison "whenEmpty"; })).emptyValue;

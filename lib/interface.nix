@@ -531,6 +531,40 @@ let
 
   importedDeprecation = t: t.deprecationMessage or null;
 
+  # A type's HEAD JUDGEMENT over a definition set (den-hoag-e6m9d): `null` when it takes them
+  # whole, else why not. It is what nixpkgs' `merge.v2` reports as `headError` beyond the pointwise
+  # check: a gen record states it beside its fold (`mergeDefs.headJudge`, published by the union
+  # constructors), a foreign v2 type answers through its own `headError`, and any other type judges
+  # no further than its definitions one by one.
+  importedHeadJudge =
+    t: loc: defs:
+    if t ? mergeDefs.headJudge then
+      t.mergeDefs.headJudge loc defs
+    else if !(t ? typeMergeRel) && isV2 t then
+      (v2Result (t.merge.v2 { inherit loc defs; })).headError.message or null
+    else
+      null;
+
+  # The `headError` an exported gen type answers through `merge.v2`: the published `check` over each
+  # definition, then the record's head judgement. Under v2, nixpkgs' `mergeDefinitions` reads only
+  # this, never `check`, so the pointwise half is what keeps a gen leaf verified there.
+  exportedHeadError =
+    t: check: loc: defs:
+    let
+      bad = filter (d: !(check d.value)) defs;
+      judged = t.mergeDefs.headJudge loc defs;
+    in
+    if bad != [ ] then
+      {
+        message = "Definition values: ${
+          concatStringsSep ", " (map (d: "`${toString (d.file or "<def>")}'") bad)
+        }";
+      }
+    else if t ? mergeDefs.headJudge && judged != null then
+      { message = judged; }
+    else
+      null;
+
   # The value predicate, as a gen-shaped one. A gen leaf's own `check` is CURRIED and must never be
   # applied as `v -> bool`, which is why `verify` is preferred rather than merely tried first.
   importedAdmits =
@@ -3170,15 +3204,21 @@ let
       # the witness (`rewritesCheck`). The pair is spelled here rather than taken from
       # `witnessedCheck`, whose two-field result every exported type would read or copy
       # (den-hoag-ydro3, owner-ruled arm (c)); `default.nix`'s agreement door holds this spelling to
-      # its output.
-      check = witnessRecord (
-        if t ? verify then
-          (v: t.verify v == null)
-        else if t ? admits then
-          t.admits
-        else
-          (_: true)
-      );
+      # its output. The record is extended by `isV2MergeCoherent`, because the export answers
+      # `merge.v2` (below) and nixpkgs' `checkV2MergeCoherence` refuses a v2 type whose `check` does
+      # not say it is the one its merge was built with (den-hoag-c2z7q).
+      check =
+        witnessRecord (
+          if t ? verify then
+            (v: t.verify v == null)
+          else if t ? admits then
+            t.admits
+          else
+            (_: true)
+        )
+        // {
+          isV2MergeCoherent = true;
+        };
       # The rebuild, built once by the same `witnessRecord` and published twice, as `substSubModules`
       # and as `_substSubModulesWitness`.
       rebuild = witnessRecord (
@@ -3290,7 +3330,26 @@ let
         # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
         # each element through its one `split`, so the forward mount keeps working without a third
         # fold form. Every other fold publishes as it did (`bridged`'s presence arm).
-        merge = if !(t ? mergeDefs) then leafFold else bridged t.mergeDefs;
+        #
+        # It answers nixpkgs' `merge.v2` too, as nixpkgs' own `either`, `nullOr` and `addCheck` do
+        # (den-hoag-c2z7q), so a nixpkgs union holding a gen type asks it for its `headError`
+        # (`exportedHeadError`) rather than judging it by `check` alone, and takes the next member
+        # where gen's own fold would refuse the definitions whole. The functor calls the fold
+        # directly, so a caller applying `merge` pays no judgement.
+        merge =
+          let
+            fold = if !(t ? mergeDefs) then leafFold else bridged t.mergeDefs;
+          in
+          {
+            __functor = _: fold;
+            v2 =
+              { loc, defs }:
+              {
+                headError = exportedHeadError t check loc defs;
+                value = fold loc defs;
+                valueMeta = { };
+              };
+          };
         # A nesting type's empty value is its tree over no definitions, through the same bridge: its
         # called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
         emptyValue =
@@ -3362,6 +3421,7 @@ let
 in
 {
   inherit
+    importedHeadJudge
     admitsCarried
     checkedFold
     closuresFirst

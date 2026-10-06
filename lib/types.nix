@@ -1353,10 +1353,26 @@ let
         };
         admits = v: v == null || isValid element v;
         inherit split;
-        # One fold over its element's, called or threaded (den-hoag-n6dh7 item 5).
+        # One fold over its element's, called or threaded (den-hoag-n6dh7 item 5), and the HEAD
+        # JUDGEMENT beside it (den-hoag-e6m9d): its own split's answer, so a union holding it asks
+        # what this fold would do with the definitions whole. All null is taken (the fold serves
+        # null), null beside a value is refused, and a set with no null is the element's to judge.
         mergeDefs = {
           __functor = _: called;
           threaded = ev: foldWith (threadElement ev);
+          headJudge =
+            loc: defs:
+            let
+              elements = split loc defs;
+            in
+            if elements == [ ] then
+              null
+            else if (head elements).type == null then
+              "`nullOr' takes null beside a value (${
+                concatStringsSep ", " (map (d: toString (d.file or "<def>")) defs)
+              })"
+            else
+              interface.importedHeadJudge element loc defs;
         };
       }
     );
@@ -1393,20 +1409,20 @@ let
       # nothing to place and nothing to refuse, and the member decides only which empty value the
       # fold goes on to ask for.
       #
-      # A member accepts when every definition passes its `isValid` and, when it is itself an
-      # `either`, its own choice is non-null, as nixpkgs' `either` takes `t1` only when `t1`'s whole
-      # merge reports no `headError`. Asked pointwise only, `either a b` admits `{ 1, "s" }` over
-      # `int` and `str` and is chosen, then refuses inside, and a later member that takes the set
-      # whole is never asked. `oneOf` folds LEFT, so every `oneOf` of three or more members has such
-      # a member first. The pointwise conjunct stays for a refined `either` (nixpkgs' `addCheck`
-      # keeps the record's key and `choose`), whose `headError` is its base's or else the added
-      # check's. Only this constructor's own `either` is asked for its choice: a `null` from it IS
-      # its refusal, which another union's `choose` does not promise (gen-aspects' unions answer
-      # some definitions themselves, with no member).
+      # A member accepts when every definition passes its `isValid` and its HEAD JUDGEMENT takes
+      # them whole (`interface.importedHeadJudge`), as nixpkgs' `either` takes `t1` only when `t1`'s
+      # whole merge reports no `headError`. Asked pointwise only, `either a b` admits `{ 1, "s" }`
+      # over `int` and `str` and is chosen, then refuses inside, and a later member that takes the
+      # set whole is never asked. `oneOf` folds LEFT, so every `oneOf` of three or more members has
+      # such a member first. The judgement is the member's own published answer (`either`'s and
+      # `nullOr`'s `mergeDefs.headJudge`, which a derivation and a refinement carry with the fold),
+      # or a foreign member's own `merge.v2` `headError`, so no constructor is recognised by name
+      # (den-hoag-e6m9d). The pointwise conjunct stays for a refined member (nixpkgs' `addCheck`
+      # keeps the record's fold), whose `headError` is its base's or else the added check's.
       choose =
         loc: defs:
         let
-          accepts = t: all (d: isValid t d.value) defs && (!isEither t || t.choose loc defs != null);
+          accepts = t: all (d: isValid t d.value) defs && interface.importedHeadJudge t loc defs == null;
         in
         if defs == [ ] then
           b
@@ -1428,23 +1444,14 @@ let
         foldE: loc: defs:
         let
           e = head (split loc defs);
-          # Per LEAF member, through every nested `either` whose own choice refused, the
-          # definitions IT could not take. No list is empty at the refusal — a leaf rejecting nothing
-          # would have been chosen, and so would every `either` above it — and between them they name
-          # every member and every definition the author has to reconcile, which is more than the one
-          # pair the interpreter would have collided on.
-          leaves =
-            t:
-            if isEither t && t.choose loc defs == null then concatMap leaves t.carries.alternatives else [ t ];
-          rejects = t: map (d: toString (d.file or "<def>")) (filter (d: !(isValid t d.value)) defs);
-          rejected = t: "`${nameOf t}' rejects ${concatStringsSep ", " (rejects t)}";
         in
         if e.type == null then
-          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (${
-            concatStringsSep "; " (map rejected (leaves a ++ leaves b))
-          })"
+          throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (${refusal loc defs})"
         else
           foldE e;
+      # Why neither member takes the definitions, member by member (`memberRefusal`): the head
+      # judgement this union publishes when it refuses, and the text its own fold throws.
+      refusal = loc: defs: "${memberRefusal loc defs a}; ${memberRefusal loc defs b}";
       called = foldWith foldElement;
     in
     defineType (
@@ -1501,16 +1508,36 @@ let
         # anything (`raw`, `anything`, and a consumer type declaring so on purpose) still does, and is
         # still chosen first.
         inherit choose split;
-        # One fold over its chosen member's, called or threaded (den-hoag-n6dh7 item 5).
+        # One fold over its chosen member's, called or threaded (den-hoag-n6dh7 item 5), and the HEAD
+        # JUDGEMENT beside it (den-hoag-e6m9d): its own choice, so a union holding this one in first
+        # position asks it as nixpkgs' `either` asks a member for its `headError`.
         mergeDefs = {
           __functor = _: called;
           threaded = ev: foldWith (threadElement ev);
+          headJudge = loc: defs: if choose loc defs != null then null else refusal loc defs;
         };
       }
     );
 
-  # A member `either`'s `choose` answers for it (`either`, above): this constructor's own, by its key.
-  isEither = t: isAttrs t && t ? choose && keyOf t == "either";
+  # Why a union member does not take the definitions, for the union's refusal. A member publishing
+  # a head judgement that refuses answers with the judgement's own text, so the refusal descends
+  # through every nested union to the LEAF members and the definitions each could not take; no list
+  # is empty, since a member rejecting nothing whose judgement takes the set would have been chosen.
+  # Between them the leaves name every member and every definition the author has to reconcile,
+  # which is more than the one pair the interpreter would have collided on. A foreign member's own
+  # `headError` is read last, after the definitions it rejects one by one.
+  memberRefusal =
+    loc: defs: t:
+    let
+      judged = interface.importedHeadJudge t loc defs;
+      rejects = filter (d: !(isValid t d.value)) defs;
+    in
+    if t ? mergeDefs.headJudge && judged != null then
+      judged
+    else if rejects != [ ] then
+      "`${nameOf t}' rejects ${concatStringsSep ", " (map (d: toString (d.file or "<def>")) rejects)}"
+    else
+      "`${nameOf t}' refuses them whole: ${judged}";
 
   # oneOf [t1 t2 …] — n-ary either, nested to the LEFT as nixpkgs' `foldl' either` nests it, so
   # `oneOf [ a b c ]` IS `either (either a b) c`: its `nestedTypes`, its docs phrase and its merge
