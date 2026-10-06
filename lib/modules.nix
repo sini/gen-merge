@@ -1536,12 +1536,18 @@ let
   # groups, and an anonymous spelling reads back as its importer's spelling and `<n>` (digits after
   # the last `:`). So it is a bijection with the minted ids within one tree, and `moduleNodeId` is the
   # map, applied by the family alone (`moduleFamily`).
+  #
+  # THE SPELLING IS CONTEXT-FREE, deliberately. A string path `"${input}/modules/x.nix"` carries the
+  # context of the store path it names, and a key is an identity (it becomes an attribute name and an
+  # id segment, both of which refuse a context-carrying string uncatchably). Discarding it is sound
+  # here because the context only records that the key's text names a store path the key already
+  # holds as text: the spelling is the path, the same as the equivalent path value's `toString`.
   moduleKeyOf =
     importer: i: m0: m:
     if builtins.isPath m0 || isPathString m0 then
-      "k" + toString (m.key or m0)
+      "k" + builtins.unsafeDiscardStringContext (toString (m.key or m0))
     else if isAttrs m && m ? key then
-      "k" + toString m.key
+      "k" + builtins.unsafeDiscardStringContext (toString m.key)
     else
       "a" + importer.key + ":" + toString i;
   moduleIdOf =
