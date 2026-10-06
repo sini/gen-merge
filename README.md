@@ -846,8 +846,8 @@ which Nix `==` cannot compare totally (key a derivation by plain data).
 **Identity.** A derivation never inherits its base's mint. With no `mint` it is minted per
 component through gen-types' identity half: the `id` and the `key` inert, the base by its mark (or
 sealed, where it carries none or a wrapper rewrote its `check`), so `deriveType (listOf t) { … }` is
-one type wherever it is built over one `t`, and `__id` refuses by name only where the base hands up
-a sealed component. A caller that passes a `mint` keeps that meaning and owes a preimage covering
+one type wherever it is built over one `t`, and gen-types' `idOf` refuses by name only where the
+base hands up a sealed component. A caller that passes a `mint` keeps that meaning and owes a preimage covering
 the `id`, the `key` and the base's identity; one that omits the `key` mints two different
 derivations as one.
 

@@ -6269,7 +6269,6 @@ in
                   "functor"
                   "typeMerge"
                   "__mint"
-                  "__id"
                 ]
                 // {
                   verify = v: if (v.x or 0) > 5 then null else "x must exceed 5";
@@ -6329,7 +6328,6 @@ in
                   "functor"
                   "typeMerge"
                   "__mint"
-                  "__id"
                 ]
                 // {
                   verify = v: if builtins.isAttrs v && (v.x or 0) > 5 then null else "x must exceed 5";
@@ -7718,9 +7716,9 @@ in
         };
         # A caller-passed sealed `mint` keeps its meaning (den-hoag-6orb8 U2.3).
         test-a-sealed-derivation-answers-no-identity = {
-          expr =
-            force
-              (derive t.str (
+          expr = force (
+            genTypes.idOf (
+              derive t.str (
                 tagged
                 // {
                   mint.unmintable = {
@@ -7728,20 +7726,22 @@ in
                     reason = "sealed by its caller";
                   };
                 }
-              )).__id;
-          expectedError = refusal "^gen-merge: the derivation `tagged' of `string' is sealed: it states no minted identity, so it has none to answer with \\(pass `mint' to `deriveType'\\)$";
+              )
+            )
+          );
+          expectedError = refusal "^identity: type 'string' has no identity to demand: sealed by its caller$";
         };
         # With no `mint` a derivation is minted per component, so a base carrying a sealed component
         # hands it up, and demanding the identity is gen-types' named refusal.
         test-a-derivation-over-a-sealed-base-answers-no-identity = {
-          expr = force (derive (t.typedef "even" (v: builtins.isInt v)) tagged).__id;
+          expr = force (genTypes.idOf (derive (t.typedef "even" (v: builtins.isInt v)) tagged));
           expectedError = refusal "^identity: type 'even' has sealed component\\(s\\) 'members\\.0' \\(a caller-supplied lambda, a registered construction, or a type with no minted identity\\), which its mark is blind to: it is decided by `typeEq` and has no identity to demand$";
         };
         # A composite over a FOREIGN element (a nixpkgs type, which carries no mint) holds that element
-        # sealed, so a deep force of the type record, which demands `__id`, is gen-types' named refusal
-        # (ADR-0034) and not a forced record (den-hoag-6orb8 U2, gate P4).
-        test-a-composite-over-a-foreign-element-deep-forced-names-its-sealed-element = {
-          expr = builtins.deepSeq (t.listOf nixpkgsLib.types.str) null;
+        # sealed, so demanding its identity is gen-types' named refusal (ADR-0034), while a deep force
+        # of the record itself is total (den-hoag-6orb8 U2 gate P4; A1).
+        test-a-composite-over-a-foreign-element-demanded-names-its-sealed-element = {
+          expr = genTypes.idOf (t.listOf nixpkgsLib.types.str);
           expectedError = refusal "^identity: type 'listOf' has sealed component\\(s\\) 'members\\.0' \\(a caller-supplied lambda, a registered construction, or a type with no minted identity\\), which its mark is blind to: it is decided by `typeEq` and has no identity to demand$";
         };
         test-a-derivation-declared-beside-its-base-names-the-pair = {

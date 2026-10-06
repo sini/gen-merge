@@ -228,7 +228,6 @@ let
     ];
     identity = [
       "__mint"
-      "__id"
       "__okAt"
       "__payload"
       "__sealed"

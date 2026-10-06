@@ -233,7 +233,6 @@ let
       t
       // {
         __mint = ids.__mint;
-        __id = ids.__id;
         __payload = ids.__payload;
         __sealed = ids.__sealed;
         ${if members == [ ] then null else "__okAt"} = ids.__okAt;
@@ -416,10 +415,12 @@ let
       sealed = {
         unmintable = {
           ctor = id;
-          reason = "a derivation states no minted identity; demand `__id` for its named refusal";
+          reason = "the derivation `${id}' of `${nameOf base}' states no minted identity (pass `mint' to `deriveType')";
         };
       };
       # A caller's mint keeps its meaning; with none the derivation is identified per component.
+      # `__sealed` is TOTAL on both arms: a caller's mint claims an identity over the whole
+      # derivation, so it states no sealed component, and gen-types' `idOf` reads it directly.
       callerMint = spec ? mint || !(types ? mkIdentity && types ? typeEq);
       mint = spec.mint or sealed;
       identify =
@@ -428,11 +429,7 @@ let
           r
           // {
             __mint = mint;
-            __id =
-              if mint ? minted then
-                mint.minted
-              else
-                throw "gen-merge: the derivation `${id}' of `${nameOf base}' is sealed: it states no minted identity, so it has none to answer with (pass `mint' to `deriveType')";
+            __sealed = { };
           }
         else
           identified "deriveType" [ base ] (tags: {

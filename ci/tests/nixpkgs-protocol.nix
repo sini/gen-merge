@@ -63,7 +63,7 @@ let
   #
   # ★ THE BASE IS EXACTLY THE FOREIGN PROTOCOL, PARTITIONED BY VOCABULARY RATHER THAN BY WHERE A KEY
   # WAS FIRST PINNED. For the three classes built from an INJECTED gen-types leaf, the completed
-  # record ALSO carries that library's own fields — `__id`, `__mint`, `__name`, `verify` — which are
+  # record ALSO carries that library's own fields — `__mint`, `__name`, `__sealed`, `verify` — which are
   # not protocol names at all: they ride onto the gen record through the import environment's
   # passthrough (`lib/interface.nix` `importType` removes the protocol names and the marker, and
   # carries everything else across untouched) and out again on the export. A gen-types field appearing
@@ -105,12 +105,11 @@ let
   substrateKeys =
     let
       # A leaf brings a domain predicate and nothing else; its substructure and empty answer are the
-      # leaf ones, stated rather than inherited. `__id`/`__mint`/`__name`/`__nameWithin`/`__payload`/
+      # leaf ones, stated rather than inherited. `__mint`/`__name`/`__nameWithin`/`__payload`/
       # `__sealed`/`verify` are gen-types' own fields riding the import-environment passthrough (see the header comment
       # above) — substrate, not foreign protocol, so they belong here rather than in
       # `completedKeysBefore`.
       leaf = [
-        "__id"
         "__mint"
         "__name"
         "__nameWithin"
@@ -130,7 +129,6 @@ let
       # exported identity half (`mkIdentity`), and the completion stamp's slot. `__okAt` rides only
       # a composite with a type member, so `submodule` (whose module set is sealed) has none.
       minted = [
-        "__id"
         "__mint"
         "__payload"
         "__sealed"

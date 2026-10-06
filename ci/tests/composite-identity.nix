@@ -21,43 +21,34 @@ let
     evalModules: mkOption: tys: vals:
     let
       p =
-        (evalModules {
-          modules = map (ty: { options.p = mkOption { type = ty; }; }) tys ++ map (v: { p = v; }) vals;
-        }).config.p;
+        (evalModules (map (ty: { options.p = mkOption { type = ty; }; }) tys ++ map (v: { p = v; }) vals))
+        .config.p;
       r = tryEval (deepSeq p p);
     in
     if r.success then r.value else "REFUSED";
-  ev = evWith gm.evalModuleTree gm.mkOption;
+  ev = evWith (gm.evalModuleTree { }) gm.mkOption;
   # the same shape under nixpkgs `lib.evalModules`, the reference a redeclaration's value is held to
-  evN = evWith nixpkgsLib.evalModules nixpkgsLib.mkOption;
+  evN = evWith (modules: nixpkgsLib.evalModules { inherit modules; }) nixpkgsLib.mkOption;
   via =
     ty: v:
-    (gm.evalModuleTree {
-      modules = [
-        { options.k = gm.mkOption { type = ty; }; }
-        { config.k = v; }
-      ];
-    }).config.k;
+    (gm.evalModuleTree { } [
+      { options.k = gm.mkOption { type = ty; }; }
+      { config.k = v; }
+    ]).config.k;
   anyTwice =
     a: b:
     let
       k =
-        (gm.evalModuleTree {
-          modules = [
-            { options.k = gm.mkOption { type = t.anything; }; }
-            { config.k = a; }
-            { config.k = b; }
-          ];
-        }).config.k.description;
+        (gm.evalModuleTree { } [
+          { options.k = gm.mkOption { type = t.anything; }; }
+          { config.k = a; }
+          { config.k = b; }
+        ]).config.k.description;
       r = tryEval (deepSeq k k);
     in
     if r.success then r.value else "REFUSED";
   minted = ty: (ty.__mint.minted or null) != null;
-  spoolOf =
-    e:
-    gm.deriveType (t.listOf e) {
-      id = "spoolOf";
-    };
+  spoolOf = e: gm.deriveType { } "spoolOf" (t.listOf e);
   subA = t.submodule {
     options.a = gm.mkOption {
       type = t.int;
@@ -314,5 +305,51 @@ in
         noMint = "list of signed integer";
       };
     };
+    # ★ den-hoag-6orb8 A1: A COMPOSITE'S RECORD IS TOTAL UNDER `deepSeq`. The identity fields carry no
+    # `__id`, so a composite over a sealed member (`raw`, a foreign element, a caller lambda) deep-forces
+    # where it threw under U2, and the demand is gen-types' `idOf`, which still refuses it by name. A
+    # caller-minted derivation states `__sealed` (total on every producer), so `idOf` answers its mint.
+    # Reds on a producer that carries the retired field again, or a derivation arm without `__sealed`.
+    test-a-composite-record-is-total-under-deepSeq =
+      let
+        shapes = {
+          listOfRaw = t.listOf t.raw;
+          attrsOfRaw = t.attrsOf t.raw;
+          lazyAttrsOfRaw = t.lazyAttrsOf t.raw;
+          nullOrRaw = t.nullOr t.raw;
+          eitherRawInt = t.either t.raw t.int;
+          listOfForeign = t.listOf np.str;
+          listOfTypedef = t.listOf (t.typedef "port" (v: v > 0));
+          derived = gm.deriveType { } "spool" (t.listOf t.raw);
+          optionRecord = gm.mkOption { type = t.lazyAttrsOf t.raw; };
+        };
+        callerMinted = gm.deriveType { mint.minted = "spool-over-str"; } "spool" t.str;
+      in
+      {
+        expr = {
+          carriesNoId = builtins.all (v: !(v ? __id)) (builtins.attrValues shapes);
+          deepForces = builtins.mapAttrs (_: v: (tryEval (deepSeq v true)).success) shapes;
+          demandRefuses = (tryEval (genTypes.idOf shapes.listOfRaw)).success;
+          callerMintAnswers = genTypes.idOf callerMinted;
+          callerMintSealed = callerMinted.__sealed;
+        };
+        expected = {
+          carriesNoId = true;
+          deepForces = {
+            listOfRaw = true;
+            attrsOfRaw = true;
+            lazyAttrsOfRaw = true;
+            nullOrRaw = true;
+            eitherRawInt = true;
+            listOfForeign = true;
+            listOfTypedef = true;
+            derived = true;
+            optionRecord = true;
+          };
+          demandRefuses = false;
+          callerMintAnswers = "spool-over-str";
+          callerMintSealed = { };
+        };
+      };
   };
 }

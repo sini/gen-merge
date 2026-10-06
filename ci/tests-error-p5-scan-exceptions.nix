@@ -161,7 +161,6 @@ in
   "test-types-op-oneOf-on-int" = class.list;
   "test-types-op-oneOf-on-null" = class.list;
   "test-types-op-oneOf-on-str" = class.list;
-  "test-types-op-strict-on-fn" = class.unprefixed;
   "test-types-op-submodule-on-attrs" = class.unprefixed;
   "test-types-op-tuple-on-attrs" = class.assertion;
   "test-types-op-tuple-on-bool" = class.assertion;

@@ -290,7 +290,7 @@ in
       expr = {
         base = genTypes.typeEq minted t.str;
         self = genTypes.typeEq minted minted;
-        id = minted.__id;
+        id = genTypes.idOf minted;
       };
       expected = {
         base = false;

@@ -348,7 +348,7 @@ let
   # arguments — rather than its name, and `typeEq`/`conservativeEq` (gen-types `lib/default.nix`)
   # dispatches on that mint via the tagged `__mint` sum. Two claims this relation used to make are
   # retired by it, and one is not:
-  #   · "gen-types' `__id` is NAME-only" — false: `enum "e" [ "a" ]` and `enum "e" [ "b" ]` now mint
+  #   · "gen-types' identity is NAME-only" — false: `enum "e" [ "a" ]` and `enum "e" [ "b" ]` now mint
   #     apart, and `struct "s"` over different fields does too.
   #   · "value equality is pointer-based over the closures (two identical constructions compare
   #     UNEQUAL)" — false for a MINTED family: two separately-built `enum "e" [ "a" "b" ]`s mint the
