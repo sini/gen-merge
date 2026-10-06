@@ -2315,8 +2315,11 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   under a module's `false` a lax child's key is still refused by its owner, and under a module's
   `true` with a caller `false` it is reported on `.undeclared`, where nixpkgs drops both. A
   `submodule` value's own `_module.check = false` drops its undeclared key silently, as nixpkgs
-  does, where a named refusal is owed. Warm
-  re-evaluation is refused when an edited module defines `_module.check`.
+  does, where a named refusal is owed. That is the non-leaf branch: a `submodule`-typed
+  `options._module` leaf plus a module's `_module.check` is refused by name
+  (`` The option `_module.check' does not exist ``) where nixpkgs serves. Warm re-evaluation is served
+  and equals cold: a reused leaf and the prior's identity walk read the prior's unchecked config
+  (`warmDecision.uncheckedConfig`), so a prior's refusal is never this evaluation's.
   `_module.specialArgs` is refused by presence (`… is set by the caller, never by a module …`):
   nixpkgs drops a module's definition silently, and a silent drop is not a value. A non-attrset
   `_module` is refused (`` `_module' must be an attribute set, and this one is <type>; defined in <file> ``),
