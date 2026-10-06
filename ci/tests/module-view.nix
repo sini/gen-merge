@@ -112,6 +112,14 @@ in
       expr = rootRead { check = false; } (c: c._module.check) [ ];
       expected = false;
     };
+    test-check-reads-a-modules-false = {
+      expr = rootRead { } (c: c._module.check) [ { config._module.check = false; } ];
+      expected = false;
+    };
+    test-check-reads-a-modules-true-over-the-callers-false = {
+      expr = rootRead { check = false; } (c: c._module.check) [ { config._module.check = true; } ];
+      expected = true;
+    };
     test-a-nested-child-check-is-its-own-not-the-callers = {
       expr = childRead { check = false; } t.submodule (c: c._module.check);
       expected = true;

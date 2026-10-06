@@ -489,9 +489,6 @@ let
   orphanMsg =
     p: file: rest:
     "^The option `${p}' does not exist\\. Definition values:\n- In `${file}'${nixpkgsLib.escapeRegex rest}$";
-  checkMsg =
-    file:
-    "^gen-merge: `_module\\.check' is not read from a module: pass it as `evalModuleTree \\{ check = …; }'; defined in ${file}$";
   specialArgsMsg =
     file:
     "^gen-merge: `_module\\.specialArgs' is set by the caller, never by a module: pass it as `evalModuleTree \\{ specialArgs = …; }'; defined in ${file}$";
@@ -810,11 +807,8 @@ in
           msg = "^gen-merge: the option `_module' has conflicting definitions:\n- In `/g/B2\\.nix': <a set>\n- In `/g/B1\\.nix': <a set>$";
         };
       };
-      # THE ENGINE'S OWN `_module` INPUTS A MODULE MAY NOT SET, refused by presence naming the file.
-      # `specialArgs` and `check` come through `evalModuleTree`'s door; nixpkgs is silent on a module's
-      # `specialArgs` and honours its `check`, which this engine does not read (Q1 decides). The
-      # `check` refusal fires before the realizer, so it is what an undeclared sibling meets first, and
-      # it fires under `mkIf false` too, as `disabledModules` does.
+      # THE ENGINE'S OWN `_module` INPUT A MODULE MAY NOT SET, refused by presence naming the file.
+      # `specialArgs` comes through `evalModuleTree`'s door, and nixpkgs is silent on a module's.
       test-module-special-args-refused-by-name = {
         expr = realize { modules = moduleKey "/g/S.nix" { config._module.specialArgs.z = 1; }; };
         expectedError = {
@@ -829,29 +823,71 @@ in
           msg = nonAttrModuleMsg "/g/N\\.nix";
         };
       };
-      test-module-check-refused-by-presence = {
-        expr = realize { modules = moduleKey "/g/C.nix" { config._module.check = false; }; };
+      # A MODULE'S `_module.check` IS THE OPTION IT IS IN nixpkgs, honoured at this level only (H′;
+      # the values are `./tests/module-key.nix`). Its refusals are nixpkgs': a conflicting pair is
+      # refused by `bool`'s merge, the door's `check` is a `mkDefault` a module's `mkDefault` conflicts
+      # with, and a module's `true` under a caller's `false` refuses an undeclared sibling. A check
+      # computed from a lax nested tree's value leaves that tree's strictness on the door's, so its
+      # finding is refused by its owner, never an infinite recursion.
+      test-module-check-conflicting-pair-refused-by-the-bool-merge = {
+        expr = realize {
+          modules = moduleKey "/g/C.nix" { config._module.check = true; } ++ [
+            {
+              _file = "/g/E.nix";
+              config._module.check = false;
+            }
+          ];
+        };
         expectedError = {
           type = "ThrownError";
-          msg = checkMsg "/g/C\\.nix";
+          msg = "^gen-merge: the option `_module\\.check' has conflicting definitions:\n- In `/g/E\\.nix': false\n- In `/g/C\\.nix': true$";
         };
       };
-      test-module-check-refused-before-an-undeclared-sibling = {
+      test-module-check-true-under-a-caller-false-refuses-an-undeclared-sibling = {
         expr = realize {
-          modules = moduleKey "/g/C.nix" { config._module.check = false; } ++ [ { y = 1; } ];
+          check = false;
+          modules = moduleKey "/g/C.nix" { config._module.check = true; } ++ [
+            {
+              _file = "/g/U.nix";
+              y = 1;
+            }
+          ];
         };
         expectedError = {
           type = "ThrownError";
-          msg = checkMsg "/g/C\\.nix";
+          msg = orphanMsg "y" "/g/U.nix" ": 1\n\nDid you mean `x'?";
         };
       };
-      test-module-check-under-mkif-false-refused-by-presence = {
+      test-module-check-mkdefault-conflicts-with-the-callers-check = {
         expr = realize {
-          modules = moduleKey "/g/C.nix" { config._module = gm.mkIf false { check = false; }; };
+          check = false;
+          modules = moduleKey "/g/C.nix" { config._module.check = gm.mkDefault true; };
         };
         expectedError = {
           type = "ThrownError";
-          msg = checkMsg "/g/C\\.nix";
+          msg = "^gen-merge: the option `_module\\.check' has conflicting definitions:\n- In `/g/C\\.nix': true\n- In `<gen-merge: evalModuleTree \\{ check }>': false$";
+        };
+      };
+      test-module-check-from-a-lax-nested-value-refused-by-its-owner = {
+        expr = realize {
+          modules = [
+            {
+              options.x = gm.mkOption { default = "dflt"; };
+              options.nest = gm.mkOption { type = laxNest; };
+            }
+            laxNestDef
+            (
+              { config, ... }:
+              {
+                _file = "/g/C.nix";
+                config._module.check = config.nest.a == "declared";
+              }
+            )
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `nest\\.z' is not declared by the nested tree that owns it$";
         };
       };
       # `_module` DECLARED AS ONE OPTION would swallow every `_module.<x>` and see the engine's own
@@ -1051,15 +1087,6 @@ in
         expectedError = {
           type = "ThrownError";
           msg = nonAttrModuleMsg "/real/L\\.nix";
-        };
-      };
-      test-module-check-refused-by-lint = {
-        expr = withControl (viaLint readerC0) [ ] (viaLint {
-          config._module.check = false;
-        });
-        expectedError = {
-          type = "ThrownError";
-          msg = checkMsg "/real/L\\.nix";
         };
       };
       # A NESTED TREE'S FINDING IS REFUSED BY NAME UNDER A `freeformType` TOO. `nest.z` has an

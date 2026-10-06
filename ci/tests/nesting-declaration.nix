@@ -762,7 +762,7 @@ in
       };
       expected = {
         prefix = [ ];
-        check = true;
+        check = null;
         name = false;
         treePrefix = [ ];
       };

@@ -1088,9 +1088,11 @@ let
       m;
   optionsOf = m: m.options or { };
   # nixpkgs' `internalModule` declares four `_module` options. This engine reads `args` and
-  # `freeformType` itself and takes `check` and `specialArgs` at its door, so a module defining one
-  # of the door pair is refused by name. Every other `_module` sub-key stays a config path, met by
-  # the realizer like any other: a declared one merges, an undeclared one is unmatched.
+  # `freeformType` itself and takes `specialArgs` at its door, so a module defining `specialArgs` is
+  # refused by name. `check` is the option it is in nixpkgs, declared per evaluation, so a module
+  # defining it is merged with the door's `mkDefault` and honoured at this level only. Every other
+  # `_module` sub-key stays a config path, met by the realizer like any other: a declared one
+  # merges, an undeclared one is unmatched.
   moduleOwnKeys = [
     "args"
     "freeformType"
@@ -1304,17 +1306,22 @@ let
     file: attrs:
     if !(attrs ? _module) then attrs else moduleRest file attrs (pushDownProperties attrs._module);
   moduleRest =
+    let
+      # the two keys this engine reads itself; `check` stays a config path (`moduleOwnKeys`)
+      readKeys = [
+        "args"
+        "freeformType"
+      ];
+    in
     file: attrs: m:
     if !isAttrs m then
       throw "gen-merge: `_module' must be an attribute set, and this one is ${builtins.typeOf m}; defined in ${file}"
     else if m ? specialArgs then
       throw "gen-merge: `_module.specialArgs' is set by the caller, never by a module: pass it as `evalModuleTree { specialArgs = …; }'; defined in ${file}"
-    else if m ? check then
-      throw "gen-merge: `_module.check' is not read from a module: pass it as `evalModuleTree { check = …; }'; defined in ${file}"
-    else if builtins.removeAttrs m moduleOwnKeys == { } then
+    else if builtins.removeAttrs m readKeys == { } then
       builtins.removeAttrs attrs [ "_module" ]
     else
-      attrs // { _module = builtins.removeAttrs m moduleOwnKeys; };
+      attrs // { _module = builtins.removeAttrs m readKeys; };
   moduleSyntaxChecked =
     e:
     let
@@ -2116,6 +2123,12 @@ let
       ) editedEntries;
       reuseAllFreeform = freeContribs == [ ] && !editedFreeformType;
       disabledRefusal = prelude.any (e: e.content ? disabledModules) editedEntries;
+      # An edited `_module.check` changes this evaluation's refusal of an undeclared key while the
+      # prior's `config` carries the prior's (the `strict` key's reason), so reuse is refused. Only
+      # edited entries are read: `inert` forces classification, never a base module's `config`.
+      checkRefusal = prelude.any (
+        e: (pushDownProperties ((pushDownProperties (configOf e))._module or { })) ? check
+      ) editedEntries;
 
       # ── bipartite contribution relation (design spec §2.1) — the FACT gen-memo decides over ──────
       # Nodes: one per dirty/edited ENTRY (`"entry:<n>"` — cannot collide with a JSON array string,
@@ -2157,6 +2170,7 @@ let
         freeContribs
         reuseAllFreeform
         disabledRefusal
+        checkRefusal
         ;
       # `identitiesHeld` is the plane's THIRD decision (see gen-memo `lib/warm.nix`): given the two
       # per-instance identity maps this engine builds from `warmFrom.config` and the new `config`, it
@@ -4437,7 +4451,10 @@ let
     {
       modules,
       specialArgs ? { },
-      check ? true,
+      # `null`: not passed, and `_module.check` takes its option default, `true`. Passed, it enters
+      # the merge as one `mkDefault` definition, as nixpkgs' deprecated `check` argument does, so a
+      # module's own `_module.check` outranks it.
+      check ? null,
       prefix ? [ ],
       # Opt-in fixed-input kernel (spec §2.5). Default off ⇒ ZERO behaviour change — the core marker
       # is treated as an ordinary attrset. Firing scope: the REALIZER path (declared leaf options at
@@ -4462,8 +4479,6 @@ let
     }:
     let
       modList = if isList modules then modules else [ modules ];
-      # This evaluation's effective strictness: its own `check`, or a carrying tree's.
-      strict = check || inherited;
 
       # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
       # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
@@ -4920,6 +4935,7 @@ let
             warmFrom != null
             && warmFrom.warmDecision.strict or null == strict
             && !decision.disabledRefusal
+            && !decision.checkRefusal
             && !origin.collision;
           warmCtx =
             if warmActive then
@@ -5042,39 +5058,84 @@ let
                 p.attrs;
           }) pushedRev;
 
-          realized = mergeTree warmCtx [ ] (
-            if allOptions ? _module then
-              if isOptLeaf allOptions._module then
-                if all (s: (s.decl.type.name or null) == "submodule") (sitesAt (prefix ++ [ "_module" ])) then
-                  let
-                    # The leaf's sub-options are a nested evaluation: read once for the four keys.
-                    leafSub = interface.moduleLeafSubOptions moduleOwnDecls allOptions._module.type (
-                      prefix ++ [ "_module" ]
-                    );
-                  in
-                  foldl' (
-                    acc: k:
-                    builtins.seq (moduleOwnJudged sitesAt prefix allOptions leafSub pushed freeformDeclared k) acc
-                  ) allOptions moduleOwnKeys
-                else
-                  throw "gen-merge: option `${
-                    showOption (prefix ++ [ "_module" ])
-                  }' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options._module.<name>' instead; declared in ${
-                    concatStringsSep ", " (map (s: s.file) (sitesAt (prefix ++ [ "_module" ])))
-                  }"
+          # `_module.check` is an option of this evaluation's own `_module` group (`bool`, default
+          # `true`), so a module's definition merges with priorities and a conflicting pair is refused
+          # by `bool`'s merge. A passed door enters as one `mkDefault` definition after the modules'.
+          realized =
+            (
+              if check == null then
+                mergeTree warmCtx [ ]
               else
-                foldl'
-                  (
-                    acc: k: builtins.seq (moduleOwnJudged sitesAt prefix allOptions null pushed freeformDeclared k) acc
-                  )
-                  (allOptions // { _module = builtins.removeAttrs allOptions._module moduleOwnKeys; })
-                  (filter (k: allOptions._module ? ${k}) moduleOwnKeys)
-            else if prelude.any (d: d.value ? _module) topDefs then
-              allOptions // { _module = { }; }
-            else
-              allOptions
-          ) topDefs;
+                o: d:
+                mergeTree warmCtx [ ] o (
+                  d
+                  ++ [
+                    {
+                      file = "<gen-merge: evalModuleTree { check }>";
+                      modIndex = length d;
+                      value._module.check = priority.mkDefault check;
+                    }
+                  ]
+                )
+            )
+              (
+                if allOptions ? _module then
+                  if isOptLeaf allOptions._module then
+                    if all (s: (s.decl.type.name or null) == "submodule") (sitesAt (prefix ++ [ "_module" ])) then
+                      let
+                        # The leaf's sub-options are a nested evaluation: read once for the four keys.
+                        leafSub = interface.moduleLeafSubOptions moduleOwnDecls allOptions._module.type (
+                          prefix ++ [ "_module" ]
+                        );
+                      in
+                      foldl' (
+                        acc: k:
+                        builtins.seq (moduleOwnJudged sitesAt prefix allOptions leafSub pushed freeformDeclared k) acc
+                      ) allOptions moduleOwnKeys
+                    else
+                      throw "gen-merge: option `${
+                        showOption (prefix ++ [ "_module" ])
+                      }' is declared as a single option, but the engine owns its sub-keys `args', `freeformType', `check' and `specialArgs': declare `options._module.<name>' instead; declared in ${
+                        concatStringsSep ", " (map (s: s.file) (sitesAt (prefix ++ [ "_module" ])))
+                      }"
+                  else
+                    foldl'
+                      (
+                        acc: k: builtins.seq (moduleOwnJudged sitesAt prefix allOptions null pushed freeformDeclared k) acc
+                      )
+                      (
+                        allOptions
+                        // {
+                          _module = builtins.removeAttrs allOptions._module moduleOwnKeys // {
+                            check = {
+                              _type = "option";
+                              type = types.bool;
+                              default = true;
+                            };
+                          };
+                        }
+                      )
+                      (filter (k: allOptions._module ? ${k}) moduleOwnKeys)
+                else if check != null || prelude.any (d: d.value ? _module) topDefs then
+                  allOptions
+                  // {
+                    _module = {
+                      check = {
+                        _type = "option";
+                        type = types.bool;
+                        default = true;
+                      };
+                    };
+                  }
+                else
+                  allOptions
+              )
+              topDefs;
           declaredConfig = realized.value;
+          # This evaluation's strictness for its nested trees, keyed on the door (H′): its own `check`,
+          # or a carrying tree's. A module's `_module.check` decides this level's first refusal arm
+          # only (`_orphanCheck`). Bound in this `let`, not the outer one, where it costs alloc.
+          strict = (check == null || check) || inherited;
 
           # Unknown keys — at ANY depth — route as ONE freeformType def-set at the ROOT (nixpkgs
           # freeform), each reshaped to its full nested path so lazyAttrsOf/attrsOf owns the per-key
@@ -5097,7 +5158,11 @@ let
           # `test-a-lax-nested-tree-is-still-refused-by-a-strict-parent` pins (nixpkgs admits a strict
           # parent over a lax child) to the freeform regime.
           _orphanCheck =
-            if check && freeform == null && realized.unmatched != [ ] then
+            if
+              (declaredConfig._module or { }).check or (check == null || check)
+              && freeform == null
+              && realized.unmatched != [ ]
+            then
               let
                 # imported here, on the refusal path only, so no success path allocates it
                 undeclaredText = import ./undeclared-text.nix { inherit prelude showDefLine escapeIdentifier; };
@@ -5220,12 +5285,15 @@ let
           # The RETURNED/embedded `config` stays `_module`-free, exactly like nixpkgs — its
           # `(evalModules).config` strips `_module`, so the parity oracle and every consumer that reads
           # the merged value never sees it.
-          config = builtins.seq _orphanCheck (
+          config = builtins.seq _orphanCheck uncheckedConfig;
+          # The merged value BEFORE this level's refusal, which its modules receive (`moduleConfig`),
+          # as nixpkgs hands them its unchecked fixpoint: a module computing `_module.check` from
+          # `config` reads it without forcing the refusal that `check` decides.
+          uncheckedConfig =
             if freeformConfig ? _module || declaredConfig ? _module then
               builtins.removeAttrs (recursiveUpdate freeformConfig declaredConfig) [ "_module" ]
             else
-              recursiveUpdate freeformConfig declaredConfig
-          );
+              recursiveUpdate freeformConfig declaredConfig;
 
           # The MODULE-VISIBLE config (`baseArgs.config`) carries `_module` as nixpkgs' does: the four
           # keys its `internalModule` declares, every evaluation, beside whatever `_module.<x>` the
@@ -5235,15 +5303,17 @@ let
           # `config._module.args` to build the entity resolution context (it can't enumerate `...`
           # function args). A positioned evaluation's `args` holds its `name`; where a module declares
           # `options._module`, `moduleArgs` already holds it, after any `apply` (`moduleOwnArgs`).
-          # `check` is `strict`, the strictness that governs this evaluation's refusal of an undeclared
-          # key, which is what nixpkgs' option reports: a child of an unchecked tree's `.type` under a
+          # `check` is the strictness that governs this evaluation's refusal of an undeclared key,
+          # `_orphanCheck`'s two arms: the merged `_module.check` (a module's value, else the door's,
+          # else `true`), or `inherited`. That is what nixpkgs' option reports: a module's own
+          # `_module.check` reads back as set, and a child of an unchecked tree's `.type` under a
           # strict parent refuses as strict and reads `true`, as nixpkgs' (whose `.type` omits the
           # legacy `check`). The view forces nothing it names.
           # The view is one expression, never a binding of its own: a binding is a thunk allocated
           # on every evaluation whether or not a module reads `config`. Each branch states its keys
           # as plain references where it can, so only `args`' extension and `specialArgs`' merge
           # are thunks.
-          moduleConfig = config // {
+          moduleConfig = uncheckedConfig // {
             _module =
               (
                 if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
@@ -5255,7 +5325,7 @@ let
                 if allOptions ? _module then
                   {
                     args = moduleArgs;
-                    check = strict;
+                    check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
                     specialArgs = moduleOwnSpecialArgs (
                       prefix
@@ -5270,14 +5340,14 @@ let
                     args = moduleArgs // {
                       name = positionNameOf prefix moduleArgs pushed;
                     };
-                    check = strict;
+                    check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
                     freeformType = freeform;
                   }
                 else
                   {
                     args = moduleArgs;
-                    check = strict;
+                    check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
                     freeformType = freeform;
                   }
@@ -5458,6 +5528,8 @@ let
                   "check differs from warmFrom's (warm refused)"
                 else if decision.disabledRefusal then
                   "disabledModules on an edited module (warm refused)"
+                else if decision.checkRefusal then
+                  "_module.check on an edited module (warm refused)"
                 else if origin.collision then
                   "an edited module reaches a module node the base also reaches (warm refused)"
                 else
