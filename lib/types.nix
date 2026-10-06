@@ -48,7 +48,6 @@ let
     mergeDefsThreaded
     mergeLeaf
     slotsDiffer
-    unionAgreeing
     isDefinedValue
     isDefinedBy
     showOption
@@ -1172,7 +1171,7 @@ let
             else
               "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to different values (${filesAt k})";
         in
-        if length defs < 2 then merged else unionAgreeing refusal defs
+        if length defs < 2 then merged else core.unionAgreeing refusal defs
       );
     };
 

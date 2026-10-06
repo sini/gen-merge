@@ -1498,23 +1498,25 @@ let
         );
     in
     go importedTypeWalkFuel;
-  # The mount over a module set: the door record's own rebuild with the record's own `check` riding on
-  # it (`carriedCheck`, den-hoag-4ifgb M-B), built from the record handed in, or the container rebuilt
-  # over its element's (`recarry`, the container's own rebuild over another payload).
-  mountOf =
-    t: m:
-    if t ? substructure.mount then
-      let
-        r = t.substructure.rebuild m;
-      in
-      if isAttrs r && r ? merge && r ? check && t ? check then r // { check = carriedCheck t r; } else r
-    else
-      t.recarry (t.carries // { element = mountOf t.carries.element m; });
   # Is the position an OPTION ROOT? An evaluation's option (its fold's mode states the `reader`) or
   # a declared option's group; not the freeform group, whose type is no option's, nor the value-only
   # `mergeOption`'s option. nixpkgs fixes up neither.
   isOptionRoot = site: site ? reader || site ? hostMode && site.name != "freeform";
   homedRootFixed =
+    let
+      # The mount over a module set: the door record's own rebuild with the record's own `check` riding on
+      # it (`carriedCheck`, den-hoag-4ifgb M-B), built from the record handed in, or the container rebuilt
+      # over its element's (`recarry`, the container's own rebuild over another payload).
+      mountOf =
+        t: m:
+        if t ? substructure.mount then
+          let
+            r = t.substructure.rebuild m;
+          in
+          if isAttrs r && r ? merge && r ? check && t ? check then r // { check = carriedCheck t r; } else r
+        else
+          t.recarry (t.carries // { element = mountOf t.carries.element m; });
+    in
     door: loc: site: t:
     let
       mods = t.getSubModules;

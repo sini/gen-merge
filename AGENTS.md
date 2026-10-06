@@ -338,6 +338,9 @@ process cells `one-eval-*` and `candidate-modules*` (`ci/tests-process.nix`).
 
 ## Design notes
 
+- **A single-caller helper lives in a `let` bound over its caller's lambda** (`f = let h = …; in x: h x;`),
+  because every file-level binding costs one thunk at every load, forced or not; a `let` inside the
+  lambda body instead costs one per call.
 - **The root mount's measured out** (`homedRootAt`; den-hoag-gijly). Against nixpkgs on the same
   workload, stock submodule roots, nix/Determinate/Lix at 359a36f, the full mount costs +4.8% thunks
   and +2.5–3.7% bytes; arm (b), wt-unifiedR (skip the rebuild for a recognised intact v2 record), is
