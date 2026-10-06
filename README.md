@@ -171,7 +171,7 @@ string, every one a bool, or every one an attrset and not every one a functor: `
 other shape keeps `mergeLeaf`. That makes it a third fold, not the check-only descriptor's: equal
 nulls, floats and paths, and `1` beside `1.0`, are **served** by an untyped option and **refused** by a
 check-only descriptor. The check-only descriptor's narrowing was ruled (2026-09-25);
-nixpkgs' refusal of those shapes is ADR-0039's refuse half, which is not ruled, so the untyped option
+nixpkgs' refusal of those shapes is the refuse half of nixpkgs parity, which is not ruled, so the untyped option
 keeps the leaf fold's agreement there. Functions and functors stay compared, never applied. A single
 definition is its own value under both folds and stays on the leaf fold. Cells:
 `ci/tests/parity-surface.nix` `test-untyped-*` and `ci/tests-error.nix` `untyped-default-merge`.
@@ -1731,7 +1731,7 @@ release-parity ruling, where nixpkgs serves:
 - a root whose fix-up result still declares a gen nesting element (a copy whose rebuild re-wraps
   itself).
 
-**A record built through gen-merge's own `mkOptionType` is mounted the same way** (den-hoag-6yfat). Its
+**A record built through gen-merge's own `mkOptionType` is mounted the same way**. Its
 author stated its fold apart from its rebuild, as a foreign author does, so where the descriptor states a
 module set and is not ad-hoc checked, `importType` marks it (`substructure.mount`, a
 presence datum pending the owner's reading of whether it is a published field) and the root fix-up mounts
@@ -2069,7 +2069,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `ci/tests-error.nix` `untyped-default-merge`):
 
   - *Equal floats, nulls and paths, and `1` beside `1.0`, are served* where nixpkgs' law refuses
-    (`Cannot merge definitions`). This is ADR-0039's refuse half, not ruled: gen accepts more, and
+    (`Cannot merge definitions`). This is the refuse half of nixpkgs parity, not ruled: gen accepts more, and
     accepting more never breaks a nixpkgs-valid config. A check-only `mkOptionType` refuses the same
     shapes, so the two folds differ there by design.
   - *Function and functor definitions are compared, never applied.* nixpkgs returns a merged lambda
