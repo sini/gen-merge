@@ -55,11 +55,6 @@ let
   # tree's `.type.description` does (door-checks.nix), so a plain `deepSeq` of their result reads
   # the door-check refusal directly.
   force = v: builtins.deepSeq v null;
-  # `lazyAttrsOf` under another name, for the S1 class (a) refusals (den-hoag-9d80v): the key walk
-  # reads an over-approximating container by its name, so this one stands for every one that adds a
-  # step but `lazyAttrsOf`, whose positions are container nodes; a step-free wrapper at the walk's
-  # root is walked as the root (den-hoag-t1j4z).
-  overRoot = e: t.lazyAttrsOf e // { name = "overRoot"; };
 
   # ── the refusal pair and its control share one skeleton ────────────────────────────────────
   # `rack.slot` is declared; `rack.stray` is not. The three fixtures differ in exactly one module,
@@ -6824,65 +6819,118 @@ in
         };
       };
 
-    # den-hoag-n6dh7 Unit 2.4: S1 class (a), RULED (iii). A container that keys its elements by
-    # reading their definitions, holding nested trees, below a step under an over-approximating
-    # container other than `lazyAttrsOf` (under `lazyAttrsOf` it is a container node, den-hoag-9d80v;
-    # at the walk's root under a step-free wrapper it is walked as the root, den-hoag-t1j4z), is
-    # refused by name where its positions are keyed, naming the option, both containers and the
-    # upgrade path.
-    # `overRoot` is `lazyAttrsOf` under another name: the walk reads a container by its name, so it
-    # stands for every other split container whose fold sets no mark (gen-aspects' `aspectsRoot`, or
-    # a freeform plane typed by one).
     flake.testsError.nesting-keys = {
-      test-a-strict-container-of-trees-under-another-over-approximating-one-names-both-containers = {
-        expr =
-          let
-            r = genMergeCore.evalModuleTreeExposed {
-              modules = [
-                {
-                  options.o = gm.mkOption {
-                    type = overRoot (t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }));
-                  };
-                  config.o.j.k.x = 1;
-                }
-              ];
-            };
-          in
-          force r._evaluation.allNodeIds;
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it$";
-        };
-      };
-      # den-hoag-t1j4z Build 1, THE HAZARD CELL: below a step (`overRoot` keys its elements by name and
-      # adds one), keying the inner container would read every sibling's definition, and a sibling whose
-      # key set reads the read tree would recurse where nixpkgs, mounting the same type, serves. The
-      # door stays closed there: refused by name, catchably, a stated shortfall against ADR-0039's serve
-      # half.
-      test-a-siblings-key-set-reading-the-read-tree-below-a-step-is-refused-not-recursed = {
+      # den-hoag-t1j4z Case B: a container record renamed `nullOr` after it is built is keyed by the
+      # walk as the nested tree inside it, while its fold is still a container's. The fold refuses by
+      # name rather than read a container's value off a tree's record.
+      test-a-container-the-walk-keyed-as-a-tree-is-refused-by-name = {
         expr =
           force
             (gm.evalModuleTree { } [
               {
                 options.o = gm.mkOption {
-                  type = overRoot (t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }));
+                  type =
+                    t.lazyAttrsOf (
+                      t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }) // { name = "nullOr"; }
+                    )
+                    // {
+                      name = "overRoot";
+                    };
                 };
               }
-              (
-                { config, ... }:
-                {
-                  config.o = {
-                    foo.k.x = 1;
-                    bar = if config.o.foo.k.x == 1 then { k.x = 2; } else { };
-                  };
-                }
-              )
+              {
+                config.o = {
+                  foo.k.x = 1;
+                  bar.k.x = 2;
+                };
+              }
             ]).config.o.foo.k.x;
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: nta: option `o' declares `attrsOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it$";
+          msg = "^gen-merge: `evalModuleTree': option `o[.]foo': its type `attrsOf' folds as a container, but the key walk keyed this position as a nested tree, so the two read the type's structure differently; a type record whose `name' is rewritten after it is built reads as another type to the walk[.] Build the type through its own constructor rather than renaming one$";
         };
       };
+      # den-hoag-t1j4z Case B: a consumer's stepped container whose fold narrows the site its
+      # element's accessor forwards to `child` (here to the position alone) leaves the accessor unable
+      # to state what the walk minted. The element's fold refuses by name rather than read the
+      # answer's wrong kind, which would abort uncatchably.
+      test-a-consumer-accessor-narrowing-the-site-is-refused-by-name =
+        let
+          narrowing =
+            elemType:
+            let
+              split =
+                _loc: defs:
+                map (k: {
+                  step = [ k ];
+                  loc = [ k ];
+                  defs = builtins.concatMap (
+                    d:
+                    nixpkgsLib.optional (d.value ? ${k}) {
+                      inherit (d) file;
+                      value = d.value.${k};
+                    }
+                  ) defs;
+                  type = elemType;
+                }) (builtins.attrNames (builtins.foldl' (acc: d: acc // d.value) { } defs));
+              foldWith =
+                foldElement: loc: defs:
+                builtins.listToAttrs (
+                  map (e: {
+                    name = builtins.head e.step;
+                    value = foldElement e;
+                  }) (split loc defs)
+                );
+            in
+            t.defineType {
+              name = "narrowing";
+              inherit elemType split;
+              carries.element = elemType;
+              recarry = c: narrowing c.element;
+              substructure = {
+                declares = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+                modules = elemType.getSubModules or null;
+                rebuild =
+                  m: narrowing (if elemType ? substSubModules then elemType.substSubModules m else elemType);
+              };
+              mergeDefs = {
+                __functor = _: foldWith (e: gm.mergeDefs e.loc e.type e.defs);
+                threaded =
+                  ev:
+                  foldWith (
+                    e:
+                    gm.mergeDefs e.loc (
+                      e.type
+                      // {
+                        mergeDefs = e.type.mergeDefs.threaded (
+                          ev
+                          // {
+                            position = ev.position ++ e.step;
+                            child = site: ev.child { inherit (site) position; };
+                          }
+                        );
+                      }
+                    ) e.defs
+                  );
+              };
+            };
+        in
+        {
+          expr =
+            force
+              (gm.evalModuleTree { } [
+                {
+                  options.o = gm.mkOption {
+                    type = narrowing (t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }));
+                  };
+                }
+                { config.o.foo.k.x = 1; }
+              ]).config.o.foo.k.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree': option `foo': its type `attrsOf' folds as a container, but the evaluation accessor its fold was handed does not state what the key walk minted here: a container's threaded fold above it rebuilt or narrowed the site its accessor's `child' receives[.] Extend the accessor it was handed [(]`ev // [{] position = …; [}]`[)] and pass `child' its site whole$";
+          };
+        };
       # den-hoag-i4c0n C1's guard arm: the child of an undefined, default-less union with a nesting
       # member refuses as a candidate, never with the merge record's "used but not defined", which
       # reading the fold's `typeDefs` off that record unguarded raises.
@@ -6960,44 +7008,6 @@ in
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: `evalModuleTree': option `o[.]foo': the fold of the tree holding it did not select a nested tree at this position [(]it folds as `string'[)], so this nested tree is a candidate and is never evaluated$";
-          };
-        };
-        # U2-r: a union's container member under an over-approximating container other than
-        # `lazyAttrsOf`, S1 class (a), RULED (iii).
-        test-a-unions-strict-container-under-another-over-approximating-one-names-the-union-and-its-position = {
-          expr =
-            force
-              (genMergeCore.evalModuleTreeExposed {
-                modules = host (overRoot (t.either (t.attrsOf sub) t.str)) [ { p.a.x = 1; } ];
-              })._evaluation.allNodeIds;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: nta: option `o' declares `either' at position \\[\"p\"\\], whose member `attrsOf' holds nested trees, under `overRoot': the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the member outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it$";
-          };
-        };
-        # S1 class (a) with a LAZY inner container: refused on (iii)'s own ground, *defaulted,
-        # reversible* (orchestrator ruling, den-hoag-n6dh7); the text does not call it strict, and
-        # names arm (v), the container node (den-hoag-9d80v). And `listOf` under the same container.
-        test-a-lazy-container-of-trees-under-another-over-approximating-one-is-refused-without-calling-it-strict = {
-          expr =
-            force
-              (genMergeCore.evalModuleTreeExposed {
-                modules = host (overRoot (t.lazyAttrsOf sub)) [ { j.k.x = 1; } ];
-              })._evaluation.allNodeIds;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: nta: option `o' declares `lazyAttrsOf' of nested trees under `overRoot': the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot'; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it$";
-          };
-        };
-        test-a-list-of-trees-under-another-over-approximating-container-is-refused = {
-          expr =
-            force
-              (genMergeCore.evalModuleTreeExposed {
-                modules = host (overRoot (t.listOf sub)) [ { j = [ { x = 1; } ]; } ];
-              })._evaluation.allNodeIds;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: nta: option `o' declares `listOf' of nested trees under `overRoot': the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition[.] Declare the inner container outside `overRoot', or make it lazy; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it$";
           };
         };
         # U2-s: growth over empty seeds past the fuel.

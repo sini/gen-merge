@@ -1821,7 +1821,10 @@ let
                         { }
                       else
                         {
-                          child = _site: throw (unexposedRefusal door eloc t);
+                          # What the walk minted here (`minted`, the key walk's own records) is
+                          # still the accessor's to state; only a read refuses.
+                          child =
+                            site: if site ? __genMergeMinted then ev.child site else throw (unexposedRefusal door eloc t);
                         }
                     )
                   ) eloc e edefs

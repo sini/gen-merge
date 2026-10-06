@@ -2784,6 +2784,68 @@ let
       keyedOverMemberAt loc m.carries.element
     else
       keyedOverAt loc m;
+  # THE FOLD'S HALF OF THE CONTAINER NODE, at gen's `defineType` door (S1 arm (v) generalized,
+  # den-hoag-t1j4z Case B, ADR-0039). The walk mints a node under every over-approximating container
+  # that adds a step (`keyWalk`); WHAT it minted at a position is the evaluation accessor's
+  # (`containerNodeAt`, den-hoag-o3oz5), never re-decided from this record. So every container built
+  # through the door reads its node at its own threaded entry, below the walk's own root, wherever
+  # the walk minted one, whoever calls its fold: a consumer's fold threads the accessor it was given,
+  # extended by its step, and needs nothing else. A record rewritten after it was built
+  # (`// { name = … }`) reads as another type to the walk, and the fold reads what the walk minted.
+  # A nested tree and a leaf are never nodes, so their folds are not wrapped; the guard reads
+  # attribute presence only, because every type built pays it.
+  readsMintedNode =
+    self: t:
+    if !(isAttrs t) || !(t ? split || t ? choose) || t ? nests || !(t ? mergeDefs.threaded) then
+      t
+    else
+      let
+        orig = t.mergeDefs.threaded;
+      in
+      t
+      // {
+        mergeDefs = t.mergeDefs // {
+          threaded =
+            ev:
+            if (ev.containerNodes or false) && ev.position != [ ] then
+              loc: defs:
+              let
+                minted = containerNodeAt ev;
+              in
+              if !(containerAt loc self) || minted == null then
+                orig ev loc defs
+              else if !(builtins.isBool minted) then
+                throw (accessorUnansweredRefusal loc self)
+              else if minted then
+                (ev.child { inherit (ev) position; }).value
+              else
+                throw (containerReadAsTreeRefusal loc self)
+            else
+              orig ev;
+        };
+      };
+  # What the key walk minted at the fold's position, as the accessor states it (`evAt`): `true` a
+  # container node, `false` another child (a nested tree), `null` nothing.
+  containerNodeAt =
+    ev:
+    ev.child {
+      inherit (ev) position;
+      __genMergeMinted = true;
+    };
+  # The fold's type is a container, and the walk keyed its position as a nested tree: the walk read
+  # the type as another (a record whose `name` was rewritten after it was built). Refused by name
+  # where reading a container's value off a tree's record would abort uncatchably (ADR-0025 item 1,
+  # den-hoag-4zvc9).
+  containerReadAsTreeRefusal =
+    loc: t:
+    "gen-merge: `evalModuleTree': option `${showOption loc}': its type `${t.name or "<container>"}' folds as a container, but the key walk keyed this position as a nested tree, so the two read the type's structure differently; a type record whose `name' is rewritten after it is built reads as another type to the walk. Build the type through its own constructor rather than renaming one";
+  # The accessor a container's fold was handed does not answer what the walk minted (`containerNodeAt`
+  # read neither `null` nor a bool): a consumer container's threaded fold rebuilt or narrowed the site
+  # record its element's accessor passes to `child`. Refused by name where reading the answer would
+  # abort uncatchably (ADR-0025 item 1).
+  accessorUnansweredRefusal =
+    loc: t:
+    "gen-merge: `evalModuleTree': option `${showOption loc}': its type `${t.name or "<container>"}' folds as a container, but the evaluation accessor its fold was handed does not state what the key walk minted here: a container's threaded fold above it rebuilt or narrowed the site its accessor's `child' receives. Extend the accessor it was handed (`ev // { position = …; }`) and pass `child' its site whole";
   threadedUnder =
     ev: loc: t:
     if containerAt loc t then
@@ -2800,17 +2862,31 @@ let
   # The evaluation's accessor at one group of a node of the one evaluation (den-hoag-n6dh7 item 5,
   # v8): a nested tree is read through the reading node's own record, as its `nested` child at the
   # group and the fold's position, never through an identifier.
-  evAt = reader: group: {
+  # `host`: the reading node's `reader` and its `result`, whose `_nested.positions` are the walk's
+  # own records by group, from which its `nested` children are minted. The accessor answers two
+  # questions at a position: its child (`child { position; }`), and, asked with `minted`, WHAT the
+  # walk minted there (`containerNodeAt`), read off those records and never re-derived from a type:
+  # `true` a container node, `false` another child, `null` nothing. One field answers both, so an
+  # accessor record costs nothing for the second.
+  evAt = host: group: {
     position = [ ];
     containerNodes = true;
-    child = site: reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
+    child =
+      site:
+      if site ? __genMergeMinted then
+        let
+          r = host.result._nested.positions.${group}.${builtins.toJSON site.position} or null;
+        in
+        if r == null then null else r.mode == "container"
+      else
+        host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
   # A type bound at a declared option or at the freeform plane, threaded where it may nest and the
   # evaluation reads its nested trees as children (`mode.reader`). The public `mergeOption` carries
   # no reader, so a nesting type there folds CALLED, and refuses.
   threadedIn =
     mode: group: type:
-    if mode ? reader && interface.canNest type then threadedAs (evAt mode.reader group) type else type;
+    if mode ? reader && interface.canNest type then threadedAs (evAt mode group) type else type;
 
   # ── THE KEY WALK (den-hoag-n6dh7 item 2; OQ9 (M′); S1 RULED (ii) for class (b), (iii) for (a)) ──
   # Which positions of an option's value are nested trees, each with the ADDRESSES of the
@@ -2850,46 +2926,30 @@ let
       else
         winners;
 
-  # The class (a) refusal (S1, RULED (iii)): a container that keys its elements by reading their
-  # definitions, holding nested trees, under a container whose key set does not read them. An inner
-  # LAZY container is refused on the same ground, *defaulted, reversible* (den-hoag-n6dh7, orchestrator
-  # ruling): its key set is also its definitions' data, so keying one child still forces every
-  # sibling's definition. Under `lazyAttrsOf` the shape is a container node instead (arm (v),
-  # den-hoag-9d80v, `containerAt`), so these refuse only under an over-approximating container whose
-  # fold sets no mark (gen-aspects' `aspectsRoot`, or a freeform plane typed by one). `nullOr` has no
-  # keys and is looked through. The refusal stands below a step only: at the walk's own root (an
-  # option's position, or a container node's) under a container that added no step (`unique`,
-  # `coercedTo`), the position is walked as the root is (ADR-0039, den-hoag-t1j4z). Below a step,
-  # nixpkgs serves the shape, so the refusal is a stated shortfall against ADR-0039's serve half, not a
-  # divergence.
-  classAReason =
-    lazy: t:
-    if (t.name or null) == "attrsOf" || (t.name or null) == "listOf" then
-      "the inner container keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}', or make it lazy"
-    else
-      "the inner container's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the inner container outside `${lazy}'";
-  nestingUnderLazyRefusal =
-    group: lazy: t:
-    "gen-merge: nta: option `${showOption group}' declares `${t.name or "<container>"}' of nested trees under `${lazy}': ${classAReason lazy t}; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it";
-  unionUnderLazyRefusal =
-    group: lazy: u: pos: t:
-    "gen-merge: nta: option `${showOption group}' declares `${u.name or "<union>"}' at position ${builtins.toJSON pos}, whose member `${t.name or "<container>"}' holds nested trees, under `${lazy}': ${
-      if (t.name or null) == "attrsOf" || (t.name or null) == "listOf" then
-        "the member keys its elements by reading their definitions, and under a container that does not, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}', or make it lazy"
-      else
-        "the member's key set is its definitions' data, and under a container that does not read them, keying one nested tree would force every sibling's definition. Declare the member outside `${lazy}'"
-    }; a container node admits the shape under `lazyAttrsOf' only, whose fold reads it";
+  # INVARIANT REFUSALS of the key walk (den-hoag-t1j4z Case B, ADR-0039). Below a step under an
+  # over-approximating container, every position `containerAt` holds is a container node, a union with
+  # a container member included, so the walk never keys such a container in place. These are reached
+  # only where the walk and `containerAt` disagree about a type, which is a gen-merge defect, not a
+  # declaration's.
+  stepContainerInvariantRefusal =
+    group: under: t:
+    "gen-merge: nta: option `${showOption group}': invariant: the key walk reached `${t.name or "<container>"}' of nested trees below a step under `${under}' as no container node, where `containerAt' makes it one; the walk and `containerAt' disagree. This is a gen-merge defect";
+  unionStepContainerInvariantRefusal =
+    group: under: u: pos: t:
+    "gen-merge: nta: option `${showOption group}': invariant: the key walk reached `${u.name or "<union>"}' at position ${builtins.toJSON pos}, whose member `${t.name or "<container>"}' holds nested trees, below a step under `${under}' as no container node, where `containerAt' makes it one; the walk and `containerAt' disagree. This is a gen-merge defect";
 
-  # ── THE CONTAINER NODE's POSITION (S1 arm (v), den-hoag-9d80v) ──────────────────────────────────
-  # Under `lazyAttrsOf`, a position whose type keys its nested trees by reading their definitions —
+  # ── THE CONTAINER NODE's POSITION (S1 arm (v), den-hoag-9d80v; den-hoag-t1j4z Case B) ──────────
+  # Below a step under an over-approximating container (`lazyAttrsOf`, or any other: a consumer's
+  # stepped `defineType` container, a renamed one), a position whose type keys its nested trees by
+  # reading their definitions —
   # a container that is not itself a nested tree, or a union with such a member (looked through
   # `nullOr` and nested unions, as `unionKeys` walks them) — is promoted to a node of its own: the
   # node's key walk runs over its definitions only, exactly (`under = null`), so keying one of its
   # trees forces no sibling's. The one predicate is read by the walk (`keyWalk`) and by the fold
-  # (`mergeDefsThreaded`), so a node the walk mints is the node the fold reads. `nullOr` at the
-  # position itself adds no step and is looked through by both, never promoted. Other
-  # over-approximating containers set no mark in their fold and keep the class (a) refusal below a
-  # step.
+  # (`mergeDefsThreaded`), so a node the walk mints is the node the fold reads: `lazyAttrsOf` marks its
+  # elements itself, and every other container's fold reads what the walk minted at its position
+  # (`readsMintedNode`, at the `defineType` door). `nullOr` at the position itself adds no step and is
+  # looked through by both, never promoted.
   containerAt =
     loc: t:
     isAttrs t
@@ -2976,14 +3036,13 @@ let
   #     over-approximately, by its definitions' attribute names, and every other one is a CONTAINER
   #     NODE (den-hoag-mda6f);
   #   · at the walk's own root, a container is walked through its `split`, where it keys exactly;
-  #   · under `lazyAttrsOf`, a position `containerAt` holds is a CONTAINER NODE (arm (v)): one
-  #     record, marked `container`, whose own walk keys it over its own definitions (`containerNode`);
-  #   · under another over-approximating container that ADDED NO STEP (`unique`, `coercedTo`, so the
+  #   · under an over-approximating container that ADDED NO STEP (`unique`, `coercedTo`, so the
   #     position is the walk's own root), the position is walked as the root is: that container's
   #     fold is its element's over the same definitions, so keying forces nothing the read does not;
-  #   · below a step under another over-approximating container, `nullOr` adds no step and is looked
-  #     through, and a container that keys exactly is refused (class (a)): its key set is its
-  #     elements' data.
+  #   · below a step under any over-approximating container, a position `containerAt` holds is a
+  #     CONTAINER NODE (arm (v), den-hoag-9d80v, generalized by den-hoag-t1j4z Case B): one record,
+  #     marked `container`, whose own walk keys it over its own definitions (`containerNode`), so
+  #     keying it forces no sibling; `nullOr` adds no step and is looked through.
   # Only an EXACT container's elements have their definitions forced to key them, as that
   # container's own fold forces them; an over-approximated position's definitions are a thunk,
   # read when its seed is.
@@ -3004,9 +3063,10 @@ let
       # AT THE WALK'S OWN ROOT (an option's position, or a container node's), UNDER A CONTAINER THAT
       # ADDED NO STEP (`unique`, `coercedTo`): the position is the one read, and its container's fold is
       # its element's over the same definitions, so keying the element forces nothing the read does
-      # not (den-hoag-t1j4z, ADR-0039). It is walked as the root is. Below a step, class (a) refuses.
+      # not (den-hoag-t1j4z, ADR-0039). It is walked as the root is. Below a step it is a container
+      # node (the next arm).
       keyWalk null group t pos loc defs
-    else if under == "lazyAttrsOf" && containerAt loc t then
+    else if under != null && containerAt loc t then
       [
         {
           key = pos;
@@ -3087,7 +3147,7 @@ let
             filter (d: d.value != null) defs
           )
         else
-          throw (nestingUnderLazyRefusal group under t)
+          throw (stepContainerInvariantRefusal group under t)
       )
     else
       let
@@ -3115,10 +3175,10 @@ let
   # union member is walked by this same rule. A union holding a container member reaches this walk
   # only under an over-approximating container (`keyWalk` keys it where read otherwise). A position
   # two members key is ONE key (`listToAttrs` keeps the first). Under an
-  # over-approximating container nothing is read: a container member that keys exactly is class
-  # (a), refused naming the union's position (under `lazyAttrsOf` that position is a container node
-  # instead, `containerAt`, whose own walk takes this rule with `under = null`). This walk is reached
-  # under one only below a step: at the walk's own root `keyWalk` walks the union as the root is.
+  # over-approximating container, below a step, a union with a container member is a container node
+  # (`containerAt`), whose own walk takes this rule with `under = null`; at the walk's own root
+  # `keyWalk` walks the union as the root is. So a container member reached here with `under` set is
+  # an invariant refusal.
   unionKeys =
     under: group: u: pos: loc: defs: t:
     concatMap (
@@ -3144,7 +3204,7 @@ let
           carries.alternatives = [ mt.carries.element ];
         }
       else if under != null then
-        throw (unionUnderLazyRefusal group under u pos mt)
+        throw (unionStepContainerInvariantRefusal group under u pos mt)
       else
         [ ]
     ) (t.carries.alternatives or [ ]);
@@ -4072,7 +4132,10 @@ let
       );
     in
     {
-      value = mergeDefsThreaded (evAt self "container") p.loc p.member defs;
+      value = mergeDefsThreaded (evAt {
+        reader = self;
+        result._nested = { inherit positions; };
+      } "container") p.loc p.member defs;
       _nested = {
         groups = [ { definitions = defs; } ];
         inherit positions;
@@ -4838,6 +4901,7 @@ let
               prefix
               ;
             reader = self;
+            inherit result;
           };
           # Reuse the WHOLE prev freeform layer iff the coarse flag holds (§2, soundness-forced: a
           # single edited freeformType flips every freeform loc). Else re-merge cold. Byte-identical
@@ -5088,7 +5152,10 @@ let
             else
               rawFold (
                 if interface.canNest freeform then
-                  threadedAs (evAt self "freeform") (interface.homedAt "evalModuleTree" prefix freeform)
+                  threadedAs (evAt {
+                    reader = self;
+                    inherit result;
+                  } "freeform") (interface.homedAt "evalModuleTree" prefix freeform)
                 else
                   freeform
               ) prefix (coalesceUnmatched false (length topDefs) realized.unmatched);
@@ -5993,6 +6060,7 @@ in
     # containers in `./types.nix` fold each element through the twin, and the suites read the door.
     nestedTreeAt
     mergeDefsThreaded
+    readsMintedNode
     calledNestingRefusal
     namePlaceholder
     # The nixpkgs `optionType` PROTOCOL BOUNDARY (lib/interface.nix), reached through this seam by

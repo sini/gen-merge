@@ -1891,17 +1891,18 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   through its `split`, exactly where its key set already reads its definitions (`attrsOf`, `listOf`,
   `nullOr`) and over-approximately where it does not (`lazyAttrsOf`, a freeform plane). A union is walked member by
   member at its own position; a container member counts only where every definition has its shape.
-  A container of trees under `lazyAttrsOf` — bare, or as a union member — is S1 class (a): its
-  position is a **container node**, a child whose own `container` group
-  keys the inner trees over that position's definitions only, so no sibling is forced to key them,
-  and whose `result` is `{ value; _nested; }`, the inner container's fold, not a tree's evaluation.
+  A container of trees below a step under an over-approximating container — `lazyAttrsOf`, or any
+  other split container (gen-aspects' `aspectsRoot`, a freeform plane typed by one), bare or as a
+  union member — is S1 class (a): its position is a **container node**, a child whose own
+  `container` group keys the inner trees over that position's definitions only, so no sibling is
+  forced to key them, and whose `result` is `{ value; _nested; }`, the inner container's fold, not a
+  tree's evaluation. The inner container's fold reads the node wherever the walk minted one: the
+  evaluation's accessor states what the walk minted at a position, read off the walk's own records,
+  so a container built through `defineType` needs no mark of its own. It serves nixpkgs' value.
   At the walk's own root (an option's position, or a container node's) under a container that adds
   no step (`uniq`, `unique`, `coercedTo`), the position is walked as the root is, and the shape
   serves nixpkgs' value: that container's fold is its element's over the same definitions, so keying
-  forces nothing a read does not. Below a step under any other over-approximating container — a
-  split container whose fold sets no mark (gen-aspects' `aspectsRoot`, or a freeform plane typed by
-  one) — the shape is refused by name. nixpkgs serves it there, so the refusal is a stated shortfall
-  against serving nixpkgs' value, not a divergence from it.
+  forces nothing a read does not.
   At an EXACT container's element, every container is keyed where it is READ. An attribute-keyed one
   (`lazyAttrsOf`, or an `attrsOf` whose element would not itself key so) keys over-approximately, by
   its definitions' attribute names, through its fold's door. Every other one is a container node: a

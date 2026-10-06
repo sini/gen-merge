@@ -396,8 +396,8 @@ in
   # S1 class (a), arm (v) (den-hoag-9d80v): a container that keys its elements by reading them,
   # holding nested trees, under `lazyAttrsOf`, is a CONTAINER NODE at the lazy position, whose own
   # `container` group keys its elements over its own definitions only, so no sibling is read to key
-  # it. Below a step under another over-approximating container it is refused by name, catchably; the
-  # message is `ci/tests-error.nix`'s. A lazy container under an exact one is keyed.
+  # it. Below a step under any other over-approximating container it is a container node too
+  # (`nesting-keys-stepped-container`). A lazy container under an exact one is keyed.
   flake.tests.nesting-keys-lazy-over-strict = {
     test-a-strict-container-of-trees-under-a-lazy-one-is-a-container-node = {
       expr = childrenOf (evalExposed (host (t.lazyAttrsOf (t.attrsOf sub)) [ { j.k.x = 1; } ]));
@@ -433,14 +433,6 @@ in
               }
             ]
           )
-        )
-      );
-      expected = true;
-    };
-    test-a-strict-container-of-trees-under-another-over-approximating-one-is-refused = {
-      expr = refused (
-        childrenOf (
-          evalExposed (host (t.lazyAttrsOf (t.attrsOf sub) // { name = "overRoot"; }) [ { j.k.x = 1; } ])
         )
       );
       expected = true;
@@ -537,6 +529,238 @@ in
               }
             )
           ]).config.o.foo.k.x;
+        expected = 1;
+      };
+    };
+
+  # den-hoag-t1j4z Case B (ADR-0039, the serve half): a container that keys its elements by reading
+  # them, holding nested trees, BELOW A STEP under an over-approximating container, is a CONTAINER
+  # NODE (S1 arm (v) generalized), and its own threaded fold reads it off its node wherever the walk
+  # minted one: the evaluation's accessor states what the walk minted (`readsMintedNode`,
+  # den-hoag-o3oz5). Three such containers: `lazyAttrsOf` under another name, whose fold marks its
+  # elements itself; a consumer's `defineType` container, whose fold sets no mark; and nixpkgs' lazy
+  # `attrsWith` under `uniq`, whose threaded fold is the import's. Only the second and third
+  # discriminate the fold's half (`overRoot` reads every node a walk mints, through its own mark).
+  # The expected values are nixpkgs' own, read off `lib.evalModules` mounting the same declaration.
+  flake.tests.nesting-keys-stepped-container =
+    let
+      cfgOf = modules: (gm.evalModuleTree { } modules).config.o;
+      overRoot = e: t.lazyAttrsOf e // { name = "overRoot"; };
+      # A consumer's stepped container through gen's `defineType` door, as gen-aspects'
+      # `aspectsRootWith` is built: each element re-rooted at `[ k ]`, folded through the threaded
+      # twin over the accessor it was handed, extended by the key. `acc` is what the consumer does to
+      # that accessor before handing it on.
+      stepRoot = stepRootWith (ev: ev);
+      stepRootWith =
+        acc: elemType:
+        let
+          split =
+            _loc: defs:
+            map (k: {
+              step = [ k ];
+              loc = [ k ];
+              defs = builtins.concatMap (
+                d:
+                nixpkgsLib.optional (d.value ? ${k}) {
+                  inherit (d) file;
+                  value = d.value.${k};
+                }
+              ) defs;
+              type = elemType;
+            }) (builtins.attrNames (builtins.foldl' (acc: d: acc // d.value) { } defs));
+          foldWith =
+            foldElement: loc: defs:
+            builtins.listToAttrs (
+              map (e: {
+                name = builtins.head e.step;
+                value = foldElement e;
+              }) (split loc defs)
+            );
+        in
+        t.defineType {
+          name = "stepRoot";
+          inherit elemType split;
+          carries.element = elemType;
+          recarry = c: stepRootWith acc c.element;
+          substructure = {
+            declares = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+            modules = elemType.getSubModules or null;
+            rebuild =
+              m: stepRootWith acc (if elemType ? substSubModules then elemType.substSubModules m else elemType);
+          };
+          mergeDefs = {
+            __functor = _: foldWith (e: gm.mergeDefs e.loc e.type e.defs);
+            threaded =
+              ev:
+              foldWith (
+                e:
+                gm.mergeDefs e.loc (
+                  if builtins.isAttrs e.type && e.type ? mergeDefs.threaded then
+                    e.type
+                    // {
+                      mergeDefs = e.type.mergeDefs.threaded (acc (ev // { position = ev.position ++ e.step; }));
+                    }
+                  else
+                    e.type
+                ) e.defs
+              );
+          };
+        };
+      # The sibling-forcing reason: `bar`'s key set reads the read element's nested tree.
+      keysDep = type: [
+        { options.o = gm.mkOption { inherit type; }; }
+        (
+          { config, ... }:
+          {
+            config.o = {
+              foo.k.x = 1;
+              bar = if config.o.foo.k.x == 1 then { k.x = 2; } else { };
+            };
+          }
+        )
+      ];
+    in
+    {
+      # Enumerating the node set keys the inner container at its node, and the value is nixpkgs'.
+      test-a-strict-container-of-trees-below-a-step-is-a-container-node-and-serves = {
+        expr =
+          let
+            r = evalExposed (host (overRoot (t.attrsOf sub)) [ { j.k.x = 1; } ]);
+          in
+          builtins.seq (builtins.deepSeq (childrenOf r) null) r.config.o;
+        expected.j.k.x = 1;
+      };
+      test-a-strict-container-of-trees-below-a-step-serves-without-reading-its-sibling = {
+        expr =
+          (cfgOf (
+            host (overRoot (t.attrsOf sub)) [
+              {
+                j.k.x = 1;
+                bar = throw "sibling read";
+              }
+            ]
+          )).j.k.x;
+        expected = 1;
+      };
+      test-a-siblings-key-set-reading-the-read-tree-below-a-step-serves = {
+        expr = (gm.evalModuleTree { } (keysDep (overRoot (t.attrsOf sub)))).config.o.foo.k.x;
+        expected = 1;
+      };
+      test-a-unions-strict-container-below-a-step-serves = {
+        expr = cfgOf (host (overRoot (t.either (t.attrsOf sub) t.str)) [ { p.a.x = 1; } ]);
+        expected.p.a.x = 1;
+      };
+      test-a-lazy-container-of-trees-below-a-step-serves = {
+        expr = cfgOf (host (overRoot (t.lazyAttrsOf sub)) [ { j.k.x = 1; } ]);
+        expected.j.k.x = 1;
+      };
+      test-a-list-of-trees-below-a-step-serves = {
+        expr = cfgOf (host (overRoot (t.listOf sub)) [ { j = [ { x = 1; } ]; } ]);
+        expected.j = [ { x = 1; } ];
+      };
+      # THE FOLD'S HALF, under a consumer's container whose fold sets no mark: the element's own
+      # fold reads the node the walk minted.
+      test-a-consumer-containers-strict-element-serves-beside-a-key-dependent-sibling = {
+        expr = (gm.evalModuleTree { } (keysDep (stepRoot (t.attrsOf sub)))).config.o.foo.k.x;
+        expected = 1;
+      };
+      test-a-consumer-containers-list-element-serves = {
+        expr = cfgOf (host (stepRoot (t.listOf sub)) [ { j = [ { x = 1; } ]; } ]);
+        expected.j = [ { x = 1; } ];
+      };
+      test-a-consumer-containers-union-element-serves = {
+        expr = cfgOf (
+          host (stepRoot (t.either (t.attrsOf sub) t.str)) [
+            {
+              p.a.x = 1;
+              q = "s";
+            }
+          ]
+        );
+        expected = {
+          p.a.x = 1;
+          q = "s";
+        };
+      };
+      test-a-consumer-containers-nullable-element-serves = {
+        expr = cfgOf (
+          host (stepRoot (t.nullOr (t.attrsOf sub))) [
+            {
+              p.a.x = 1;
+              q = null;
+            }
+          ]
+        );
+        expected = {
+          p.a.x = 1;
+          q = null;
+        };
+      };
+      # THE FOREIGN HALF: nixpkgs' lazy `attrsWith` (a placeholder, so not re-homed) under `uniq`; its
+      # threaded fold is the import's, and the gen element's own fold reads its node. A sibling whose
+      # key set reads the read tree is outside this half: the foreign split forces every sibling first
+      # (den-hoag-fozin).
+      test-a-foreign-lazy-containers-strict-element-serves-under-unique = {
+        expr = cfgOf (
+          host
+            (np.uniq (
+              np.attrsWith {
+                elemType = t.attrsOf sub;
+                lazy = true;
+                placeholder = "p";
+              }
+            ))
+            [
+              {
+                foo.k.x = 1;
+                bar.k.x = 2;
+              }
+            ]
+        );
+        expected = {
+          foo.k.x = 1;
+          bar.k.x = 2;
+        };
+      };
+      # THE ACCESSOR'S QUERY IS OUT OF BAND: a consumer accessor that adds its own fields to the site
+      # it forwards (here `minted`, the query's natural name) is conformant, and nixpkgs serves it;
+      # the walk's answer rides on a key reserved to gen-merge, so the fields cannot collide.
+      test-a-consumer-accessor-adding-its-own-site-fields-serves = {
+        expr =
+          (gm.evalModuleTree { } (
+            keysDep (
+              stepRootWith (ev: ev // { child = site: ev.child (site // { minted = true; }); }) (t.attrsOf sub)
+            )
+          )).config.o.foo.k.x;
+        expected = 1;
+      };
+      # A RECORD RENAMED AFTER IT IS BUILT (`// { name = … }`) reads as another type to the walk, and
+      # the fold reads what the walk minted, never what the record was built as. A consumer
+      # container renamed `attrsOf` is keyed exactly, so its elements fold inline, as at base.
+      test-a-consumer-container-renamed-after-it-is-built-serves-as-the-walk-keyed-it = {
+        expr =
+          (cfgOf (
+            host (stepRoot (t.attrsOf sub) // { name = "attrsOf"; }) [
+              {
+                foo.k.x = 1;
+                bar.k.x = 2;
+              }
+            ]
+          )).foo.k.x;
+        expected = 1;
+      };
+      # An `attrsOf` renamed is keyed over-approximately, so its inner container is a node, which
+      # the inner fold reads although no mark was set.
+      test-an-attrs-container-renamed-after-it-is-built-reads-its-elements-nodes = {
+        expr =
+          (cfgOf (
+            host (t.attrsOf (t.attrsOf sub) // { name = "renamed"; }) [
+              {
+                foo.k.x = 1;
+                bar.k.x = 2;
+              }
+            ]
+          )).foo.k.x;
         expected = 1;
       };
     };

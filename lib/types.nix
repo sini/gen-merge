@@ -193,7 +193,7 @@ let
   defineType =
     t:
     let
-      exported = interface.exportType (mkTypeWith exported t);
+      exported = interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
     in
     exported;
 

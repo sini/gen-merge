@@ -306,16 +306,21 @@ is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
 - An over-approximated child the host fold never selected (a union position under a lazy
   container) is a CANDIDATE: enumerated, and its `result` alone refuses, before any module is applied.
 - A union over a container (`either (attrsOf sub) str`) is keyed member by member, a container member
-  only where every definition has its shape; under a lazy container below a step it is S1 class (a).
-- S1 class (a) under `lazyAttrsOf` is a CONTAINER NODE (arm (v), den-hoag-9d80v): its position is
-  marked `mode = "container"` (`containerAt`, read by the walk and the threaded fold alike), and its
-  `result` is `{ value; _nested; }`, never a tree. ★ A reader of `result` by identifier checks the
-  host position's `mode` first: `.config` on a container node is a missing attribute, which
-  `tryEval` does not catch. At the walk's own root (an option's position, or a container node's)
-  under a container that added no step (`unique`, `coercedTo`), the position is walked as the root
-  is and serves nixpkgs' value (ADR-0039, den-hoag-t1j4z). Below a step under another
-  over-approximating container the shape is refused by name: nixpkgs serves it, so the refusal is a
-  stated shortfall against ADR-0039's serve half, not a divergence.
+  only where every definition has its shape; under an over-approximating container below a step it
+  is S1 class (a).
+- S1 class (a) below a step under ANY over-approximating container is a CONTAINER NODE (arm (v),
+  den-hoag-9d80v; den-hoag-t1j4z Case B): its position is marked `mode = "container"`
+  (`containerAt`, read by the walk), and its `result` is `{ value; _nested; }`, never a tree. ★ A
+  reader of `result` by identifier checks the host position's `mode` first: `.config` on a container
+  node is a missing attribute, which `tryEval` does not catch. The fold reads the node where the walk
+  MINTED one, never where a type says: `lazyAttrsOf` through its own mark, every other container
+  through `readsMintedNode` at the `defineType` door, which asks the evaluation accessor
+  (`evAt`'s `child` with the reserved site key `__genMergeMinted`) what `_nested.positions` holds at
+  its position. ★ Three points move in lockstep with that read: the position key (`toJSON`), the
+  `"container"` mode string, and `result` in scope at `evAt`'s three call sites; a miss turns every
+  door read into an inline fold, silently. At the walk's own root (an option's position, or a
+  container node's) under a container that added no step (`unique`, `coercedTo`), the position is
+  walked as the root is. Both serve nixpkgs' value (ADR-0039).
 - At an EXACT container's element, every container is keyed where it is read, so no sibling's read
   splits or forces its definitions (den-hoag-mda6f). One predicate, `keyedOverAt`, read by the walk
   and by the fold (`unionNodeAt`), decides how: an attribute-keyed one (`lazyAttrsOf`, or an `attrsOf`
