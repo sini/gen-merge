@@ -7729,20 +7729,20 @@ in
               )
             )
           );
-          expectedError = refusal "^identity: type 'string' has no identity to demand: sealed by its caller$";
+          expectedError = refusal "^gen-types: idOf: type 'tagged' has no identity to demand: sealed by its caller$";
         };
         # With no `mint` a derivation is minted per component, so a base carrying a sealed component
         # hands it up, and demanding the identity is gen-types' named refusal.
         test-a-derivation-over-a-sealed-base-answers-no-identity = {
           expr = force (genTypes.idOf (derive (t.typedef "even" (v: builtins.isInt v)) tagged));
-          expectedError = refusal "^identity: type 'even' has sealed component\\(s\\) 'members\\.0' \\(a caller-supplied lambda, a registered construction, or a type with no minted identity\\), which its mark is blind to: it is decided by `typeEq` and has no identity to demand$";
+          expectedError = refusal "^gen-types: idOf: type 'tagged' has sealed component\\(s\\) 'members\\.0' \\(a caller-supplied lambda, a registered construction, or a type with no minted identity\\), which its mark is blind to: it is decided by `typeEq` and has no identity to demand$";
         };
         # A composite over a FOREIGN element (a nixpkgs type, which carries no mint) holds that element
         # sealed, so demanding its identity is gen-types' named refusal (ADR-0034), while a deep force
         # of the record itself is total (den-hoag-6orb8 U2 gate P4; A1).
         test-a-composite-over-a-foreign-element-demanded-names-its-sealed-element = {
           expr = genTypes.idOf (t.listOf nixpkgsLib.types.str);
-          expectedError = refusal "^identity: type 'listOf' has sealed component\\(s\\) 'members\\.0' \\(a caller-supplied lambda, a registered construction, or a type with no minted identity\\), which its mark is blind to: it is decided by `typeEq` and has no identity to demand$";
+          expectedError = refusal "^gen-types: idOf: type 'listOf' has sealed component\\(s\\) 'members\\.0' \\(a caller-supplied lambda, a registered construction, or a type with no minted identity\\), which its mark is blind to: it is decided by `typeEq` and has no identity to demand$";
         };
         test-a-derivation-declared-beside-its-base-names-the-pair = {
           expr = declared (derive t.str tagged) t.str;
