@@ -244,7 +244,8 @@ in
         fold = true;
       }) bases;
     };
-    # C6 — identity (ADR-0034): sealed by default, never the base's.
+    # C6 — identity (ADR-0034): minted per component by default (den-hoag-6orb8 U2.3), never the
+    # base's.
     test-a-derivation-does-not-mint-as-its-base = {
       expr = {
         base = genTypes.typeEq derived.leaf t.str;
@@ -254,7 +255,7 @@ in
       expected = {
         base = false;
         self = true;
-        regime = [ "unmintable" ];
+        regime = [ "minted" ];
       };
     };
     # A naive `//` derivation keeps its base's mark and witness, so `typeEq` refuses it by name (the

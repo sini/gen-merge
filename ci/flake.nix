@@ -94,6 +94,7 @@
       inherit (genMergeCore) interface;
       genMergeVocab = import ../lib/types.nix {
         inherit prelude;
+        types = genTypes;
         core = genMergeCore;
       };
       # A gen-merge instance over a CALLER-SUPPLIED leaf vocabulary. The `types` parameter is this
