@@ -83,7 +83,8 @@ in
     };
 
     # KEEP: the reconciliation law and the minted relation are untouched — the enum union under one
-    # name, a `listOf` element join, and two enum names refused.
+    # name, a `listOf` element join, and (owner ruling on den-hoag-n8cpq OQ1, arm (b)) two enum names
+    # unioned as nixpkgs unions them.
     test-the-enum-union-law-is-untouched = {
       expr = {
         union = ev [
@@ -111,7 +112,7 @@ in
           "a"
           "b"
         ];
-        twoNames = "REFUSED";
+        twoNames = "b";
       };
     };
   };

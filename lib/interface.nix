@@ -413,6 +413,50 @@ let
         "pathLike"
       ]
   );
+  # gen-types' `enum` at its members (den-hoag-n8cpq item 2): nixpkgs' `enum` is gen-types' `enum`
+  # under no name, both checks `elem v <members>`, so an instance's row is nixpkgs' `enum` at those
+  # members. Its parameters are an INSTANCE's, so the row is built by the completion of the
+  # vocabulary's `enum` from the members the constructor was handed (`default.nix` `completeEnum`),
+  # never read off a payload or a name.
+  enumEmbedding = values: {
+    name = "enum";
+    joinsAs = "enum";
+    params = { inherit values; };
+  };
+  # A RAW partner keyed under instance row `e`, joined in its own relation over `e`'s parameters, this
+  # operand first; taken only where the join keeps every parameter value the row states (a list
+  # parameter as a subset of the join's, any other as equal) and the partner's name, else `null`.
+  joinInstanceRow =
+    e: other:
+    let
+      joined = joinInStatedRelation {
+        inherit (e) name;
+        payload = e.params;
+      } other;
+      jp = (joined.functor or { }).payload or null;
+      keeps =
+        k: v:
+        if isList v then
+          isList (jp.${k} or null) && builtins.all (m: builtins.elem m jp.${k}) v
+        else
+          (jp.${k} or null) == v;
+    in
+    if
+      isAttrs joined
+      && isAttrs jp
+      && builtins.all (k: keeps k e.params.${k}) (attrNames e.params)
+      && !(joinRenames joined other)
+    then
+      joined
+    else
+      null;
+  # The record names a row states a partner's join bears (`joinsAs`), for the join witness.
+  joinsAsNames = builtins.listToAttrs (
+    map (r: {
+      name = r.joinsAs;
+      value = true;
+    }) (builtins.filter (r: r ? joinsAs) (builtins.attrValues embeddings ++ [ (enumEmbedding [ ]) ]))
+  );
   # Whether `other` is keyed under the name row `e` embeds in: the one place a relation asks it.
   keyedUnderEmbedding = e: other: e != null && (keyOf other) == e.name;
   # The leaf row `t`'s mint reaches, read only off the record its constructor (or this boundary)
@@ -2208,7 +2252,21 @@ let
         let
           e = embedsOf x;
         in
-        if e != null && e ? joinsAs then e.joinsAs else x.name or null;
+        if e != null && e ? joinsAs then
+          e.joinsAs
+        # a record the export completed under a row stating `joinsAs` (an instance row, `enumEmbedding`,
+        # has no mint to reach it by) publishes that name as its functor's: read only off a completed
+        # gen record, whose functor is its export's, never a `//` copy's
+        else if
+          x ? typeMergeRel
+          && builtins.isString ((x.functor or { }).name or null)
+          && joinsAsNames ? ${x.functor.name}
+          && builtins.isFunction (x.__typeSelf or null)
+          && stampOk x
+        then
+          x.functor.name
+        else
+          x.name or null;
       sameUpToEmbedding = a: b: (a.name or null) == (b.name or null) || asOf a == asOf b;
       roles =
         x:
@@ -3706,6 +3764,8 @@ in
     joinLeafInStatedRelation
     embeddedOffered
     embeddings
+    enumEmbedding
+    joinInstanceRow
     embedsOf
     keyedUnderEmbedding
     moduleSetPayload

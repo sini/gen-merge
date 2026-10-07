@@ -1181,7 +1181,7 @@ in
         };
         # the distinct-mark refusal keeps its own reason
         test-two-marks-keep-the-distinct-construction-reason = {
-          expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "f" [ "b" ]);
+          expr = declaredTwice (t.struct "s" { a = t.str; }) (t.struct "s" { a = t.int; });
           expectedError = {
             type = "ThrownError";
             msg = "which mint to different constructions";
@@ -1301,14 +1301,6 @@ in
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `e', which mint to different constructions, and gen-merge has no reconciliation law between `enum' and `struct'\\); declared in a\\.nix, b\\.nix$";
-        };
-      };
-      # Two names still refuse: the union is a law over ONE enum, as nixpkgs' functor-name clause has it.
-      test-enum-redeclaration-under-two-names-refused = {
-        expr = declaredTwice (t.enum "e" [ "a" ]) (t.enum "f" [ "b" ]);
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`e' and `f', which mint to different constructions, and gen-merge reconciles two `enum's only under one name\\); declared in a\\.nix, b\\.nix$";
         };
       };
       # ★ THE READ IS TOTAL. A sealed partner has no payload `payloadOf` can certify, and the reader
