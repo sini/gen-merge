@@ -12,6 +12,7 @@
 {
   genMerge,
   genMergeCore,
+  genTypes,
   nixpkgsLib,
   ...
 }:
@@ -746,6 +747,415 @@ in
           lSeparateTwiceNeg = "MERGED listOf / REJECTED";
           ctlWrappedAlone = "MERGED int / REJECTED";
           ctlPlainTwice = "MERGED int / ACCEPTED";
+        };
+      };
+
+    # A NIXPKGS `addCheck` AROUND A GEN LEAF IS THE SAME IN EVERY ORDER (den-hoag-7kj5s, ADR-0034's Decision,
+    # ADR-0039's serve half and its correctness bound). The wrapper is a `//` copy whose only departure from
+    # its completion is a witnessed `check`, and the meet carries that check, so the rename witness and the
+    # relation's payload read take the copy's CARRIER (`interface.joinRenames`' `bare`, restated at the
+    # entry of `default.nix`'s parametric relation), as they take the join of a met record `meetOf` built.
+    # Every permutation of each declaration set reads one verdict per value, the law's: a value the
+    # wrapper rejects is REJECTED, a value some declared enum admits and every declaration's own parameters
+    # allow is ACCEPTED, a value no declaration admits is REJECTED.
+    test-a-nixpkgs-wrapper-over-a-gen-leaf-is-the-same-in-every-order =
+      let
+        verdict = r: if r == "REFUSED" then r else builtins.elemAt (builtins.split " / " r) 2;
+        perms =
+          xs:
+          if xs == [ ] then
+            [ [ ] ]
+          else
+            builtins.concatLists (
+              nixpkgsLib.imap0 (
+                i: x:
+                map (p: [ x ] ++ p) (
+                  perms (nixpkgsLib.sublist 0 i xs ++ nixpkgsLib.sublist (i + 1) (builtins.length xs - i - 1) xs)
+                )
+              ) xs
+            );
+        # every order's verdict, collapsed to the set of distinct verdicts: one element is order-independence
+        orders = tys: v: nixpkgsLib.unique (map (o: verdict (ev o v)) (perms tys));
+        notA = x: x != "a";
+        even = gt.typedef "even" (v: builtins.isInt v && v / 2 * 2 == v);
+        Wg = t.addCheck (gt.enum "e" [
+          "a"
+          "b"
+        ]) notA;
+        N = t.enum [
+          "b"
+          "c"
+        ];
+        G = gt.enum "g" [
+          "b"
+          "c"
+        ];
+        H = gt.enum "h" [
+          "c"
+          "d"
+        ];
+        Nsame = t.enum [
+          "a"
+          "b"
+        ];
+        # a met record (`y` rejected by its wrapped operand) re-completed by `mkOptionType`: the completion
+        # re-ties its witness to the met check and carries `__meetJoin` across, so the meet owes it nothing
+        # and it is not the record `meetOf` built. Read as its join, the met check would be enforced by
+        # nobody, in one order (gate K1); read as itself it refuses in both, as before the carrier.
+        recompleted = gm.mkOptionType (
+          (gm.evalModuleTree { } [
+            {
+              options.q = gm.mkOption {
+                type = t.addCheck (gt.enum "g" [
+                  "x"
+                  "y"
+                ]) (v: v != "y");
+              };
+            }
+            { options.q = gm.mkOption { type = gt.enum "k" [ "x" ]; }; }
+          ]).options.q.type
+        );
+        under = c: map c;
+        put = {
+          bare = v: v;
+          listOf = v: [ v ];
+        };
+        C = {
+          bare = x: x;
+          listOf = t.listOf;
+        };
+        # a gen leaf wrapped, beside its nixpkgs twin `n`
+        leaf =
+          l: n: p: ok: bad: c:
+          let
+            tys = under C.${c} [
+              (t.addCheck l (x: x != p))
+              n
+            ];
+          in
+          {
+            ok = orders tys (put.${c} ok);
+            p = orders tys (put.${c} p);
+            bad = orders tys (put.${c} bad);
+          };
+        enumSet = c: tys: {
+          a = orders (under C.${c} tys) (put.${c} "a");
+          b = orders (under C.${c} tys) (put.${c} "b");
+          c = orders (under C.${c} tys) (put.${c} "c");
+          z = orders (under C.${c} tys) (put.${c} "z");
+        };
+      in
+      {
+        expr = {
+          wN = enumSet "bare" [
+            Wg
+            N
+          ];
+          wG = enumSet "bare" [
+            Wg
+            G
+          ];
+          wNsame = enumSet "bare" [
+            Wg
+            Nsame
+          ];
+          wNG = enumSet "bare" [
+            Wg
+            N
+            G
+          ];
+          wGH = enumSet "bare" [
+            Wg
+            G
+            H
+          ];
+          listOf-wN = enumSet "listOf" [
+            Wg
+            N
+          ];
+          listOf-wGH = enumSet "listOf" [
+            Wg
+            G
+            H
+          ];
+          # a nullary gen leaf under a nixpkgs container, beside its nixpkgs twin
+          listOf-number = leaf gt.number t.number 1 3 "s" "listOf";
+          listOf-str = leaf gt.str t.str "a" "c" 1 "listOf";
+          # control: a nullary leaf the same in every order at base, bare and under the container
+          int = leaf gt.int t.int 1 3 "s" "bare";
+          listOf-int = leaf gt.int t.int 1 3 "s" "listOf";
+          # a refinement (MINTED) and a registered custom type (COMPARED), wrapped beside themselves: the
+          # sealed limb decides the CARRIER the same type, and the meet owes the wrapper
+          refined =
+            leaf (gt.refined gt.int gt.refinements.positive) (gt.refined gt.int gt.refinements.positive) 2 3
+              (-1)
+              "bare";
+          typedef = leaf even even 2 4 3 "bare";
+          recompleted = {
+            x = orders [
+              recompleted
+              (gt.enum "h" [
+                "x"
+                "y"
+              ])
+            ] "x";
+            y = orders [
+              recompleted
+              (gt.enum "h" [
+                "x"
+                "y"
+              ])
+            ] "y";
+            z = orders [
+              recompleted
+              (gt.enum "h" [
+                "x"
+                "y"
+              ])
+            ] "z";
+          };
+        };
+        expected =
+          let
+            acc = [ "ACCEPTED" ];
+            rej = [ "REJECTED" ];
+            ref = [ "REFUSED" ];
+          in
+          {
+            wN = {
+              a = rej;
+              b = acc;
+              c = acc;
+              z = rej;
+            };
+            wG = {
+              a = rej;
+              b = acc;
+              c = acc;
+              z = rej;
+            };
+            wNsame = {
+              a = rej;
+              b = acc;
+              c = rej;
+              z = rej;
+            };
+            wNG = {
+              a = rej;
+              b = acc;
+              c = acc;
+              z = rej;
+            };
+            wGH = {
+              a = rej;
+              b = acc;
+              c = acc;
+              z = rej;
+            };
+            listOf-wN = {
+              a = rej;
+              b = acc;
+              c = acc;
+              z = rej;
+            };
+            listOf-wGH = {
+              a = rej;
+              b = acc;
+              c = acc;
+              z = rej;
+            };
+            listOf-number = {
+              ok = acc;
+              p = rej;
+              bad = rej;
+            };
+            listOf-str = {
+              ok = acc;
+              p = rej;
+              bad = rej;
+            };
+            int = {
+              ok = acc;
+              p = rej;
+              bad = rej;
+            };
+            listOf-int = {
+              ok = acc;
+              p = rej;
+              bad = rej;
+            };
+            refined = {
+              ok = acc;
+              p = rej;
+              bad = rej;
+            };
+            typedef = {
+              ok = acc;
+              p = rej;
+              bad = rej;
+            };
+            recompleted = {
+              x = ref;
+              y = ref;
+              z = ref;
+            };
+          };
+      };
+
+    # THE TWO CARRIER SPELLINGS AGREE (den-hoag-7kj5s). `interface.joinRenames`' `bare` is restated at the
+    # entry of `default.nix`'s parametric relation rather than shared, for the load gates' cost, so the
+    # carrier has two spellings. Each is read off its source and evaluated, and over one population both
+    # name the same carrier, the one each record's class states: a check-only copy its completion, the
+    # met record `meetOf` built its join, and every other record itself — a copy departing at `verify`
+    # too (the completion stamp) and a met record re-completed by `mkOptionType` (its witness is no
+    # longer its join's) among them.
+    test-the-two-carrier-spellings-agree =
+      let
+        inherit (genMergeCore) interface;
+        scope = {
+          inherit (interface) rewritesCheck exportClasses;
+          stampOk = genTypes.stampOk;
+          checkedTypes = genTypes;
+          core = { inherit interface; };
+        };
+        spelling =
+          file:
+          let
+            lines = builtins.filter builtins.isString (builtins.split "\n" (builtins.readFile file));
+            n = builtins.length lines;
+            at = builtins.filter (i: builtins.match " *bare =" (builtins.elemAt lines i) != null) (
+              builtins.genList (i: i) n
+            );
+            indent = builtins.head (builtins.match "( *)bare =" (builtins.elemAt lines (builtins.head at)));
+            body =
+              i:
+              let
+                l = builtins.elemAt lines i;
+              in
+              if i < n && (l == "" || builtins.match "${indent} .*" l != null) then
+                [ l ] ++ body (i + 1)
+              else
+                [ ];
+          in
+          {
+            count = builtins.length at;
+            read = import (builtins.toFile "carrier.nix" ''
+              { rewritesCheck, exportClasses, stampOk, checkedTypes, core }:
+              let
+                bare =
+              ${builtins.concatStringsSep "\n" (body (builtins.head at + 1))}
+              in
+              bare
+            '') scope;
+          };
+        joinRenames = spelling ../../lib/interface.nix;
+        relation = spelling ../../lib/default.nix;
+        # which record a spelling names: the carrier's name, how many meets it still records, and
+        # whether its `check` is still rewritten
+        meets = r: if r ? __meetJoin then 1 + meets r.__meetJoin else 0;
+        shape = r: {
+          inherit (r) name;
+          meets = meets r;
+          rewrites = interface.rewritesCheck r;
+        };
+        metOf =
+          tys:
+          (gm.evalModuleTree { } (map (ty: { options.q = gm.mkOption { type = ty; }; }) tys)).options.q.type;
+        notA = x: x != "a";
+        wrapped = t.addCheck (gt.enum "e" [
+          "a"
+          "b"
+        ]) notA;
+        population = {
+          raw = gt.enum "e" [
+            "a"
+            "b"
+          ];
+          nixpkgs = t.enum [
+            "b"
+            "c"
+          ];
+          checkOnly = wrapped;
+          descriptionCopy = wrapped // {
+            description = "a described wrapper";
+          };
+          verifyCopy =
+            gt.enum "e" [
+              "a"
+              "b"
+            ]
+            // {
+              check = notA;
+              verify = _: null;
+            };
+          met = metOf [
+            wrapped
+            (gt.enum "g" [
+              "b"
+              "c"
+            ])
+          ];
+          # a fold re-meets the carrier, so a met record over a met join is built by `meetOf` itself
+          metOfMet =
+            interface.meetOf
+              (metOf [
+                wrapped
+                (gt.enum "g" [
+                  "b"
+                  "c"
+                ])
+              ])
+              [
+                (t.addCheck (gt.enum "h" [
+                  "c"
+                  "d"
+                ]) (v: v != "d"))
+              ];
+          recompletedMet = gm.mkOptionType (metOf [
+            (t.addCheck (gt.enum "g" [
+              "x"
+              "y"
+            ]) (v: v != "y"))
+            (gt.enum "k" [ "x" ])
+          ]);
+        };
+      in
+      {
+        expr = {
+          spellings = {
+            joinRenames = joinRenames.count;
+            relation = relation.count;
+          };
+          carriers = builtins.mapAttrs (_: x: {
+            record = shape x;
+            agree = shape (joinRenames.read x) == shape (relation.read x);
+            carrier = shape (joinRenames.read x);
+          }) population;
+        };
+        expected = {
+          spellings = {
+            joinRenames = 1;
+            relation = 1;
+          };
+          # each record's class, and the carrier both spellings name for it
+          carriers =
+            let
+              sh = name: meets: rewrites: { inherit name meets rewrites; };
+              row = record: carrier: {
+                inherit record carrier;
+                agree = true;
+              };
+            in
+            {
+              raw = row (sh "e" 0 false) (sh "e" 0 false);
+              nixpkgs = row (sh "enum" 0 false) (sh "enum" 0 false);
+              checkOnly = row (sh "e" 0 true) (sh "e" 0 false);
+              descriptionCopy = row (sh "e" 0 true) (sh "e" 0 false);
+              verifyCopy = row (sh "e" 0 true) (sh "e" 0 true);
+              met = row (sh "g" 1 true) (sh "g" 0 false);
+              metOfMet = row (sh "g" 2 true) (sh "g" 0 false);
+              recompletedMet = row (sh "k" 1 false) (sh "k" 1 false);
+            };
         };
       };
 

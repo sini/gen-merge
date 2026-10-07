@@ -468,7 +468,45 @@ let
             )
           );
         rel =
-          self: other:
+          self: partner:
+          let
+            # ★ A WITNESSED-REWRITE PARTNER IS READ AS ITS CARRIER (`interface.joinRenames`' `bare`,
+            # restated here for the load gates' cost): the join of a met record `meetOf` built (its
+            # witness is its join's; a re-completed one is its own), or the completion of a `//` copy
+            # that departs from it only at `check` and name-carried fields. The step's meet owes the
+            # rewrite's own check (`interface.metWith`), so sameness, the shared mark and the payload read
+            # below decide only which type the carrier is and which law applies.
+            bare =
+              t:
+              if
+                t ? __meetJoin
+                && t ? _checkWitness
+                && t._checkWitness == (t.__meetJoin._checkWitness or t.__meetJoin.check)
+              then
+                bare t.__meetJoin
+              else if core.interface.rewritesCheck t && builtins.isFunction (t.__typeSelf or null) then
+                let
+                  c = t.__typeSelf null;
+                  names = core.interface.exportClasses.nameCarried ++ [ "check" ];
+                in
+                if
+                  checkedTypes.stampOk (
+                    builtins.removeAttrs t names
+                    // builtins.intersectAttrs (builtins.listToAttrs (
+                      map (n: {
+                        name = n;
+                        value = null;
+                      }) names
+                    )) c
+                  )
+                then
+                  c
+                else
+                  t
+              else
+                t;
+            other = if builtins.isAttrs partner then bare partner else partner;
+          in
           if digest == null then
             refuseParametricMerge base other
           # ★ A RAW PARTNER KEYED UNDER THIS INSTANCE'S ROW (nixpkgs' `enum`) is joined in ITS OWN

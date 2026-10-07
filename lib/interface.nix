@@ -2804,12 +2804,52 @@ let
   # `mergeTypes` for its base), never here.
   joinRenames =
     let
+      # ★ A WITNESSED REWRITE IS READ AS ITS CARRIER. The meet owes every operand whose `check` is not its
+      # witness (`metWith`), so a rewrite's own check is enforced at the step whatever join is taken here;
+      # what this asks is only whether the join keeps the name the CARRIER states. A met record's carrier
+      # is its join (`meetOf`'s `__meetJoin`) while it is still the record `meetOf` built, whose witness
+      # is its join's: a re-completion (`mkOptionType`, `defineType`) re-ties the witness to the met
+      # check and carries `__meetJoin` across, and the meet then owes it nothing, so read as its join it
+      # would lose that check. A `//` copy whose only departure from its completion is `check` and
+      # name-carried fields (nixpkgs `addCheck`) has its completion; any other record is its own.
+      # Restated inline at the entry of `default.nix`'s parametric relation, for the load gates' cost;
+      # the two spellings are held alike by `check-family-merge`'s carrier cell.
+      bare =
+        x:
+        if
+          x ? __meetJoin
+          && x ? _checkWitness
+          && x._checkWitness == (x.__meetJoin._checkWitness or x.__meetJoin.check)
+        then
+          bare x.__meetJoin
+        else if rewritesCheck x && builtins.isFunction (x.__typeSelf or null) then
+          let
+            c = x.__typeSelf null;
+            names = exportClasses.nameCarried ++ [ "check" ];
+          in
+          if
+            stampOk (
+              builtins.removeAttrs x names
+              // builtins.intersectAttrs (builtins.listToAttrs (
+                map (n: {
+                  name = n;
+                  value = null;
+                }) names
+              )) c
+            )
+          then
+            c
+          else
+            x
+        else
+          x;
       # one name, or two the embedding table states are one record's (`joinsAs`). The row is the one
       # the RECORD reaches (`embedsOf`), never one its name collides with: a caller's `enum "string"`
       # read as `str` would let a join that dropped its check pass as keeping it.
       asOf =
-        x:
+        src:
         let
+          x = if isAttrs src then bare src else src;
           e = embedsOf x;
         in
         if e != null && e ? joinsAs then
