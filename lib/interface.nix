@@ -1907,13 +1907,32 @@ let
         go importedTypeWalkFuel c;
       # a record's levels, decided once per record: a `node` level carries the level of the record
       # its step states (`next`), so no key re-walks it; a level carries its `step`, the record
-      # whose split it is
+      # whose split it is. A STRICT step over a LAZY level is a `pass` level: its keys are steps of
+      # the enclosing walk, not nodes. A key needs a node only where keying below it forces what
+      # nixpkgs forces only when that key is read; a strict step's key set has already forced each
+      # key's definitions, and a lazy level's key set below it reads only their attribute names.
       levels =
         c:
         let
           lv = levelOf c;
+          next = levels lv.node;
         in
-        if lv != null && lv ? node then lv // { next = levels lv.node; } else lv;
+        if lv != null && lv ? node then
+          (
+            if !(lazyStep lv) && lazyStep next then
+              {
+                pass = true;
+                inherit (lv) step;
+                inherit next;
+              }
+            else
+              lv // { inherit next; }
+          )
+        else
+          lv;
+      lazyStep = lv: lv != null && (lv.step.functor.payload.lazy or false);
+      # the step whose elements a level's split hands the walk: a `pass` level's are its next level's
+      regimeOf = lv: if lv ? pass then regimeOf lv.next else lv.step;
       lvT = levels t;
       chainElement = lvT.one or null;
       # `l` below `base`: the steps past it, `null` where `l` does not extend it
@@ -1959,6 +1978,12 @@ let
         lv: stated: oloc: root: base: ds: r:
         if lv != null && lv ? one && isAttrs r then
           lazySplit lv.one base r
+        else if lv != null && lv ? pass && isAttrs r then
+          # each key is a step of this walk: its next level's split there, one key deeper
+          prelude.concatMap (
+            k:
+            map (s: s // { step = [ k ] ++ s.step; }) (splitAt lv.next null oloc root (base ++ [ k ]) ds r.${k})
+          ) (attrNames r)
         else if lv != null && lv ? node && isAttrs r then
           let
             node = nodeAt lv.node lv.next oloc root;
@@ -1998,7 +2023,7 @@ let
           # the node keys its elements as the record whose split it runs does (`keysExactly`): the
           # step of `c`'s own level, below its step-free wrappers, else `c`; an exact stock
           # container's elements are keyed in the exact regime, as gen's own are
-          keysExactly = keysExactly (if lv != null then lv.step else c);
+          keysExactly = keysExactly (if lv != null then regimeOf lv else c);
           split =
             base: ds: splitAt lv c oloc root base ds (builtins.foldl' (v: k: v.${k}) root (under oloc base));
           mergeDefs = {
@@ -2015,7 +2040,7 @@ let
       # (`keyedWhereRead`); otherwise as folded.
       finishAt =
         lv: base: rB: ev: v:
-        if lv != null && lv ? node && isAttrs rB && isAttrs v then
+        if lv != null && (lv ? node || lv ? pass) && isAttrs rB && isAttrs v then
           prelude.mapAttrs (k: x: finishAt lv.next (base ++ [ k ]) (rB.${k} or null) ev x) v
         else if lv != null && lv ? one && isAttrs rB then
           keyedWhereRead base rB v
@@ -2100,14 +2125,18 @@ let
             onLevel = lv != null && isAttrs rB;
             steps = map (s: stepOf base s.loc) (sitesOf rB);
             sub =
-              if onLevel && lv ? node then prelude.mapAttrs (k: infoAt lv.next true (base ++ [ k ])) rB else { };
+              if onLevel && (lv ? node || lv ? pass) then
+                prelude.mapAttrs (k: infoAt lv.next true (base ++ [ k ])) rB
+              else
+                { };
           };
           info0 = infoAt lv checked base rB;
           # Where element `eloc` is threaded: `{ ev; st; ok; }`, the accessor of the level that holds
-          # it (a `node` level hands it to its key's node, `accessor`), its steps below that level,
-          # and whether that level's split placed it there.
+          # it (a `node` level hands it to its key's node, `accessor`; a `pass` level keeps it in its
+          # own accessor, its key prefixed, `pre`), its steps below that accessor, and whether that
+          # level's split placed it there.
           placeAt =
-            i: ev: eloc:
+            i: ev: pre: eloc:
             let
               st = if i.checked then under i.base eloc else stepOf i.base eloc;
             in
@@ -2118,15 +2147,19 @@ let
                 lvOn = i.onLevel;
               }
             else if i.onLevel && i.lv ? node && st != [ ] && i.sub ? ${head st} then
-              placeAt i.sub.${head st} (ev.child { position = ev.position ++ [ (head st) ]; }).accessor eloc
+              placeAt i.sub.${head st} (ev.child { position = ev.position ++ pre ++ [ (head st) ]; }).accessor [ ]
+                eloc
+            else if i.onLevel && i.lv ? pass && st != [ ] && i.sub ? ${head st} then
+              placeAt i.sub.${head st} ev (pre ++ [ (head st) ]) eloc
             else
               {
-                inherit ev st;
+                inherit ev;
+                st = pre ++ st;
                 lvOn = i.onLevel;
                 ok =
                   if i.onLevel && i.lv ? one then
                     length st == 1 && siteLocAt i.rB (head st) == eloc
-                  else if i.onLevel && i.lv ? node then
+                  else if i.onLevel && (i.lv ? node || i.lv ? pass) then
                     false
                   else
                     builtins.elem st i.steps;
@@ -2145,7 +2178,7 @@ let
               merge = carriedElement e (
                 eloc: edefs:
                 let
-                  at = placeAt info0 ev eloc;
+                  at = placeAt info0 ev [ ] eloc;
                   ok = at.ok;
                 in
                 mergeDefsThreaded (
@@ -2182,6 +2215,8 @@ let
     t
     // {
       __threadedForeign = true;
+      # the walk keys the split's elements in the regime of the step that holds them
+      keysExactly = if lvT != null then keysExactly (regimeOf lvT) else keysExactly t;
       split =
         loc: defs:
         # on a level, and only where the merge returned the attrset its functors state; any other
