@@ -910,6 +910,159 @@ in
       };
     };
 
+  # den-hoag-rlskz (ADR-0039, the serve half; ADR-0025 item 1): a FOREIGN chain whose lazy `attrsWith`
+  # holds, at each key, a record that is itself a chain (a second container step: `lazyAttrsOf`,
+  # `attrsOf`, `listOf`, `nullOr`) is keyed one key at a time: each key is a container node whose own
+  # walk is that record's, read off the fold's result at that key only, so a sibling whose key set or
+  # `mkIf` reads the read tree is never forced to key it. The expected values are nixpkgs' own, read
+  # off `lib.evalModules` mounting the same declaration.
+  # den-hoag-rlskz: a foreign chain's node keys its elements in the regime of the record its step
+  # states (`interface.keysExactly`). Below `lazyAttrsOf`, a stock `attrsOf` keys exactly, so its gen
+  # `attrsOf` elements are keyed over-approximately inline in the node's own group, as gen's own
+  # `attrsOf (attrsOf sub)` keys them: the node holds trees, and no second node is minted per key.
+  flake.tests.nesting-keys-foreign-chain-node-regime =
+    let
+      r = genMergeCore.evalModuleTreeExposed {
+        modules = [
+          { options.o = gm.mkOption { type = np.uniq (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub))); }; }
+          { config.o.foo.j.k.x = 1; }
+        ];
+      };
+      nodeId = genScope.mintNtaId {
+        host = "module-tree";
+        name = "nested";
+        group = "[\"o\"]";
+        key = "[\"foo\"]";
+      };
+      modesAt =
+        id: group: builtins.mapAttrs (_: p: p.mode) (r._evaluation.get id "positions").nested.${group};
+    in
+    {
+      test-a-node-over-an-exact-stock-container-holds-trees-not-nodes = {
+        expr = {
+          root = modesAt "module-tree" "[\"o\"]";
+          node = modesAt nodeId "container";
+          value = r.config.o.foo.j.k.x;
+        };
+        expected = {
+          root."[\"foo\"]" = "container";
+          node."[\"j\",\"k\"]" = "called";
+          value = 1;
+        };
+      };
+    };
+
+  flake.tests.nesting-keys-foreign-chain-nested =
+    let
+      cfgOf = modules: (gm.evalModuleTree { } modules).config.o;
+      aw =
+        e:
+        np.attrsWith {
+          elemType = e;
+          lazy = true;
+          placeholder = "p";
+        };
+      # `bar`'s key set reads the read tree, below the chain's second step (`d` builds a key's value)
+      keysDep = type: d: read: [
+        { options.o = gm.mkOption { inherit type; }; }
+        (
+          { config, ... }:
+          {
+            config.o = {
+              foo = d 1;
+              bar = if read config.o.foo == 1 then d 2 else { };
+            };
+          }
+        )
+      ];
+      inJ = v: { j.k.x = v; };
+      readJ = x: x.j.k.x;
+    in
+    {
+      test-a-lazy-step-over-a-lazy-attrsOf-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          readJ
+            (cfgOf (keysDep (np.uniq (np.lazyAttrsOf (np.lazyAttrsOf (t.attrsOf sub)))) inJ readJ)).foo;
+        expected = 1;
+      };
+      test-a-lazy-step-over-an-attrsOf-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          readJ
+            (cfgOf (keysDep (np.uniq (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))) inJ readJ)).foo;
+        expected = 1;
+      };
+      test-a-lazy-step-over-a-listOf-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          (builtins.head
+            (cfgOf (
+              keysDep (np.uniq (np.lazyAttrsOf (np.listOf (t.attrsOf sub)))) (v: [ { k.x = v; } ]) (
+                x: (builtins.head x).k.x
+              )
+            )).foo
+          ).k.x;
+        expected = 1;
+      };
+      test-a-lazy-step-over-a-nullOr-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          (cfgOf (
+            keysDep (np.uniq (np.lazyAttrsOf (np.nullOr (t.attrsOf sub)))) (v: { k.x = v; }) (x: x.k.x)
+          )).foo.k.x;
+        expected = 1;
+      };
+      test-a-bare-placeholder-attrsWith-over-a-lazy-attrsOf-serves-a-key-dependent-sibling = {
+        expr = readJ (cfgOf (keysDep (aw (np.lazyAttrsOf (t.attrsOf sub))) inJ readJ)).foo;
+        expected = 1;
+      };
+      # three steps, under `coercedTo`: each lazy step is a level of nodes
+      test-three-steps-under-coercedTo-serve-a-key-dependent-sibling = {
+        expr =
+          (cfgOf (
+            keysDep (np.coercedTo np.str (_: throw "unused") (
+              np.lazyAttrsOf (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))
+            )) (v: { j.i.k.x = v; }) (x: x.j.i.k.x)
+          )).foo.j.i.k.x;
+        expected = 1;
+      };
+      # one step below the node: an inner LAZY step keys its own keys where read, so a second key
+      # that is `mkIf` on the read tree serves (nixpkgs forces it only where it is read)
+      test-an-inner-lazy-step-serves-an-mkIf-sibling-below-the-node = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = np.uniq (np.lazyAttrsOf (np.lazyAttrsOf (t.attrsOf sub))); }; }
+              (
+                { config, ... }:
+                {
+                  config.o.foo = {
+                    j.k.x = 1;
+                    i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 2; };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # the whole value, every key and element, and a key whose every definition is discharged away
+      test-the-whole-value-of-a-two-step-chain-is-nixpkgs-value = {
+        expr = cfgOf (
+          host (np.uniq (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))) [
+            {
+              foo.j.k.x = 1;
+              foo.i.k.x = 3;
+              bar.j.k.x = 2;
+              baz = gm.mkIf false { j.k.x = 4; };
+            }
+          ]
+        );
+        expected = {
+          foo.j.k.x = 1;
+          foo.i.k.x = 3;
+          bar.j.k.x = 2;
+          baz = { };
+        };
+      };
+    };
+
   # ONE DISCHARGE (den-hoag-i4c0n C1, with L5f's freeform half): the walk reads the fold's own
   # `typeDefs` off the option's merge record, except where forcing that record would meet the "used
   # but not defined" guard. `testsError.nesting-keys` pins the message the guard arm keeps.
