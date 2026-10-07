@@ -1176,10 +1176,10 @@ in
           typeMerge = _: null;
         };
         u8 = np.types.either np.types.ints.u8 np.types.bool;
-        # A foreign answer that ABORTS is no answer: nixpkgs' `either` relation asks nixpkgs' `path`
-        # about gen's `path`, whose null payload trips nixpkgs' `defaultTypeMerge` assertion. The
-        # relation stays total (`rel`), and the union mirrors its bare `path` member pair (`leaf`),
-        # whatever that pair answers (its order dependence is the leaf's own, den-hoag-46zga).
+        # A foreign answer that ABORTS is no answer: nixpkgs' `either` relation runs nixpkgs' code over
+        # gen's members, so it is taken through `tryEval`. The relation stays total (`rel`), and the
+        # union mirrors its bare `path` member pair (`leaf`), whatever that pair answers (nixpkgs'
+        # record in both orders since gen `path` publishes `pathWith`'s payload, den-hoag-46zga).
         epath = {
           rel =
             let

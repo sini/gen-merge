@@ -1329,6 +1329,9 @@ foreign engine can recover this type from, in the foreign spellings:
 { name = "attrsWith"; payload = { elemType; lazy = false; placeholder = "name"; }; }  # attrsOf
 { name = "attrsWith"; payload = { elemType; lazy = true; placeholder = "name"; }; }   # lazyAttrsOf
 { name = "deferredModuleWith"; payload = { staticModules = [ ]; }; }                  # deferredModule
+{ name = "str"; payload = null; }                                                     # str (gen-types `string`)
+{ name = "path"; payload = { absolute = true; inStore = null; }; }                    # path
+{ name = "path"; payload = { absolute = null; inStore = null; }; }                    # pathLike
 # `type` over a payload whose fixed parameters are not the type's own refuses by name
 # submodule — the parameter is the MODULE LIST              (gen role: `moduleSet`)
 { payload = { modules; }; }
@@ -1363,7 +1366,7 @@ application nixpkgs makes in the other order, so the merged type is nixpkgs' rec
 in both orders and under both engines (`either`, `oneOf`, a union inside a container). It is
 order-independent by construction only where that relation answers a join the witness keeps;
 elsewhere the pair falls back to gen's own relation and keeps its order behaviour (`ints.u8` stays
-refused; a `path` member, whose leaf pair is order-dependent on its own, keeps that leaf's behaviour).
+refused).
 A foreign answer that aborts is taken as no answer (`tryEval`), so the relation stays total. The
 partner's own `typeMerge` is never called. Price (Δ thunks per option, Nix 2.34.8): a gen × gen
 `listOf` pays +1 on nixpkgs' engine and 0 on gen's, a gen × gen `either` +2 and 0, and a mixed `either`
@@ -1371,7 +1374,15 @@ about +300 against gen's engine's former (wrong-record) answer. A partner stated
 (nixpkgs `attrsWith` for `attrsOf`/`lazyAttrsOf`, `deferredModuleWith` for `deferredModule`) is joined
 in the same binding over the embedding (`interface.embeddings`): gen's parameters are a point of that
 payload, so the pair is decided by the partner's `binOp` under the same witness, a foreign
-`staticModules` survives it, and a refused `attrsOf` pair names its element pair. A gen nesting type (`submodule`, the tree) facing a
+`staticModules` survives it, and a refused `attrsOf` pair names its element pair. Three LEAVES embed
+too: gen-types' `string` publishes nixpkgs' `str` (no payload; the witness reads the two names as one
+record's, the table's `joinsAs`), and `path`/`pathLike` publish `pathWith` at `absolute = true` and at no
+constraint. A mixed `str`/`path`/`pathLike` redeclaration therefore has nixpkgs' record in both orders
+under either engine, and a partner keyed under the embedding whose relation declines the join is
+REFUSED, never answered by gen's own record: gen `path` beside `pathInStore`, `externalPath` or a
+constrained `pathWith` is refused as nixpkgs' twin refuses it, so the partner's check is never dropped
+unsaid. Each row claims gen's check is the partner's at the embedded parameters. Their `name` is
+unchanged (`string`, `path`, `pathLike`). A gen nesting type (`submodule`, the tree) facing a
 same-named partner that offers it nothing is not refused for that: its parameters embed into the
 partner's richer `submoduleWith` payload, so it hands the pair to the protocol's default relation over
 the partner's PUBLISHED functor (`interface.joinInStatedRelation`, over `interface.moduleSetPayload`),

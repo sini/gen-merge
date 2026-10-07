@@ -2454,11 +2454,11 @@ let
   # functor: the application nixpkgs makes in the order where the partner's constructor decides, so
   # both orders compute one function of one pair — ORDER-INDEPENDENT BY CONSTRUCTION ONLY WHERE THAT
   # RELATION ANSWERS a join the witness keeps; elsewhere the pair falls back to the caller's own
-  # relation and keeps that relation's order behaviour (an `ints.u8` member, a `path` member). As with
+  # relation and keeps that relation's order behaviour (an `ints.u8` member). As with
   # `joinInStatedRelation`, the partner's OWN `typeMerge` is never called: a partner whose `typeMerge`
   # disagrees with its functor gets its functor's constructor. Held to the same witness as every
   # foreign join. A FOREIGN ANSWER THAT ABORTS IS NO ANSWER: the rebuilt relation runs foreign code
-  # over gen's members (nixpkgs' `path` asserts on gen `path`'s null payload), so it is taken through
+  # over gen's members (nixpkgs' `defaultTypeMerge` asserts two payloads agree on null-ness), so it is taken through
   # `tryEval`, the idiom `lib/default.nix` uses, and this relation stays a value or a named refusal
   # (ADR-0025 item 1).
   joinInRebuiltPartner =
