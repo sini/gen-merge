@@ -422,10 +422,13 @@ let
   # (`default.nix` `completeExport`) and by the join witness (`joinRenames`).
   embedsOf =
     t:
-    let
-      r = leafEmbeddings.${t.__mint.minted or ""} or null;
-    in
-    if r != null && builtins.isFunction (t.__typeSelf or null) && stampOk t then r else null;
+    if t ? carries then
+      null
+    else
+      let
+        r = leafEmbeddings.${t.__mint.minted or ""} or null;
+      in
+      if r != null && builtins.isFunction (t.__typeSelf or null) && stampOk t then r else null;
   # The embedded payload: the role's key beside the embedding's fixed parameters. The one source for
   # the export's published payload and for the join (`joinCarriedInStatedRelation`).
   embeddedPayload =
@@ -3581,8 +3584,11 @@ let
   # refused here by name.
   exportType = exportTypeWith null;
   # `row` is the `embeddings` row the type's gen-merge constructor states (`types.nix`
-  # `defineEmbedded`), or `null`, which every other caller hands. A rebuilt container is re-exported
-  # under its constructor's row.
+  # `defineEmbedded`), or `null`, which every other caller hands. With none, a completed gen-types
+  # leaf handed to a published door as it is (`defineType gm.types.string`) is read off `t` itself
+  # (`embedsOf`: its mint, under its stamp; `mkTypeWith` completes such a record without copying it),
+  # inside the two fields that use it, so the export allocates nothing per call. A rebuilt container
+  # is re-exported under its constructor's row.
   exportTypeWith =
     row: t:
     let
@@ -3598,6 +3604,8 @@ let
       payload =
         if row != null then
           embeddedPayload row role carried
+        else if embedsOf t != null then
+          embeddedPayload (embedsOf t) role carried
         else if role == null then
           null
         else if role == "moduleSet" then
@@ -3651,7 +3659,7 @@ let
       # and the inbound half publishes a functor a foreign engine can recover THIS type from.
       functor =
         let
-          embeds = row;
+          embeds = if row != null then row else embedsOf t;
           extrasAgree =
             p: builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames (embeds.params or { }));
         in
