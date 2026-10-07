@@ -201,7 +201,12 @@ let
         + "; a type that carries something answers for it rather than inheriting a leaf's answers"
       )
     else
-      t // { typeMergeRel = t.typeMergeRel or nullaryRel; };
+    # a record already stating its relation is completed as it is, never copied: a copy would fail
+    # the completion stamp the export reads a leaf row through (`interface.embedsOf`)
+    if t ? typeMergeRel then
+      t
+    else
+      t // { typeMergeRel = nullaryRel; };
 
   # The gen record alone, answering with itself. This is the substrate vocabulary with nothing of the
   # foreign protocol on it, and it is what the boundary is handed.

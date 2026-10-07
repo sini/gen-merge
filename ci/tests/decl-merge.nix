@@ -994,6 +994,57 @@ in
         };
       };
 
+    # n8cpq OQ-A: a COMPLETED gen-types leaf handed to the published `defineType` as it is (not a
+    # caller-named type) keeps its leaf row, as its name gave it before the re-key and as nixpkgs' twin
+    # (the leaf redeclared) serves: read off its mint under its completion stamp, which holds because
+    # a record already stating its relation is completed without a copy.
+    test-a-completed-leaf-through-defineType-keeps-its-row =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalRequest;
+            mk = mkOption;
+          };
+        };
+        read =
+          eng: Ts: def:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            tried = builtins.tryEval (builtins.deepSeq r.config.x "served");
+          in
+          if tried.success then tried.value else "REFUSED";
+        rowsOf = g: p: v: {
+          np-o12 = read "np" [ g p ] v;
+          np-o21 = read "np" [ p g ] v;
+          gm-o12 = read "gm" [ g p ] v;
+          gm-o21 = read "gm" [ p g ] v;
+        };
+        served = {
+          np-o12 = "served";
+          np-o21 = "served";
+          gm-o12 = "served";
+          gm-o21 = "served";
+        };
+      in
+      {
+        expr = {
+          string = rowsOf (t.defineType t.string) np.types.str "s";
+          path = rowsOf (t.defineType t.path) np.types.path "/s";
+          stringBesideGen = rowsOf (t.defineType t.string) t.string "s";
+        };
+        expected = {
+          string = served;
+          path = served;
+          stringBesideGen = served;
+        };
+      };
+
     # n8cpq: the join witness reads an operand's name modulo the row its RECORD reaches (`joinsAs`),
     # never one its name collides with. A caller's `enum "string"` against nixpkgs' `str` is a
     # renaming, so a join that answered `str` for it is not taken as keeping its check, and so is a
