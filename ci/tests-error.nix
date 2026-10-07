@@ -7438,6 +7438,87 @@ in
         };
       };
 
+    # A FOREIGN `addCheck` OVER A MODULE SET (den-hoag-8ip0d; `../tests/module-set-carriage.nix` holds
+    # the values). At the top the refusal is the checked fold's, naming the option and the file; at a
+    # container's element it is nixpkgs' element fold reading the carried check's `headError`. An ad-hoc
+    # `// { check }` override is refused by name wherever it is carried, an accepted value included
+    # (`adHocFold`, den-hoag-ku5dt Q1), as it is alone.
+    flake.testsError.module-set-carriage =
+      let
+        np = nixpkgsLib.types;
+        not7 = v: (v.a or 0) != 7;
+        W = np.addCheck (np.submodule {
+          options.a = nixpkgsLib.mkOption {
+            type = np.int;
+            default = 0;
+          };
+        }) not7;
+        sA = np.submodule {
+          options.a = nixpkgsLib.mkOption {
+            type = np.int;
+            default = 0;
+          };
+        };
+        Ah = sA // {
+          check = v: sA.check v && not7 v;
+        };
+        adHoc =
+          loc:
+          "^gen-merge: the option `${loc}' has a type `submodule' that uses an ad-hoc `type // [{] check = [.][.][.]; [}]' override, which the foreign engine erases without a word when it rebuilds a submodule-bearing type; state the check with `addCheck' instead$";
+        G = t.submodule {
+          options.c = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        opt =
+          ts: V:
+          realize {
+            modules = map (T: { options.s = gm.mkOption { type = T; }; }) ts ++ [
+              {
+                _file = "def.nix";
+                s = V;
+              }
+            ];
+          };
+      in
+      {
+        test-a-foreign-wrapper-over-a-submodule-beside-a-gen-one-refuses-as-the-checked-fold = {
+          expr = opt [
+            W
+            G
+          ] { a = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `s' is not of type `submodule', in `def[.]nix'$";
+          };
+        };
+        test-a-foreign-wrapper-over-a-submodule-element-refuses-by-its-carried-check = {
+          expr = opt [ (np.attrsOf W) ] { k.a = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `s[.]k' is not of type `submodule'[.] TypeError: a definition is rejected by the check of a declaration of this option$";
+          };
+        };
+        test-an-ad-hoc-override-beside-a-gen-submodule-refuses-by-name = {
+          expr = opt [
+            Ah
+            G
+          ] { a = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = adHoc "s";
+          };
+        };
+        test-an-ad-hoc-override-as-an-element-refuses-by-name = {
+          expr = opt [ (np.attrsOf Ah) ] { k.a = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = adHoc "s[.]k";
+          };
+        };
+      };
+
     # den-hoag-7gp66 P2: which message fires at gen-merge's doors — the options steps of
     # `evalModuleTree`, `declaredOptions` and `deriveType` —
     # each through `prelude.door`'s shared checks (R6: names the door first, the construct last).
