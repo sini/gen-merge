@@ -415,18 +415,17 @@ let
             ctorOf =
               p: if builtins.isString p.ctor then p.ctor else "<a constructor of type ${builtins.typeOf p.ctor}>";
           in
-          if pa.ctor == "enum" && pb.ctor == "enum" then
-            ", and gen-merge reconciles two `enum's only under one name"
-          else if pa.ctor == pb.ctor then
+          if pa.ctor == pb.ctor then
             ", and gen-merge has no reconciliation law for `${ctorOf pa}'"
           else
             ", and gen-merge has no reconciliation law between `${ctorOf pa}' and `${ctorOf pb}'"
       );
   };
+  # `row`: the `interface.embeddings` row the completion states for this instance, or `null`.
   completeParametric =
-    v:
+    row: v:
     if builtins.isFunction v then
-      (x: completeParametric (v x))
+      (x: completeParametric row (v x))
     else if builtins.isAttrs v && v ? verify then
       let
         base = importLeaf v;
@@ -472,6 +471,34 @@ let
           self: other:
           if digest == null then
             refuseParametricMerge base other
+          # ★ A RAW PARTNER KEYED UNDER THIS INSTANCE'S ROW (nixpkgs' `enum`) is joined in ITS OWN
+          # relation over this instance's members, this operand first, so the answer is nixpkgs' union
+          # under nixpkgs' record (ADR-0039 serve half). The join is taken only where it keeps every
+          # member of this enum and the partner's name, so no declared membership is dropped; a
+          # declined join is refused by name, never `self`.
+          else if
+            row != null
+            && builtins.isAttrs other
+            && !(other ? typeMergeRel)
+            && core.interface.keyedUnderEmbedding row other
+          then
+            let
+              # the partner's own relation over this instance's parameters, this operand first; taken
+              # only where the join keeps every member of this enum and both operands' names
+              joined = core.interface.joinCarriedInStatedRelation {
+                inherit (base) name;
+                inherit self;
+                embedding = row;
+                role = null;
+                carried = null;
+              } other;
+            in
+            if joined != null then
+              { merged = joined; }
+            else
+              {
+                refused = "`${nameOf base}' and a `${row.name}' partner whose relation does not keep this enum's members";
+              }
           else if same other then
             { merged = self; }
           else if markShared other then
@@ -501,31 +528,39 @@ let
               elemsOf =
                 p: if builtins.isAttrs p.args && builtins.isList (p.args.elems or null) then p.args.elems else null;
             in
-            # ★ THE ENUM-UNION LAW (owner ruling on den-hoag-parametric-merge-unlock-6wb87, nixpkgs
-            # parity): two `enum`s under ONE name merge to the enum of their ordered union, left operand
-            # first, first occurrence kept — nixpkgs' `enum` functor's `binOp`, `unique (a ++ b)`. Two
-            # names still refuse, as the foreign protocol's functor-name clause already does. The union
-            # is rebuilt through the vocabulary's own completed `enum`, so it mints, carries its own
-            # certified payload and merges again. Every other pair keeps the refusal.
+            # ★ THE ENUM-UNION LAW (owner rulings on den-hoag-parametric-merge-unlock-6wb87 and on
+            # den-hoag-n8cpq OQ1 arm (b), nixpkgs parity): two `enum`s merge to the enum of their
+            # ordered union, left operand first, first occurrence kept — nixpkgs' `enum` functor's
+            # `binOp`, `unique (a ++ b)` — under ANY two names, as nixpkgs' `enum`, which has none,
+            # unions any two. The union keeps the left operand's name. It is rebuilt through the
+            # vocabulary's own completed `enum`, so it mints, carries its own certified payload and
+            # merges again. Every other pair keeps the refusal.
             if
               pa != null
               && pb != null
               && pa.ctor == "enum"
               && pb.ctor == "enum"
               && builtins.isString (pa.args.name or null)
-              && (pa.args.name or null) == (pb.args.name or null)
               && elemsOf pa != null
               && elemsOf pb != null
               && checkedTypes ? enum
             then
               {
-                merged = completeParametric checkedTypes.enum pa.args.name (
-                  prelude.unique (elemsOf pa ++ elemsOf pb)
-                );
+                merged =
+                  let
+                    u = prelude.unique (elemsOf pa ++ elemsOf pb);
+                  in
+                  completeParametric (core.interface.embeddings.enum // { params.values = u; }) (
+                    checkedTypes.enum pa.args.name u
+                  );
               }
             else
               refuseUnreconciledMint base other pa pb;
-        exported = strategies.defineType (base // { typeMergeRel = rel exported; });
+        exported =
+          if row == null then
+            strategies.defineType (base // { typeMergeRel = rel exported; })
+          else
+            strategies.defineEmbedded row (base // { typeMergeRel = rel exported; });
       in
       exported
     else
@@ -535,7 +570,7 @@ let
   completeExport =
     v:
     if builtins.isFunction v then
-      completeParametric v
+      completeParametric null v
     else if builtins.isAttrs v && (v ? verify || v ? name) then
       let
         leaf = importLeaf v;
@@ -752,7 +787,15 @@ in
     (linkset.mergeExports {
       left = {
         library = "the supplied `types` vocabulary";
-        exports = builtins.mapAttrs (_: completeExport) checkedTypes;
+        # the vocabulary's `enum` binding is completed under its instance's row (`completeEnum`)
+        exports = builtins.mapAttrs (
+          k: v:
+          if k == "enum" && builtins.isFunction v then
+            name: elems:
+            completeParametric (core.interface.embeddings.enum // { params.values = elems; }) (v name elems)
+          else
+            completeExport v
+        ) checkedTypes;
       };
       right = {
         library = "gen-merge";
