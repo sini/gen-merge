@@ -415,9 +415,7 @@ let
             ctorOf =
               p: if builtins.isString p.ctor then p.ctor else "<a constructor of type ${builtins.typeOf p.ctor}>";
           in
-          if pa.ctor == "enum" && pb.ctor == "enum" then
-            ", and gen-merge reconciles two `enum's only under one name"
-          else if pa.ctor == pb.ctor then
+          if pa.ctor == pb.ctor then
             ", and gen-merge has no reconciliation law for `${ctorOf pa}'"
           else
             ", and gen-merge has no reconciliation law between `${ctorOf pa}' and `${ctorOf pb}'"
@@ -428,108 +426,139 @@ let
     if builtins.isFunction v then
       (x: completeParametric (v x))
     else if builtins.isAttrs v && v ? verify then
-      let
-        base = importLeaf v;
-        digest = base.__mint.minted or null;
-        # `self` is threaded exactly as `mkTypeWith` threads its own — the value a caller holds is
-        # the EXPORTED type, so a match answers with that rather than with the pre-export record.
-        # ★ SAMENESS FIRST, decided by the vocabulary's own `typeEq` (den-hoag-6orb8 U1; design §1,
-        # "Where both operands carry a gen identity … gen-merge decides redeclaration on that
-        # identity"). A digest match alone is NOT sameness: gen-types' mark is blind to a type's
-        # SEALED components (a caller lambda, a registered construction), which `typeEq` decides over
-        # beside it, so two lambda `typedef`s sharing a mark would merge on the mark. `true` merges (one
-        # binding redeclared, two constructions of one registered term); `false` or a refusal goes on to
-        # the reconciliation laws below and otherwise to the named refusal.
-        #
-        # Where NEITHER operand seals anything, the mark is a total identity and a digest match is
-        # that decision read off the operands' own fields (equal marks, `{ } == { }`), as before;
-        # it is also the arm a wrapper's `//` keeps (`addCheck` over a parametric leaf declared
-        # twice from one value), whose rewritten `check` sends `typeEq` to the record.
-        markShared =
-          other:
-          builtins.isAttrs other
-          && other ? __mint
-          && builtins.isAttrs other.__mint
-          && other.__mint ? minted
-          && other.__mint.minted == digest;
-        same =
-          other:
-          builtins.isAttrs other
-          && other ? __mint
-          && builtins.isAttrs other.__mint
-          && other.__mint ? minted
-          && other.__mint.minted == digest
-          && (
-            ((base.__sealed or { }) == { } && (other.__sealed or { }) == { })
-            || (
-              let
-                r = builtins.tryEval (checkedTypes.typeEq base other);
-              in
-              r.success && r.value
-            )
-          );
-        rel =
-          self: other:
-          if digest == null then
-            refuseParametricMerge base other
-          else if same other then
-            { merged = self; }
-          else if markShared other then
-            refuseSharedMark base other (builtins.tryEval (checkedTypes.typeEq base other)).success
-          else
-            let
-              # ★ THE READ IS TOTAL. The vocabulary's `payloadOf` refuses by `throw` whatever it cannot
-              # certify (a sealed, foreign or `//`-derived partner), and that refusal is caught here
-              # and becomes `null`, so the pair falls to this library's own named refusal rather than
-              # surfacing the reader's. A vocabulary publishing no `payloadOf` reads `null` too.
-              read =
-                t:
-                let
-                  r = builtins.tryEval (
-                    if checkedTypes ? payloadOf then
-                      let
-                        p = checkedTypes.payloadOf t;
-                      in
-                      builtins.deepSeq p (if builtins.isAttrs p && p ? ctor && p ? args then p else null)
-                    else
-                      null
-                  );
-                in
-                if r.success then r.value else null;
-              pa = read base;
-              pb = read other;
-              elemsOf =
-                p: if builtins.isAttrs p.args && builtins.isList (p.args.elems or null) then p.args.elems else null;
-            in
-            # ★ THE ENUM-UNION LAW (owner ruling on den-hoag-parametric-merge-unlock-6wb87, nixpkgs
-            # parity): two `enum`s under ONE name merge to the enum of their ordered union, left operand
-            # first, first occurrence kept — nixpkgs' `enum` functor's `binOp`, `unique (a ++ b)`. Two
-            # names still refuse, as the foreign protocol's functor-name clause already does. The union
-            # is rebuilt through the vocabulary's own completed `enum`, so it mints, carries its own
-            # certified payload and merges again. Every other pair keeps the refusal.
-            if
-              pa != null
-              && pb != null
-              && pa.ctor == "enum"
-              && pb.ctor == "enum"
-              && builtins.isString (pa.args.name or null)
-              && (pa.args.name or null) == (pb.args.name or null)
-              && elemsOf pa != null
-              && elemsOf pb != null
-              && checkedTypes ? enum
-            then
-              {
-                merged = completeParametric checkedTypes.enum pa.args.name (
-                  prelude.unique (elemsOf pa ++ elemsOf pb)
-                );
-              }
-            else
-              refuseUnreconciledMint base other pa pb;
-        exported = strategies.defineType (base // { typeMergeRel = rel exported; });
-      in
-      exported
+      completeParametricIn null v
     else
       v;
+  # gen-types' `enum`, completed at the vocabulary's own `enum` binding under the row its instance
+  # states (den-hoag-n8cpq item 2): the members are the ones this completion hands the constructor.
+  completeEnum =
+    name: elems:
+    completeParametricIn (core.interface.enumEmbedding elems) (checkedTypes.enum name elems);
+  # `row`: the `interface.embeddings` row the completion states for this instance, or `null`.
+  completeParametricIn =
+    row: v:
+    let
+      base = importLeaf v;
+      digest = base.__mint.minted or null;
+      # `self` is threaded exactly as `mkTypeWith` threads its own — the value a caller holds is
+      # the EXPORTED type, so a match answers with that rather than with the pre-export record.
+      # ★ SAMENESS FIRST, decided by the vocabulary's own `typeEq` (den-hoag-6orb8 U1; design §1,
+      # "Where both operands carry a gen identity … gen-merge decides redeclaration on that
+      # identity"). A digest match alone is NOT sameness: gen-types' mark is blind to a type's
+      # SEALED components (a caller lambda, a registered construction), which `typeEq` decides over
+      # beside it, so two lambda `typedef`s sharing a mark would merge on the mark. `true` merges (one
+      # binding redeclared, two constructions of one registered term); `false` or a refusal goes on to
+      # the reconciliation laws below and otherwise to the named refusal.
+      #
+      # Where NEITHER operand seals anything, the mark is a total identity and a digest match is
+      # that decision read off the operands' own fields (equal marks, `{ } == { }`), as before;
+      # it is also the arm a wrapper's `//` keeps (`addCheck` over a parametric leaf declared
+      # twice from one value), whose rewritten `check` sends `typeEq` to the record.
+      markShared =
+        other:
+        builtins.isAttrs other
+        && other ? __mint
+        && builtins.isAttrs other.__mint
+        && other.__mint ? minted
+        && other.__mint.minted == digest;
+      same =
+        other:
+        builtins.isAttrs other
+        && other ? __mint
+        && builtins.isAttrs other.__mint
+        && other.__mint ? minted
+        && other.__mint.minted == digest
+        && (
+          ((base.__sealed or { }) == { } && (other.__sealed or { }) == { })
+          || (
+            let
+              r = builtins.tryEval (checkedTypes.typeEq base other);
+            in
+            r.success && r.value
+          )
+        );
+      rel =
+        self: other:
+        if digest == null then
+          refuseParametricMerge base other
+        # ★ A RAW PARTNER KEYED UNDER THIS INSTANCE'S ROW (nixpkgs' `enum`) is joined in ITS OWN
+        # relation over this instance's members, this operand first, so the answer is nixpkgs' union
+        # under nixpkgs' record (ADR-0039 serve half). The join is taken only where it keeps every
+        # member of this enum and the partner's name, so no declared membership is dropped; a
+        # declined join is refused by name, never `self`.
+        else if
+          row != null
+          && builtins.isAttrs other
+          && !(other ? typeMergeRel)
+          && core.interface.keyedUnderEmbedding row other
+        then
+          let
+            joined = core.interface.joinInstanceRow row other;
+          in
+          if joined != null then
+            { merged = joined; }
+          else
+            {
+              refused = "`${nameOf base}' and a `${row.name}' partner whose relation does not keep this enum's members";
+            }
+        else if same other then
+          { merged = self; }
+        else if markShared other then
+          refuseSharedMark base other (builtins.tryEval (checkedTypes.typeEq base other)).success
+        else
+          let
+            # ★ THE READ IS TOTAL. The vocabulary's `payloadOf` refuses by `throw` whatever it cannot
+            # certify (a sealed, foreign or `//`-derived partner), and that refusal is caught here
+            # and becomes `null`, so the pair falls to this library's own named refusal rather than
+            # surfacing the reader's. A vocabulary publishing no `payloadOf` reads `null` too.
+            read =
+              t:
+              let
+                r = builtins.tryEval (
+                  if checkedTypes ? payloadOf then
+                    let
+                      p = checkedTypes.payloadOf t;
+                    in
+                    builtins.deepSeq p (if builtins.isAttrs p && p ? ctor && p ? args then p else null)
+                  else
+                    null
+                );
+              in
+              if r.success then r.value else null;
+            pa = read base;
+            pb = read other;
+            elemsOf =
+              p: if builtins.isAttrs p.args && builtins.isList (p.args.elems or null) then p.args.elems else null;
+          in
+          # ★ THE ENUM-UNION LAW (owner rulings on den-hoag-parametric-merge-unlock-6wb87 and on
+          # den-hoag-n8cpq OQ1 arm (b), nixpkgs parity): two `enum`s merge to the enum of their
+          # ordered union, left operand first, first occurrence kept — nixpkgs' `enum` functor's
+          # `binOp`, `unique (a ++ b)` — under ANY two names, as nixpkgs' `enum`, which has none,
+          # unions any two. The union keeps the left operand's name. It is rebuilt through the
+          # vocabulary's own completed `enum`, so it mints, carries its own certified payload and
+          # merges again. Every other pair keeps the refusal.
+          if
+            pa != null
+            && pb != null
+            && pa.ctor == "enum"
+            && pb.ctor == "enum"
+            && builtins.isString (pa.args.name or null)
+            && elemsOf pa != null
+            && elemsOf pb != null
+            && checkedTypes ? enum
+          then
+            {
+              merged = completeEnum pa.args.name (prelude.unique (elemsOf pa ++ elemsOf pb));
+            }
+          else
+            refuseUnreconciledMint base other pa pb;
+      exported =
+        if row == null then
+          strategies.defineType (base // { typeMergeRel = rel exported; })
+        else
+          strategies.defineEmbedded row (base // { typeMergeRel = rel exported; });
+    in
+    exported;
   # A NULLARY leaf keeps the default relation: it has no parameters, so a same-named partner really is
   # the same type, and `str` merged with `str` must stay non-null.
   completeExport =
@@ -745,7 +774,10 @@ in
     (linkset.mergeExports {
       left = {
         library = "the supplied `types` vocabulary";
-        exports = builtins.mapAttrs (_: completeExport) checkedTypes;
+        # the vocabulary's `enum` binding is completed under its instance's row (`completeEnum`)
+        exports = builtins.mapAttrs (
+          k: v: if k == "enum" && builtins.isFunction v then completeEnum else completeExport v
+        ) checkedTypes;
       };
       right = {
         library = "gen-merge";

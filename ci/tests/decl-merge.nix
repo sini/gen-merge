@@ -1269,6 +1269,169 @@ in
       };
     };
 
+    # n8cpq item 2 (owner ruling on its OQ1, arm (b)): gen `enum`s union ACROSS NAMES and with nixpkgs'
+    # `enum`, as nixpkgs' own `enum` does. Three declarations — gen `enum "e1" [ a ]`, gen `enum "e2"
+    # [ b ]`, nixpkgs `enum [ c ]` — in all six orders on both engines equal the nixpkgs twin (every
+    # gen enum replaced by nixpkgs' over the same members) at each member and at a PLANTED value `z`
+    # outside every declared enum, description (the union, in order) included. At 10403c0/cfdd1ae every
+    # served cell was refused.
+    test-enum-union-across-names-is-nixpkgs-union =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalRequest;
+            mk = mkOption;
+          };
+        };
+        read =
+          eng: Ts: def:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            tried = builtins.tryEval (
+              builtins.deepSeq r.config.x (r.options.x.type.description + " v=" + builtins.toJSON r.config.x)
+            );
+          in
+          if tried.success then tried.value else "REFUSED";
+        gen = [
+          (t.enum "e1" [ "a" ])
+          (t.enum "e2" [ "b" ])
+          (np.types.enum [ "c" ])
+        ];
+        twin = [
+          (np.types.enum [ "a" ])
+          (np.types.enum [ "b" ])
+          (np.types.enum [ "c" ])
+        ];
+        perms = [
+          [
+            0
+            1
+            2
+          ]
+          [
+            0
+            2
+            1
+          ]
+          [
+            1
+            0
+            2
+          ]
+          [
+            1
+            2
+            0
+          ]
+          [
+            2
+            0
+            1
+          ]
+          [
+            2
+            1
+            0
+          ]
+        ];
+        rows =
+          set:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  p:
+                  map
+                    (v: {
+                      name = "${eng}-${builtins.concatStringsSep "" (map toString p)}-${v}";
+                      value = read eng (map (builtins.elemAt set) p) v;
+                    })
+                    [
+                      "a"
+                      "b"
+                      "c"
+                      "z"
+                    ]
+                ) perms
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        mixed = rows gen;
+        planted = builtins.filter (n: builtins.match ".*-z" n != null) (builtins.attrNames mixed);
+      in
+      {
+        expr = {
+          inherit mixed;
+          plantedRefused = builtins.all (n: mixed.${n} == "REFUSED") planted;
+          served = builtins.length (builtins.filter (v: v != "REFUSED") (builtins.attrValues mixed));
+        };
+        expected = {
+          mixed = rows twin;
+          plantedRefused = true;
+          served = 36;
+        };
+      };
+
+    # n8cpq item 2: a raw partner keyed `enum` whose functor's `binOp` answers only its own member,
+    # dropping the gen enum's, is REFUSED by name where gen's relation joins it (never served as the
+    # dropping join); nixpkgs' engine rebuilds the partner from its functor's own constructor and
+    # serves the union, which keeps both members.
+    test-enum-row-refuses-a-join-dropping-its-members =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalRequest;
+            mk = mkOption;
+          };
+        };
+        read =
+          eng: Ts: def:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            tried = builtins.tryEval (
+              builtins.deepSeq r.config.x (r.options.x.type.description + " v=" + builtins.toJSON r.config.x)
+            );
+          in
+          if tried.success then tried.value else "REFUSED";
+        stock = np.types.enum [ "z" ];
+        dropper = stock // {
+          functor = stock.functor // {
+            binOp = _: _: { values = [ "z" ]; };
+          };
+        };
+        g = t.enum "e1" [ "a" ];
+      in
+      {
+        expr = {
+          np-o12 = read "np" [ g dropper ] "z";
+          np-o21 = read "np" [ dropper g ] "z";
+          gm-o12 = read "gm" [ g dropper ] "z";
+          gm-o21 = read "gm" [ dropper g ] "z";
+        };
+        expected = {
+          np-o12 = ''one of "z", "a" v="z"'';
+          np-o21 = ''one of "a", "z" v="z"'';
+          gm-o12 = "REFUSED";
+          gm-o21 = "REFUSED";
+        };
+      };
+
     # 46zga: the gen LEAVES whose nixpkgs twin publishes another functor name or payload, joined through
     # the leaf rows of `interface.embeddings`: gen-types' `string` is nixpkgs' `str`, `path` is
     # `pathWith { absolute = true; }` and `pathLike` is `pathWith { }`. A mixed redeclaration has nixpkgs'

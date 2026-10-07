@@ -889,8 +889,9 @@ in
     # SEPARATELY EVALUATED calls). Two same-named `enum`s over DIFFERING value sets merge to their
     # ordered union, read back through gen-types' certifying `payloadOf` — nixpkgs' `enum` functor
     # `binOp`, `unique (a ++ b)`, left operand first (`enumDiffering`, `enumReversed`, `enumOverlap`).
-    # Every other differing pair still refuses: two enum names (`enumCrossName`, the functor-name
-    # clause), a differing `struct` (no law), and an enum against a same-named SEALED partner
+    # Two DIFFERENTLY-named `enum`s union too, under the left operand's name (`enumCrossName`; owner
+    # ruling on den-hoag-n8cpq OQ1, arm (b): nixpkgs' `enum`, which has no name, unions any two).
+    # Every other differing pair still refuses: a differing `struct` (no law), and an enum against a same-named SEALED partner
     # (`enumVsSealed`), whose payload cannot be certified — the relation reads it totally and answers
     # `null`, never the reader's throw.
     #
@@ -930,7 +931,7 @@ in
           enumUnionRemerges = elemsOf (
             merge (merge (gmT.enum "e" [ "a" ]) (gmT.enum "e" [ "b" ])) (gmT.enum "e" [ "c" ])
           );
-          enumCrossName = merge (gmT.enum "e" [ "a" ]) (gmT.enum "f" [ "a" ]);
+          enumCrossName = elemsOf (merge (gmT.enum "e" [ "a" ]) (gmT.enum "f" [ "b" ]));
           enumVsSealed = merge (gmT.enum "e" [ "a" ]) (gmT.typedef' "e" (_: null));
           structSelf = (merge (gmT.struct "s" { a = gmT.str; }) (gmT.struct "s" { a = gmT.str; })) != null;
           structDiffering = merge (gmT.struct "s" { a = gmT.str; }) (gmT.struct "s" { a = gmT.int; });
@@ -966,7 +967,10 @@ in
             "b"
             "c"
           ];
-          enumCrossName = null;
+          enumCrossName = [
+            "a"
+            "b"
+          ];
           enumVsSealed = null;
           structSelf = true;
           structDiffering = null;
