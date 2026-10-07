@@ -17,6 +17,7 @@
   evalRequest,
   genMerge,
   nixpkgsLib,
+  interface,
   ...
 }:
 let
@@ -815,6 +816,212 @@ in
           };
         };
       };
+
+    # n8cpq: an embedding row is reached by the CONSTRUCTION it stands for, never by a caller-chosen
+    # name. A gen type NAMED like a row (`enum "path"`, `struct "path"`, `typedef "string"`, a
+    # `mkOptionType` descriptor, a `defineType` record) beside the nixpkgs type that row stands for is refused in both
+    # orders, as its nixpkgs twin is: keyed on the name, the order where nixpkgs' relation decides
+    # served the partner's record with the gen check dropped, and `enum "attrsOf"` aborted. Live
+    # control: gen-types' own `string` beside `str` serves, so the leaf rows still fire; the
+    # container rows' liveness is pinned by caxcw's and 46zga's cells below, which red when a
+    # constructor stops stating its row.
+    test-embedding-row-is-keyed-on-construction =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalRequest;
+            mk = mkOption;
+          };
+        };
+        read =
+          eng: Ts: def:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            tried = builtins.tryEval (builtins.deepSeq r.config.x "served");
+          in
+          if tried.success then tried.value else "REFUSED";
+        desc =
+          name: check:
+          genMerge.mkOptionType {
+            inherit name check;
+            merge = np.options.mergeEqualOption;
+          };
+        cases = {
+          enumString = {
+            g = t.enum "string" [ "a" ];
+            p = np.types.str;
+            v = "zz";
+          };
+          enumPath = {
+            g = t.enum "path" [ "/a" ];
+            p = np.types.path;
+            v = "/zz";
+          };
+          enumPathLike = {
+            g = t.enum "pathLike" [ "/a" ];
+            p = np.types.pathWith { };
+            v = "/zz";
+          };
+          enumAttrsOf = {
+            g = t.enum "attrsOf" [ "a" ];
+            p = np.types.attrsOf np.types.int;
+            v = { };
+          };
+          enumDeferredModule = {
+            g = t.enum "deferredModule" [ "a" ];
+            p = np.types.deferredModule;
+            v = { };
+          };
+          structPath = {
+            g = t.struct "path" { };
+            p = np.types.path;
+            v = "/zz";
+          };
+          typedefString = {
+            g = t.typedef "string" (x: x == "a");
+            p = np.types.str;
+            v = "zz";
+          };
+          descPath = {
+            g = desc "path" (x: x == "/a");
+            p = np.types.path;
+            v = "/zz";
+          };
+          descDeferredModule = {
+            g = desc "deferredModule" (x: x == "a");
+            p = np.types.deferredModule;
+            v = { };
+          };
+          # the published construction door takes a caller's name too
+          definedString = {
+            g = t.defineType {
+              name = "string";
+              verify = x: if x == "a" then null else "not a";
+            };
+            p = np.types.str;
+            v = "zz";
+          };
+          definedPath = {
+            g = t.defineType {
+              name = "path";
+              verify = x: if x == "/a" then null else "not /a";
+            };
+            p = np.types.path;
+            v = "/zz";
+          };
+          definedAttrsOf = {
+            g = t.defineType {
+              name = "attrsOf";
+              verify = x: if x == "a" then null else "not a";
+            };
+            p = np.types.attrsOf np.types.int;
+            v = { };
+          };
+          control = {
+            g = t.enum "e" [ "a" ];
+            p = np.types.str;
+            v = "zz";
+          };
+          # the KEY forged rather than collided: gen-types `string`'s or `path`'s mint written onto an
+          # enum by `//`, through the published construction door and through the import door,
+          # neither of which hands the export a row.
+          mintStringDefined = {
+            g = t.defineType (t.enum "e" [ "a" ] // { inherit (t.string) __mint __payload __sealed; });
+            p = np.types.str;
+            v = "zz";
+          };
+          mintPathDefined = {
+            g = t.defineType (t.enum "e" [ "/a" ] // { inherit (t.path) __mint __payload __sealed; });
+            p = np.types.path;
+            v = "/zz";
+          };
+          mintStringDescribed = {
+            g = genMerge.mkOptionType (t.enum "e" [ "a" ] // { inherit (t.string) __mint __payload __sealed; });
+            p = np.types.str;
+            v = "zz";
+          };
+        };
+        rowsOf =
+          g: p: v:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (eng: [
+                {
+                  name = "${eng}-o12";
+                  value = read eng [
+                    g
+                    p
+                  ] v;
+                }
+                {
+                  name = "${eng}-o21";
+                  value = read eng [
+                    p
+                    g
+                  ] v;
+                }
+              ])
+              [
+                "np"
+                "gm"
+              ]
+          );
+        refusedRows = {
+          np-o12 = "REFUSED";
+          np-o21 = "REFUSED";
+          gm-o12 = "REFUSED";
+          gm-o21 = "REFUSED";
+        };
+        servedRows = {
+          np-o12 = "served";
+          np-o21 = "served";
+          gm-o12 = "served";
+          gm-o21 = "served";
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: c: rowsOf c.g c.p c.v) cases // {
+          live = rowsOf t.string np.types.str "s";
+        };
+        expected = builtins.mapAttrs (_: _: refusedRows) cases // {
+          live = servedRows;
+        };
+      };
+
+    # n8cpq: the join witness reads an operand's name modulo the row its RECORD reaches (`joinsAs`),
+    # never one its name collides with. A caller's `enum "string"` against nixpkgs' `str` is a
+    # renaming, so a join that answered `str` for it is not taken as keeping its check, and so is a
+    # `//` copy of gen-types' `string` under another predicate, whose mark is its base's (the
+    # completion stamp); gen-types' own `string` and `pathLike` are read as `str` and `path`, as the
+    # leaf rows state.
+    test-join-witness-reads-the-row-a-record-reaches = {
+      expr = {
+        genuineString = interface.joinRenames np.types.str t.string;
+        namedString = interface.joinRenames np.types.str (t.enum "string" [ "a" ]);
+        copiedString = interface.joinRenames np.types.str (
+          t.string
+          // {
+            name = "e";
+            verify = x: if x == "a" then null else "not a";
+          }
+        );
+        genuinePathLike = interface.joinRenames np.types.path t.pathLike;
+        namedPathLike = interface.joinRenames np.types.path (t.enum "pathLike" [ "/a" ]);
+      };
+      expected = {
+        genuineString = false;
+        namedString = true;
+        copiedString = true;
+        genuinePathLike = false;
+        namedPathLike = true;
+      };
+    };
 
     # 46zga: the gen LEAVES whose nixpkgs twin publishes another functor name or payload, joined through
     # the leaf rows of `interface.embeddings`: gen-types' `string` is nixpkgs' `str`, `path` is

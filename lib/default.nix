@@ -537,7 +537,12 @@ let
     if builtins.isFunction v then
       completeParametric v
     else if builtins.isAttrs v && (v ? verify || v ? name) then
-      strategies.defineType (importLeaf v)
+      let
+        leaf = importLeaf v;
+      in
+      # a gen-types leaf an `interface.embeddings` row stands for is completed under that row, chosen
+      # by its mint (`interface.embedsOf`), never by the name it is exported at (den-hoag-n8cpq)
+      strategies.defineEmbedded (core.interface.embedsOf leaf) leaf
     else
       v;
 in
@@ -744,7 +749,7 @@ in
       };
       right = {
         library = "gen-merge";
-        exports = strategies;
+        exports = builtins.removeAttrs strategies [ "defineEmbedded" ];
       };
       allow = import ./types-allowlist.nix;
     }).exports;

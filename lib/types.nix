@@ -116,8 +116,10 @@ let
   # It is threaded rather than closed over locally because a type built through `defineType` is used
   # in its EXPORTED form, and a relation answering with the un-exported twin would hand a consumer a
   # merged type its foreign engine cannot read. One knot, tied where the two forms are made.
-  mkTypeWith =
-    self: t:
+  mkTypeWith = mkTypeIn null;
+  # `row`: the `interface.embeddings` row the constructor states for this type (`defineEmbedded`).
+  mkTypeIn =
+    row: self: t:
     let
       name = t.name or "raw";
       declaresRole = t ? carries;
@@ -162,15 +164,20 @@ let
             { refused = "`${nameOf t}' and `${nameOf other}'"; }
         else
           let
-            e = interface.embeddingOf name;
-            embedKey = isAttrs other && interface.keyedUnderEmbedding name other;
+            # the row this type's constructor stated, never one its name collides with
+            e = row;
+            embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
             sameKey = isAttrs other && (keyOf other) == name;
             carriedJoin = interface.joinCarriedInStatedRelation {
               inherit name self;
+              embedding = e;
               role = null;
               carried = null;
             } other;
-            leafJoin = interface.joinLeafInStatedRelation { inherit name self; } other;
+            leafJoin = interface.joinLeafInStatedRelation {
+              inherit name self;
+              embedding = e;
+            } other;
           in
           if embedKey && e ? params then
             if carriedJoin != null then
@@ -219,6 +226,25 @@ let
     t:
     let
       exported = interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
+    in
+    exported;
+  # The same crossing for a type an `interface.embeddings` row stands for, the row stated by the
+  # gen-merge constructor building it (`attrsOf`, `lazyAttrsOf`, `deferredModule`, and the leaf
+  # vocabulary's completion, `default.nix` `completeExport`). The published `defineType` states none,
+  # so no caller-written record reaches a row (den-hoag-n8cpq). It is `defineType`'s twin rather than
+  # its general case because `defineType` runs per instance (gen-schema's per-instance
+  # `mkOptionType`), and threading a `null` row through it costs every instance an environment;
+  # for the same reason the row is applied once per constructor, never per construction. Not
+  # published: `default.nix` keeps it out of `types`.
+  defineEmbedded =
+    row:
+    let
+      exportRow = interface.exportTypeWith row;
+      typeRow = mkTypeIn row;
+    in
+    t:
+    let
+      exported = exportRow (typeRow exported (core.readsMintedNode exported t));
     in
     exported;
 
@@ -555,8 +581,11 @@ let
   # (`interface.joinCarriedInStatedRelation`), so the merged type is that partner's record and not a
   # gen one, whichever declaration came first. Every other pair is row-free as above. The test for a
   # gen partner sits here, not in the binding, so a gen × gen pair builds nothing for it.
-  elementRel =
-    name: rebuild: element: other:
+  elementRel = elementRelIn null;
+  # `embedding`: the `interface.embeddings` row the container's constructor states, applied once per
+  # constructor (`attrsOfWith`).
+  elementRelIn =
+    embedding: name: rebuild: element: other:
     if !(isAttrs other) || (keyOf other) != name then
       { refused = "`${name}' and `${nameOf other}'"; }
     else
@@ -567,7 +596,7 @@ let
             null
           else
             interface.joinCarriedInStatedRelation {
-              inherit name;
+              inherit name embedding;
               role = "element";
               carried = element;
               self = rebuild element;
@@ -591,7 +620,7 @@ let
         let
           # A partner stated under the construction this one embeds in DOES state its element, beside
           # parameters gen does not carry; its join refused above, so the refusal names that element.
-          embeddedElem = interface.embeddedOffered name "element" other;
+          embeddedElem = interface.embeddedOffered embedding "element" other;
         in
         if embeddedElem == null then
           { refused = "`${name}' and a partner that states no element type of its own"; }
@@ -998,7 +1027,14 @@ let
     );
 
   attrsOfWith =
-    tyName: element:
+    tyName:
+    let
+      # the row this constructor states, applied once per constructor rather than per construction
+      row = interface.embeddings.${tyName};
+      define = defineEmbedded row;
+      rel = elementRelIn row;
+    in
+    element:
     let
       # `mergeDefs` takes the key union across the definitions and indexes each by key, so a
       # definition that is not an attrset is one this type cannot consume. Bound once: the fold's
@@ -1071,7 +1107,7 @@ let
           loc: defs: builtins.mapAttrs (k: mergeDefs (loc ++ [ k ]) element) (defsByKey defs)
       );
     in
-    defineType (
+    define (
       identified tyName [ element ] head [ ] {
         name = tyName;
         inherit admits;
@@ -1084,7 +1120,7 @@ let
         # constructor's payload, so it is published under that constructor and joins a same-named
         # foreign partner in that partner's relation (`interface.embeddings`, through `elementRel`). The
         # rebuild keeps THIS container's name, so the distinction survives substitution.
-        typeMergeRel = elementRel tyName (attrsOfWith tyName) element;
+        typeMergeRel = rel tyName (attrsOfWith tyName) element;
         # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
         # registry exposes its INSTANCE option surface to an introspecting consumer.
         substructure = {
@@ -1218,7 +1254,7 @@ let
       # both.
       admits = isModuleValue;
     in
-    defineType {
+    defineEmbedded interface.embeddings.deferredModule {
       name = "deferredModule";
       inherit admits;
       # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
@@ -1263,6 +1299,7 @@ let
             if sameName then
               interface.joinCarriedInStatedRelation {
                 name = "deferredModule";
+                embedding = interface.embeddings.deferredModule;
                 role = null;
                 carried = null;
                 self = deferredModule;
@@ -1652,6 +1689,7 @@ in
     # constructor above builds, and the library's single crossing site).
     mkType
     defineType
+    defineEmbedded
     # A type derived from a completed one, re-completed rather than overridden (den-hoag-5kic). Also
     # published at the library's top level, as the same value.
     deriveType
