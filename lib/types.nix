@@ -240,12 +240,22 @@ let
   # the boundary buys is not that the two vocabularies live in different values — it is that only ONE
   # unit knows how to get from the first to the second, and that everything above states itself in
   # the first alone.
+  #
+  # ★ COMPLETION IS IDEMPOTENT. A record this crossing already completed, and that is still the record
+  # it completed (its completion stamp holds), is returned as it is: re-completing it would re-derive
+  # its protocol from the gen datum alone, and lose what only its constructor states (its
+  # `interface.embeddings` row: `defineType (attrsOf int)` would publish `attrsOf`, not `attrsWith`)
+  # (den-hoag-n8cpq). The presence test comes first, so a record not yet completed (every
+  # constructor's, every per-instance descriptor's) pays one attribute test.
   defineType =
     t:
-    let
-      exported = interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
-    in
-    exported;
+    if t ? _type && builtins.isFunction (t.__typeSelf or null) && interface.stampOk t then
+      t
+    else
+      let
+        exported = interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
+      in
+      exported;
   # The same crossing for a type an `interface.embeddings` row stands for, the row stated by the
   # gen-merge constructor building it (`attrsOf`, `lazyAttrsOf`, `deferredModule`, and the leaf
   # vocabulary's completion, `default.nix` `completeExport`). The published `defineType` states none,
@@ -1277,6 +1287,10 @@ let
     defineEmbedded interface.embeddings.deferredModule {
       name = "deferredModule";
       inherit admits;
+      # The completion stamp's slot (the export ties it, gen-types `completedType`), with no mint: a
+      # row-stated type carries the stamp so that re-completing it returns it as it is
+      # (`defineType`), and a `//` copy of it does not (den-hoag-n8cpq).
+      __typeSelf = null;
       # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
       # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
       # "this type has no sub-module concept at all" (a leaf's answer), `[ ]` says "this type has a

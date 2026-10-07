@@ -428,7 +428,30 @@ let
       let
         r = leafEmbeddings.${t.__mint.minted or ""} or null;
       in
-      if r != null && builtins.isFunction (t.__typeSelf or null) && stampOk t then r else null;
+      # the record its completion produced (its stamp holds), or a `//` copy of it restating only
+      # NAME-CARRIED fields (`exportClasses.nameCarried`, the fields a delta may restate, translating
+      # nothing: the nixpkgs idiom `t // { description = …; }`), whose stamp holds once those are read
+      # off its completion. Its check, fold and relation are its completion's, so it reaches the row
+      # its mint does; a copy changing any other field (`verify`, `check`, a mint) does not.
+      if
+        r != null
+        && builtins.isFunction (t.__typeSelf or null)
+        && (
+          stampOk t
+          || stampOk (
+            builtins.removeAttrs t exportClasses.nameCarried
+            // builtins.intersectAttrs (builtins.listToAttrs (
+              map (n: {
+                name = n;
+                value = null;
+              }) exportClasses.nameCarried
+            )) (t.__typeSelf null)
+          )
+        )
+      then
+        r
+      else
+        null;
   # The embedded payload: the role's key beside the embedding's fixed parameters. The one source for
   # the export's published payload and for the join (`joinCarriedInStatedRelation`).
   embeddedPayload =
@@ -3893,6 +3916,7 @@ in
     embeddedOffered
     embeddings
     embedsOf
+    stampOk
     keyedUnderEmbedding
     moduleSetPayload
     canNest
