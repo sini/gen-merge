@@ -42,6 +42,7 @@
   genTypesFlake,
   genLinkset,
   genScope,
+  prelude,
   ...
 }:
 let
@@ -7446,34 +7447,63 @@ in
     # positional and carry no field check.
     flake.testsError.door-checks =
       let
-        pin = door: msg: {
+        # gen-prelude's refusal text, composed with this library's own literal door, field and
+        # accepted set (den-hoag-7jltk): every assertion kept, none of gen-prelude's wording copied.
+        inherit (prelude) refusals;
+        pin = text: {
           type = "ThrownError";
-          msg = "^${door}: ${msg}$";
+          msg = "^" + prelude.escapeRegex text + "$";
         };
+        evalOptions = [
+          "specialArgs"
+          "check"
+          "prefix"
+          "coreShortCircuit"
+          "warmFrom"
+          "editedModules"
+        ];
+        # A field the cell does not name: rendered at a sentinel, which then stands for `[^']+`.
+        anyField = "zz7jltkfield";
       in
       {
         test-eval-module-tree-unknown-option-named = {
           expr = builtins.seq (gm.evalModuleTree { notAnOption = 1; }) null;
-          expectedError = pin "gen-merge[.]evalModuleTree" "'notAnOption' is not an option of this door; the options are closed [(]accepted: 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
+          expectedError = pin (refusals.unknownOption "gen-merge.evalModuleTree" evalOptions "notAnOption");
         };
         # The unmigrated one-record call: `modules` is refused by name, as an option this door lacks.
         test-eval-module-tree-old-one-record-shape-named = {
           expr = builtins.seq (gm.evalModuleTree { modules = [ ]; }) null;
-          expectedError = pin "gen-merge[.]evalModuleTree" "'modules' is not an option of this door; the options are closed [(]accepted: 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
+          expectedError = pin (refusals.unknownOption "gen-merge.evalModuleTree" evalOptions "modules");
         };
         test-eval-module-tree-non-set-options-named = {
           expr = builtins.seq (gm.evalModuleTree "modules") null;
-          expectedError = pin "gen-merge[.]evalModuleTree" "the options must be an attrset, not a string [(]accepted: 'specialArgs', 'check', 'prefix', 'coreShortCircuit', 'warmFrom', 'editedModules'[)] [(]in prelude[.]checkOptions[)]";
+          expectedError = pin (refusals.optionsNotASet "gen-merge.evalModuleTree" evalOptions "modules");
         };
         test-declared-options-old-one-record-shape-named = {
           expr = builtins.seq (gm.declaredOptions { modules = [ ]; }) null;
-          expectedError = pin "gen-merge[.]declaredOptions" "'modules' is not an option of this door; the options are closed [(]accepted: 'specialArgs', 'prefix'[)] [(]in prelude[.]checkOptions[)]";
+          expectedError = pin (
+            refusals.unknownOption "gen-merge.declaredOptions" [ "specialArgs" "prefix" ] "modules"
+          );
         };
         # The unmigrated `deriveType base spec` call: the base, a type record, is read as the options.
-        test-derive-type-old-base-first-shape-named = {
-          expr = builtins.seq (gm.deriveType t.str) null;
-          expectedError = pin "gen-merge[.]deriveType" "'[^']+' is not an option of this door; the options are closed [(]accepted: 'key', 'fields', 'mint', 'name', 'description'[)] [(]in prelude[.]checkOptions[)]";
-        };
+        test-derive-type-old-base-first-shape-named =
+          let
+            p = pin (
+              refusals.unknownOption "gen-merge.deriveType" [
+                "key"
+                "fields"
+                "mint"
+                "name"
+                "description"
+              ] anyField
+            );
+          in
+          {
+            expr = builtins.seq (gm.deriveType t.str) null;
+            expectedError = p // {
+              msg = builtins.replaceStrings [ anyField ] [ "[^']+" ] p.msg;
+            };
+          };
       };
 
     # THE RESERVATION SCOPE (`__reservedKeys`, den-hoag-8x97u): a name the marker reserves, written
