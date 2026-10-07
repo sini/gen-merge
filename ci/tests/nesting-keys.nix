@@ -698,8 +698,8 @@ in
       };
       # THE FOREIGN HALF: nixpkgs' lazy `attrsWith` (a placeholder, so not re-homed) under `uniq`; its
       # threaded fold is the import's, and the gen element's own fold reads its node. A sibling whose
-      # key set reads the read tree is outside this half: the foreign split forces every sibling first
-      # (den-hoag-fozin).
+      # key set reads the read tree is served too, since the foreign split is keyed by the chain's
+      # stated step (`nesting-keys-foreign-chain`, den-hoag-fozin).
       test-a-foreign-lazy-containers-strict-element-serves-under-unique = {
         expr = cfgOf (
           host
@@ -762,6 +762,135 @@ in
             ]
           )).foo.k.x;
         expected = 1;
+      };
+    };
+
+  # den-hoag-fozin (ADR-0039, the serve half; ADR-0025 item 1): a FOREIGN chain whose only step is a
+  # lazy `attrsWith` (any placeholder), bare or under step-free foreign wrappers (`unique`,
+  # `coercedTo`), above a gen element that may nest, is keyed by the step its functors state: the
+  # split reads the fold's attribute names and an element's capture site only when that element is
+  # read, so a sibling whose key set reads the read tree is never forced to key it. The expected
+  # values are nixpkgs' own, read off `lib.evalModules` mounting the same declaration.
+  flake.tests.nesting-keys-foreign-chain =
+    let
+      cfgOf = modules: (gm.evalModuleTree { } modules).config.o;
+      aw =
+        e:
+        np.attrsWith {
+          elemType = e;
+          lazy = true;
+          placeholder = "p";
+        };
+      keysDep = type: [
+        { options.o = gm.mkOption { inherit type; }; }
+        (
+          { config, ... }:
+          {
+            config.o = {
+              foo.k.x = 1;
+              bar = if config.o.foo.k.x == 1 then { k.x = 2; } else { };
+            };
+          }
+        )
+      ];
+      # a lazy `attrsWith` whose merge rearranges its result at the stated depth (`g` maps the stock
+      # result), its rebuild included
+      reshapeOf =
+        g: a:
+        a
+        // {
+          merge = loc: defs: g (a.merge loc defs);
+          substSubModules =
+            m:
+            let
+              r = a.substSubModules m;
+            in
+            r // { merge = loc: defs: g (r.merge loc defs); };
+        };
+      two = [
+        {
+          foo.k.x = 1;
+          bar.k.x = 2;
+        }
+      ];
+      alias = type: [
+        { options.o = gm.mkOption { inherit type; }; }
+        (
+          { config, ... }:
+          {
+            config.o = {
+              foo.k.x = 1;
+              bar = config.o.foo;
+            };
+          }
+        )
+      ];
+    in
+    {
+      test-a-bare-placeholder-attrsWith-serves-a-key-dependent-sibling = {
+        expr = (cfgOf (keysDep (aw (t.attrsOf sub)))).foo.k.x;
+        expected = 1;
+      };
+      test-a-placeholder-attrsWith-under-unique-serves-a-key-dependent-sibling = {
+        expr = (cfgOf (keysDep (np.uniq (aw (t.attrsOf sub))))).foo.k.x;
+        expected = 1;
+      };
+      test-a-stock-lazy-attrsOf-under-coercedTo-serves-an-alias-sibling = {
+        expr =
+          (cfgOf (alias (np.coercedTo np.str (_: throw "unused") (np.lazyAttrsOf (t.attrsOf sub))))).foo.k.x;
+        expected = 1;
+      };
+      # a step-free foreign wrapper BELOW the step as well: the capture site is still one key down
+      test-a-wrapper-below-the-step-serves-a-key-dependent-sibling = {
+        expr = (cfgOf (keysDep (np.uniq (aw (np.uniq (t.attrsOf sub)))))).foo.k.x;
+        expected = 1;
+      };
+      # den-hoag-t1j4z OQ2(a), dissolved by Case B (gen-merge f26e1c8): the bare chain's plain read
+      test-a-bare-placeholder-attrsWith-plain-read-serves = {
+        expr = cfgOf (
+          host (aw (t.attrsOf sub)) [
+            {
+              foo.k.x = 1;
+              bar.k.x = 2;
+            }
+          ]
+        );
+        expected = {
+          foo.k.x = 1;
+          bar.k.x = 2;
+        };
+      };
+      # the key survives where every definition of its element is discharged away: nixpkgs' lazy
+      # `attrsWith` keeps it, at the element's empty value
+      test-a-discharged-element-keeps-its-key-at-the-empty-value = {
+        expr = cfgOf (
+          host (np.uniq (aw (t.attrsOf sub))) [
+            {
+              foo.k.x = 1;
+              bar = gm.mkIf false { k.x = 2; };
+            }
+          ]
+        );
+        expected = {
+          foo.k.x = 1;
+          bar = { };
+        };
+      };
+      # den-hoag-fozin C1: the run, not the functor, says which tree sits at which key. A merge that
+      # duplicates or drops a key's tree serves nixpkgs' value; one that moves a tree to another key
+      # is refused by name (`testsError.nesting-keys-foreign-chain`).
+      test-a-merge-duplicating-a-keys-tree-serves-nixpkgs-value = {
+        expr =
+          (cfgOf (host (np.uniq (reshapeOf (r: r // { bar = r.foo; }) (aw (t.attrsOf sub)))) two)).bar.k.x;
+        expected = 1;
+      };
+      test-a-merge-dropping-a-keys-tree-serves-nixpkgs-value = {
+        expr = cfgOf (
+          host (np.uniq (reshapeOf (r: builtins.removeAttrs r [ "bar" ]) (aw (t.attrsOf sub)))) two
+        );
+        expected = {
+          foo.k.x = 1;
+        };
       };
     };
 

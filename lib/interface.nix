@@ -1795,6 +1795,108 @@ let
           };
         }
       );
+      # ── A CHAIN KEYED BY ITS STATED STEP (den-hoag-fozin; ADR-0039's serve half, ADR-0025 item 1) ─
+      # THE DOMAIN: a chain of step-free wrappers (`unique`, `coercedTo`), then exactly ONE lazy
+      # `attrsWith` (any placeholder), then step-free wrappers, then a gen element that may nest.
+      # There the functors state that every capture site sits one key below the fold's result, so the
+      # split keys the result's attribute names, which forces no element, and reads a site only when
+      # its element is read. The eager `sitesOf` walk forces every element's discharge, so a sibling
+      # whose key set, `mkIf` or alias reads the read tree never returned (nixpkgs forces an element
+      # only where it is read). `chainElement` answers the chain's gen element, `null` off the domain,
+      # where the eager walk stays.
+      #
+      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated): a chain with a second step below the
+      # lazy `attrsWith` is off the domain and still aborts uncatchably where nixpkgs serves, with a
+      # sibling reading the read tree: `uniq (lazyAttrsOf (lazyAttrsOf e))`, `uniq (lazyAttrsOf
+      # (attrsOf e))`, `uniq (lazyAttrsOf (listOf e))`, `uniq (lazyAttrsOf (nullOr e))`, and a bare
+      # placeholder `attrsWith { lazy = true; }` over `lazyAttrsOf e` (den-hoag-rlskz).
+      #
+      # ★ THE STATED PRICE, an extension of den-hoag-n6dh7's (owner-accepted 2026-09-25: a stock
+      # container whose `merge` was overridden cannot be told from the stock one, since Nix cannot
+      # compare functions): the step is TRUSTED from the functor names. The run stays the authority
+      # over which tree sits at which key: a capture site must sit at its own key (`siteLocAt`), in
+      # the split and in the fold. So a chain whose stock-named lazy `attrsWith` has a merge that does
+      # not fold each element at `loc ++ [ k ]` (one key deeper, keys renamed or swapped) is refused
+      # by name at the key read (`statedStepRefusal`), where base and nixpkgs serve it; one that only
+      # duplicates or drops a key's tree serves nixpkgs' value.
+      chainElement =
+        let
+          go =
+            fuel: e:
+            let
+              st = forwardStep e;
+              n = (e.functor or { }).name or null;
+            in
+            if fuel == 0 || st == null || e ? substructure then
+              null
+            else if n == "unique" || n == "coercedTo" then
+              go (fuel - 1) st.element
+            else if n == "attrsWith" && (e.functor.payload.lazy or false) then
+              below (fuel - 1) st.element
+            else
+              null;
+          # below the step: step-free wrappers down to the gen element, whose capture site the
+          # wrappers' merges return unchanged at the step's key
+          below =
+            fuel: e:
+            let
+              st = forwardStep e;
+              n = (e.functor or { }).name or null;
+            in
+            if fuel == 0 || !(isAttrs e) then
+              null
+            else if e ? substructure then
+              (if canNest e then e else null)
+            else if st != null && (n == "unique" || n == "coercedTo") then
+              below (fuel - 1) st.element
+            else
+              null;
+        in
+        go importedTypeWalkFuel t;
+      # the loc of the capture site a fold result holds at key `k`, `null` where it holds none
+      siteLocAt =
+        r: k:
+        let
+          v = r.${k} or null;
+        in
+        if isAttrs v && v ? __genTSite then v.__genTSite.loc else null;
+      lazySplit =
+        loc: r:
+        map (k: {
+          step = [ k ];
+          loc = loc ++ [ k ];
+          defs =
+            if siteLocAt r k == loc ++ [ k ] then
+              r.${k}.__genTSite.defs
+            else
+              throw (statedStepRefusal door (loc ++ [ k ]) t);
+          # the chain's own gen element, stated by the declaration: reading the site's would force
+          # the element's merge, which discharges its definitions
+          type = chainElement;
+        }) (attrNames r);
+      # The threaded fold's result, read at key `k`, holds the tree folded at the site found there,
+      # and that site must be its own key's (`loc ++ [ k' ]`, held at `k'`); a merge that duplicates
+      # or drops a key's tree passes, one that moves it refuses here, where it is read.
+      keyedWhereRead =
+        loc: captured: v:
+        if isAttrs v then
+          prelude.mapAttrs (
+            k: x:
+            let
+              l = siteLocAt captured k;
+            in
+            if
+              l != null
+              && length l == length loc + 1
+              && l == loc ++ [ (prelude.last l) ]
+              && siteLocAt captured (prelude.last l) == l
+            then
+              x
+            else
+              throw (statedStepRefusal door (loc ++ [ k ]) t)
+          ) v
+        else
+          v;
       sitesOf =
         v:
         if isAttrs v then
@@ -1836,10 +1938,13 @@ let
       __threadedForeign = true;
       split =
         loc: defs:
-        map (s: {
-          step = stepOf loc s.loc;
-          inherit (s) loc defs type;
-        }) (sitesOf ((importedFold capture) loc defs));
+        if chainElement != null then
+          lazySplit loc ((importedFold capture) loc defs)
+        else
+          map (s: {
+            step = stepOf loc s.loc;
+            inherit (s) loc defs type;
+          }) (sitesOf ((importedFold capture) loc defs));
       mergeDefs = {
         __functor =
           _: loc: _defs:
@@ -1847,42 +1952,60 @@ let
         threaded =
           ev: loc: defs:
           let
-            steps = map (s: stepOf loc s.loc) (sitesOf ((importedFold capture) loc defs));
+            captured = (importedFold capture) loc defs;
+            steps = map (s: stepOf loc s.loc) (sitesOf captured);
+            keyed = if chainElement != null then keyedWhereRead loc captured else v: v;
           in
-          checkedThreaded (importedFold (
-            via (
-              e:
-              genFace e
-              // {
-                # A threaded element folded at a step the split did not capture (a value the merge
-                # returns, such as `functionTo`'s function body) keeps its fold, and its accessor's
-                # `child` refuses by name: only a nested-tree read refuses, so a member that never
-                # reads the tree still answers (ADR-0025 item 1).
-                merge = carriedElement e (
-                  eloc: edefs:
-                  mergeDefsThreaded (
-                    ev
-                    // {
-                      position = ev.position ++ stepOf loc eloc;
-                      # A foreign container keys over-approximately (`keyWalk`), never exactly.
-                      exactAt = null;
-                    }
-                    // (
-                      if builtins.elem (stepOf loc eloc) steps then
-                        { }
-                      else
-                        {
-                          # What the walk minted here (`minted`, the key walk's own records) is
-                          # still the accessor's to state; only a read refuses.
-                          child =
-                            site: if site ? __genMergeMinted then ev.child site else throw (unexposedRefusal door eloc t);
-                        }
-                    )
-                  ) eloc e edefs
-                );
-              }
-            )
-          )) loc defs;
+          keyed (
+            checkedThreaded (importedFold (
+              via (
+                e:
+                genFace e
+                // {
+                  # A threaded element folded at a step the split did not capture (a value the merge
+                  # returns, such as `functionTo`'s function body) keeps its fold, and its accessor's
+                  # `child` refuses by name: only a nested-tree read refuses, so a member that never
+                  # reads the tree still answers (ADR-0025 item 1).
+                  merge = carriedElement e (
+                    eloc: edefs:
+                    mergeDefsThreaded (
+                      ev
+                      // {
+                        position = ev.position ++ stepOf loc eloc;
+                        # A foreign container keys over-approximately (`keyWalk`), never exactly.
+                        exactAt = null;
+                      }
+                      // (
+                        if
+                          (
+                            let
+                              st = stepOf loc eloc;
+                            in
+                            if chainElement != null then
+                              length st == 1 && siteLocAt captured (head st) == eloc
+                            else
+                              builtins.elem st steps
+                          )
+                        then
+                          { }
+                        else
+                          {
+                            # What the walk minted here (`minted`, the key walk's own records) is
+                            # still the accessor's to state; only a read refuses.
+                            child =
+                              site:
+                              if site ? __genMergeMinted then
+                                ev.child site
+                              else
+                                throw ((if chainElement != null then statedStepRefusal else unexposedRefusal) door eloc t);
+                          }
+                      )
+                    ) eloc e edefs
+                  );
+                }
+              )
+            )) loc defs
+          );
       };
     };
 
@@ -1928,6 +2051,17 @@ let
     + "function body), so that nested tree cannot be threaded into this evaluation. Declare the tree "
     + "at a position the merge returns as a value, or state `declaresNesting = false' on the type and "
     + "take the stated price: a nested tree it forwards to is then evaluated standalone";
+
+  # The stated-step refusal's text (den-hoag-fozin): a chain keyed by the step its functors state,
+  # whose merge folded no element of its own at the key read, `at`.
+  statedStepRefusal =
+    door: at: t:
+    "${doorAt door at}the option type `${nameOf t}' states (its functors) that its gen element sits "
+    + "one key below it, under a lazy `attrsWith', and its merge did not fold that key's own element "
+    + "there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed "
+    + "where it is read. Declare the element under a container whose merge is its constructor's, or "
+    + "state `declaresNesting = false' on the type and take the stated price: a nested tree it "
+    + "forwards to is then evaluated standalone";
 
   # The offer refusal's text (OQ1 arm (ii-a)): a record stating no element whose functor payload
   # offers one that declares a gen nesting type, raised inside the walk with its caller's door.
