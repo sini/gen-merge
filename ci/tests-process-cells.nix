@@ -133,6 +133,20 @@ let
       ]
       ++ map (d: { config.o = d; }) defs;
     };
+  # den-hoag-qbrq9: `attrsOf (attrsOf sub)` with n modules each defining `o.a.k<i>`, so the inner
+  # `attrsOf sub` at `o.a` is keyed over-approximately over n definitions with n distinct keys. The
+  # whole value is forced; the cell answers its key count, n.
+  keyWalkWide =
+    n:
+    let
+      sub = m.types.submodule { options.x = m.mkOption { type = m.types.int; }; };
+      c =
+        (eval (
+          [ { options.o = m.mkOption { type = m.types.attrsOf (m.types.attrsOf sub); }; } ]
+          ++ builtins.genList (i: { config.o.a."k${toString i}".x = i; }) n
+        )).config.o;
+    in
+    builtins.deepSeq c (builtins.length (builtins.attrNames c.a));
   childResult =
     r: key:
     (r._evaluation.get (scope.mintNtaId {
@@ -191,6 +205,11 @@ let
       (builtins.tryEval (childResult (lazyUnionAt [ { foo = "s"; } ]) "[\"foo\"]")).success;
     # Its live control, a separate evaluation: the same member in a selected child applies it.
     candidate-modules-control = (childResult (lazyUnionAt [ { bar.x = 1; } ]) "[\"bar\"]").x;
+    # den-hoag-qbrq9: one over-approximately keyed position collecting n definitions, each with its
+    # own key. The runner reads its function calls at n = 100, 400, 1600.
+    key-walk-wide-100 = keyWalkWide 100;
+    key-walk-wide-400 = keyWalkWide 400;
+    key-walk-wide-1600 = keyWalkWide 1600;
     # THE OUTER FIXPOINT (den-hoag-xzchx, C3). A PLAIN attrset — no formals, no `imports`, no
     # `__functor` — whose option KEY SET under `a` reads the evaluation's own `options` through
     # the lexical binding `r`. That is ADR-0033's in-flight clause read literally, reached through

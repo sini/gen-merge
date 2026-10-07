@@ -77,6 +77,18 @@
               "$cells" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
           }
+          # callsOf <arm>: runs one cell with the evaluator's statistics on, requires exit 0, and
+          # leaves the process's own nrFunctionCalls in `calls`. A stats file with no count is a
+          # broken instrument and dies as one, never a zero.
+          callsOf() {
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            rm -f "$TMPDIR/stats"
+            evalArm "$1"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die "$1" "expected exit 0, got $rc"
+            calls=$(tr -d ' \n' < "$TMPDIR/stats" | grep -o '"nrFunctionCalls":[0-9]*' | cut -d: -f2 || true)
+            [ -n "$calls" ] || die "$1" "the evaluator wrote no nrFunctionCalls to $TMPDIR/stats: cannot measure"
+          }
 
           # den-hoag-xzchx C3 — the outer fixpoint reading the evaluation's own `options` from a
           # plain attrset DIVERGES: non-zero exit, the infinite-recursion channel, no value. An
@@ -168,9 +180,20 @@
           [ "$rc" -eq 0 ] || die cyclic-guarded-control "expected exit 0, got $rc"
           [ "$val" = '[ true false ]' ] || die cyclic-guarded-control "expected [ true false ], got '$val'"
 
+          # den-hoag-qbrq9: an over-approximately keyed position's walk is linear in its definitions:
+          # one position of n definitions, each with its own key, at n = 100, 400, 1600. Linear growth
+          # makes the second difference in function calls 4x the first; it must stay under 5x. A
+          # per-key scan of the definitions read 13.9x (547500 then 7590000 calls on Nix 2.34.8).
+          for n in 100 400 1600; do
+            callsOf "key-walk-wide-$n"
+            [ "$val" = "$n" ] || die "key-walk-wide-$n" "expected value $n, got '$val'"
+            eval "kw$n=$calls"
+          done
+          [ $((kw1600 - kw400)) -lt $((5 * (kw400 - kw100))) ] || die key-walk-wide-1600 "function calls grow faster than linear in the definitions: $kw100 / $kw400 / $kw1600"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "26" ] || die runner "expected 26 evaluations, ran $ran"
-          echo "tests-process: 26 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "29" ] || die runner "expected 29 evaluations, ran $ran"
+          echo "tests-process: 29 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

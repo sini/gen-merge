@@ -3137,24 +3137,26 @@ let
       # outside it is refused by name where it is read, before any key under it is read, so it has
       # none.
       if admitsAll t.admits defs then
+        let
+          # Each key's definitions, grouped once (as `mergeTree`'s `defsByKey`), in `defs`' order, so
+          # each key is answered by a lookup rather than a scan of `defs`.
+          defsByKey = builtins.zipAttrsWith (_: vs: vs) (
+            map (
+              d:
+              mapAttrs (k: value: {
+                inherit (d) file;
+                inherit value;
+                at = d.at ++ [ k ];
+              }) d.value
+            ) defs
+          );
+        in
         concatMap (
           k:
-          keyWalk "lazyAttrsOf" group (interface.homedAt "evalModuleTree" (loc ++ [ k ]) t.carries.element)
-            (pos ++ [ k ])
-            (loc ++ [ k ])
-            (
-              addressedDefs (
-                concatMap (
-                  d:
-                  optional (d.value ? ${k}) {
-                    inherit (d) file;
-                    value = d.value.${k};
-                    at = d.at ++ [ k ];
-                  }
-                ) defs
-              )
-            )
-        ) (attrNames (foldl' (acc: d: acc // d.value) { } defs))
+          keyWalk "lazyAttrsOf" group (interface.homedAt "evalModuleTree" (loc ++ [ k ]) t.carries.element) (
+            pos ++ [ k ]
+          ) (loc ++ [ k ]) (addressedDefs defsByKey.${k})
+        ) (attrNames defsByKey)
       else
         [ ]
     else if under == null && pos != [ ] && containerAt loc t then
