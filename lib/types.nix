@@ -150,7 +150,15 @@ let
       #  - keyed under an embedding with parameters (`path`, `pathLike`; `interface.embeddings`): in
       #    the partner's relation over the embedding (`interface.joinCarriedInStatedRelation`);
       #  - keyed under an embedding with none (`string`): as a leaf at the embedding's name;
-      #  - of the same key (as `elementRel`'s carve-out): as a leaf, and a declined join answers `self`.
+      #  - of the same key (as `elementRel`'s carve-out): as a leaf, and a declined join answers `self`,
+      #    EXCEPT for a partner stating a payload (`interface.statesPayload`), which is refused AS THE
+      #    DECIDER only (`vetoes = false`, read by `lib/modules.nix` `declaredPair`): nixpkgs' default
+      #    relation, which the twin states, asserts two leaves agree on a payload, so the twin refuses it
+      #    where the twin decides; where the partner decides, its OWN relation answers, as nixpkgs lets
+      #    it. `self` would drop the partner's check unsaid (ADR-0025 item 1). The other declines (a
+      #    functor with no `type` or no `binOp`, a join that renames) keep `self`: nixpkgs' twin serves
+      #    those pairs where it decides without aborting, and a refusal there would regress a serve
+      #    (ADR-0039's serve half).
       # A declined embedding join is REFUSED, never `self`: the partner's own check would be dropped
       # unsaid (ADR-0025 item 1), so the table cannot widen the same-key fallback's reach.
       nullaryRel =
@@ -182,6 +190,11 @@ let
               { merged = leafJoin; }
             else
               { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+          else if sameKey && interface.statesPayload other then
+            {
+              refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
+              vetoes = false;
+            }
           else if sameKey then
             { merged = if leafJoin == null then self else leafJoin; }
           else
@@ -583,6 +596,8 @@ let
             refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partner}', whose element types do not merge${
               if cause == null then "" else ": ${cause}"
             }";
+            # the element pair's refusal decides without vetoing (`nullaryRel`), so the container's does too
+            vetoes = !(element ? typeMergeRel) || ((element.typeMergeRel partner).vetoes or true);
           };
       in
       if foreignJoin != null then

@@ -8932,7 +8932,8 @@ in
     # never as "a `str' partner": this is the one observable of `keyedUnderEmbedding`'s name test, since
     # a declined embedding join is refused either way. A partner keyed under the embedding whose relation
     # declines the join (`str` with a payload, a stricter check) and a constrained `pathWith`
-    # (`pathInStore`) are each refused by the embedding's own reason.
+    # (`pathInStore`) are each refused by the embedding's own reason. A gen leaf beside a SAME-KEYED
+    # partner stating a payload (1t2p5) is refused naming the payload, in both orders.
     flake.testsError.leaf-embedding-refusal =
       let
         np = nixpkgsLib.types;
@@ -8967,6 +8968,20 @@ in
             p = strict;
             v = "x";
             reason = "`string' and a `str' partner whose relation declines the join";
+          };
+          same-key-payload = {
+            g = t.int;
+            p = nixpkgsLib.mkOptionType {
+              name = "int";
+              check = x: builtins.isInt x && x != 7;
+              merge = nixpkgsLib.options.mergeEqualOption;
+              functor = np.defaultFunctor "int" // {
+                payload.strict = true;
+                binOp = _a: _b: null;
+              };
+            };
+            v = 7;
+            reason = "`int' and a `int' partner stating a payload, which a leaf does not";
           };
           constrained-payload = {
             g = t.path;

@@ -2658,7 +2658,7 @@ let
       stated = if e != null && !(e ? params) then e.name else name;
       pf = other.functor or null;
       joined =
-        if !(statesRelation other) || !(pf ? type) || (pf.payload or null) != null then
+        if !(statesRelation other) || !(pf ? type) || statesPayload other then
           null
         else
           protoTypeMerge (pf // { name = stated; }) pf;
@@ -2688,6 +2688,12 @@ let
   # about the descriptor's provenance and not about what its author said. Keying on `functor.binOp'
   # asks the question this boundary is actually deciding.
   statesRelation = t: ((t.functor or { }).binOp or null) != null;
+  # Whether a record's published functor states a PAYLOAD: a nullary leaf states none, and nixpkgs'
+  # default relation asserts that two operands agree on it, so a stated payload beside a leaf has no join
+  # in that relation (a partner's OWN relation may still join one). Read by `joinLeafInStatedRelation`,
+  # which declines it, and by the leaf relation, which refuses it where it decides (lib/types.nix
+  # `nullaryRel`).
+  statesPayload = t: ((t.functor or { }).payload or null) != null;
 
   # ★★ WHAT THE PROTOCOL'S OWN DEFAULT READS OFF A FUNCTOR, AS ONE DEFINITION READ TWICE — by the
   # retention in `importType' to decide what may be retained, and by the refusal beside it to name
@@ -3642,6 +3648,7 @@ in
     joinCarriedInStatedRelation
     joinInRebuiltPartner
     joinLeafInStatedRelation
+    statesPayload
     embeddedOffered
     embeddingOf
     keyedUnderEmbedding
