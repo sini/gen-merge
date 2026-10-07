@@ -1543,31 +1543,36 @@ join that is a gen record is compared with each operand as the import environmen
 type whose relation rebuilds it through `mkOptionType` (gen-schema's `refined`, gen-aspects'
 `aspectsRoot`) merges when redeclared as itself. A
 pair that is one shared value keeps it: `[port, port]` from one `types.port` answers `port`, and
-rejects 70000. Refusing is the one answer sound whether a redeclaration is read as a join or as a
-meet; which of those it means is left open. The cost is one fuel-bounded walk per foreign fold step,
+rejects 70000. A redeclaration is the meet (owner-ruled 2026-10-06, below); a join this witness takes is
+met at the step, and one renamed past an operand stays refused, which serves nothing an operand rejects. The cost is one fuel-bounded walk per foreign fold step,
 and a second join only on the refusal path; gen-native pairs never reach it. Measured with
 `NIX_SHOW_STATS`, one option declared in 200 modules: `listOf str` +2.7% thunks and +1.0% function
 calls, a distinct `submodule` each +0.1%, `port` +0.07% and +0.18%. The measured members are under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate).
 
-**A type merge that drops a wrapper's check refuses, at every depth.** An `addCheck` keeps its base's
-name and relation, so no name separates `addCheck int p` from `int`, and the relation answers the bare
-base: `[int, addCheck int (x: x > 0)]` serves -1 on nixpkgs, in either order. For a gen record
-gen-types' check-witness protocol makes the rewritten check observable (`rewritesCheck`), so
-`mergeTypes` refuses wherever an operand's check was rewritten and the merge is not that operand
-itself. The pair refuses with the wrapper first or second, under a gen parametric (`union [ int ]`),
-under a container (`listOf (addCheck int p)` beside `listOf int`), and in a longer list, with a
-reason naming which of the pair lost its check; under a container that reason follows the element
-refusal. The test sits in `mergeTypes`, so the declaration and freeform planes, every container's
-element relation and the published `genMerge.mergeTypes` all answer it. As above, refusing is sound
-under both readings of a redeclaration. It is a default, and reversible: the rule that no check
-vanishes silently forbids serving the value, but does not itself choose a refusal over another named
-answer, so settling the reading as a join would relax this arm alone. **One wrapped value declared twice keeps its operand**: `w = addCheck int p`
-declared as `[w, w]`, or as two `listOf w`, merges to `w` and rejects what `p` rejects. **Two
-separately written wrappers refuse even over one predicate source**, because a check is a caller's
-function and two cannot be compared (`mkOptionType`'s `sealedRel` answers the same): declare the
-wrapped type once and reference it. A foreign record states no witness, so `addCheck` over a nixpkgs
-type redeclared still serves as nixpkgs does (Known byte-mode boundaries, "Not covered"). The cost,
+**A redeclared option accepts a definition only if every declared check does** (den-hoag-l1j4q,
+owner-ruled 2026-10-06: the meet). An `addCheck` keeps its base's name and relation, so no name
+separates `addCheck int p` from `int`, and the relation answers the bare base:
+`[int, addCheck int (x: x > 0)]` serves -1 on nixpkgs, in either order. Every type merge here answers
+the relation's join restricted by each operand's check the join does not carry (`interface.metWith`,
+at `mergeTypes` and at `declaredPair`'s veto arm), so that pair merges to `int` and rejects -1, with
+the wrapper first or second, under a gen parametric (`union [ int ]`), under a container
+(`listOf (addCheck int p)` beside `listOf int`), in a longer list, and in gen's engine for a foreign
+operand too (`addCheck lib.types.int p` beside `lib.types.int`, and a nixpkgs partner of any check).
+The join still decides the record (its fold, name and functor, nixpkgs' later operand); the meet
+decides acceptance, a lower bound by induction over the fold. A gen x gen step owes nothing and is
+answered before the meet is built. A fresh join that widens a constructor's own parameters keeps that
+constructor's law over them (two `enum`s union their values), and each operand stays owed for the
+values its own parameters admit, so a wrapper over an `enum` is kept. The step sits in `mergeTypes`, so
+the declaration and freeform planes, every container's element relation and the published
+`genMerge.mergeTypes` all answer it. **One wrapped value declared twice keeps its operand**:
+`w = addCheck int p` declared as `[w, w]`, or as two `listOf w`, merges to `w` and rejects what `p`
+rejects. **At a module set a dropped wrapper still refuses**, naming which of the pair lost its check:
+the module-set fold does not enforce a joined record's check, so a met record there would serve what
+the wrapper rejects. A foreign wrapper over a module set states no witness and is not enforced (Known
+byte-mode boundaries, "Not covered"). In nixpkgs' engine gen is asked only when declared later, and
+then with a functor, so a check that functor does not rebuild is not seen there (nixpkgs' own drop);
+a join the nixpkgs twin refuses is not served there. The cost,
 measured with `NIX_SHOW_STATS` on Nix: +3 thunks per evaluation, a constant, with calls and bytes
 unchanged, for any number of options each declared once; `listOf int` declared in 200 modules, +0.40%
 thunks, +0.90% function calls and +0.62% bytes, the element relation now asking the witness on every
@@ -2473,15 +2478,20 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
     twin keeps its operand: the imported record meets the engine's own import of its partner, and
     Nix `==` does not survive that path.
 
-- **A type merge that drops a wrapper's check refuses, for a gen record, even where nixpkgs serves**
-  ("A type merge that drops a wrapper's check refuses, at every depth"). Measured members, each
-  served by nixpkgs: `addCheck int p` beside `int` in either order, beside `union [ int ]`, under
-  `listOf` and in a three-declaration list; two separately written `addCheck int p`, which is the
-  one legitimate input refused (the remedy is one shared value). One shared wrapped value declared
-  twice merges and keeps its check, where nixpkgs serves what the check rejects.
+- **A redeclared option rejects what any declaration's check rejects, even where nixpkgs serves it**
+  ("A redeclared option accepts a definition only if every declared check does"). Measured members,
+  each served by nixpkgs: `addCheck int p` beside `int` in either order, beside `union [ int ]`, under
+  `listOf` and in a three-declaration list; two separately written `addCheck int p`; a nixpkgs
+  partner of any check beside a gen type, in gen's engine, in any order and any number of
+  declarations. In gen's engine a pure-nixpkgs pair is met too, so it rejects what nixpkgs serves with a
+  check dropped. One shared wrapped value declared twice merges and keeps its check.
 
-  Not covered, because no name separates the check from its base and a foreign record states no
-  check witness: an `addCheck` over a nixpkgs type that keeps its base's name (`addCheck lib.types.int f`, `nonEmptyListOf`). Nor a drop under a
+  Not covered: an `addCheck` over a submodule (a module set) written with nixpkgs' `addCheck` over a
+  nixpkgs submodule, beside another submodule declaration, in either engine (den-hoag-8ip0d): a
+  foreign record states no check witness and the module-set fold does not enforce a joined check, so
+  it serves as nixpkgs does (a gen-witnessed wrapper there refuses, above). In nixpkgs' engine, a
+  check on a gen type declared first (nixpkgs asks only the later relation) or hidden behind a functor
+  gen is handed. Nor a drop under a
   key `nestedTypes` states that names no role this boundary carries (`freeformType`,
   `coercedType`/`finalType`, an `attrTag`'s tags): it is not in gen's vocabulary, so a join is not
   judged over it.

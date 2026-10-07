@@ -634,15 +634,16 @@ in
         # PIN OF THE PARTNER'S OWN DIVERGENCE, not of a gen property: the partner's `typeMerge` refuses
         # where its functor's relation serves. A partner whose own `typeMerge` disagrees with the relation its functor states: where gen
         # decides it gets the FUNCTOR's relation (4v489), never the partner's own `typeMerge`. Where the
-        # partner decides it refuses, as it does beside nixpkgs' own `int`, so that order stays refused.
+        # partner decides under nixpkgs' engine it refuses, as it does beside nixpkgs' own `int`; gen's
+        # engine meets the pair (den-hoag-l1j4q), so gen first serves the partner's record with both checks.
         hand = np.types.int // {
           typeMerge = _: null;
         };
         # A STATED DIVERGENCE (ADR-0025 item 1), not a gen defect: a partner named like the leaf whose
         # functor republishes a differently named type. The join renames it, so it is not taken and the
         # pair answers as it did before (`joinRenames`). Where nixpkgs' twin serves it (`np-o12`), it
-        # serves the partner's record, dropping a stricter check the partner might carry: gen cannot
-        # compare check closures, so serving this partner would serve its strict sibling silently.
+        # serves the partner's record, dropping a stricter check the partner might carry. Gen first in
+        # gen's engine (`gm-o21`) the step meets the pair, so gen's record is served with both checks.
         alias = np.types.mkOptionType {
           name = "int";
           description = "alias";
@@ -654,8 +655,8 @@ in
         };
         # A raw foreign leaf whose functor omits `type`: the protocol's default would abort reading it,
         # so the join is not taken and gen's own relation answers, as it did before (C1). Where nixpkgs'
-        # twin serves it (`np-o12`) gen refuses, a STATED DIVERGENCE (ADR-0025 item 1): gen cannot compare
-        # check closures, so serving this partner would serve its strict sibling silently.
+        # twin serves it (`np-o12`) gen refuses, a STATED DIVERGENCE (ADR-0025 item 1). Gen first in gen's
+        # engine (`gm-o21`) the step meets the pair over gen's record, so the partner's check is kept.
         notype = np.types.int // {
           functor = builtins.removeAttrs np.types.int.functor [ "type" ];
         };
@@ -802,13 +803,13 @@ in
             np-o12 = "N v=1";
             np-o21 = "REFUSED";
             gm-o12 = "N v=1";
-            gm-o21 = "REFUSED";
+            gm-o21 = "N v=1";
           };
           notype = {
             np-o12 = "REFUSED";
             np-o21 = "N v=1";
             gm-o12 = "G v=1";
-            gm-o21 = "N v=1";
+            gm-o21 = "G v=1";
           };
           two = twoWant;
           twoRef = twoWant;
@@ -816,7 +817,7 @@ in
             np-o12 = "REFUSED";
             np-o21 = "REFUSED";
             gm-o12 = "G v=1";
-            gm-o21 = "REFUSED";
+            gm-o21 = "G v=1";
           };
         };
       };
@@ -830,19 +831,22 @@ in
     #    partner's check dropped unsaid (ADR-0025 item 1).
     #  - `acc`: a partner whose OWN relation joins a payload-free leaf of its name, keeping itself. Gen
     #    declared first, that relation decides and serves (the twin serves, keeping the partner's check);
-    #    partner first, gen decides as its twin does and refuses. A refusal there vetoing served nothing
-    #    in the gen-first order (spec v0's arm B).
-    #  - `control`: the same partner as `pay` stating no payload, served as the twin serves it, so a
-    #    relation refusing every declined same-key join cannot pass.
+    #    partner first, nixpkgs' engine decides as the twin does and refuses, while gen's engine meets the
+    #    partner's own join with the gen leaf (den-hoag-l1j4q) and serves `v`, which every check accepts.
+    #  - `control`: the same partner as `pay` stating no payload, over the value its check rejects. The
+    #    twin serves it, dropping that check (nixpkgs' later-operand rule); the meet refuses it in gen's
+    #    engine, and in nixpkgs' engine wherever gen's container relation is asked (partner first, under a
+    #    container). Gen's leaf asked by nixpkgs with a functor sees no check (`bare`, L2), and nixpkgs
+    #    never asks gen declared first (L1).
     #  - `genOnly`: the gen leaves no nixpkgs leaf twins, beside a `pay` partner of their name: refused in
     #    every row (no twin; ADR-0025 item 1 alone).
     #  - `accRejected`: the `acc` partner over a value the GEN leaf's check rejects, gen's engine, gen
-    #    declared first. The partner's relation decides and keeps itself, so the gen leaf's check is
-    #    dropped and the value is served, as the twin serves it. That is nixpkgs' own later-operand drop,
-    #    NOT correct behaviour: it is pinned as parity, and the meet (den-hoag-l1j4q) turns these rows
-    #    into named refusals.
+    #    declared first. The partner's relation decides and keeps itself; the meet (den-hoag-l1j4q)
+    #    restricts that join by the gen leaf's check, so the value is refused where nixpkgs' later-operand
+    #    rule served it.
     # `expected` is a LITERAL, and every `*Ref` (the gen side replaced by its nixpkgs twin, live) must
-    # equal it.
+    # equal it in nixpkgs' engine. In gen's engine the meet reaches a pure-nixpkgs pair too, so
+    # `controlRef` and `accRejectedRef` refuse there what nixpkgs serves with a check dropped.
     test-mixed-leaf-payload-partner-has-the-twin-answer =
       let
         engines = {
@@ -980,6 +984,17 @@ in
         refused = literal (_: "REFUSED");
         served = literal (_: "served");
         byOrder = literal (k: if builtins.match ".*-genFirst" k != null then "served" else "REFUSED");
+        isGm = k: builtins.match "gm-.*" k != null;
+        # gen's engine meets every row; nixpkgs' engine keeps the twin's later-operand answer
+        metAcc = tbl: builtins.mapAttrs (k: v: if isGm k then "served" else v) (byOrder tbl);
+        metControl = literal (
+          k:
+          if isGm k || builtins.match "np-.*-(list|null|attrs)-partnerFirst" k != null then
+            "REFUSED"
+          else
+            "served"
+        );
+        metControlRef = literal (k: if isGm k then "REFUSED" else "served");
         rejected = {
           int = "s";
           bool = 1;
@@ -1002,13 +1017,13 @@ in
         expected = {
           pay = refused (table np.types "pay" leaves all);
           payRef = refused (table np.types "pay" leaves all);
-          acc = byOrder (table np.types "acc" leaves all);
+          acc = metAcc (table np.types "acc" leaves all);
           accRef = byOrder (table np.types "acc" leaves all);
-          control = served (table np.types "control" leaves all);
-          controlRef = served (table np.types "control" leaves all);
+          control = metControl (table np.types "control" leaves all);
+          controlRef = metControlRef (table np.types "control" leaves all);
           genOnly = refused (table t "pay" genOnly [ "bare" ]);
-          accRejected = served (gmGenFirst (table np.types "acc" rejected all));
-          accRejectedRef = served (gmGenFirst (table np.types "acc" rejected all));
+          accRejected = refused (gmGenFirst (table np.types "acc" rejected all));
+          accRejectedRef = refused (gmGenFirst (table np.types "acc" rejected all));
         };
       };
 
@@ -1740,13 +1755,18 @@ in
               o12 = "N(N,N)";
               o21 = "REFUSED";
             };
+            # gen's engine meets a foreign union join (den-hoag-l1j4q), so gen first is served
+            handMet = {
+              o12 = "N(N,N)";
+              o21 = "N(N,N)";
+            };
           in
           {
             mixed = pinned;
             ref = pinned;
             hand = {
               np = handPair;
-              gm = handPair;
+              gm = handMet;
               ref = handPair;
             };
             u8 = {
@@ -1760,7 +1780,10 @@ in
               };
             };
             path = {
-              rel = [ "merged" ];
+              rel = [
+                "meets"
+                "merged"
+              ];
               union = np.mapAttrs (
                 _: np.mapAttrs (_: l: if l == "REFUSED" then "REFUSED" else "${l}(${l},N)")
               ) epath.leaf;

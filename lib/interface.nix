@@ -539,7 +539,10 @@ let
     t:
     # gen-types' `rewritesCheck`, restated inline for cost: a call here is an environment on every
     # leaf fold. The construction door holds this spelling to the protocol (`lib/default.nix`).
-    if t ? _checkWitness && t ? check && t.check != t._checkWitness then
+    # a met record over a v2 join judges its own definitions (`meetOf`)
+    if t ? __meetJoin && isV2 t then
+      v2Fold t
+    else if t ? _checkWitness && t ? check && t.check != t._checkWitness then
       checkedFold t (t.mergeDefs or leafFold)
     else if t._protoLeafMerge or false then
       null
@@ -2372,13 +2375,15 @@ let
   # So a foreign join is taken only where it keeps each operand's stated NAME at every depth the
   # operand wraps a type; otherwise the pair refuses.
   #
-  # ★ REFUSE IS THE ONE ARM SOUND UNDER BOTH READINGS OF A REDECLARATION. Read as a join, `port ∥ int
-  # → int` is an upper bound; read as a meet, it drops `port`'s check. Which reading a redeclaration
-  # means is LEFT OPEN here, not settled: refusing is wrong under neither, and it keeps the standing
-  # parity convention that gen-merge departs from nixpkgs by refusing (a README yardstick, not an ADR;
-  # ADR-0025 item 1 alone would admit any value over the silent drop). A later ruling for the join reading re-admits subsumption pairs by relaxing this witness
-  # alone. The witness compares the relation's ANSWER with each operand's own name, never one operand
-  # with the other, so it keys no identity (ADR-0034 is scoped to IDENTITY).
+  # ★ A REDECLARATION IS THE MEET (den-hoag-l1j4q, owner-ruled 2026-10-06). Read as a join, `port ∥
+  # int → int` is an upper bound; read as the meet, which is the ruled reading, it drops `port`'s
+  # check. A join this witness takes is met at the step (`lib/modules.nix` `mergeTypesBy`, through
+  # `metWith`), and a relation's `meets` answer at `declaredPair` is met by the same function. A join
+  # that renames past an operand is still refused here: the meet's carrier is the join, and a join that
+  # is not the operand's constructor is not met by this boundary, so the refusal stands, sound under
+  # the meet (it serves nothing an operand rejects). The witness compares the relation's ANSWER with
+  # each operand's own name, never one operand with the other, so it keys no identity (ADR-0034 is
+  # scoped to IDENTITY).
   #
   # ★ THE WALK IS BY ROLE, KEYED ON THE OPERAND. A role the operand states and the join lacks is a
   # drop; a role the join GAINS is not, because an upper bound may wrap more than either operand.
@@ -2963,6 +2968,225 @@ let
   # which declines it, and by the leaf relation, which refuses it where it decides (lib/types.nix
   # `nullaryRel`).
   statesPayload = t: ((t.functor or { }).payload or null) != null;
+
+  # ── THE MEET (den-hoag-l1j4q, owner-ruled 2026-10-06) ──────────────────────────────────────────
+  # A redeclared option accepts a definition only where EVERY declared check accepts it. `meetOf j os`
+  # is the join `j` (the carrier: its fold, name, functor) restricted by each check in `os`, published as
+  # a witnessed rewrite (`check` is not `_checkWitness`), so every later step sees it as owed.
+  meetOf =
+    j: os:
+    let
+      fold = j.mergeDefs or (importedRawFold j);
+      # each check in its cheapest callable form: a witness record's function, not its functor
+      direct = c: if isAttrs c && c ? _fn then c._fn else c;
+      jc = direct j.check;
+      # a widened operand's stock check (`metWith`): it is owed only where its own parameters admit
+      stockOf = o: if o ? __stockCheck then direct o.__stockCheck else null;
+      ocs = map (
+        o:
+        let
+          c = direct o.check;
+          s = stockOf o;
+        in
+        if s == null then c else (v: c v || !(s v))
+      ) os;
+      oc = head ocs;
+      c0 = direct o1.check;
+      s0 = stockOf o1;
+      c1 = direct (elemAt os 1).check;
+      s1 = stockOf (elemAt os 1);
+      # a gen operand whose published check is its own domain: its `verify`, read inline
+      o1 = head os;
+      ov =
+        if o1 ? verify && !(o1 ? __stockCheck) && o1 ? _checkWitness && o1.check == o1._checkWitness then
+          o1.verify
+        else
+          null;
+      conj =
+        if length os == 1 && ov != null then
+          (v: jc v && ov v == null)
+        else if length os == 1 then
+          (v: jc v && oc v)
+        else if length os == 2 && s0 == null && s1 == null then
+          (v: jc v && c0 v && c1 v)
+        else if length os == 2 then
+          (v: jc v && (c0 v || s0 != null && !(s0 v)) && (c1 v || s1 != null && !(s1 v)))
+        else
+          (v: jc v && builtins.all (c: c v) ocs);
+      # the owed checks over a definition list's values, by primops around the checks alone
+      owedHold =
+        vs:
+        if length os == 1 && ov != null then
+          builtins.all builtins.isNull (map ov vs)
+        else if length os == 1 then
+          builtins.all oc vs
+        else
+          builtins.all (v: builtins.all (c: c v) ocs) vs;
+      # A join folding under nixpkgs' v2 protocol keeps it: its own merge (which checks the join) is
+      # asked once and the owed checks are judged over the same definitions, by primops around the checks.
+      # A v1 join keeps its own `merge`, which a foreign engine applies after the conjoined `check`.
+      v2 = isV2 j && (j.getSubModules or null) == null;
+      met =
+        j
+        // {
+          check =
+            if v2 then
+              {
+                __functor = _: conj;
+                isV2MergeCoherent = true;
+              }
+            else
+              conj;
+          _checkWitness = j._checkWitness or j.check;
+          __meetJoin = j;
+          merge =
+            if v2 then
+              {
+                __functor =
+                  self: loc: defs:
+                  (self.v2 { inherit loc defs; }).value;
+                v2 =
+                  { loc, defs }:
+                  let
+                    r = j.merge.v2 { inherit loc defs; };
+                  in
+                  if r.headError != null || owedHold (builtins.catAttrs "value" defs) then
+                    r
+                  else
+                    r
+                    // {
+                      headError.message = "a definition is rejected by the check of another declaration of this option";
+                    };
+              }
+            else
+              j.merge;
+          # asked by a foreign engine, which hands over a FUNCTOR only: the join is met with this record again
+          typeMerge =
+            f:
+            let
+              # a foreign relation's assert is no answer (`joinInRebuiltPartner`'s `tryEval`)
+              asked = builtins.tryEval (callerTypeMerge j f);
+              r = if asked.success then asked.value else null;
+            in
+            if r == null then null else meetOf r [ met ];
+        }
+        // (if fold == null then { } else { mergeDefs = fold; });
+    in
+    met;
+  # The answer of every type merge: `m` met with each operand whose check it does not carry.
+  #  - A gen relation's answer over a gen operand stating its own check carries it (gen x gen relations
+  #    are exact), so only a foreign operand, a witnessed rewrite (a wrapper's check, or a met record), or
+  #    a foreign answer can owe one (`mayOwe`, asked before any comparison: a gen x gen step compares
+  #    nothing). An operand that IS `m` owes nothing.
+  #  - A module set's join is the union of its declarations, itself the meet of what they declare, and its
+  #    own check is the module shape: nothing is owed at its top, and its records are never compared
+  #    (a comparison would evaluate their modules). A witnessed rewrite dropped there is refused by the
+  #    step before this is asked (`lib/modules.nix` `mergeTypesBy`).
+  #  - A FRESH join (neither operand) of the SAME constructor that changes an operand's own PARAMETERS
+  #    (its functor payload less the roles it carries) is that constructor's law over them, as nixpkgs'
+  #    `enum` unions its values: that operand is owed RELATIVISED to its own parameters, `v: o.check v
+  #    || !(stock o).check v`, where `stock o` is its constructor rebuilt from its functor
+  #    (`__stockCheck`, read inline by `meetOf`). A wrapper's check is not in `stock o`, so it stays
+  #    owed, while the union holds. A nullary operand states none.
+  #  - One value declared twice owes its check once.
+  # Every binding is local, so the library's load pays for this one lambda alone.
+  metWith =
+    m: os:
+    if m ? typeMergeRel && builtins.all (o: o ? typeMergeRel && !(rewritesCheck o)) os then
+      m
+    else
+      let
+        mayOwe =
+          o:
+          !(o ? typeMergeRel)
+          || !(m ? typeMergeRel)
+          || (o ? _checkWitness && o ? check && o.check != o._checkWitness);
+        same = x: y: closuresFirst [ x ] x == closuresFirst [ y ] y;
+        paramsOf =
+          t:
+          let
+            p = (t.functor or { }).payload or null;
+          in
+          if isAttrs p then
+            builtins.removeAttrs p [
+              "elemType"
+              "modules"
+            ]
+          else
+            { };
+        widens =
+          o:
+          let
+            po = paramsOf o;
+          in
+          po != { }
+          && ((m.functor or { }).name or null) == ((o.functor or { }).name or null)
+          && po != paramsOf m;
+        maybe = filter mayOwe os;
+        notM = filter (o: !(same m o)) maybe;
+        fresh = builtins.all (o: !(same m o)) os;
+        relativised =
+          o:
+          let
+            s = importedPartner (o.functor or null);
+          in
+          if isAttrs s && s ? check then o // { __stockCheck = s.check; } else o;
+        owed = map (o: if fresh && widens o then relativised o else o) notM;
+        once = if length owed == 2 && same (head owed) (elemAt owed 1) then [ (head owed) ] else owed;
+      in
+      if maybe == [ ] || (importedSubstructure m).modules != null || owed == [ ] then
+        m
+      else
+        meetOf m once;
+  # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
+  # functor as `joinInRebuiltPartner` rebuilds it, through `tryEval` (nixpkgs' default asserts); `null`
+  # where it declines or renames.
+  joinInPartnerRelation =
+    self: other:
+    let
+      partner = importedPartner (other.functor or null);
+      asked = builtins.tryEval (
+        if isAttrs partner && partner ? typeMerge then partner.typeMerge self.functor else null
+      );
+    in
+    if asked.success && isAttrs asked.value && !(joinRenames asked.value self) then
+      asked.value
+    else
+      null;
+  # What a record carries at `role`, in either vocabulary: a gen record's `carries`, a foreign record's
+  # payload `elemType` (a type for `element`, a pair for `alternatives`).
+  carriedAt =
+    role: t:
+    let
+      p = (t.functor or { }).payload or null;
+      e = if isAttrs p then p.elemType or null else null;
+    in
+    if t ? carries && !(t ? retainedRelation) then
+      t.carries.${role} or null
+    else if role == "element" && isAttrs e then
+      e
+    else if role == "alternatives" && builtins.isList e && length e == 2 then
+      e
+    else
+      null;
+  # A foreign record rebuilt over another value at `role`, by its own published constructor; `null` where
+  # its functor states no payload to rebuild.
+  rebuiltOverAt =
+    role: carried: t:
+    let
+      f = t.functor or null;
+    in
+    if !(isAttrs f) || !(isAttrs (f.payload or null)) then
+      null
+    else
+      importedPartner (
+        f
+        // {
+          payload = f.payload // {
+            ${roleSpelling.${role}.payloadKey} = carried;
+          };
+        }
+      );
 
   # ★★ WHAT THE PROTOCOL'S OWN DEFAULT READS OFF A FUNCTOR, AS ONE DEFINITION READ TWICE — by the
   # retention in `importType' to decide what may be retained, and by the refusal beside it to name
@@ -3882,7 +4106,20 @@ let
             else if !(importedDecidable t && importedDecidable partner) then
               null
             else
-              (t.typeMergeRel partner).merged or null
+              (
+                let
+                  answer = t.typeMergeRel partner;
+                in
+                # a foreign engine hands gen a FUNCTOR: a wrapper's check on the record it holds is
+                # invisible here, so a join the twin refuses (`twinRefuses`) is refused as the twin does
+                if answer ? merged && !(answer.twinRefuses or false) then
+                  metWith answer.merged [
+                    exported
+                    partner
+                  ]
+                else
+                  null
+              )
           );
 
         # Not a fifteenth protocol field: gen's own record of whether the fold published above is
@@ -3929,6 +4166,11 @@ in
     joinLeafInStatedRelation
     statesPayload
     keysExactly
+    meetOf
+    metWith
+    carriedAt
+    joinInPartnerRelation
+    rebuiltOverAt
     embeddedOffered
     embeddings
     embedsOf
