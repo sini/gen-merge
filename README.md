@@ -674,7 +674,11 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
 **`anything`'s fold.** Lists concatenate (reverse definition order). Attrsets recurse per key, and a
-conflict names the full path (`` `o.svc.k' ``). Anything else takes `mergeLeaf`, the engine's
+conflict names the full path (`` `o.svc.k' ``). A key's definitions take the engine's priority spine
+before the recursion, as nixpkgs' `(attrsOf anything).merge` does: a property marker at a nested key
+(`mkIf`, `mkMerge`, `mkForce`, `mkOrder`) is discharged there, and a key whose every definition
+discharges to nothing is dropped. The key set is therefore strict, as nixpkgs' is: it forces each
+definition at the node to WHNF. Anything else takes `mergeLeaf`, the engine's
 agree-or-refuse leaf fold, which is also `raw`'s. **An attrset carrying `__mint` is carried whole**
 when every definition carries it: it takes `mergeLeaf` too, so one definition passes through as it is,
 several pass if all are `==` to the first, and a conflict is refused at the option itself

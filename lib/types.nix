@@ -1596,8 +1596,11 @@ let
   };
 
   # anything — recursive value merge (lists concat, attrsets per-key recurse, else the ENGINE'S LEAF
-  # FOLD; an attrset carrying `__mint` is carried whole by that same fold). Used by non-strict instance freeform + niche raw-ish spots; byte-mode-adequate, not the
-  # full nixpkgs `types.anything` module-composition of function values.
+  # FOLD; an attrset carrying `__mint` is carried whole by that same fold). Used by non-strict instance
+  # freeform + niche raw-ish spots. Its attrset arm is nixpkgs' `(attrsOf anything).merge`: each key's
+  # definitions take the engine's own spine, so a property marker at a nested key is discharged there,
+  # and the key set is strict (den-hoag-15wnx). It is not the full nixpkgs `types.anything`
+  # module-composition of function values.
   #
   # ★★★ THE NON-STRUCTURAL ARM IS `mergeLeaf`, NOT A SELECTION. It used to be `prelude.last vals`:
   # two UNEQUAL equal-priority definitions returned one of them and destroyed the other with no
@@ -1649,7 +1652,37 @@ let
       if (head defs).value ? __mint && all (d: d.value ? __mint) defs then
         mergeLeaf loc defs
       else
-        builtins.mapAttrs (k: mergeAnythingDefs (loc ++ [ k ])) (defsByKey defs)
+        let
+          byKey = defsByKey defs;
+        in
+        listToAttrs (
+          concatMap (
+            k:
+            let
+              ds = byKey.${k};
+            in
+            # A key some definition marks (`mkIf`, `mkMerge`, `mkOverride`, `mkOrder`) takes the
+            # engine's spine (discharge, then `filterOverrides`, then `sortProperties`) before the fold
+            # recurses, and it is kept only if a definition survives discharge: nixpkgs'
+            # `(attrsOf anything).merge`, whose key set forces every definition to WHNF. A key no
+            # definition marks recurses directly, because the spine is the identity on it; that
+            # restates `attrsOf`'s split rather than reading it, and the reason is measured
+            # (den-hoag-15wnx): read through `attrsOf anything` the fold cost 334 thunks per key
+            # against nixpkgs' 270, and this arm costs 102.
+            if builtins.any (d: d.value ? _type) ds then
+              optional (isDefinedBy ds) {
+                name = k;
+                value = mergeDefs (loc ++ [ k ]) anything ds;
+              }
+            else
+              [
+                {
+                  name = k;
+                  value = mergeAnythingDefs (loc ++ [ k ]) ds;
+                }
+              ]
+          ) (attrNames byKey)
+        )
     else
       mergeLeaf loc defs;
   anything = defineType {

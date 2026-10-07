@@ -1918,6 +1918,61 @@ in
       };
     };
 
+    # `anything`'s KEY SET IS STRICT, as nixpkgs' is (den-hoag-15wnx). Its attrset arm keeps a key only if a
+    # definition survives discharge there, so it forces every definition at the node to WHNF, and reading one
+    # key throws where a definition BESIDE it throws. The value cells (`ci/tests/anything-nested-properties.nix`)
+    # pin the discharge; these pin the price, on both engines, through the three shapes those cells use.
+    # RED: the old per-key recursion was lazy in the key set and served `"fine"`.
+    flake.testsError.anything-nested-properties =
+      let
+        shapes = L: {
+          anything = L.types.anything;
+          attrsOf = L.types.attrsOf L.types.anything;
+          lazyAttrsOf = L.types.lazyAttrsOf L.types.anything;
+        };
+        wrap = s: v: if s == "anything" then v else { x = v; };
+        unwrap = s: v: if s == "anything" then v else v.x;
+        defs = bad: [
+          { fine = "fine"; }
+          {
+            bad = if bad then throw "anything-nested-properties: the definition beside the key read" else "b";
+          }
+        ];
+        modules =
+          L: s: bad:
+          [ { options.o = L.mkOption { type = (shapes L).${s}; }; } ]
+          ++ map (v: { config.o = wrap s v; }) (defs bad);
+        gen = s: bad: (unwrap s (gm.evalModuleTree { } (modules gm s bad)).config.o).fine;
+        nixpkgs =
+          s: bad: (unwrap s (nixpkgsLib.evalModules { modules = modules nixpkgsLib s bad; }).config.o).fine;
+        refused = {
+          type = "ThrownError";
+          msg = "^anything-nested-properties: the definition beside the key read$";
+        };
+        cells = s: {
+          "test-${s}-gen-forces-the-sibling-definition" = {
+            expr = gen s true;
+            expectedError = refused;
+          };
+          "test-${s}-nixpkgs-forces-the-sibling-definition" = {
+            expr = nixpkgs s true;
+            expectedError = refused;
+          };
+          # LIVE CONTROL, same run: the sibling defined, the key read is served on both engines
+          "test-${s}-control-a-defined-sibling-serves-the-key" = {
+            expr = {
+              gen = gen s false;
+              nixpkgs = nixpkgs s false;
+            };
+            expected = {
+              gen = "fine";
+              nixpkgs = "fine";
+            };
+          };
+        };
+      in
+      cells "anything" // cells "attrsOf" // cells "lazyAttrsOf";
+
     # `anything` carries a value carrying `__mint` WHOLE, by `mergeLeaf` (lib/types.nix), so two
     # minted definitions are agree-or-refuse over the whole value and a conflict is named AT THE
     # OPTION. The rebuild it replaced recursed per key and refused at an inner one (`o.name`), or
