@@ -1851,9 +1851,9 @@ let
             in
             if fuel == 0 || st == null || e ? substructure then
               null
-            else if n == "unique" || n == "coercedTo" then
+            else if n == "unique" || n == "coercedTo" || n == "nullOr" then
               go (fuel - 1) st.element
-            else if n == "attrsWith" && (e.functor.payload.lazy or false) then
+            else if n == "attrsWith" then
               (
                 let
                   el = below (fuel - 1) st.element;
