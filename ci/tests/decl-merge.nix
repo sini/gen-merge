@@ -835,6 +835,11 @@ in
     #    relation refusing every declined same-key join cannot pass.
     #  - `genOnly`: the gen leaves no nixpkgs leaf twins, beside a `pay` partner of their name: refused in
     #    every row (no twin; ADR-0025 item 1 alone).
+    #  - `accRejected`: the `acc` partner over a value the GEN leaf's check rejects, gen's engine, gen
+    #    declared first. The partner's relation decides and keeps itself, so the gen leaf's check is
+    #    dropped and the value is served, as the twin serves it. That is nixpkgs' own later-operand drop,
+    #    NOT correct behaviour: it is pinned as parity, and the meet (den-hoag-l1j4q) turns these rows
+    #    into named refusals.
     # `expected` is a LITERAL, and every `*Ref` (the gen side replaced by its nixpkgs twin, live) must
     # equal it.
     test-mixed-leaf-payload-partner-has-the-twin-answer =
@@ -974,6 +979,12 @@ in
         refused = literal (_: "REFUSED");
         served = literal (_: "served");
         byOrder = literal (k: if builtins.match ".*-genFirst" k != null then "served" else "REFUSED");
+        rejected = {
+          int = "s";
+          bool = 1;
+          float = "s";
+        };
+        gmGenFirst = np.filterAttrs (k: _: builtins.match "gm-.*-genFirst" k != null);
       in
       {
         expr = {
@@ -984,6 +995,8 @@ in
           control = table t "control" leaves all;
           controlRef = table np.types "control" leaves all;
           genOnly = table t "pay" genOnly [ "bare" ];
+          accRejected = gmGenFirst (table t "acc" rejected all);
+          accRejectedRef = gmGenFirst (table np.types "acc" rejected all);
         };
         expected = {
           pay = refused (table np.types "pay" leaves all);
@@ -993,6 +1006,8 @@ in
           control = served (table np.types "control" leaves all);
           controlRef = served (table np.types "control" leaves all);
           genOnly = refused (table t "pay" genOnly [ "bare" ]);
+          accRejected = served (gmGenFirst (table np.types "acc" rejected all));
+          accRejectedRef = served (gmGenFirst (table np.types "acc" rejected all));
         };
       };
 
