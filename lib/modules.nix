@@ -1069,6 +1069,10 @@ let
     "__reservedKeys"
     "__keyEq"
   ];
+  # The keys this engine reads off the RECORD of a `__functor` module, before applying it (see
+  # `reservedHits`), published as data (moduleSyntax.functorRecord) so a library riding a key there
+  # can refuse an engine that would never read it.
+  functorRecordKeys = [ "__reservedKeys" ];
   # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
   # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
   # restating it (den-hoag-4kh.53.55; den-hoag-1n12c).
@@ -1373,6 +1377,13 @@ let
   # formal. A reserved name is never a module key, so one key read serves both forms; only a property
   # root (`mkIf c { … }` as a whole module) needs the push-down. A malformed marker is refused by
   # name on the first module it scopes, never read as an empty reservation.
+  #
+  # TWO CARRIERS, one scope (den-hoag-r05lc). The marker is read off the module's content, and else
+  # off the RECORD of a `__functor` module, its unapplied value: `{ __functor = …; __reservedKeys = …; }`
+  # scopes the closure of what the functor returns. The record is the carrier for a module another
+  # evaluator may also read: nixpkgs applies a functor and reads only its result, so the marker never
+  # reaches the module it collects, where a content-level `__reservedKeys` is an unsupported attribute
+  # (structured) or a configuration key (shorthand).
   hasAttrPath =
     p: v: p == [ ] || (isAttrs v && v ? ${head p} && hasAttrPath (builtins.tail p) v.${head p});
   reservedHits =
@@ -1700,7 +1711,10 @@ let
               toString (m0._file or (m._file or "<gen-merge>"));
           content = m;
         }
-      else if (importer.content.__reservedKeys or (importer.reserved or null)) == null then
+      else if
+        (importer.content.__reservedKeys or (importer.m0.__reservedKeys or (importer.reserved or null)))
+        == null
+      then
         {
           inherit m0;
           _file =
@@ -1719,7 +1733,7 @@ let
             else
               toString (m0._file or (m._file or importer._file));
           content = m;
-          reserved = importer.content.__reservedKeys or importer.reserved;
+          reserved = importer.content.__reservedKeys or (importer.m0.__reservedKeys or importer.reserved);
         }
     ) mods;
   # A node key is an attribute name, which may carry no string context: a path module's store path
@@ -6228,6 +6242,7 @@ in
     moduleDefOf
     structuredKeys
     shorthandMetaKeys
+    functorRecordKeys
     configOf
     moduleSyntaxChecked
     notAModule
