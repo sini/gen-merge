@@ -179,24 +179,37 @@ let
               carried = null;
             } other;
             leafJoin = interface.joinLeafInStatedRelation { inherit name self; } other;
+            # the join met with each operand it is not (`interface.meetOf`)
+            meet = j: {
+              merged = interface.meetOf j (
+                filter (o: interface.closuresFirst [ o ] o != interface.closuresFirst [ j ] j) [
+                  self
+                  other
+                ]
+              );
+              meets = true;
+            };
+            ownJoin = interface.joinInPartnerRelation self other;
           in
           if embedKey && e ? params then
             if carriedJoin != null then
-              { merged = carriedJoin; }
+              meet carriedJoin
             else
               { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
           else if embedKey && !sameKey then
             if leafJoin != null then
-              { merged = leafJoin; }
+              meet leafJoin
             else
               { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+          else if sameKey && interface.statesPayload other && ownJoin != null then
+            meet ownJoin
           else if sameKey && interface.statesPayload other then
             {
               refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
               vetoes = false;
             }
           else if sameKey then
-            { merged = if leafJoin == null then self else leafJoin; }
+            meet (if leafJoin == null then self else leafJoin)
           else
             { refused = "`${nameOf t}' and `${nameOf other}'"; };
     in
@@ -601,7 +614,36 @@ let
           };
       in
       if foreignJoin != null then
-        { merged = foreignJoin; }
+        let
+          stated =
+            if partnerElem != null then partnerElem else interface.embeddedOffered name "element" other;
+          metElem = if stated == null then null else mergeElemTypes element stated;
+          offered = interface.importedOffered "element" foreignJoin;
+          joinedElem =
+            if offered != null then offered else interface.embeddedOffered name "element" foreignJoin;
+        in
+        # THE MEET: the container is rebuilt over its met element, never left as the partner's own join
+        if metElem != null then
+          {
+            merged =
+              let
+                r = interface.rebuiltOverAt "element" metElem foreignJoin;
+              in
+              if r != null then r else rebuild metElem;
+            meets = true;
+          }
+        else if stated != null && joinedElem != null then
+          {
+            merged = rebuild (
+              interface.meetOf joinedElem [
+                element
+                stated
+              ]
+            );
+            meets = true;
+          }
+        else
+          { merged = foreignJoin; }
       else if partnerElem == null then
         let
           # A partner stated under the construction this one embeds in DOES state its element, beside
@@ -1544,7 +1586,16 @@ let
                 self = either a b;
               } other;
             in
-            if foreignJoin != null then { merged = foreignJoin; } else eitherMemberwise a b other;
+            if foreignJoin != null then
+              {
+                merged = interface.meetOf foreignJoin [
+                  (either a b)
+                  other
+                ];
+                meets = true;
+              }
+            else
+              eitherMemberwise a b other;
         substructure = {
           # A union's members introduce no path level, so it declares nothing of its own — stated
           # rather than inherited, because the pair lives in `carries` and this does not read it.
