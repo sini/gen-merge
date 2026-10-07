@@ -1730,10 +1730,17 @@ element only where it is read, so a sibling whose key set, `mkIf` or alias reads
 served as nixpkgs serves it. **The price, stated as an extension of the overridden-merge price
 below:** the step is trusted from the functor names, while the run still says which tree sits at
 which key. A stock-named lazy `attrsWith` whose `merge` does not fold each element at its own key
-(one key deeper, keys renamed or swapped) is refused by name at the key read, where nixpkgs serves
-it; one that only duplicates or drops a key's tree serves nixpkgs' value. **Not reached, and stated as a
-shortfall:** a second step below the lazy `attrsWith` (`uniq (lazyAttrsOf (lazyAttrsOf e))`, `uniq (lazyAttrsOf (attrsOf e))`, `uniq (lazyAttrsOf (listOf e))`, `uniq (lazyAttrsOf (nullOr e))`, a bare placeholder `attrsWith { lazy = true; }` over `lazyAttrsOf e`) still aborts there with a
-sibling reading the read tree, where nixpkgs serves.
+(one key deeper, keys renamed or swapped, or a key holding no element's tree) is refused by name at
+the key read, where nixpkgs serves it; one that only duplicates or drops a key's tree serves
+nixpkgs' value, and one whose result is not an attribute set keeps the eager walk. **Not reached,
+and stated as a shortfall:** a second step below the lazy `attrsWith` still aborts with a sibling
+reading the read tree, where nixpkgs serves. The five measured shapes:
+
+- `uniq (lazyAttrsOf (lazyAttrsOf e))`;
+- `uniq (lazyAttrsOf (attrsOf e))`;
+- `uniq (lazyAttrsOf (listOf e))`;
+- `uniq (lazyAttrsOf (nullOr e))`;
+- a bare placeholder `attrsWith { lazy = true; }` over `lazyAttrsOf e`.
 
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared

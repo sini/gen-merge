@@ -1769,9 +1769,10 @@ let
       # compare functions): the step is TRUSTED from the functor names. The run stays the authority
       # over which tree sits at which key: a capture site must sit at its own key (`siteLocAt`), in
       # the split and in the fold. So a chain whose stock-named lazy `attrsWith` has a merge that does
-      # not fold each element at `loc ++ [ k ]` (one key deeper, keys renamed or swapped) is refused
-      # by name at the key read (`statedStepRefusal`), where base and nixpkgs serve it; one that only
-      # duplicates or drops a key's tree serves nixpkgs' value.
+      # not fold each element at `loc ++ [ k ]` (one key deeper, keys renamed or swapped, or a key
+      # holding no element's tree) is refused by name at the key read (`statedStepRefusal`), where
+      # base and nixpkgs serve it; one that only duplicates or drops a key's tree serves nixpkgs'
+      # value, and one whose result is not an attrset keeps the eager walk.
       chainElement =
         let
           go =
@@ -1898,13 +1899,18 @@ let
       __threadedForeign = true;
       split =
         loc: defs:
-        if chainElement != null then
-          lazySplit loc ((importedFold capture) loc defs)
+        let
+          r = (importedFold capture) loc defs;
+        in
+        # on the domain, and only where the merge returned the attrset its functors state; any other
+        # result keeps the eager walk, whose sites are found wherever the merge put them
+        if chainElement != null && isAttrs r then
+          lazySplit loc r
         else
           map (s: {
             step = stepOf loc s.loc;
             inherit (s) loc defs type;
-          }) (sitesOf ((importedFold capture) loc defs));
+          }) (sitesOf r);
       mergeDefs = {
         __functor =
           _: loc: _defs:
@@ -1914,7 +1920,8 @@ let
           let
             captured = (importedFold capture) loc defs;
             steps = map (s: stepOf loc s.loc) (sitesOf captured);
-            keyed = if chainElement != null then keyedWhereRead loc captured else v: v;
+            onChain = chainElement != null && isAttrs captured;
+            keyed = if onChain then keyedWhereRead loc captured else v: v;
           in
           keyed (
             checkedThreaded (importedFold (
@@ -1941,10 +1948,7 @@ let
                             let
                               st = stepOf loc eloc;
                             in
-                            if chainElement != null then
-                              length st == 1 && siteLocAt captured (head st) == eloc
-                            else
-                              builtins.elem st steps
+                            if onChain then length st == 1 && siteLocAt captured (head st) == eloc else builtins.elem st steps
                           )
                         then
                           { }
@@ -1957,7 +1961,7 @@ let
                               if site ? __genMergeMinted then
                                 ev.child site
                               else
-                                throw ((if chainElement != null then statedStepRefusal else unexposedRefusal) door eloc t);
+                                throw ((if onChain then statedStepRefusal else unexposedRefusal) door eloc t);
                           }
                       )
                     ) eloc e edefs
