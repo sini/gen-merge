@@ -125,8 +125,8 @@ stays in it only while it keeps its priority.
 `partialAttrsOf element` is `lazyAttrsOf element` whose every key folds through `mergeDefsPartial` (and
 its threaded twin on the evaluation's path), so a nested priority survives at every depth. Both sit at the
 top level beside `mergeDefs`, not in `types`, whose members the vocabulary censuses enumerate. Its consumer
-is gen-aspects' guard carrier, whose typed half folds at load and meets its fired content later
-(den-hoag-fjdnf). Tests: `ci/tests/partial-fold.nix`.
+is gen-aspects' guard carrier, whose typed half folds at load and meets its fired content later.
+Tests: `ci/tests/partial-fold.nix`.
 
 ### `mergeDefaultOption` — the shape-directed law (INTERIM, exported beside `mergeLeaf`)
 
@@ -1445,7 +1445,7 @@ members ARE gen's `int` and `float` by their minted identity under the completio
 copy of gen `int` and the members swapped do not. A supplied vocabulary lacking `int` or `float`, or
 minting none for it, forms no row, and its `number` publishes under its own name. Price (Δ thunks/calls
 per redeclared option, Nix/Lix/Determinate alike): mixed on nixpkgs' engine 667/543 against the
-nixpkgs twin's 227/159, of which the meet's share (+285) is ADR-0039's correctness floor; mixed on
+nixpkgs twin's 227/159, of which the meet's share (+285) is the correctness floor; mixed on
 gen's engine 783/724 against the twin's 1173/1151; a gen × gen `number` unchanged. A gen nesting type (`submodule`, the tree) facing a
 same-named partner that offers it nothing is not refused for that: its parameters embed into the
 partner's richer `submoduleWith` payload, so it hands the pair to the protocol's default relation over
@@ -1586,8 +1586,8 @@ and a second join only on the refusal path; gen-native pairs never reach it. Mea
 calls, a distinct `submodule` each +0.1%, `port` +0.07% and +0.18%. The measured members are under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate).
 
-**A redeclared option accepts a definition only if every declared check does** (den-hoag-l1j4q,
-owner-ruled 2026-10-06: the meet). An `addCheck` keeps its base's name and relation, so no name
+**A redeclared option accepts a definition only if every declared check does** (the
+meet). An `addCheck` keeps its base's name and relation, so no name
 separates `addCheck int p` from `int`, and the relation answers the bare base:
 `[int, addCheck int (x: x > 0)]` serves -1 on nixpkgs, in either order. Every type merge here answers
 the relation's join restricted by each operand's check the join does not carry (`interface.metWith`,
@@ -2532,7 +2532,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   In gen's engine this reaches a module set: nixpkgs' `addCheck` over a submodule, alone or beside
   another submodule declaration, gen or nixpkgs, at the top or as a container's element at any depth
   (below a gen container too), rejects what it rejects, where nixpkgs' own rebuild (`fixupOptionType`)
-  erases it and serves (den-hoag-8ip0d). A foreign record states no check witness, so every foreign
+  erases it and serves. A foreign record states no check witness, so every foreign
   module-set declaration's check is asked of each definition, a wrapped one or not. An ad-hoc
   `type // { check = ...; }` override there is refused by name, as it is alone (`adHocFold`).
 
