@@ -7438,6 +7438,56 @@ in
         };
       };
 
+    # A FOREIGN `addCheck` OVER A MODULE SET (den-hoag-8ip0d; `../tests/module-set-carriage.nix` holds
+    # the values). At the top the refusal is the checked fold's, naming the option and the file; at a
+    # container's element it is nixpkgs' element fold reading the carried check's `headError`.
+    flake.testsError.module-set-carriage =
+      let
+        np = nixpkgsLib.types;
+        not7 = v: (v.a or 0) != 7;
+        W = np.addCheck (np.submodule {
+          options.a = nixpkgsLib.mkOption {
+            type = np.int;
+            default = 0;
+          };
+        }) not7;
+        G = t.submodule {
+          options.c = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        opt =
+          ts: V:
+          realize {
+            modules = map (T: { options.s = gm.mkOption { type = T; }; }) ts ++ [
+              {
+                _file = "def.nix";
+                s = V;
+              }
+            ];
+          };
+      in
+      {
+        test-a-foreign-wrapper-over-a-submodule-beside-a-gen-one-refuses-as-the-checked-fold = {
+          expr = opt [
+            W
+            G
+          ] { a = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `s' is not of type `submodule', in `def[.]nix'$";
+          };
+        };
+        test-a-foreign-wrapper-over-a-submodule-element-refuses-by-its-carried-check = {
+          expr = opt [ (np.attrsOf W) ] { k.a = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `s[.]k' is not of type `submodule'[.] TypeError: a definition is rejected by the check of a declaration of this option$";
+          };
+        };
+      };
+
     # den-hoag-7gp66 P2: which message fires at gen-merge's doors — the options steps of
     # `evalModuleTree`, `declaredOptions` and `deriveType` —
     # each through `prelude.door`'s shared checks (R6: names the door first, the construct last).

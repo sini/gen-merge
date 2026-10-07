@@ -1577,7 +1577,15 @@ let
     in
     door: loc: site: t:
     let
-      s = if crossedRoot t then mountOf t else t.substSubModules or null;
+      # a foreign container is rebuilt over its element's own rebuild carrying the element's check
+      # (`carriedRebuild`); a module set's own root rebuilds as it always did
+      s =
+        if crossedRoot t then
+          mountOf t
+        else if t ? functor.payload.elemType then
+          carriedRebuild t
+        else
+          t.substSubModules or null;
       # the shape `mergeOptionDecls` hands a rebuild, labelled as nixpkgs labels a module that states
       # no file
       fixed = s (
@@ -1637,6 +1645,110 @@ let
     __functor = _: x: fixed.check x && t.check x;
     isV2MergeCoherent = true;
   };
+  # THE SAME CARRIAGE OVER A DECLARATION LIST AND AT EVERY DEPTH (den-hoag-8ip0d). `carriedOver ts r` is
+  # the rebuild `r` restricted by every check in `ts` (the records it was rebuilt from) that it cannot
+  # carry, its element rebuilt over the same carriage of their elements; `carriedRebuild t m` is
+  # `t.substSubModules m` with its element so carried, as `fixupOptionType`'s rebuild forwards to the
+  # element's. A rebuild erases a wrapper at the element as at the root, and a declaration fold joins
+  # module sets without one (`metWith`), so neither depth is enforced unless carried. A gen record
+  # stating its own check owes nothing (gen relations are exact); a foreign one is owed
+  # unconditionally, since a foreign wrapper states no witness (`homedAt`'s carriage, den-hoag-4ifgb
+  # M-B, reads it the same way).
+  carriedOver = carriedAtDepth true;
+  carriedRebuild = carriedAtDepth false;
+  carriedAtDepth =
+    let
+      owes = o: isAttrs o && (!(o ? typeMergeRel) || rewritesCheck o);
+      below =
+        fuel: ts: r:
+        let
+          es = filter (e: owes e && isList (e.getSubModules or null)) (map (carriedAt "element") ts);
+          re = carriedAt "element" r;
+          over =
+            e:
+            if r ? recarry && r ? carries.element then
+              r.recarry (r.carries // { element = e; })
+            else
+              rebuiltOverAt "element" e r;
+          x = over (go false (fuel - 1) es re);
+        in
+        if fuel <= 0 || es == [ ] || !(isAttrs re) then
+          r
+        else if isAttrs x then
+          x
+        else
+          r;
+      go =
+        top: fuel: ts: r:
+        let
+          r' = below fuel ts r;
+          owed = filter owes ts;
+          c0 = (head owed).check;
+          c1 = (elemAt owed 1).check;
+          holds =
+            if length owed == 1 then
+              c0
+            else if length owed == 2 then
+              (x: c0 x && c1 x)
+            else
+              (x: builtins.all (o: o.check x) owed);
+          # a FOREIGN carrier's own check is asked elsewhere: a declaration list's root is mounted, and the
+          # mount meets its rebuild's (`homedRootFixed`); a v2 element's merge computes its own `headError`.
+          # A gen carrier and a v1 element are asked it here.
+          own = r' ? typeMergeRel || !top && !(isV2 r');
+        in
+        if owed == [ ] then
+          r'
+        else
+          r'
+          // {
+            check = {
+              __functor = if own then _: x: r'.check x && holds x else _: holds;
+              isV2MergeCoherent = true;
+            };
+          }
+          # an element's v2 merge judges its own definitions inside a foreign container's fold, which reads
+          # no `check`, so the owed checks ride on its `headError` too, as nixpkgs' `addCheck` places its
+          # own; a root's `check` is what gen's checked fold reads (`importedFold`), and it pays no merge
+          # wrapper
+          // (
+            if !top && isV2 r' then
+              {
+                merge = {
+                  __functor =
+                    self: loc: defs:
+                    (self.v2 { inherit loc defs; }).value;
+                  v2 =
+                    args:
+                    let
+                      v = r'.merge.v2 args;
+                    in
+                    if v.headError != null || builtins.all (d: holds d.value) args.defs then
+                      v
+                    else
+                      v
+                      // {
+                        headError.message = "a definition is rejected by the check of a declaration of this option";
+                      };
+                };
+              }
+            else
+              { }
+          );
+      # `t.substSubModules m`, with an owing module-set element rebuilt by the same function, carried, and the
+      # container rebuilt over it by its own constructor: one rebuild per level, as nixpkgs' forwarding does
+      rebuild =
+        fuel: t: m:
+        let
+          e = carriedAt "element" t;
+          x = rebuiltOverAt "element" (go false (fuel - 1) [ e ] (rebuild (fuel - 1) e m)) t;
+        in
+        if fuel > 0 && owes e && isList (e.getSubModules or null) && isAttrs x then
+          x
+        else
+          t.substSubModules m;
+    in
+    top: if top then go true importedTypeWalkFuel else rebuild importedTypeWalkFuel;
 
   rootRebuildRefusal =
     door: loc: t:
@@ -2994,9 +3106,10 @@ let
   #    a foreign answer can owe one (`mayOwe`, asked before any comparison: a gen x gen step compares
   #    nothing). An operand that IS `m` owes nothing.
   #  - A module set's join is the union of its declarations, itself the meet of what they declare, and its
-  #    own check is the module shape: nothing is owed at its top, and its records are never compared
-  #    (a comparison would evaluate their modules). A witnessed rewrite dropped there is refused by the
-  #    step before this is asked (`lib/modules.nix` `mergeTypesBy`).
+  #    own check is the module shape: its records are never compared (a comparison would evaluate their
+  #    modules). A witnessed rewrite dropped there is refused by the step before this is asked
+  #    (`lib/modules.nix` `mergeTypesBy`); a foreign wrapper's check is carried by the declaration
+  #    list's fixup (`carriedOver`).
   #  - A FRESH join (neither operand) of the SAME constructor that changes an operand's own PARAMETERS
   #    (its functor payload less the roles it carries) is that constructor's law over them, as nixpkgs'
   #    `enum` unions its values: that operand is owed RELATIVISED to its own parameters, `v: o.check v
@@ -4074,6 +4187,7 @@ in
     meetOf
     metWith
     carriedAt
+    carriedOver
     joinInPartnerRelation
     rebuiltOverAt
     embeddedOffered
