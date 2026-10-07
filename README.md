@@ -1246,7 +1246,7 @@ The `headError` is the published `check` over each definition (nixpkgs' `Definit
 naming files), then the type's head judgement. So a nixpkgs union holding a gen type takes its next
 member where gen's own fold would refuse the definitions whole: `lib.types.either (either int str) x`
 over `1` and `"s"` gives `x`'s value under `lib.evalModules`, as the all-nixpkgs composition does
-(den-hoag-c2z7q, `ci/tests/nixpkgs-protocol.nix`). Under v2 nixpkgs applies only the `headError`, so
+(`ci/tests/nixpkgs-protocol.nix`). Under v2 nixpkgs applies only the `headError`, so
 its pointwise half is what keeps a gen leaf checked there.
 
 **A foreign type used as the `freeformType` is merged by its raw `merge`**, as nixpkgs' freeform site
@@ -1275,7 +1275,7 @@ takes a member whose merge reports no head error. The judgement is published bes
 `either`'s is its own choice, a `nullOr`'s is its split (null beside a value is refused, a set with
 no null is its element's to judge), and a derivation or a refinement of either carries it with the
 fold. A foreign member is judged by its own `merge.v2` `headError`; every other member judges no
-further than its check (den-hoag-e6m9d). A refusal walks every member whose judgement refused and
+further than its check. A refusal walks every member whose judgement refused and
 names each leaf member with the files it rejected, the later members included.
 
 A definition set that merged before merges to the same value: the member selected from the first
