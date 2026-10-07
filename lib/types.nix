@@ -1449,9 +1449,32 @@ let
           throw "gen-merge: option `${showOption loc}' has definitions no single `either' member accepts (${refusal loc defs})"
         else
           foldE e;
-      # Why neither member takes the definitions, member by member (`memberRefusal`): the head
-      # judgement this union publishes when it refuses, and the text its own fold throws.
-      refusal = loc: defs: "${memberRefusal loc defs a}; ${memberRefusal loc defs b}";
+      # Why neither member takes the definitions, member by member: the head judgement this union
+      # publishes when it refuses, and the text its own fold throws. A member publishing a head
+      # judgement that refuses answers with the judgement's own text, so the refusal descends
+      # through every nested union to the LEAF members and the definitions each could not take; no
+      # list is empty, since a member rejecting nothing whose judgement takes the set would have
+      # been chosen. Between them the leaves name every member and every definition the author has
+      # to reconcile, which is more than the one pair the interpreter would have collided on. A
+      # foreign member's own `headError` is read last, after the definitions it rejects one by one.
+      # Bound inside the refusal, so a union that is never refused pays nothing for it.
+      refusal =
+        loc: defs:
+        let
+          member =
+            t:
+            let
+              judged = interface.importedHeadJudge t loc defs;
+              rejects = filter (d: !(isValid t d.value)) defs;
+            in
+            if t ? mergeDefs.headJudge && judged != null then
+              judged
+            else if rejects != [ ] then
+              "`${nameOf t}' rejects ${concatStringsSep ", " (map (d: toString (d.file or "<def>")) rejects)}"
+            else
+              "`${nameOf t}' refuses them whole: ${judged}";
+        in
+        "${member a}; ${member b}";
       called = foldWith foldElement;
     in
     defineType (
@@ -1518,26 +1541,6 @@ let
         };
       }
     );
-
-  # Why a union member does not take the definitions, for the union's refusal. A member publishing
-  # a head judgement that refuses answers with the judgement's own text, so the refusal descends
-  # through every nested union to the LEAF members and the definitions each could not take; no list
-  # is empty, since a member rejecting nothing whose judgement takes the set would have been chosen.
-  # Between them the leaves name every member and every definition the author has to reconcile,
-  # which is more than the one pair the interpreter would have collided on. A foreign member's own
-  # `headError` is read last, after the definitions it rejects one by one.
-  memberRefusal =
-    loc: defs: t:
-    let
-      judged = interface.importedHeadJudge t loc defs;
-      rejects = filter (d: !(isValid t d.value)) defs;
-    in
-    if t ? mergeDefs.headJudge && judged != null then
-      judged
-    else if rejects != [ ] then
-      "`${nameOf t}' rejects ${concatStringsSep ", " (map (d: toString (d.file or "<def>")) rejects)}"
-    else
-      "`${nameOf t}' refuses them whole: ${judged}";
 
   # oneOf [t1 t2 …] — n-ary either, nested to the LEFT as nixpkgs' `foldl' either` nests it, so
   # `oneOf [ a b c ]` IS `either (either a b) c`: its `nestedTypes`, its docs phrase and its merge
