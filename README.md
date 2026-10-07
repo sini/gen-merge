@@ -2065,7 +2065,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   occurrence reached wins, taking its own imports.
 
 - **A keyed module may publish its key comparison, `__keyEq = { subject; decide; }`**, a key nixpkgs
-  does not have. Where a later occurrence shares the key of the one kept, and either publishes it, the
+  does not have, in its content or on its functor record (`null` there publishes none). Where a later occurrence shares the key of the one kept, and either publishes it, the
   pair is decided rather than the later one dropped: `decide kept.subject later.subject` true is one
   module; false, a non-boolean, or only one of the two publishing it is refused by name, the same in
   both import orders wherever both occurrences publish one symmetric `decide`, as gen-schema's do;
@@ -2073,7 +2073,8 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   publishes it, nixpkgs' rule holds and the later occurrence is dropped. Two occurrences of one
   spelled path are the one file and keep nixpkgs' rule; two different path files sharing an in-file
   key, or a path import sharing its key with a content module, are decided like any other pair. A module publishing `__keyEq` without a `key` is refused by name. gen-schema keys a
-  kind with parents by its mark and publishes its sealed comparison here (`ci/tests/key-eq.nix`).
+  kind with parents by its mark and publishes its sealed comparison on the kind value's record
+  (`ci/tests/key-eq.nix`).
 
 - **An import cycle terminates.** A keyed or path cycle (`a` imports `b` imports `a`, or a module
   importing itself) closes over its finite set of node ids and each module contributes once
@@ -2577,6 +2578,11 @@ name (naming every surplus key and the file, whatever `check` says), and a short
 nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require` joins `imports`;
 `meta` on a structured module is folded into config). Both lists also carry gen-merge's engine keys
 `__pureModule`, `__reservedKeys` and `__keyEq`, and the shorthand list carries `_module`, which a shorthand module reads as config.
+`__reservedKeys` and `__keyEq` are also read off the RECORD of a `__functor` module, its unapplied
+value, published as `moduleSyntax.functorRecord`: nixpkgs applies a functor and collects only its
+result, so a key carried there reaches no foreign evaluator, where in a module's content it is an
+unsupported attribute (structured) or a configuration key (shorthand). Such a module classifies as
+`dirty` for warm reuse, as every function module does.
 A top-level `_module` beside `config`/`options` is refused by name as an unsupported attribute, as
 nixpkgs refuses it. Its departures:
 
@@ -2618,7 +2624,10 @@ nixpkgs refuses it. Its departures:
   module carrying
   `__reservedKeys = { names = { <name> = <refusal text>; … }; exempt = [ <attribute path> … ]; }`
   makes every module it imports refuse a top-level `<name>` with that name's text, followed by
-  `` (module `<file>') ``. The closure is every route the collector follows: nested `imports`,
+  `` (module `<file>') ``. The marker is read off the RECORD of a `__functor` module first, then off
+  its content: `{ __functor = …; __reservedKeys = …; }` scopes the closure of what the functor
+  returns, and is the carrier for a module a foreign evaluator may also import (gen-schema and
+  gen-aspects wrap a kind entry's importing defs so). The closure is every route the collector follows: nested `imports`,
   `require`, function and functor modules (read after application), paths, and a whole-module
   `mkIf`/`mkMerge` (read after push-down). The marked module's own top level is NOT checked, and
   neither is an explicit `config.<name>`, which is the instance route. A module carrying every `exempt`
@@ -2632,6 +2641,9 @@ nixpkgs refuses it. Its departures:
     scope is deduplicated before a scoped module re-imports it, and it is not checked.
   - A nested `__reservedKeys` replaces the inherited reservation for its own closure, so an empty
     nested one voids it. Like a hand-written exempt shape, that is a forgery, not an honest route.
+    A content marker on the result of a module whose record carries one does not displace the
+    record's: the record is read first, so a kind entry def writing its own `__reservedKeys` beside
+    an imported formal is still refused.
   - A malformed marker (not an attribute set, `names` not an attribute set of strings, `exempt` not a
     list of string lists) is refused by name on the first module it scopes:
     `` gen-merge: module `<file>' is imported under a malformed `__reservedKeys': <what is wrong>. … ``.

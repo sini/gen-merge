@@ -1072,7 +1072,10 @@ let
   # The keys this engine reads off the RECORD of a `__functor` module, before applying it (see
   # `reservedHits`), published as data (moduleSyntax.functorRecord) so a library riding a key there
   # can refuse an engine that would never read it.
-  functorRecordKeys = [ "__reservedKeys" ];
+  functorRecordKeys = [
+    "__reservedKeys"
+    "__keyEq"
+  ];
   # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
   # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
   # restating it (den-hoag-4kh.53.55; den-hoag-1n12c).
@@ -1357,7 +1360,7 @@ let
       throw "${e.reserved.names.${head (reservedHits e)}} (module `${e._file}')"
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
-    else if m ? __keyEq && !(m ? key) then
+    else if (m ? __keyEq || (e.m0.__keyEq or null) != null) && !(m ? key) then
       throw "gen-merge: module `${e._file}' publishes a key comparison (`__keyEq') but no `key'. The comparison decides between two occurrences of one key, so a module without a key has nothing for it to decide: give the module its `key', or remove `__keyEq'."
     else if isAttrs m then
       e
@@ -1712,7 +1715,7 @@ let
           content = m;
         }
       else if
-        (importer.content.__reservedKeys or (importer.m0.__reservedKeys or (importer.reserved or null)))
+        (importer.m0.__reservedKeys or (importer.content.__reservedKeys or (importer.reserved or null)))
         == null
       then
         {
@@ -1733,7 +1736,7 @@ let
             else
               toString (m0._file or (m._file or importer._file));
           content = m;
-          reserved = importer.content.__reservedKeys or (importer.m0.__reservedKeys or importer.reserved);
+          reserved = importer.m0.__reservedKeys or (importer.content.__reservedKeys or importer.reserved);
         }
     ) mods;
   # A node key is an attribute name, which may carry no string context: a path module's store path
@@ -1757,6 +1760,7 @@ let
   # in-file key, or a path sharing its key with a content module, are decided like any other pair. The key is read off the node key, because a path's content
   # need carry no `key`. Bound here, never per level: `moduleLevels` runs once per level of every tree.
   isPathModule = m0: builtins.isPath m0 || isPathString m0;
+  keqOf = e: e.content.__keyEq or (e.m0.__keyEq or null);
   keyedDrop =
     w: x:
     let
@@ -1764,15 +1768,15 @@ let
     in
     if isPathModule x.e.m0 && isPathModule w.e.m0 && toString x.e.m0 == toString w.e.m0 then
       false
-    else if !(w.e.content ? __keyEq || x.e.content ? __keyEq) then
+    else if keqOf w.e == null && keqOf x.e == null then
       false
-    else if !(w.e.content ? __keyEq && x.e.content ? __keyEq) then
+    else if keqOf w.e == null || keqOf x.e == null then
       throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}', and only `${
-        if w.e.content ? __keyEq then w.e._file else x.e._file
+        if keqOf w.e != null then w.e._file else x.e._file
       }' publishes a key comparison (`__keyEq'). One key is one declaration: publish the comparison on both, or give them different keys."
     else
       let
-        same = w.e.content.__keyEq.decide w.e.content.__keyEq.subject x.e.content.__keyEq.subject;
+        same = (keqOf w.e).decide (keqOf w.e).subject (keqOf x.e).subject;
       in
       if same == true then
         false
