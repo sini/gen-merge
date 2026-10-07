@@ -337,7 +337,17 @@ let
   # partner's join bears where it is not this type's own, and the witness reads names modulo it
   # (`joinRenames`). A ROW IS A CLAIM THAT THIS TYPE'S CHECK IS THE PARTNER'S AT THE EMBEDDED
   # PARAMETERS: both orders answer with the partner's record, so a row whose checks part swaps them.
-  # Keyed by gen type name; a name with no entry publishes under its own name, as before.
+  #
+  # ★ A ROW IS REACHED BY THE CONSTRUCTION IT STANDS FOR, NEVER BY A NAME (den-hoag-n8cpq). A type's
+  # name is the caller's wherever the vocabulary takes one (gen-types' `enum`, `struct`, `typedef`,
+  # `mkOptionType`), so a name-keyed row served `enum "path" [ … ]` as nixpkgs' `path` with its own
+  # check dropped. Every row is handed to the export (`types.nix` `defineEmbedded`) and to the
+  # type's own relation by the gen-merge constructor that builds the type: the three container rows
+  # by `attrsOf`/`lazyAttrsOf`/`deferredModule`, and the three leaf rows by the completion of the
+  # leaf vocabulary (`default.nix` `completeExport`), which selects one by the MINT of the gen-types
+  # leaf it completes (`embedsOf`; ADR-0034: a minted identity is consumable as a key). The
+  # published `defineType` and `mkOptionType` hand none, so no caller-written record reaches a row:
+  # a type of no row publishes under its own name, as before.
   embeddings = {
     attrsOf = {
       name = "attrsWith";
@@ -378,17 +388,44 @@ let
       };
     };
   };
-  # total over a name that is not a string: such a type embeds nowhere, and its own refusals name it
-  embeddingOf = name: if builtins.isString name then embeddings.${name} or null else null;
-  # Whether `other` is keyed under the name type `name` embeds in: the one place a relation asks it.
-  keyedUnderEmbedding =
-    name: other:
+  # The leaf rows by the digest of the leaf each stands for, bound once. A vocabulary lacking a leaf
+  # or minting none for it reaches no row through it.
+  leafEmbeddings = builtins.listToAttrs (
+    prelude.concatMap
+      (
+        k:
+        let
+          d = (types.${k} or { }).__mint.minted or null;
+        in
+        if builtins.isString d then
+          [
+            {
+              name = d;
+              value = embeddings.${k};
+            }
+          ]
+        else
+          [ ]
+      )
+      [
+        "string"
+        "path"
+        "pathLike"
+      ]
+  );
+  # Whether `other` is keyed under the name row `e` embeds in: the one place a relation asks it.
+  keyedUnderEmbedding = e: other: e != null && (keyOf other) == e.name;
+  # The leaf row `t`'s mint reaches, read only off the record its constructor (or this boundary)
+  # COMPLETED: a `//` copy keeps its base's mark while changing what that mark stands for, so it
+  # reaches none (gen-types' completion stamp, `stampOk`, which `restamp` re-ties at the import door).
+  # The stamp is asked only of a record whose mint IS a leaf's. Read by the leaf completion
+  # (`default.nix` `completeExport`) and by the join witness (`joinRenames`).
+  embedsOf =
+    t:
     let
-      e = embeddingOf name;
+      r = leafEmbeddings.${t.__mint.minted or ""} or null;
     in
-    e != null && (keyOf other) == e.name;
-  # A derivation keeps its base's `name' but is keyed on its own identity, so it embeds nowhere.
-  embedsOf = t: if t ? __derivation then null else embeddingOf (t.name or "raw");
+    if r != null && builtins.isFunction (t.__typeSelf or null) && stampOk t then r else null;
   # The embedded payload: the role's key beside the embedding's fixed parameters. The one source for
   # the export's published payload and for the join (`joinCarriedInStatedRelation`).
   embeddedPayload =
@@ -398,14 +435,13 @@ let
     else
       (if role == null then { } else { ${roleSpelling.${role}.payloadKey} = carried; })
       // (e.params or { });
-  # What a RAW partner stating its relation under the richer name `name` embeds in offers at `role`:
-  # the role's key read out of that payload, beside parameters gen does not carry. `null` where `name`
-  # embeds nowhere or the partner is not stated under that name. Read only to NAME a refused pair, so
+  # What a RAW partner stating its relation under row `e`'s richer name offers at `role`:
+  # the role's key read out of that payload, beside parameters gen does not carry. `null` where `e`
+  # is no row or the partner is not stated under that name. Read only to NAME a refused pair, so
   # its reason is the element pair's, never a merge path of its own.
   embeddedOffered =
-    name: role: t:
+    e: role: t:
     let
-      e = embeddingOf name;
       pf = t.functor or { };
     in
     if e == null || t ? carries || (pf.name or null) != e.name || !isAttrs (pf.payload or null) then
@@ -2324,14 +2360,16 @@ let
   # `mergeTypes` for its base), never here.
   joinRenames =
     let
-      # one name, or two the embedding table states are one record's (`joinsAs`)
+      # one name, or two the embedding table states are one record's (`joinsAs`). The row is the one
+      # the RECORD reaches (`embedsOf`), never one its name collides with: a caller's `enum "string"`
+      # read as `str` would let a join that dropped its check pass as keeping it.
       asOf =
-        n:
+        x:
         let
-          e = embeddingOf n;
+          e = embedsOf x;
         in
-        if e != null && e ? joinsAs then e.joinsAs else n;
-      sameUpToEmbedding = a: b: a == b || asOf a == asOf b;
+        if e != null && e ? joinsAs then e.joinsAs else x.name or null;
+      sameUpToEmbedding = a: b: (a.name or null) == (b.name or null) || asOf a == asOf b;
       roles =
         x:
         if x ? carries then
@@ -2364,7 +2402,7 @@ let
           false
         else if fuel <= 0 then
           true
-        else if !(sameUpToEmbedding (j.name or null) (o.name or null)) then
+        else if !(sameUpToEmbedding j o) then
           true
         else
           let
@@ -2743,7 +2781,7 @@ let
   # stated name (`joinRenames`), as `importedMerge` takes a foreign join; `null` otherwise, and the
   # caller's own relation then answers as it did before. A partner whose payload names more than the
   # role's own key (`importedOffered` null) is not read whole, so it is not joined here either —
-  # UNLESS it is stated under the richer constructor `name` embeds in (`embeddings`): there gen's
+  # UNLESS it is stated under the richer constructor the caller's row `embedding` names (`embeddings`): there gen's
   # parameters are a point of the partner's payload (`embeddedPayload`), so the pair is joined in the
   # partner's relation over that embedding, under the same witness. A role-less type (`role` null,
   # `deferredModule`) is joined only that way, and a gen partner of it too: gen publishes the same
@@ -2751,13 +2789,14 @@ let
   joinCarriedInStatedRelation =
     {
       name,
+      embedding,
       role,
       carried,
       self,
     }:
     other:
     let
-      e = embeddingOf name;
+      e = embedding;
       joined =
         if other ? carries then
           null
@@ -2820,10 +2859,14 @@ let
   # is joined in `joinCarriedInStatedRelation`), and neither is one whose functor names no `type` (the
   # protocol's default would abort reading it): gen's own relation answers.
   joinLeafInStatedRelation =
-    { name, self }:
+    {
+      name,
+      embedding,
+      self,
+    }:
     other:
     let
-      e = embeddingOf name;
+      e = embedding;
       stated = if e != null && !(e ? params) then e.name else name;
       pf = other.functor or null;
       joined =
@@ -3536,8 +3579,12 @@ let
   # nobody in the vocabulary chose, answering for types whose author never said whether they merge.
   # The vocabulary states the relation, including its own default, and a record without one is
   # refused here by name.
-  exportType =
-    t:
+  exportType = exportTypeWith null;
+  # `row` is the `embeddings` row the type's gen-merge constructor states (`types.nix`
+  # `defineEmbedded`), or `null`, which every other caller hands. A rebuilt container is re-exported
+  # under its constructor's row.
+  exportTypeWith =
+    row: t:
     let
       name = t.name or "raw";
       sub = t.substructure or null;
@@ -3549,8 +3596,8 @@ let
       # binding here is a thunk on every exported type, and the hub bench's schemaHosts row has no
       # headroom for one.
       payload =
-        if embedsOf t != null then
-          embeddedPayload (embedsOf t) role carried
+        if row != null then
+          embeddedPayload row role carried
         else if role == null then
           null
         else if role == "moduleSet" then
@@ -3604,7 +3651,7 @@ let
       # and the inbound half publishes a functor a foreign engine can recover THIS type from.
       functor =
         let
-          embeds = embedsOf t;
+          embeds = row;
           extrasAgree =
             p: builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames (embeds.params or { }));
         in
@@ -3634,12 +3681,12 @@ let
                   throw "gen-merge: `${name}' cannot be rebuilt over a `${embeds.name}' payload other than its own embedding"
               )
             else if embeds == null then
-              (p: exportType (recarried p))
+              (p: exportTypeWith row (recarried p))
             else
               (
                 p:
                 if extrasAgree p then
-                  exportType (recarried p)
+                  exportTypeWith row (recarried p)
                 else
                   throw "gen-merge: `${name}' cannot be rebuilt over a `${embeds.name}' payload other than its own embedding"
               );
@@ -3823,6 +3870,7 @@ in
     exportClasses
     exportFields
     exportType
+    exportTypeWith
     importDescriptor
     importType
     importedAdmits
@@ -3835,7 +3883,8 @@ in
     statesPayload
     keysExactly
     embeddedOffered
-    embeddingOf
+    embeddings
+    embedsOf
     keyedUnderEmbedding
     moduleSetPayload
     canNest
