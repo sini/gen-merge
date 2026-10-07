@@ -884,6 +884,22 @@ in
           (cfgOf (host (np.uniq (reshapeOf (r: r // { bar = r.foo; }) (aw (t.attrsOf sub)))) two)).bar.k.x;
         expected = 1;
       };
+      # a merge whose result is not an attrset is off the stated step's domain and keeps the eager
+      # walk, so it serves nixpkgs' value rather than abort on the key read
+      test-a-merge-returning-a-list-of-the-trees-serves-nixpkgs-value = {
+        expr =
+          (builtins.head (
+            cfgOf (
+              host (np.uniq (
+                reshapeOf (r: [
+                  r.foo
+                  r.bar
+                ]) (aw (t.attrsOf sub))
+              )) two
+            )
+          )).k.x;
+        expected = 1;
+      };
       test-a-merge-dropping-a-keys-tree-serves-nixpkgs-value = {
         expr = cfgOf (
           host (np.uniq (reshapeOf (r: builtins.removeAttrs r [ "bar" ]) (aw (t.attrsOf sub)))) two
