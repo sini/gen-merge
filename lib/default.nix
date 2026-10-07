@@ -558,6 +558,7 @@ in
     structuring = core.structuringKeys;
     structured = core.structuredKeys;
     shorthandMeta = core.shorthandMetaKeys;
+    functorRecord = core.functorRecordKeys;
   };
 
   # The comparison subject of a value that can carry a type record, for a relation outside this

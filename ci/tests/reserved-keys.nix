@@ -1,7 +1,7 @@
 # THE RESERVATION SCOPE — what still composes beside it. Its refusals are `ci/tests-error.nix`'s
 # `reserved-keys` group (a refusal's message is only assertable there); this file holds the routes
 # the scope must NOT refuse, and the first-occurrence rule it inherits from `_file`.
-{ genMerge, ... }:
+{ genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
   t = gm.types;
@@ -91,16 +91,69 @@ in
       };
     };
     # The marker is gen-merge's own module key: stripped from config like `__pureModule`, and
-    # published in both key lists a consumer's structured/shorthand guard reads.
+    # published in both key lists a consumer's structured/shorthand guard reads, and in the list of
+    # keys read off a functor module's record.
     test-marker-is-a-module-key-in-both-lists = {
       expr = {
         structured = builtins.elem "__reservedKeys" gm.moduleSyntax.structured;
         shorthandMeta = builtins.elem "__reservedKeys" gm.moduleSyntax.shorthandMeta;
+        functorRecord = builtins.elem "__reservedKeys" gm.moduleSyntax.functorRecord;
       };
       expected = {
         structured = true;
         shorthandMeta = true;
+        functorRecord = true;
       };
     };
+
+    # THE RECORD CARRIER (den-hoag-r05lc). A marker on a functor module's record scopes what the
+    # functor returns, here the same as a content-level one; and nixpkgs, which applies the functor and
+    # reads only its result, never sees it. An attrset result carrying `options` and a function result
+    # both serve in a nixpkgs `lib.evalModules`, adding no `__reservedKeys` (a content-level marker is
+    # refused there in the first case and lands as config in the second).
+    test-record-carried-marker-scopes-and-stays-off-the-foreign-path =
+      let
+        recorded = ret: {
+          __reservedKeys = res;
+          __functor = _: _: ret;
+        };
+        nl = nixpkgsLib;
+        mount =
+          m:
+          builtins.attrNames
+            (nl.evalModules {
+              modules = [
+                {
+                  options.h = nl.mkOption {
+                    type = nl.types.submodule {
+                      imports = [ m ];
+                      freeformType = nl.types.lazyAttrsOf nl.types.anything;
+                    };
+                    default = { };
+                  };
+                }
+              ];
+            }).config.h;
+      in
+      {
+        expr = {
+          scoped = k [ (recorded { imports = [ { k = 1; } ]; }) ];
+          control = k [ (recorded { imports = [ { other = 1; } ]; }) ];
+          ownLevel = k [ (recorded { k = 1; }) ];
+          foreignAttrs = mount (recorded {
+            options.x = nl.mkOption { default = 1; };
+          });
+          foreignFunction = mount (recorded {
+            imports = [ ({ lib, ... }: { }) ];
+          });
+        };
+        expected = {
+          scoped = "REFUSED";
+          control = 0;
+          ownLevel = 1;
+          foreignAttrs = [ "x" ];
+          foreignFunction = [ ];
+        };
+      };
   };
 }

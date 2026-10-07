@@ -7534,6 +7534,26 @@ in
           });
           expectedError = owner "/fx/entry\\.nix";
         };
+        # The marker on a functor module's RECORD scopes the same closure (den-hoag-r05lc).
+        test-functor-record-carrier-refused-with-owner-text = {
+          expr =
+            let
+              readRecord =
+                r: child:
+                cfg {
+                  modules = [
+                    decl
+                    {
+                      _file = "/fx/entry.nix";
+                      __reservedKeys = r;
+                      __functor = _: _: { imports = [ child ]; };
+                    }
+                  ];
+                };
+            in
+            withControl (readRecord res { j = 1; }).j 1 (builtins.deepSeq (readRecord res { k = 1; }).k null);
+          expectedError = owner "/fx/entry\\.nix";
+        };
         test-function-module-route-refused-after-application = {
           expr = refuses (n: { ... }: { ${n} = 1; });
           expectedError = owner "/fx/entry\\.nix";
