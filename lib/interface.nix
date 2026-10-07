@@ -1994,7 +1994,37 @@ let
           lv = levelOf c;
         in
         if lv != null && lv ? node then lv // { next = levels lv.node; } else lv;
-      lvT = levels t;
+      lvT = overAt (levels t);
+      # ── THE OPTION'S OWN STRICT STEP OVER A STOCK LAZY STEP (den-hoag-i01nx v1, arm OV) ─
+      # A strict step at the option's own level whose element is a stock container gen re-homes,
+      # directly over the gen element (`lazyAttrsOf e`), is keyed as gen keys `attrsOf (lazyAttrsOf
+      # e)`: its keys by gen's own `attrsOf` split over the option's definitions (definedness, as
+      # nixpkgs' strict merge forces), and each key's lower keys over that key's definitions where it
+      # is walked (`keyedOverAt`, mda6f), never over its merged value, which nixpkgs forces only where
+      # the key is read. Below a node the definitions at a key are not in hand, so the step stays a
+      # node there.
+      overAt =
+        lv:
+        let
+          e = (forwardStep lv.node).element or null;
+          rehomed = importedRehomeAt door loc0 lv.node;
+        in
+        if
+          lv != null
+          && lv ? node
+          && !(lv.step.functor.payload.lazy or false)
+          && lv.next != null
+          && lv.next ? one
+          && isAttrs e
+          && e ? substructure
+          && rehomed != null
+        then
+          {
+            over = (constructors.attrsOf (homedAt door loc0 lv.node)).split;
+            inherit (lv) step next;
+          }
+        else
+          lv;
       chainElement = lvT.one or null;
       # `l` below `base`: the steps past it, `null` where `l` does not extend it
       under =
@@ -2042,6 +2072,8 @@ let
         lv: stated: oloc: root: base: ds: r:
         if lv != null && lv ? one && isAttrs r then
           lazySplit lv.one base r
+        else if lv != null && lv ? over && isAttrs r then
+          lv.over base ds
         else if lv != null && lv ? node && isAttrs r then
           let
             node = nodeAt lv.node lv.next oloc root;
@@ -2098,7 +2130,7 @@ let
       # (`keyedWhereRead`); otherwise as folded.
       finishAt =
         lv: base: rB: ev: v:
-        if lv != null && lv ? node && isAttrs rB && isAttrs v then
+        if lv != null && (lv ? node || lv ? over) && isAttrs rB && isAttrs v then
           prelude.mapAttrs (k: x: finishAt lv.next (base ++ [ k ]) (rB.${k} or null) ev x) v
         else if lv != null && lv ? one && isAttrs rB then
           keyedWhereRead base rB v
@@ -2196,6 +2228,16 @@ let
                 inherit ev st;
                 ok = false;
                 lvOn = i.onLevel;
+              }
+            else if i.onLevel && i.lv ? over && st != [ ] then
+              # an element below the option's strict step, placed off the site under its key alone
+              let
+                rK = i.rB.${head st} or null;
+              in
+              {
+                inherit ev st;
+                lvOn = if i.rB ? ${head st} then isAttrs rK else i.onLevel;
+                ok = length st == 2 && isAttrs rK && siteLocAt rK (elemAt st 1) == eloc;
               }
             else if i.onLevel && i.lv ? node && st != [ ] && i.sub ? ${head st} then
               placeAt i.sub.${head st} (ev.child { position = ev.position ++ [ (head st) ]; }).accessor
