@@ -1959,10 +1959,13 @@ let
           step = pre ++ [ k ];
           loc = loc ++ [ k ];
           defs =
-            if emptyAt r k then
+            let
+              v = r.${k};
+            in
+            if v ? __genTEmpty then
               [ ]
-            else if siteLocAt r k == loc ++ [ k ] then
-              r.${k}.__genTSite.defs
+            else if isAttrs v && v ? __genTSite && v.__genTSite.loc == loc ++ [ k ] then
+              v.__genTSite.defs
             else
               throw (statedStepRefusal door (loc ++ [ k ]) t);
           # the level's own gen element, stated by the declaration: reading the site's would force
