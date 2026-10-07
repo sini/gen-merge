@@ -1916,11 +1916,13 @@ let
       # compare functions): the steps are TRUSTED from the functor names, at each level. The
       # run stays the authority over which tree sits at which key: a capture site must sit at its
       # own key (`siteLocAt`, and below a node, under the node's key), in the split and in the fold.
-      # So a chain whose stock-named lazy `attrsWith` has a merge that does not fold each element at
-      # `loc ++ [ k ]` (one key deeper, keys renamed or swapped, or a key holding no element's tree)
-      # is refused by name at the key read (`statedStepRefusal`, and `nodeStepRefusal` where the key
-      # holds a node), where base and nixpkgs serve it; one that only duplicates or drops a key's
-      # tree serves nixpkgs' value, and one whose result is not an attrset keeps the eager walk. The
+      # So a chain whose stock-named `attrsWith` step, lazy or strict, has a merge that does not fold
+      # each element at `loc ++ [ k ]` (one key deeper, keys renamed or swapped, or a key holding no
+      # element's tree) is refused by name at the key read (`statedStepRefusal`, and
+      # `nodeStepRefusal` where the key holds a node), where nixpkgs serves it, and where base
+      # served it at a strict step or below a `nullOr` (den-hoag-i01nx); one that only drops a
+      # key's tree serves nixpkgs' value, one that duplicates it does so at the option's own level
+      # and is refused below a node, and one whose result is not an attrset keeps the eager walk. The
       # same trust reaches a node's REGIME: a node keys its elements exactly where its stated
       # record's NAME says it does (`keysExactly`), so a stock-named `attrsOf`, `listOf` or `nullOr`
       # whose merge was overridden to a lazy one is keyed exactly, as its name states.
@@ -2322,13 +2324,13 @@ let
     + "at a position the merge returns as a value, or state `declaresNesting = false' on the type and "
     + "take the stated price: a nested tree it forwards to is then evaluated standalone";
 
-  # The node-level form of the stated-step refusal (den-hoag-rlskz): a chain whose lazy step states
-  # that each key holds the record `c` folded at that key, whose merge folded at the key read, `at`,
-  # a tree that sits under another key.
+  # The node-level form of the stated-step refusal (den-hoag-rlskz, den-hoag-i01nx): a chain whose
+  # step, lazy or strict, states that each key holds the record `c` folded at that key, whose merge
+  # folded at the key read, `at`, a tree that sits under another key.
   nodeStepRefusal =
     door: at: t: c:
     "${doorAt door at}the option type `${nameOf t}' states (its functors) that each key below it, "
-    + "under a lazy `attrsWith', holds a `${nameOf c}' folded at that key, and its merge folded a tree "
+    + "under an `attrsWith', holds a `${nameOf c}' folded at that key, and its merge folded a tree "
     + "of another key's there: the merge was overridden, so the functor misstates it, and this tree "
     + "cannot be keyed where it is read. Declare the element under a container whose merge is its "
     + "constructor's, or state `declaresNesting = false' on the type and take the stated price: a "

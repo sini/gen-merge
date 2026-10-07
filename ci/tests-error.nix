@@ -7225,7 +7225,7 @@ in
               }).foo.j.k.a;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s[.]bar': the option type `unique' states [(]its functors[)] that each key below it, under a lazy `attrsWith', holds a `attrsOf' folded at that key, and its merge folded a tree of another key's there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed where it is read[.] Declare the element under a container whose merge is its constructor's, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]bar': the option type `unique' states [(]its functors[)] that each key below it, under an `attrsWith', holds a `attrsOf' folded at that key, and its merge folded a tree of another key's there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed where it is read[.] Declare the element under a container whose merge is its constructor's, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
           };
         };
       };
