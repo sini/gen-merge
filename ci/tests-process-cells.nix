@@ -37,7 +37,14 @@ let
     inherit prelude;
     types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
     memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
-    scope = import "${genScopeSrc}/lib" { inherit graph identity prelude; };
+    scope = import "${genScopeSrc}/lib" {
+      inherit
+        algebra
+        graph
+        identity
+        prelude
+        ;
+    };
   };
   opt = m.mkOption {
     type = m.types.str;
@@ -75,7 +82,14 @@ let
 
   # THE SPY (den-hoag-n6dh7 U2-g): the same library over an evaluator whose `eval` traces `label`,
   # so the label's count on stderr is the number of independent gen-scope evaluations.
-  scope = import "${genScopeSrc}/lib" { inherit graph identity prelude; };
+  scope = import "${genScopeSrc}/lib" {
+    inherit
+      algebra
+      graph
+      identity
+      prelude
+      ;
+  };
   spied = import libSrc {
     inherit prelude;
     types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
