@@ -349,6 +349,15 @@ let
   # published `defineType` and `mkOptionType` hand none, so no caller-written record reaches a row:
   # a type of no row publishes under its own name, as before.
   embeddings = {
+    # gen-types' `enum` (den-hoag-n8cpq item 2): nixpkgs' `enum` is gen-types' `enum` under no name,
+    # both checks `elem v <members>`. Its parameter is an INSTANCE's, so this is the row's template:
+    # the completion of the vocabulary's `enum` states it at the members it hands the constructor
+    # (`default.nix` `completeParametric`), never read off a payload or a name.
+    enum = {
+      name = "enum";
+      joinsAs = "enum";
+      params.values = [ ];
+    };
     attrsOf = {
       name = "attrsWith";
       params = {
@@ -2579,7 +2588,21 @@ let
         let
           e = embedsOf x;
         in
-        if e != null && e ? joinsAs then e.joinsAs else x.name or null;
+        if e != null && e ? joinsAs then
+          e.joinsAs
+        # a record the export completed under a row stating `joinsAs` (an instance row, `embeddings.enum`,
+        # has no mint to reach it by) publishes that name as its functor's: read only off a completed
+        # gen record, whose functor is its export's, never a `//` copy's
+        else if
+          x ? typeMergeRel
+          && builtins.isString ((x.functor or { }).name or null)
+          && builtins.any (r: (r.joinsAs or null) == x.functor.name) (builtins.attrValues embeddings)
+          && builtins.isFunction (x.__typeSelf or null)
+          && stampOk x
+        then
+          x.functor.name
+        else
+          x.name or null;
       sameUpToEmbedding = a: b: (a.name or null) == (b.name or null) || asOf a == asOf b;
       roles =
         x:
@@ -3026,7 +3049,24 @@ let
         else
           null;
     in
-    if joined == null || joinRenames joined self || joinRenames joined other then null else joined;
+    # A row's LIST parameter (an `enum`'s members) is this type's own content, so a join that does not
+    # keep every element of it drops this type's check, whatever names it keeps (den-hoag-n8cpq item 2).
+    if
+      joined == null
+      || joinRenames joined self
+      || joinRenames joined other
+      || !(builtins.all (
+        k:
+        let
+          v = e.params.${k};
+          jv = ((joined.functor or { }).payload or { }).${k} or null;
+        in
+        !(isList v) || (isList jv && builtins.all (m: builtins.elem m jv) v)
+      ) (attrNames (if e == null then { } else e.params or { })))
+    then
+      null
+    else
+      joined;
 
   # THE JOIN FOR A UNION, against a RAW foreign partner whose relation is NOT in its functor: nixpkgs'
   # `either` overrides `typeMerge` and publishes a `binOp` its own payload (a member LIST) cannot be
