@@ -3311,10 +3311,14 @@ let
         # each element through its one `split`, so the forward mount keeps working without a third
         # fold form. Every other fold publishes as it did (`bridged`'s presence arm).
         #
-        # It answers nixpkgs' `merge.v2` too, as nixpkgs' own `either`, `nullOr` and `addCheck` do
-        # (den-hoag-c2z7q), so a nixpkgs union holding a gen type asks it for its `headError`
-        # rather than judging it by `check` alone, and takes the next member where gen's own fold
-        # would refuse the definitions whole. The `headError` is the published `check` over each
+        # A type publishing a HEAD JUDGEMENT (`mergeDefs.headJudge`) answers nixpkgs' `merge.v2`
+        # too, as nixpkgs' own `either`, `nullOr` and `addCheck` do (den-hoag-c2z7q), so a nixpkgs
+        # union holding it asks it for its `headError` rather than judging it by `check` alone,
+        # and takes the next member where gen's own fold would refuse the definitions whole. A
+        # type stating none publishes the bare fold, as nixpkgs' leaves do: its `headError` would
+        # be the pointwise check alone, which nixpkgs' v1 reading already computes, and a v2
+        # `merge` would make nixpkgs refuse the ad-hoc `type // { check = …; }` it accepts on a
+        # v1 type (den-hoag-e6m9d landing gate F1). The `headError` is the published `check` over each
         # definition, then the record's head judgement: under v2, nixpkgs' `mergeDefinitions`
         # reads only this, never `check`, so the pointwise half is what keeps a gen leaf verified
         # there. The functor calls the fold directly, so a caller applying `merge` pays no
@@ -3323,30 +3327,33 @@ let
           let
             fold = if !(t ? mergeDefs) then leafFold else bridged t.mergeDefs;
           in
-          {
-            __functor = _: fold;
-            v2 =
-              { loc, defs }:
-              {
-                headError =
-                  let
-                    bad = filter (d: !(check d.value)) defs;
-                    judged = t.mergeDefs.headJudge loc defs;
-                  in
-                  if bad != [ ] then
-                    {
-                      message = "Definition values: ${
-                        concatStringsSep ", " (map (d: "`${toString (d.file or "<def>")}'") bad)
-                      }";
-                    }
-                  else if t ? mergeDefs.headJudge && judged != null then
-                    { message = judged; }
-                  else
-                    null;
-                value = fold loc defs;
-                valueMeta = { };
-              };
-          };
+          if !(t ? mergeDefs.headJudge) then
+            fold
+          else
+            {
+              __functor = _: fold;
+              v2 =
+                { loc, defs }:
+                {
+                  headError =
+                    let
+                      bad = filter (d: !(check d.value)) defs;
+                      judged = t.mergeDefs.headJudge loc defs;
+                    in
+                    if bad != [ ] then
+                      {
+                        message = "Definition values: ${
+                          concatStringsSep ", " (map (d: "`${toString (d.file or "<def>")}'") bad)
+                        }";
+                      }
+                    else if t ? mergeDefs.headJudge && judged != null then
+                      { message = judged; }
+                    else
+                      null;
+                  value = fold loc defs;
+                  valueMeta = { };
+                };
+            };
         # A nesting type's empty value is its tree over no definitions, through the same bridge: its
         # called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
         emptyValue =

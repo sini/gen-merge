@@ -1233,9 +1233,15 @@ refuses it by name there too, a deliberate departure from a silent answer. An ad
 non-v2 submodule-bearing type (`deferredModule`, `attrTag`, `functionTo`, `uniq`) cannot be told from
 the one its constructor shipped, and is applied.
 
-**An exported gen type answers nixpkgs' `merge.v2` too**, as nixpkgs' own `either`, `nullOr` and
-`addCheck` do: `merge` is `{ __functor; v2; }`, the functor calling the fold directly, and `check`
-carries `isV2MergeCoherent = true`, without which nixpkgs' `checkV2MergeCoherence` refuses the mount.
+**An exported gen type that publishes a head judgement answers nixpkgs' `merge.v2` too**, as
+nixpkgs' own `either`, `nullOr` and `addCheck` do: `merge` is `{ __functor; v2; }`, the functor
+calling the fold directly, and `check` carries `isV2MergeCoherent = true`, without which nixpkgs'
+`checkV2MergeCoherence` refuses the mount. Today that is `either` (so `oneOf`) and `nullOr`, and a
+derivation or refinement of either. Every other export publishes the bare fold, as nixpkgs' leaves
+do: its `headError` would be the pointwise check alone, which nixpkgs' v1 reading already computes,
+and a v2 `merge` would make nixpkgs refuse the ad-hoc `type // { check = …; }` it accepts on a v1
+type; so `gen.int // { check = …; }` mounts under `lib.evalModules` as nixpkgs'
+`int // { check = …; }` does.
 The `headError` is the published `check` over each definition (nixpkgs' `Definition values:` form,
 naming files), then the type's head judgement. So a nixpkgs union holding a gen type takes its next
 member where gen's own fold would refuse the definitions whole: `lib.types.either (either int str) x`
