@@ -1357,6 +1357,7 @@ foreign engine can recover this type from, in the foreign spellings:
 { name = "str"; payload = null; }                                                     # str (gen-types `string`)
 { name = "path"; payload = { absolute = true; inStore = null; }; }                    # path
 { name = "path"; payload = { absolute = null; inStore = null; }; }                    # pathLike
+{ name = "either"; payload = { elemType = [ int float ]; }; }                         # number (gen-merge's own leaves)
 # `type` over a payload whose fixed parameters are not the type's own refuses by name
 # submodule — the parameter is the MODULE LIST              (gen role: `moduleSet`)
 { payload = { modules; }; }
@@ -1410,7 +1411,20 @@ unsaid. Each row claims gen's check is the partner's at the embedded parameters.
 unchanged (`string`, `path`, `pathLike`). Price (hub perf bench, Nix 2.34.8): a per-process constant of
 +6 thunks on each load row (+4 on `aspects`) from the three rows' exported functors, no marginal moved,
 and a gen × gen `str` redeclaration pays less than before (`sameLocFanIn` thunks p/r 1.508 → 1.480),
-because a gen partner is answered before the embedding is read. A gen nesting type (`submodule`, the tree) facing a
+because a gen partner is answered before the embedding is read. A fourth leaf row's parameters are
+TYPES: gen-types' `number` is published as nixpkgs' `either` over gen-merge's own `int` and `float`
+(the row's `members`, stated at the completion as the completed leaves the `types` export publishes),
+and a partner keyed `either` is joined in its union relation, rebuilt from its functor
+(`interface.joinInRebuiltPartner`), so a mixed `number` redeclaration, bare, under a container or
+inside `either number str`, has nixpkgs' record in both orders under either engine, and a nixpkgs
+`addCheck` beside it keeps its check in gen's engine. The export's functor accepts a payload whose
+members ARE gen's `int` and `float` by their minted identity under the completion stamp
+(`interface.membersAgree`): a second instance of this library agrees, nixpkgs' members, a raw `//`
+copy of gen `int` and the members swapped do not. A supplied vocabulary lacking `int` or `float`, or
+minting none for it, forms no row, and its `number` publishes under its own name. Price (Δ thunks/calls
+per redeclared option, Nix/Lix/Determinate alike): mixed on nixpkgs' engine 667/543 against the
+nixpkgs twin's 227/159, of which the meet's share (+285) is ADR-0039's correctness floor; mixed on
+gen's engine 783/724 against the twin's 1173/1151; a gen × gen `number` unchanged. A gen nesting type (`submodule`, the tree) facing a
 same-named partner that offers it nothing is not refused for that: its parameters embed into the
 partner's richer `submoduleWith` payload, so it hands the pair to the protocol's default relation over
 the partner's PUBLISHED functor (`interface.joinInStatedRelation`, over `interface.moduleSetPayload`),

@@ -16,6 +16,8 @@
 {
   evalRequest,
   genMerge,
+  genMergeWith,
+  genTypes,
   nixpkgsLib,
   interface,
   ...
@@ -1337,7 +1339,10 @@ in
     #  - gen `str` beside a partner keyed `str` with a payload and a stricter check (`strict`), which the
     #    leaf join declines: pins that a declined embedding join is REFUSED, never answered by `self`.
     # The witness's name test (`joinRenames` modulo `joinsAs`) is guarded by the cells it already reds.
-    # `number` (den-hoag-kawe8) and `enum` (den-hoag-n8cpq) embed nowhere and stay refused.
+    # gen-types' `number` is nixpkgs' `either int float` (den-hoag-kawe8, a row whose parameters are
+    # TYPES): its rows read nixpkgs' union record at both members, bare, at a float, and inside
+    # `either number str`, and a value outside `number` (`numberBad`) is refused as the twin refuses it.
+    # `enum` (den-hoag-n8cpq) embeds nowhere and stays refused.
     test-mixed-leaf-embedding-redeclaration-is-nixpkgs-answer =
       let
         engines = {
@@ -1374,6 +1379,24 @@ in
             n = np.types.either np.types.int np.types.str;
             v = "s";
             lit = "N(N,N)";
+          };
+          number = {
+            g = t.number;
+            n = np.types.number;
+            v = 1;
+            lit = "N(N,N)";
+          };
+          numberFloat = {
+            g = t.number;
+            n = np.types.number;
+            v = 1.5;
+            lit = "N(N,N)";
+          };
+          eitherNumberStr = {
+            g = t.either t.number t.str;
+            n = np.types.either np.types.number np.types.str;
+            v = 2;
+            lit = "N(N(N,N),N)";
           };
         };
         shapes = {
@@ -1487,6 +1510,12 @@ in
             };
           };
         witnesses = {
+          numberBad = {
+            g = t.number;
+            n = np.types.number;
+            v = "selvage";
+            partners.number = np.types.number;
+          };
           path = {
             g = t.path;
             n = np.types.path;
@@ -1564,6 +1593,199 @@ in
           witness = refused;
           witnessRef = refused;
         };
+      };
+
+    # kawe8: the `number` row's parameters are TYPES, so the export's `extrasAgree` decides whether a
+    # payload's members ARE gen's `int` and `float` (`interface.membersAgree`), by their minted identity
+    # under the completion stamp: the members of a second instance of this library agree (`==` over
+    # type records is pointer identity and splits them), and nixpkgs' members, a raw `//` copy of gen
+    # `int` keeping its mark (`forged`) and the members swapped do not. Read through the protocol
+    # default over gen `number`'s published functor.
+    #  - `planted`: ADR-0039's correctness bound reached through this row: nixpkgs `addCheck (v != 7)`
+    #    over `number`, over gen `number`, or over a union holding it, beside the plain pair, refuses 7
+    #    in gen's engine in both orders; 1, which every declaration admits, serves (the live control).
+    #  - `r58p8`: gen `number` beside `either P float` whose member P is keyed `int` and whose own
+    #    relation accepts anything (den-hoag-r58p8's class): "s" has the twin's answer in every cell
+    #    (served partner-first before the meet, gen's check dropped).
+    #  - `ownFunctor`: a partner whose `typeMerge` disagrees with its functor is joined in its
+    #    functor's relation (`interface.joinInRebuiltPartner` never calls the partner's own), so 1.5
+    #    serves in gen's engine in both orders; the partner's own `typeMerge` joins `either int str`.
+    #  - `vocabulary`: a supplied vocabulary lacking a member forms no row, so its `number` publishes
+    #    under its own name and a mixed pair is refused, catchably.
+    test-mixed-number-row-members-are-gen-leaves =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalRequest;
+            mk = mkOption;
+          };
+        };
+        read =
+          eng: Ts: v:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = v; } ];
+            };
+            tried = builtins.tryEval (
+              builtins.deepSeq r.config.x "${r.options.x.type.name} v=${builtins.toJSON r.config.x}"
+            );
+          in
+          if tried.success then tried.value else "REFUSED";
+        orders = a: b: {
+          aFirst = [
+            a
+            b
+          ];
+          bFirst = [
+            b
+            a
+          ];
+        };
+        show =
+          r:
+          let
+            tried = builtins.tryEval (builtins.deepSeq (r.name or null) (if r == null then "null" else r.name));
+          in
+          if tried.success then tried.value else "REFUSED";
+        dtm = f: show (np.types.defaultTypeMerge t.number.functor f);
+        withMembers = ms: t.number.functor // { payload.elemType = ms; };
+        forged = t.int // {
+          check = v: builtins.isInt v && v > 0;
+          verify = v: if builtins.isInt v && v > 0 then null else "not positive";
+        };
+        W = ty: np.types.addCheck ty (v: v != 7);
+        planted = {
+          wrapNp = orders (W np.types.number) t.number;
+          wrapGen = orders (W t.number) np.types.number;
+          wrapUnion = orders (W (np.types.either t.number np.types.str)) (
+            np.types.either np.types.number np.types.str
+          );
+        };
+        refined =
+          K: chk:
+          let
+            self = np.mkOptionType {
+              name = K;
+              check = chk;
+              merge = np.options.mergeEqualOption;
+              functor = np.types.defaultFunctor K // {
+                type = _: self;
+                payload.refined = true;
+                binOp = a: _b: a;
+              };
+              typeMerge =
+                f':
+                if f'.name == K && (f'.payload == null || f'.payload == { refined = true; }) then self else null;
+            };
+          in
+          self;
+        loose = np.types.either (refined "int" (_: true)) np.types.float;
+        disagreeing = np.types.number // {
+          typeMerge = _: np.types.either np.types.int np.types.str;
+        };
+        without = k: (genMergeWith (builtins.removeAttrs genTypes [ k ])).types.number;
+        forEach = f: s: builtins.mapAttrs (_: f) s;
+      in
+      {
+        expr = {
+          agree = {
+            self = dtm t.number.functor;
+            twoInstances = dtm (genMergeWith genTypes).types.number.functor;
+            npMembers = dtm (withMembers [
+              np.types.int
+              np.types.float
+            ]);
+            forgedMember = dtm (withMembers [
+              forged
+              t.float
+            ]);
+            swapped = dtm (withMembers [
+              t.float
+              t.int
+            ]);
+          };
+          planted = forEach (forEach (Ts: {
+            v7 = read "gm" Ts 7;
+            v1 = read "gm" Ts 1;
+          })) planted;
+          r58p8 = builtins.mapAttrs (eng: _: {
+            mixed = forEach (Ts: read eng Ts "s") (orders t.number loose);
+            twin = forEach (Ts: read eng Ts "s") (orders np.types.number loose);
+          }) engines;
+          ownFunctor = forEach (Ts: read "gm" Ts 1.5) (orders t.number disagreeing);
+          vocabulary =
+            forEach
+              (k: {
+                name = (without k).functor.name;
+                mixed = read "np" [
+                  np.types.number
+                  (without k)
+                ] 1;
+              })
+              (
+                builtins.listToAttrs (
+                  map
+                    (k: {
+                      name = k;
+                      value = k;
+                    })
+                    [
+                      "int"
+                      "float"
+                    ]
+                )
+              );
+        };
+        expected =
+          let
+            plantedRow = {
+              v7 = "REFUSED";
+              v1 = "either v=1";
+            };
+            both = x: {
+              aFirst = x;
+              bFirst = x;
+            };
+            unplaced = {
+              name = "number";
+              mixed = "REFUSED";
+            };
+          in
+          {
+            agree = {
+              self = "number";
+              twoInstances = "number";
+              npMembers = "null";
+              forgedMember = "null";
+              swapped = "null";
+            };
+            planted = forEach (_: both plantedRow) planted;
+            r58p8 = {
+              np = {
+                mixed = {
+                  aFirst = ''either v="s"'';
+                  bFirst = "REFUSED";
+                };
+                twin = {
+                  aFirst = ''either v="s"'';
+                  bFirst = "REFUSED";
+                };
+              };
+              gm = {
+                mixed = both "REFUSED";
+                twin = both "REFUSED";
+              };
+            };
+            ownFunctor = both "either v=1.5";
+            vocabulary = {
+              int = unplaced;
+              float = unplaced;
+            };
+          };
       };
 
     # zcufn: ONE option declared by a nixpkgs union (`either`, `oneOf`) and a gen one has ONE declared

@@ -152,6 +152,8 @@ let
       #  - keyed under an embedding with parameters (`path`, `pathLike`; `interface.embeddings`): in
       #    the partner's relation over the embedding (`interface.joinCarriedInStatedRelation`);
       #  - keyed under an embedding with none (`string`): as a leaf at the embedding's name;
+      #  - keyed under an embedding with type-valued parameters (`number`): in the partner's union
+      #    relation, rebuilt from its functor (`interface.joinInRebuiltPartner`);
       #  - of the same key (as `elementRel`'s carve-out): as a leaf, and a declined join answers `self`,
       #    EXCEPT for a partner stating a payload (`interface.statesPayload`), which is refused AS THE
       #    DECIDER only (`vetoes = false`, read by `lib/modules.nix` `declaredPair`): nixpkgs' default
@@ -193,7 +195,23 @@ let
             };
             ownJoin = interface.joinInPartnerRelation self other;
           in
-          if embedKey && e ? params then
+          # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
+          # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
+          # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
+          if embedKey && e ? members then
+            let
+              unionJoin = interface.joinInRebuiltPartner {
+                role = "alternatives";
+                inherit self;
+              } other;
+            in
+            if unionJoin != null then
+              meet unionJoin
+            else
+              {
+                refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
+              }
+          else if embedKey && e ? params then
             if carriedJoin != null then
               meet carriedJoin
             else

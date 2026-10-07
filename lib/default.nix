@@ -541,10 +541,16 @@ let
         leaf = importLeaf v;
       in
       # a gen-types leaf an `interface.embeddings` row stands for is completed under that row, chosen
-      # by its mint (`interface.embedsOf`), never by the name it is exported at (den-hoag-n8cpq)
-      strategies.defineEmbedded (core.interface.embedsOf leaf) leaf
+      # by its mint (`interface.embedsOf`), never by the name it is exported at (den-hoag-n8cpq); a
+      # row whose parameters are types states them as the completed leaves the export publishes
+      strategies.defineEmbedded (core.interface.rowOver completedLeaves (
+        core.interface.embedsOf leaf
+      )) leaf
     else
       v;
+  # The completed vocabulary, one binding: the `types` export and a members row's parameters
+  # (`interface.rowOver`) read the same records.
+  completedLeaves = builtins.mapAttrs (_: completeExport) checkedTypes;
 in
 {
   # Portable-subset lint (README "Portable-subset lint") — statically flag modules using constructs
@@ -753,7 +759,7 @@ in
     (linkset.mergeExports {
       left = {
         library = "the supplied `types` vocabulary";
-        exports = builtins.mapAttrs (_: completeExport) checkedTypes;
+        exports = completedLeaves;
       };
       right = {
         library = "gen-merge";

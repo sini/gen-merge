@@ -324,11 +324,12 @@ let
   };
 
   # ── WHERE A GEN CONSTRUCTOR'S PARAMETERS EMBED IN A RICHER FOREIGN ONE ───────────────────────────
-  # The foreign protocol keys a redeclaration on the FUNCTOR name, and for six of gen's types it states
+  # The foreign protocol keys a redeclaration on the FUNCTOR name, and for seven of gen's types it states
   # the construction under another name or with more parameters: `attrsOf`/`lazyAttrsOf` are one
   # `attrsWith` discriminated by `lazy` (at the default `placeholder`), `deferredModule` is
-  # `deferredModuleWith` with no `staticModules`, gen-types' `string` is `str`, and `path`/`pathLike`
-  # are one `pathWith` at `absolute = true` and at no constraint. Each gen type's parameters are a point
+  # `deferredModuleWith` with no `staticModules`, gen-types' `string` is `str`, `path`/`pathLike`
+  # are one `pathWith` at `absolute = true` and at no constraint, and gen-types' `number` is
+  # `either int float` (a row whose parameters are TYPES, `members`; `rowOver`). Each gen type's parameters are a point
   # of that richer payload, so the export publishes the functor under the richer name with the fixed
   # parameters beside the role's key, and a gen relation facing a partner under that name joins it in
   # the partner's own relation over the same embedding (`joinCarriedInStatedRelation`). A row with no
@@ -343,7 +344,7 @@ let
   # `mkOptionType`), so a name-keyed row served `enum "path" [ … ]` as nixpkgs' `path` with its own
   # check dropped. Every row is handed to the export (`types.nix` `defineEmbedded`) and to the
   # type's own relation by the gen-merge constructor that builds the type: the three container rows
-  # by `attrsOf`/`lazyAttrsOf`/`deferredModule`, and the three leaf rows by the completion of the
+  # by `attrsOf`/`lazyAttrsOf`/`deferredModule`, and the four leaf rows by the completion of the
   # leaf vocabulary (`default.nix` `completeExport`), which selects one by the MINT of the gen-types
   # leaf it completes (`embedsOf`; ADR-0034: a minted identity is consumable as a key). The
   # published `defineType` and `mkOptionType` hand none, so no caller-written record reaches a row:
@@ -387,17 +388,30 @@ let
         inStore = null;
       };
     };
+    number = {
+      name = "either";
+      joinsAs = "either";
+      members = [
+        "int"
+        "float"
+      ];
+    };
   };
   # The leaf rows by the digest of the leaf each stands for, bound once. A vocabulary lacking a leaf
-  # or minting none for it reaches no row through it.
+  # or minting none for it reaches no row through it, and neither does one lacking a row's MEMBER or
+  # minting none for it: the row is never formed, so the leaf publishes under its own name.
+  mintOfLeaf = k: (types.${k} or { }).__mint.minted or null;
   leafEmbeddings = builtins.listToAttrs (
     prelude.concatMap
       (
         k:
         let
-          d = (types.${k} or { }).__mint.minted or null;
+          d = mintOfLeaf k;
         in
-        if builtins.isString d then
+        if
+          builtins.isString d
+          && builtins.all (m: builtins.isString (mintOfLeaf m)) (embeddings.${k}.members or [ ])
+        then
           [
             {
               name = d;
@@ -411,8 +425,24 @@ let
         "string"
         "path"
         "pathLike"
+        "number"
       ]
   );
+  # A row whose parameters are TYPES (`members`: the vocabulary's leaves it is a union of) states
+  # them at the completion, over the completed leaves `completed`, under the alternatives role's
+  # payload key; every other row is its own. A members row therefore answers `? params` too, with
+  # parameters that are not data: every `? params` reader asks `? members` FIRST (`types.nix`
+  # `nullaryRel`, the export's `extrasAgree`), and that order is load-bearing, because the data join
+  # (`joinCarriedInStatedRelation`) aborts uncatchably on a member list.
+  rowOver =
+    completed: row:
+    if row != null && row ? members then
+      row
+      // {
+        params.${roleSpelling.alternatives.payloadKey} = map (k: completed.${k}) row.members;
+      }
+    else
+      row;
   # The functor names a row publishes (`attrsWith`, `deferredModuleWith`, `str`, `path`, …): a
   # completed record publishing none was completed under no row, so re-completing it loses nothing.
   rowFunctorNames = builtins.listToAttrs (
@@ -468,6 +498,38 @@ let
         r
       else
         null;
+  # A completed record's mint, `null` for any other: the leaf identity a row's TYPE-valued
+  # parameter is decided by (ADR-0034's MINTED regime), read under the completion stamp exactly as
+  # `embedsOf` reads a leaf's, so a raw `//` copy keeping its base's mark reaches none. The stamp
+  # detects a raw copy only: a copy RE-COMPLETED through `defineType` is stamped afresh and keeps its
+  # base's mint (den-hoag-59gnz, a gen-types identity question).
+  completedMintOf =
+    t:
+    let
+      d = (t.__mint or { }).minted or null;
+    in
+    if isAttrs t && builtins.isString d && builtins.isFunction (t.__typeSelf or null) && stampOk t then
+      d
+    else
+      null;
+  # Two member lists agree position by position, each pair by its minted identity; pointer
+  # equality is that regime's fast path (an equal record has an equal stamped mint), never a second
+  # regime. A member with no mint (a foreign leaf) agrees with none of gen's.
+  membersAgree =
+    xs: ys:
+    isList xs
+    && isList ys
+    && length xs == length ys
+    && prelude.all (
+      i:
+      let
+        x = elemAt xs i;
+        y = elemAt ys i;
+        dx = completedMintOf x;
+        dy = completedMintOf y;
+      in
+      x == y || (dx != null && dy != null && dx == dy)
+    ) (prelude.genList (i: i) (length xs));
   # The embedded payload: the role's key beside the embedding's fixed parameters. The one source for
   # the export's published payload and for the join (`joinCarriedInStatedRelation`).
   embeddedPayload =
@@ -4089,7 +4151,12 @@ let
         let
           embeds = if row != null then row else embedsOf t;
           extrasAgree =
-            p: builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames (embeds.params or { }));
+            p:
+            if embeds ? members then
+              membersAgree (p.${roleSpelling.alternatives.payloadKey} or null
+              ) embeds.params.${roleSpelling.alternatives.payloadKey}
+            else
+              builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames (embeds.params or { }));
         in
         {
           inherit payload;
@@ -4340,6 +4407,7 @@ in
     embeddedOffered
     embeddings
     embedsOf
+    rowOver
     completedUnderRow
     keyedUnderEmbedding
     moduleSetPayload
