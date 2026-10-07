@@ -556,7 +556,15 @@ let
   # `declaredPair earlier later` is ONE fold step, and it answers
   # `{ merged = <type>; }` or `{ refused = <reason-or-null>; earlier; later; }`:
   #   · VETO FIRST — an earlier gen-native relation (`typeMergeRel`) that refuses the later operand
-  #     is the answer, in that relation's own words. No later relation overrules it.
+  #     is the answer, in that relation's own words. No later relation overrules it. EXCEPT a refusal
+  #     stated `vetoes = false`: the relation's answer AS THE DECIDER, mirroring what its nixpkgs twin's
+  #     relation answers in the order where the twin decides (the leaf relation's payload refusal,
+  #     `lib/types.nix` `nullaryRel`). nixpkgs never asks the earlier operand, so neither does this
+  #     step: the later operand decides, and the refusal only names the pair where that relation
+  #     gives no join (a foreign relation's assert included, taken through `tryEval` on this path
+  #     alone, as `interface.joinInRebuiltPartner` takes one). A partner relation's own `throw` is
+  #     caught the same way, so it is reported in gen's words and the partner's are lost; an `abort`
+  #     is not caught and surfaces unchanged.
   #   · otherwise the LATER operand decides, `mergeTypes later earlier`, which is nixpkgs'
   #     `later.typeMerge earlier.functor` on a foreign pair.
   # Because the step is asked of the ACCUMULATED later type, a gen relation is asked about the type
@@ -571,16 +579,28 @@ let
       # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
       decidable = interface.importedDecidable earlier && interface.importedDecidable later;
       veto = if earlier ? typeMergeRel && decidable then earlier.typeMergeRel later else { };
-      m = if decidable then mergeTypesWithin later earlier else null;
+      # read only where the veto did not end the step, so a refusal seen here is one that defers
+      m =
+        if !decidable then
+          null
+        else if veto ? refused then
+          (
+            let
+              tried = builtins.tryEval (mergeTypesWithin later earlier);
+            in
+            if tried.success then tried.value else null
+          )
+        else
+          mergeTypesWithin later earlier;
     in
-    if veto ? refused then
+    if veto ? refused && (veto.vetoes or true) then
       {
         inherit (veto) refused;
         inherit earlier later;
       }
     else if m == null then
       {
-        refused = mergeTypesReason later earlier;
+        refused = veto.refused or (mergeTypesReason later earlier);
         inherit earlier later;
       }
     else

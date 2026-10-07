@@ -1425,8 +1425,13 @@ functor names) answers the protocol's default over that functor, which is the re
 answers in the order where it decides: a mixed `int`/`bool`/`float`/`raw`/`anything` redeclaration, bare
 or under `listOf`/`nullOr`, has nixpkgs' declared type in both orders and under both engines. It refuses
 nothing it did not refuse: the join is taken only where it keeps each operand's stated name, and a
-partner whose functor states a payload (nixpkgs `path`) or no `type` is answered by gen's own relation
-as before. The partner's own `typeMerge` is never called. Two stated scopes. **A pair nixpkgs refuses at
+partner whose functor states no `type` is answered by gen's own relation as before. The leaf relation
+never calls the partner's own `typeMerge`. **A same-keyed partner whose functor states a payload has the
+twin's answer in each order** (`interface.statesPayload`): where gen decides it is refused, as nixpkgs'
+default relation, which the twin states, asserts two leaves agree on a payload; where the partner is
+declared later, its own relation decides, as nixpkgs lets it, because that refusal states `vetoes = false` (below). Gen's own record would serve the pair with the partner's check dropped. Measured over
+the twin leaves bare and under `listOf`/`nullOr`/`attrsOf`, both engines; a partner stating no
+`payload` key at all, and a union (`either`/`oneOf`) over the leaf, are outside it. Two stated scopes. **A pair nixpkgs refuses at
 two definitions is refused np-first too** (`raw` at two equal or two list definitions, `anything` at two
 unequal lists; both engines), where gen's own record served it: that is nixpkgs' answer in the order
 where it decides. **`attrs` is a stated divergence**: gen's `attrs` fold refuses definitions that set
@@ -1499,7 +1504,12 @@ count, as nixpkgs does. Refusing it by name would mean refusing every stratum-2 
 
 **An earlier gen-native relation's refusal is never overruled.** Each fold step first asks the
 earlier operand's `typeMergeRel`, if it has one, about the type every later declaration jointly
-became; a refusal there is the answer. So `[gt.int, Fint, str]` refuses as nixpkgs does. The veto
+became; a refusal there is the answer. So `[gt.int, Fint, str]` refuses as nixpkgs does. The one
+exception is a refusal stated as the decider's answer alone (`vetoes = false`: the leaf relation's
+refusal of a same-keyed partner stating a payload, and a container's over such an element pair).
+nixpkgs never asks the earlier operand, so the later relation decides, and the refusal names the pair
+only where that relation gives no join; a partner relation's own `throw` is then reported in gen's
+words. The veto
 protects a gen relation against the type it is actually merged into. A foreign relation keeps the
 authority nixpkgs gives it except over a join that drops a name an operand states, authored or
 inherited, which refuses (below): `[gt.int, str, Fx]` with `Fx = str // { typeMerge = _: int; }`,

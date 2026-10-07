@@ -637,9 +637,11 @@ in
         hand = np.types.int // {
           typeMerge = _: null;
         };
-        # PIN OF THE PARTNER'S OWN DIVERGENCE (nixpkgs' own `int` beside it is order-dependent too). A
-        # partner named like the leaf whose functor republishes a differently named type: the join
-        # renames it, so it is not taken and the pair answers as it did before (`joinRenames`).
+        # A STATED DIVERGENCE (ADR-0025 item 1), not a gen defect: a partner named like the leaf whose
+        # functor republishes a differently named type. The join renames it, so it is not taken and the
+        # pair answers as it did before (`joinRenames`). Where nixpkgs' twin serves it (`np-o12`), it
+        # serves the partner's record, dropping a stricter check the partner might carry: gen cannot
+        # compare check closures, so serving this partner would serve its strict sibling silently.
         alias = np.types.mkOptionType {
           name = "int";
           description = "alias";
@@ -650,7 +652,9 @@ in
           };
         };
         # A raw foreign leaf whose functor omits `type`: the protocol's default would abort reading it,
-        # so the join is not taken and gen's own relation answers, as it did before (C1).
+        # so the join is not taken and gen's own relation answers, as it did before (C1). Where nixpkgs'
+        # twin serves it (`np-o12`) gen refuses, a STATED DIVERGENCE (ADR-0025 item 1): gen cannot compare
+        # check closures, so serving this partner would serve its strict sibling silently.
         notype = np.types.int // {
           functor = builtins.removeAttrs np.types.int.functor [ "type" ];
         };
@@ -813,6 +817,182 @@ in
             gm-o12 = "G v=1";
             gm-o21 = "REFUSED";
           };
+        };
+      };
+
+    # 1t2p5: a gen leaf beside a SAME-KEYED raw partner that STATES A PAYLOAD (`interface.statesPayload`).
+    # nixpkgs asks only the LATER declaration's relation, so the mixed pair has the twin's answer in each
+    # order, as the leaf relation's payload refusal decides without vetoing (`vetoes = false`):
+    #  - `pay`: a partner on nixpkgs' default relation, which asserts two leaves agree on a payload. The
+    #    twin refuses it in both orders and both engines, and so does the mixed pair. At 1cc1b25 the
+    #    partner-first rows served `v` (gen's engine every shape, nixpkgs' under a container), the
+    #    partner's check dropped unsaid (ADR-0025 item 1).
+    #  - `acc`: a partner whose OWN relation joins a payload-free leaf of its name, keeping itself. Gen
+    #    declared first, that relation decides and serves (the twin serves, keeping the partner's check);
+    #    partner first, gen decides as its twin does and refuses. A refusal there vetoing served nothing
+    #    in the gen-first order (spec v0's arm B).
+    #  - `control`: the same partner as `pay` stating no payload, served as the twin serves it, so a
+    #    relation refusing every declined same-key join cannot pass.
+    #  - `genOnly`: the gen leaves no nixpkgs leaf twins, beside a `pay` partner of their name: refused in
+    #    every row (no twin; ADR-0025 item 1 alone).
+    # `expected` is a LITERAL, and every `*Ref` (the gen side replaced by its nixpkgs twin, live) must
+    # equal it.
+    test-mixed-leaf-payload-partner-has-the-twin-answer =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalRequest;
+            mk = mkOption;
+          };
+        };
+        leaves = {
+          anything = 1;
+          bool = true;
+          float = 1.5;
+          int = 7;
+          raw = 1;
+        };
+        genOnly = {
+          any = 1;
+          list = [ 1 ];
+          never = null;
+          null = null;
+        };
+        shapes = {
+          bare = {
+            wrap = lib': ty: ty;
+            def = v: v;
+          };
+          list = {
+            wrap = lib': ty: lib'.listOf ty;
+            def = v: [ v ];
+          };
+          null = {
+            wrap = lib': ty: lib'.nullOr ty;
+            def = v: v;
+          };
+          attrs = {
+            wrap = lib': ty: lib'.attrsOf ty;
+            def = v: { k = v; };
+          };
+        };
+        partners = {
+          pay =
+            leaf: v:
+            np.mkOptionType {
+              name = leaf;
+              check = x: x != v;
+              merge = np.options.mergeEqualOption;
+              functor = np.types.defaultFunctor leaf // {
+                payload.strict = true;
+                binOp = _a: _b: null;
+              };
+            };
+          control =
+            leaf: v:
+            np.mkOptionType {
+              name = leaf;
+              check = x: x != v;
+              merge = np.options.mergeEqualOption;
+              functor = np.types.defaultFunctor leaf;
+            };
+          acc =
+            leaf: _v:
+            let
+              self = np.mkOptionType {
+                name = leaf;
+                check = _: true;
+                merge = np.options.mergeEqualOption;
+                functor = np.types.defaultFunctor leaf // {
+                  type = _: self;
+                  payload.refined = true;
+                  binOp = a: _b: a;
+                };
+                typeMerge =
+                  f':
+                  if f'.name == leaf && (f'.payload == null || f'.payload == { refined = true; }) then self else null;
+              };
+            in
+            self;
+        };
+        read =
+          eng: Ts: def:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            tried = builtins.tryEval (builtins.deepSeq r.config.x "served");
+          in
+          if tried.success then tried.value else "REFUSED";
+        table =
+          lib': kind: subjects: shapeNames:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  leaf:
+                  builtins.concatMap (
+                    shape:
+                    let
+                      s = shapes.${shape};
+                      v = subjects.${leaf};
+                      g = s.wrap lib' lib'.${leaf};
+                      p = s.wrap np.types (partners.${kind} leaf v);
+                      d = s.def v;
+                    in
+                    [
+                      {
+                        name = "${eng}-${leaf}-${shape}-genFirst";
+                        value = read eng [
+                          g
+                          p
+                        ] d;
+                      }
+                      {
+                        name = "${eng}-${leaf}-${shape}-partnerFirst";
+                        value = read eng [
+                          p
+                          g
+                        ] d;
+                      }
+                    ]
+                  ) shapeNames
+                ) (builtins.attrNames subjects)
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        all = builtins.attrNames shapes;
+        literal = f: tbl: builtins.mapAttrs (k: _: f k) tbl;
+        refused = literal (_: "REFUSED");
+        served = literal (_: "served");
+        byOrder = literal (k: if builtins.match ".*-genFirst" k != null then "served" else "REFUSED");
+      in
+      {
+        expr = {
+          pay = table t "pay" leaves all;
+          payRef = table np.types "pay" leaves all;
+          acc = table t "acc" leaves all;
+          accRef = table np.types "acc" leaves all;
+          control = table t "control" leaves all;
+          controlRef = table np.types "control" leaves all;
+          genOnly = table t "pay" genOnly [ "bare" ];
+        };
+        expected = {
+          pay = refused (table np.types "pay" leaves all);
+          payRef = refused (table np.types "pay" leaves all);
+          acc = byOrder (table np.types "acc" leaves all);
+          accRef = byOrder (table np.types "acc" leaves all);
+          control = served (table np.types "control" leaves all);
+          controlRef = served (table np.types "control" leaves all);
+          genOnly = refused (table t "pay" genOnly [ "bare" ]);
         };
       };
 
