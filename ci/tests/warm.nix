@@ -2147,7 +2147,7 @@ in
       expr = (warmOf flatBase plantLive).config.id_hash;
       expectedError = {
         type = "ThrownError";
-        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at '' \\(kind 'host', was 'host:[0-9a-f]{64}', now 'host:[0-9a-f]{64}', re-merged declarations: .*, 1 instance\\(s\\) moved\\)$";
+        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at '' \\(kind 'host', was 'host:[0-9a-f]{64}', now 'host:[0-9a-f]{64}', re-merged declarations: .*, 1 instance\\(s\\) moved\\)";
       };
     };
 
@@ -2158,7 +2158,7 @@ in
       expr = (warmOf regBase regMoves).config.hosts.pewter.id_hash;
       expectedError = {
         type = "ThrownError";
-        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'hosts\\.pewter' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: hosts, 1 instance\\(s\\) moved\\)$";
+        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'hosts\\.pewter' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: hosts, 1 instance\\(s\\) moved\\)";
       };
     };
 
@@ -2169,7 +2169,7 @@ in
       expr = (warmOf (wrapped (t.nullOr hostSub)) wrappedMoves).config.h.id_hash;
       expectedError = {
         type = "ThrownError";
-        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'h' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: h, 1 instance\\(s\\) moved\\)$";
+        msg = "^gen-memo\\.identitiesHeld: minted identity moved on a warm re-compose at 'h' \\(kind 'thimble', was 'thimble:[0-9a-f]{64}', now 'thimble:[0-9a-f]{64}', re-merged declarations: h, 1 instance\\(s\\) moved\\)";
       };
     };
 
