@@ -1189,11 +1189,14 @@ in
         };
       };
 
-    # n8cpq OQ-A: a COMPLETED gen-types leaf handed to the published `defineType` as it is (not a
-    # caller-named type) keeps its leaf row, as its name gave it before the re-key and as nixpkgs' twin
-    # (the leaf redeclared) serves: read off its mint under its completion stamp, which holds because
-    # a record already stating its relation is completed without a copy.
-    test-a-completed-leaf-through-defineType-keeps-its-row =
+    # n8cpq OQ-A: a COMPLETED gen type handed to the published `defineType` as it is (not a
+    # caller-named type) keeps its row, as its name gave it before the re-key and as nixpkgs' twin
+    # (the type redeclared) serves: completion is idempotent, so a record whose completion stamp holds
+    # is returned as it is, containers (`attrsOf`, `lazyAttrsOf`, `deferredModule`) included. A `//`
+    # copy restating only a name-carried field (the nixpkgs idiom `string // { description = …; }`)
+    # keeps its leaf row too, used as it is or re-completed; a copy replacing its predicate does not
+    # (`test-join-witness-reads-the-row-a-record-reaches`).
+    test-a-completed-type-through-defineType-keeps-its-row =
       let
         engines = {
           np = {
@@ -1226,17 +1229,34 @@ in
           gm-o12 = "served";
           gm-o21 = "served";
         };
+        described = t.string // {
+          description = "a described string";
+        };
       in
       {
         expr = {
           string = rowsOf (t.defineType t.string) np.types.str "s";
           path = rowsOf (t.defineType t.path) np.types.path "/s";
           stringBesideGen = rowsOf (t.defineType t.string) t.string "s";
+          attrsOf = rowsOf (t.defineType (t.attrsOf t.int)) (np.types.attrsOf np.types.int) { k = 1; };
+          lazyAttrsOf = rowsOf (t.defineType (t.lazyAttrsOf t.int)) (np.types.lazyAttrsOf np.types.int) {
+            k = 1;
+          };
+          deferredModule = rowsOf (t.defineType t.deferredModule) np.types.deferredModule { };
+          attrsOfBesideGen = rowsOf (t.defineType (t.attrsOf t.int)) (t.attrsOf t.int) { k = 1; };
+          describedCopy = rowsOf described np.types.str "s";
+          describedCopyDefined = rowsOf (t.defineType described) np.types.str "s";
         };
         expected = {
           string = served;
           path = served;
           stringBesideGen = served;
+          attrsOf = served;
+          lazyAttrsOf = served;
+          deferredModule = served;
+          attrsOfBesideGen = served;
+          describedCopy = served;
+          describedCopyDefined = served;
         };
       };
 
