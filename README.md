@@ -1766,8 +1766,8 @@ served as nixpkgs serves it. **The price, stated as an extension of the overridd
 below:** the step is trusted from the functor names, while the run still says which tree sits at
 which key. A stock-named lazy `attrsWith` whose `merge` does not fold each element at its own key
 (one key deeper, keys renamed or swapped) is refused by name at the key read, where nixpkgs serves
-it; one that only duplicates or drops a key's tree serves nixpkgs' value. **Not reached (ADR-0025
-item 1, enumerated):** a second step below the lazy `attrsWith` (`uniq (lazyAttrsOf (lazyAttrsOf e))`, `uniq (lazyAttrsOf (attrsOf e))`, `uniq (lazyAttrsOf (listOf e))`, `uniq (lazyAttrsOf (nullOr e))`, a bare placeholder `attrsWith { lazy = true; }` over `lazyAttrsOf e`) still aborts there with a
+it; one that only duplicates or drops a key's tree serves nixpkgs' value. **Not reached, and stated as a
+shortfall:** a second step below the lazy `attrsWith` (`uniq (lazyAttrsOf (lazyAttrsOf e))`, `uniq (lazyAttrsOf (attrsOf e))`, `uniq (lazyAttrsOf (listOf e))`, `uniq (lazyAttrsOf (nullOr e))`, a bare placeholder `attrsWith { lazy = true; }` over `lazyAttrsOf e`) still aborts there with a
 sibling reading the read tree, where nixpkgs serves.
 
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
