@@ -3353,12 +3353,20 @@ let
   #    modules). A witnessed rewrite dropped there is refused by the step before this is asked
   #    (`lib/modules.nix` `mergeTypesBy`); a foreign wrapper's check is carried by the declaration
   #    list's fixup (`carriedAtDepth`).
-  #  - A FRESH join (neither operand) of the SAME constructor that changes an operand's own PARAMETERS
-  #    (its functor payload less the roles it carries) is that constructor's law over them, as nixpkgs'
-  #    `enum` unions its values: that operand is owed RELATIVISED to its own parameters, `v: o.check v
-  #    || !(stock o).check v`, where `stock o` is its constructor rebuilt from its functor
-  #    (`__stockCheck`, read inline by `meetOf`). A wrapper's check is not in `stock o`, so it stays
-  #    owed, while the union holds. A nullary operand states none.
+  #  - A FRESH join (neither operand) of the SAME constructors that changes an operand's own PARAMETERS
+  #    is those constructors' law over them, as nixpkgs' `enum` unions its values: that operand is owed
+  #    RELATIVISED to its own parameters, `v: o.check v || !(stock o).check v`, where `stock o` is its
+  #    constructor rebuilt from its functor (`__stockCheck`, read inline by `meetOf`). A wrapper's check
+  #    is not in `stock o`, so it stays owed, while the union holds. The parameters are a TREE (den-hoag-
+  #    kbiu2): each node's functor payload less the roles it carries, and its elements' trees, so
+  #    `nullOr (enum [a])`, `unique`, `either` and `oneOf` over an enum widen as the bare enum does. The
+  #    trees must name the same constructors at every node, and a node where they differ must state the
+  #    operand's parameters: a nullary node states none, and a join that changes one changes the
+  #    operand's check, which is then owed whole. A wrapper BELOW the top is not in `stock o`'s top
+  #    node but is met at its own depth, where the join's roles are met (`rolesMet`, lib/modules.nix).
+  #    This is sound only because the join's elements are themselves met, so a tree's elements are
+  #    exactly the roles `rolesMet` meets, as `carriedAt` reads them (an element type, or a PAIR of
+  #    alternatives): a member the meet does not meet is never released by the tree.
   #  - One value declared twice owes its check once.
   # Every binding is local, so the library's load pays for this one lambda alone.
   metWith =
@@ -3373,26 +3381,58 @@ let
           || !(m ? typeMergeRel)
           || (o ? _checkWitness && o ? check && o.check != o._checkWitness);
         same = x: y: closuresFirst [ x ] x == closuresFirst [ y ] y;
-        paramsOf =
-          t:
-          let
-            p = (t.functor or { }).payload or null;
-          in
-          if isAttrs p then
-            builtins.removeAttrs p [
-              "elemType"
-              "modules"
-            ]
+        # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
+        # alternatives; any other `elemType` states no element of the tree
+        elementsOf =
+          p:
+          if isAttrs p && p ? elemType then
+            (
+              if isList p.elemType then
+                (if length p.elemType == 2 then p.elemType else [ ])
+              else if isAttrs p.elemType then
+                [ p.elemType ]
+              else
+                [ ]
+            )
           else
-            { };
+            [ ];
+        # the parameter TREE: each constructor's name and payload less its roles, and its elements' trees
+        # (an element's parameters are its container's: `nullOr (enum [a])` is parameterised by `[a]`).
+        # Past the walk's fuel a tree states nothing more, so a change that deep is owed whole.
+        shapeOf =
+          fuel: t:
+          let
+            f = t.functor or { };
+            p = f.payload or null;
+          in
+          {
+            n = f.name or null;
+            p =
+              if isAttrs p then
+                builtins.removeAttrs p [
+                  "elemType"
+                  "modules"
+                ]
+              else
+                { };
+            e = if fuel == 0 then [ ] else map (shapeOf (fuel - 1)) (elementsOf p);
+          };
+        # the same constructor at every node, and every node where the trees differ is one where the
+        # operand states parameters: a nullary node has none for a law to widen, so a join that changes
+        # it changes the operand's check (owed whole)
+        widensAt =
+          a: b:
+          a.n == b.n
+          && length a.e == length b.e
+          && (a.p == b.p || a.p != { })
+          && builtins.all (i: widensAt (elemAt a.e i) (elemAt b.e i)) (builtins.genList (i: i) (length a.e));
+        sm = shapeOf importedTypeWalkFuel m;
         widens =
           o:
           let
-            po = paramsOf o;
+            so = shapeOf importedTypeWalkFuel o;
           in
-          po != { }
-          && ((m.functor or { }).name or null) == ((o.functor or { }).name or null)
-          && po != paramsOf m;
+          so != sm && widensAt so sm;
         maybe = filter mayOwe os;
         notM = filter (o: !(same m o)) maybe;
         fresh = builtins.all (o: !(same m o)) os;

@@ -1599,7 +1599,11 @@ The join still decides the record (its fold, name and functor, nixpkgs' later op
 decides acceptance, a lower bound by induction over the fold. A gen x gen step owes nothing and is
 answered before the meet is built. A fresh join that widens a constructor's own parameters keeps that
 constructor's law over them (two `enum`s union their values), and each operand stays owed for the
-values its own parameters admit, so a wrapper over an `enum` is kept. The step sits in `mergeTypes`, so
+values its own parameters admit, so a wrapper over an `enum` is kept. A container's element is one of
+its parameters, read as the meet reads its roles (an element type, or a pair of alternatives), so
+`nullOr`, `uniq`/`unique`, `either` and `oneOf` over an `enum`, and their nests, union as the bare
+`enum` does, a gen `enum` under them included; a foreign union of three members is not a pair the meet
+reaches, and its operand stays owed whole. The step sits in `mergeTypes`, so
 the declaration and freeform planes, every container's element relation and the published
 `genMerge.mergeTypes` all answer it. **One wrapped value declared twice keeps its operand**:
 `w = addCheck int p` declared as `[w, w]`, or as two `listOf w`, merges to `w` and rejects what `p`

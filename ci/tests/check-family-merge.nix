@@ -459,6 +459,260 @@ in
         };
       };
 
+    # AN ENUM UNDER A STEP-FREE WRAPPER FOLDS TO THE UNION (`interface.metWith`'s `widens`, which reads
+    # the whole parameter tree; den-hoag-kbiu2). Two nixpkgs `nullOr`, `uniq` or `either` declarations over
+    # one-member enums are relativised to their own parameters as the bare enums are, so each member is
+    # served in both orders, as nixpkgs serves it, and a value in no member is still rejected. Under a
+    # step (`listOf`) the element level reaches the same union. A wrapper under the `nullOr` stays owed:
+    # its rejected member is rejected, and the members it admits are served.
+    test-an-enum-under-a-step-free-wrapper-folds-to-the-union =
+      let
+        ea = t.enum [ "a" ];
+        eb = t.enum [ "b" ];
+        ec = t.enum [ "c" ];
+        w = t.addCheck (t.enum [
+          "a"
+          "b"
+        ]) (v: v != "a");
+        both = W: v: [
+          (ev [ (W ea) (W eb) ] v)
+          (ev [ (W eb) (W ea) ] v)
+        ];
+        eitherInt = x: t.either x t.int;
+      in
+      {
+        expr = {
+          nullOrA = both t.nullOr "a";
+          nullOrB = both t.nullOr "b";
+          nullOrNull = both t.nullOr null;
+          nullOrZ = both t.nullOr "z";
+          uniqB = both t.uniq "b";
+          eitherB = both eitherInt "b";
+          eitherZ = both eitherInt "z";
+          nestedB = both (x: t.listOf (t.nullOr x)) [ "b" ];
+          wrappedA = ev [ (t.nullOr w) (t.nullOr ec) ] "a";
+          wrappedB = ev [ (t.nullOr w) (t.nullOr ec) ] "b";
+          wrappedC = ev [ (t.nullOr ec) (t.nullOr w) ] "c";
+        };
+        expected = {
+          nullOrA = [
+            "MERGED nullOr / ACCEPTED"
+            "MERGED nullOr / ACCEPTED"
+          ];
+          nullOrB = [
+            "MERGED nullOr / ACCEPTED"
+            "MERGED nullOr / ACCEPTED"
+          ];
+          nullOrNull = [
+            "MERGED nullOr / ACCEPTED"
+            "MERGED nullOr / ACCEPTED"
+          ];
+          nullOrZ = [
+            "MERGED nullOr / REJECTED"
+            "MERGED nullOr / REJECTED"
+          ];
+          uniqB = [
+            "MERGED unique / ACCEPTED"
+            "MERGED unique / ACCEPTED"
+          ];
+          eitherB = [
+            "MERGED either / ACCEPTED"
+            "MERGED either / ACCEPTED"
+          ];
+          eitherZ = [
+            "MERGED either / REJECTED"
+            "MERGED either / REJECTED"
+          ];
+          nestedB = [
+            "MERGED listOf / ACCEPTED"
+            "MERGED listOf / ACCEPTED"
+          ];
+          wrappedA = "MERGED nullOr / REJECTED";
+          wrappedB = "MERGED nullOr / ACCEPTED";
+          wrappedC = "MERGED nullOr / ACCEPTED";
+        };
+      };
+
+    # A GEN ENUM UNDER A NIXPKGS WRAPPER FOLDS TO THE UNION (den-hoag-kbiu2 over n8cpq item 2): a gen
+    # enum completed under nixpkgs' `enum` row, wrapped by each step-free nixpkgs wrapper and their nests
+    # beside the same wrapper over a nixpkgs enum, serves both members in both orders, as nixpkgs serves
+    # the all-nixpkgs pair. A value in neither member is still rejected.
+    test-a-gen-enum-under-a-nixpkgs-wrapper-folds-to-the-union =
+      let
+        both = W: v: [
+          (ev [
+            (W.w (gt.enum "e1" [ "a" ]))
+            (W.w (t.enum [ "b" ]))
+          ] (W.put v))
+          (ev [
+            (W.w (t.enum [ "b" ]))
+            (W.w (gt.enum "e1" [ "a" ]))
+          ] (W.put v))
+        ];
+        two = x: [
+          x
+          x
+        ];
+        id = x: x;
+        ws = {
+          nullOr = {
+            n = "nullOr";
+            w = t.nullOr;
+            put = id;
+          };
+          uniq = {
+            n = "unique";
+            w = t.uniq;
+            put = id;
+          };
+          unique = {
+            n = "unique";
+            w = t.unique { message = "m"; };
+            put = id;
+          };
+          eitherL = {
+            n = "either";
+            w = x: t.either x t.int;
+            put = id;
+          };
+          eitherR = {
+            n = "either";
+            w = t.either t.int;
+            put = id;
+          };
+          oneOf = {
+            n = "either";
+            w =
+              x:
+              t.oneOf [
+                x
+                t.int
+              ];
+            put = id;
+          };
+          nullOrNullOr = {
+            n = "nullOr";
+            w = x: t.nullOr (t.nullOr x);
+            put = id;
+          };
+          nullOrUniq = {
+            n = "nullOr";
+            w = x: t.nullOr (t.uniq x);
+            put = id;
+          };
+          uniqNullOr = {
+            n = "unique";
+            w = x: t.uniq (t.nullOr x);
+            put = id;
+          };
+          listOfNullOr = {
+            n = "listOf";
+            w = x: t.listOf (t.nullOr x);
+            put = v: [ v ];
+          };
+          attrsOfNullOr = {
+            n = "attrsOf";
+            w = x: t.attrsOf (t.nullOr x);
+            put = v: { k = v; };
+          };
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: W: {
+          a = both W "a";
+          b = both W "b";
+          z = both W "z";
+        }) ws;
+        expected = builtins.mapAttrs (_: W: {
+          a = two "MERGED ${W.n} / ACCEPTED";
+          b = two "MERGED ${W.n} / ACCEPTED";
+          z = two "MERGED ${W.n} / REJECTED";
+        }) ws;
+      };
+
+    # A TREE'S ELEMENTS ARE THE ROLES THE MEET MEETS (`interface.metWith`'s `elementsOf`, as `carriedAt`
+    # reads them): a foreign union of THREE members is not a pair the role meet reaches, so its members
+    # state no element of the tree and the operand is owed whole. Its strict third member (positive ints,
+    # beside nixpkgs' `int`) keeps rejecting -5 in both orders, while member 1 widens; a constructor whose
+    # `functor.type` takes the member list is judged the same way. The two-member `either` beside the same
+    # strict member is the control the role meet does reach.
+    test-a-three-member-union-is-owed-whole-beside-a-widening-member =
+      let
+        dF = t.defaultFunctor;
+        tri =
+          ty: ts:
+          nixpkgsLib.mkOptionType {
+            name = "tri";
+            check = v: builtins.any (x: x.check v) ts;
+            merge = nixpkgsLib.options.mergeEqualOption;
+            functor = dF "tri" // {
+              type = ty;
+              payload.elemType = ts;
+              binOp = _: _: null;
+            };
+            typeMerge =
+              f:
+              if f.name != "tri" then
+                null
+              else
+                let
+                  ms = builtins.genList (
+                    i: (builtins.elemAt ts i).typeMerge (builtins.elemAt f.payload.elemType i).functor
+                  ) 3;
+                in
+                if builtins.any (m: m == null) ms then null else tri ty ms;
+          };
+        triP = tri (p: triP p.elemType);
+        triL = tri triL;
+        sInt = nixpkgsLib.mkOptionType {
+          name = "int";
+          check = v: builtins.isInt v && v > 0;
+          merge = nixpkgsLib.options.mergeEqualOption;
+        };
+        both = a: b: v: [
+          (ev [ a b ] v)
+          (ev [ b a ] v)
+        ];
+        pair =
+          T:
+          both
+            (T [
+              (t.enum [ "a" ])
+              t.str
+              sInt
+            ])
+            (T [
+              (t.enum [ "b" ])
+              t.str
+              t.int
+            ]);
+        two = x: [
+          x
+          x
+        ];
+        either2 = both (t.either (t.enum [ "a" ]) sInt) (t.either (t.enum [ "b" ]) t.int);
+      in
+      {
+        expr = {
+          triNeg = pair triP (-5);
+          triPos = pair triP 7;
+          triB = pair triP "b";
+          listTypeNeg = pair triL (-5);
+          listTypePos = pair triL 7;
+          either2Neg = either2 (-5);
+          either2B = either2 "b";
+        };
+        expected = {
+          triNeg = two "MERGED tri / REJECTED";
+          triPos = two "MERGED tri / ACCEPTED";
+          triB = two "MERGED tri / ACCEPTED";
+          listTypeNeg = two "MERGED tri / REJECTED";
+          listTypePos = two "MERGED tri / ACCEPTED";
+          either2Neg = two "MERGED either / REJECTED";
+          either2B = two "MERGED either / ACCEPTED";
+        };
+      };
+
     # CONTROL: one wrapped value declared twice is one value, so it keeps its operand and its check:
     # the value the wrapper accepts is served and the one it refuses is rejected by the carried check.
     # Two separate containers over one shared wrapped element are the same case one level down.
