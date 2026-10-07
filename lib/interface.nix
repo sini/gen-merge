@@ -582,26 +582,6 @@ let
     else
       null;
 
-  # The `headError` an exported gen type answers through `merge.v2`: the published `check` over each
-  # definition, then the record's head judgement. Under v2, nixpkgs' `mergeDefinitions` reads only
-  # this, never `check`, so the pointwise half is what keeps a gen leaf verified there.
-  exportedHeadError =
-    t: check: loc: defs:
-    let
-      bad = filter (d: !(check d.value)) defs;
-      judged = t.mergeDefs.headJudge loc defs;
-    in
-    if bad != [ ] then
-      {
-        message = "Definition values: ${
-          concatStringsSep ", " (map (d: "`${toString (d.file or "<def>")}'") bad)
-        }";
-      }
-    else if t ? mergeDefs.headJudge && judged != null then
-      { message = judged; }
-    else
-      null;
-
   # The value predicate, as a gen-shaped one. A gen leaf's own `check` is CURRIED and must never be
   # applied as `v -> bool`, which is why `verify` is preferred rather than merely tried first.
   importedAdmits =
@@ -3383,9 +3363,12 @@ let
         #
         # It answers nixpkgs' `merge.v2` too, as nixpkgs' own `either`, `nullOr` and `addCheck` do
         # (den-hoag-c2z7q), so a nixpkgs union holding a gen type asks it for its `headError`
-        # (`exportedHeadError`) rather than judging it by `check` alone, and takes the next member
-        # where gen's own fold would refuse the definitions whole. The functor calls the fold
-        # directly, so a caller applying `merge` pays no judgement.
+        # rather than judging it by `check` alone, and takes the next member where gen's own fold
+        # would refuse the definitions whole. The `headError` is the published `check` over each
+        # definition, then the record's head judgement: under v2, nixpkgs' `mergeDefinitions`
+        # reads only this, never `check`, so the pointwise half is what keeps a gen leaf verified
+        # there. The functor calls the fold directly, so a caller applying `merge` pays no
+        # judgement, and the judgement is written inside `v2`, so a type nothing asks pays nothing.
         merge =
           let
             fold = if !(t ? mergeDefs) then leafFold else bridged t.mergeDefs;
@@ -3395,7 +3378,21 @@ let
             v2 =
               { loc, defs }:
               {
-                headError = exportedHeadError t check loc defs;
+                headError =
+                  let
+                    bad = filter (d: !(check d.value)) defs;
+                    judged = t.mergeDefs.headJudge loc defs;
+                  in
+                  if bad != [ ] then
+                    {
+                      message = "Definition values: ${
+                        concatStringsSep ", " (map (d: "`${toString (d.file or "<def>")}'") bad)
+                      }";
+                    }
+                  else if t ? mergeDefs.headJudge && judged != null then
+                    { message = judged; }
+                  else
+                    null;
                 value = fold loc defs;
                 valueMeta = { };
               };
