@@ -1829,7 +1829,10 @@ stated as an extension of the overridden-merge price below:** the steps are trus
 functor names at each lazy level, while the run still says which tree sits at which key. A
 stock-named lazy `attrsWith` whose `merge` does not fold each element at its own key (one key
 deeper, keys renamed or swapped, or a key holding no element's tree) is refused by name at the key
-read, where nixpkgs serves it; one that only duplicates or drops a key's tree serves nixpkgs' value,
+read, where nixpkgs serves it. Below a container node it is refused where an element below the key
+is read, at that key, so a read of the key's record that reaches no element serves; where the key's
+value is the element itself (`nullOr` directly over it), a read of that value reads the element and
+is refused. One that only duplicates or drops a key's tree serves nixpkgs' value,
 and one whose result is not an attribute set keeps the eager walk. A node's regime is trusted from
 its record's name the same way: a stock-named `attrsOf`, `listOf` or `nullOr` whose `merge` was
 overridden to a lazy one is keyed exactly. **Not reached, and stated as a shortfall:** a lazy step

@@ -2150,8 +2150,9 @@ let
       # own key (`siteLocAt`, and below a node, under the node's key), in the split and in the fold.
       # So a chain whose stock-named lazy `attrsWith` has a merge that does not fold each element at
       # `loc ++ [ k ]` (one key deeper, keys renamed or swapped, or a key holding no element's tree)
-      # is refused by name at the key read (`statedStepRefusal`, and `nodeStepRefusal` where the key
-      # holds a node), where base and nixpkgs serve it; one that only duplicates or drops a key's
+      # is refused by name at the key read (`statedStepRefusal`; where the key holds a node,
+      # `nodeStepRefusal`, raised where an element below the key is read, at the key), where base
+      # and nixpkgs serve it; one that only duplicates or drops a key's
       # tree serves nixpkgs' value, and one whose result is not an attrset keeps the eager walk. The
       # same trust reaches a node's REGIME: a node keys its elements exactly where its stated
       # record's NAME says it does (`keysExactly`), so a stock-named `attrsOf`, `listOf` or `nullOr`
@@ -2310,11 +2311,46 @@ let
       finishAt =
         lv: base: rB: ev: v:
         if lv != null && lv ? node && isAttrs rB && isAttrs v then
-          prelude.mapAttrs (k: x: finishAt lv.next (base ++ [ k ]) (rB.${k} or null) ev x) v
+          prelude.mapAttrs (
+            k: x:
+            if lv.next != null then
+              finishAt lv.next (base ++ [ k ]) (rB.${k} or null) ev x
+            else
+              heldAt lv base rB k (rB.${k} or null) x
+          ) v
         else if lv != null && lv ? one && isAttrs rB then
           keyedWhereRead base rB v
         else
           v;
+      # The value read at key `k` of a `node` level whose record is not itself a level, checked where
+      # each element is read (`keyedWhereRead`'s rule, one record further down): walked beside `r`,
+      # the capture fold's result at `k`, an element's tree is served where its site was folded
+      # under `k`, or under a key `m` that holds its own tree (every site of `m`'s sits under `m`);
+      # otherwise the read refuses at `k`. A read that reaches no element reads no site, so it
+      # forces what nixpkgs forces for it.
+      heldAt =
+        lv: base: rB: k: r: x:
+        if isAttrs r then
+          if r ? __genTSite then
+            let
+              l = r.__genTSite.loc;
+              n = length base;
+              m = if length l > n && builtins.genList (elemAt l) n == base then elemAt l n else null;
+            in
+            if
+              m == k || (m != null && rB ? ${m} && all (s: under (base ++ [ m ]) s.loc != null) (sitesOf rB.${m}))
+            then
+              x
+            else
+              throw (nodeStepRefusal door (base ++ [ k ]) t lv.node)
+          else if isAttrs x && !(r ? __genTEmpty) then
+            prelude.mapAttrs (j: heldAt lv base rB k (r.${j} or null)) x
+          else
+            x
+        else if isList r && isList x && length r == length x then
+          builtins.genList (i: heldAt lv base rB k (elemAt r i) (elemAt x i)) (length x)
+        else
+          x;
       # The threaded fold's result, read at key `k`, holds the tree folded at the site found there,
       # and that site must be its own key's (`loc ++ [ k' ]`, held at `k'`), or the empty value of a
       # key with none; a merge that duplicates or drops a key's tree passes, one that moves it

@@ -1346,4 +1346,246 @@ in
         expected.x = true;
       };
     };
+
+  # den-hoag-q6d1z: the read check at a node level serves a key whose tree is another key's, where
+  # that key holds its own tree, as nixpkgs does (a duplicate, a graft below a new key).
+  flake.tests.nesting-keys-foreign-chain-read-key =
+    let
+      sub = t.submodule {
+        options.a = gm.mkOption {
+          type = t.int;
+          default = 0;
+        };
+      };
+      cfgOf =
+        g: m:
+        (gm.evalModuleTree { } [
+          {
+            options.s = gm.mkOption {
+              type = np.uniq (
+                let
+                  a = np.lazyAttrsOf (np.attrsOf (t.attrsOf sub));
+                in
+                a
+                // {
+                  merge = loc: defs: g (a.merge loc defs);
+                  substSubModules =
+                    m:
+                    let
+                      r = a.substSubModules m;
+                    in
+                    r // { merge = loc: defs: g (r.merge loc defs); };
+                }
+              );
+            };
+          }
+          m
+        ]).config.s;
+      two = {
+        s.foo.j.k.a = 1;
+        s.bar.j.k.a = 2;
+      };
+    in
+    {
+      test-a-key-serving-a-duplicate-of-another-keys-tree-reads-it = {
+        expr = (cfgOf (r: r // { bar = r.foo; }) two).bar.j.k.a;
+        expected = 1;
+      };
+      test-a-key-serving-another-keys-tree-below-a-new-key-reads-it = {
+        expr =
+          (cfgOf (
+            r:
+            r
+            // {
+              foo = r.foo // {
+                g = r.bar.j;
+              };
+            }
+          ) two).foo.g.k.a;
+        expected = 2;
+      };
+      # the read reaches no element, so a swapped key's own record serves, as nixpkgs serves it
+      test-a-swapped-keys-record-names-its-keys-where-no-element-is-read = {
+        expr =
+          builtins.attrNames
+            (cfgOf (
+              r:
+              r
+              // {
+                foo = r.bar;
+                bar = r.foo;
+              }
+            ) two).foo;
+        expected = [ "j" ];
+      };
+    };
+
+  # den-hoag-q6d1z: a read of a node's record that reaches no element forces only what nixpkgs
+  # forces for it, so a sibling one lazy step below, `mkIf` on the read tree, is not forced (a
+  # stock merge; a strict `attrsOf`, a `listOf` or a `nullOr` over a lazy step).
+  flake.tests.nesting-keys-foreign-chain-read-shape =
+    let
+      sub = t.submodule {
+        options.a = gm.mkOption {
+          type = t.int;
+          default = 0;
+        };
+      };
+      cfgOf =
+        rec_: m:
+        (gm.evalModuleTree { } [
+          {
+            options.s = gm.mkOption {
+              type = np.uniq (np.lazyAttrsOf (rec_ (np.lazyAttrsOf (t.attrsOf sub))));
+            };
+          }
+          m
+        ]).config.s;
+      mk =
+        { config, ... }:
+        {
+          s.foo.j.x.k.a = 1;
+          s.foo.j.y = gm.mkIf (config.s.foo.j.x.k.a == 1) { k.a = 5; };
+        };
+    in
+    {
+      test-a-strict-records-keys-read-without-its-lazy-siblings = {
+        expr = builtins.attrNames (cfgOf np.attrsOf mk).foo;
+        expected = [ "j" ];
+      };
+      test-a-lazy-record-below-a-strict-one-names-its-keys-without-forcing-them = {
+        expr = builtins.attrNames (cfgOf np.attrsOf mk).foo.j;
+        expected = [
+          "x"
+          "y"
+        ];
+      };
+      test-a-lists-length-read-without-its-lazy-siblings = {
+        expr =
+          builtins.length
+            (cfgOf np.listOf (
+              { config, ... }:
+              {
+                s.foo = [
+                  {
+                    x.k.a = 1;
+                    y = gm.mkIf ((builtins.elemAt config.s.foo 0).x.k.a == 1) { k.a = 5; };
+                  }
+                ];
+              }
+            )).foo;
+        expected = 1;
+      };
+      test-a-null-or-records-keys-read-without-its-lazy-siblings = {
+        expr =
+          builtins.attrNames
+            (cfgOf np.nullOr (
+              { config, ... }:
+              {
+                s.foo.x.k.a = 1;
+                s.foo.y = gm.mkIf (config.s.foo.x.k.a == 1) { k.a = 5; };
+              }
+            )).foo;
+        expected = [
+          "x"
+          "y"
+        ];
+      };
+    };
+
+  # den-hoag-q6d1z: the reads of a foreign chain below a node whose merge reshapes what each key
+  # holds (`_fixtures/foreign-chain-reshaped.nix`) that serve, each the value nixpkgs serves. Their
+  # refused twins are `testsError.nesting-keys-foreign-chain-reshaped`.
+  flake.tests.nesting-keys-foreign-chain-reshaped =
+    let
+      fx = import ./_fixtures/foreign-chain-reshaped.nix { inherit gm nixpkgsLib; };
+    in
+    nixpkgsLib.mapAttrs'
+      (
+        n: expected:
+        nixpkgsLib.nameValuePair "test-${n}" {
+          expr = fx.readOf fx.cells.${n};
+          inherit expected;
+        }
+      )
+      {
+        swapTopNames = [
+          "bar"
+          "foo"
+        ];
+        dupFoo = 1;
+        dupKd = 1;
+        dupSelf = 1;
+        graftBar = 2;
+        stockAll = {
+          bar = {
+            j = {
+              k = {
+                a = 2;
+              };
+            };
+          };
+          baz = {
+            j = {
+              k = {
+                a = 3;
+              };
+            };
+          };
+          foo = {
+            j = {
+              k = {
+                a = 1;
+              };
+            };
+          };
+        };
+        kdStock = 2;
+        swap3FooJNames = [ "j" ];
+        deep7SwapNames = [ "j" ];
+        deep7Stock = 1;
+        deep8SwapNames = [ "i" ];
+        deep8Stock = 1;
+        strictLazyMkTop = [ "foo" ];
+        twoNmTop = [
+          "bar"
+          "foo"
+        ];
+        stockNNames = [ "k" ];
+        dupNNames = [ "k" ];
+        rmJNames = [ "j2" ];
+        rmJLeaf = 3;
+        filtKeyLeaf = 1;
+        filtKeyTop = [ "foo" ];
+        toListLen = 2;
+        toListLeaf = 2;
+        addConstLeaf = 9;
+        addConstFoo = 1;
+        inDupLeaf = 1;
+        inDupNames = [
+          "j"
+          "j2"
+        ];
+        mapValTop = [
+          "bar"
+          "foo"
+        ];
+        catLLen = 3;
+        catL1 = 2;
+        revLBar0 = 3;
+        swapLLen = 2;
+        stockLmkLen = 1;
+        mixLen = [
+          1
+          2
+        ];
+        mix11 = 3;
+        mixDropLen = [ 2 ];
+        mixDrop01 = 3;
+        mixSwapLen = [
+          2
+          1
+        ];
+        mixSwap01 = 3;
+      };
 }
