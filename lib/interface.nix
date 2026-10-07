@@ -1885,29 +1885,35 @@ let
       );
       # ── A CHAIN KEYED BY ITS STATED STEPS (den-hoag-fozin, den-hoag-rlskz; ADR-0039's serve half,
       # ADR-0025 item 1) ─
-      # A LEVEL is a chain of step-free wrappers (`unique`, `coercedTo`), then ONE lazy `attrsWith`
-      # (any placeholder). Below it sits either
-      #   · step-free wrappers, then a gen element that may nest (`one`, den-hoag-fozin): the
-      #     functors state every capture site sits one key below the fold's result, so the split
-      #     keys the result's attribute names, which forces no element, and reads a site only when
-      #     its element is read;
-      #   · any other record that may nest (`node`, den-hoag-rlskz): the functors state each key
-      #     holds that record's fold, so each key is a CONTAINER NODE whose own walk is the record's
-      #     level, read off the fold's result at that key only, and whose value is this chain's fold
-      #     read at that key. A key's siblings are never forced to key it, as nixpkgs forces an
-      #     element only where it is read. The node keys its elements in the regime of the record
-      #     its step states (`keysExactly`), as that record keys them in gen's own walk.
-      # Off a level (`null`) the eager `sitesOf` walk stays.
+      # A LEVEL is a chain of step-free wrappers (`unique`, `coercedTo`, `nullOr`: each folds its
+      # element at its own loc, as gen's `nullOr` states with `forward = null`), then ONE
+      # `attrsWith` step (any placeholder, lazy or strict). Below it sits either
+      #   · on a LAZY step, step-free wrappers, then a gen element that may nest (`one`,
+      #     den-hoag-fozin): the functors state every capture site sits one key below the fold's
+      #     result, so the split keys the result's attribute names, which forces no element, and
+      #     reads a site only when its element is read;
+      #   · on either step, any other record that may nest (`node`, den-hoag-rlskz, den-hoag-i01nx):
+      #     the functors state each key holds that record's fold, so each key is a CONTAINER NODE
+      #     whose own walk is the record's level, read off the fold's result at that key only, and
+      #     whose value is this chain's fold read at that key. A key's siblings are never forced to
+      #     key it, as nixpkgs forces an element only where it is read: a strict step's key set
+      #     forces each key's definitions, as nixpkgs' does, and never a key's own tree. The node
+      #     keys its elements in the regime of the record whose step it splits by (`keysExactly`),
+      #     as that record keys them in gen's own walk.
+      # A strict step over a gen element is not a level: the eager walk reads each key's capture
+      # site, which forces what nixpkgs' strict merge forces and no more, and the run stays the
+      # authority there. Off a level (`null`) the eager `sitesOf` walk stays.
       #
-      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated; den-hoag-i01nx): a lazy step reached
-      # through a record that is not a level is off the domain, and still aborts uncatchably where
-      # nixpkgs serves with a sibling reading the read tree: `uniq` (or `coercedTo`) over `nullOr`
-      # over a lazy step, as `uniq (nullOr (lazyAttrsOf e))`; and a strict `attrsWith { lazy =
-      # false; }` over a lazy step, where a key below the lazy step is `mkIf` on the read tree.
+      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated; den-hoag-i01nx): a `listOf` step under
+      # a step-free wrapper is not a level (its keys are positions whose names its functor does not
+      # state), so a record that may nest below it is walked eagerly, and aborts uncatchably where
+      # nixpkgs serves with an element whose own tree reads the read tree: `uniq (listOf
+      # (lazyAttrsOf e))` with a key below the list `mkIf` on the read tree, or `uniq (listOf
+      # (attrsOf e))` with a second element's key `mkIf` on it.
       #
       # ★ THE STATED PRICE, an extension of den-hoag-n6dh7's (owner-accepted 2026-09-25: a stock
       # container whose `merge` was overridden cannot be told from the stock one, since Nix cannot
-      # compare functions): the steps are TRUSTED from the functor names, at each lazy level. The
+      # compare functions): the steps are TRUSTED from the functor names, at each level. The
       # run stays the authority over which tree sits at which key: a capture site must sit at its
       # own key (`siteLocAt`, and below a node, under the node's key), in the split and in the fold.
       # So a chain whose stock-named lazy `attrsWith` has a merge that does not fold each element at
@@ -1937,10 +1943,15 @@ let
                   el = below (fuel - 1) st.element;
                 in
                 if el != null then
-                  {
-                    one = el;
-                    step = e;
-                  }
+                  (
+                    if e.functor.payload.lazy or false then
+                      {
+                        one = el;
+                        step = e;
+                      }
+                    else
+                      null
+                  )
                 else if isAttrs st.element && !(st.element ? substructure) && canNest st.element then
                   {
                     node = st.element;
@@ -1952,7 +1963,8 @@ let
             else
               null;
           # below the step: step-free wrappers down to the gen element, whose capture site the
-          # wrappers' merges return unchanged at the step's key
+          # wrappers' merges return unchanged at the step's key (not `nullOr`, whose merge returns
+          # `null` in place of the site where every definition is `null`)
           below =
             fuel: e:
             let
@@ -1970,7 +1982,8 @@ let
         in
         go importedTypeWalkFuel c;
       # a record's levels, decided once per record: a `node` level carries the level of the record
-      # its step states (`next`), so no key re-walks it
+      # its step states (`next`), so no key re-walks it; a level carries its `step`, the record
+      # whose split it is
       levels =
         c:
         let
@@ -2058,8 +2071,9 @@ let
         t
         // {
           __threadedForeign = true;
-          # the node keys its elements as the record its step states does (`keysExactly`): an exact
-          # stock container's elements are keyed in the exact regime, as gen's own are
+          # the node keys its elements as the record whose split it runs does (`keysExactly`): the
+          # step of `c`'s own level, below its step-free wrappers, else `c`; an exact stock
+          # container's elements are keyed in the exact regime, as gen's own are
           keysExactly = keysExactly (if lv != null then lv.step else c);
           split =
             base: ds: splitAt lv c oloc root base ds (builtins.foldl' (v: k: v.${k}) root (under oloc base));
