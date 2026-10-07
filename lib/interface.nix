@@ -1794,6 +1794,10 @@ let
             };
           };
         }
+        # on a stated-step chain, a key whose every definition was discharged away holds the
+        # element's empty value (nixpkgs' lazy `attrsWith`), marked so the split and the threaded
+        # fold read it as a key with no element folded under it
+        // (if chainElement != null then { emptyValue.value.__genTEmpty = true; } else { })
       );
       # ── A CHAIN KEYED BY ITS STATED STEP (den-hoag-fozin; ADR-0039's serve half, ADR-0025 item 1) ─
       # THE DOMAIN: a chain of step-free wrappers (`unique`, `coercedTo`), then exactly ONE lazy
@@ -1853,7 +1857,9 @@ let
               null;
         in
         go importedTypeWalkFuel t;
-      # the loc of the capture site a fold result holds at key `k`, `null` where it holds none
+      # the loc of the capture site a fold result holds at key `k`, `null` where it holds none;
+      # whether it holds the empty value of a key with no element folded (`capture`)
+      emptyAt = r: k: (r.${k} or null) ? __genTEmpty;
       siteLocAt =
         r: k:
         let
@@ -1866,7 +1872,9 @@ let
           step = [ k ];
           loc = loc ++ [ k ];
           defs =
-            if siteLocAt r k == loc ++ [ k ] then
+            if emptyAt r k then
+              [ ]
+            else if siteLocAt r k == loc ++ [ k ] then
               r.${k}.__genTSite.defs
             else
               throw (statedStepRefusal door (loc ++ [ k ]) t);
@@ -1875,8 +1883,9 @@ let
           type = chainElement;
         }) (attrNames r);
       # The threaded fold's result, read at key `k`, holds the tree folded at the site found there,
-      # and that site must be its own key's (`loc ++ [ k' ]`, held at `k'`); a merge that duplicates
-      # or drops a key's tree passes, one that moves it refuses here, where it is read.
+      # and that site must be its own key's (`loc ++ [ k' ]`, held at `k'`), or the empty value of a
+      # key with none; a merge that duplicates or drops a key's tree passes, one that moves it
+      # refuses here, where it is read.
       keyedWhereRead =
         loc: captured: v:
         if isAttrs v then
@@ -1886,10 +1895,12 @@ let
               l = siteLocAt captured k;
             in
             if
-              l != null
-              && length l == length loc + 1
-              && l == loc ++ [ (prelude.last l) ]
-              && siteLocAt captured (prelude.last l) == l
+              emptyAt captured k
+              ||
+                l != null
+                && length l == length loc + 1
+                && l == loc ++ [ (prelude.last l) ]
+                && siteLocAt captured (prelude.last l) == l
             then
               x
             else
