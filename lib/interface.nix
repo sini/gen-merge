@@ -413,6 +413,22 @@ let
         "pathLike"
       ]
   );
+  # The functor names a row publishes (`attrsWith`, `deferredModuleWith`, `str`, `path`, …): a
+  # completed record publishing none was completed under no row, so re-completing it loses nothing.
+  rowFunctorNames = builtins.listToAttrs (
+    map (r: {
+      inherit (r) name;
+      value = null;
+    }) (builtins.attrValues embeddings)
+  );
+  # Whether `t` is a record this boundary completed under a row and still the record it completed
+  # (its completion stamp holds), so re-completing it would lose the row (`types.nix` `defineType`).
+  # The stamp, a cell-wise comparison of the whole record, is asked last.
+  completedUnderRow =
+    t:
+    rowFunctorNames ? ${(t.functor or { }).name or ""}
+    && builtins.isFunction (t.__typeSelf or null)
+    && stampOk t;
   # Whether `other` is keyed under the name row `e` embeds in: the one place a relation asks it.
   keyedUnderEmbedding = e: other: e != null && (keyOf other) == e.name;
   # The leaf row `t`'s mint reaches, read only off the record its constructor (or this boundary)
@@ -3916,7 +3932,7 @@ in
     embeddedOffered
     embeddings
     embedsOf
-    stampOk
+    completedUnderRow
     keyedUnderEmbedding
     moduleSetPayload
     canNest

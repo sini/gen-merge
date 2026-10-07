@@ -1246,6 +1246,21 @@ in
           attrsOfBesideGen = rowsOf (t.defineType (t.attrsOf t.int)) (t.attrsOf t.int) { k = 1; };
           describedCopy = rowsOf described np.types.str "s";
           describedCopyDefined = rowsOf (t.defineType described) np.types.str "s";
+          # a copy REPLACING the predicate is not returned as it is: under nixpkgs' engine it is refused
+          # beside `str` at a value only `str` admits, as its twin (the same copy of nixpkgs' `str`) is
+          predicateCopyDefined =
+            let
+              r = rowsOf (t.defineType (
+                t.string
+                // {
+                  name = "e";
+                  verify = x: if x == "a" then null else "not a";
+                }
+              )) np.types.str "zz";
+            in
+            {
+              inherit (r) np-o12 np-o21;
+            };
         };
         expected = {
           string = served;
@@ -1257,6 +1272,10 @@ in
           attrsOfBesideGen = served;
           describedCopy = served;
           describedCopyDefined = served;
+          predicateCopyDefined = {
+            np-o12 = "REFUSED";
+            np-o21 = "REFUSED";
+          };
         };
       };
 
