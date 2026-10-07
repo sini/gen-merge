@@ -345,6 +345,120 @@ in
         };
       };
 
+    # A MET RECORD MERGED AGAIN KEEPS THE ENUM UNION (`interface.meetOf`'s `typeMerge`, which meets the
+    # next join through `metWith`; den-hoag-n8cpq item 2 on the meet). Three nixpkgs `enum`s over one
+    # member each fold, in gen's engine, to their union in every order, so the member of the operand
+    # joined last is served as nixpkgs serves it; a wrapper over a widened operand is still met, so the
+    # value it rejects is rejected in every order while its other member is served, and also where
+    # another declaration admits it (`wrappedOverlapB`: the wrapped operand's own members admit `b`, so
+    # its check is owed there, ADR-0039's reading 2). A FRESH join met again is met, not served whole:
+    # gen `either (listOf int) str` before two foreign ones refining their `int` elements still refuses
+    # the element one of them refuses (`unionOfLists`).
+    test-a-met-enum-merged-again-keeps-the-union =
+      let
+        ea = t.enum [ "a" ];
+        eb = t.enum [ "b" ];
+        ec = t.enum [ "c" ];
+        w = t.addCheck (t.enum [
+          "a"
+          "b"
+        ]) (v: v != "a");
+        wOv = t.addCheck (t.enum [
+          "a"
+          "b"
+        ]) (v: v != "b");
+        # a foreign `int` refinement whose relation answers only its own kind (gen-schema's `refined`)
+        rejInt =
+          n:
+          let
+            self = nixpkgsLib.mkOptionType {
+              name = "int";
+              check = x: builtins.isInt x && x != n;
+              merge = nixpkgsLib.options.mergeEqualOption;
+              functor = nixpkgsLib.types.defaultFunctor "int" // {
+                type = _: self;
+                payload = {
+                  refined = true;
+                };
+                binOp = a: _b: a;
+              };
+              typeMerge =
+                f:
+                if
+                  f.name == "int"
+                  && (
+                    f.payload == null
+                    ||
+                      f.payload == {
+                        refined = true;
+                      }
+                  )
+                then
+                  self
+                else
+                  null;
+            };
+          in
+          self;
+        orders = l: [
+          l
+          [
+            (builtins.elemAt l 0)
+            (builtins.elemAt l 2)
+            (builtins.elemAt l 1)
+          ]
+          [
+            (builtins.elemAt l 1)
+            (builtins.elemAt l 0)
+            (builtins.elemAt l 2)
+          ]
+          [
+            (builtins.elemAt l 1)
+            (builtins.elemAt l 2)
+            (builtins.elemAt l 0)
+          ]
+          [
+            (builtins.elemAt l 2)
+            (builtins.elemAt l 0)
+            (builtins.elemAt l 1)
+          ]
+          [
+            (builtins.elemAt l 2)
+            (builtins.elemAt l 1)
+            (builtins.elemAt l 0)
+          ]
+        ];
+        at = l: v: map (o: ev o v) (orders l);
+        all6 = r: builtins.genList (_: r) 6;
+      in
+      {
+        expr = {
+          a = at [ ea eb ec ] "a";
+          b = at [ ea eb ec ] "b";
+          c = at [ ea eb ec ] "c";
+          wrappedA = at [ w eb ec ] "a";
+          wrappedB = at [ w eb ec ] "b";
+          wrappedOverlapB = at [ wOv eb ec ] "b";
+          unionOfLists =
+            ev
+              [
+                (gt.either (gt.listOf gt.int) gt.str)
+                (t.either (t.listOf (rejInt 7)) t.str)
+                (t.either (t.listOf (rejInt 9)) t.str)
+              ]
+              [ 7 ];
+        };
+        expected = {
+          a = all6 "MERGED enum / ACCEPTED";
+          b = all6 "MERGED enum / ACCEPTED";
+          c = all6 "MERGED enum / ACCEPTED";
+          wrappedA = all6 "MERGED enum / REJECTED";
+          wrappedB = all6 "MERGED enum / ACCEPTED";
+          wrappedOverlapB = all6 "MERGED enum / REJECTED";
+          unionOfLists = "MERGED either / REJECTED";
+        };
+      };
+
     # CONTROL: one wrapped value declared twice is one value, so it keeps its operand and its check:
     # the value the wrapper accepts is served and the one it refuses is rejected by the carried check.
     # Two separate containers over one shared wrapped element are the same case one level down.

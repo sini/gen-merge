@@ -3286,7 +3286,11 @@ let
               }
             else
               j.merge;
-          # asked by a foreign engine, which hands over a FUNCTOR only: the join is met with this record again
+          # asked by a foreign engine, which hands over a FUNCTOR only: the join is met with this record again,
+          # through `metWith` like every other step, so a join widening this record's own parameters (enum)
+          # owes it relativised. Where every step's relation answers at the top constructor, the fold is then
+          # the same in every order; `lib/types.nix`'s `metElem` still meets through `meetOf` directly, which
+          # can only over-refuse.
           typeMerge =
             f:
             let
@@ -3294,7 +3298,7 @@ let
               asked = builtins.tryEval (callerTypeMerge j f);
               r = if asked.success then asked.value else null;
             in
-            if r == null then null else meetOf r [ met ];
+            if r == null then null else metWith r [ met ];
         }
         // (if fold == null then { } else { mergeDefs = fold; });
     in
