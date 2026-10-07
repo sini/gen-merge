@@ -246,10 +246,14 @@ let
   # its protocol from the gen datum alone, and lose what only its constructor states (its
   # `interface.embeddings` row: `defineType (attrsOf int)` would publish `attrsOf`, not `attrsWith`)
   # (den-hoag-n8cpq). The presence test comes first, so a record not yet completed (every
-  # constructor's, every per-instance descriptor's) pays one attribute test.
+  # constructor's, every per-instance descriptor's) pays one attribute test; and the stamp, a cell-wise
+  # comparison of the whole record, is asked only of a record publishing a row's functor name
+  # (`interface.completedUnderRow`), since a record completed under no row loses nothing by being
+  # re-completed: asked of every completed record, it cost the hub bench's `aspects` row +1,299
+  # thunks per instance (gen-aspects re-completes `//` copies of its submodules).
   defineType =
     t:
-    if t ? _type && builtins.isFunction (t.__typeSelf or null) && interface.stampOk t then
+    if t ? _type && interface.completedUnderRow t then
       t
     else
       let
