@@ -6988,6 +6988,78 @@ in
       };
     };
 
+    # den-hoag-fozin C4: a foreign chain keyed by its stated step (a lazy `attrsWith` under `uniq`)
+    # whose merge was overridden so that a key read holds no element of its own is refused by name
+    # at the key read, naming the stated step and the override.
+    flake.testsError.nesting-keys-foreign-chain =
+      let
+        np = nixpkgsLib.types;
+        sub = t.submodule { options.x = gm.mkOption { type = t.int; }; };
+        reshaped =
+          g:
+          let
+            a = np.attrsWith {
+              elemType = t.attrsOf sub;
+              lazy = true;
+              placeholder = "p";
+            };
+          in
+          np.uniq (
+            a
+            // {
+              merge = loc: defs: g (a.merge loc defs);
+              substSubModules =
+                m:
+                let
+                  r = a.substSubModules m;
+                in
+                r // { merge = loc: defs: g (r.merge loc defs); };
+            }
+          );
+        cfgOf =
+          g:
+          (gm.evalModuleTree { } [
+            { options.o = gm.mkOption { type = reshaped g; }; }
+            {
+              config.o = {
+                foo.k.x = 1;
+                bar.k.x = 2;
+              };
+            }
+          ]).config.o;
+        refusal = at: {
+          type = "ThrownError";
+          msg = "^gen-merge: `evalModuleTree' at option `o[.]${at}': the option type `unique' states [(]its functors[)] that its gen element sits one key below it, under a lazy `attrsWith', and its merge did not fold that key's own element there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed where it is read[.] Declare the element under a container whose merge is its constructor's, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+        };
+      in
+      {
+        test-a-merge-swapping-two-keys-trees-is-refused-at-the-key-read = {
+          expr =
+            force
+              (cfgOf (
+                r:
+                r
+                // {
+                  foo = r.bar;
+                  bar = r.foo;
+                }
+              )).foo.k.x;
+          expectedError = refusal "foo";
+        };
+        test-a-merge-folding-one-key-deeper-is-refused-at-the-key-read = {
+          expr =
+            force
+              (cfgOf (r: {
+                wrap = r;
+              })).wrap.foo.k.x;
+          expectedError = refusal "wrap";
+        };
+        test-a-merge-renaming-a-key-is-refused-at-the-key-read = {
+          expr = force (cfgOf (nixpkgsLib.mapAttrs' (n: nixpkgsLib.nameValuePair "x${n}"))).xfoo.k.x;
+          expectedError = refusal "xfoo";
+        };
+      };
+
     # den-hoag-n6dh7 Unit 2.4, placement: the refusals a nested tree's placement adds, each anchored
     # `^…$`. `ci/tests/nesting-placement.nix` pins that each is catchable where it fires.
     flake.testsError.nesting-placement =
