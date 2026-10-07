@@ -1178,6 +1178,447 @@ in
       };
     };
 
+  # den-hoag-i01nx (ADR-0039, the serve half; ADR-0025 item 1): a level's step-free wrappers include
+  # `nullOr`, and a strict `attrsWith` step over a record that may nest is a level of nodes. So a lazy
+  # step reached through `nullOr`, a lazy step below a strict one, and a sibling's own tree below a
+  # strict step are each keyed without forcing what nixpkgs does not. The expected values are
+  # nixpkgs' own, read off `lib.evalModules` mounting the same declaration.
+  flake.tests.nesting-keys-foreign-chain-level-steps =
+    let
+      cfgOf = modules: (gm.evalModuleTree { } modules).config.o;
+      keysDep = type: d: read: [
+        { options.o = gm.mkOption { inherit type; }; }
+        (
+          { config, ... }:
+          {
+            config.o = {
+              foo = d 1;
+              bar = if read config.o.foo == 1 then d 2 else { };
+            };
+          }
+        )
+      ];
+      inJ = v: { j.k.x = v; };
+      readJ = x: x.j.k.x;
+      strictAw =
+        e:
+        np.attrsWith {
+          elemType = e;
+          lazy = false;
+          placeholder = "p";
+        };
+    in
+    {
+      test-unique-over-nullOr-over-a-lazy-step-serves-a-key-dependent-sibling = {
+        expr =
+          (cfgOf (
+            keysDep (np.uniq (np.nullOr (np.lazyAttrsOf (t.attrsOf sub)))) (v: { k.x = v; }) (x: x.k.x)
+          )).foo.k.x;
+        expected = 1;
+      };
+      test-coercedTo-over-nullOr-over-a-lazy-step-over-an-attrsOf-serves-an-mkIf-sibling = {
+        expr =
+          readJ
+            (cfgOf [
+              {
+                options.o = gm.mkOption {
+                  type = np.coercedTo np.str (_: throw "unused") (
+                    np.nullOr (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))
+                  );
+                };
+              }
+              (
+                { config, ... }:
+                {
+                  config.o = {
+                    foo.j.k.x = 1;
+                    bar = gm.mkIf (config.o.foo.j.k.x == 1) { j.k.x = 2; };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # a lazy step below a strict one: its second key is `mkIf` on the read tree, which nixpkgs
+      # forces only where it is read
+      test-a-strict-placeholder-attrsWith-over-a-lazy-step-serves-an-mkIf-key-below-it = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.lazyAttrsOf (t.attrsOf sub)); }; }
+              (
+                { config, ... }:
+                {
+                  config.o.foo = {
+                    j.k.x = 1;
+                    i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 2; };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # no lazy step at all: a SIBLING's own tree below a strict step reads the read tree, and nixpkgs
+      # never reads `bar`'s value to read `foo`
+      test-a-strict-step-over-a-strict-step-under-unique-serves-a-sibling-whose-tree-reads-the-read-tree = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = np.uniq (np.attrsOf (np.attrsOf (t.attrsOf sub))); }; }
+              (
+                { config, ... }:
+                {
+                  config.o = {
+                    foo.j.k.x = 1;
+                    bar = {
+                      j.k.x = 2;
+                      i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 3; };
+                    };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # the whole value: a lazy key whose only definition discharges away holds the element's empty
+      # value, a strict one is absent, and a sibling's `mkIf` on the read tree is kept
+      test-the-whole-value-of-a-strict-step-over-a-lazy-step-is-nixpkgs-value = {
+        expr = cfgOf [
+          { options.o = gm.mkOption { type = np.uniq (np.attrsOf (np.lazyAttrsOf (t.attrsOf sub))); }; }
+          (
+            { config, ... }:
+            {
+              config.o = {
+                foo = {
+                  j.k.x = 1;
+                  i = gm.mkIf false { k.x = 9; };
+                };
+                bar = {
+                  j.k.x = 2;
+                  i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 3; };
+                };
+                baz = gm.mkIf false { j.k.x = 4; };
+              };
+            }
+          )
+        ];
+        expected = {
+          foo = {
+            j.k.x = 1;
+            i = { };
+          };
+          bar = {
+            j.k.x = 2;
+            i.k.x = 3;
+          };
+        };
+      };
+      # den-hoag-i01nx gate CF1: a strict step's UNREAD key is never keyed below by its merged value,
+      # which nixpkgs forces only where that key is read: an ill-typed sibling, a sibling `unique`
+      # refuses, a sibling `nullOr` refuses, and a sibling whose coercion reads the read tree
+      test-a-strict-step-over-a-lazy-step-serves-a-key-beside-an-ill-typed-sibling = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.lazyAttrsOf (t.attrsOf sub)); }; }
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar = "x"; }
+            ]).foo;
+        expected = 1;
+      };
+      test-a-strict-step-below-a-lazy-step-serves-a-key-beside-an-ill-typed-sibling = {
+        expr =
+          readJ
+            (cfgOf [
+              {
+                options.o = gm.mkOption {
+                  type = np.uniq (np.lazyAttrsOf (strictAw (np.lazyAttrsOf (t.attrsOf sub))));
+                };
+              }
+              {
+                config.o.y = {
+                  foo.j.k.x = 1;
+                  bar = "x";
+                };
+              }
+            ]).y.foo;
+        expected = 1;
+      };
+      test-a-strict-step-over-unique-serves-a-key-beside-a-sibling-unique-refuses = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.uniq (np.lazyAttrsOf (t.attrsOf sub))); }; }
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar.j.k.x = 2; }
+              { config.o.bar.j.k.x = 3; }
+            ]).foo;
+        expected = 1;
+      };
+      test-a-strict-step-over-nullOr-serves-a-key-beside-a-sibling-nullOr-refuses = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.nullOr (np.lazyAttrsOf (t.attrsOf sub))); }; }
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar = null; }
+              { config.o.bar.j.k.x = 2; }
+            ]).foo;
+        expected = 1;
+      };
+      test-a-strict-step-over-coercedTo-serves-a-key-beside-a-sibling-whose-coercion-reads-it = {
+        expr =
+          readJ
+            (cfgOf [
+              (
+                { config, ... }:
+                {
+                  options.o = gm.mkOption {
+                    type = strictAw (
+                      np.coercedTo np.str (_: if config.o.foo.j.k.x == 1 then { j.k.x = 2; } else { }) (
+                        np.lazyAttrsOf (t.attrsOf sub)
+                      )
+                    );
+                  };
+                }
+              )
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar = "x"; }
+            ]).foo;
+        expected = 1;
+      };
+    };
+
+  # den-hoag-i01nx: the option's own strict step over a stock lazy step is keyed as gen keys `attrsOf
+  # (lazyAttrsOf e)` (arm OV): each key's lower keys over that key's definitions, in the option's own
+  # group one key deeper, so no node is minted per strict key and no key's merged value is read to
+  # key it. Below a lazy node the same holds: the node hands the strict step the definitions at its
+  # own key, so the node holds `[foo,j]` and no node is minted per strict key (gate CF1). A merge that
+  # rewrites each element, or returns a list where a level states an attrset, serves what it returns.
+  flake.tests.nesting-keys-foreign-chain-strict-over-lazy =
+    let
+      exposed =
+        type: v:
+        genMergeCore.evalModuleTreeExposed {
+          modules = [
+            { options.o = gm.mkOption { inherit type; }; }
+            { config.o = v; }
+          ];
+        };
+      r = exposed (np.uniq (np.attrsOf (np.lazyAttrsOf (t.attrsOf sub)))) { foo.j.k.x = 1; };
+      rN = exposed (np.uniq (
+        np.lazyAttrsOf (
+          np.attrsWith {
+            elemType = np.lazyAttrsOf (t.attrsOf sub);
+            lazy = false;
+            placeholder = "p";
+          }
+        )
+      )) { y.foo.j.k.x = 1; };
+      nodeId = genScope.mintNtaId {
+        host = "module-tree";
+        name = "nested";
+        group = "[\"o\"]";
+        key = "[\"y\"]";
+      };
+      modesAt =
+        r: id: group:
+        builtins.mapAttrs (_: p: p.mode) (r._evaluation.get id "positions").nested.${group};
+      cfgOf =
+        type: v:
+        (gm.evalModuleTree { } [
+          { options.o = gm.mkOption { inherit type; }; }
+          { config.o = v; }
+        ]).config.o;
+      # a stock-named lazy step whose merge was overridden (`reshape`), read only through the chain
+      reshape =
+        g: a:
+        a
+        // {
+          merge = loc: defs: g (a.merge loc defs);
+          substSubModules =
+            m:
+            let
+              r = a.substSubModules m;
+            in
+            r // { merge = loc: defs: g (r.merge loc defs); };
+        };
+      addExtra = builtins.mapAttrs (_: v: v // { extra = 1; });
+      toList = r: [
+        r.foo
+        r.bar
+      ];
+      twoKeys = {
+        x = {
+          foo.k.x = 1;
+          bar.k.x = 2;
+        };
+      };
+    in
+    {
+      test-the-option-strict-step-over-a-stock-lazy-step-keys-over-definitions-without-a-node = {
+        expr = {
+          root = modesAt r "module-tree" "[\"o\"]";
+          value = r.config.o.foo.j.k.x;
+        };
+        expected = {
+          root."[\"foo\",\"j\"]" = "container";
+          value = 1;
+        };
+      };
+      test-a-strict-step-below-a-lazy-node-keys-over-the-nodes-own-definitions = {
+        expr = {
+          node = modesAt rN nodeId "container";
+          value = rN.config.o.y.foo.j.k.x;
+        };
+        expected = {
+          node."[\"foo\",\"j\"]" = "container";
+          value = 1;
+        };
+      };
+      test-a-lazy-step-whose-merge-rewrites-each-element-serves-the-rewrite = {
+        expr = cfgOf (np.uniq (np.attrsOf (reshape addExtra (np.lazyAttrsOf (t.attrsOf sub))))) twoKeys;
+        expected.x = {
+          foo = {
+            extra = 1;
+            k.x = 1;
+          };
+          bar = {
+            extra = 1;
+            k.x = 2;
+          };
+        };
+      };
+      test-a-lazy-step-whose-merge-returns-a-list-serves-the-list = {
+        expr = cfgOf (np.uniq (np.lazyAttrsOf (reshape toList (np.lazyAttrsOf (t.attrsOf sub))))) twoKeys;
+        expected.x = [
+          { k.x = 1; }
+          { k.x = 2; }
+        ];
+      };
+    };
+
+  # den-hoag-i01nx (v2 gate CF1): every merge on a foreign chain sees the VALUES its elements folded to,
+  # as nixpkgs' does, so a merge that transforms or inspects them serves what nixpkgs serves. Nix cannot
+  # compare functions, so no record says whether a merge only places its elements: an overridden lazy
+  # step, an overridden `unique` (whose stock merge carries no `v2`), and an override of `merge.v2`
+  # itself read alike. A fold that hands the merges anything but the values (a site record beside each
+  # value) is wrong on these cells.
+  flake.tests.nesting-keys-foreign-chain-merge-sees-values =
+    let
+      cfgOf =
+        type: v:
+        (gm.evalModuleTree { } [
+          { options.o = gm.mkOption { inherit type; }; }
+          { config.o = v; }
+        ]).config.o;
+      aws =
+        e:
+        np.attrsWith {
+          elemType = e;
+          lazy = false;
+          placeholder = "p";
+        };
+      el = t.attrsOf sub;
+      # a stock record whose `merge` was overridden; it drops `merge.v2`
+      reshape =
+        g: a:
+        a
+        // {
+          merge = loc: defs: g (a.merge loc defs);
+          substSubModules = m: reshape g (a.substSubModules m);
+        };
+      # an override of the v2 half itself, the one nixpkgs' `mergeDefinitions` runs; `merge ? v2` holds
+      v2Of =
+        g: a:
+        a
+        // {
+          merge = a.merge // {
+            v2 =
+              args:
+              let
+                r = a.merge.v2 args;
+              in
+              r // { value = g r.value; };
+          };
+          substSubModules = m: v2Of g (a.substSubModules m);
+        };
+      rmK = builtins.mapAttrs (_: v: builtins.removeAttrs v [ "k" ]);
+      filtK = builtins.mapAttrs (_: nixpkgsLib.filterAttrs (n: _: n != "k"));
+      dropEmpty = nixpkgsLib.filterAttrs (_: v: v != { });
+      two.x = {
+        foo = {
+          k.x = 1;
+          m.x = 3;
+        };
+        bar.k.x = 2;
+      };
+      sparse.x = {
+        foo.k.x = 1;
+        bar = { };
+      };
+      noK.x = {
+        foo.m.x = 3;
+        bar = { };
+      };
+    in
+    {
+      test-an-overridden-lazy-step-that-removes-a-name-serves-its-removal = {
+        expr = cfgOf (np.uniq (np.attrsOf (reshape rmK (np.lazyAttrsOf el)))) two;
+        expected = noK;
+      };
+      test-an-overridden-lazy-step-under-the-option-strict-step-serves-its-removal = {
+        expr = cfgOf (aws (reshape rmK (np.lazyAttrsOf el))) two;
+        expected = noK;
+      };
+      test-an-overridden-lazy-step-below-a-lazy-node-serves-its-removal = {
+        expr = cfgOf (np.uniq (np.lazyAttrsOf (aws (reshape rmK (np.lazyAttrsOf el))))) { y = two; };
+        expected.y = noK;
+      };
+      test-an-overridden-lazy-step-that-filters-by-name-serves-its-filter = {
+        expr = cfgOf (np.uniq (np.attrsOf (reshape filtK (np.lazyAttrsOf el)))) two;
+        expected = noK;
+      };
+      test-a-name-the-override-filtered-is-absent-where-read = {
+        expr = (cfgOf (np.uniq (np.attrsOf (reshape filtK (np.lazyAttrsOf el)))) two).x.foo ? k;
+        expected = false;
+      };
+      test-a-name-the-override-removed-is-absent-where-read = {
+        expr = (cfgOf (np.uniq (np.attrsOf (reshape rmK (np.lazyAttrsOf el)))) two).x.foo ? k;
+        expected = false;
+      };
+      test-an-overridden-lazy-step-that-inspects-values-serves-its-filter = {
+        expr = cfgOf (np.uniq (np.attrsOf (reshape dropEmpty (np.lazyAttrsOf el)))) sparse;
+        expected.x.foo.k.x = 1;
+      };
+      test-an-identity-override-serves-the-stock-value = {
+        expr = cfgOf (np.uniq (np.attrsOf (reshape (builtins.mapAttrs (_: v: v)) (np.lazyAttrsOf el)))) two;
+        expected = two;
+      };
+      test-an-override-copying-a-sibling-serves-the-copy = {
+        expr =
+          (cfgOf (np.uniq (np.attrsOf (reshape (r: r // { bar = r.foo; }) (np.lazyAttrsOf el)))) two)
+          .x.bar.k.x;
+        expected = 1;
+      };
+      test-an-overridden-unique-between-the-steps-serves-its-removal = {
+        expr = cfgOf (aws (reshape rmK (np.uniq (np.lazyAttrsOf el)))) two;
+        expected = noK;
+      };
+      test-an-overridden-unique-over-the-option-serves-its-removal = {
+        expr = cfgOf (reshape (builtins.mapAttrs (_: rmK)) (np.uniq (np.attrsOf (np.lazyAttrsOf el)))) two;
+        expected = noK;
+      };
+      test-an-override-of-merge-v2-serves-its-removal = {
+        expr = cfgOf (aws (v2Of rmK (np.lazyAttrsOf el))) two;
+        expected = noK;
+      };
+      test-an-override-of-merge-v2-that-inspects-values-serves-its-filter = {
+        expr = cfgOf (aws (v2Of dropEmpty (np.lazyAttrsOf el))) sparse;
+        expected.x.foo.k.x = 1;
+      };
+    };
+
   # den-hoag-rlskz: `modules.nix` `keyWalk` reads `interface.keysExactly` inline rather than through a
   # call, so the predicate has two copies. The inline copy is read off the source and evaluated, and
   # the two answer alike on gen's exact containers, its lazy one, and a record stating its own answer.
@@ -1547,6 +1988,9 @@ in
         deep8SwapNames = [ "i" ];
         deep8Stock = 1;
         strictLazyMkTop = [ "foo" ];
+        strictLazyMk = 1;
+        strictLazyMkY = 5;
+        nullLazyMkX = 1;
         twoNmTop = [
           "bar"
           "foo"

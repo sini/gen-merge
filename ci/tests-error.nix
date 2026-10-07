@@ -7231,7 +7231,7 @@ in
               ).baz.j.k.a;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s[.]baz': the option type `unique' states [(]its functors[)] that each key below it, under a lazy `attrsWith', holds a `attrsOf' folded at that key";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]baz': the option type `unique' states [(]its functors[)] that each key below it, under an `attrsWith', holds a `attrsOf' folded at that key";
           };
         };
         test-a-tree-served-at-two-keys-is-refused-at-the-key-read = {
@@ -7257,7 +7257,27 @@ in
               ).foo.j.k.a;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo': the option type `unique' states [(]its functors[)] that each key below it, under a lazy `attrsWith', holds a `attrsOf' folded at that key";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo': the option type `unique' states [(]its functors[)] that each key below it, under an `attrsWith', holds a `attrsOf' folded at that key";
+          };
+        };
+        # den-hoag-i01nx: below `nullOr`, the lazy step is a level, and a `functionTo` below it with a
+        # key-dependent sibling is refused as unexposed, as with no `nullOr` between them
+        test-a-functionTo-below-a-lazy-step-under-nullOr-is-refused-as-unexposed = {
+          expr =
+            force
+              (
+                ((cfgOf (np.uniq (np.nullOr (np.lazyAttrsOf (np.functionTo (t.attrsOf sub)))))) (
+                  { config, ... }:
+                  {
+                    s.foo = _: { k.a = 1; };
+                    s.bar = if (config.s.foo null).k.a == 1 then (_: { k.a = 2; }) else (_: { });
+                  }
+                )).foo
+                  null
+              ).k.a;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo[.]<function body>': the option type `unique' folds its gen nesting element at a position its own merge does not expose when the option is merged [(]inside a value it returns, such as a function body[)], so that nested tree cannot be threaded into this evaluation[.] Declare the tree at a position the merge returns as a value, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
           };
         };
         test-a-merge-swapping-two-keys-trees-at-a-node-is-refused-at-the-key-read = {
@@ -7269,7 +7289,7 @@ in
               }).foo.j.k.a;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo': the option type `unique' states [(]its functors[)] that each key below it, under a lazy `attrsWith', holds a `attrsOf' folded at that key, and its merge folded a tree of another key's there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed where it is read[.] Declare the element under a container whose merge is its constructor's, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo': the option type `unique' states [(]its functors[)] that each key below it, under an `attrsWith', holds a `attrsOf' folded at that key, and its merge folded a tree of another key's there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed where it is read[.] Declare the element under a container whose merge is its constructor's, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
           };
         };
       };
@@ -7288,7 +7308,7 @@ in
         head = at: "^gen-merge: `evalModuleTree' at option `${at}': the option type `unique' ";
         node = at: c: {
           type = "ThrownError";
-          msg = "${head at}states [(]its functors[)] that each key below it, under a lazy `attrsWith', holds a `${c}' folded at that key, and its merge folded a tree of another key's there";
+          msg = "${head at}states [(]its functors[)] that each key below it, under an `attrsWith', holds a `${c}' folded at that key, and its merge folded a tree of another key's there";
         };
         one = at: {
           type = "ThrownError";
@@ -7325,16 +7345,13 @@ in
           swap3Foo = node "s[.]foo[.]j" "attrsOf";
           swap3Bar = node "s[.]bar[.]j" "attrsOf";
           deep7Swap = node "s[.]foo[.]j[.]j" "attrsOf";
-          deep8Swap = node "s[.]foo" "attrsOf";
-          deep8SwapNames2 = node "s[.]foo" "attrsOf";
+          deep8Swap = node "s[.]foo[.]j" "attrsOf";
+          deep8SwapNames2 = node "s[.]foo[.]j" "attrsOf";
           swapFooLazy = one "s[.]foo[.]j";
           oneSwapFoo = one "s[.]foo";
           oneSwapFooNames = one "s[.]foo";
-          strictLazySwap = node "s[.]foo" "attrsOf";
-          strictLazyMk = evalError "infinite recursion encountered";
-          strictLazyMkY = evalError "infinite recursion encountered";
+          strictLazySwap = one "s[.]foo[.]j[.]x";
           listLazyMkX = evalError "infinite recursion encountered";
-          nullLazyMkX = evalError "infinite recursion encountered";
           swapSelf = evalError "infinite recursion encountered";
           oneSwapSelf = evalError "infinite recursion encountered";
           swapNNames = node "s[.]foo" "nullOr";

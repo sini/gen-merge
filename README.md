@@ -1817,31 +1817,31 @@ against nixpkgs' once. A foreign closure, the container's own merge and check, r
 evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
 is entered only in gen's own evaluation.
 
-**A chain over a lazy `attrsWith` is keyed by its stated steps.** A level is step-free wrappers
-(`unique`, `coercedTo`), then one lazy `attrsWith` of any placeholder. Where step-free wrappers and
-a gen element that may nest sit below it, the split keys the merge's attribute names and reads an
-element only where it is read. Where another container sits below it (`lazyAttrsOf`, `attrsOf`,
-`listOf`, `nullOr`, at any depth), each key is a container node: its own walk is that record's,
+**A chain over an `attrsWith` is keyed by its stated steps.** A level is step-free wrappers
+(`unique`, `coercedTo`, `nullOr`), then one `attrsWith` of any placeholder, lazy or strict. Where
+step-free wrappers and a gen element that may nest sit below a lazy step, the split keys the merge's
+attribute names and reads an element only where it is read. Where another container sits below
+either step (`lazyAttrsOf`, `attrsOf`, `listOf`, `nullOr`, at any depth), each key is a container
+node: its own walk is that record's,
 read off the merge's result at that key only, and it keys its elements in that record's regime
 (exactly below a stock `attrsOf`, `listOf` or `nullOr`), as gen keys its own. Either way a sibling
 whose key set, `mkIf` or alias reads the read tree is served as nixpkgs serves it. **The price,
 stated as an extension of the overridden-merge price below:** the steps are trusted from the
-functor names at each lazy level, while the run still says which tree sits at which key. A
-stock-named lazy `attrsWith` whose `merge` does not fold each element at its own key (one key
+functor names at each level, while the run still says which tree sits at which key. A
+stock-named `attrsWith`, lazy or strict, whose `merge` does not fold each element at its own key (one key
 deeper, keys renamed or swapped, or a key holding no element's tree) is refused by name at the key
 read, where nixpkgs serves it. Below a container node it is refused where an element below the key
 is read, at that key, so a read of the key's record that reaches no element serves; where the key's
 value is the element itself (`nullOr` directly over it), a read of that value reads the element and
-is refused. One that only duplicates or drops a key's tree serves nixpkgs' value,
-and one whose result is not an attribute set keeps the eager walk. A node's regime is trusted from
-its record's name the same way: a stock-named `attrsOf`, `listOf` or `nullOr` whose `merge` was
-overridden to a lazy one is keyed exactly. **Not reached, and stated as a shortfall:** a lazy step
-reached through a record that is not a level still aborts with a sibling reading the read tree,
-where nixpkgs serves. The measured shapes:
-
-- `uniq (nullOr (lazyAttrsOf e))`, and deeper chains below it;
-- a strict `attrsWith { lazy = false; }` over `lazyAttrsOf e`, where a key below the lazy step is
-  `mkIf` on the read tree.
+is refused. One that only drops a key's tree serves nixpkgs' value; one that duplicates it does
+too, except below a node whose own record is a level, where it is refused; and one whose result is
+not an attribute set keeps the eager walk. A node's regime is trusted from its record's name the same way: a
+stock-named `attrsOf`, `listOf` or `nullOr` whose `merge` was overridden to a lazy one is keyed
+exactly. **Not reached, and stated as a shortfall:** a `listOf` step is not a level (its keys are
+positions its functor does not name), so a lazy step reached through it still aborts with a sibling
+reading the read tree, where nixpkgs serves: `uniq (listOf (lazyAttrsOf e))` with a key below the
+list `mkIf` on the read tree, or `uniq (listOf (attrsOf e))` with a second element's key `mkIf` on
+it.
 
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared

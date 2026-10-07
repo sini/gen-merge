@@ -2123,37 +2123,49 @@ let
       );
       # ── A CHAIN KEYED BY ITS STATED STEPS (den-hoag-fozin, den-hoag-rlskz; ADR-0039's serve half,
       # ADR-0025 item 1) ─
-      # A LEVEL is a chain of step-free wrappers (`unique`, `coercedTo`), then ONE lazy `attrsWith`
-      # (any placeholder). Below it sits either
-      #   · step-free wrappers, then a gen element that may nest (`one`, den-hoag-fozin): the
-      #     functors state every capture site sits one key below the fold's result, so the split
-      #     keys the result's attribute names, which forces no element, and reads a site only when
-      #     its element is read;
-      #   · any other record that may nest (`node`, den-hoag-rlskz): the functors state each key
-      #     holds that record's fold, so each key is a CONTAINER NODE whose own walk is the record's
-      #     level, read off the fold's result at that key only, and whose value is this chain's fold
-      #     read at that key. A key's siblings are never forced to key it, as nixpkgs forces an
-      #     element only where it is read. The node keys its elements in the regime of the record
-      #     its step states (`keysExactly`), as that record keys them in gen's own walk.
-      # Off a level (`null`) the eager `sitesOf` walk stays.
+      # A LEVEL is a chain of step-free wrappers (`unique`, `coercedTo`, `nullOr`: each folds its
+      # element at its own loc, as gen's `nullOr` states with `forward = null`), then ONE
+      # `attrsWith` step (any placeholder, lazy or strict). Below it sits either
+      #   · on a LAZY step, step-free wrappers, then a gen element that may nest (`one`,
+      #     den-hoag-fozin): the functors state every capture site sits one key below the fold's
+      #     result, so the split keys the result's attribute names, which forces no element, and
+      #     reads a site only when its element is read;
+      #   · on either step, any other record that may nest (`node`, den-hoag-rlskz, den-hoag-i01nx):
+      #     the functors state each key holds that record's fold, so each key is a CONTAINER NODE
+      #     whose own walk is the record's level, read off the fold's result at that key only, and
+      #     whose value is this chain's fold read at that key. A key's siblings are never forced to
+      #     key it, as nixpkgs forces an element only where it is read: a strict step's key set
+      #     forces each key's definitions, as nixpkgs' does, and never a key's own tree. The node
+      #     keys its elements in the regime of the record whose step it splits by (`keysExactly`),
+      #     as that record keys them in gen's own walk.
+      # A strict step over a gen element is not a level: the eager walk reads each key's capture
+      # site, which forces what nixpkgs' strict merge forces and no more, and the run stays the
+      # authority there. Off a level (`null`) the eager `sitesOf` walk stays.
       #
-      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated; den-hoag-i01nx): a lazy step reached
-      # through a record that is not a level is off the domain, and still aborts uncatchably where
-      # nixpkgs serves with a sibling reading the read tree: `uniq` (or `coercedTo`) over `nullOr`
-      # over a lazy step, as `uniq (nullOr (lazyAttrsOf e))`; and a strict `attrsWith { lazy =
-      # false; }` over a lazy step, where a key below the lazy step is `mkIf` on the read tree.
+      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated; den-hoag-i01nx): a `listOf` step under
+      # a step-free wrapper is not a level (its keys are positions whose names its functor does not
+      # state), so a record that may nest below it is walked eagerly, and aborts uncatchably where
+      # nixpkgs serves with an element whose own tree reads the read tree: `uniq (listOf
+      # (lazyAttrsOf e))` with a key below the list `mkIf` on the read tree, or `uniq (listOf
+      # (attrsOf e))` with a second element's key `mkIf` on it.
       #
       # ★ THE STATED PRICE, an extension of den-hoag-n6dh7's (owner-accepted 2026-09-25: a stock
       # container whose `merge` was overridden cannot be told from the stock one, since Nix cannot
-      # compare functions): the steps are TRUSTED from the functor names, at each lazy level. The
+      # compare functions): the steps are TRUSTED from the functor names, at each level. The
       # run stays the authority over which tree sits at which key: a capture site must sit at its
       # own key (`siteLocAt`, and below a node, under the node's key), in the split and in the fold.
-      # So a chain whose stock-named lazy `attrsWith` has a merge that does not fold each element at
-      # `loc ++ [ k ]` (one key deeper, keys renamed or swapped, or a key holding no element's tree)
-      # is refused by name at the key read (`statedStepRefusal`; where the key holds a node,
-      # `nodeStepRefusal`, raised where an element below the key is read, at the key), where base
-      # and nixpkgs serve it; one that only duplicates or drops a key's
-      # tree serves nixpkgs' value, and one whose result is not an attrset keeps the eager walk. The
+      # So a chain whose stock-named `attrsWith` step, lazy or strict, has a merge that does not fold
+      # each element at `loc ++ [ k ]` (one key deeper, keys renamed or swapped, or a key holding no
+      # element's tree) is refused by name at the key read (`statedStepRefusal`, and
+      # `nodeStepRefusal` where the key holds a node, raised where an element below the key is
+      # read, at the key), where nixpkgs serves it, and where base served it at a strict step,
+      # below a `nullOr`, or at a step reached through either
+      # (den-hoag-i01nx; measured: 14 overrides on the strict or `nullOr` step itself and 5 to 8 on
+      # the step below it, each a catchable refusal, none a silent value); one that only drops a
+      # key's tree serves nixpkgs' value, one that duplicates it does too except below a node whose
+      # own record is a level, where it is refused, and one whose result is not an attrset keeps the
+      # eager walk (below the option's own strict step, keyed over definitions, it is refused by
+      # name). The
       # same trust reaches a node's REGIME: a node keys its elements exactly where its stated
       # record's NAME says it does (`keysExactly`), so a stock-named `attrsOf`, `listOf` or `nullOr`
       # whose merge was overridden to a lazy one is keyed exactly, as its name states.
@@ -2168,24 +2180,36 @@ let
             in
             if fuel == 0 || st == null || e ? substructure then
               null
-            else if n == "unique" || n == "coercedTo" then
+            else if n == "unique" || n == "coercedTo" || n == "nullOr" then
               go (fuel - 1) st.element
-            else if n == "attrsWith" && (e.functor.payload.lazy or false) then
+            else if n == "attrsWith" then
               (
                 let
                   el = below (fuel - 1) st.element;
                 in
                 if el != null then
-                  { one = el; }
+                  (
+                    if e.functor.payload.lazy or false then
+                      {
+                        one = el;
+                        step = e;
+                      }
+                    else
+                      null
+                  )
                 else if isAttrs st.element && !(st.element ? substructure) && canNest st.element then
-                  { node = st.element; }
+                  {
+                    node = st.element;
+                    step = e;
+                  }
                 else
                   null
               )
             else
               null;
           # below the step: step-free wrappers down to the gen element, whose capture site the
-          # wrappers' merges return unchanged at the step's key
+          # wrappers' merges return unchanged at the step's key (not `nullOr`, whose merge returns
+          # `null` in place of the site where every definition is `null`)
           below =
             fuel: e:
             let
@@ -2203,14 +2227,76 @@ let
         in
         go importedTypeWalkFuel c;
       # a record's levels, decided once per record: a `node` level carries the level of the record
-      # its step states (`next`), so no key re-walks it
+      # its step states (`next`), so no key re-walks it; a level carries its `step`, the record
+      # whose split it is. A key whose value nixpkgs forces only where it is read, a strict
+      # step's key as much as a lazy one's, is a node: keying below it needs its value, and only
+      # its own group may force that.
       levels =
         c:
         let
           lv = levelOf c;
         in
-        if lv != null && lv ? node then lv // { next = levels lv.node; } else lv;
+        if lv != null && lv ? node then
+          (
+            let
+              next = levels lv.node;
+            in
+            # scout D2: every level may be an `over` level, not only the option's own; a node level
+            # with an `over` level anywhere below it keys each key's definitions (`keyed`), so the
+            # `over` split is handed the definitions at its own key
+            overAt (
+              lv
+              // {
+                inherit next;
+                keyed = next != null && (next ? over || next.keyed or false);
+              }
+            )
+          )
+        else
+          lv;
       lvT = levels t;
+      # ── THE OPTION'S OWN STRICT STEP OVER A STOCK LAZY STEP (den-hoag-i01nx v1, arm OV) ─
+      # A strict step at the option's own level whose element is a stock container gen re-homes,
+      # directly over the gen element (`lazyAttrsOf e`), is keyed as gen keys `attrsOf (lazyAttrsOf
+      # e)`: its keys by gen's own `attrsOf` split over the option's definitions (definedness, as
+      # nixpkgs' strict merge forces), and each key's lower keys over that key's definitions where it
+      # is walked (`keyedOverAt`, mda6f), never over its merged value, which nixpkgs forces only where
+      # the key is read. Below a node the definitions at a key are not in hand, so the step stays a
+      # node there.
+      overAt =
+        lv:
+        let
+          # scout D1: `unique` wrappers over the lazy step are looked through: each adds no step and
+          # folds its element over the same definitions, and keying from definitions runs neither
+          # merge, so its refusal stays where the key is read
+          strip =
+            fuel: x:
+            if
+              fuel > 0 && isAttrs x && !(x ? substructure) && ((x.functor or { }).name or null) == "unique"
+            then
+              strip (fuel - 1) ((forwardStep x).element or null)
+            else
+              x;
+          inner = strip importedTypeWalkFuel lv.node;
+          e = (forwardStep inner).element or null;
+          rehomed = importedRehomeAt door loc0 inner;
+        in
+        if
+          lv != null
+          && lv ? node
+          && !(lv.step.functor.payload.lazy or false)
+          && lv.next != null
+          && lv.next ? one
+          && isAttrs e
+          && e ? substructure
+          && rehomed != null
+        then
+          {
+            over = (constructors.attrsOf (homedAt door loc0 inner)).split;
+            inherit (lv) step next;
+          }
+        else
+          lv;
       chainElement = lvT.one or null;
       # `l` below `base`: the steps past it, `null` where `l` does not extend it
       under =
@@ -2236,10 +2322,13 @@ let
           step = [ k ];
           loc = loc ++ [ k ];
           defs =
-            if emptyAt r k then
+            let
+              v = r.${k};
+            in
+            if v ? __genTEmpty then
               [ ]
-            else if siteLocAt r k == loc ++ [ k ] then
-              r.${k}.__genTSite.defs
+            else if isAttrs v && v ? __genTSite && v.__genTSite.loc == loc ++ [ k ] then
+              v.__genTSite.defs
             else
               throw (statedStepRefusal door (loc ++ [ k ]) t);
           # the level's own gen element, stated by the declaration: reading the site's would force
@@ -2255,16 +2344,40 @@ let
         lv: stated: oloc: root: base: ds: r:
         if lv != null && lv ? one && isAttrs r then
           lazySplit lv.one base r
+        # scout N1: an `over` level keys over its definitions alone, so its split never forces the
+        # capture fold; the threaded fold's own capture stays the authority where a key is read
+        else if lv != null && lv ? over then
+          lv.over base ds
         else if lv != null && lv ? node && isAttrs r then
           let
             node = nodeAt lv.node lv.next oloc root;
           in
-          map (k: {
-            step = [ k ];
-            loc = base ++ [ k ];
-            defs = ds;
-            type = node;
-          }) (attrNames r)
+          # scout D2: a level with an `over` level below it (`keyed`, decided once per record) hands
+          # each key's node the definitions at that key, split by the step's own name (an
+          # `attrsWith` step keys its definitions by attribute, as gen's `lazyAttrsOf` does), read
+          # only where the key's node is walked; any other node level is handed `ds`, as before
+          if lv.keyed or false then
+            let
+              byKey = builtins.listToAttrs (
+                map (e: {
+                  name = head e.step;
+                  value = e.defs;
+                }) ((constructors.lazyAttrsOf lv.node).split base ds)
+              );
+            in
+            map (k: {
+              step = [ k ];
+              loc = base ++ [ k ];
+              defs = byKey.${k} or [ ];
+              type = node;
+            }) (attrNames r)
+          else
+            map (k: {
+              step = [ k ];
+              loc = base ++ [ k ];
+              defs = ds;
+              type = node;
+            }) (attrNames r)
         else
           map (
             s:
@@ -2291,9 +2404,10 @@ let
         t
         // {
           __threadedForeign = true;
-          # the node keys its elements as the record its step states does (`keysExactly`): an exact
-          # stock container's elements are keyed in the exact regime, as gen's own are
-          keysExactly = keysExactly c;
+          # the node keys its elements as the record whose split it runs does (`keysExactly`): the
+          # step of `c`'s own level, below its step-free wrappers, else `c`; an exact stock
+          # container's elements are keyed in the exact regime, as gen's own are
+          keysExactly = keysExactly (if lv != null then lv.step else c);
           split =
             base: ds: splitAt lv c oloc root base ds (builtins.foldl' (v: k: v.${k}) root (under oloc base));
           mergeDefs = {
@@ -2310,7 +2424,7 @@ let
       # (`keyedWhereRead`); otherwise as folded.
       finishAt =
         lv: base: rB: ev: v:
-        if lv != null && lv ? node && isAttrs rB && isAttrs v then
+        if lv != null && (lv ? node || lv ? over) && isAttrs rB && isAttrs v then
           prelude.mapAttrs (
             k: x:
             if lv.next != null then
@@ -2437,21 +2551,31 @@ let
           # it (a `node` level hands it to its key's node, `accessor`), its steps below that level,
           # and whether that level's split placed it there.
           placeAt =
-            i: ev: eloc:
-            let
-              st = if i.checked then under i.base eloc else stepOf i.base eloc;
-            in
+            i: ev: st: eloc:
             if st == null then
               {
                 inherit ev st;
                 ok = false;
                 lvOn = i.onLevel;
               }
-            else if i.onLevel && i.lv ? node && st != [ ] && i.sub ? ${head st} then
-              placeAt i.sub.${head st} (ev.child { position = ev.position ++ [ (head st) ]; }).accessor eloc
-            else
+            else if i.onLevel && i.lv ? over && st != [ ] then
+              # an element below the option's strict step, placed off the site under its key alone
+              let
+                rK = i.rB.${head st} or null;
+              in
               {
                 inherit ev st;
+                lvOn = if i.rB ? ${head st} then isAttrs rK else i.onLevel;
+                ok = length st == 2 && isAttrs rK && siteLocAt rK (elemAt st 1) == eloc;
+              }
+            else if i.onLevel && i.lv ? node && st != [ ] && i.sub ? ${head st} then
+              placeAt i.sub.${head st} (ev.child { position = ev.position ++ [ (head st) ]; }).accessor
+                (builtins.tail st)
+                eloc
+            else
+              {
+                inherit ev;
+                inherit st;
                 lvOn = i.onLevel;
                 ok =
                   if i.onLevel && i.lv ? one then
@@ -2475,7 +2599,7 @@ let
               merge = carriedElement e (
                 eloc: edefs:
                 let
-                  at = placeAt info0 ev eloc;
+                  at = placeAt info0 ev (if checked then under base eloc else stepOf base eloc) eloc;
                   ok = at.ok;
                 in
                 mergeDefsThreaded (
@@ -2512,6 +2636,8 @@ let
     t
     // {
       __threadedForeign = true;
+      # the walk keys the split's elements in the regime of the step that holds them
+      keysExactly = if lvT != null then keysExactly lvT.step else keysExactly t;
       split =
         loc: defs:
         # on a level, and only where the merge returned the attrset its functors state; any other
@@ -2576,13 +2702,13 @@ let
     + "at a position the merge returns as a value, or state `declaresNesting = false' on the type and "
     + "take the stated price: a nested tree it forwards to is then evaluated standalone";
 
-  # The node-level form of the stated-step refusal (den-hoag-rlskz): a chain whose lazy step states
-  # that each key holds the record `c` folded at that key, whose merge folded at the key read, `at`,
-  # a tree that sits under another key.
+  # The node-level form of the stated-step refusal (den-hoag-rlskz, den-hoag-i01nx): a chain whose
+  # step, lazy or strict, states that each key holds the record `c` folded at that key, whose merge
+  # folded at the key read, `at`, a tree that sits under another key.
   nodeStepRefusal =
     door: at: t: c:
     "${doorAt door at}the option type `${nameOf t}' states (its functors) that each key below it, "
-    + "under a lazy `attrsWith', holds a `${nameOf c}' folded at that key, and its merge folded a tree "
+    + "under an `attrsWith', holds a `${nameOf c}' folded at that key, and its merge folded a tree "
     + "of another key's there: the merge was overridden, so the functor misstates it, and this tree "
     + "cannot be keyed where it is read. Declare the element under a container whose merge is its "
     + "constructor's, or state `declaresNesting = false' on the type and take the stated price: a "
