@@ -1937,9 +1937,15 @@ let
                   el = below (fuel - 1) st.element;
                 in
                 if el != null then
-                  { one = el; }
+                  {
+                    one = el;
+                    step = e;
+                  }
                 else if isAttrs st.element && !(st.element ? substructure) && canNest st.element then
-                  { node = st.element; }
+                  {
+                    node = st.element;
+                    step = e;
+                  }
                 else
                   null
               )
@@ -2054,7 +2060,7 @@ let
           __threadedForeign = true;
           # the node keys its elements as the record its step states does (`keysExactly`): an exact
           # stock container's elements are keyed in the exact regime, as gen's own are
-          keysExactly = keysExactly c;
+          keysExactly = keysExactly (if lv != null then lv.step else c);
           split =
             base: ds: splitAt lv c oloc root base ds (builtins.foldl' (v: k: v.${k}) root (under oloc base));
           mergeDefs = {
