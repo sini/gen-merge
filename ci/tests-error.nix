@@ -7159,6 +7159,76 @@ in
         };
       };
 
+    # den-hoag-rlskz: a foreign chain with a second step below its lazy `attrsWith` refuses by the
+    # level that holds the element. A `functionTo` below the lazy step folds its gen element inside
+    # a function body that no level's split exposes, so it is refused as unexposed, as at the
+    # option's own level. A merge that folds another key's tree at a node's key is refused by that
+    # node, in its own words and at its own key: reading `foo` forces the node at `bar`, which holds
+    # `foo`'s tree.
+    flake.testsError.nesting-keys-foreign-chain-nested =
+      let
+        np = nixpkgsLib.types;
+        sub = t.submodule {
+          options.a = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        cfgOf =
+          type: m:
+          (gm.evalModuleTree { } [
+            { options.s = gm.mkOption { inherit type; }; }
+            m
+          ]).config.s;
+        reshaped =
+          g: a:
+          a
+          // {
+            merge = loc: defs: g (a.merge loc defs);
+            substSubModules =
+              m:
+              let
+                r = a.substSubModules m;
+              in
+              r // { merge = loc: defs: g (r.merge loc defs); };
+          };
+        swap =
+          r:
+          r
+          // {
+            foo = r.bar;
+            bar = r.foo;
+          };
+      in
+      {
+        test-a-functionTo-below-a-lazy-step-is-refused-as-unexposed = {
+          expr =
+            force
+              (
+                ((cfgOf (np.uniq (np.lazyAttrsOf (np.functionTo (t.attrsOf sub))))) {
+                  s.foo = _: { k.a = 1; };
+                }).foo
+                  null
+              ).k.a;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo[.]<function body>': the option type `unique' folds its gen nesting element at a position its own merge does not expose when the option is merged [(]inside a value it returns, such as a function body[)], so that nested tree cannot be threaded into this evaluation[.] Declare the tree at a position the merge returns as a value, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+          };
+        };
+        test-a-merge-swapping-two-keys-trees-is-refused-by-the-node-holding-the-moved-tree = {
+          expr =
+            force
+              (cfgOf (np.uniq (reshaped swap (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub))))) {
+                s.foo.j.k.a = 1;
+                s.bar.j.k.a = 2;
+              }).foo.j.k.a;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]bar': the option type `unique' states [(]its functors[)] that each key below it, under a lazy `attrsWith', holds a `attrsOf' folded at that key, and its merge folded a tree of another key's there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed where it is read[.] Declare the element under a container whose merge is its constructor's, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+          };
+        };
+      };
+
     # den-hoag-n6dh7 Unit 2.4, placement: the refusals a nested tree's placement adds, each anchored
     # `^…$`. `ci/tests/nesting-placement.nix` pins that each is catchable where it fires.
     flake.testsError.nesting-placement =

@@ -10,6 +10,7 @@
   genMerge,
   genMergeCore,
   genScope,
+  interface,
   nixpkgsLib,
   ...
 }:
@@ -906,6 +907,325 @@ in
         );
         expected = {
           foo.k.x = 1;
+        };
+      };
+    };
+
+  # den-hoag-rlskz (ADR-0039, the serve half; ADR-0025 item 1): a FOREIGN chain whose lazy `attrsWith`
+  # holds, at each key, a record that is itself a chain (a second container step: `lazyAttrsOf`,
+  # `attrsOf`, `listOf`, `nullOr`) is keyed one key at a time: each key is a container node whose own
+  # walk is that record's, read off the fold's result at that key only, so a sibling whose key set or
+  # `mkIf` reads the read tree is never forced to key it. The expected values are nixpkgs' own, read
+  # off `lib.evalModules` mounting the same declaration.
+  # den-hoag-rlskz: a foreign chain's node keys its elements in the regime of the record its step
+  # states (`interface.keysExactly`). Below `lazyAttrsOf`, a stock `attrsOf` keys exactly, so its gen
+  # `attrsOf` elements are keyed over-approximately inline in the node's own group, as gen's own
+  # `attrsOf (attrsOf sub)` keys them: the node holds trees, and no second node is minted per key.
+  flake.tests.nesting-keys-foreign-chain-node-regime =
+    let
+      r = genMergeCore.evalModuleTreeExposed {
+        modules = [
+          { options.o = gm.mkOption { type = np.uniq (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub))); }; }
+          { config.o.foo.j.k.x = 1; }
+        ];
+      };
+      nodeId = genScope.mintNtaId {
+        host = "module-tree";
+        name = "nested";
+        group = "[\"o\"]";
+        key = "[\"foo\"]";
+      };
+      modesAt =
+        id: group: builtins.mapAttrs (_: p: p.mode) (r._evaluation.get id "positions").nested.${group};
+    in
+    {
+      test-a-node-over-an-exact-stock-container-holds-trees-not-nodes = {
+        expr = {
+          root = modesAt "module-tree" "[\"o\"]";
+          node = modesAt nodeId "container";
+          value = r.config.o.foo.j.k.x;
+        };
+        expected = {
+          root."[\"foo\"]" = "container";
+          node."[\"j\",\"k\"]" = "called";
+          value = 1;
+        };
+      };
+    };
+
+  flake.tests.nesting-keys-foreign-chain-nested =
+    let
+      cfgOf = modules: (gm.evalModuleTree { } modules).config.o;
+      aw =
+        e:
+        np.attrsWith {
+          elemType = e;
+          lazy = true;
+          placeholder = "p";
+        };
+      # `bar`'s key set reads the read tree, below the chain's second step (`d` builds a key's value)
+      keysDep = type: d: read: [
+        { options.o = gm.mkOption { inherit type; }; }
+        (
+          { config, ... }:
+          {
+            config.o = {
+              foo = d 1;
+              bar = if read config.o.foo == 1 then d 2 else { };
+            };
+          }
+        )
+      ];
+      inJ = v: { j.k.x = v; };
+      readJ = x: x.j.k.x;
+    in
+    {
+      test-a-lazy-step-over-a-lazy-attrsOf-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          readJ
+            (cfgOf (keysDep (np.uniq (np.lazyAttrsOf (np.lazyAttrsOf (t.attrsOf sub)))) inJ readJ)).foo;
+        expected = 1;
+      };
+      test-a-lazy-step-over-an-attrsOf-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          readJ
+            (cfgOf (keysDep (np.uniq (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))) inJ readJ)).foo;
+        expected = 1;
+      };
+      test-a-lazy-step-over-a-listOf-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          (builtins.head
+            (cfgOf (
+              keysDep (np.uniq (np.lazyAttrsOf (np.listOf (t.attrsOf sub)))) (v: [ { k.x = v; } ]) (
+                x: (builtins.head x).k.x
+              )
+            )).foo
+          ).k.x;
+        expected = 1;
+      };
+      test-a-lazy-step-over-a-nullOr-under-unique-serves-a-key-dependent-sibling = {
+        expr =
+          (cfgOf (
+            keysDep (np.uniq (np.lazyAttrsOf (np.nullOr (t.attrsOf sub)))) (v: { k.x = v; }) (x: x.k.x)
+          )).foo.k.x;
+        expected = 1;
+      };
+      test-a-bare-placeholder-attrsWith-over-a-lazy-attrsOf-serves-a-key-dependent-sibling = {
+        expr = readJ (cfgOf (keysDep (aw (np.lazyAttrsOf (t.attrsOf sub))) inJ readJ)).foo;
+        expected = 1;
+      };
+      # three steps, under `coercedTo`: each lazy step is a level of nodes
+      test-three-steps-under-coercedTo-serve-a-key-dependent-sibling = {
+        expr =
+          (cfgOf (
+            keysDep (np.coercedTo np.str (_: throw "unused") (
+              np.lazyAttrsOf (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))
+            )) (v: { j.i.k.x = v; }) (x: x.j.i.k.x)
+          )).foo.j.i.k.x;
+        expected = 1;
+      };
+      # one step below the node: an inner LAZY step keys its own keys where read, so a second key
+      # that is `mkIf` on the read tree serves (nixpkgs forces it only where it is read)
+      test-an-inner-lazy-step-serves-an-mkIf-sibling-below-the-node = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = np.uniq (np.lazyAttrsOf (np.lazyAttrsOf (t.attrsOf sub))); }; }
+              (
+                { config, ... }:
+                {
+                  config.o.foo = {
+                    j.k.x = 1;
+                    i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 2; };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # the whole value, every key and element, and a key whose every definition is discharged away
+      test-the-whole-value-of-a-two-step-chain-is-nixpkgs-value = {
+        expr = cfgOf (
+          host (np.uniq (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))) [
+            {
+              foo.j.k.x = 1;
+              foo.i.k.x = 3;
+              bar.j.k.x = 2;
+              baz = gm.mkIf false { j.k.x = 4; };
+            }
+          ]
+        );
+        expected = {
+          foo.j.k.x = 1;
+          foo.i.k.x = 3;
+          bar.j.k.x = 2;
+          baz = { };
+        };
+      };
+      # the whole value under siblings that add keys at the node's exact level and at the gen level
+      # below it, `mkIf` on a sibling's tree (a whole definition and an inner key), a key whose only
+      # definition discharges away, and `baz`, whose key set reads `foo`'s tree (the class trigger):
+      # the node keys every key nixpkgs keeps, and none it drops
+      test-the-whole-value-under-key-adding-and-mkIf-siblings-is-nixpkgs-value = {
+        expr =
+          let
+            ab = t.submodule {
+              options.a = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+              options.b = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+            };
+          in
+          cfgOf [
+            { options.o = gm.mkOption { type = np.uniq (np.lazyAttrsOf (np.attrsOf (t.attrsOf ab))); }; }
+            (
+              { config, ... }:
+              let
+                barA = config.o.bar.j.k.a;
+              in
+              {
+                config.o = {
+                  foo = gm.mkMerge [
+                    { j.k.a = 1; }
+                    { j.k2.a = 2; }
+                    { j2.k.a = 3; }
+                    (gm.mkIf (barA == 5) { j.k3.a = 4; })
+                    { j.k5 = gm.mkIf (barA == 5) { b = 7; }; }
+                    { j.k6.a = gm.mkIf false 9; }
+                  ];
+                  bar.j.k.a = 5;
+                  baz = if config.o.foo.j.k.a == 1 then { j.k.a = 8; } else { };
+                };
+              }
+            )
+          ];
+        expected = {
+          foo.j = {
+            k = {
+              a = 1;
+              b = 0;
+            };
+            k2 = {
+              a = 2;
+              b = 0;
+            };
+            k3 = {
+              a = 4;
+              b = 0;
+            };
+            k5 = {
+              a = 0;
+              b = 7;
+            };
+            k6 = {
+              a = 0;
+              b = 0;
+            };
+          };
+          foo.j2.k = {
+            a = 3;
+            b = 0;
+          };
+          bar.j.k = {
+            a = 5;
+            b = 0;
+          };
+          baz.j.k = {
+            a = 8;
+            b = 0;
+          };
+        };
+      };
+      # a head over the lazy step that is not a level's wrapper (`addCheck`, `either`, `nullOr`): the
+      # option's own record is keyed by the eager walk, and the lazy step below it is a level of nodes
+      test-an-addCheck-head-over-a-lazy-step-over-an-attrsOf-serves-a-key-dependent-sibling = {
+        expr =
+          readJ
+            (cfgOf (keysDep (np.addCheck (aw (np.attrsOf (t.attrsOf sub))) (_: true)) inJ readJ)).foo;
+        expected = 1;
+      };
+      test-an-either-head-over-a-lazy-step-over-a-listOf-serves-a-key-dependent-sibling = {
+        expr =
+          (builtins.head
+            (cfgOf (
+              keysDep (np.either (aw (np.listOf (t.attrsOf sub))) np.str) (v: [ { k.x = v; } ]) (
+                x: (builtins.head x).k.x
+              )
+            )).foo
+          ).k.x;
+        expected = 1;
+      };
+      test-a-nullOr-head-over-a-lazy-step-over-a-lazy-attrsOf-serves-an-mkIf-sibling = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = np.nullOr (aw (np.lazyAttrsOf (t.attrsOf sub))); }; }
+              (
+                { config, ... }:
+                {
+                  config.o = {
+                    foo.j.k.x = 1;
+                    bar = gm.mkIf (config.o.foo.j.k.x == 1) { j.k.x = 2; };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+    };
+
+  # den-hoag-rlskz: `modules.nix` `keyWalk` reads `interface.keysExactly` inline rather than through a
+  # call, so the predicate has two copies. The inline copy is read off the source and evaluated, and
+  # the two answer alike on gen's exact containers, its lazy one, and a record stating its own answer.
+  flake.tests.nesting-keys-keys-exactly-census =
+    let
+      lines = builtins.filter builtins.isString (
+        builtins.split "\n" (builtins.readFile ../../lib/modules.nix)
+      );
+      found = builtins.filter (m: m != null) (
+        map (builtins.match " *exact = (t[.]keysExactly or .*);") lines
+      );
+      inline = import (
+        builtins.toFile "keys-exactly-inline.nix" "t: let name = t.name or null; in ${builtins.head (builtins.head found)}"
+      );
+      records = {
+        attrsOf = t.attrsOf sub;
+        listOf = t.listOf sub;
+        nullOr = t.nullOr sub;
+        lazyAttrsOf = t.lazyAttrsOf sub;
+        statesExact = t.lazyAttrsOf sub // {
+          keysExactly = true;
+        };
+        statesOver = t.attrsOf sub // {
+          keysExactly = false;
+        };
+      };
+      answers = {
+        attrsOf = true;
+        listOf = true;
+        nullOr = true;
+        lazyAttrsOf = false;
+        statesExact = true;
+        statesOver = false;
+      };
+    in
+    {
+      test-keyWalk-holds-one-inline-copy = {
+        expr = builtins.length found;
+        expected = 1;
+      };
+      test-the-binding-and-the-inline-copy-answer-alike = {
+        expr = {
+          binding = builtins.mapAttrs (_: interface.keysExactly) records;
+          inline = builtins.mapAttrs (_: inline) records;
+        };
+        expected = {
+          binding = answers;
+          inline = answers;
         };
       };
     };

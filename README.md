@@ -1772,24 +1772,28 @@ against nixpkgs' once. A foreign closure, the container's own merge and check, r
 evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
 is entered only in gen's own evaluation.
 
-**A chain over a lazy `attrsWith` is keyed by its stated step.** Where the chain is step-free
-wrappers (`unique`, `coercedTo`), then one lazy `attrsWith` of any placeholder, then step-free
-wrappers, over a gen element that may nest, the split keys the merge's attribute names and reads an
-element only where it is read, so a sibling whose key set, `mkIf` or alias reads the read tree is
-served as nixpkgs serves it. **The price, stated as an extension of the overridden-merge price
-below:** the step is trusted from the functor names, while the run still says which tree sits at
-which key. A stock-named lazy `attrsWith` whose `merge` does not fold each element at its own key
-(one key deeper, keys renamed or swapped, or a key holding no element's tree) is refused by name at
-the key read, where nixpkgs serves it; one that only duplicates or drops a key's tree serves
-nixpkgs' value, and one whose result is not an attribute set keeps the eager walk. **Not reached,
-and stated as a shortfall:** a second step below the lazy `attrsWith` still aborts with a sibling
-reading the read tree, where nixpkgs serves. The five measured shapes:
+**A chain over a lazy `attrsWith` is keyed by its stated steps.** A level is step-free wrappers
+(`unique`, `coercedTo`), then one lazy `attrsWith` of any placeholder. Where step-free wrappers and
+a gen element that may nest sit below it, the split keys the merge's attribute names and reads an
+element only where it is read. Where another container sits below it (`lazyAttrsOf`, `attrsOf`,
+`listOf`, `nullOr`, at any depth), each key is a container node: its own walk is that record's,
+read off the merge's result at that key only, and it keys its elements in that record's regime
+(exactly below a stock `attrsOf`, `listOf` or `nullOr`), as gen keys its own. Either way a sibling
+whose key set, `mkIf` or alias reads the read tree is served as nixpkgs serves it. **The price,
+stated as an extension of the overridden-merge price below:** the steps are trusted from the
+functor names at each lazy level, while the run still says which tree sits at which key. A
+stock-named lazy `attrsWith` whose `merge` does not fold each element at its own key (one key
+deeper, keys renamed or swapped, or a key holding no element's tree) is refused by name at the key
+read, where nixpkgs serves it; one that only duplicates or drops a key's tree serves nixpkgs' value,
+and one whose result is not an attribute set keeps the eager walk. A node's regime is trusted from
+its record's name the same way: a stock-named `attrsOf`, `listOf` or `nullOr` whose `merge` was
+overridden to a lazy one is keyed exactly. **Not reached, and stated as a shortfall:** a lazy step
+reached through a record that is not a level still aborts with a sibling reading the read tree,
+where nixpkgs serves. The measured shapes:
 
-- `uniq (lazyAttrsOf (lazyAttrsOf e))`;
-- `uniq (lazyAttrsOf (attrsOf e))`;
-- `uniq (lazyAttrsOf (listOf e))`;
-- `uniq (lazyAttrsOf (nullOr e))`;
-- a bare placeholder `attrsWith { lazy = true; }` over `lazyAttrsOf e`.
+- `uniq (nullOr (lazyAttrsOf e))`, and deeper chains below it;
+- a strict `attrsWith { lazy = false; }` over `lazyAttrsOf e`, where a key below the lazy step is
+  `mkIf` on the read tree.
 
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared
