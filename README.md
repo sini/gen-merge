@@ -1723,6 +1723,18 @@ against nixpkgs' once. A foreign closure, the container's own merge and check, r
 evaluation over a gen-threaded element fold; no foreign engine evaluates the tree, and the channel
 is entered only in gen's own evaluation.
 
+**A chain over a lazy `attrsWith` is keyed by its stated step.** Where the chain is step-free
+wrappers (`unique`, `coercedTo`), then one lazy `attrsWith` of any placeholder, then step-free
+wrappers, over a gen element that may nest, the split keys the merge's attribute names and reads an
+element only where it is read, so a sibling whose key set, `mkIf` or alias reads the read tree is
+served as nixpkgs serves it. **The price, stated as an extension of the overridden-merge price
+below:** the step is trusted from the functor names, while the run still says which tree sits at
+which key. A stock-named lazy `attrsWith` whose `merge` does not fold each element at its own key
+(one key deeper, keys renamed or swapped) is refused by name at the key read, where nixpkgs serves
+it; one that only duplicates or drops a key's tree serves nixpkgs' value. **Not reached (ADR-0025
+item 1, enumerated):** a second step below the lazy `attrsWith` (`uniq (lazyAttrsOf (lazyAttrsOf e))`, `uniq (lazyAttrsOf (attrsOf e))`, `uniq (lazyAttrsOf (listOf e))`, `uniq (lazyAttrsOf (nullOr e))`, a bare placeholder `attrsWith { lazy = true; }` over `lazyAttrsOf e`) still aborts there with a
+sibling reading the read tree, where nixpkgs serves.
+
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared
 option's type over the declaration's module set, at the option's root only, and the rebuild reaches
