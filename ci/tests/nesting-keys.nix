@@ -1313,13 +1313,86 @@ in
           };
         };
       };
+      # den-hoag-i01nx gate CF1: a strict step's UNREAD key is never keyed below by its merged value,
+      # which nixpkgs forces only where that key is read: an ill-typed sibling, a sibling `unique`
+      # refuses, a sibling `nullOr` refuses, and a sibling whose coercion reads the read tree
+      test-a-strict-step-over-a-lazy-step-serves-a-key-beside-an-ill-typed-sibling = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.lazyAttrsOf (t.attrsOf sub)); }; }
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar = "x"; }
+            ]).foo;
+        expected = 1;
+      };
+      test-a-strict-step-below-a-lazy-step-serves-a-key-beside-an-ill-typed-sibling = {
+        expr =
+          readJ
+            (cfgOf [
+              {
+                options.o = gm.mkOption {
+                  type = np.uniq (np.lazyAttrsOf (strictAw (np.lazyAttrsOf (t.attrsOf sub))));
+                };
+              }
+              {
+                config.o.y = {
+                  foo.j.k.x = 1;
+                  bar = "x";
+                };
+              }
+            ]).y.foo;
+        expected = 1;
+      };
+      test-a-strict-step-over-unique-serves-a-key-beside-a-sibling-unique-refuses = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.uniq (np.lazyAttrsOf (t.attrsOf sub))); }; }
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar.j.k.x = 2; }
+              { config.o.bar.j.k.x = 3; }
+            ]).foo;
+        expected = 1;
+      };
+      test-a-strict-step-over-nullOr-serves-a-key-beside-a-sibling-nullOr-refuses = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.nullOr (np.lazyAttrsOf (t.attrsOf sub))); }; }
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar = null; }
+              { config.o.bar.j.k.x = 2; }
+            ]).foo;
+        expected = 1;
+      };
+      test-a-strict-step-over-coercedTo-serves-a-key-beside-a-sibling-whose-coercion-reads-it = {
+        expr =
+          readJ
+            (cfgOf [
+              (
+                { config, ... }:
+                {
+                  options.o = gm.mkOption {
+                    type = strictAw (
+                      np.coercedTo np.str (_: if config.o.foo.j.k.x == 1 then { j.k.x = 2; } else { }) (
+                        np.lazyAttrsOf (t.attrsOf sub)
+                      )
+                    );
+                  };
+                }
+              )
+              { config.o.foo.j.k.x = 1; }
+              { config.o.bar = "x"; }
+            ]).foo;
+        expected = 1;
+      };
     };
 
-  # den-hoag-i01nx: a strict step over a lazy level is a `pass` level. Its keys are steps of the
-  # enclosing walk, not nodes: below `attrsOf`, a lazy `attrsOf`'s gen `attrsOf` elements sit in the
-  # option's own group one key deeper, keyed where read (the lazy step's regime), and no node is
-  # minted per strict key.
-  flake.tests.nesting-keys-foreign-chain-pass-level =
+  # den-hoag-i01nx: a strict step over a lazy level keys each of its keys as a container node, whose
+  # own walk is the lazy level's, read off the fold's result at that key only (gate CF1): keying below
+  # a strict key needs that key's merged value, which nixpkgs forces only where the key is read.
+  flake.tests.nesting-keys-foreign-chain-strict-over-lazy =
     let
       r = genMergeCore.evalModuleTreeExposed {
         modules = [
@@ -1327,17 +1400,25 @@ in
           { config.o.foo.j.k.x = 1; }
         ];
       };
+      nodeId = genScope.mintNtaId {
+        host = "module-tree";
+        name = "nested";
+        group = "[\"o\"]";
+        key = "[\"foo\"]";
+      };
       modesAt =
         id: group: builtins.mapAttrs (_: p: p.mode) (r._evaluation.get id "positions").nested.${group};
     in
     {
-      test-a-strict-step-over-a-lazy-step-keys-its-elements-one-key-deeper-without-a-node = {
+      test-a-strict-step-over-a-lazy-step-keys-each-key-as-a-node = {
         expr = {
           root = modesAt "module-tree" "[\"o\"]";
+          node = modesAt nodeId "container";
           value = r.config.o.foo.j.k.x;
         };
         expected = {
-          root."[\"foo\",\"j\"]" = "container";
+          root."[\"foo\"]" = "container";
+          node."[\"j\"]" = "container";
           value = 1;
         };
       };
