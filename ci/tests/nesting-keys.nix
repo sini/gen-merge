@@ -1389,36 +1389,59 @@ in
       };
     };
 
-  # den-hoag-i01nx: a strict step over a lazy level keys each of its keys as a container node, whose
-  # own walk is the lazy level's, read off the fold's result at that key only (gate CF1): keying below
-  # a strict key needs that key's merged value, which nixpkgs forces only where the key is read.
+  # den-hoag-i01nx: the option's own strict step over a stock lazy step is keyed as gen keys `attrsOf
+  # (lazyAttrsOf e)` (arm OV): each key's lower keys over that key's definitions, in the option's own
+  # group one key deeper, so no node is minted per strict key and no key's merged value is read to
+  # key it. Below a lazy node, the strict step keys each key as a node, whose own walk is the lazy
+  # level's (gate CF1).
   flake.tests.nesting-keys-foreign-chain-strict-over-lazy =
     let
-      r = genMergeCore.evalModuleTreeExposed {
-        modules = [
-          { options.o = gm.mkOption { type = np.uniq (np.attrsOf (np.lazyAttrsOf (t.attrsOf sub))); }; }
-          { config.o.foo.j.k.x = 1; }
-        ];
-      };
+      exposed =
+        type: v:
+        genMergeCore.evalModuleTreeExposed {
+          modules = [
+            { options.o = gm.mkOption { inherit type; }; }
+            { config.o = v; }
+          ];
+        };
+      r = exposed (np.uniq (np.attrsOf (np.lazyAttrsOf (t.attrsOf sub)))) { foo.j.k.x = 1; };
+      rN = exposed (np.uniq (
+        np.lazyAttrsOf (
+          np.attrsWith {
+            elemType = np.lazyAttrsOf (t.attrsOf sub);
+            lazy = false;
+            placeholder = "p";
+          }
+        )
+      )) { y.foo.j.k.x = 1; };
       nodeId = genScope.mintNtaId {
         host = "module-tree";
         name = "nested";
         group = "[\"o\"]";
-        key = "[\"foo\"]";
+        key = "[\"y\"]";
       };
       modesAt =
-        id: group: builtins.mapAttrs (_: p: p.mode) (r._evaluation.get id "positions").nested.${group};
+        r: id: group:
+        builtins.mapAttrs (_: p: p.mode) (r._evaluation.get id "positions").nested.${group};
     in
     {
-      test-a-strict-step-over-a-lazy-step-keys-each-key-as-a-node = {
+      test-the-option-strict-step-over-a-stock-lazy-step-keys-over-definitions-without-a-node = {
         expr = {
-          root = modesAt "module-tree" "[\"o\"]";
-          node = modesAt nodeId "container";
+          root = modesAt r "module-tree" "[\"o\"]";
           value = r.config.o.foo.j.k.x;
         };
         expected = {
-          root."[\"foo\"]" = "container";
-          node."[\"j\"]" = "container";
+          root."[\"foo\",\"j\"]" = "container";
+          value = 1;
+        };
+      };
+      test-a-strict-step-below-a-lazy-node-keys-each-key-as-a-node = {
+        expr = {
+          node = modesAt rN nodeId "container";
+          value = rN.config.o.y.foo.j.k.x;
+        };
+        expected = {
+          node."[\"foo\"]" = "container";
           value = 1;
         };
       };
