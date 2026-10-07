@@ -3185,7 +3185,8 @@ let
     else
       let
         name = t.name or null;
-        exact = name == "attrsOf" || name == "listOf" || name == "nullOr";
+        # `interface.keysExactly`, read inline: every container the walk splits pays it
+        exact = t.keysExactly or (name == "attrsOf" || name == "listOf" || name == "nullOr");
       in
       concatMap (
         e:
@@ -4191,12 +4192,16 @@ let
           };
         }) records
       );
-    in
-    {
-      value = mergeDefsThreaded (evAt {
+      # the node's own accessor, published beside its value: a foreign chain's one fold, run at its
+      # host, threads each element below this node through it (`interface.threadedForeign`)
+      accessor = evAt {
         reader = self;
         result._nested = { inherit positions; };
-      } "container") p.loc p.member defs;
+      } "container";
+    in
+    {
+      value = mergeDefsThreaded accessor p.loc p.member defs;
+      inherit accessor;
       _nested = {
         groups = [ { definitions = defs; } ];
         inherit positions;
