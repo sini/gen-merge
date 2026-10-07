@@ -2147,6 +2147,18 @@ let
               placeAt i.sub.${head st} (ev.child { position = ev.position ++ pre ++ [ (head st) ]; }).accessor [ ]
                 (builtins.tail st)
                 eloc
+            else if i.onLevel && i.lv ? pass && i.lv.next ? one && st != [ ] then
+              # a pass over a `one` level places its element here, read off the site under its key,
+              # with no per-key record
+              let
+                rK = i.rB.${head st} or null;
+              in
+              {
+                inherit ev;
+                st = pre ++ st;
+                lvOn = if i.rB ? ${head st} then isAttrs rK else i.onLevel;
+                ok = length st == 2 && isAttrs rK && siteLocAt rK (elemAt st 1) == eloc;
+              }
             else if i.onLevel && i.lv ? pass && st != [ ] && i.sub ? ${head st} then
               placeAt i.sub.${head st} ev (pre ++ [ (head st) ]) (builtins.tail st) eloc
             else
