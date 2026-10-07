@@ -3882,16 +3882,38 @@ let
       }) flat;
       sitesAt = declaringSitesAt (length prefix) declEntries;
     in
-    {
-      inherit declEntries sitesAt;
-      # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
-      # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
-      # traced back to it, so guarding the producer here covers all five tags at any nesting depth
-      # on both the `.options` and `.config` planes.
-      options = mergeOptionDeclTrees (onRedeclare sitesAt) sitesAt prefix (
-        map (e: validateDeclSubtree prefix e.options) declEntries
-      );
-    };
+    # A closed set (see THE DECLARATION GUARD) publishes `flat` and `validated` as well, for the
+    # value stratum to share; `isList` because `declaredOptions` passes the caller's raw field.
+    if
+      isList modules
+      && all isAttrs modules
+      && builtins.catAttrs "__functor" modules == [ ]
+      && builtins.catAttrs "imports" modules == [ ]
+      && builtins.catAttrs "require" modules == [ ]
+    then
+      let
+        validated = map (e: validateDeclSubtree prefix e.options) declEntries;
+      in
+      {
+        inherit
+          declEntries
+          sitesAt
+          flat
+          validated
+          ;
+        options = mergeOptionDeclTrees (onRedeclare sitesAt) sitesAt prefix validated;
+      }
+    else
+      {
+        inherit declEntries sitesAt;
+        # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
+        # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
+        # traced back to it, so guarding the producer here covers all five tags at any nesting depth
+        # on both the `.options` and `.config` planes.
+        options = mergeOptionDeclTrees (onRedeclare sitesAt) sitesAt prefix (
+          map (e: validateDeclSubtree prefix e.options) declEntries
+        );
+      };
 
   # THE STRATUM-1 ENTRY, published beside `evalModuleTree`. A consumer wanting DECLARATIONS without
   # values gets a door that drives no fixpoint at all — the two `.options`-only readers in this
@@ -4669,6 +4691,14 @@ let
       # It costs one declaration-side application of the module set. The value side — the merge, the
       # priority pass, the type folds — is untouched, and the guard forces no definition.
       #
+      # On a CLOSED module set (every module an attrset with no `__functor`, `imports` or `require`)
+      # `callD` and `callM` both return each module unchanged, so the two strata collect one value:
+      # the guard returns `declarationStratumWith`'s record, and the body reads `flat`,
+      # `declEntries`, `sitesAt` and the validated declarations from it instead of computing them a
+      # second time. The syntax checks, the spine merge and the spine walk stay the guard's own and
+      # stay eager. Any other set returns `null` and the body computes its own. The closedness test
+      # is spelled inline in primops at both sites: a named predicate costs a load thunk.
+      #
       # The spine is forced by a copy of `declLeafEntries`'s descent — the same `isOptLeaf` stop, the
       # same group recursion, so the same set of forced nodes — answered as a boolean rather than as
       # `deepSeq (declLeafPaths …)`, which builds and then forces a loc list per declared leaf that
@@ -4694,12 +4724,26 @@ let
                 true
             ) (attrNames t);
         in
-        builtins.seq (spine
-          ((if knot.positioned then declarationSpinePositioned else declarationSpine) {
-            inherit specialArgs prefix;
-            modules = modList;
-          }).options
-        ) null;
+        if
+          all isAttrs modList
+          && builtins.catAttrs "__functor" modList == [ ]
+          && builtins.catAttrs "imports" modList == [ ]
+          && builtins.catAttrs "require" modList == [ ]
+        then
+          let
+            s = (if knot.positioned then declarationSpinePositioned else declarationSpine) {
+              inherit specialArgs prefix;
+              modules = modList;
+            };
+          in
+          builtins.seq (spine s.options) s
+        else
+          builtins.seq (spine
+            ((if knot.positioned then declarationSpinePositioned else declarationSpine) {
+              inherit specialArgs prefix;
+              modules = modList;
+            }).options
+          ) null;
 
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
@@ -4806,7 +4850,11 @@ let
           # `flat` IS the tree's module collection (`moduleClosure`), in closure order: the fold below
           # reads it, and the minted `modules` family pairs it with the identity-keyed closure after
           # `alignedGraph` has checked every node.
-          flat = builtins.seq declarationGuard (moduleClosure callM modList);
+          flat =
+            if declarationGuard ? flat then
+              declarationGuard.flat
+            else
+              builtins.seq declarationGuard (moduleClosure callM modList);
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
           # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
@@ -4830,14 +4878,22 @@ let
           # the imports expansion. Where they could differ is a descriptor field, which may hold a
           # stratum-2 value (its `default`, `apply`, or a `type` read from a module argument), and
           # that difference is the point.
-          declEntries = prelude.imap0 declEntry flat;
-          sitesAt = declaringSitesAt (length prefix) declEntries;
+          declEntries =
+            if declarationGuard ? flat then declarationGuard.declEntries else prelude.imap0 declEntry flat;
+          sitesAt =
+            if declarationGuard ? flat then
+              declarationGuard.sitesAt
+            else
+              declaringSitesAt (length prefix) declEntries;
           # ONE door for the whole engine: every downstream reader (`mergeTree`'s
           # `declaredPairs`, `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes
           # `allOptions` or a value traced back to it, so guarding the producer here covers all
           # five tags at any nesting depth on both the `.options` and `.config` planes.
           allOptions = mergeOptionDeclTrees (redeclareDecl sitesAt) sitesAt prefix (
-            map (e: validateDeclSubtree prefix e.options) declEntries
+            if declarationGuard ? flat then
+              declarationGuard.validated
+            else
+              map (e: validateDeclSubtree prefix e.options) declEntries
           );
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────

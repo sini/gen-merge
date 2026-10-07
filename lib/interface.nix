@@ -1180,38 +1180,43 @@ let
     let
       go =
         fuel: t:
-        let
-          marker = declaresNestingMarkerRefusal t;
-          wrapped = declaredWrapped t;
-        in
         if !(isAttrs t) then
           false
         else if t ? declaresNesting then
-          (if marker == null then false else throw marker)
+          (
+            let
+              marker = declaresNestingMarkerRefusal t;
+            in
+            if marker == null then false else throw marker
+          )
         else if isNesting t then
           true
-        else if wrapped == [ ] then
-          # presence first, inline: the walk ends at every leaf here, and the judging is paid only
-          # where a payload offers an element at all
-          (
-            if
-              ((t.functor or { }).payload or null) ? elemType && prelude.any (go (fuel - 1)) (payloadOffered t)
-            then
-              throw (nestingOfferRefusal door loc t)
-            else
-              false
-          )
-        else if fuel <= 0 then
-          throw (
-            "gen-merge: cannot decide whether the option type `${nameOf root}' declares a gen nesting "
-            + "type as an element: its type structure nests deeper than the walk's fuel ("
-            + toString importedTypeWalkFuel
-            + "), as a self-referential element does. Wrap the element in a recognised container "
-            + "(attrsOf, lazyAttrsOf, listOf, nullOr, either, oneOf), declare no gen nesting element, "
-            + "or state the answer with `declaresNesting = false' on the type"
-          )
         else
-          prelude.any (go (fuel - 1)) wrapped;
+          let
+            wrapped = declaredWrapped t;
+          in
+          if wrapped == [ ] then
+            # presence first, inline: the walk ends at every leaf here, and the judging is paid only
+            # where a payload offers an element at all
+            (
+              if
+                ((t.functor or { }).payload or null) ? elemType && prelude.any (go (fuel - 1)) (payloadOffered t)
+              then
+                throw (nestingOfferRefusal door loc t)
+              else
+                false
+            )
+          else if fuel <= 0 then
+            throw (
+              "gen-merge: cannot decide whether the option type `${nameOf root}' declares a gen nesting "
+              + "type as an element: its type structure nests deeper than the walk's fuel ("
+              + toString importedTypeWalkFuel
+              + "), as a self-referential element does. Wrap the element in a recognised container "
+              + "(attrsOf, lazyAttrsOf, listOf, nullOr, either, oneOf), declare no gen nesting element, "
+              + "or state the answer with `declaresNesting = false' on the type"
+            )
+          else
+            prelude.any (go (fuel - 1)) wrapped;
     in
     go importedTypeWalkFuel root;
   declaresNesting = declaresNestingAt null null;
@@ -1241,13 +1246,10 @@ let
   importedRehomeAt =
     door: loc: t:
     let
-      f = t.functor or { };
-      payload = f.payload or null;
-      keys = if isAttrs payload then attrNames payload else [ ];
-      name = f.name or null;
+      name = (t.functor or { }).name or null;
     in
-    # `roles` is bound only past the functor-name test: a door asks this of every foreign record
-    # stating an element, so a binding ahead of it is paid per instance
+    # everything past the name is bound only past the functor-name test: a door asks this of every
+    # foreign record stating an element, so a binding ahead of it is paid per instance
     if
       !(isAttrs t)
       || t ? carries
@@ -1256,6 +1258,8 @@ let
       null
     else
       let
+        payload = t.functor.payload or null;
+        keys = if isAttrs payload then attrNames payload else [ ];
         roles = statedRoles t;
       in
       if
@@ -1570,19 +1574,17 @@ let
     in
     door: loc: site: t:
     let
-      mods = t.getSubModules;
       s = if crossedRoot t then mountOf t else t.substSubModules or null;
-      threads = threadsAt door loc t;
       # the shape `mergeOptionDecls` hands a rebuild, labelled as nixpkgs labels a module that states
       # no file
       fixed = s (
         map (m: {
           _file = "<unknown-file>";
           imports = [ m ];
-        }) mods
+        }) t.getSubModules
       );
-      callable = isFunction s || isAttrs s && s ? __functor;
-      mountable = callable && isAttrs fixed && fixed ? merge && fixed ? check;
+      mountable =
+        (isFunction s || isAttrs s && s ? __functor) && isAttrs fixed && fixed ? merge && fixed ? check;
       # judged on the record as written (a re-homing disagreement), then mounted as the rebuild over
       # the real module set, whose merge is the one served, the record's own `check` riding on it
       mounted = builtins.seq (importedRehomeAt door loc t) (
@@ -1604,21 +1606,25 @@ let
         else
           mounted
       )
-    else if !callable then
+    else if !(isFunction s || isAttrs s && s ? __functor) then
       homedAt door loc t
-    else if threads then
-      # one verdict for the root: an unrecognised container threads with it, a recognised one is
-      # re-homed as before
-      (
-        if importedRehomeAt door loc t == null then
-          threadedForeignWith threads door loc t
-        else
-          homedAt door loc t
-      )
-    else if isAttrs fixed && fixed ? merge && !(declaresNestingAt door loc fixed) then
-      homedAt door loc fixed
     else
-      homedAt door loc t;
+      let
+        threads = threadsAt door loc t;
+      in
+      if threads then
+        # one verdict for the root: an unrecognised container threads with it, a recognised one is
+        # re-homed as before
+        (
+          if importedRehomeAt door loc t == null then
+            threadedForeignWith threads door loc t
+          else
+            homedAt door loc t
+        )
+      else if isAttrs fixed && fixed ? merge && !(declaresNestingAt door loc fixed) then
+        homedAt door loc fixed
+      else
+        homedAt door loc t;
 
   # THE RECORD'S OWN `check` RIDES ON THE ROOT'S REBUILD, as on every re-home (den-hoag-4ifgb M-B,
   # `homedAt`): a refinement `{ x : F e | p x }` is not part of the functor, so `addCheck` over a
