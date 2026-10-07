@@ -2032,9 +2032,9 @@ let
         in
         if isAttrs v && v ? __genTSite then v.__genTSite.loc else null;
       lazySplit =
-        el: loc: r:
+        el: pre: loc: r:
         map (k: {
-          step = [ k ];
+          step = pre ++ [ k ];
           loc = loc ++ [ k ];
           defs =
             if emptyAt r k then
@@ -2053,21 +2053,20 @@ let
       # above states at `base` (a node's), where the merge chose the key a site sits under, so a
       # site's loc is checked to extend `base`; `null` at the option's own level.
       splitAt =
-        lv: stated: oloc: root: base: ds: r:
+        pre: lv: stated: oloc: root: base: ds: r:
         if lv != null && lv ? one && isAttrs r then
-          lazySplit lv.one base r
+          lazySplit lv.one pre base r
         else if lv != null && lv ? pass && isAttrs r then
-          # each key is a step of this walk: its next level's split there, one key deeper
-          prelude.concatMap (
-            k:
-            map (s: s // { step = [ k ] ++ s.step; }) (splitAt lv.next null oloc root (base ++ [ k ]) ds r.${k})
-          ) (attrNames r)
+          # each key is a step of this walk (`pre`): its next level's split there, one key deeper
+          prelude.concatMap (k: splitAt (pre ++ [ k ]) lv.next null oloc root (base ++ [ k ]) ds r.${k}) (
+            attrNames r
+          )
         else if lv != null && lv ? node && isAttrs r then
           let
             node = nodeAt lv.node lv.next oloc root;
           in
           map (k: {
-            step = [ k ];
+            step = pre ++ [ k ];
             loc = base ++ [ k ];
             defs = ds;
             type = node;
@@ -2103,7 +2102,8 @@ let
           # container's elements are keyed in the exact regime, as gen's own are
           keysExactly = keysExactly (if lv != null then regimeOf lv else c);
           split =
-            base: ds: splitAt lv c oloc root base ds (builtins.foldl' (v: k: v.${k}) root (under oloc base));
+            base: ds:
+            splitAt [ ] lv c oloc root base ds (builtins.foldl' (v: k: v.${k}) root (under oloc base));
           mergeDefs = {
             __functor =
               _: loc: _defs:
@@ -2214,10 +2214,7 @@ let
           # own accessor, its key prefixed, `pre`), its steps below that accessor, and whether that
           # level's split placed it there.
           placeAt =
-            i: ev: pre: eloc:
-            let
-              st = if i.checked then under i.base eloc else stepOf i.base eloc;
-            in
+            i: ev: pre: st: eloc:
             if st == null then
               {
                 inherit ev st;
@@ -2226,9 +2223,10 @@ let
               }
             else if i.onLevel && i.lv ? node && st != [ ] && i.sub ? ${head st} then
               placeAt i.sub.${head st} (ev.child { position = ev.position ++ pre ++ [ (head st) ]; }).accessor [ ]
+                (builtins.tail st)
                 eloc
             else if i.onLevel && i.lv ? pass && st != [ ] && i.sub ? ${head st} then
-              placeAt i.sub.${head st} ev (pre ++ [ (head st) ]) eloc
+              placeAt i.sub.${head st} ev (pre ++ [ (head st) ]) (builtins.tail st) eloc
             else
               {
                 inherit ev;
@@ -2256,7 +2254,7 @@ let
               merge = carriedElement e (
                 eloc: edefs:
                 let
-                  at = placeAt info0 ev [ ] eloc;
+                  at = placeAt info0 ev [ ] (if checked then under base eloc else stepOf base eloc) eloc;
                   ok = at.ok;
                 in
                 mergeDefsThreaded (
@@ -2302,7 +2300,7 @@ let
         let
           captured = (importedFold capture) loc defs;
         in
-        splitAt lvT null loc captured loc defs captured;
+        splitAt [ ] lvT null loc captured loc defs captured;
       mergeDefs = {
         __functor =
           _: loc: _defs:
