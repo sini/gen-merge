@@ -2889,9 +2889,10 @@ in
         nullBeside = "mAll";
       };
     };
-    # The export answers nixpkgs' v2 protocol: a `merge.v2` beside the callable fold, and a `check`
-    # stating it is the coherent one, without which nixpkgs' `checkV2MergeCoherence` refuses every
-    # mount.
+    # A type publishing a head judgement answers nixpkgs' v2 protocol: a `merge.v2` beside the
+    # callable fold, and a `check` stating it is the coherent one, without which nixpkgs'
+    # `checkV2MergeCoherence` refuses every mount. A type stating none publishes the bare fold, as
+    # nixpkgs' leaves and plain containers do.
     test-an-exported-type-answers-merge-v2-with-a-coherent-check = {
       expr =
         builtins.mapAttrs
@@ -2905,11 +2906,61 @@ in
             nullOr = gmT.nullOr gmT.int;
             attrsOf = gmT.attrsOf gmT.int;
           };
-      expected = nixpkgsLib.genAttrs [ "int" "str" "either" "nullOr" "attrsOf" ] (_: {
-        v2 = true;
-        coherent = true;
-      });
+      expected = {
+        int = {
+          v2 = false;
+          coherent = true;
+        };
+        str = {
+          v2 = false;
+          coherent = true;
+        };
+        either = {
+          v2 = true;
+          coherent = true;
+        };
+        nullOr = {
+          v2 = true;
+          coherent = true;
+        };
+        attrsOf = {
+          v2 = false;
+          coherent = true;
+        };
+      };
     };
+    # den-hoag-e6m9d landing gate F1: an ad-hoc `type // { check = …; }` on a gen type that states
+    # no head judgement mounts under nixpkgs' `lib.evalModules` as nixpkgs' own leaf does, which a
+    # v2 `merge` would turn into nixpkgs' coherence refusal. Each row reads gen's type beside the
+    # nixpkgs twin, over a definition the refinement admits and one it rejects.
+    test-an-ad-hoc-check-on-a-gen-leaf-mounts-in-nixpkgs-as-nixpkgs-leaf-does =
+      let
+        np = nixpkgsLib.types;
+        pos = v: builtins.isInt v && v > 0;
+        read =
+          ty: d:
+          let
+            v =
+              (nixpkgsLib.evalModules {
+                modules = [
+                  { options.x = nixpkgsLib.mkOption { type = ty; }; }
+                  { x = d; }
+                ];
+              }).config.x;
+            r = builtins.tryEval (builtins.deepSeq v v);
+          in
+          if r.success then r.value else "REFUSED";
+        rows = T: {
+          intOk = read (T.int // { check = pos; }) 5;
+          intBad = read (T.int // { check = pos; }) (-1);
+          strOk = read (T.str // { check = v: builtins.isString v && v != ""; }) "a";
+          listOk = read (T.listOf (T.int // { check = pos; })) [ 5 ];
+        };
+      in
+      {
+        expr = rows gmT;
+        expected = rows np;
+      };
     # A published option record reads as its path in a string, as nixpkgs' does
     # (`"${options.path.to.it}"`, nixpkgs' `__toString = _: showOption loc`).
     test-a-published-option-record-coerces-to-its-path =
