@@ -2700,6 +2700,62 @@ let
   # which declines it, and by the leaf relation, which refuses it where it decides (lib/types.nix
   # `nullaryRel`).
   statesPayload = t: ((t.functor or { }).payload or null) != null;
+  # THE MEET (den-hoag-l1j4q): the join `j` accepting a definition only where every operand in `os`
+  # accepts it too. A witnessed rewrite (`check` is not `_checkWitness`), so every later merge that
+  # would drop it is seen by `lib/modules.nix` `dropsWrappedCheck`; the join's own fold is carried for
+  # both engines (`mergeDefs` here, a v1 `merge` there, whose `check` nixpkgs applies first).
+  meetOf =
+    j: os:
+    let
+      fold = j.mergeDefs or (importedRawFold j);
+      met =
+        j
+        // {
+          check = v: j.check v && builtins.all (o: o.check v) os;
+          _checkWitness = j._checkWitness or j.check;
+          merge = loc: defs: j.merge loc defs;
+          # a foreign engine asks this record's relation: its join is met with this record again
+          typeMerge =
+            f:
+            let
+              r = callerTypeMerge j f;
+            in
+            if r == null then null else meetOf r [ met ];
+        }
+        // (if fold == null then { } else { mergeDefs = fold; });
+    in
+    met;
+  # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
+  # functor as `joinInRebuiltPartner` rebuilds it, taken through `tryEval` (nixpkgs' default asserts);
+  # `null` where it declines or renames.
+  joinInPartnerRelation =
+    self: other:
+    let
+      partner = importedPartner (other.functor or null);
+      asked = builtins.tryEval (
+        if isAttrs partner && partner ? typeMerge then partner.typeMerge self.functor else null
+      );
+    in
+    if asked.success && isAttrs asked.value && !(joinRenames asked.value self) then
+      asked.value
+    else
+      null;
+  rebuiltOverAt =
+    role: carried: t:
+    let
+      f = t.functor or null;
+    in
+    if !(isAttrs f) || !(isAttrs (f.payload or null)) then
+      null
+    else
+      importedPartner (
+        f
+        // {
+          payload = f.payload // {
+            ${roleSpelling.${role}.payloadKey} = carried;
+          };
+        }
+      );
 
   # ★★ WHAT THE PROTOCOL'S OWN DEFAULT READS OFF A FUNCTOR, AS ONE DEFINITION READ TWICE — by the
   # retention in `importType' to decide what may be retained, and by the refusal beside it to name
@@ -3655,6 +3711,9 @@ in
     joinInRebuiltPartner
     joinLeafInStatedRelation
     statesPayload
+    meetOf
+    joinInPartnerRelation
+    rebuiltOverAt
     embeddedOffered
     embeddingOf
     keyedUnderEmbedding

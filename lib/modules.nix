@@ -493,7 +493,12 @@ let
     else if sameTypeValue a b then
       a
     else
-      null;
+      interface.meetOf m (
+        filter (o: dropsWrappedCheck m o) [
+          a
+          b
+        ]
+      );
   mergeTypes = mergeTypesBy relationMerge;
   mergeTypesWithin = mergeTypesBy relationMergeWithin;
 
@@ -593,7 +598,9 @@ let
         else
           mergeTypesWithin later earlier;
     in
-    if veto ? refused && (veto.vetoes or true) then
+    if veto.meets or false then
+      { inherit (veto) merged; }
+    else if veto ? refused && (veto.vetoes or true) then
       {
         inherit (veto) refused;
         inherit earlier later;
