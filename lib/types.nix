@@ -633,7 +633,7 @@ let
         partnerElem = interface.importedOffered "element" other;
         # the partner's stated element (its own payload, or under the construction this one embeds in)
         stated =
-          if partnerElem != null then partnerElem else interface.embeddedOffered name "element" other;
+          if partnerElem != null then partnerElem else interface.embeddedOffered embedding "element" other;
         # THE MEET: the element pair through the meeting merge. Where it meets, the partner's relation is
         # asked only about the PARAMETERS (its own element against itself), never a gen element as the decider
         metFirst = if other ? carries || stated == null then null else mergeElemTypes element stated;
