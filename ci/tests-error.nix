@@ -5166,7 +5166,7 @@ in
             check = _: true;
             functor = noRelation;
           }) t.str;
-          expectedError = refuses "`<a name of type int>' and `string', which the first type's own `functor' \\(named `f'\\) does not reconcile with the second's \\(named `string'\\)";
+          expectedError = refuses "`<a name of type int>' and `string', which the first type's own `functor' \\(named `f'\\) does not reconcile with the second's \\(named `str'\\)";
         };
         test-bare-type-declaration-names-its-name-type = {
           expr = realize {

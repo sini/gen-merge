@@ -143,24 +143,49 @@ let
       missingRecarry =
         if declaresRole && !(t ? recarry) && !(t ? retainedRelation) then [ "recarry" ] else [ ];
       missing = missingSub ++ missingRecarry;
-      # ONE CARVE-OUT, as `elementRel`'s: a RAW foreign nullary partner of the same key is joined in its
-      # own published functor (`interface.joinLeafInStatedRelation`), so the declared type is the partner's
-      # record in both orders. A gen partner, a payload-bearing one and a refused join answer `self`.
+      # THE LEAF RELATION. A gen partner is asked first and with no binding (the embedding is a fact
+      # about a FOREIGN partner, and a gen x gen redeclaration, the fan-in of one loc, pays nothing for
+      # it): the same key answers `self`. A RAW foreign partner is joined in its own published functor,
+      # so the declared type is the partner's record in both orders:
+      #  - keyed under an embedding with parameters (`path`, `pathLike`; `interface.embeddings`): in
+      #    the partner's relation over the embedding (`interface.joinCarriedInStatedRelation`);
+      #  - keyed under an embedding with none (`string`): as a leaf at the embedding's name;
+      #  - of the same key (as `elementRel`'s carve-out): as a leaf, and a declined join answers `self`.
+      # A declined embedding join is REFUSED, never `self`: the partner's own check would be dropped
+      # unsaid (ADR-0025 item 1), so the table cannot widen the same-key fallback's reach.
       nullaryRel =
         other:
-        if isAttrs other && (keyOf other) == name then
-          {
-            merged =
-              if other ? typeMergeRel then
-                self
-              else
-                let
-                  foreignJoin = interface.joinLeafInStatedRelation { inherit name self; } other;
-                in
-                if foreignJoin == null then self else foreignJoin;
-          }
+        if isAttrs other && other ? typeMergeRel then
+          if (keyOf other) == name then
+            { merged = self; }
+          else
+            { refused = "`${nameOf t}' and `${nameOf other}'"; }
         else
-          { refused = "`${nameOf t}' and `${nameOf other}'"; };
+          let
+            e = interface.embeddingOf name;
+            embedKey = isAttrs other && interface.keyedUnderEmbedding name other;
+            sameKey = isAttrs other && (keyOf other) == name;
+            carriedJoin = interface.joinCarriedInStatedRelation {
+              inherit name self;
+              role = null;
+              carried = null;
+            } other;
+            leafJoin = interface.joinLeafInStatedRelation { inherit name self; } other;
+          in
+          if embedKey && e ? params then
+            if carriedJoin != null then
+              { merged = carriedJoin; }
+            else
+              { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
+          else if embedKey && !sameKey then
+            if leafJoin != null then
+              { merged = leafJoin; }
+            else
+              { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+          else if sameKey then
+            { merged = if leafJoin == null then self else leafJoin; }
+          else
+            { refused = "`${nameOf t}' and `${nameOf other}'"; };
     in
     if carriesSomething && missing != [ ] then
       throw (

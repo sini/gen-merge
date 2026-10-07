@@ -324,14 +324,20 @@ let
   };
 
   # ── WHERE A GEN CONSTRUCTOR'S PARAMETERS EMBED IN A RICHER FOREIGN ONE ───────────────────────────
-  # The foreign protocol keys a redeclaration on the FUNCTOR name, and for three of gen's constructors
-  # it states the construction under another name with more parameters: `attrsOf`/`lazyAttrsOf` are
-  # one `attrsWith` discriminated by `lazy` (at the default `placeholder`), and `deferredModule` is
-  # `deferredModuleWith` with no `staticModules`. Each gen constructor's parameters are a point of that
-  # richer payload, so the export publishes the functor under the richer name with the fixed parameters
-  # beside the role's key, and a gen relation facing a partner under that name joins it in the
-  # partner's own relation over the same embedding (`joinCarriedInStatedRelation`). Keyed by gen type
-  # name; a name with no entry publishes under its own name, as before.
+  # The foreign protocol keys a redeclaration on the FUNCTOR name, and for six of gen's types it states
+  # the construction under another name or with more parameters: `attrsOf`/`lazyAttrsOf` are one
+  # `attrsWith` discriminated by `lazy` (at the default `placeholder`), `deferredModule` is
+  # `deferredModuleWith` with no `staticModules`, gen-types' `string` is `str`, and `path`/`pathLike`
+  # are one `pathWith` at `absolute = true` and at no constraint. Each gen type's parameters are a point
+  # of that richer payload, so the export publishes the functor under the richer name with the fixed
+  # parameters beside the role's key, and a gen relation facing a partner under that name joins it in
+  # the partner's own relation over the same embedding (`joinCarriedInStatedRelation`). A row with no
+  # `params` publishes a NULL payload (the protocol asserts two payloads agree on null-ness) and is
+  # joined as a leaf at the richer name (`joinLeafInStatedRelation`). `joinsAs` names the record the
+  # partner's join bears where it is not this type's own, and the witness reads names modulo it
+  # (`joinRenames`). A ROW IS A CLAIM THAT THIS TYPE'S CHECK IS THE PARTNER'S AT THE EMBEDDED
+  # PARAMETERS: both orders answer with the partner's record, so a row whose checks part swaps them.
+  # Keyed by gen type name; a name with no entry publishes under its own name, as before.
   embeddings = {
     attrsOf = {
       name = "attrsWith";
@@ -351,16 +357,47 @@ let
       name = "deferredModuleWith";
       params.staticModules = [ ];
     };
+    # leaves: no role, and the check is gen-types' (`checkers.nix` states the `pathWith` predicates)
+    string = {
+      name = "str";
+      joinsAs = "str";
+    };
+    path = {
+      name = "path";
+      params = {
+        absolute = true;
+        inStore = null;
+      };
+    };
+    pathLike = {
+      name = "path";
+      joinsAs = "path";
+      params = {
+        absolute = null;
+        inStore = null;
+      };
+    };
   };
   # total over a name that is not a string: such a type embeds nowhere, and its own refusals name it
   embeddingOf = name: if builtins.isString name then embeddings.${name} or null else null;
+  # Whether `other` is keyed under the name type `name` embeds in: the one place a relation asks it.
+  keyedUnderEmbedding =
+    name: other:
+    let
+      e = embeddingOf name;
+    in
+    e != null && (keyOf other) == e.name;
   # A derivation keeps its base's `name' but is keyed on its own identity, so it embeds nowhere.
   embedsOf = t: if t ? __derivation then null else embeddingOf (t.name or "raw");
   # The embedded payload: the role's key beside the embedding's fixed parameters. The one source for
   # the export's published payload and for the join (`joinCarriedInStatedRelation`).
   embeddedPayload =
     e: role: carried:
-    (if role == null then { } else { ${roleSpelling.${role}.payloadKey} = carried; }) // e.params;
+    if role == null && !(e ? params) then
+      null
+    else
+      (if role == null then { } else { ${roleSpelling.${role}.payloadKey} = carried; })
+      // (e.params or { });
   # What a RAW partner stating its relation under the richer name `name` embeds in offers at `role`:
   # the role's key read out of that payload, beside parameters gen does not carry. `null` where `name`
   # embeds nowhere or the partner is not stated under that name. Read only to NAME a refused pair, so
@@ -1955,6 +1992,14 @@ let
   # `mergeTypes` for its base), never here.
   joinRenames =
     let
+      # one name, or two the embedding table states are one record's (`joinsAs`)
+      asOf =
+        n:
+        let
+          e = embeddingOf n;
+        in
+        if e != null && e ? joinsAs then e.joinsAs else n;
+      sameUpToEmbedding = a: b: a == b || asOf a == asOf b;
       roles =
         x:
         if x ? carries then
@@ -1987,7 +2032,7 @@ let
           false
         else if fuel <= 0 then
           true
-        else if (j.name or null) != (o.name or null) then
+        else if !(sameUpToEmbedding (j.name or null) (o.name or null)) then
           true
         else
           let
@@ -2437,19 +2482,23 @@ let
   # side's own record; here the partner is the decider's twin, so the answer is the record the partner's
   # functor names, which is what nixpkgs' twin answers in the order where it decides. Taken only where
   # the join keeps each operand's stated name (`joinRenames`), as `joinCarriedInStatedRelation` does;
-  # `null` otherwise, and the caller's own relation then answers as it did before. A partner stating a
-  # payload (nixpkgs `path`) is not a nullary leaf and is not joined here, and neither is one whose
-  # functor names no `type` (the protocol's default would abort reading it): gen's own relation answers.
+  # `null` otherwise, and the caller's own relation then answers. A type whose embedding states no
+  # parameters (`string`) is joined at the embedding's name. A partner stating a payload (nixpkgs
+  # `pathWith`) is not a nullary leaf and is not joined here (a leaf whose embedding states parameters
+  # is joined in `joinCarriedInStatedRelation`), and neither is one whose functor names no `type` (the
+  # protocol's default would abort reading it): gen's own relation answers.
   joinLeafInStatedRelation =
     { name, self }:
     other:
     let
+      e = embeddingOf name;
+      stated = if e != null && !(e ? params) then e.name else name;
       pf = other.functor or null;
       joined =
         if !(statesRelation other) || !(pf ? type) || (pf.payload or null) != null then
           null
         else
-          protoTypeMerge (pf // { inherit name; }) pf;
+          protoTypeMerge (pf // { name = stated; }) pf;
     in
     if !(isAttrs joined) || joinRenames joined self || joinRenames joined other then null else joined;
 
@@ -3197,7 +3246,8 @@ let
       functor =
         let
           embeds = embedsOf t;
-          extrasAgree = p: builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames embeds.params);
+          extrasAgree =
+            p: builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames (embeds.params or { }));
         in
         {
           inherit payload;
@@ -3214,7 +3264,7 @@ let
           # modules, never rebuilt at its own parameters with the caller's dropped. The refusal is
           # spelled in each arm rather than bound, so the export carries no thunk for it.
           type =
-            if role == null && embeds == null then
+            if role == null && (embeds == null || !(embeds ? params)) then
               exported
             else if role == null then
               (
@@ -3235,7 +3285,7 @@ let
                   throw "gen-merge: `${name}' cannot be rebuilt over a `${embeds.name}' payload other than its own embedding"
               );
           binOp =
-            if role == null && embeds == null then
+            if role == null && (embeds == null || !(embeds ? params)) then
               (_a: _b: null)
             else if role == null then
               (a: b: if extrasAgree a && extrasAgree b then embeds.params else null)
@@ -3380,6 +3430,8 @@ in
     joinInRebuiltPartner
     joinLeafInStatedRelation
     embeddedOffered
+    embeddingOf
+    keyedUnderEmbedding
     moduleSetPayload
     canNest
     declaresNesting

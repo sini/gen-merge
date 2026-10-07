@@ -1497,7 +1497,7 @@ in
         completeElem = describe ((gmT.attrsOf gmT.str).typeMerge (gmT.attrsOf gmT.str).functor);
       };
       expected = {
-        listOf = "<not-mergeable>";
+        listOf = "listOf of str";
         submodule = "submodule";
         enumElem = "attrsOf of e";
         completeElem = "attrsOf of string";

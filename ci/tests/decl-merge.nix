@@ -525,8 +525,8 @@ in
     # whichever declaration comes first, under either engine: nixpkgs'. `sig` asks `? typeMergeRel`, which
     # EVERY gen record states and no nixpkgs record does; the zvidt cell above asked `? carries`, which a
     # gen leaf never states, so it could not read a gen record at a leaf. The domain is the leaves whose
-    # functor name and payload agree with their nixpkgs twin's (`str` publishes `string`, `number` is not
-    # nixpkgs' `either`, `path` states a payload nixpkgs' does not: den-hoag-46zga; `attrs` is a stated
+    # functor name and payload agree with their nixpkgs twin's (`str`, `path` and `pathLike` publish
+    # nixpkgs' under an embedding, the next cell; `number` is not nixpkgs' `either`; `attrs` is a stated
     # divergence, not a defect: gen's `attrs` fold refuses a same-key collision and nixpkgs' `//` takes the
     # last, so a foreign `attrs` stays refused, owner-ruled in den-hoag-241d7, specs/2026-09-16-gen-attrs-empty-value-spec.md §4.1). `expected` is a LITERAL spine, and `ref` (the gen
     # side replaced by its nixpkgs twin, live) must equal the same literal, so a `ref` broken in step with
@@ -813,6 +813,247 @@ in
             gm-o12 = "G v=1";
             gm-o21 = "REFUSED";
           };
+        };
+      };
+
+    # 46zga: the gen LEAVES whose nixpkgs twin publishes another functor name or payload, joined through
+    # the leaf rows of `interface.embeddings`: gen-types' `string` is nixpkgs' `str`, `path` is
+    # `pathWith { absolute = true; }` and `pathLike` is `pathWith { }`. A mixed redeclaration has nixpkgs'
+    # answer whichever declaration comes first, under either engine, bare and under every container,
+    # `either int str` included. `expected` is a LITERAL, and `ref` (the gen side replaced by its nixpkgs
+    # twin, live) must equal it, as above. WITNESS rows, each refused as the twin refuses it:
+    #  - gen `path` beside a constrained `pathWith`: the partner's relation over the embedding decides,
+    #    and its refusal stands (at ceccd40 the partner-first rows served, the partner's check dropped);
+    #  - gen `str` beside a partner of another key (`strMatching`, `lines`): pins the KEYING;
+    #  - gen `str` beside a partner keyed `str` with a payload and a stricter check (`strict`), which the
+    #    leaf join declines: pins that a declined embedding join is REFUSED, never answered by `self`.
+    # The witness's name test (`joinRenames` modulo `joinsAs`) is guarded by the cells it already reds.
+    # `number` (den-hoag-kawe8) and `enum` (den-hoag-n8cpq) embed nowhere and stay refused.
+    test-mixed-leaf-embedding-redeclaration-is-nixpkgs-answer =
+      let
+        engines = {
+          np = {
+            ev = np.evalModules;
+            mk = np.mkOption;
+          };
+          gm = {
+            ev = evalRequest;
+            mk = mkOption;
+          };
+        };
+        members = {
+          str = {
+            g = t.str;
+            n = np.types.str;
+            v = "s";
+            lit = "N";
+          };
+          path = {
+            g = t.path;
+            n = np.types.path;
+            v = "/foo/bar";
+            lit = "N";
+          };
+          pathLike = {
+            g = t.pathLike;
+            n = np.types.pathWith { };
+            v = "rel/p";
+            lit = "N";
+          };
+          eitherIntStr = {
+            g = t.either t.int t.str;
+            n = np.types.either np.types.int np.types.str;
+            v = "s";
+            lit = "N(N,N)";
+          };
+        };
+        shapes = {
+          bare = {
+            wrap = lib': ty: ty;
+            def = v: v;
+            lit = inner: inner;
+          };
+          list = {
+            wrap = lib': ty: lib'.listOf ty;
+            def = v: [ v ];
+            lit = inner: "N(${inner})";
+          };
+          null = {
+            wrap = lib': ty: lib'.nullOr ty;
+            def = v: v;
+            lit = inner: "N(${inner})";
+          };
+          attrs = {
+            wrap = lib': ty: lib'.attrsOf ty;
+            def = v: { k = v; };
+            lit = inner: "N(${inner})";
+          };
+        };
+        sig =
+          ty:
+          let
+            n = ty.nestedTypes or { };
+            kids = builtins.filter (k: n ? ${k}) [
+              "elemType"
+              "left"
+              "right"
+            ];
+          in
+          (if ty ? typeMergeRel then "G" else "N")
+          + (if kids == [ ] then "" else "(${builtins.concatStringsSep "," (map (k: sig n.${k}) kids)})");
+        read =
+          eng: Ts: def:
+          let
+            r = engines.${eng}.ev {
+              modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [ { x = def; } ];
+            };
+            tried = builtins.tryEval (
+              builtins.deepSeq r.config.x "${sig r.options.x.type} v=${builtins.toJSON r.config.x}"
+            );
+          in
+          if tried.success then tried.value else "REFUSED";
+        rows =
+          f:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  m:
+                  builtins.concatMap (
+                    shape:
+                    map
+                      (o: {
+                        name = "${eng}-${m}-${shape}-${o}";
+                        value = f eng members.${m} shapes.${shape} o;
+                      })
+                      [
+                        "o12"
+                        "o21"
+                      ]
+                  ) (builtins.attrNames shapes)
+                ) (builtins.attrNames members)
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        # o12 declares the nixpkgs side first; `nn` replaces the gen side by its twin
+        table =
+          side:
+          rows (
+            eng: m: s: o:
+            let
+              a' = s.wrap np.types m.n;
+              b = if side == "nn" then a' else s.wrap t m.g;
+            in
+            read eng (
+              if o == "o12" then
+                [
+                  a'
+                  b
+                ]
+              else
+                [
+                  b
+                  a'
+                ]
+            ) (s.def m.v)
+          );
+        want = rows (
+          eng: m: s: o:
+          "${s.lit m.lit} v=${builtins.toJSON (s.def m.v)}"
+        );
+        # a nixpkgs type keyed `key` with a payload and a check stricter than `base`'s
+        strict =
+          key: base: bad:
+          np.mkOptionType {
+            name = key;
+            check = x: base.check x && x != bad;
+            merge = np.options.mergeEqualOption;
+            functor = np.types.defaultFunctor key // {
+              payload.strict = true;
+              binOp = _a: _b: null;
+            };
+          };
+        witnesses = {
+          path = {
+            g = t.path;
+            n = np.types.path;
+            v = "/s";
+            partners = {
+              pathInStore = np.types.pathInStore;
+              externalPath = np.types.externalPath;
+              pathWithNone = np.types.pathWith { };
+              pathWithRelative = np.types.pathWith { absolute = false; };
+            };
+          };
+          str = {
+            g = t.str;
+            n = np.types.str;
+            v = "/s";
+            partners = {
+              strMatching = np.types.strMatching ".*";
+              inherit (np.types) lines;
+            };
+          };
+          strStrict = {
+            g = t.str;
+            n = np.types.str;
+            v = "x";
+            partners.strict = strict "str" np.types.str "x";
+          };
+        };
+        witness =
+          side:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (
+                eng:
+                builtins.concatMap (
+                  w:
+                  let
+                    W = witnesses.${w};
+                    g = if side == "nn" then W.n else W.g;
+                  in
+                  builtins.concatMap (p: [
+                    {
+                      name = "${eng}-${w}-${p}-genFirst";
+                      value = read eng [
+                        g
+                        W.partners.${p}
+                      ] W.v;
+                    }
+                    {
+                      name = "${eng}-${w}-${p}-partnerFirst";
+                      value = read eng [
+                        W.partners.${p}
+                        g
+                      ] W.v;
+                    }
+                  ]) (builtins.attrNames W.partners)
+                ) (builtins.attrNames witnesses)
+              )
+              [
+                "np"
+                "gm"
+              ]
+          );
+        refused = builtins.mapAttrs (_: _: "REFUSED") (witness "nn");
+      in
+      {
+        expr = {
+          mixed = table "mixed";
+          ref = table "nn";
+          witness = witness "mixed";
+          witnessRef = witness "nn";
+        };
+        expected = {
+          mixed = want;
+          ref = want;
+          witness = refused;
+          witnessRef = refused;
         };
       };
 
@@ -2046,9 +2287,10 @@ in
         };
       };
 
-    # THE PUBLISHED SURFACE of the three embedded constructors, pinned directly: the functor name a
-    # foreign engine keys a redeclaration on, and the payload keys its `binOp` reads. `listOf`, which
-    # embeds nowhere, is the unchanged control.
+    # THE PUBLISHED SURFACE of the embedded types, pinned directly: the functor name a foreign engine
+    # keys a redeclaration on, and the payload keys its `binOp` reads. A leaf row with no parameters
+    # publishes a NULL payload, and every embedded type keeps its own `name`. `listOf`, which embeds
+    # nowhere, is the unchanged control.
     test-embedded-constructors-publish-the-richer-functor =
       let
         surface = ty: {
@@ -2061,11 +2303,21 @@ in
           attrsOf = surface (t.attrsOf t.int);
           lazyAttrsOf = surface (t.lazyAttrsOf t.int);
           deferredModule = surface t.deferredModule;
+          str = surface t.str;
+          path = surface t.path;
+          pathLike = surface t.pathLike;
           listOf = surface (t.listOf t.int);
           params = {
             attrsOf = { inherit ((t.attrsOf t.int).functor.payload) lazy placeholder; };
             lazyAttrsOf = { inherit ((t.lazyAttrsOf t.int).functor.payload) lazy placeholder; };
             deferredModule = t.deferredModule.functor.payload.staticModules;
+            path = t.path.functor.payload;
+            pathLike = t.pathLike.functor.payload;
+          };
+          names = {
+            str = t.str.name;
+            path = t.path.name;
+            pathLike = t.pathLike.name;
           };
         };
         expected = {
@@ -2089,6 +2341,24 @@ in
             name = "deferredModuleWith";
             payload = [ "staticModules" ];
           };
+          str = {
+            name = "str";
+            payload = null;
+          };
+          path = {
+            name = "path";
+            payload = [
+              "absolute"
+              "inStore"
+            ];
+          };
+          pathLike = {
+            name = "path";
+            payload = [
+              "absolute"
+              "inStore"
+            ];
+          };
           listOf = {
             name = "listOf";
             payload = [ "elemType" ];
@@ -2103,6 +2373,19 @@ in
               placeholder = "name";
             };
             deferredModule = [ ];
+            path = {
+              absolute = true;
+              inStore = null;
+            };
+            pathLike = {
+              absolute = null;
+              inStore = null;
+            };
+          };
+          names = {
+            str = "string";
+            path = "path";
+            pathLike = "pathLike";
           };
         };
       };
