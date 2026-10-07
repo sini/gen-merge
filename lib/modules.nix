@@ -452,7 +452,62 @@ let
       in
       if answer ? merged then answer.merged else null
     else
-      interface.importedMerge a b;
+      let
+        r = interface.importedMerge a b;
+      in
+      if r == null then null else rolesMet r a b;
+  # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
+  # records carry (an element; a union's two members) its own carried type is met with the operands'
+  # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
+  # caller (`mergeTypesBy`).
+  rolesMet =
+    r: a: b:
+    let
+      at =
+        role:
+        map (interface.carriedAt role) [
+          r
+          a
+          b
+        ];
+      el = at "element";
+      al = at "alternatives";
+      rebuilt =
+        role: carried:
+        let
+          x = interface.rebuiltOverAt role carried r;
+        in
+        if x == null then r else x;
+      pick = l: i: builtins.elemAt l i;
+      # a carried role's own join met with the operands' at that role, and at every role below it
+      innerMet =
+        r': a': b':
+        interface.metWith (rolesMet r' a' b') [
+          a'
+          b'
+        ];
+    in
+    if builtins.all (x: x != null) el then
+      (
+        let
+          m = innerMet (pick el 0) (pick el 1) (pick el 2);
+        in
+        if sameTypeValue m (pick el 0) then r else rebuilt "element" m
+      )
+    else if builtins.all (x: x != null) al then
+      (
+        let
+          m = builtins.genList (i: innerMet (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)) 2;
+        in
+        if
+          sameTypeValue (pick m 0) (pick (pick al 0) 0) && sameTypeValue (pick m 1) (pick (pick al 0) 1)
+        then
+          r
+        else
+          rebuilt "alternatives" m
+      )
+    else
+      r;
   relationMerge =
     a: b:
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then
@@ -488,12 +543,15 @@ let
     let
       m = relation a b;
     in
-    if m == null || !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
-      m
-    else if sameTypeValue a b then
+    if m == null then
+      null
+    else if (dropsWrappedCheck m a || dropsWrappedCheck m b) && sameTypeValue a b then
       a
     else
-      null;
+      interface.metWith m [
+        a
+        b
+      ];
   mergeTypes = mergeTypesBy relationMerge;
   mergeTypesWithin = mergeTypesBy relationMergeWithin;
 
@@ -593,7 +651,14 @@ let
         else
           mergeTypesWithin later earlier;
     in
-    if veto ? refused && (veto.vetoes or true) then
+    if veto.meets or false then
+      {
+        merged = interface.metWith veto.merged [
+          earlier
+          later
+        ];
+      }
+    else if veto ? refused && (veto.vetoes or true) then
       {
         inherit (veto) refused;
         inherit earlier later;
