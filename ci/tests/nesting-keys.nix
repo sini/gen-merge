@@ -1315,6 +1315,34 @@ in
       };
     };
 
+  # den-hoag-i01nx: a strict step over a lazy level is a `pass` level. Its keys are steps of the
+  # enclosing walk, not nodes: below `attrsOf`, a lazy `attrsOf`'s gen `attrsOf` elements sit in the
+  # option's own group one key deeper, keyed where read (the lazy step's regime), and no node is
+  # minted per strict key.
+  flake.tests.nesting-keys-foreign-chain-pass-level =
+    let
+      r = genMergeCore.evalModuleTreeExposed {
+        modules = [
+          { options.o = gm.mkOption { type = np.uniq (np.attrsOf (np.lazyAttrsOf (t.attrsOf sub))); }; }
+          { config.o.foo.j.k.x = 1; }
+        ];
+      };
+      modesAt =
+        id: group: builtins.mapAttrs (_: p: p.mode) (r._evaluation.get id "positions").nested.${group};
+    in
+    {
+      test-a-strict-step-over-a-lazy-step-keys-its-elements-one-key-deeper-without-a-node = {
+        expr = {
+          root = modesAt "module-tree" "[\"o\"]";
+          value = r.config.o.foo.j.k.x;
+        };
+        expected = {
+          root."[\"foo\",\"j\"]" = "container";
+          value = 1;
+        };
+      };
+    };
+
   # den-hoag-rlskz: `modules.nix` `keyWalk` reads `interface.keysExactly` inline rather than through a
   # call, so the predicate has two copies. The inline copy is read off the source and evaluated, and
   # the two answer alike on gen's exact containers, its lazy one, and a record stating its own answer.
