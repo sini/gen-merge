@@ -2486,10 +2486,14 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   declarations. In gen's engine a pure-nixpkgs pair is met too, so it rejects what nixpkgs serves with a
   check dropped. One shared wrapped value declared twice merges and keeps its check.
 
-  Not covered: an `addCheck` over a submodule (a module set) written with nixpkgs' `addCheck` over a
-  nixpkgs submodule, beside another submodule declaration, in either engine (den-hoag-8ip0d): a
-  foreign record states no check witness and the module-set fold does not enforce a joined check, so
-  it serves as nixpkgs does (a gen-witnessed wrapper there refuses, above). In nixpkgs' engine, a
+  In gen's engine this reaches a module set: nixpkgs' `addCheck` over a submodule, alone or beside
+  another submodule declaration, gen or nixpkgs, at the top or as a container's element at any depth
+  (below a gen container too), rejects what it rejects, where nixpkgs' own rebuild (`fixupOptionType`)
+  erases it and serves (den-hoag-8ip0d). A foreign record states no check witness, so every foreign
+  module-set declaration's check is asked of each definition, a wrapped one or not. An ad-hoc
+  `type // { check = ...; }` override there is refused by name, as it is alone (`adHocFold`).
+
+  Not covered: in nixpkgs' engine, a wrapper over a module set (nixpkgs' rebuild erases it), and a
   check on a gen type declared first (nixpkgs asks only the later relation) or hidden behind a functor
   gen is handed. Nor a drop under a
   key `nestedTypes` states that names no role this boundary carries (`freeformType`,

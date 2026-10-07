@@ -535,8 +535,9 @@ let
   #  - ★ AT A MODULE SET THE STEP REFUSES A DROPPED WITNESSED REWRITE, as before the ruling: the
   #    module-set fold does not enforce a joined record's check, so a met record there would serve
   #    what the wrapper rejects. `dropsWrappedCheck` is asked first, so an unwrapped module set never
-  #    builds the substructure read. A FOREIGN wrapper over a module set states no witness and is not
-  #    enforced in either engine (README, "Not covered"; den-hoag-8ip0d).
+  #    builds the substructure read. A FOREIGN wrapper over a module set states no witness, so no step
+  #    can see it dropped; the declaration list's fixup carries it instead (`fixupModuleSets`,
+  #    `interface.carriedAtDepth`, den-hoag-8ip0d).
   #
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
@@ -691,7 +692,9 @@ let
     else
       { merged = m; };
   # nixpkgs `fixupOptionType`: the merged type rebuilt over the AUTHORED concatenation of every
-  # declaration's own module set, replacing whatever module list the join's `binOp` built. A type
+  # declaration's own module set, replacing whatever module list the join's `binOp` built, and
+  # restricted by every check a declaration states that the rebuild cannot carry, at every depth
+  # (`interface.carriedAtDepth`, den-hoag-8ip0d): nixpkgs' rebuild erases them, gen's enforces them. A type
   # that states no module set (a leaf, `either`, `oneOf`) is returned as is. Lives on the
   # declaration plane, not in `mergeDeclaredTypes`, because that is also the freeform-type merge,
   # which nixpkgs's `optionType.merge` leaves unrebuilt.
@@ -706,7 +709,10 @@ let
         in
         if m == null then [ ] else m;
     in
-    if sub.modules == null then merged else sub.rebuild (concatMap own declared);
+    if sub.modules == null then
+      merged
+    else
+      interface.carriedAtDepth true declared (sub.rebuild (concatMap own declared));
   # The list, in AUTHORED order; stops at the first refusing step. A one-element list is itself.
   mergeDeclaredTypes =
     ts:
