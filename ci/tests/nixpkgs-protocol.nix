@@ -188,8 +188,11 @@ let
         "whenEmpty"
       ];
       # No empty value: an undefined option of this type is a mistake, not an empty container.
+      # den-hoag-n8cpq, a declared gain: the completion stamp's slot, with no mint, so that
+      # re-completing it returns it as it is
       deferredModule = [
         "__phraseWithin"
+        "__typeSelf"
         "_checkWitness"
         "_protoLeafMerge"
         "_substSubModulesWitness"
