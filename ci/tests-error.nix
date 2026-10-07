@@ -7216,6 +7216,26 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `s[.]foo[.]<function body>': the option type `unique' folds its gen nesting element at a position its own merge does not expose when the option is merged [(]inside a value it returns, such as a function body[)], so that nested tree cannot be threaded into this evaluation[.] Declare the tree at a position the merge returns as a value, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
           };
         };
+        # den-hoag-i01nx: below `nullOr`, the lazy step is a level, and a `functionTo` below it with a
+        # key-dependent sibling is refused as unexposed, as with no `nullOr` between them
+        test-a-functionTo-below-a-lazy-step-under-nullOr-is-refused-as-unexposed = {
+          expr =
+            force
+              (
+                ((cfgOf (np.uniq (np.nullOr (np.lazyAttrsOf (np.functionTo (t.attrsOf sub)))))) (
+                  { config, ... }:
+                  {
+                    s.foo = _: { k.a = 1; };
+                    s.bar = if (config.s.foo null).k.a == 1 then (_: { k.a = 2; }) else (_: { });
+                  }
+                )).foo
+                  null
+              ).k.a;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo[.]<function body>': the option type `unique' folds its gen nesting element at a position its own merge does not expose when the option is merged [(]inside a value it returns, such as a function body[)], so that nested tree cannot be threaded into this evaluation[.] Declare the tree at a position the merge returns as a value, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
+          };
+        };
         test-a-merge-swapping-two-keys-trees-is-refused-by-the-node-holding-the-moved-tree = {
           expr =
             force
