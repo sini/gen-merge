@@ -8810,5 +8810,85 @@ in
           };
         };
       };
+
+    # 46zga: the refusals of the leaf relation NAME their partner, in both declaration orders. A gen
+    # leaf beside a foreign partner keyed under no embedding is refused naming that partner (`int`),
+    # never as "a `str' partner": this is the one observable of `keyedUnderEmbedding`'s name test, since
+    # a declined embedding join is refused either way. A partner keyed under the embedding whose relation
+    # declines the join (`str` with a payload, a stricter check) and a constrained `pathWith`
+    # (`pathInStore`) are each refused by the embedding's own reason.
+    flake.testsError.leaf-embedding-refusal =
+      let
+        np = nixpkgsLib.types;
+        strict = nixpkgsLib.mkOptionType {
+          name = "str";
+          check = x: builtins.isString x && x != "x";
+          merge = nixpkgsLib.options.mergeEqualOption;
+          functor = np.defaultFunctor "str" // {
+            payload.strict = true;
+            binOp = _a: _b: null;
+          };
+        };
+        declared =
+          Ts: v:
+          builtins.deepSeq
+            (gm.evalModuleTree { } (map (T: { options.o = gm.mkOption { type = T; }; }) Ts ++ [ { o = v; } ]))
+            .config
+            null;
+        refusal = reason: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `o' is declared with types that do not merge \\(${reason}\\); declared in <gen-merge>, <gen-merge>$";
+        };
+        pairs = {
+          another-key = {
+            g = t.str;
+            p = np.int;
+            v = "s";
+            reason = "`string' and `int'";
+          };
+          declined-join = {
+            g = t.str;
+            p = strict;
+            v = "x";
+            reason = "`string' and a `str' partner whose relation declines the join";
+          };
+          constrained-payload = {
+            g = t.path;
+            p = np.pathInStore;
+            v = "/s";
+            reason = "`path' and a `path' partner whose payload is not this type's embedding";
+          };
+        };
+      in
+      builtins.listToAttrs (
+        builtins.concatMap (
+          name:
+          let
+            P = pairs.${name};
+          in
+          [
+            {
+              name = "test-${name}-partner-first-names-the-partner";
+              value = {
+                expr = declared [
+                  P.p
+                  P.g
+                ] P.v;
+                expectedError = refusal P.reason;
+              };
+            }
+            {
+              name = "test-${name}-gen-first-names-the-partner";
+              value = {
+                expr = declared [
+                  P.g
+                  P.p
+                ] P.v;
+                expectedError = refusal P.reason;
+              };
+            }
+          ]
+        ) (builtins.attrNames pairs)
+      );
   };
 }

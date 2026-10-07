@@ -824,7 +824,9 @@ in
     # twin, live) must equal it, as above. WITNESS rows, each refused as the twin refuses it:
     #  - gen `path` beside a constrained `pathWith`: the partner's relation over the embedding decides,
     #    and its refusal stands (at ceccd40 the partner-first rows served, the partner's check dropped);
-    #  - gen `str` beside a partner of another key (`strMatching`, `lines`): pins the KEYING;
+    #  - gen `str` beside a partner of another key (`strMatching`, `lines`): pins the keying jointly
+    #    with C1's refusal (the next rows); the keying alone is pinned by the naming cells of
+    #    `tests-error.nix` `leaf-embedding-refusal`;
     #  - gen `str` beside a partner keyed `str` with a payload and a stricter check (`strict`), which the
     #    leaf join declines: pins that a declined embedding join is REFUSED, never answered by `self`.
     # The witness's name test (`joinRenames` modulo `joinsAs`) is guarded by the cells it already reds.

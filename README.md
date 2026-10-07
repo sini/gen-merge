@@ -1375,14 +1375,17 @@ about +300 against gen's engine's former (wrong-record) answer. A partner stated
 in the same binding over the embedding (`interface.embeddings`): gen's parameters are a point of that
 payload, so the pair is decided by the partner's `binOp` under the same witness, a foreign
 `staticModules` survives it, and a refused `attrsOf` pair names its element pair. Three LEAVES embed
-too: gen-types' `string` publishes nixpkgs' `str` (no payload; the witness reads the two names as one
-record's, the table's `joinsAs`), and `path`/`pathLike` publish `pathWith` at `absolute = true` and at no
-constraint. A mixed `str`/`path`/`pathLike` redeclaration therefore has nixpkgs' record in both orders
+too: gen-merge publishes gen-types' `string` as nixpkgs' `str` (no payload; the witness reads the two
+names as one record's, the table's `joinsAs`), and `path`/`pathLike` as `pathWith` at `absolute = true`
+and at no constraint. A mixed `str`/`path`/`pathLike` redeclaration therefore has nixpkgs' record in both orders
 under either engine, and a partner keyed under the embedding whose relation declines the join is
 REFUSED, never answered by gen's own record: gen `path` beside `pathInStore`, `externalPath` or a
 constrained `pathWith` is refused as nixpkgs' twin refuses it, so the partner's check is never dropped
 unsaid. Each row claims gen's check is the partner's at the embedded parameters. Their `name` is
-unchanged (`string`, `path`, `pathLike`). A gen nesting type (`submodule`, the tree) facing a
+unchanged (`string`, `path`, `pathLike`). Price (hub perf bench, Nix 2.34.8): a per-process constant of
++6 thunks on each load row (+4 on `aspects`) from the three rows' exported functors, no marginal moved,
+and a gen × gen `str` redeclaration pays less than before (`sameLocFanIn` thunks p/r 1.508 → 1.480),
+because a gen partner is answered before the embedding is read. A gen nesting type (`submodule`, the tree) facing a
 same-named partner that offers it nothing is not refused for that: its parameters embed into the
 partner's richer `submoduleWith` payload, so it hands the pair to the protocol's default relation over
 the partner's PUBLISHED functor (`interface.joinInStatedRelation`, over `interface.moduleSetPayload`),
