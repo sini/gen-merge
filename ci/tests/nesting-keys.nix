@@ -1178,6 +1178,143 @@ in
       };
     };
 
+  # den-hoag-i01nx (ADR-0039, the serve half; ADR-0025 item 1): a level's step-free wrappers include
+  # `nullOr`, and a strict `attrsWith` step over a record that may nest is a level of nodes. So a lazy
+  # step reached through `nullOr`, a lazy step below a strict one, and a sibling's own tree below a
+  # strict step are each keyed without forcing what nixpkgs does not. The expected values are
+  # nixpkgs' own, read off `lib.evalModules` mounting the same declaration.
+  flake.tests.nesting-keys-foreign-chain-level-steps =
+    let
+      cfgOf = modules: (gm.evalModuleTree { } modules).config.o;
+      keysDep = type: d: read: [
+        { options.o = gm.mkOption { inherit type; }; }
+        (
+          { config, ... }:
+          {
+            config.o = {
+              foo = d 1;
+              bar = if read config.o.foo == 1 then d 2 else { };
+            };
+          }
+        )
+      ];
+      inJ = v: { j.k.x = v; };
+      readJ = x: x.j.k.x;
+      strictAw =
+        e:
+        np.attrsWith {
+          elemType = e;
+          lazy = false;
+          placeholder = "p";
+        };
+    in
+    {
+      test-unique-over-nullOr-over-a-lazy-step-serves-a-key-dependent-sibling = {
+        expr =
+          (cfgOf (
+            keysDep (np.uniq (np.nullOr (np.lazyAttrsOf (t.attrsOf sub)))) (v: { k.x = v; }) (x: x.k.x)
+          )).foo.k.x;
+        expected = 1;
+      };
+      test-coercedTo-over-nullOr-over-a-lazy-step-over-an-attrsOf-serves-an-mkIf-sibling = {
+        expr =
+          readJ
+            (cfgOf [
+              {
+                options.o = gm.mkOption {
+                  type = np.coercedTo np.str (_: throw "unused") (
+                    np.nullOr (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))
+                  );
+                };
+              }
+              (
+                { config, ... }:
+                {
+                  config.o = {
+                    foo.j.k.x = 1;
+                    bar = gm.mkIf (config.o.foo.j.k.x == 1) { j.k.x = 2; };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # a lazy step below a strict one: its second key is `mkIf` on the read tree, which nixpkgs
+      # forces only where it is read
+      test-a-strict-placeholder-attrsWith-over-a-lazy-step-serves-an-mkIf-key-below-it = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = strictAw (np.lazyAttrsOf (t.attrsOf sub)); }; }
+              (
+                { config, ... }:
+                {
+                  config.o.foo = {
+                    j.k.x = 1;
+                    i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 2; };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # no lazy step at all: a SIBLING's own tree below a strict step reads the read tree, and nixpkgs
+      # never reads `bar`'s value to read `foo`
+      test-a-strict-step-over-a-strict-step-under-unique-serves-a-sibling-whose-tree-reads-the-read-tree = {
+        expr =
+          readJ
+            (cfgOf [
+              { options.o = gm.mkOption { type = np.uniq (np.attrsOf (np.attrsOf (t.attrsOf sub))); }; }
+              (
+                { config, ... }:
+                {
+                  config.o = {
+                    foo.j.k.x = 1;
+                    bar = {
+                      j.k.x = 2;
+                      i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 3; };
+                    };
+                  };
+                }
+              )
+            ]).foo;
+        expected = 1;
+      };
+      # the whole value: a lazy key whose only definition discharges away holds the element's empty
+      # value, a strict one is absent, and a sibling's `mkIf` on the read tree is kept
+      test-the-whole-value-of-a-strict-step-over-a-lazy-step-is-nixpkgs-value = {
+        expr = cfgOf [
+          { options.o = gm.mkOption { type = np.uniq (np.attrsOf (np.lazyAttrsOf (t.attrsOf sub))); }; }
+          (
+            { config, ... }:
+            {
+              config.o = {
+                foo = {
+                  j.k.x = 1;
+                  i = gm.mkIf false { k.x = 9; };
+                };
+                bar = {
+                  j.k.x = 2;
+                  i = gm.mkIf (config.o.foo.j.k.x == 1) { k.x = 3; };
+                };
+                baz = gm.mkIf false { j.k.x = 4; };
+              };
+            }
+          )
+        ];
+        expected = {
+          foo = {
+            j.k.x = 1;
+            i = { };
+          };
+          bar = {
+            j.k.x = 2;
+            i.k.x = 3;
+          };
+        };
+      };
+    };
+
   # den-hoag-rlskz: `modules.nix` `keyWalk` reads `interface.keysExactly` inline rather than through a
   # call, so the predicate has two copies. The inline copy is read off the source and evaluated, and
   # the two answer alike on gen's exact containers, its lazy one, and a record stating its own answer.
