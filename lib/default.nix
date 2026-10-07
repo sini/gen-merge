@@ -565,6 +565,13 @@ in
   # subject `mkOptionType`'s own relation decides by (lib/interface.nix, den-hoag-bfc0k).
   inherit (core.interface) closuresFirst;
 
+  # What a type wraps at a role (`"element"`, `"alternatives"`, `"moduleSet"`), whichever vocabulary
+  # states it: a gen record's `carries`, a foreign one's carrying spellings, read under the a0c4z rule
+  # (lib/interface.nix) so a record whose `nestedTypes` is an output of its own evaluation is never
+  # read. A walk outside this library asking what a type wraps (gen-schema's `getRefKind`,
+  # den-hoag-gi421) asks here, rather than restating either vocabulary or that rule.
+  inherit (core.interface) importedCarried;
+
   # The type relation, two positional operands in their order (den-hoag-7gp66 P2, rule 4): the
   # relation is asked of the FIRST, whose own `typeMergeRel` answers (a foreign operand there answers
   # through the import boundary), about the second. On a declaration plane the later declaration
