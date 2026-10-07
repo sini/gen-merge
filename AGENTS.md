@@ -54,16 +54,18 @@ defaulted evaluator could not refuse, and the door that names a non-evaluator is
 
 **Engine + the shared fold**
 
-| Export            | Signature                                                                                                                                                      |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `evalModuleTree`  | `{ specialArgs ? {}; check ? null; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; } -> modules -> result` (options closed, first) |
-| `declaredOptions` | `{ specialArgs ? {}; prefix ? []; } -> modules -> options` (stratum 1 alone — the declaration fold, no fixpoint driven)                                        |
-| `mergeDefs`       | `loc -> type\|null -> [{ file; value; }] -> value` (the `(loc, defs)` escape hatch; never short-circuits)                                                      |
-| `mergeOneOption`  | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw)                                                                                   |
-| `showOption`      | `[string] -> string` (dot-join)                                                                                                                                |
-| `mergeTypes`      | `type -> type -> type\|null` (positional; the relation is asked of the FIRST operand, so swapping them can change the answer)                                  |
-| `deriveType`      | `{ key ? null; fields ? _: {}; mint ? sealed; name ? …; description ? …; } -> id -> base -> type` (options closed, first)                                      |
-| `bandedLeaves`    | `scope -> result -> { <loc> = leaf record; }` (`scope` stamped on every record; `result` an `evalModuleTree` result)                                           |
+| Export             | Signature                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `evalModuleTree`   | `{ specialArgs ? {}; check ? null; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; } -> modules -> result` (options closed, first) |
+| `declaredOptions`  | `{ specialArgs ? {}; prefix ? []; } -> modules -> options` (stratum 1 alone — the declaration fold, no fixpoint driven)                                        |
+| `mergeDefs`        | `loc -> type\|null -> [{ file; value; }] -> value` (the `(loc, defs)` escape hatch; never short-circuits)                                                      |
+| `mergeDefsPartial` | `loc -> type\|null -> [{ file; value; }] -> definition` (a fold over SOME of the defs, kept a definition: README, "A partial fold")                            |
+| `partialAttrsOf`   | `type -> type` (`lazyAttrsOf` whose every key folds through `mergeDefsPartial`; top level, not in `types`)                                                     |
+| `mergeOneOption`   | `loc -> [{ file; value; }] -> value` (exactly one def permitted, else throw)                                                                                   |
+| `showOption`       | `[string] -> string` (dot-join)                                                                                                                                |
+| `mergeTypes`       | `type -> type -> type\|null` (positional; the relation is asked of the FIRST operand, so swapping them can change the answer)                                  |
+| `deriveType`       | `{ key ? null; fields ? _: {}; mint ? sealed; name ? …; description ? …; } -> id -> base -> type` (options closed, first)                                      |
+| `bandedLeaves`     | `scope -> result -> { <loc> = leaf record; }` (`scope` stamped on every record; `result` an `evalModuleTree` result)                                           |
 
 Every record-taking step above is a `prelude.door` (den-hoag-7gp66 P2): an unknown option is refused BY
 NAME and catchably at that step's own application, and each door

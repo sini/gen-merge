@@ -603,6 +603,10 @@ in
     # than a divergence if the declarations it is asking about turn out to need the value stratum.
     declaredOptions
     mergeDefs
+    # A partial fold, and the container whose every key folds partially (den-hoag-fjdnf): for a consumer that
+    # folds some of a position's definitions now and the rest later. Outside `types`, whose every member the
+    # vocabulary censuses (the linkset, the p5 scan, the tree-type census) enumerate as nixpkgs-shaped types.
+    mergeDefsPartial
     mergeOneOption
     showOption
     # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; } modules`.
@@ -613,6 +617,8 @@ in
     # and the classify suite read it through core, not this public surface.
     pureModule
     ;
+
+  inherit (strategies) partialAttrsOf;
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
@@ -763,7 +769,10 @@ in
       };
       right = {
         library = "gen-merge";
-        exports = builtins.removeAttrs strategies [ "defineEmbedded" ];
+        exports = builtins.removeAttrs strategies [
+          "defineEmbedded"
+          "partialAttrsOf"
+        ];
       };
       allow = import ./types-allowlist.nix;
     }).exports;

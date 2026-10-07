@@ -46,6 +46,8 @@ let
     calledNestingRefusal
     mergeDefs
     mergeDefsThreaded
+    mergeDefsPartial
+    mergeDefsThreadedPartial
     mergeLeaf
     slotsDiffer
     isDefinedValue
@@ -1260,6 +1262,36 @@ let
 
   attrsOf = attrsOfWith "attrsOf";
   lazyAttrsOf = attrsOfWith "lazyAttrsOf";
+  # `lazyAttrsOf` whose every key is folded PARTIALLY (den-hoag-fjdnf): its value at a key is that key's
+  # winning definitions merged, under the priority that selected them (`mergeDefsPartial`), so a later fold
+  # of it with further definitions is the fold over all of them. The key set, the split and the key walk are
+  # `lazyAttrsOf`'s; only the element fold differs.
+  partialAttrsOf =
+    element:
+    let
+      base = lazyAttrsOf element;
+    in
+    base
+    // {
+      mergeDefs = base.mergeDefs // {
+        __functor =
+          _:
+          refusingOutside "partialAttrsOf" isAttrs (
+            loc: defs: builtins.mapAttrs (k: mergeDefsPartial (loc ++ [ k ]) element) (defsByKey defs)
+          );
+        threaded =
+          ev:
+          refusingOutside "partialAttrsOf" isAttrs (
+            loc: defs:
+            listToAttrs (
+              map (e: {
+                name = head e.step;
+                value = mergeDefsThreadedPartial (ev // { position = ev.position ++ e.step; }) e.loc e.type e.defs;
+              }) (base.split loc defs)
+            )
+          );
+      };
+    };
 
   # attrs — the NULLARY container: an attribute set whose KEYS are its whole content, with no element
   # type to descend into. The injected leaf library answers "is this value an attribute set", which is
@@ -1850,6 +1882,7 @@ in
     attrs
     attrsOf
     lazyAttrsOf
+    partialAttrsOf
     deferredModule
     nullOr
     option

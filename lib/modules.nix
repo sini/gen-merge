@@ -2423,6 +2423,64 @@ let
   #     `values` as a plain def and run the normal spine (correctness over the skip). Byte-identical
   #     to a config that had supplied `values` in place of the marker.
   mergeDefs = mergeDefsWith false;
+  # The same spine over a SUBSET of a position's definitions, whose fold the caller completes later
+  # with the rest (den-hoag-fjdnf). Its result is a definition again: the merged winners under the
+  # priority that selected them, so that folding it with the remaining definitions is the fold over
+  # all of them (filterOverrides is a fold of the (priority, values) monoid, and a partial fold stays in
+  # it only while it keeps its priority). At the default priority the wrapper is the identity and is not
+  # written. With no winners the result is the monoid's identity, a definition that discharges to nothing
+  # (`mkIf false`): an empty value at the default priority would beat a later `mkDefault`. One discharge
+  # and one priority pass, shared by the value and its priority.
+  mergeDefsPartial =
+    loc: type: rawDefs:
+    let
+      discharged = concatMap (
+        d:
+        map (x: {
+          inherit (d) file;
+          inherit (x) value priority;
+        }) (dischargeProperties d.value)
+      ) rawDefs;
+      r = filterOverridesRich discharged;
+      winners = r.winners;
+      sorted = if any (w: isOrderMarker w.value) winners then sortProperties winners else winners;
+      typeDefs = map (w: { inherit (w) file value; }) sorted;
+      fold = ownFold type;
+      result =
+        if fold != null then
+          fold loc typeDefs
+        else if type ? verify || interface.typeDefect type == null then
+          mergeLeaf loc sorted
+        else
+          throw (elementTypeRefusal loc type);
+      checked =
+        if type != null && type ? verify then
+          (
+            let
+              e = type.verify result;
+            in
+            if e == null then
+              result
+            else
+              throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+          )
+        else
+          result;
+    in
+    if winners == [ ] then
+      {
+        _type = "if";
+        condition = false;
+        content = { };
+      }
+    else if r.highestPrio == defaultPriority then
+      checked
+    else
+      {
+        _type = "override";
+        priority = r.highestPrio;
+        content = checked;
+      };
   # Whether a definition survives discharge — nixpkgs' `isDefined = defsFinal != [ ]`, decided by
   # discharge alone because `filterOverrides` never empties a non-empty list. The `? _type` fast
   # path is nixpkgs' own: a value with no property marker cannot discharge to nothing.
@@ -2881,6 +2939,18 @@ let
       t = interface.homedAt "evalModuleTree" loc type;
     in
     mergeDefs loc (
+      if ev.under or false || (ev.exactAt or null) != null && unionNodeAt ev loc t then
+        threadedUnder ev loc t
+      else
+        threadedAs ev t
+    );
+  # The threaded twin of `mergeDefsPartial` (den-hoag-fjdnf): the same accessor rule, folding partially.
+  mergeDefsThreadedPartial =
+    ev: loc: type:
+    let
+      t = interface.homedAt "evalModuleTree" loc type;
+    in
+    mergeDefsPartial loc (
       if ev.under or false || (ev.exactAt or null) != null && unionNodeAt ev loc t then
         threadedUnder ev loc t
       else
@@ -6295,6 +6365,7 @@ in
     # which options a module set declares.
     declaredOptions
     mergeDefs
+    mergeDefsPartial
     mergeOption
     mergeOneOption
     # This engine's own no-`.merge` default — one winner passes, equal winners collapse, unequal
@@ -6369,6 +6440,7 @@ in
     # containers in `./types.nix` fold each element through the twin, and the suites read the door.
     nestedTreeAt
     mergeDefsThreaded
+    mergeDefsThreadedPartial
     readsMintedNode
     calledNestingRefusal
     namePlaceholder

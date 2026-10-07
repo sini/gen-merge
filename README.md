@@ -109,6 +109,25 @@ graph position and provenance rather than by an integer priority lattice; these 
 because gen accepts nixpkgs module vocabulary and a definition written in it must not leak its wrapper
 into the value domain.
 
+### A partial fold — `mergeDefsPartial` and `partialAttrsOf`
+
+`mergeDefsPartial loc type defs` runs the spine over SOME of a position's definitions, for a consumer that
+folds the rest later. Its result is a definition again, so folding it with the remaining definitions is the
+fold over all of them: `filterOverrides` is a fold of the (priority, values) monoid, and a partial result
+stays in it only while it keeps its priority.
+
+| winners               | result                                                              |
+| --------------------- | ------------------------------------------------------------------- |
+| at a non-default `p`  | `{ _type = "override"; priority = p; content = <merged>; }`         |
+| at the default (100)  | the merged value, as `mergeDefs` gives it                           |
+| none (all discharged) | the identity, `{ _type = "if"; condition = false; content = { }; }` |
+
+`partialAttrsOf element` is `lazyAttrsOf element` whose every key folds through `mergeDefsPartial` (and
+its threaded twin on the evaluation's path), so a nested priority survives at every depth. Both sit at the
+top level beside `mergeDefs`, not in `types`, whose members the vocabulary censuses enumerate. Its consumer
+is gen-aspects' guard carrier, whose typed half folds at load and meets its fired content later
+(den-hoag-fjdnf). Tests: `ci/tests/partial-fold.nix`.
+
 ### `mergeDefaultOption` — the shape-directed law (INTERIM, exported beside `mergeLeaf`)
 
 `genMerge.mergeDefaultOption loc defs` is the nixpkgs `lib.mergeDefaultOption` analogue: the law
