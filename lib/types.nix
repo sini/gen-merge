@@ -179,24 +179,32 @@ let
               carried = null;
             } other;
             leafJoin = interface.joinLeafInStatedRelation { inherit name self; } other;
+            # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
+            meet = j: {
+              merged = j;
+              meets = true;
+            };
+            ownJoin = interface.joinInPartnerRelation self other;
           in
           if embedKey && e ? params then
             if carriedJoin != null then
-              { merged = carriedJoin; }
+              meet carriedJoin
             else
               { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
           else if embedKey && !sameKey then
             if leafJoin != null then
-              { merged = leafJoin; }
+              meet leafJoin
             else
               { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+          else if sameKey && interface.statesPayload other && ownJoin != null then
+            meet ownJoin // { twinRefuses = true; }
           else if sameKey && interface.statesPayload other then
             {
               refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
               vetoes = false;
             }
           else if sameKey then
-            { merged = if leafJoin == null then self else leafJoin; }
+            meet (if leafJoin == null then self else leafJoin)
           else
             { refused = "`${nameOf t}' and `${nameOf other}'"; };
     in
@@ -575,15 +583,26 @@ let
     else
       let
         partnerElem = interface.importedOffered "element" other;
+        # the partner's stated element (its own payload, or under the construction this one embeds in)
+        stated =
+          if partnerElem != null then partnerElem else interface.embeddedOffered name "element" other;
+        # THE MEET: the element pair through the meeting merge. Where it meets, the partner's relation is
+        # asked only about the PARAMETERS (its own element against itself), never a gen element as the decider
+        metFirst = if other ? carries || stated == null then null else mergeElemTypes element stated;
+        joinOver = if metFirst != null then stated else element;
+        # a partner whose payload is its element alone states no parameters to agree on: it is rebuilt
+        # over the met element by its own constructor, and its relation is not asked
         foreignJoin =
           if other ? carries then
             null
+          else if metFirst != null && partnerElem != null then
+            interface.rebuiltOverAt "element" metFirst other
           else
             interface.joinCarriedInStatedRelation {
               inherit name;
               role = "element";
-              carried = element;
-              self = rebuild element;
+              carried = joinOver;
+              self = rebuild joinOver;
             } other;
         # The element pair's own reason, where it states one, rides the refusal: the option is named
         # at the top, and the cause sits one level down.
@@ -601,7 +620,38 @@ let
           };
       in
       if foreignJoin != null then
-        { merged = foreignJoin; }
+        let
+          # the met element, or the join's own element met with both
+          metElem =
+            if stated == null then
+              null
+            else
+              let
+                joined = interface.carriedAt "element" foreignJoin;
+              in
+              if metFirst != null then
+                metFirst
+              else if joined != null then
+                interface.meetOf joined [
+                  element
+                  stated
+                ]
+              else
+                null;
+          over = interface.rebuiltOverAt "element" metElem foreignJoin;
+        in
+        # THE MEET: the container is the partner's constructor over the met element
+        if metElem == null then
+          {
+            merged = foreignJoin;
+            meets = true;
+          }
+        else
+          {
+            merged = if over != null then over else rebuild metElem;
+            meets = true;
+            twinRefuses = element ? typeMergeRel && ((element.typeMergeRel stated).twinRefuses or false);
+          }
       else if partnerElem == null then
         let
           # A partner stated under the construction this one embeds in DOES state its element, beside
@@ -620,7 +670,14 @@ let
         let
           merged = mergeElemTypes element partnerElem;
         in
-        if merged == null then elementRefusal partnerElem else { merged = rebuild merged; };
+        if merged == null then
+          elementRefusal partnerElem
+        else
+          {
+            merged = rebuild merged;
+            # the element pair's join the twin refuses, carried up as `vetoes` is (read by a foreign engine's ask)
+            twinRefuses = element ? typeMergeRel && ((element.typeMergeRel partnerElem).twinRefuses or false);
+          };
 
   # An element's substructure, whichever vocabulary it speaks. A gen type answers from its own
   # record; a foreign one is read through the import environment; a bare parametric constructor (a
@@ -1544,7 +1601,13 @@ let
                 self = either a b;
               } other;
             in
-            if foreignJoin != null then { merged = foreignJoin; } else eitherMemberwise a b other;
+            if foreignJoin != null then
+              {
+                merged = foreignJoin;
+                meets = true;
+              }
+            else
+              eitherMemberwise a b other;
         substructure = {
           # A union's members introduce no path level, so it declares nothing of its own — stated
           # rather than inherited, because the pair lives in `carries` and this does not read it.

@@ -452,7 +452,62 @@ let
       in
       if answer ? merged then answer.merged else null
     else
-      interface.importedMerge a b;
+      let
+        r = interface.importedMerge a b;
+      in
+      if r == null then null else rolesMet r a b;
+  # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
+  # records carry (an element; a union's two members) its own carried type is met with the operands'
+  # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
+  # caller (`mergeTypesBy`).
+  rolesMet =
+    r: a: b:
+    let
+      at =
+        role:
+        map (interface.carriedAt role) [
+          r
+          a
+          b
+        ];
+      el = at "element";
+      al = at "alternatives";
+      rebuilt =
+        role: carried:
+        let
+          x = interface.rebuiltOverAt role carried r;
+        in
+        if x == null then r else x;
+      pick = l: i: builtins.elemAt l i;
+      # a carried role's own join met with the operands' at that role, and at every role below it
+      innerMet =
+        r': a': b':
+        interface.metWith (rolesMet r' a' b') [
+          a'
+          b'
+        ];
+    in
+    if builtins.all (x: x != null) el then
+      (
+        let
+          m = innerMet (pick el 0) (pick el 1) (pick el 2);
+        in
+        if sameTypeValue m (pick el 0) then r else rebuilt "element" m
+      )
+    else if builtins.all (x: x != null) al then
+      (
+        let
+          m = builtins.genList (i: innerMet (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)) 2;
+        in
+        if
+          sameTypeValue (pick m 0) (pick (pick al 0) 0) && sameTypeValue (pick m 1) (pick (pick al 0) 1)
+        then
+          r
+        else
+          rebuilt "alternatives" m
+      )
+    else
+      r;
   relationMerge =
     a: b:
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then
@@ -460,27 +515,35 @@ let
     else
       relationMergeWithin a b;
 
-  # ★★ A MERGE THAT DROPS A WRAPPER'S CHECK REFUSES, AT EVERY DEPTH. nixpkgs' `addCheck` is
-  # `elemType // { check = …; }`: it keeps its base's name and relation, so the relation above answers
-  # its base's own `self`, a type that no longer holds the added check, and the value the wrapper
-  # refuses is served. No name separates the two, so the name witness (`importedMerge`) cannot see it;
-  # gen-types' check-witness protocol can, for a gen record (`rewritesCheck`). An operand DROPS when
-  # its check was rewritten and the merge is not that operand itself. Refusing is the one answer
-  # sound whether a redeclaration is read as a join or as a meet, and it leaves that reading open
-  # (the witness clause in `lib/interface.nix`); it is the defaulted disposition under ADR-0025 item
-  # 1, which forbids the silence and does not choose the refusal, so a ruling for the join reading
-  # relaxes this arm alone. A pair that is ONE value keeps it (`x ⊔ x = x ⊓ x = x`): the same
-  # wrapped binding declared twice merges and keeps its check. Two separately written wrappers are
-  # two values even over one predicate source, since a check is a caller's function and cannot be
-  # compared (`sealedRel`'s answer for `mkOptionType`, lib/types.nix).
+  # ★★ A REDECLARED OPTION ACCEPTS A DEFINITION ONLY IF EVERY DECLARED CHECK DOES: EVERY TYPE MERGE IS
+  # MET (den-hoag-l1j4q, owner-ruled 2026-10-06, the meet reading of a redeclaration). nixpkgs'
+  # `addCheck` is `elemType // { check = …; }`: it keeps its base's name and relation, so a relation
+  # answers its base's own `self`, a type that no longer holds the added check, and nixpkgs serves the
+  # value the wrapper refuses. Each step here answers `interface.metWith m [ a b ]`: the relation's join
+  # `m` (the carrier: its fold, name and functor, decided by nixpkgs' later-operand rule) restricted by
+  # each operand's check it does not carry. By induction over the fold, the declared type accepts only
+  # what every declaration accepts, a lower bound, not the greatest one (a join stricter than the
+  # conjunction stays stricter). `declaredPair`'s veto arm routes a relation's `meets` answer through
+  # the same function, and the foreign arm meets role by role (`rolesMet`).
+  #  - A gen x gen step owes nothing (gen relations are exact over checks they state), so it is
+  #    answered before `metWith` is called and allocates nothing.
+  #  - A pair that is ONE value keeps it (`x ⊔ x = x ⊓ x = x`): the same wrapped binding declared
+  #    twice merges and keeps its check.
+  #  - The constructor's own law over its PARAMETERS is kept: a fresh join of one constructor that
+  #    widens an operand's parameters (`enum`'s value union) owes that operand only where its own
+  #    parameters admit the value, so a wrapper over it stays owed (`metWith`).
+  #  - ★ AT A MODULE SET THE STEP REFUSES A DROPPED WITNESSED REWRITE, as before the ruling: the
+  #    module-set fold does not enforce a joined record's check, so a met record there would serve
+  #    what the wrapper rejects. `dropsWrappedCheck` is asked first, so an unwrapped module set never
+  #    builds the substructure read. A FOREIGN wrapper over a module set states no witness and is not
+  #    enforced in either engine (README, "Not covered"; den-hoag-8ip0d).
   #
-  # The test lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
+  # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
   # `listOf int` drops it one level down, inside `elementRel`, which `declaredPair` never sees.
   # "One value" is Nix `==` over `closuresFirst`'s subject, as `sealedRel` compares, because an
-  # exported record is cyclic. Foreign records state no witness, so `addCheck` over a nixpkgs type
-  # redeclared still serves as nixpkgs does (README, "Not covered"). The comparison runs only on the
-  # path where a witnessed rewrite would be dropped; a record with no witness short-circuits.
+  # exported record is cyclic. The comparison runs only on the path where a witnessed rewrite would
+  # be dropped; a record with no witness short-circuits.
   sameTypeValue = x: y: interface.closuresFirst [ x ] x == interface.closuresFirst [ y ] y;
   dropsWrappedCheck = m: o: interface.rewritesCheck o && !(sameTypeValue m o);
   mergeTypesBy =
@@ -488,12 +551,27 @@ let
     let
       m = relation a b;
     in
-    if m == null || !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
-      m
+    if m == null then
+      null
+    else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
+      # a gen relation's answer over two gen operands stating their own checks carries both: nothing is
+      # owed, and nothing is allocated (`metWith`'s first test, inline)
+      if m ? typeMergeRel && a ? typeMergeRel && b ? typeMergeRel then
+        m
+      else
+        interface.metWith m [
+          a
+          b
+        ]
     else if sameTypeValue a b then
       a
+    else if (interface.importedSubstructure m).modules != null then
+      null
     else
-      null;
+      interface.metWith m [
+        a
+        b
+      ];
   mergeTypes = mergeTypesBy relationMerge;
   mergeTypesWithin = mergeTypesBy relationMergeWithin;
 
@@ -593,7 +671,14 @@ let
         else
           mergeTypesWithin later earlier;
     in
-    if veto ? refused && (veto.vetoes or true) then
+    if veto.meets or false then
+      {
+        merged = interface.metWith veto.merged [
+          earlier
+          later
+        ];
+      }
+    else if veto ? refused && (veto.vetoes or true) then
       {
         inherit (veto) refused;
         inherit earlier later;

@@ -303,12 +303,13 @@ in
       };
     };
 
-    # A MERGE THAT DROPS A WRAPPER'S CHECK REFUSES, AT EVERY DEPTH (`mergeTypes`, lib/modules.nix).
-    # `addCheck` over a gen record keeps its base's name and relation, so the relation answers the
-    # bare base. gen-types' witness makes the rewrite observable, so the pair refuses: wrapper first
-    # or second, under a gen parametric, under a container, and in a three-declaration list. nixpkgs
-    # serves every row.
-    test-a-dropped-wrapper-check-refuses =
+    # A MERGE THAT WOULD DROP A WRAPPER'S CHECK MEETS IT, AT EVERY DEPTH (`mergeTypes`, lib/modules.nix;
+    # den-hoag-l1j4q, owner-ruled 2026-10-06). `addCheck` over a gen record keeps its base's name and
+    # relation, so the relation answers the bare base; the step restricts that answer by the wrapper's
+    # check (`interface.metWith`), so the pair merges to the base's record and rejects what the wrapper
+    # rejects: wrapper first or second, under a gen parametric, under a container, and in a
+    # three-declaration list. nixpkgs serves every row.
+    test-a-dropped-wrapper-check-is-met =
       let
         pos = x: x > 0;
         wi = t.addCheck gt.int pos;
@@ -332,15 +333,15 @@ in
           lWrappedThenPlain = ev [ (gt.listOf wi) (gt.listOf gt.int) ] [ (-1) ];
         };
         expected = {
-          plainThenWrapped = "REFUSED";
-          wrappedThenPlain = "REFUSED";
-          twoConstructions = "REFUSED";
-          genAddCheckTwin = "REFUSED";
-          threePlainWrappedPlain = "REFUSED";
-          uPlainThenWrapped = "REFUSED";
-          uWrappedThenPlain = "REFUSED";
-          lPlainThenWrapped = "REFUSED";
-          lWrappedThenPlain = "REFUSED";
+          plainThenWrapped = "MERGED int / REJECTED";
+          wrappedThenPlain = "MERGED int / REJECTED";
+          twoConstructions = "MERGED int / REJECTED";
+          genAddCheckTwin = "MERGED int / REJECTED";
+          threePlainWrappedPlain = "MERGED int / REJECTED";
+          uPlainThenWrapped = "MERGED union<int> / REJECTED";
+          uWrappedThenPlain = "MERGED union<int> / REJECTED";
+          lPlainThenWrapped = "MERGED listOf / REJECTED";
+          lWrappedThenPlain = "MERGED listOf / REJECTED";
         };
       };
 

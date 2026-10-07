@@ -7794,10 +7794,10 @@ in
         };
       };
 
-    # Which declaration's added check a type merge drops, named (`mergeTypesReason`'s drop arm,
-    # lib/modules.nix), and the same reason riding a container's refusal one level down (`elementRel`,
-    # lib/types.nix). `ci/tests/check-family-merge.nix` pins that each pair refuses and that one shared
-    # wrapped value declared twice does not.
+    # A type merge that would drop a wrapper's added check MEETS it (den-hoag-l1j4q, owner-ruled
+    # 2026-10-06; `mergeTypes`, lib/modules.nix): the pair merges, and the definition the wrapper
+    # rejects is refused by the met type, at the top and one level down (`elementRel`, lib/types.nix).
+    # `ci/tests/check-family-merge.nix` pins each pair's merged record and verdict.
     flake.testsError.dropped-wrapper-check =
       let
         wi = nixpkgsLib.types.addCheck t.int (x: x > 0);
@@ -7805,42 +7805,39 @@ in
         u = t.union [ t.int ];
         wu = nixpkgsLib.types.addCheck u (x: x > 0);
         declaredTwice =
-          a: b:
+          a: b: v:
           realize {
             modules = [
               { options.x = gm.mkOption { type = a; }; }
               { options.x = gm.mkOption { type = b; }; }
+              { x = v; }
             ];
           };
-        refuses = pair: {
+        rejects = loc: ty: {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+          msg = "^gen-merge: a definition for option `${loc}' is not of type `${ty}', in `<gen-merge>'$";
         };
-        drops = whose: "which merge to `int', a type that drops the `check' a wrapper added to ${whose}";
       in
       {
-        # The leaf pair is named deciding (later) type first, so a later wrapper is "the first".
-        test-a-later-wrappers-check-is-named = {
-          expr = declaredTwice t.int wi;
-          expectedError = refuses "`int' and `int', ${drops "the first"}";
+        test-a-later-wrappers-check-is-met = {
+          expr = declaredTwice t.int wi (-1);
+          expectedError = rejects "x" "signed integer";
         };
-        test-an-earlier-wrappers-check-is-named = {
-          expr = declaredTwice wi t.int;
-          expectedError = refuses "`int' and `int', ${drops "the second"}";
+        test-an-earlier-wrappers-check-is-met = {
+          expr = declaredTwice wi t.int (-1);
+          expectedError = rejects "x" "signed integer";
         };
-        test-two-wrappers-name-both-checks = {
-          expr = declaredTwice wi wi2;
-          expectedError = refuses "`int' and `int', ${drops "both"}";
+        test-two-wrappers-checks-are-met = {
+          expr = declaredTwice wi wi2 (-1);
+          expectedError = rejects "x" "signed integer";
         };
-        test-a-parametric-wrapper-is-named = {
-          expr = declaredTwice u wu;
-          expectedError = refuses "`union<int>' and `union<int>', which merge to `union<int>', a type that drops the `check' a wrapper added to the first";
+        test-a-parametric-wrappers-check-is-met = {
+          expr = declaredTwice u wu (-1);
+          expectedError = rejects "x" "union<int>";
         };
-        # Inside a container the earlier operand's relation asks first (`declaredPair`'s veto), so the
-        # element pair reads earlier first and the later wrapper is "the second".
-        test-a-container-names-the-cause-at-depth = {
-          expr = declaredTwice (t.listOf t.int) (t.listOf wi);
-          expectedError = refuses "`listOf' over `int' and `listOf' over `int', whose element types do not merge: `int' and `int', ${drops "the second"}";
+        test-a-wrappers-check-is-met-at-depth = {
+          expr = declaredTwice (t.listOf t.int) (t.listOf wi) [ (-1) ];
+          expectedError = rejects ''x\."\[definition 1-entry 1\]"'' "signed integer";
         };
       };
 
