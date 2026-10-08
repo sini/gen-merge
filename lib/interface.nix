@@ -2143,12 +2143,29 @@ let
       # site, which forces what nixpkgs' strict merge forces and no more, and the run stays the
       # authority there. Off a level (`null`) the eager `sitesOf` walk stays.
       #
-      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated; den-hoag-i01nx): a `listOf` step under
-      # a step-free wrapper is not a level (its keys are positions whose names its functor does not
-      # state), so a record that may nest below it is walked eagerly, and aborts uncatchably where
-      # nixpkgs serves with an element whose own tree reads the read tree: `uniq (listOf
-      # (lazyAttrsOf e))` with a key below the list `mkIf` on the read tree, or `uniq (listOf
-      # (attrsOf e))` with a second element's key `mkIf` on it.
+      # A LIST LEVEL (den-hoag-obi4j): a `listOf` step over a record that may nest, and is not a gen
+      # element, is a node level whose positions are the segments nixpkgs' merge names
+      # (`[definition n-entry m]`). Its functor does not state them and its result does not hold
+      # them, so they are keyed from the DEFINITIONS the step folds, by gen's own `listOf` split (the
+      # split a bare stock `listOf` is re-homed to), which reads each entry's definedness, as
+      # nixpkgs' `filter` does, and no element's tree. Keying ranks from definitions is sound only
+      # where stock code folds them, and no probe of a merge can show that (any probe that differs
+      # from the definitions is observable by some merge: by a value it reads, by `tryEval` over its
+      # elements), so the level stands only where every record on the chain, its wrappers above the
+      # step and every record below it down to the gen element, is SEEN STOCK (`seen`): its fold
+      # is bound where its own functor's fresh build binds it. No function is compared. A `//`
+      # override, nixpkgs' `addCheck`, a transplanted merge and any `unique` (whose lambda merge a
+      # hand-built `mkOptionType` copying its functor binds at the same position) are not seen
+      # stock, and keep the eager walk; so do a definition a `coercedTo` above the step coerces and
+      # a result that is not a list (`at`).
+      #
+      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated; den-hoag-i01nx, den-hoag-obi4j): where a
+      # `listOf` step is not a level by that rule, a record that may nest below it is walked eagerly,
+      # and aborts uncatchably where nixpkgs serves with an element whose own tree reads the read
+      # tree: a list below or above any `unique` (`uniq (listOf (lazyAttrsOf e))` with a key below
+      # the list `mkIf` on the read tree), a list on a chain with any overridden or `addCheck`
+      # record, and a list below a `coercedTo` that coerces one of its definitions or one at a keyed
+      # level above it.
       #
       # ★ THE STATED PRICE, an extension of den-hoag-n6dh7's (owner-accepted 2026-09-25: a stock
       # container whose `merge` was overridden cannot be told from the stock one, since Nix cannot
@@ -2183,6 +2200,46 @@ let
               null
             else if n == "unique" || n == "coercedTo" || n == "nullOr" then
               go (fuel - 1) st.element
+            else if n == "listOf" then
+              (
+                if isAttrs st.element && !(st.element ? substructure) && canNest st.element then
+                  {
+                    node = st.element;
+                    step = e;
+                    # the `coercedType` of each `coercedTo` above the step at this level (`levels`)
+                    list = [ ];
+                    # the level `lv` over the definitions `ds` the step folds and the fold's result
+                    # `r`: the level carrying the split's elements (`es`) and the result as a view
+                    # keyed by their segments, or the eager walk (`lv = null`) where a definition is
+                    # not a list, one is a `coercedType`'s, or the result is not a list
+                    at =
+                      oloc: lv: loc: ds: r:
+                      let
+                        es = (constructors.listOf lv.node).split loc ds;
+                      in
+                      if all (d: isList d.value && all (x: !(x.check d.value)) lv.list) ds && isList r then
+                        {
+                          lv = lv // {
+                            inherit es;
+                            # each entry once, in rank order: the level's positions
+                            once = es;
+                          };
+                          r = builtins.listToAttrs (
+                            prelude.imap0 (i: x: {
+                              name = prelude.last x.loc;
+                              value = if i < length r then elemAt r i else null;
+                            }) es
+                          );
+                        }
+                      else
+                        {
+                          lv = null;
+                          inherit r;
+                        };
+                  }
+                else
+                  null
+              )
             else if n == "attrsWith" then
               (
                 let
@@ -2233,29 +2290,140 @@ let
       # step's key as much as a lazy one's, is a node: keying below it needs its value, and only
       # its own group may force that.
       levels =
-        c:
+        clean: c:
         let
           lv = levelOf c;
         in
         if lv != null && lv ? node then
           (
             let
-              next = levels lv.node;
+              # this level's records, its wrappers and its step
+              via = map (x: x.e) (
+                builtins.genericClosure {
+                  startSet = [
+                    {
+                      key = 0;
+                      e = c;
+                    }
+                  ];
+                  operator =
+                    x:
+                    if
+                      x.key < importedTypeWalkFuel
+                      && builtins.elem ((x.e.functor or { }).name or null) [
+                        "unique"
+                        "coercedTo"
+                        "nullOr"
+                      ]
+                    then
+                      [
+                        {
+                          key = x.key + 1;
+                          e = (forwardStep x.e).element;
+                        }
+                      ]
+                    else
+                      [ ];
+                }
+              );
+              # SEEN STOCK (den-hoag-obi4j): `x` is what its own functor builds, as far as its fold is concerned: its
+              # `merge` and `substSubModules`, and each attribute of a record `merge`, are bound where a fresh
+              # build binds them (a `//` override binds them where it is written); no function is compared
+              seen =
+                x:
+                let
+                  f = x.functor or { };
+                  n = f.name or null;
+                  ts = builtins.attrValues (x.nestedTypes or { });
+                  r =
+                    if n == "coercedTo" then
+                      (
+                        if builtins.isFunction (f.type or null) && length ts == 2 && all isAttrs ts then
+                          f.type (head ts) (v: v) (elemAt ts 1)
+                        else
+                          null
+                      )
+                    else if builtins.isFunction (f.type or null) && (f.payload or null) ? elemType then
+                      f.type f.payload
+                    else
+                      null;
+                  at = builtins.${"unsafeGetAttrPos"};
+                in
+                isAttrs x
+                && isAttrs r
+                && at "merge" x == at "merge" r
+                && at "substSubModules" x == at "substSubModules" r
+                && (
+                  if isAttrs r.merge then
+                    isAttrs x.merge
+                    && attrNames x.merge == attrNames r.merge
+                    && all (k: at k x.merge == at k r.merge) (attrNames r.merge)
+                  else
+                    # a merge that is a function is witnessed only where it cannot reorder a list: a
+                    # `functionTo`'s (its value is a function); a `unique`'s cannot be told from a
+                    # hand-built type copying its functor (`mkOptionType`), so it is not witnessed
+                    n == "functionTo" && !(isAttrs x.merge)
+                );
+              ok = clean && all seen via;
+              next = levels ok lv.node;
+              # every record below the list's step, down to the gen element
+              rest = map (x: x.e) (
+                builtins.genericClosure {
+                  startSet = [
+                    {
+                      key = 0;
+                      e = lv.node;
+                    }
+                  ];
+                  operator =
+                    x:
+                    let
+                      st = forwardStep x.e;
+                    in
+                    if x.key < importedTypeWalkFuel && !(x.e ? substructure) && st != null then
+                      [
+                        {
+                          key = x.key + 1;
+                          e = st.element;
+                        }
+                      ]
+                    else
+                      [ ];
+                }
+              );
             in
-            # scout D2: every level may be an `over` level, not only the option's own; a node level
-            # with an `over` level anywhere below it keys each key's definitions (`keyed`), so the
-            # `over` split is handed the definitions at its own key
-            overAt (
-              lv
-              // {
-                inherit next;
-                keyed = next != null && (next ? over || next.keyed or false);
-              }
-            )
+            if lv ? list && !(ok && all (x: x ? substructure || seen x) rest) then
+              null
+            else
+              # scout D2: every level may be an `over` level, not only the option's own; a node level
+              # with an `over` or a list level anywhere below it keys each key's definitions
+              # (`keyed`), so the split below is handed the definitions at its own key
+              overAt (
+                lv
+                // {
+                  inherit next;
+                  keyed = next != null && (next ? over || next ? list || next.keyed or false);
+                }
+                // (
+                  let
+                    # (`coercedTo` states `coercedType` and `finalType`: the first by name order, read without naming it)
+                    types = map (x: head (builtins.attrValues x.nestedTypes)) (
+                      filter (x: ((x.functor or { }).name or null) == "coercedTo") via
+                    );
+                  in
+                  if lv ? list then
+                    {
+                      list = types;
+                      inherit types;
+                    }
+                  else
+                    { inherit types; }
+                )
+              )
           )
         else
           lv;
-      lvT = levels t;
+      lvT = levels true t;
       # ── THE OPTION'S OWN STRICT STEP OVER A STOCK LAZY STEP (den-hoag-i01nx v1, arm OV) ─
       # A strict step at the option's own level whose element is a stock container gen re-homes,
       # directly over the gen element (`lazyAttrsOf e`), is keyed as gen keys `attrsOf (lazyAttrsOf
@@ -2285,6 +2453,7 @@ let
         if
           lv != null
           && lv ? node
+          && !(lv ? list)
           && !(lv.step.functor.payload.lazy or false)
           && lv.next != null
           && lv.next ? one
@@ -2349,6 +2518,19 @@ let
         # capture fold; the threaded fold's own capture stays the authority where a key is read
         else if lv != null && lv ? over then
           lv.over base ds
+        else if lv != null && lv ? list then
+          let
+            v = lv.at oloc lv base ds r;
+            node = nodeAt lv.node lv.next base v.r;
+          in
+          if v.lv == null then
+            splitAt null stated oloc root base ds r
+          else
+            map (x: {
+              step = [ (prelude.last x.loc) ];
+              inherit (x) loc defs;
+              type = node;
+            }) v.lv.once
         else if lv != null && lv ? node && isAttrs r then
           let
             node = nodeAt lv.node lv.next oloc root;
@@ -2359,12 +2541,21 @@ let
           # only where the key's node is walked; any other node level is handed `ds`, as before
           if lv.keyed or false then
             let
-              byKey = builtins.listToAttrs (
-                map (e: {
-                  name = head e.step;
-                  value = e.defs;
-                }) ((constructors.lazyAttrsOf lv.node).split base ds)
-              );
+              byKey =
+                if all (d: isAttrs d.value && all (x: !(x.check d.value)) lv.types) ds then
+                  builtins.listToAttrs (
+                    map (e: {
+                      name = head e.step;
+                      value = e.defs;
+                    }) ((constructors.lazyAttrsOf lv.node).split base ds)
+                  )
+                else
+                  builtins.mapAttrs (_: _: [
+                    {
+                      file = "<gen-merge>";
+                      value = null;
+                    }
+                  ]) r;
             in
             map (k: {
               step = [ k ];
@@ -2424,12 +2615,92 @@ let
       # their nodes; a `one` level's keys are checked against their own capture sites
       # (`keyedWhereRead`); otherwise as folded.
       finishAt =
-        lv: base: rB: ev: v:
-        if lv != null && (lv ? node || lv ? over) && isAttrs rB && isAttrs v then
+        oloc: lv: base: rB: ev: ds: v:
+        if lv != null && lv ? list && !(lv ? es) then
+          (
+            let
+              w = lv.at oloc lv base ds rB;
+            in
+            if w.lv != null && isList v then finishAt oloc w.lv base w.r ev ds v else v
+          )
+        # A list level's read check: index `i` of the threaded fold holds the entry the split ranked
+        # `i` (`es`), read off it as the node at that entry (`finishAt`, `heldAt`). A stock chain's
+        # fold keeps the split's ranks wherever the level stands (`seen`), so no input seen reaches
+        # an outcome of its own here: it states the rank premise where an element is read, and
+        # refuses at the position READ (q6d1z's rule) should a chain ever break it (den-hoag-obi4j)
+        else if lv != null && lv ? es then
+          builtins.genList (
+            i:
+            let
+              x = elemAt v i;
+              e = elemAt lv.es i;
+              k = prelude.last e.loc;
+            in
+            if i >= length lv.es then
+              throw (statedStepRefusal door (base ++ [ (toString i) ]) t)
+            else if lv.next != null then
+              finishAt oloc lv.next e.loc (rB.${k} or null) ev e.defs x
+            else
+              heldAt lv base rB k (rB.${k} or null) x
+          ) (length v)
+        else if lv != null && (lv.keyed or false) && isAttrs rB && isAttrs v then
+          let
+            byKey =
+              if all (d: isAttrs d.value && all (x: !(x.check d.value)) lv.types) ds then
+                builtins.listToAttrs (
+                  map (x: {
+                    name = head x.step;
+                    value =
+                      (
+                        let
+                          priority = import ./priority.nix { inherit prelude; };
+                        in
+                        defs:
+                        if all (d: !(isAttrs d.value && d.value ? _type)) defs then
+                          defs
+                        else
+                          let
+                            winners = priority.filterOverrides (
+                              builtins.concatMap (
+                                d:
+                                map (x: {
+                                  inherit (d) file;
+                                  inherit (x) value priority;
+                                  at = d.at ++ x.path;
+                                }) (priority.dischargePropertiesAt d.value)
+                              ) defs
+                            );
+                          in
+                          if builtins.any (w: priority.isOrderMarker w.value) winners then
+                            priority.sortProperties (
+                              map (w: if priority.isOrderMarker w.value then w // { at = w.at ++ [ "content" ]; } else w) winners
+                            )
+                          else
+                            winners
+                      )
+                        (map (d: d // { at = [ ]; }) x.defs);
+                  }) ((constructors.lazyAttrsOf lv.node).split base ds)
+                )
+              else
+                builtins.mapAttrs (_: _: [
+                  {
+                    file = "<gen-merge>";
+                    value = null;
+                  }
+                ]) rB;
+          in
           prelude.mapAttrs (
             k: x:
             if lv.next != null then
-              finishAt lv.next (base ++ [ k ]) (rB.${k} or null) ev x
+              finishAt oloc lv.next (base ++ [ k ]) (rB.${k} or null) ev (byKey.${k} or [ ]) x
+            else
+              heldAt lv base rB k (rB.${k} or null) x
+          ) v
+        else if lv != null && (lv ? node || lv ? over) && isAttrs rB && isAttrs v then
+          prelude.mapAttrs (
+            k: x:
+            if lv.next != null then
+              finishAt oloc lv.next (base ++ [ k ]) (rB.${k} or null) ev ds x
             else
               heldAt lv base rB k (rB.${k} or null) x
           ) v
@@ -2535,19 +2806,88 @@ let
         let
           # One record per level, built once per fold and lazily per key (a `node` level's `sub`), so
           # an element's placement reads its level's `steps` rather than re-deriving them.
-          infoAt = lv: checked: base: rB: rec {
-            inherit
-              lv
-              checked
-              base
-              rB
-              ;
-            onLevel = lv != null && isAttrs rB;
-            steps = map (s: stepOf base s.loc) (sitesOf rB);
-            sub =
-              if onLevel && lv ? node then prelude.mapAttrs (k: infoAt lv.next true (base ++ [ k ])) rB else { };
-          };
-          info0 = infoAt lv checked base rB;
+          infoAt =
+            lv: checked: ds: base: rB:
+            if lv != null && lv ? list && !(lv ? es) then
+              (
+                let
+                  w = lv.at loc lv base ds rB;
+                in
+                infoAt w.lv checked ds base w.r
+              )
+            else
+              rec {
+                inherit
+                  lv
+                  checked
+                  base
+                  rB
+                  ;
+                onLevel = lv != null && isAttrs rB;
+                steps = map (s: stepOf base s.loc) (sitesOf rB);
+                sub =
+                  if !(onLevel && lv ? node) then
+                    { }
+                  else if lv ? es then
+                    builtins.listToAttrs (
+                      map (e: {
+                        name = prelude.last e.loc;
+                        value = infoAt lv.next true e.defs e.loc rB.${prelude.last e.loc};
+                      }) lv.es
+                    )
+                  else if lv.keyed or false then
+                    (
+                      let
+                        byKey =
+                          if all (d: isAttrs d.value && all (x: !(x.check d.value)) lv.types) ds then
+                            builtins.listToAttrs (
+                              map (x: {
+                                name = head x.step;
+                                value =
+                                  (
+                                    let
+                                      priority = import ./priority.nix { inherit prelude; };
+                                    in
+                                    defs:
+                                    if all (d: !(isAttrs d.value && d.value ? _type)) defs then
+                                      defs
+                                    else
+                                      let
+                                        winners = priority.filterOverrides (
+                                          builtins.concatMap (
+                                            d:
+                                            map (x: {
+                                              inherit (d) file;
+                                              inherit (x) value priority;
+                                              at = d.at ++ x.path;
+                                            }) (priority.dischargePropertiesAt d.value)
+                                          ) defs
+                                        );
+                                      in
+                                      if builtins.any (w: priority.isOrderMarker w.value) winners then
+                                        priority.sortProperties (
+                                          map (w: if priority.isOrderMarker w.value then w // { at = w.at ++ [ "content" ]; } else w) winners
+                                        )
+                                      else
+                                        winners
+                                  )
+                                    (map (d: d // { at = [ ]; }) x.defs);
+                              }) ((constructors.lazyAttrsOf lv.node).split base ds)
+                            )
+                          else
+                            builtins.mapAttrs (_: _: [
+                              {
+                                file = "<gen-merge>";
+                                value = null;
+                              }
+                            ]) rB;
+                      in
+                      prelude.mapAttrs (k: infoAt lv.next true (byKey.${k} or [ ]) (base ++ [ k ])) rB
+                    )
+                  else
+                    prelude.mapAttrs (k: infoAt lv.next true ds (base ++ [ k ])) rB;
+              };
+          info0 = infoAt lv checked defs base rB;
           # Where element `eloc` is threaded: `{ ev; st; ok; }`, the accessor of the level that holds
           # it (a `node` level hands it to its key's node, `accessor`), its steps below that level,
           # and whether that level's split placed it there.
@@ -2656,7 +2996,7 @@ let
           let
             captured = (importedFold capture) loc defs;
           in
-          finishAt lvT loc captured ev (threadedAt lvT false loc captured ev loc defs);
+          finishAt loc lvT loc captured ev defs (threadedAt lvT false loc captured ev loc defs);
       };
     };
 
