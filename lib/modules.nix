@@ -548,7 +548,17 @@ let
   # exported record is cyclic. The comparison runs only on the path where a witnessed rewrite would
   # be dropped; a record with no witness short-circuits.
   sameTypeValue = x: y: interface.closuresFirst [ x ] x == interface.closuresFirst [ y ] y;
-  dropsWrappedCheck = m: o: interface.rewritesCheck o && !(sameTypeValue m o);
+  # `interface.replacesVerify`, restated inline for cost: this is asked of both operands of every step
+  verifySlice = builtins.intersectAttrs { verify = null; };
+  dropsWrappedCheck =
+    m: o:
+    (
+      interface.rewritesCheck o
+      ||
+        o ? verify
+        && !(builtins.isFunction (o.__typeSelf or null) && verifySlice o == verifySlice (o.__typeSelf null))
+    )
+    && !(sameTypeValue m o);
   mergeTypesBy =
     relation: a: b:
     let

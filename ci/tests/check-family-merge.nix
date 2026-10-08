@@ -1003,12 +1003,419 @@ in
           };
       };
 
+    # A `//` COPY DEPARTING ANYWHERE BUT `check` IS MET IN EVERY ORDER (den-hoag-ndgcz, den-hoag-69w3d).
+    # A copy that replaces `verify` keeps its completion's `check`, witness and relation, so the step's
+    # owed test (`rewritesCheck`) cannot see it, and the carrier read it as its own record: beside its
+    # plain twin the meet dropped its verify (ADR-0025 item 1), and beside nixpkgs' `enum` its verdict
+    # depended on the order. Each row is the set of verdicts over every order of the declarations: one
+    # element is order-independence, and `REJECTED` where the copy rejects is the meet (ADR-0039).
+    test-a-copy-departing-anywhere-but-check-is-met-in-every-order =
+      let
+        verdict = r: if r == "REFUSED" then r else builtins.elemAt (builtins.split " / " r) 2;
+        perms =
+          xs:
+          if xs == [ ] then
+            [ [ ] ]
+          else
+            builtins.concatLists (
+              nixpkgsLib.imap0 (
+                i: x:
+                map (p: [ x ] ++ p) (
+                  perms (nixpkgsLib.sublist 0 i xs ++ nixpkgsLib.sublist (i + 1) (builtins.length xs - i - 1) xs)
+                )
+              ) xs
+            );
+        orders = tys: v: nixpkgsLib.unique (map (o: verdict (ev o v)) (perms tys));
+        E = gt.enum "e" [
+          "a"
+          "b"
+        ];
+        notA = v: if v == "a" then "rejected by notA" else E.verify v;
+        copies = {
+          verify = E // {
+            verify = notA;
+          };
+          described = E // {
+            description = "a described copy";
+          };
+          # a control: renamed only, so every member is served
+          renamedOnly = E // {
+            name = "r";
+          };
+          renamed = E // {
+            name = "r";
+            verify = notA;
+          };
+          # den-hoag-69w3d's shape: `check` replaced, `verify` opened
+          checkAndVerify = E // {
+            check = v: v != "a";
+            verify = _: null;
+          };
+          # the meet owes a copy's `check` AND its `verify`: here each rejects a different value
+          split = E // {
+            check = v: E.check v && v != "a";
+            verify = v: if v == "b" then "rejected by notB" else E.verify v;
+          };
+        };
+        twins = {
+          plain = E;
+          nixpkgs = t.enum [
+            "a"
+            "b"
+          ];
+          widening = t.enum [
+            "b"
+            "c"
+          ];
+          wideningGen = gt.enum "g" [
+            "b"
+            "c"
+          ];
+        };
+        wraps = {
+          bare = {
+            ty = x: x;
+            v = x: x;
+          };
+          listOf = {
+            ty = t.listOf;
+            v = x: [ x ];
+          };
+        };
+        row =
+          copy: twin: w:
+          builtins.listToAttrs (
+            map
+              (v: {
+                name = v;
+                value = orders (map wraps.${w}.ty [
+                  copy
+                  twin
+                ]) (wraps.${w}.v v);
+              })
+              [
+                "a"
+                "b"
+                "c"
+              ]
+          );
+        # a nullary leaf and a record that states `verify` with no completion stamp, beside themselves
+        intCopy = gt.int // {
+          verify = v: if v == 1 then "rejected by not1" else gt.int.verify v;
+        };
+        rawCopy = gt.raw // {
+          verify = v: if v == 1 then "rejected by not1" else null;
+        };
+        leaf = copy: twin: {
+          "1" = orders [ copy twin ] 1;
+          "2" = orders [ copy twin ] 2;
+        };
+        # a caller `typedef`: two of its copies are one type only through the carrier
+        even = gt.typedef "even" (v: builtins.isInt v && v / 2 * 2 == v);
+        sealed = copy: {
+          "2" = orders [ copy even ] 2;
+          "3" = orders [ copy even ] 3;
+          "4" = orders [ copy even ] 4;
+        };
+        # DISTINCT partners, each rejecting its own value, beside a twin in every order of three and of
+        # four declarations: a check lost BETWEEN two partners is invisible where one partner is placed
+        # twice. `vA` and `vC` replace `verify`, `cB` replaces `check`.
+        F = gt.enum "e" [
+          "a"
+          "b"
+          "c"
+          "d"
+        ];
+        rejects = x: v: if v == x then "rejected by not${x}" else F.verify v;
+        vA = F // {
+          verify = rejects "a";
+        };
+        cB = F // {
+          check = v: F.check v && v != "b";
+        };
+        vC = F // {
+          verify = rejects "c";
+        };
+        distinct =
+          partners:
+          builtins.mapAttrs
+            (
+              _: twin:
+              builtins.listToAttrs (
+                map
+                  (v: {
+                    name = v;
+                    value = orders (partners ++ [ twin ]) v;
+                  })
+                  [
+                    "a"
+                    "b"
+                    "c"
+                    "d"
+                  ]
+              )
+            )
+            {
+              plain = F;
+              nixpkgs = t.enum [
+                "a"
+                "b"
+                "c"
+                "d"
+              ];
+            };
+      in
+      {
+        expr =
+          builtins.mapAttrs (
+            _: copy:
+            builtins.mapAttrs (_: twin: row copy twin "bare") twins
+            // {
+              listOf = row copy twins.widening "listOf";
+            }
+          ) copies
+          // {
+            int = leaf intCopy gt.int;
+            intBesideNixpkgs = leaf intCopy t.int;
+            raw = leaf rawCopy gt.raw;
+            typedef = sealed (even // { verify = v: if v == 2 then "rejected by not2" else even.verify v; });
+            typedefDescribed = sealed (even // { description = "a described typedef"; });
+            distinctThree = distinct [
+              vA
+              cB
+            ];
+            distinctFour = distinct [
+              vA
+              cB
+              vC
+            ];
+          };
+        expected =
+          let
+            acc = [ "ACCEPTED" ];
+            rej = [ "REJECTED" ];
+          in
+          {
+            checkAndVerify = {
+              listOf = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+              nixpkgs = {
+                a = rej;
+                b = acc;
+                c = rej;
+              };
+              plain = {
+                a = rej;
+                b = acc;
+                c = rej;
+              };
+              widening = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+              wideningGen = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+            };
+            described = {
+              listOf = {
+                a = acc;
+                b = acc;
+                c = acc;
+              };
+              nixpkgs = {
+                a = acc;
+                b = acc;
+                c = rej;
+              };
+              plain = {
+                a = acc;
+                b = acc;
+                c = rej;
+              };
+              widening = {
+                a = acc;
+                b = acc;
+                c = acc;
+              };
+              wideningGen = {
+                a = acc;
+                b = acc;
+                c = acc;
+              };
+            };
+            renamedOnly = {
+              listOf = {
+                a = acc;
+                b = acc;
+                c = acc;
+              };
+              nixpkgs = {
+                a = acc;
+                b = acc;
+                c = rej;
+              };
+              plain = {
+                a = acc;
+                b = acc;
+                c = rej;
+              };
+              widening = {
+                a = acc;
+                b = acc;
+                c = acc;
+              };
+              wideningGen = {
+                a = acc;
+                b = acc;
+                c = acc;
+              };
+            };
+            int = {
+              "1" = rej;
+              "2" = acc;
+            };
+            intBesideNixpkgs = {
+              "1" = rej;
+              "2" = acc;
+            };
+            raw = {
+              "1" = rej;
+              "2" = acc;
+            };
+            typedef = {
+              "2" = rej;
+              "3" = rej;
+              "4" = acc;
+            };
+            typedefDescribed = {
+              "2" = acc;
+              "3" = rej;
+              "4" = acc;
+            };
+            distinctThree =
+              let
+                r = {
+                  a = rej;
+                  b = rej;
+                  c = acc;
+                  d = acc;
+                };
+              in
+              {
+                plain = r;
+                nixpkgs = r;
+              };
+            distinctFour =
+              let
+                r = {
+                  a = rej;
+                  b = rej;
+                  c = rej;
+                  d = acc;
+                };
+              in
+              {
+                plain = r;
+                nixpkgs = r;
+              };
+            renamed = {
+              listOf = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+              nixpkgs = {
+                a = rej;
+                b = acc;
+                c = rej;
+              };
+              plain = {
+                a = rej;
+                b = acc;
+                c = rej;
+              };
+              widening = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+              wideningGen = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+            };
+            split = {
+              listOf = {
+                a = rej;
+                b = rej;
+                c = acc;
+              };
+              nixpkgs = {
+                a = rej;
+                b = rej;
+                c = rej;
+              };
+              plain = {
+                a = rej;
+                b = rej;
+                c = rej;
+              };
+              widening = {
+                a = rej;
+                b = rej;
+                c = acc;
+              };
+              wideningGen = {
+                a = rej;
+                b = rej;
+                c = acc;
+              };
+            };
+            verify = {
+              listOf = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+              nixpkgs = {
+                a = rej;
+                b = acc;
+                c = rej;
+              };
+              plain = {
+                a = rej;
+                b = acc;
+                c = rej;
+              };
+              widening = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+              wideningGen = {
+                a = rej;
+                b = acc;
+                c = acc;
+              };
+            };
+          };
+      };
+
     # THE TWO CARRIER SPELLINGS AGREE (den-hoag-7kj5s). `interface.joinRenames`' `bare` is restated at the
     # entry of `default.nix`'s parametric relation rather than shared, for the load gates' cost, so the
     # carrier has two spellings. Each is read off its source and evaluated, and over one population both
-    # name the same carrier, the one each record's class states: a check-only copy its completion, the
-    # met record `meetOf` built its join, and every other record itself — a copy departing at `verify`
-    # too (the completion stamp) and a met record re-completed by `mkOptionType` (its witness is no
+    # name the same carrier, the one each record's class states: a `//` copy departing from its
+    # completion only at fields the meet owes (`check`, `verify`) or that translate nothing (the
+    # name-carried ones) its completion (den-hoag-ndgcz), the met record `meetOf` built its join, and
+    # every other record itself — a met record re-completed by `mkOptionType` (its witness is no
     # longer its join's) among them. The population deliberately holds no met record over a foreign join
     # whose `check` is a bare function: `==` decides that witness differently per evaluator (Lix reads
     # the record as its join, Nix and Determinate as itself), so no one expected carrier holds there.
@@ -1016,7 +1423,11 @@ in
       let
         inherit (genMergeCore) interface;
         scope = {
-          inherit (interface) rewritesCheck exportClasses;
+          inherit (interface)
+            rewritesCheck
+            exportClasses
+            departsWithinCarrier
+            ;
           stampOk = genTypes.stampOk;
           checkedTypes = genTypes;
           core = { inherit interface; };
@@ -1043,7 +1454,7 @@ in
           {
             count = builtins.length at;
             read = import (builtins.toFile "carrier.nix" ''
-              { rewritesCheck, exportClasses, stampOk, checkedTypes, core }:
+              { rewritesCheck, exportClasses, departsWithinCarrier, stampOk, checkedTypes, core }:
               let
                 bare =
               ${builtins.concatStringsSep "\n" (body (builtins.head at + 1))}
@@ -1091,6 +1502,22 @@ in
               check = notA;
               verify = _: null;
             };
+          verifyOnlyCopy =
+            gt.enum "e" [
+              "a"
+              "b"
+            ]
+            // {
+              verify = v: if v == "a" then "rejected by notA" else null;
+            };
+          descriptionOnlyCopy =
+            gt.enum "e" [
+              "a"
+              "b"
+            ]
+            // {
+              description = "a described enum";
+            };
           met = metOf [
             wrapped
             (gt.enum "g" [
@@ -1134,8 +1561,23 @@ in
             agree = shape (joinRenames.read x) == shape (relation.read x);
             carrier = shape (joinRenames.read x);
           }) population;
+          completions = builtins.mapAttrs (_: x: {
+            joinRenames = genTypes.stampOk (joinRenames.read x);
+            relation = genTypes.stampOk (relation.read x);
+          }) { inherit (population) verifyOnlyCopy descriptionOnlyCopy; };
         };
         expected = {
+          completions =
+            let
+              both = {
+                joinRenames = true;
+                relation = true;
+              };
+            in
+            {
+              verifyOnlyCopy = both;
+              descriptionOnlyCopy = both;
+            };
           spellings = {
             joinRenames = 1;
             relation = 1;
@@ -1154,7 +1596,9 @@ in
               nixpkgs = row (sh "enum" 0 false) (sh "enum" 0 false);
               checkOnly = row (sh "e" 0 true) (sh "e" 0 false);
               descriptionCopy = row (sh "e" 0 true) (sh "e" 0 false);
-              verifyCopy = row (sh "e" 0 true) (sh "e" 0 true);
+              verifyCopy = row (sh "e" 0 true) (sh "e" 0 false);
+              verifyOnlyCopy = row (sh "e" 0 false) (sh "e" 0 false);
+              descriptionOnlyCopy = row (sh "e" 0 false) (sh "e" 0 false);
               met = row (sh "g" 1 true) (sh "g" 0 false);
               metOfMet = row (sh "g" 2 true) (sh "g" 0 false);
               # re-completed, it keeps its witnessed check (den-hoag-59gnz C1): a met record read as its join

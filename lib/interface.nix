@@ -3190,10 +3190,15 @@ let
           && x._checkWitness == (x.__meetJoin._checkWitness or x.__meetJoin.check)
         then
           bare x.__meetJoin
-        else if rewritesCheck x && builtins.isFunction (x.__typeSelf or null) then
+        else if
+          builtins.isFunction (x.__typeSelf or null) && (rewritesCheck x || departsWithinCarrier x)
+        then
           let
             c = x.__typeSelf null;
-            names = exportClasses.nameCarried ++ [ "check" ];
+            names = exportClasses.nameCarried ++ [
+              "check"
+              "verify"
+            ];
           in
           if
             stampOk (
@@ -3815,21 +3820,35 @@ let
       fold = j.mergeDefs or (importedRawFold j);
       # each check in its cheapest callable form: a witness record's function, not its functor
       direct = c: if isAttrs c && c ? _fn then c._fn else c;
+      # an operand's declared domain, as the engine reads one declared alone: its `check` and, for a gen
+      # record, its `verify`. Where its `check` is the witness its verify published, `verify` is read
+      # alone, as `ov` reads it: that saves one check call per value, and no measured verdict moves
+      dom =
+        o:
+        let
+          c = direct o.check;
+        in
+        if !(o ? verify) then
+          c
+        else if o ? _checkWitness && o.check == o._checkWitness then
+          (v: o.verify v == null)
+        else
+          (v: c v && o.verify v == null);
       jc = direct j.check;
       # a widened operand's stock check (`metWith`): it is owed only where its own parameters admit
       stockOf = o: if o ? __stockCheck then direct o.__stockCheck else null;
       ocs = map (
         o:
         let
-          c = direct o.check;
+          c = dom o;
           s = stockOf o;
         in
         if s == null then c else (v: c v || !(s v))
       ) os;
       oc = head ocs;
-      c0 = direct o1.check;
+      c0 = dom o1;
       s0 = stockOf o1;
-      c1 = direct (elemAt os 1).check;
+      c1 = dom (elemAt os 1);
       s1 = stockOf (elemAt os 1);
       # a gen operand whose published check is its own domain: its `verify`, read inline
       o1 = head os;
@@ -3941,7 +3960,10 @@ let
   # Every binding is local, so the library's load pays for this one lambda alone.
   metWith =
     m: os:
-    if m ? typeMergeRel && builtins.all (o: o ? typeMergeRel && !(rewritesCheck o)) os then
+    if
+      m ? typeMergeRel
+      && builtins.all (o: o ? typeMergeRel && !(rewritesCheck o) && !(replacesVerify o)) os
+    then
       m
     else
       let
@@ -3949,7 +3971,8 @@ let
           o:
           !(o ? typeMergeRel)
           || !(m ? typeMergeRel)
-          || (o ? _checkWitness && o ? check && o.check != o._checkWitness);
+          || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
+          || replacesVerify o;
         same = x: y: closuresFirst [ x ] x == closuresFirst [ y ] y;
         # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
         # alternatives; any other `elemType` states no element of the tree
@@ -4255,6 +4278,30 @@ let
         value = null;
       }) (filter (n: !(builtins.elem n exportClasses.nameCarried)) exportFields)
     );
+  # ★ A RECORD WHOSE `verify` NO COMPLETION VOUCHES FOR (den-hoag-ndgcz): a `//` copy that replaced a
+  # completed record's `verify`, or a record stating one with no completion stamp. Its `check` and
+  # witness can still be its base's, so `rewritesCheck` cannot see it, and the relation it inherited
+  # answers for its base's verify only. One slice of each record, compared by the pointer of its slot as
+  # `stampAgrees` compares one, so the answer is the same on every evaluator for a replaced verify.
+  verifySlice = builtins.intersectAttrs { verify = null; };
+  replacesVerify =
+    t:
+    t ? verify
+    && !(
+      builtins.isFunction (t.__typeSelf or null) && verifySlice t == verifySlice (t.__typeSelf null)
+    );
+  # Whether a completed record's `//` copy departs from its completion at a field its carrier still
+  # reads as the completion's (`joinRenames`' `bare`): a name-carried one, which translates nothing, or
+  # `verify`, which the meet owes (`replacesVerify`). One slice of all three, asked of a stamped record.
+  carrierSlice = builtins.intersectAttrs (
+    builtins.listToAttrs (
+      map (n: {
+        name = n;
+        value = null;
+      }) (exportClasses.nameCarried ++ [ "verify" ])
+    )
+  );
+  departsWithinCarrier = t: carrierSlice t != carrierSlice (t.__typeSelf null);
   # `t` departs from the record its constructor completed only at fields `reads` does not hold.
   departsOnlyOutside =
     reads: t:
@@ -5175,6 +5222,8 @@ in
     importedRawFold
     importedMergeReason
     joinRenames
+    replacesVerify
+    departsWithinCarrier
     keyOf
     nameOf
     functorNamesOf
