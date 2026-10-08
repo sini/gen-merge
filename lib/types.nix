@@ -1964,6 +1964,13 @@ in
     ;
   # The published door: a caller's record enters here, so a `//` copy of a completed record is read as
   # the copy it is (`interface.keepStamp`), as the raw record holds its witnesses (den-hoag-59gnz C2).
-  defineType = t: defineType (interface.keepStamp t);
+  # A record in the foreign protocol that states no relation was not completed here (every completion
+  # states one; the export refuses a record without it), so it is the foreign engine's record, not this
+  # crossing's to complete: it is returned as it is, and the engine imports it where it is declared, as it
+  # imports every foreign record. Completing it would publish a `check` derived from a gen datum it does
+  # not state, over its own (den-hoag-ukitj).
+  defineType =
+    t:
+    if !(t ? typeMergeRel) && interface.isOptionType t then t else defineType (interface.keepStamp t);
   completeType = defineType;
 }

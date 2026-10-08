@@ -269,11 +269,19 @@ in
         listBeside = "REFUSED";
       };
     };
-    # THE STATED EXCLUSION, pinned (spec §2.5 F3): a foreign record states no check witness, so a
-    # wrapper over a nixpkgs type re-completed through `defineType` is not seen as a rewrite.
-    test-a-foreign-wrapper-through-defineType-is-outside-the-class = {
-      expr = ev [ (gt.defineType (np.addCheck np.int pInt)) ] 1;
-      expected = 1;
+    # A foreign record is not `defineType`'s to complete, so it is returned as it is and the engine
+    # imports it where it is declared: a wrapper over a nixpkgs type keeps its check (den-hoag-ukitj).
+    test-a-foreign-wrapper-through-defineType-keeps-its-check = {
+      expr = {
+        rejected = ev [ (gt.defineType (np.addCheck np.int pInt)) ] 1;
+        admitted = ev [ (gt.defineType (np.addCheck np.int pInt)) ] 2;
+        plain = ev [ (gt.defineType np.int) ] "s";
+      };
+      expected = {
+        rejected = "REFUSED";
+        admitted = 2;
+        plain = "REFUSED";
+      };
     };
     # C4 and the owner ruling (b): at a module set, a witnessed rewrite of a gen submodule (the ad-hoc
     # `// { check }` override, nixpkgs' `addCheck`, which over a non-v2 type is that override, and the
