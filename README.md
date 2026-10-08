@@ -1624,7 +1624,13 @@ the wrapper first or second, under a gen parametric (`union [ int ]`), under a c
 operand too (`addCheck lib.types.int p` beside `lib.types.int`, and a nixpkgs partner of any check).
 The join still decides the record (its fold, name and functor, nixpkgs' later operand); the meet
 decides acceptance, a lower bound by induction over the fold. A gen x gen step owes nothing and is
-answered before the meet is built. A fresh join that widens a constructor's own parameters keeps that
+answered before the meet is built, except to a `//` copy whose `verify` no completion vouches for
+(`interface.replacesVerify`: it replaced its completion's `verify`, or states one with no completion
+stamp). Its `check`, witness and relation are still its base's, so no relation carries that `verify`, and
+the step owes the copy its declared domain, its `verify` and any `check` it rewrote (den-hoag-ndgcz). The
+carrier (`interface.joinRenames`) reads such a copy, and one departing only at its name or description,
+as its completion, so beside nixpkgs' `enum` its verdict is the same in both orders (den-hoag-69w3d). A
+fresh join that widens a constructor's own parameters keeps that
 constructor's law over them (two `enum`s union their values), and each operand stays owed for the
 values its own parameters admit, so a wrapper over an `enum` is kept. A container's element is one of
 its parameters, read as the meet reads its roles (an element type, or a pair of alternatives), so
