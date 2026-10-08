@@ -9583,5 +9583,116 @@ in
         };
       };
     };
+    # A `nests.declAt` read on a definition a threaded foreign split's merge built refuses BY NAME
+    # (den-hoag-j5gfg; ADR-0034: no structural identity, a named refusal on demand). The shapes: the
+    # nest chain and a step-free wrapper over a lazy `attrsWith` (`wlazy`), under the stock, a
+    # reversing and an attrset-`file`-writing merge, in both module orders; and a foreign `coercedTo`
+    # over nixpkgs' and over gen's own `attrsOf`, whose element definitions the wrapper's merge builds.
+    # Catchability and the served controls are `ci/tests/foreign-split-def-record.nix`.
+    flake.testsError.foreign-split-def-record =
+      let
+        fsdr = import ./tests/_fixtures/foreign-split-def-record.nix { inherit genMerge nixpkgsLib; };
+        fsdrRefusal = "^gen-merge: `declAt': option `xs.*': the definition at `xs.*' was built by the foreign merge of `coercedTo', which hands each definition only `\\{ file; value; }' and states no declaring position, so it has no declaration address$";
+      in
+      {
+        test-declat-refused-nest-stock-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "nest" "stock" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest-stock-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "nest" "stock" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest-rev-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "nest" "rev" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest-rev-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "nest" "rev" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest-fileset-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "nest" "fileset" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest-fileset-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "nest" "fileset" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-wlazy-stock-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "wlazy" "stock" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-wlazy-stock-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "wlazy" "stock" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-wlazy-rev-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "wlazy" "rev" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-wlazy-rev-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "wlazy" "rev" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-wlazy-fileset-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "wlazy" "fileset" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-wlazy-fileset-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "wlazy" "fileset" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-ncoatt-stock-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "ncoatt" "stock" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-ncogatt-stock-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "ncogatt" "stock" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+      };
   };
 }
