@@ -2810,8 +2810,12 @@ let
       # is its join (`meetOf`'s `__meetJoin`) while it is still the record `meetOf` built, whose witness
       # is its join's: a re-completion (`mkOptionType`, `defineType`) re-ties the witness to the met
       # check and carries `__meetJoin` across, and the meet then owes it nothing, so read as its join it
-      # would lose that check. A met record over a foreign join reads as itself too: its witness is the
-      # join's `check` function, and Nix compares no two functions equal. A `//` copy whose only
+      # would lose that check. Whether the witness is the join's is decided by `==`, so over a foreign
+      # join whose `check` is a bare function (nixpkgs `enum`, `int`, `str`) Nix and Determinate decide
+      # false and the record reads as itself, while Lix compares a function with itself by pointer and
+      # reads it as its join; over a functor-record `check` (nixpkgs `listOf`, `attrsOf`, `nullOr`) all
+      # three read it as its join. Either reading is sound: a record read as its join has that join's
+      # witness, so its own check is the join's or is owed by the meet. A `//` copy whose only
       # departure from its completion is `check` and name-carried fields (nixpkgs `addCheck`) has its
       # completion; any other record is its own.
       # Restated inline at the entry of `default.nix`'s parametric relation, for the load gates' cost;

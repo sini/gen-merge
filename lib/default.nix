@@ -472,7 +472,9 @@ let
           let
             # ★ A WITNESSED-REWRITE PARTNER IS READ AS ITS CARRIER (`interface.joinRenames`' `bare`,
             # restated here for the load gates' cost): the join of a met record `meetOf` built (its
-            # witness is its join's; a re-completed one is its own), or the completion of a `//` copy
+            # witness is its join's, as `==` decides it, which over a bare-function foreign `check` is
+            # evaluator-dependent and sound either way; a re-completed one is its own), or the
+            # completion of a `//` copy
             # that departs from it only at `check` and name-carried fields. The step's meet owes the
             # rewrite's own check (`interface.metWith`), so sameness, the shared mark and the payload read
             # below decide only which type the carrier is and which law applies.

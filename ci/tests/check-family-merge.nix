@@ -801,7 +801,7 @@ in
         # a met record (`y` rejected by its wrapped operand) re-completed by `mkOptionType`: the completion
         # re-ties its witness to the met check and carries `__meetJoin` across, so the meet owes it nothing
         # and it is not the record `meetOf` built. Read as its join, the met check would be enforced by
-        # nobody, in one order (gate K1); read as itself it refuses in both, as before the carrier.
+        # nobody, in one order; read as itself it refuses in both.
         recompleted = gm.mkOptionType (
           (gm.evalModuleTree { } [
             {
@@ -1008,7 +1008,9 @@ in
     # name the same carrier, the one each record's class states: a check-only copy its completion, the
     # met record `meetOf` built its join, and every other record itself — a copy departing at `verify`
     # too (the completion stamp) and a met record re-completed by `mkOptionType` (its witness is no
-    # longer its join's) among them.
+    # longer its join's) among them. The population deliberately holds no met record over a foreign join
+    # whose `check` is a bare function: `==` decides that witness differently per evaluator (Lix reads
+    # the record as its join, Nix and Determinate as itself), so no one expected carrier holds there.
     test-the-two-carrier-spellings-agree =
       let
         inherit (genMergeCore) interface;
