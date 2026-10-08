@@ -232,6 +232,7 @@ let
       "__payload"
       "__sealed"
       "__typeSelf"
+      "__staleStamp"
     ];
     derived = exportFields ++ [
       "_checkWitness"
@@ -510,8 +511,8 @@ let
   # A completed record's mint, `null` for any other: the leaf identity a row's TYPE-valued
   # parameter is decided by (ADR-0034's MINTED regime), read under the completion stamp exactly as
   # `embedsOf` reads a leaf's, so a raw `//` copy keeping its base's mark reaches none. The stamp
-  # detects a raw copy only: a copy RE-COMPLETED through `defineType` is stamped afresh and keeps its
-  # base's mint (den-hoag-59gnz, a gen-types identity question).
+  # detects a raw copy and a copy re-completed through the published `defineType`, which keeps the
+  # stale stamp a copy arrives with (`keepStamp`, den-hoag-59gnz).
   completedMintOf =
     t:
     let
@@ -3847,10 +3848,88 @@ let
       r
     else
       let
-        copy = src ? __typeSelf && !(stampOk src);
+        # a record whose `check` a wrapper rewrote is guarded by its check witness at every identity
+        # reader (`rewritesCheck`, den-hoag-ydro3) and keeps its mark as the join's carrier; a copy
+        # departing only at fields this door does not read keeps its completion's (den-hoag-59gnz C3)
+        copy =
+          src ? __typeSelf
+          && !(rewritesCheck src)
+          && !(stampOk src)
+          && !(builtins.isFunction src.__typeSelf && departsOnlyOutside importReads src);
         s = r // {
           __typeSelf = if copy then src.__typeSelf else (_: s);
           __mint = if copy then copyMint else src.__mint;
+        };
+      in
+      s;
+  # WHAT EACH ENTRY DOOR READS (den-hoag-59gnz C3), derived from the partitions above, never listed here. A
+  # re-completion (`defineType`) reads the fields gen's fold reads (the behaviour, tied, identity and
+  # datum classes, and gen-types' check-witness pair, which `rewritesCheck` reads) and re-derives every
+  # other protocol field from them. The import door (`mkOptionType`) also reads every protocol field
+  # except the name-carried ones, which translate nothing. A field a door does not read is metadata
+  # there: a copy departing from its completion only at such fields has its completion's distinguishing
+  # content, so it keeps its completion's identity (ADR-0034: identity is structural).
+  completionReads = builtins.listToAttrs (
+    map
+      (n: {
+        name = n;
+        value = null;
+      })
+      (
+        deriveClasses.behaviour
+        ++ deriveClasses.tied
+        ++ deriveClasses.identity
+        ++ deriveClasses.datum
+        ++ [
+          "check"
+          "_checkWitness"
+        ]
+      )
+  );
+  importReads =
+    completionReads
+    // builtins.listToAttrs (
+      map (n: {
+        name = n;
+        value = null;
+      }) (filter (n: !(builtins.elem n exportClasses.nameCarried)) exportFields)
+    );
+  # `t` departs from the record its constructor completed only at fields `reads` does not hold.
+  departsOnlyOutside =
+    reads: t:
+    let
+      c = t.__typeSelf null;
+    in
+    stampOk (builtins.removeAttrs c (attrNames reads) // builtins.intersectAttrs reads t);
+  # THE PUBLISHED `defineType` DOOR (den-hoag-59gnz C2): a caller's record keeps the witnesses it arrived with,
+  # as the raw record holds them. A record whose stamp holds, or that departs from its completion only
+  # at metadata, is re-tied; any other copy keeps its stale stamp (`__staleStamp`, read by the export),
+  # so `idOf` and `typeEq` refuse it by name as they refuse the raw copy, and it keeps its mark, so a
+  # join reads its parameters as it reads the raw copy's. Decided lazily: only a read of `__typeSelf`
+  # asks the stamp.
+  keepStamp =
+    t:
+    # a record completed under a row and still the record it completed is the door's to return as it is
+    # (`types.nix` `defineType`); the row pre-filter keeps the stamp unasked on every other record. The
+    # stamp slot is tested for presence only: forcing it forces the record's mint (the export decides
+    # it against `copyMint`), which gen-aspects' per-instance `//` copies never pay for otherwise
+    if !(isAttrs t && t ? __typeSelf) || completedUnderRow t then
+      t
+    else
+      let
+        # a record completed under a row is returned as it is, so every field it publishes survives the
+        # door, and the door reads there what the import door reads (den-hoag-59gnz gate G-1)
+        stale =
+          builtins.isFunction t.__typeSelf
+          && !(stampOk t)
+          && !(departsOnlyOutside (
+            if rowFunctorNames ? ${(t.functor or { }).name or ""} then importReads else completionReads
+          ) t);
+        # a copy the door keeps as its completion is re-tied here, so a row's completion still returns it
+        # as it is (`completedUnderRow`) and keeps the row
+        s = t // {
+          __typeSelf = if stale then t.__typeSelf else (_: s);
+          __staleStamp = stale;
         };
       in
       s;
@@ -4412,18 +4491,24 @@ let
       # its output. The record is extended by `isV2MergeCoherent`, because the export answers
       # `merge.v2` (below) and nixpkgs' `checkV2MergeCoherence` refuses a v2 type whose `check` does
       # not say it is the one its merge was built with (den-hoag-c2z7q).
+      # ★ A RE-COMPLETION NEVER RE-TIES THE WITNESS OVER A CHECK IT DID NOT DERIVE (den-hoag-59gnz C1): a
+      # record arriving as a witnessed rewrite publishes its own `check` and its stale `_checkWitness`
+      # unchanged, so every identity reader and the meet read the copy as they read the raw record.
       check =
-        witnessRecord (
-          if t ? verify then
-            (v: t.verify v == null)
-          else if t ? admits then
-            t.admits
-          else
-            (_: true)
-        )
-        // {
-          isV2MergeCoherent = true;
-        };
+        if t ? _checkWitness && t.check != t._checkWitness then
+          t.check
+        else
+          witnessRecord (
+            if t ? verify then
+              (v: t.verify v == null)
+            else if t ? admits then
+              t.admits
+            else
+              (_: true)
+          )
+          // {
+            isV2MergeCoherent = true;
+          };
       # The rebuild, built once by the same `witnessRecord` and published twice, as `substSubModules`
       # and as `_substSubModulesWitness`.
       rebuild = witnessRecord (
@@ -4517,7 +4602,7 @@ let
       # below rather than a `//` layer of its own (a null name adds no attribute).
       exported = t // {
         ${if t ? __typeSelf then "__typeSelf" else null} =
-          if (t.__mint or null) == copyMint then t.__typeSelf else (_: exported);
+          if t.__staleStamp or false || (t.__mint or null) == copyMint then t.__typeSelf else (_: exported);
         # this type's phrase within a budget, for a container reading it as a member (`phraseOfMember`)
         __phraseWithin = b: phraseOfWithin b t;
         _type = "option-type";
@@ -4536,7 +4621,7 @@ let
         # `_checkWitness` is not a fifteenth protocol field: it is gen-types' check-witness
         # protocol field, the record of which `check` was published, read only by `rewritesCheck`.
         inherit check;
-        _checkWitness = check;
+        _checkWitness = if t ? _checkWitness && t.check != t._checkWitness then t._checkWitness else check;
         # Through the bridge where the fold carries the sibling (den-hoag-n6dh7 item 7, OQ11 (d)):
         # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
         # each element through its one `split`, so the forward mount keeps working without a third
@@ -4736,6 +4821,7 @@ in
     importedWrapped
     isOptionType
     rewritesCheck
+    keepStamp
     typeDefect
     ;
 }

@@ -383,7 +383,14 @@ let
             refused = "`${nameOf imported}' and `${nameOf other}', two separately constructed `mkOptionType' types of one name whose checks are caller-supplied functions and cannot be compared";
           };
       exported = defineType (
-        imported // { typeMergeRel = imported.typeMergeRel or (sealedRel exported); }
+        imported
+        // {
+          typeMergeRel = imported.typeMergeRel or (sealedRel exported);
+          # the import door strips the check-witness pair as protocol names; a rewriting descriptor's
+          # pair is carried past it, so the completion re-ties no witness it did not derive (den-hoag-59gnz C1)
+          ${if interface.rewritesCheck descriptor then "check" else null} = descriptor.check;
+          ${if interface.rewritesCheck descriptor then "_checkWitness" else null} = descriptor._checkWitness;
+        }
       );
     in
     if answer ? refused then
@@ -1925,7 +1932,6 @@ in
     # on), `defineType` is that record expressed in the foreign protocol as well (what every
     # constructor above builds, and the library's single crossing site).
     mkType
-    defineType
     defineEmbedded
     # A type derived from a completed one, re-completed rather than overridden (den-hoag-5kic). Also
     # published at the library's top level, as the same value.
@@ -1947,4 +1953,8 @@ in
     # `partialSubmodule`. Not a type, so not in `types`.
     mkSubmodule
     ;
+  # The published door: a caller's record enters here, so a `//` copy of a completed record is read as
+  # the copy it is (`interface.keepStamp`), as the raw record holds its witnesses (den-hoag-59gnz C2).
+  defineType = t: defineType (interface.keepStamp t);
+  completeType = defineType;
 }

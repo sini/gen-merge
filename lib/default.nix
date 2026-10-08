@@ -598,7 +598,7 @@ let
               refuseUnreconciledMint base other pa pb;
         exported =
           if row == null then
-            strategies.defineType (base // { typeMergeRel = rel exported; })
+            strategies.completeType (base // { typeMergeRel = rel exported; })
           else
             strategies.defineEmbedded row (base // { typeMergeRel = rel exported; });
       in
@@ -868,6 +868,7 @@ in
           "defineEmbedded"
           "partialAttrsOf"
           "mkSubmodule"
+          "completeType"
         ];
       };
       allow = import ./types-allowlist.nix;

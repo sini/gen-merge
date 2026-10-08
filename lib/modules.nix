@@ -534,12 +534,14 @@ let
   #  - The constructor's own law over its PARAMETERS is kept: a fresh join of one constructor that
   #    widens an operand's parameters (`enum`'s value union) owes that operand only where its own
   #    parameters admit the value, so a wrapper over it stays owed (`metWith`).
-  #  - ★ AT A MODULE SET THE STEP REFUSES A DROPPED WITNESSED REWRITE, as before the ruling: the
-  #    module-set fold does not enforce a joined record's check, so a met record there would serve
-  #    what the wrapper rejects. `dropsWrappedCheck` is asked first, so an unwrapped module set never
-  #    builds the substructure read. A FOREIGN wrapper over a module set states no witness, so no step
-  #    can see it dropped; the declaration list's fixup carries it instead (`fixupModuleSets`,
-  #    `interface.carriedAtDepth`, den-hoag-8ip0d).
+  #  - ★ AT A MODULE SET THE STEP CARRIES A DROPPED WITNESSED REWRITE'S CHECK (den-hoag-59gnz C4): the
+  #    module-set fold does not enforce a met record's check, so the step answers the join restricted
+  #    by the dropped check (`interface.carriedAtDepth`), a witnessed rewrite of the join, which the
+  #    fold enforces as it enforces one declared alone. That is the carriage the declaration list's
+  #    fixup gives a FOREIGN wrapper, which states no witness, so no step can see it dropped
+  #    (`fixupModuleSets`, den-hoag-8ip0d); taken here, the freeform plane, which the fixup does not
+  #    run on, is carried too. `dropsWrappedCheck` is asked first, so an unwrapped module set never
+  #    builds the substructure read.
   #
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
@@ -569,7 +571,10 @@ let
     else if sameTypeValue a b then
       a
     else if (interface.importedSubstructure m).modules != null then
-      null
+      interface.carriedAtDepth true [
+        a
+        b
+      ] m
     else
       interface.metWith m [
         a
