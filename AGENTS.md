@@ -323,7 +323,10 @@ is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
   `"container"` mode string, and `result` in scope at `evAt`'s three call sites; a miss turns every
   door read into an inline fold, silently. At the walk's own root (an option's position, or a
   container node's) under a container that added no step (`unique`, `coercedTo`), the position is
-  walked as the root is. Both serve nixpkgs' value (ADR-0039).
+  walked as the root is. Both serve nixpkgs' value (ADR-0039). `evAt`'s `child` answers a third
+  question, asked with the site key `positions`: the group's `_nested.positions` records themselves,
+  which an `attrsOf` whose element nests directly folds at the accessor's root instead of splitting
+  its definitions a second time (den-hoag-c7jkw.1).
 - At an EXACT container's element, every container is keyed where it is read, so no sibling's read
   splits or forces its definitions (den-hoag-mda6f). One predicate, `keyedOverAt`, read by the walk
   and by the fold (`unionNodeAt`), decides how: an attribute-keyed one (`lazyAttrsOf`, or an `attrsOf`

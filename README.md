@@ -1766,8 +1766,10 @@ second evaluation called from inside a fold (see "Nested trees are children of t
 below). Each nesting type
 states its tree as data (`nests`: the module set, arguments, definition entry and the mode its
 called form evaluates in), and each container states its element positions once (`split`), which
-its own fold reads. `lazyAttrsOf` is the one exception: its fold is the split's twin, held equal
-by a cell, because it is the `wideFreeform` hot path.
+its own fold reads. An `attrsOf` whose element nests directly, at the evaluation's root, reads the
+key walk's own records instead, since the walk has already applied the split there. `lazyAttrsOf` is
+the one exception: its fold is the split's twin, held equal by a cell, because it is the
+`wideFreeform` hot path.
 
 A foreign container outside the six gen-merge recognises (`attrsOf`, `lazyAttrsOf`, `listOf`,
 `nullOr`, `either`, `oneOf`) passes the evaluation down to a nested tree only through its own
