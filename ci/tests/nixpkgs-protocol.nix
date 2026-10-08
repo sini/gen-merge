@@ -1816,9 +1816,9 @@ in
     };
 
     # DEEP-FORCING A PUBLISHED DECLARATION TREE REFUSES, for every tree and not for the tree-type: a
-    # published option record refuses by name the evaluated keys nixpkgs adds beside a declaration
-    # (`value`, `definitions`, …; `lib/modules.nix` `unansweredOptionKeys`), and a deep force reads
-    # them. With those keys set aside, a declaration tree of leaf types deep-forces, and one holding
+    # published option record refuses `valueMeta` by name (`lib/modules.nix` `serveOptions`), and a
+    # deep force reads it. With the evaluated keys set aside, a declaration tree of leaf types
+    # deep-forces, and one holding
     # a nesting type refuses exactly as one holding a `submodule` does: a deep force reaches the
     # type's called empty fold (`whenEmpty`), which refuses by name. A shallow read of the tree-type
     # answers its name.

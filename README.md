@@ -991,9 +991,10 @@ declares = (subOf element).declares;
 ```
 
 `subOf` asks the protocol boundary what an element's substructure is, so an element speaking either
-vocabulary answers the same question. gen-merge's `submodule` reads `.options` off the same nested
-`evalModuleTree` its fold builds, with no defs supplied, so the introspection and merge halves cannot
-disagree about what a submodule declares, and nothing an instance authored is forced. A **leaf** type
+vocabulary answers the same question. gen-merge's `submodule` reads `.options` off a standalone
+evaluation of the modules its fold reads, with no defs supplied, as nixpkgs' `extendModules { prefix }`
+does, so the introspection and merge halves cannot disagree about what a submodule declares, nothing
+an instance authored is forced, and the records it returns can evaluate their own nested trees. A **leaf** type
 has no sub-options and returns `{ }` — the leaf answer the boundary supplies for a type that states
 no substructure, which stays correct for every non-structural type.
 
@@ -1760,12 +1761,17 @@ a module states `name` is decided by that key set, so it cannot wait on `name`.
 **The published option records carry nixpkgs' declaration shape.** An evaluation's `.options` (and
 `declaredOptions`) records carry `loc`, `declarations` (the declaring modules' files) and nixpkgs'
 string form, `__toString = _: showOption loc`, so nixpkgs' `optionAttrSetToDocList` renders a mounted
-tree's docs byte-equal to its own in `make-options-doc`'s view (`visible && !internal`). The evaluated
-keys nixpkgs adds beside a declaration (`value`, `isDefined`, `definitions`,
-`definitionsWithLocations`, `files`, `highestPrio`, `declarationPositions`, `options`, `valueMeta`)
-are the option's value and definitions, which gen publishes on `config` and `provenance`; each is
-refused by name, never absent. So a deep force of a published `.options` tree refuses, for every tree
-(`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). The tree declares no
+tree's docs byte-equal to its own in `make-options-doc`'s view (`visible && !internal`). They also
+carry the evaluated keys nixpkgs adds beside a declaration (den-hoag-ixcxl): `value` (the option's
+own merged value), `isDefined`, `definitions`, `definitionsWithLocations`, `files`, `highestPrio`,
+`declarationPositions` and `options` (`[ ]`, nixpkgs' value), each equal to nixpkgs', on `.options`, on
+`getSubOptions` and on a module's own `options` argument alike (`ci/tests/option-record-keys.nix`); they
+project gen's fold, so a default beside a priority-1500 definition comes last where nixpkgs' comes first
+(den-hoag-12e7r).
+`valueMeta`, nixpkgs' v2-merge metadata, is refused by name, never absent; so a deep force of a
+published `.options` tree refuses, for every tree
+(`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which folds
+no value, refuses all nine by name. The tree declares no
 `_module` options, so its full doc list departs from nixpkgs' by the four `_module.*` entries nixpkgs
 marks internal below the root.
 
