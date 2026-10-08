@@ -233,6 +233,7 @@ let
       "__sealed"
       "__typeSelf"
       "__staleStamp"
+      "__stampReads"
     ];
     derived = exportFields ++ [
       "_checkWitness"
@@ -4396,6 +4397,7 @@ let
     let
       s = r // {
         __typeSelf = _: s;
+        __stampReads = stampReads;
       };
     in
     s;
@@ -4426,6 +4428,7 @@ let
           && !(builtins.isFunction src.__typeSelf && departsOnlyOutside importReads src);
         s = r // {
           __typeSelf = if copy then src.__typeSelf else (_: s);
+          __stampReads = stampReads;
           __mint = if copy then copyMint else src.__mint;
         };
       in
@@ -4454,6 +4457,12 @@ let
         ]
       )
   );
+  # WHAT A COMPLETION'S IDENTITY COVERS, stated on the record it completes for gen-types' member tag
+  # (`__stampReads`, den-hoag-6d5r3): the fields gen's fold reads (`completionReads`), less the one that
+  # is an output of the record's own evaluation (`unroledNested`, the a0c4z rule: no walk reads it).
+  # Every other field is metadata or derived from these, so a member departing only there is the type
+  # its mark names, and none of them is forced to decide it.
+  stampReads = filter (n: n != "unroledNested") (attrNames completionReads);
   importReads =
     completionReads
     // builtins.listToAttrs (
@@ -4600,6 +4609,7 @@ let
         # as it is (`completedUnderRow`) and keeps the row
         s = t // {
           __typeSelf = if stale then t.__typeSelf else (_: s);
+          __stampReads = stampReads;
           __staleStamp = stale;
         };
       in
@@ -5269,6 +5279,7 @@ let
       exported = t // {
         ${if t ? __typeSelf then "__typeSelf" else null} =
           if t.__staleStamp or false || (t.__mint or null) == copyMint then t.__typeSelf else (_: exported);
+        ${if t ? __typeSelf then "__stampReads" else null} = stampReads;
         # this type's phrase within a budget, for a container reading it as a member (`phraseOfMember`)
         __phraseWithin = b: phraseOfWithin b t;
         _type = "option-type";

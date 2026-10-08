@@ -116,6 +116,7 @@ let
         "__payload"
         "__phraseWithin"
         "__sealed"
+        "__stampReads"
         "__typeSelf"
         "_checkWitness"
         "_protoLeafMerge"
@@ -132,6 +133,7 @@ let
         "__mint"
         "__payload"
         "__sealed"
+        "__stampReads"
         "__typeSelf"
       ];
       sorted = builtins.sort builtins.lessThan;
@@ -216,6 +218,7 @@ let
       # re-completing it returns it as it is
       deferredModule = [
         "__phraseWithin"
+        "__stampReads"
         "__typeSelf"
         "_checkWitness"
         "_protoLeafMerge"
