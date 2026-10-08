@@ -4966,7 +4966,10 @@ let
       # return each module unchanged, so the two strata collect one value: that record carries
       # `flat`, and the body reads `flat`, `declEntries`, `sitesAt` and the validated declarations
       # from it instead of computing them a second time. Any other set's record carries no `flat`,
-      # and the body, which decides by `declarationGuard ? flat`, computes its own. The syntax
+      # and the body, which decides by `declarationGuard ? flat`, computes its own. On an open set the
+      # guard therefore returns the stratum-1 record too, where it used to return `null`, and the
+      # body's `? flat` reads keep that record live for the evaluation's lifetime (measured: max RSS
+      # +1.5–5 MB, `gc.heapSize` unmoved; den-hoag-c7jkw.3 landing gate). The syntax
       # checks, the spine merge and the spine walk stay the guard's own and stay eager. Closedness is
       # decided once, in `declarationStratumWith`, spelled inline in primops: a named predicate costs
       # a load thunk.

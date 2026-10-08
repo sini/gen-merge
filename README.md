@@ -312,7 +312,7 @@ enter), with `winners` / `priority` / `defaulted` = `null`. `null` means "freefo
 A declared loc **nobody defined** has a record too: `{ defs = [ ]; winners = [ ]; priority = null; defaulted = false; }`. That holds whether or not its type has an empty value. The refusal "used but not
 defined" belongs to the loc's VALUE and fires when `.config` reads it. This matches nixpkgs'
 `definitionsWithLocations = [ ]`. `winners` reads more than the other fields: its order pass forces each
-winning def's value to WHNF (`isOrderMarker`), so reading `winners` fires a declared
+winning def's value to WHNF (the order marker test), so reading `winners` fires a declared
 `default = throw …`, which reading `defs`, `priority` or `defaulted` does not.
 
 ## Priority bands

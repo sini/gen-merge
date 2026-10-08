@@ -354,7 +354,7 @@ let
         reason = "unset: freeform";
       };
       # Never classified through `winners`: its order pass forces each winning VALUE to WHNF
-      # (`isOrderMarker`), so a declared `default = throw …` would fire. `defs` and `priority` force
+      # (the order marker test), so a declared `default = throw …` would fire. `defs` and `priority` force
       # only the definitions' wrappers.
       leaf =
         loc: p:
