@@ -2241,6 +2241,17 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   stated, not converted into a named refusal: a `tryEval` there would turn the split into a
   quieter one (refused on two evaluators, merged on the third).
 
+- **A `submodule`'s identity splits by evaluator over one function reached through two slots.** Its
+  sealed component is the caller's module list (`lib/types.nix` `mkSubmodule`), compared under `==`,
+  so the split of the bullet above holds there too. `typeEq (sub s.f) (sub s.f)`, with
+  `sub = m: submodule { options.a = mkOption { type = m; }; }` and the function selected at each
+  site, is refused on Nix and Determinate and `true` on Lix. Its partner, one bound function in two
+  constructions, is `true` on all three, and Lix gives the two one verdict, so no construction here
+  can move the split without moving the partner, and upstream has no observer of closure identity to
+  raise it. It closes when the caller lambda migrates to a first-order term (ADR-0034).
+  `ci/tests-error.nix` `submodule-evaluator-divergence` pins the split to each evaluator's own `==`
+  on a literal two-slot shape, beside its partner at `true` ×3.
+
 - **An option stating no `type` departs from nixpkgs' `types.unspecified` in four stated places**
   (`mergeUntyped`, lib/modules.nix; cells `ci/tests/parity-surface.nix` `test-untyped-*` and
   `ci/tests-error.nix` `untyped-default-merge`):
