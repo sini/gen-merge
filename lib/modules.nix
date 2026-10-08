@@ -2870,7 +2870,10 @@ let
   # empty seed is (item 4). It is a ROOT evaluation, so the trees it holds are its own children.
   # It is driven on a root knot, never a partial one, whatever `nests.partial` says: a partial fold's value
   # is definitions a later gen fold completes, and nothing folds a foreign evaluation's value again, so
-  # the export bridge serves the full fold (den-hoag-5ov3p gate C3).
+  # the export bridge's ROOT serves the full fold (den-hoag-5ov3p gate C3). Only the root: a partial tree
+  # nested below it is a child of this evaluation, selected by its own type in `childTree`, and stays partial,
+  # because its reader is the gen fold that consumes it (a guard carrier under a mounted aspect tree), so a
+  # nixpkgs consumer at depth 1 or more reads its definitions.
   nestedTreeAt =
     m: site:
     if site.defs == [ ] then

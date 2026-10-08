@@ -111,6 +111,38 @@ let
     emptySeed = [ "X" ];
   };
   mods = [ (lopt gm) ];
+  # a declared `listOf str` with no default
+  mopt = L: { options.m = L.mkOption { type = L.types.listOf L.types.str; }; };
+  # a module set declaring one `partialSubmodule` option `x` over `m`, evaluated with one definition of `x`
+  # (`null`: none), and its value
+  partialOf' =
+    m: def:
+    removeAttrs
+      (gm.evalModuleTree { } (
+        [ { options.x = gm.mkOption { type = gm.partialSubmodule (m gm); }; } ]
+        ++ (if def == null then [ ] else [ { x = def; } ])
+      )).config.x
+      [ "_module" ];
+  # the partial value folded later with one more definition under `anything`
+  laterFold =
+    v: second:
+    t.anything.merge
+      [ "o" ]
+      [
+        {
+          file = "a";
+          value = v;
+        }
+        {
+          file = "b";
+          value = second;
+        }
+      ];
+  # a module declaring option `k` of type `outer (partialSubmodule? lopt)`: `nestedIn' k outer` nests a
+  # `partialSubmodule`; `nestedIn outer` is the module function `partialOf'` takes, nesting at `y`
+  nestedIn' =
+    k: outer: outer { options.${k} = gm.mkOption { type = gm.partialSubmodule (lopt gm); }; };
+  nestedIn = outer: L: { options.y = L.mkOption { type = outer (lopt gm); }; };
   bopt = {
     options.b = gm.mkOption {
       type = t.bool;
@@ -220,6 +252,52 @@ in
           };
         };
       };
+      # THE BOUND (den-hoag-5ov3p landing gate K1, the identity ruled; README): an option with neither a
+      # definition nor a declared default moves nothing, so a later fold that supplies none serves no key,
+      # where nixpkgs serves the type's empty value. Pinned as the stated divergence.
+      # RED: the no-winners arm emitting the empty value as a definition gives `m` beside nixpkgs' `[ ]`.
+      test-no-definition-and-no-default-moves-nothing = {
+        expr = {
+          partial = partialOf' mopt null;
+          later = (laterFold (partialOf' mopt null) { }) ? m;
+          nixpkgs = (np.evalModules { modules = [ (mopt np) ]; }).config.m;
+        };
+        expected = {
+          partial.m = {
+            _type = "if";
+            condition = false;
+            content = { };
+          };
+          later = false;
+          nixpkgs = [ ];
+        };
+      };
+      # A nested tree keeps its priorities only when it is itself declared `partialSubmodule` (README): a
+      # `submodule` inside a partial tree folds fully, so its declared default, carried as data at the default
+      # priority, beats a later `mkDefault`; a nested `partialSubmodule` carries it at `mkOptionDefault`, and the
+      # later `mkDefault` wins as it does in nixpkgs over all the definitions at once.
+      test-a-nested-tree-keeps-its-priorities-only-when-partial = {
+        expr = {
+          full =
+            (laterFold (partialOf' (nestedIn t.submodule) { y = { }; }) { y.l = gm.mkDefault [ "X" ]; }).y.l;
+          partial =
+            (laterFold (partialOf' (nestedIn gm.partialSubmodule) { y = { }; }) { y.l = gm.mkDefault [ "X" ]; })
+            .y.l;
+          nixpkgs =
+            (np.evalModules {
+              modules = [
+                { options.y = np.mkOption { type = np.types.submodule (lopt np); }; }
+                { y = { }; }
+                { y.l = np.mkDefault [ "X" ]; }
+              ];
+            }).config.y.l;
+        };
+        expected = {
+          full = [ ];
+          partial = [ "X" ];
+          nixpkgs = [ "X" ];
+        };
+      };
       # The nixpkgs mount serves the FULL fold: nothing folds a foreign evaluation's value again, so a
       # definition there would be read as data (lib/modules.nix `nestedTreeAt`). gen's own evaluation
       # serves the partial value.
@@ -241,6 +319,36 @@ in
         expected = {
           nixpkgs = [ "Q" ];
           gen = {
+            _type = "override";
+            priority = 50;
+            content = [ "Q" ];
+          };
+        };
+      };
+      # ... at the mounted option's own type only (README): a `partialSubmodule` nested below it is a child of
+      # the mounted evaluation and stays partial, so a nixpkgs consumer at depth 1 reads its definition.
+      # RED: a partial knot propagated to every depth of the bridge moves the depth-0 value; one dropped from
+      # `childTree` moves this one.
+      test-the-nixpkgs-mount-is-full-at-depth-0-only = {
+        expr = {
+          depth0 =
+            (np.evalModules {
+              modules = [
+                { options.x = np.mkOption { type = gm.partialSubmodule (lopt gm); }; }
+                { x.l = np.mkForce [ "Q" ]; }
+              ];
+            }).config.x.l;
+          depth1 =
+            (np.evalModules {
+              modules = [
+                { options.w = np.mkOption { type = nestedIn' "x" t.submodule; }; }
+                { w.x.l = np.mkForce [ "Q" ]; }
+              ];
+            }).config.w.x.l;
+        };
+        expected = {
+          depth0 = [ "Q" ];
+          depth1 = {
             _type = "override";
             priority = 50;
             content = [ "Q" ];
