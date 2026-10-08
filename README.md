@@ -1145,7 +1145,13 @@ Two rules that look like details and are not:
   re-ties the stamp to the record it completes; a record failing the stamp on entry is imported and
   served, but unminted, and gen-types' `typeEq` refuses it by name. The price: a description-only
   `//` (`t // { description = …; }`) is a copy too, and `typeEq` refuses it; as an option type it
-  is still served.
+  is still served. **Re-completion keeps the witnesses a record arrives with** (den-hoag-59gnz): the
+  published `types.defineType` and `mkOptionType` never re-tie the check witness over a `check` they
+  did not derive, and `types.defineType` keeps the stale stamp of a copy whose distinguishing content
+  changed, so a re-completed `addCheck T p` is enforced alone and beside `T` and its identity is
+  refused by name, as the raw copy's is. A copy departing only at fields a door does not read (a
+  `description` or a caller field at `defineType`; the import door also reads the protocol fields it
+  translates) keeps its completion's identity there.
 - **A completed parametric leaf merges only the SAME type, or two `enum`s.** Sameness is
   decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
   textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,
@@ -1628,9 +1634,12 @@ reaches, and its operand stays owed whole. The step sits in `mergeTypes`, so
 the declaration and freeform planes, every container's element relation and the published
 `genMerge.mergeTypes` all answer it. **One wrapped value declared twice keeps its operand**:
 `w = addCheck int p` declared as `[w, w]`, or as two `listOf w`, merges to `w` and rejects what `p`
-rejects. **At a module set a dropped wrapper still refuses**, naming which of the pair lost its check:
-the module-set fold does not enforce a joined record's check, so a met record there would serve what
-the wrapper rejects. A foreign wrapper over a module set states no witness and is not enforced (Known
+rejects. **At a module set the step carries a dropped wrapper's check** (den-hoag-59gnz; owner-ruled
+2026-10-08): the module-set fold does not enforce a met record's check, so the step answers the join
+restricted by the dropped check (`carriedAtDepth`), a witnessed rewrite the fold enforces as it does
+one declared alone, on the declaration and freeform planes alike; `gt.submodule M // { check }` and
+`addCheck (gt.submodule M) p` beside `gt.submodule M` serve what the override admits and refuse what
+it rejects, by name. A foreign wrapper over a module set states no witness and is not enforced (Known
 byte-mode boundaries, "Not covered"). In nixpkgs' engine gen is asked only when declared later, and
 then with a functor, so a check that functor does not rebuild is not seen there (nixpkgs' own drop);
 a join the nixpkgs twin refuses is not served there. The cost,
