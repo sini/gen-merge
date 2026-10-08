@@ -109,7 +109,7 @@ graph position and provenance rather than by an integer priority lattice; these 
 because gen accepts nixpkgs module vocabulary and a definition written in it must not leak its wrapper
 into the value domain.
 
-### A partial fold — `mergeDefsPartial` and `partialAttrsOf`
+### A partial fold — `mergeDefsPartial`, `partialAttrsOf` and `partialSubmodule`
 
 `mergeDefsPartial loc type defs` runs the spine over SOME of a position's definitions, for a consumer that
 folds the rest later. Its result is a definition again, so folding it with the remaining definitions is the
@@ -127,6 +127,16 @@ its threaded twin on the evaluation's path), so a nested priority survives at ev
 top level beside `mergeDefs`, not in `types`, whose members the vocabulary censuses enumerate. Its consumer
 is gen-aspects' guard carrier, whose typed half folds at load and meets its fired content later.
 Tests: `ci/tests/partial-fold.nix`.
+
+`partialSubmodule mods` is `submodule mods` whose every DECLARED option folds partially: in gen's own
+evaluation an option's value is its winners as the table above gives them, and a default-only option is its
+declared default at `mkOptionDefault` (`{ _type = "override"; priority = 1500; content = <default>; }`), as
+nixpkgs' fold holds it. Its child is evaluated on a partial knot in `childTree`, with or without a seed. It
+is its own type: the constructor tag enters the mint, so `typeEq` separates it from `submodule mods`, and a
+redeclaration mixing the two refuses by name. Mounted in nixpkgs `evalModules` it serves the full fold,
+because nothing folds a foreign evaluation's value again. Its consumer is gen-aspects' guard carrier's typed
+child, whose declared `includes` then keeps its priority to the fired content. Tests:
+`ci/tests/partial-submodule.nix`.
 
 ### `mergeDefaultOption` — the shape-directed law (INTERIM, exported beside `mergeLeaf`)
 
