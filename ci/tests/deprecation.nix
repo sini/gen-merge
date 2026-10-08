@@ -243,7 +243,7 @@ in
     # whole of the boundary: the nested view is NOT unreachable. The live control in this cell is the
     # re-derivation the protocol already allows — `getSubModules` are the sub-modules, so evaluating
     # them as their own tree yields the nested records with `merge` never entered. It reports
-    # `declarations = [ "<gen-merge>" ]` because sub-modules carry no `_file`, which is the reason
+    # `declarations = [ "<unknown-file>" ]` because sub-modules carry no `_file`, which is the reason
     # the parent does not fold this view into its own report rather than a reason it could not.
     test-scope-is-this-eval-not-nested-ones = {
       expr =
@@ -279,7 +279,7 @@ in
             ];
             type = "depA";
             message = "use `plainA' instead";
-            declarations = [ "<gen-merge>" ];
+            declarations = [ "<unknown-file>" ];
           }
         ];
       };

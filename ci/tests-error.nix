@@ -514,7 +514,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = "^The option `rack\\.stray' does not exist\\. Definition values:\n- In `<gen-merge>': 1\n\nDid you mean `rack.slot'\\?$";
+          msg = "^The option `rack\\.stray' does not exist\\. Definition values:\n- In `<unknown-file>': 1\n\nDid you mean `rack.slot'\\?$";
         };
       };
       # The collision refusal names the option that collided, which is the one piece of the
@@ -3307,7 +3307,7 @@ in
           };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: option `s\\.zz' is not declared by the nested tree that owns it \\(defined in <gen-merge>\\); the tree at `s' is merged where no undeclared report is carried$";
+            msg = "^gen-merge: option `s\\.zz' is not declared by the nested tree that owns it \\(defined in <unknown-file>\\); the tree at `s' is merged where no undeclared report is carried$";
           };
         };
 
@@ -3317,7 +3317,7 @@ in
           expr = family.gen T "hello";
           expectedError = {
             type = "ThrownError";
-            msg = riderRefusal "s" "<gen-merge>";
+            msg = riderRefusal "s" "<unknown-file>";
           };
         };
         # …and it guards each arm of the fold, never the record: the fold stays a functor carrying
@@ -4031,7 +4031,7 @@ in
                 { _module.args.name = "plain"; }
               ]
             )) { x = { }; }).x.a;
-          expectedError = twice "<gen-merge>, <position>";
+          expectedError = twice "<unknown-file>, <position>";
         };
         test-an-option-default-ties-the-placeholder = {
           expr =
@@ -4039,7 +4039,7 @@ in
               reader
               { _module.args.name = gm.mkOptionDefault "od"; }
             ]) (gm.mkIf false { })).a;
-          expectedError = twice "<gen-merge> \\(2 definitions\\)";
+          expectedError = twice "<unknown-file> \\(2 definitions\\)";
         };
         test-a-declaration-reading-name-in-imports-refuses-by-name = {
           expr =
@@ -4605,7 +4605,7 @@ in
         })) [ "a" "foo" ] (readerOptionNames (_: readerSelfFn));
         expectedError = {
           type = "ThrownError";
-          msg = fnResultMsg "<gen-merge>" "lambda";
+          msg = fnResultMsg "<unknown-file>" "lambda";
         };
       };
       test-function-result-not-a-module-refused-by-declared-options = {
@@ -4614,7 +4614,7 @@ in
         })) [ "a" "foo" ] (readerDeclaredNames (_: readerSelfFn));
         expectedError = {
           type = "ThrownError";
-          msg = fnResultMsg "<gen-merge>" "lambda";
+          msg = fnResultMsg "<unknown-file>" "lambda";
         };
       };
       # A path module is attributed to its own file. Control: a path module that is an attrset.
@@ -5098,7 +5098,7 @@ in
             builtins.deepSeq (cx (t.lazyAttrsOf zzTree) { a = gm.mkIf false { b = 9; }; }).a.b null;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: option `zz' is not declared by the nested tree that owns it \\(defined in <gen-merge>\\); the tree is merged where no undeclared report is carried$";
+            msg = "^gen-merge: option `zz' is not declared by the nested tree that owns it \\(defined in <unknown-file>\\); the tree is merged where no undeclared report is carried$";
           };
         };
         test-nullor-element-refuses = {
@@ -5195,7 +5195,7 @@ in
           };
         refuses = pair: {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <unknown-file>, <unknown-file>$";
         };
       in
       {
@@ -5267,7 +5267,7 @@ in
           };
         refuses = pair: {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <unknown-file>, <unknown-file>$";
         };
         thrown = msg: {
           type = "ThrownError";
@@ -5317,7 +5317,7 @@ in
               { config.x = "no"; }
             ];
           };
-          expectedError = thrown "^gen-merge: option `x' has definitions no single `either' member accepts \\(`<a name of type int>' rejects <gen-merge>; `int' rejects <gen-merge>\\)$";
+          expectedError = thrown "^gen-merge: option `x' has definitions no single `either' member accepts \\(`<a name of type int>' rejects <unknown-file>; `int' rejects <unknown-file>\\)$";
         };
         test-stated-foreign-relation-names-its-own-name-type = {
           expr = declaredTwice (gm.mkOptionType {
@@ -5362,7 +5362,7 @@ in
               { config.x = 1; }
             ];
           };
-          expectedError = thrown "^gen-merge: a definition for option `x' is not of type `<a name of type int>', in `<gen-merge>'$";
+          expectedError = thrown "^gen-merge: a definition for option `x' is not of type `<a name of type int>', in `<unknown-file>'$";
         };
         test-two-carried-roles-names-its-name-type = {
           expr =
@@ -5474,7 +5474,7 @@ in
           };
         refuses = pair: {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <unknown-file>, <unknown-file>$";
         };
         derivedInt =
           fname:
@@ -6225,7 +6225,7 @@ in
         # The verdict on a refined gen element under a threaded container and under its sibling.
         refinedElement = {
           type = "ThrownError";
-          msg = "^gen-merge: a definition for option `h[.]a' is not of type `submodule', in `<gen-merge>'$";
+          msg = "^gen-merge: a definition for option `h[.]a' is not of type `submodule', in `<unknown-file>'$";
         };
         # A hand-rolled forwarding container: its rebuild is `drop` where given, and otherwise
         # forwards the module list to its element, as nixpkgs' own containers do.
@@ -6730,14 +6730,14 @@ in
           }) (_: false)) { a.x = 1; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: a definition for option `h' is not of type `attrsOf', in `<gen-merge>'$";
+            msg = "^gen-merge: a definition for option `h' is not of type `attrsOf', in `<unknown-file>'$";
           };
         };
         test-a-unique-refinement-is-enforced-on-the-threaded-fold = {
           expr = opt (np.addCheck (np.uniq sub) (_: false)) { x = 1; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: a definition for option `h' is not of type `unique', in `<gen-merge>'$";
+            msg = "^gen-merge: a definition for option `h' is not of type `unique', in `<unknown-file>'$";
           };
         };
         # A rewrite over `unique` whose check reads the tree is evaluated on the value (the tree's
@@ -6764,7 +6764,7 @@ in
           };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: a definition for option `h' is not of type `unique', in `<gen-merge>'$";
+            msg = "^gen-merge: a definition for option `h' is not of type `unique', in `<unknown-file>'$";
           };
         };
         # A `coercedTo` over a union holding the tree is served: the union's check reads only the value.
@@ -6808,7 +6808,7 @@ in
             type = "ThrownError";
             msg = "^gen-merge: a definition for option `h[.]a' is not of type `${
               nixpkgsLib.escapeRegex (np.either (np.submodule { }) np.str).description
-            }', in `<gen-merge>'$";
+            }', in `<unknown-file>'$";
           };
         };
         test-a-hand-rolled-container-declaring-by-nested-types-is-refused-at-construction = {
@@ -8124,7 +8124,7 @@ in
           };
         rejects = loc: ty: {
           type = "ThrownError";
-          msg = "^gen-merge: a definition for option `${loc}' is not of type `${ty}', in `<gen-merge>'$";
+          msg = "^gen-merge: a definition for option `${loc}' is not of type `${ty}', in `<unknown-file>'$";
         };
       in
       {
@@ -8208,7 +8208,7 @@ in
         };
         droppedCheck = {
           type = "ThrownError";
-          msg = "^gen-merge: option `s' is declared with types that do not merge \\(`fakeList' and `fakeList', which their own relation joins to `fakeList', a type that states the check `fakeList' declares but not the check `fakeList' declares\\); declared in <gen-merge>, <gen-merge>$";
+          msg = "^gen-merge: option `s' is declared with types that do not merge \\(`fakeList' and `fakeList', which their own relation joins to `fakeList', a type that states the check `fakeList' declares but not the check `fakeList' declares\\); declared in <unknown-file>, <unknown-file>$";
         };
       in
       {
@@ -8380,11 +8380,11 @@ in
         };
         test-a-derivation-declared-beside-its-base-names-the-pair = {
           expr = declared (derive t.str tagged) t.str;
-          expectedError = refusal "^gen-merge: option `o' is declared with types that do not merge \\(the derivation `tagged' of `string' and `string'\\); declared in <gen-merge>, <gen-merge>$";
+          expectedError = refusal "^gen-merge: option `o' is declared with types that do not merge \\(the derivation `tagged' of `string' and `string'\\); declared in <unknown-file>, <unknown-file>$";
         };
         test-two-derivations-whose-keys-differ-name-the-keys = {
           expr = declared (derive t.str (tagged // { key = 1; })) (derive t.str (tagged // { key = 2; }));
-          expectedError = refusal "^gen-merge: option `o' is declared with types that do not merge \\(the derivation `tagged' of `string' and the derivation `tagged' of `string', whose keys differ\\); declared in <gen-merge>, <gen-merge>$";
+          expectedError = refusal "^gen-merge: option `o' is declared with types that do not merge \\(the derivation `tagged' of `string' and the derivation `tagged' of `string', whose keys differ\\); declared in <unknown-file>, <unknown-file>$";
         };
         # A foreign container crosses the import boundary with no constructor to rebuild it over, and
         # the vocabulary refuses it by name (the inherited round-trip residue, den-hoag-un50q).
@@ -9366,7 +9366,7 @@ in
             ]).options.x.type.description;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: option `x' is declared with types that do not merge \\(`listOf' and a partner that states no element type of its own\\); declared in <gen-merge>, <gen-merge>$";
+            msg = "^gen-merge: option `x' is declared with types that do not merge \\(`listOf' and a partner that states no element type of its own\\); declared in <unknown-file>, <unknown-file>$";
           };
         };
       };
@@ -9383,7 +9383,7 @@ in
           .options.x.type.description;
         reason =
           ctor:
-          "^gen-merge: option `x' is declared with types that do not merge \\(`${ctor}' over `int' and `${ctor}' over `str', whose element types do not merge: `int' and `str'\\); declared in <gen-merge>, <gen-merge>$";
+          "^gen-merge: option `x' is declared with types that do not merge \\(`${ctor}' over `int' and `${ctor}' over `str', whose element types do not merge: `int' and `str'\\); declared in <unknown-file>, <unknown-file>$";
       in
       {
         test-attrs-element-mismatch-states-the-element-pair = {
@@ -9435,7 +9435,7 @@ in
             null;
         refusal = reason: {
           type = "ThrownError";
-          msg = "^gen-merge: option `o' is declared with types that do not merge \\(${reason}\\); declared in <gen-merge>, <gen-merge>$";
+          msg = "^gen-merge: option `o' is declared with types that do not merge \\(${reason}\\); declared in <unknown-file>, <unknown-file>$";
         };
         pairs = {
           another-key = {
@@ -9529,7 +9529,7 @@ in
             null;
         refusal = pair: {
           type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <unknown-file>, <unknown-file>$";
         };
       in
       {

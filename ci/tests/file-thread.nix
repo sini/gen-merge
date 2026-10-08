@@ -1,6 +1,6 @@
 # File threading through the import flatten (ADR-0025 item 1): a module's `_file` is an INHERITED
 # attribute of the import tree. An imported module with no `_file` of its own is attributed to its
-# importer (`collectModulesFrom`'s `parentFile`), never to the `"<gen-merge>"` root fallback, so a
+# importer (`collectModulesFrom`'s `parentFile`), never to the `"<unknown-file>"` root fallback, so a
 # real file is not dropped without a diagnostic when content passes through
 # `setDefaultModuleLocation F m` (`{ _file = F; imports = [ m ]; }`) or a hand-written wrapper of the
 # same shape.
@@ -117,6 +117,48 @@ let
         imports = [ { config.x = 1; } ];
       }
     ];
+  };
+
+  # F2: one option declared and defined with no `_file` on the path (at the root, and imported from
+  # an anonymous importer), and with one given explicitly. Each engine reads `declarations` and the
+  # files of the definitions: gen-merge's `provenance`, nixpkgs' `definitionsWithLocations`.
+  rootArms = {
+    anonymous = mo: int: [
+      { options.x = mo { type = int; }; }
+      { x = 1; }
+    ];
+    imported = mo: int: [
+      { imports = [ { options.x = mo { type = int; }; } ]; }
+      { x = 1; }
+    ];
+    explicit = mo: int: [
+      {
+        _file = "/real/D.nix";
+        options.x = mo { type = int; };
+      }
+      {
+        _file = F;
+        x = 1;
+      }
+    ];
+  };
+  rootFiles =
+    evalModules: mo: int: arm:
+    let
+      r = evalModules { modules = arm mo int; };
+      o = r.options.x;
+    in
+    {
+      inherit (o) declarations;
+      defs = map (d: d.file) (if r ? provenance then r.provenance.x.defs else o.definitionsWithLocations);
+    };
+  anonFiles = {
+    declarations = [ "<unknown-file>" ];
+    defs = [ "<unknown-file>" ];
+  };
+  explicitFiles = {
+    declarations = [ "/real/D.nix" ];
+    defs = [ F ];
   };
 in
 {
@@ -338,6 +380,29 @@ in
           [ F ]
           [ F ]
         ];
+      };
+    };
+    # F2 — the root fallback: a module with no `_file` anywhere on its import path is labelled
+    # `<unknown-file>` in `declarations` and in its definitions' files, as nixpkgs' `evalModules`
+    # labels it (`unknownModule`; den-hoag-z9dby, ADR-0039). An explicit `_file` is the control.
+    test-nixpkgs-equivalence-anonymous-root-file = {
+      expr = builtins.mapAttrs (_: arm: {
+        genMerge = rootFiles evalRequest mkOption t.int arm;
+        nixpkgs = rootFiles nixpkgsLib.evalModules nixpkgsLib.mkOption nixpkgsLib.types.int arm;
+      }) rootArms;
+      expected = {
+        anonymous = {
+          genMerge = anonFiles;
+          nixpkgs = anonFiles;
+        };
+        imported = {
+          genMerge = anonFiles;
+          nixpkgs = anonFiles;
+        };
+        explicit = {
+          genMerge = explicitFiles;
+          nixpkgs = explicitFiles;
+        };
       };
     };
   };

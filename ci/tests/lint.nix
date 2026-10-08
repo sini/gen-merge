@@ -241,7 +241,7 @@ in
         {
           kind = "order-pass";
           loc = [ "xs" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
       ];
     };
@@ -252,12 +252,12 @@ in
         {
           kind = "order-pass";
           loc = [ "p" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
         {
           kind = "order-pass";
           loc = [ "q" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
       ];
     };
@@ -268,7 +268,7 @@ in
         {
           kind = "order-pass";
           loc = [ "xs" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
       ];
     };
@@ -278,7 +278,7 @@ in
         {
           kind = "options-introspection";
           loc = [ ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
       ];
     };
@@ -289,8 +289,8 @@ in
           kind = "type-merge";
           loc = [ "a" ];
           file = [
-            "<gen-merge>"
-            "<gen-merge>"
+            "<unknown-file>"
+            "<unknown-file>"
           ];
         }
       ];
@@ -316,7 +316,7 @@ in
         {
           kind = "function-to";
           loc = [ "guard" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
       ];
     };
@@ -327,7 +327,7 @@ in
         {
           kind = "function-to";
           loc = [ "guards" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
       ];
     };
@@ -338,7 +338,7 @@ in
         {
           kind = "unverifiable";
           loc = [ "deep" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
       ];
     };
@@ -362,19 +362,19 @@ in
         {
           kind = "function-to";
           loc = [ "g" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
         {
           kind = "order-pass";
           loc = [ "c" ];
-          file = "<gen-merge>";
+          file = "<unknown-file>";
         }
         {
           kind = "type-merge";
           loc = [ "a" ];
           file = [
-            "<gen-merge>"
-            "<gen-merge>"
+            "<unknown-file>"
+            "<unknown-file>"
           ];
         }
       ];

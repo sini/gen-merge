@@ -1041,7 +1041,7 @@ let
   # n single-key defs → its `foldl' (//)` key-union and per-key `concatMap` both go O(n²). Coalescing
   # rebuilds the per-module shape (byte-identical output): group the unmatched defs by originating
   # MODULE INSTANCE (a threaded index — NOT `_file`: distinct anonymous modules share the
-  # `<gen-merge>` fallback file yet must stay SEPARATE defs for priority resolution), then emit one
+  # `<unknown-file>` fallback file yet must stay SEPARATE defs for priority resolution), then emit one
   # wide def per module in ASCENDING index order. Ascending index = reverse-module order (topDefs is
   # `pushedRev`), which is the order nixpkgs collects defs in (last module first) — load-bearing for
   # list-typed freeform values, order-independent for scalars/attrsets.
@@ -1776,7 +1776,8 @@ let
   # most specific first: a raw path leaf's own `_file` (the applied `m`; `m._file or m0` falls through
   # to the path for a non-attrset), else its path string (nixpkgs' `unifyModuleSyntax`: `toString
   # m._file or file`), then the entry's own `_file` (pre-application `m0`, then the applied `m`), then
-  # the importer's file, then `"<gen-merge>"` at the root. Every arm is a string: a `_file` given as a
+  # the importer's file, then `"<unknown-file>"` at the root (nixpkgs' `unknownModule`, the label
+  # `evalModules` gives an anonymous top-level module). Every arm is a string: a `_file` given as a
   # path value is `toString`ed at this one origin, so an inherited child's file is a string because its
   # importer's is (nixpkgs' `toString m._file or file`). So content passed through an unattributed
   # wrapper (`setDefaultModuleLocation F m` = `{ _file = F; imports = [ m ]; }`) is attributed to its
@@ -1807,7 +1808,7 @@ let
             if builtins.isPath m0 || isPathString m0 then
               toString (m._file or m0)
             else
-              toString (m0._file or (m._file or "<gen-merge>"));
+              toString (m0._file or (m._file or "<unknown-file>"));
           content = m;
         }
       else if
@@ -5789,7 +5790,7 @@ let
           # `getSubModules` are the sub-modules and `getSubOptions` is the nested decl tree, so
           # `evalModuleTree { } ty.getSubModules` yields the nested records without
           # touching `merge` at all. Worth knowing before reaching for it: those re-derived records
-          # report `declarations = [ "<gen-merge>" ]`, because sub-modules carry no `_file` — which
+          # report `declarations = [ "<unknown-file>" ]`, because sub-modules carry no `_file` — which
           # is a reason for the parent not to fold that view into its own report rather than a
           # reason it cannot. Stamping the field is this engine's obligation; composing the strata
           # belongs to whoever composes the results (the same boundary `provenance` and the warm

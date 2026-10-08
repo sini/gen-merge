@@ -480,11 +480,11 @@ without touching `merge` —
 
 ```nix
 (evalModuleTree { } ty.getSubModules).deprecations
-# ⇒ [ { path = [ "inner" ]; type = "depA"; message = "…"; declarations = [ "<gen-merge>" ]; } ]
+# ⇒ [ { path = [ "inner" ]; type = "depA"; message = "…"; declarations = [ "<unknown-file>" ]; } ]
 ```
 
 `ty.getSubOptions` reaches the same declarations as a tree if that shape suits better. Note what the
-re-derived records say about provenance: `declarations` reads `[ "<gen-merge>" ]`, because sub-modules
+re-derived records say about provenance: `declarations` reads `[ "<unknown-file>" ]`, because sub-modules
 carry no `_file` — a reason for the parent not to fold this view into its own report, rather than a
 reason it could not. Stamping the field is this engine's job; composing the strata belongs to whoever
 composes the results. Same boundary as provenance's.
@@ -2800,7 +2800,7 @@ genMerge.lint [
     { options.tags = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; default = [ ]; }; }
     { tags = lib.mkAfter [ "z" ]; }                            # flagged — an order marker (see the ⚠ above)
   ]
-# ⇒ [ { kind = "order-pass"; loc = [ "tags" ]; file = "<gen-merge>"; detail = "…"; } ]
+# ⇒ [ { kind = "order-pass"; loc = [ "tags" ]; file = "<unknown-file>"; detail = "…"; } ]
 ```
 
 ## Purity

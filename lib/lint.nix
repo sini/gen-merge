@@ -228,7 +228,7 @@ let
     modules:
     let
       modList = if isList modules then modules else [ modules ];
-      collected = collect "<gen-merge>" modList;
+      collected = collect "<unknown-file>" modList;
       attrsetEntries = filter (e: !e.fn) collected;
 
       # ── construct 2: a function module whose formals include `options` ──

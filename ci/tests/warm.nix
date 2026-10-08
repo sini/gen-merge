@@ -2092,7 +2092,7 @@ in
   # person to rediscover.
   #
   # The MESSAGE is asserted, not a bare throw: the reason names both element types, the file list
-  # names both contributors, and `<gen-merge>` is the base module's `_file` fallback — it declares
+  # names both contributors, and `<unknown-file>` is the base module's `_file` fallback — it declares
   # none, which is exactly what an author hitting this needs told.
   #
   # ★ IT IS ON THE `testsError` PLANE THOUGH IT LIVES IN THIS FILE, and that is forced rather than
@@ -2126,7 +2126,7 @@ in
         expr = byteOracle base edited;
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`lazyAttrsOf' over `anything' and `lazyAttrsOf' over `string', whose element types do not merge: `anything' and `string'\\); defined in edit-fft, <gen-merge>$";
+          msg = "^gen-merge: the freeform type is defined with types that do not merge \\(`lazyAttrsOf' over `anything' and `lazyAttrsOf' over `string', whose element types do not merge: `anything' and `string'\\); defined in edit-fft, <unknown-file>$";
         };
       };
 
