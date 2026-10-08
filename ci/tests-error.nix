@@ -1568,6 +1568,73 @@ in
       };
     };
 
+    # THE SUBMODULE'S DOOR THROUGH THE DIRECT FOLD (den-hoag-c7jkw.1). An `attrsOf (submodule …)`
+    # at the root folds the key walk's records, so the element's door tests the records' definitions,
+    # and names the element's option and every file outside its domain, in the order the split would
+    # hand them. An element's own throw is the element's, through the same branch. The value cells
+    # are `ci/tests/direct-fold.nix`.
+    flake.testsError.direct-fold =
+      let
+        users =
+          defs:
+          realize {
+            modules = [
+              {
+                options.users = gm.mkOption {
+                  type = t.attrsOf (
+                    t.submodule {
+                      options.uid = gm.mkOption {
+                        type = t.int;
+                        default = 0;
+                      };
+                    }
+                  );
+                  default = { };
+                };
+              }
+            ]
+            ++ defs;
+          };
+        at = file: v: {
+          _file = file;
+          config.users = v;
+        };
+        refuses = files: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `users.u0' has definitions `submodule' cannot consume \\(${files}\\)$";
+        };
+      in
+      {
+        test-an-element-outside-the-domain-is-refused-by-name = {
+          expr = users [ (at "/p/F.nix" { u0 = 5; }) ];
+          expectedError = refuses "/p/F\\.nix";
+        };
+        test-every-file-outside-the-domain-is-named = {
+          expr = users [
+            (at "/p/F.nix" { u0 = 5; })
+            (at "/p/G.nix" { u0 = 6; })
+          ];
+          expectedError = refuses "/p/G\\.nix, /p/F\\.nix";
+        };
+        test-a-file-inside-the-domain-is-not-named = {
+          expr = users [
+            (at "/p/F.nix" { u0 = 5; })
+            (at "/p/G.nix" { u0.uid = 1; })
+          ];
+          expectedError = refuses "/p/F\\.nix";
+        };
+        test-an-element-s-own-throw-is-its-own = {
+          expr = users [
+            (at "/p/F.nix" { u0 = throw "an element's own throw"; })
+            (at "/p/G.nix" { u1.uid = 7; })
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^an element's own throw$";
+          };
+        };
+      };
+
     # A STRUCTURAL CONTAINER REFUSES A DEFINITION OUTSIDE ITS DOMAIN BY NAME, BEFORE ITS FOLD RUNS
     # (`refusingOutside`, lib/types.nix). Before it did, `listOf`/`attrsOf`/`lazyAttrsOf` aborted in
     # the interpreter (`TypeError`, escaping `tryEval`, naming neither option nor file),
