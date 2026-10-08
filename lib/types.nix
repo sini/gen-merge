@@ -122,120 +122,39 @@ let
   # `row`: the `interface.embeddings` row the constructor states for this type (`defineEmbedded`).
   mkTypeIn =
     row: self: t:
-    let
-      name = t.name or "raw";
-      declaresRole = t ? carries;
-      carriesSomething = declaresRole || ((t.substructure or { }).modules or null) != null;
-      missingSub = filter (f: !((t.substructure or { }) ? ${f})) subFormals;
-      # ★ `recarry` IS OWED BY A TYPE THAT DECLARES A ROLE, and it is the last carried-role formal that
-      # was left un-total. The boundary reads it to rebuild this type over another payload wherever it
-      # DERIVES the relation, so a carrying record without one that is not answered for otherwise
-      # constructs, exports, and then detonates with a bare missing-attribute error the moment a
-      # foreign engine applies the functor — an interpreter error naming neither the type nor the
-      # field, which is the exact shape making every other formal here required was meant to remove.
-      #
-      # SCOPED TO THE ROLE, not to carrying in general: `deferredModule` carries a module set through
-      # its substructure without declaring a role, so it has no payload to be rebuilt over and owes
-      # none. The domain is what the record SAYS it carries, as everywhere else in this check.
-      #
-      # AND SCOPED TO A REBUILD THIS BOUNDARY ACTUALLY PERFORMS. `recarry' is owed because the export
-      # half rebuilds the type over another payload to derive a relation for it. A record that came
-      # in STATING its own relation is answered by that instead and is never rebuilt that way, so it
-      # owes nothing. `retainedRelation' is gen's own word for that fact and its PRESENCE is the
-      # whole question — this file asks what the record says about itself in this library's
-      # vocabulary, and the shape of what was retained stays behind the boundary, where it belongs.
-      missingRecarry =
-        if declaresRole && !(t ? recarry) && !(t ? retainedRelation) then [ "recarry" ] else [ ];
-      missing = missingSub ++ missingRecarry;
-      # THE LEAF RELATION. A gen partner is asked first and with no binding (the embedding is a fact
-      # about a FOREIGN partner, and a gen x gen redeclaration, the fan-in of one loc, pays nothing for
-      # it): the same key answers `self`. A RAW foreign partner is joined in its own published functor,
-      # so the declared type is the partner's record in both orders:
-      #  - keyed under an embedding with parameters (`path`, `pathLike`; `interface.embeddings`): in
-      #    the partner's relation over the embedding (`interface.joinCarriedInStatedRelation`);
-      #  - keyed under an embedding with none (`string`): as a leaf at the embedding's name;
-      #  - keyed under an embedding with type-valued parameters (`number`): in the partner's union
-      #    relation, rebuilt from its functor (`interface.joinInRebuiltPartner`);
-      #  - of the same key (as `elementRel`'s carve-out): as a leaf, and a declined join answers `self`,
-      #    EXCEPT for a partner stating a payload (`interface.statesPayload`), which is refused AS THE
-      #    DECIDER only (`vetoes = false`, read by `lib/modules.nix` `declaredPair`): nixpkgs' default
-      #    relation, which the twin states, asserts two leaves agree on a payload, so the twin refuses it
-      #    where the twin decides; where the partner decides, its OWN relation answers, as nixpkgs lets
-      #    it. `self` would drop the partner's check unsaid (ADR-0025 item 1). The other declines (a
-      #    functor with no `type` or no `binOp`, a join that renames) keep `self`: nixpkgs' twin serves
-      #    those pairs where it decides without aborting, and a refusal there would regress a serve
-      #    (ADR-0039's serve half).
-      # A declined embedding join is REFUSED, never `self`: the partner's own check would be dropped
-      # unsaid (ADR-0025 item 1), so the table cannot widen the same-key fallback's reach.
-      nullaryRel =
-        other:
-        if isAttrs other && other ? typeMergeRel then
-          if (keyOf other) == name then
-            { merged = self; }
-          else
-            { refused = "`${nameOf t}' and `${nameOf other}'"; }
-        else
-          let
-            # the row this type's constructor stated, never one its name collides with
-            e = row;
-            embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
-            sameKey = isAttrs other && (keyOf other) == name;
-            carriedJoin = interface.joinCarriedInStatedRelation {
-              inherit name self;
-              embedding = e;
-              role = null;
-              carried = null;
-            } other;
-            leafJoin = interface.joinLeafInStatedRelation {
-              inherit name self;
-              embedding = e;
-            } other;
-            # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
-            meet = j: {
-              merged = j;
-              meets = true;
-            };
-            ownJoin = interface.joinInPartnerRelation self other;
-          in
-          # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
-          # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
-          # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
-          if embedKey && e ? members then
-            let
-              unionJoin = interface.joinInRebuiltPartner {
-                role = "alternatives";
-                inherit self;
-              } other;
-            in
-            if unionJoin != null then
-              meet unionJoin
-            else
-              {
-                refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
-              }
-          else if embedKey && e ? params then
-            if carriedJoin != null then
-              meet carriedJoin
-            else
-              { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-          else if embedKey && !sameKey then
-            if leafJoin != null then
-              meet leafJoin
-            else
-              { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
-          else if sameKey && interface.statesPayload other && ownJoin != null then
-            meet ownJoin // { twinRefuses = true; }
-          else if sameKey && interface.statesPayload other then
-            {
-              refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
-              vetoes = false;
-            }
-          else if sameKey then
-            meet (if leafJoin == null then self else leafJoin)
-          else
-            { refused = "`${nameOf t}' and `${nameOf other}'"; };
-    in
-    if carriesSomething && missing != [ ] then
+    # ★ THE PATH EVERY CONSTRUCTOR TAKES ALLOCATES NOTHING HERE (den-hoag-c7jkw.2). The refusal's
+    # test reads the record directly and its list is built only to be named, and a record stating its
+    # relation is returned before the leaf relation is bound: only a record stating none reads it.
+    if
+      (t ? carries || ((t.substructure or { }).modules or null) != null)
+      && !(
+        all (f: (t.substructure or { }) ? ${f}) subFormals
+        && (!(t ? carries) || t ? recarry || t ? retainedRelation)
+      )
+    then
+      let
+        missingSub = filter (f: !((t.substructure or { }) ? ${f})) subFormals;
+        # ★ `recarry` IS OWED BY A TYPE THAT DECLARES A ROLE, and it is the last carried-role formal that
+        # was left un-total. The boundary reads it to rebuild this type over another payload wherever it
+        # DERIVES the relation, so a carrying record without one that is not answered for otherwise
+        # constructs, exports, and then detonates with a bare missing-attribute error the moment a
+        # foreign engine applies the functor — an interpreter error naming neither the type nor the
+        # field, which is the exact shape making every other formal here required was meant to remove.
+        #
+        # SCOPED TO THE ROLE, not to carrying in general: `deferredModule` carries a module set through
+        # its substructure without declaring a role, so it has no payload to be rebuilt over and owes
+        # none. The domain is what the record SAYS it carries, as everywhere else in this check.
+        #
+        # AND SCOPED TO A REBUILD THIS BOUNDARY ACTUALLY PERFORMS. `recarry' is owed because the export
+        # half rebuilds the type over another payload to derive a relation for it. A record that came
+        # in STATING its own relation is answered by that instead and is never rebuilt that way, so it
+        # owes nothing. `retainedRelation' is gen's own word for that fact and its PRESENCE is the
+        # whole question — this file asks what the record says about itself in this library's
+        # vocabulary, and the shape of what was retained stays behind the boundary, where it belongs.
+        missingRecarry =
+          if t ? carries && !(t ? recarry) && !(t ? retainedRelation) then [ "recarry" ] else [ ];
+        missing = missingSub ++ missingRecarry;
+      in
       throw (
         "gen-merge: the structural type `${nameOf t}' carries a parameter but does not supply "
         + concatStringsSep ", " (map (f: "`${f}'") missing)
@@ -247,6 +166,96 @@ let
     if t ? typeMergeRel then
       t
     else
+      let
+        name = t.name or "raw";
+        # THE LEAF RELATION. A gen partner is asked first and with no binding (the embedding is a fact
+        # about a FOREIGN partner, and a gen x gen redeclaration, the fan-in of one loc, pays nothing for
+        # it): the same key answers `self`. A RAW foreign partner is joined in its own published functor,
+        # so the declared type is the partner's record in both orders:
+        #  - keyed under an embedding with parameters (`path`, `pathLike`; `interface.embeddings`): in
+        #    the partner's relation over the embedding (`interface.joinCarriedInStatedRelation`);
+        #  - keyed under an embedding with none (`string`): as a leaf at the embedding's name;
+        #  - keyed under an embedding with type-valued parameters (`number`): in the partner's union
+        #    relation, rebuilt from its functor (`interface.joinInRebuiltPartner`);
+        #  - of the same key (as `elementRel`'s carve-out): as a leaf, and a declined join answers `self`,
+        #    EXCEPT for a partner stating a payload (`interface.statesPayload`), which is refused AS THE
+        #    DECIDER only (`vetoes = false`, read by `lib/modules.nix` `declaredPair`): nixpkgs' default
+        #    relation, which the twin states, asserts two leaves agree on a payload, so the twin refuses it
+        #    where the twin decides; where the partner decides, its OWN relation answers, as nixpkgs lets
+        #    it. `self` would drop the partner's check unsaid (ADR-0025 item 1). The other declines (a
+        #    functor with no `type` or no `binOp`, a join that renames) keep `self`: nixpkgs' twin serves
+        #    those pairs where it decides without aborting, and a refusal there would regress a serve
+        #    (ADR-0039's serve half).
+        # A declined embedding join is REFUSED, never `self`: the partner's own check would be dropped
+        # unsaid (ADR-0025 item 1), so the table cannot widen the same-key fallback's reach.
+        nullaryRel =
+          other:
+          if isAttrs other && other ? typeMergeRel then
+            if (keyOf other) == name then
+              { merged = self; }
+            else
+              { refused = "`${nameOf t}' and `${nameOf other}'"; }
+          else
+            let
+              # the row this type's constructor stated, never one its name collides with
+              e = row;
+              embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
+              sameKey = isAttrs other && (keyOf other) == name;
+              carriedJoin = interface.joinCarriedInStatedRelation {
+                inherit name self;
+                embedding = e;
+                role = null;
+                carried = null;
+              } other;
+              leafJoin = interface.joinLeafInStatedRelation {
+                inherit name self;
+                embedding = e;
+              } other;
+              # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
+              meet = j: {
+                merged = j;
+                meets = true;
+              };
+              ownJoin = interface.joinInPartnerRelation self other;
+            in
+            # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
+            # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
+            # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
+            if embedKey && e ? members then
+              let
+                unionJoin = interface.joinInRebuiltPartner {
+                  role = "alternatives";
+                  inherit self;
+                } other;
+              in
+              if unionJoin != null then
+                meet unionJoin
+              else
+                {
+                  refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
+                }
+            else if embedKey && e ? params then
+              if carriedJoin != null then
+                meet carriedJoin
+              else
+                { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
+            else if embedKey && !sameKey then
+              if leafJoin != null then
+                meet leafJoin
+              else
+                { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+            else if sameKey && interface.statesPayload other && ownJoin != null then
+              meet ownJoin // { twinRefuses = true; }
+            else if sameKey && interface.statesPayload other then
+              {
+                refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
+                vetoes = false;
+              }
+            else if sameKey then
+              meet (if leafJoin == null then self else leafJoin)
+            else
+              { refused = "`${nameOf t}' and `${nameOf other}'"; };
+      in
       t // { typeMergeRel = nullaryRel; };
 
   # The gen record alone, answering with itself. This is the substrate vocabulary with nothing of the

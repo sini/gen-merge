@@ -97,7 +97,7 @@ let
   # ★ IT IS NOT ALL SUBSTRATE, AND SAYING SO WOULD BE WRONG IN THE DIRECTION THAT MISLEADS. Every
   # class below includes `_protoLeafMerge`, `_checkWitness` (den-hoag-4ifgb) and
   # `_substSubModulesWitness` (den-hoag-z75vj), which the boundary
-  # MINTS (`interface.nix`, `_protoLeafMerge = !(t ? mergeDefs)`) and is never handed — a reader
+  # MINTS (`interface.nix`, `_protoLeafMerge`, true exactly where `t` has no `mergeDefs`) and is never handed — a reader
   # told this set is "what the boundary is handed" would conclude `mkType` stamps the marker, which
   # it does not. The rest of each
   # list IS gen's own record, and `test-the-fourteen-are-minted-at-the-boundary-and-nowhere-else`

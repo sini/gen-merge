@@ -3027,9 +3027,6 @@ let
     if !(isAttrs t) || !(t ? split || t ? choose) || t ? nests || !(t ? mergeDefs.threaded) then
       t
     else
-      let
-        orig = t.mergeDefs.threaded;
-      in
       t
       // {
         mergeDefs = t.mergeDefs // {
@@ -3041,7 +3038,7 @@ let
                 minted = containerNodeAt ev;
               in
               if !(containerAt loc self) || minted == null then
-                orig ev loc defs
+                t.mergeDefs.threaded ev loc defs
               else if !(builtins.isBool minted) then
                 throw (accessorUnansweredRefusal loc self)
               else if minted then
@@ -3049,7 +3046,7 @@ let
               else
                 throw (containerReadAsTreeRefusal loc self)
             else
-              orig ev;
+              t.mergeDefs.threaded ev;
         };
       };
   # What the key walk minted at the fold's position, as the accessor states it (`evAt`): `true` a

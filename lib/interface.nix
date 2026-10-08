@@ -4453,35 +4453,7 @@ let
   exportTypeWith =
     row: t:
     let
-      name = t.name or "raw";
-      sub = t.substructure or null;
       role = if t ? carries then roleOf (nameOf t) t.carries else null;
-      spelling = if role == null then null else roleSpelling.${role};
-      carried = if role == null then null else t.carries.${role};
-
-      # The embedding is read INSIDE the two fields that use it, never as a binding of its own: a
-      # binding here is a thunk on every exported type, and the hub bench's schemaHosts row has no
-      # headroom for one.
-      payload =
-        if row != null then
-          embeddedPayload row role carried
-        else if embedsOf t != null then
-          embeddedPayload (embedsOf t) role carried
-        else if role == null then
-          null
-        else if role == "moduleSet" then
-          moduleSetPayload {
-            modules = carried;
-            specialArgs = t.specialArgs or { };
-            shorthandOnlyDefinesConfig = t.shorthandOnlyDefinesConfig or null;
-          }
-        else
-          {
-            ${spelling.payloadKey} = carried;
-          };
-      # Rebuild this type over a payload in the protocol's spelling — the inverse of the line above,
-      # and the only inversion needed, because the role is fixed by the type rather than guessed.
-      recarried = p: t.recarry { ${role} = p.${spelling.payloadKey}; };
 
       # Built once by gen-types' `witnessRecord` and published twice, as `check` and as
       # `_checkWitness` (below), so a `check` a wrapper rewrote is the one slot that no longer holds
@@ -4515,10 +4487,10 @@ let
         m:
         if threadElementOf m != null then
           threadElementOf m exported
-        else if sub == null then
+        else if (t.substructure or null) == null then
           null
         else
-          sub.rebuild m
+          t.substructure.rebuild m
       );
 
       # `typeMerge` and `functor` are ONE derivation from ONE gen datum. The relation is row-free —
@@ -4526,7 +4498,11 @@ let
       # and the inbound half publishes a functor a foreign engine can recover THIS type from.
       functor =
         let
+          name = t.name or "raw";
           embeds = if row != null then row else embedsOf t;
+          # Rebuild this type over a payload in the protocol's spelling — the inverse of `payload` below,
+          # and the only inversion needed, because the role is fixed by the type rather than guessed.
+          recarried = p: t.recarry { ${role} = p.${roleSpelling.${role}.payloadKey}; };
           extrasAgree =
             p:
             if embeds ? members then
@@ -4536,7 +4512,26 @@ let
               builtins.all (k: (p.${k} or null) == embeds.params.${k}) (attrNames (embeds.params or { }));
         in
         {
-          inherit payload;
+          # Read by the functor alone, so it is built when the functor is: a binding beside the
+          # export's other fields is a thunk on every exported type (den-hoag-c7jkw.2). The embedding
+          # is read inside it, never as a binding of its own, for the same reason.
+          payload =
+            if row != null then
+              embeddedPayload row role (if role == null then null else t.carries.${role})
+            else if embedsOf t != null then
+              embeddedPayload (embedsOf t) role (if role == null then null else t.carries.${role})
+            else if role == null then
+              null
+            else if role == "moduleSet" then
+              moduleSetPayload {
+                modules = t.carries.${role};
+                specialArgs = t.specialArgs or { };
+                shorthandOnlyDefinesConfig = t.shorthandOnlyDefinesConfig or null;
+              }
+            else
+              {
+                ${roleSpelling.${role}.payloadKey} = t.carries.${role};
+              };
           # A derivation keeps its base's `name` and is keyed on its own identity (`keyOf`).
           name =
             if t ? __derivation then
@@ -4591,7 +4586,7 @@ let
                 else
                   (if embeds == null then { } else embeds.params)
                   // {
-                    ${spelling.payloadKey} = answer.merged.carries.${role};
+                    ${roleSpelling.${role}.payloadKey} = answer.merged.carries.${role};
                   }
               );
         };
@@ -4607,7 +4602,8 @@ let
         __phraseWithin = b: phraseOfWithin b t;
         _type = "option-type";
         descriptionClass = phrase.class;
-        inherit name;
+        # a record stating its `name` keeps it, and only a nameless one is published as `raw`
+        ${if t ? name then null else "name"} = "raw";
         # ★★ THE CALLER'S FUNCTOR IS REPUBLISHED WITH ITS NAME INTACT, AND THAT NAME GOVERNS. The
         # derivation above is what a type with no stated relation is published as; overwriting a
         # stated one with it is name-only identity re-imposed at a KEYING site with the
@@ -4617,7 +4613,10 @@ let
         # derived field is read off one — see the retention site in `importType' for why.
         functor = t.retainedRelation.functor or functor;
         description = phrase.text;
-        deprecationMessage = t.deprecated or null;
+        # Decided by the record's own attribute presence, so each arm is published as written: a
+        # computed field is a thunk on every exported type (den-hoag-c7jkw.2). `_protoLeafMerge` below too.
+        ${if t ? deprecated then "deprecationMessage" else null} = t.deprecated;
+        ${if t ? deprecated then null else "deprecationMessage"} = null;
         # `_checkWitness` is not a fifteenth protocol field: it is gen-types' check-witness
         # protocol field, the record of which `check` was published, read only by `rewritesCheck`.
         # A witnessed rewrite keeps its own stale witness (C1): the name is decided at construction, so
@@ -4676,10 +4675,15 @@ let
         # called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
         emptyValue =
           if isNesting t then { value = t.mergeDefs.threaded bridge [ ] [ ]; } else t.whenEmpty or { };
-        nestedTypes = (t.unroledNested or { }) // (if role == null then { } else spelling.nested carried);
+        nestedTypes =
+          (t.unroledNested or { })
+          // (if role == null then { } else roleSpelling.${role}.nested t.carries.${role});
         getSubOptions =
-          if sub == null then (_prefix: { }) else freeformSubOptions sub.declares (freeformOf t);
-        getSubModules = if sub == null then null else sub.modules;
+          if (t.substructure or null) == null then
+            (_prefix: { })
+          else
+            freeformSubOptions t.substructure.declares (freeformOf t);
+        getSubModules = if (t.substructure or null) == null then null else t.substructure.modules;
         # Published under both fields, as `check` is: a copy that rewrote `substSubModules` is the
         # one record whose field no longer holds the witness (`importedOwnSubstructure`).
         substSubModules = rebuild;
@@ -4741,7 +4745,8 @@ let
         # it on the gen path, which reads `mergeDefs` directly; it is read on the FOREIGN path,
         # where a completed record stripped of its gen half would otherwise re-enter the core's own
         # fold through the type. The field retires with the completion, not with the engine's read.
-        _protoLeafMerge = !(t ? mergeDefs);
+        ${if t ? mergeDefs then "_protoLeafMerge" else null} = false;
+        ${if t ? mergeDefs then null else "_protoLeafMerge"} = true;
       };
     in
     if !(t ? typeMergeRel) then

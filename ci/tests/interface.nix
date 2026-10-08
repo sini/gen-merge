@@ -529,5 +529,25 @@ in
         statingNothingIsRefused = true;
       };
     };
+
+    # THE NAMELESS RECORD. Fields the record's own attribute presence decides are published by name,
+    # so a record stating no `name`, `deprecated` or `mergeDefs` must still read `raw`, no deprecation
+    # and a leaf fold, through the export and through its functor alike (den-hoag-c7jkw.2 x5).
+    test-a-nameless-record-is-published-as-raw = {
+      expr =
+        let
+          r = V.defineType { typeMergeRel = _: { }; };
+        in
+        {
+          inherit (r) name _protoLeafMerge deprecationMessage;
+          functorName = r.functor.name;
+        };
+      expected = {
+        name = "raw";
+        _protoLeafMerge = true;
+        deprecationMessage = null;
+        functorName = "raw";
+      };
+    };
   };
 }
