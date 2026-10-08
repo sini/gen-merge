@@ -15,6 +15,7 @@
 # `addresses pos mg rd order`: the 8hlo3 declaration address of each element below a foreign level.
 #   pos   glist (gen listOf E, the control), nest (coercedTo str _ (over (listOf (lazyAttrsOf E)))),
 #         nest2i / nest2o (two threaded levels, `over` at the inner / the outer one),
+#         awuser / awname (stock attrsWith, placeholder "user" / "name"),
 #         wlazy (coercedTo str _ (over (lazyAttrsOf E))), ncoatt (coercedTo str _ (nixpkgs attrsOf E)),
 #         ncogatt (coercedTo str _ (gen attrsOf E))
 #   mg    stock, id, rev, drop, sortf (sort by `file`), grp (group by `file`), dk (keep only
@@ -249,6 +250,24 @@ in
           };
           ncoatt = {
             t = coerced (nt.attrsOf E);
+            d = keyed;
+            r = c: builtins.attrValues c.xs;
+          };
+          # a stock `attrsWith` with a non-default placeholder is not recognised, so it threads with no
+          # wrapper and no override; with the default placeholder it is re-homed (the control)
+          awuser = {
+            t = nt.attrsWith {
+              elemType = E;
+              placeholder = "user";
+            };
+            d = keyed;
+            r = c: builtins.attrValues c.xs;
+          };
+          awname = {
+            t = nt.attrsWith {
+              elemType = E;
+              placeholder = "name";
+            };
             d = keyed;
             r = c: builtins.attrValues c.xs;
           };

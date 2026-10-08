@@ -1595,6 +1595,115 @@ in
       ];
     };
     # a reader testing for the attribute sees it, so it refuses rather than falling back to a position
+    # a stock `attrsWith` with the default placeholder is re-homed and keeps its keyed addresses
+    test-attrswith-default-placeholder-keeps-addresses = {
+      expr = fx.addresses "awname" "stock" "at" "ab";
+      expected = [
+        [
+          "p"
+          [
+            [
+              "kmA"
+              "xs"
+              "p"
+            ]
+          ]
+        ]
+        [
+          "q"
+          [
+            [
+              "kmB"
+              "xs"
+              "q"
+            ]
+          ]
+        ]
+        [
+          "r"
+          [
+            [
+              "kmC"
+              "xs"
+              "contents"
+              0
+              "r"
+            ]
+          ]
+        ]
+        [
+          "s"
+          [
+            [
+              "kmC"
+              "xs"
+              "contents"
+              1
+              "s"
+            ]
+          ]
+        ]
+      ];
+    };
+    test-attrswith-default-placeholder-keeps-addresses-reordered = {
+      expr = fx.addresses "awname" "stock" "at" "ba";
+      expected = [
+        [
+          "p"
+          [
+            [
+              "kmA"
+              "xs"
+              "p"
+            ]
+          ]
+        ]
+        [
+          "q"
+          [
+            [
+              "kmB"
+              "xs"
+              "q"
+            ]
+          ]
+        ]
+        [
+          "r"
+          [
+            [
+              "kmC"
+              "xs"
+              "contents"
+              0
+              "r"
+            ]
+          ]
+        ]
+        [
+          "s"
+          [
+            [
+              "kmC"
+              "xs"
+              "contents"
+              1
+              "s"
+            ]
+          ]
+        ]
+      ];
+    };
+    # with another placeholder it threads: nixpkgs' value is served, and the address is refused
+    test-attrswith-other-placeholder-serves = {
+      expr = fx.addresses "awuser" "stock" "val" "ab";
+      expected = [
+        "p"
+        "q"
+        "r"
+        "s"
+      ];
+    };
     test-refused-address-is-present = {
       expr = fx.addresses "nest" "stock" "has" "ab";
       expected = [
@@ -1771,6 +1880,24 @@ in
     };
     test-catchable-nest2o-fileset-ba = {
       expr = map (e: builtins.elemAt e 1) (fx.addresses "nest2o" "fileset" "atc" "ba");
+      expected = [
+        false
+        false
+        false
+        false
+      ];
+    };
+    test-catchable-awuser-stock-ab = {
+      expr = map (e: builtins.elemAt e 1) (fx.addresses "awuser" "stock" "atc" "ab");
+      expected = [
+        false
+        false
+        false
+        false
+      ];
+    };
+    test-catchable-awuser-stock-ba = {
+      expr = map (e: builtins.elemAt e 1) (fx.addresses "awuser" "stock" "atc" "ba");
       expected = [
         false
         false
