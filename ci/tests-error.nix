@@ -1190,6 +1190,72 @@ in
         };
       };
 
+    # ── `valueMeta`, REFUSED BY NAME AT EVERY POSITION gen-merge serves the record (den-hoag-ixcxl) ──
+    # The one evaluated key the record does not serve: nixpkgs' v2-merge metadata carries nixpkgs'
+    # own type objects and evaluations. The getSubOptions position is `tree-type`'s cell.
+    flake.testsError.option-record-keys =
+      let
+        x = gm.mkOption { type = t.str; };
+        reader = {
+          options.out = gm.mkOption { type = t.raw; };
+          imports = [ ({ options, ... }: { config.out = options.x.valueMeta; }) ];
+        };
+        refusal = loc: {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `${loc}' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations$";
+        };
+      in
+      {
+        test-top = {
+          expr = (gm.evalModuleTree { } [ { options.x = x; } ]).options.x.valueMeta;
+          expectedError = refusal "x";
+        };
+        test-group = {
+          expr = (gm.evalModuleTree { } [ { options.g.x = x; } ]).options.g.x.valueMeta;
+          expectedError = refusal "g.x";
+        };
+        test-module-argument = {
+          expr =
+            (gm.evalModuleTree { } [
+              { options.x = x; }
+              reader
+            ]).config.out;
+          expectedError = refusal "x";
+        };
+        test-submodule-module-argument = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.s = gm.mkOption {
+                  type = t.submodule [
+                    { options.x = x; }
+                    reader
+                  ];
+                  default = { };
+                };
+              }
+            ]).config.s.out;
+          expectedError = refusal "s.x";
+        };
+        test-attrsOf-submodule-module-argument = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.s = gm.mkOption {
+                  type = t.attrsOf (
+                    t.submodule [
+                      { options.x = x; }
+                      reader
+                    ]
+                  );
+                };
+              }
+              { config.s.k = { }; }
+            ]).config.s.k.out;
+          expectedError = refusal "s.k.x";
+        };
+      };
+
     flake.testsError.declaration-merge = {
       # The message names the option, the two types that could not be combined, and the files that
       # declared them: an author who is told only "types do not merge" still has to find both.
@@ -3172,17 +3238,18 @@ in
             ];
           };
         };
-        # A published option record refuses BY NAME each evaluated key nixpkgs adds beside a
-        # declaration (`lib/modules.nix` `unansweredOptionKeys`), never an absent attribute, which
-        # its reader could not catch. One key here; the record carries all nine.
-        test-an-evaluated-option-key-is-refused-by-name = {
+        # The published option record answers nixpkgs' evaluated keys (`lib/modules.nix`
+        # `serveOptions`; `ci/tests/option-record-keys.nix`) except `valueMeta`, which it refuses BY
+        # NAME, never as an absent attribute its reader could not catch. The other positions are the
+        # `option-record-keys` group.
+        test-valueMeta-is-refused-by-name = {
           expr =
             ((gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.str; }; } ]).type.getSubOptions [
               "x"
-            ]).a.definitions;
+            ]).a.valueMeta;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: a gen option record does not answer `definitions': it is the declaration, not the evaluated option; read the value off the evaluation's `config' and its definitions off `provenance'$";
+            msg = "^gen-merge: the option `x.a' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations$";
           };
         };
         test-every-evaluated-option-key-is-present = {

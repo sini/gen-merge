@@ -1027,12 +1027,14 @@ let
           substructure = {
             # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
             #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
-            # Reads `.options` off the same nested fixpoint the fold builds, with no defs supplied, so
-            # the two halves cannot disagree about what a submodule declares and no instance-authored
-            # value is forced.
+            # Reads `.options` off a standalone evaluation of the fold's own modules, with no defs
+            # supplied, as nixpkgs' `extendModules { prefix }` does: the two halves cannot disagree
+            # about what a submodule declares, no instance-authored value is forced, and the
+            # evaluated record (a nesting option's `value` included) can evaluate its own nested
+            # trees.
             declares =
               prefix:
-              (evalModuleTreeNested {
+              (core.evalModuleTreeUnchecked {
                 modules = mods ++ [ namePlaceholder ];
                 inherit prefix;
                 specialArgs = args;

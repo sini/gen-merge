@@ -267,18 +267,16 @@ let
   # Anything else inside the `options` tree is an option-GROUP: a plain attrset of sub-declarations.
   isOptLeaf = v: isAttrs v && (v._type or null) == "option";
 
-  # ── THE PUBLISHED OPTION RECORD, IN nixpkgs' SHAPE (den-hoag-foreign-mount-parity-knhyg) ──────────
-  # A published declaration carries `loc` and `declarations` (the declaring modules' files, read off
-  # the evaluation's own `sitesAt`) and nixpkgs' string form, `__toString = _: showOption loc`
-  # (nixpkgs `lib/modules.nix` `mergeOptionDecls`/`evalOptionValue`), so `"${opt}"` reads the path
-  # there as here. Those three and the record's own fields are what nixpkgs' docs read
-  # (`optionAttrSetToDocList`). The evaluated keys nixpkgs adds beside them are the OPTION'S VALUE
-  # and its definitions, which this record is not: gen publishes them on `config` and `provenance`.
-  # Each is therefore REFUSED BY NAME, never absent, because an absent key is an uncatchable abort in
-  # the reader (ADR-0025 item 1). One shared record, so a refusal costs no thunk per option.
+  # ── THE OPTION RECORD, IN nixpkgs' SHAPE (den-hoag-foreign-mount-parity-knhyg, den-hoag-ixcxl) ──────
+  # A declaration carries `loc` and `declarations` (the declaring modules' files, read off the
+  # evaluation's own `sitesAt`, in nixpkgs' order: its module list is reversed once) and nixpkgs'
+  # string form, `__toString = _: showOption loc` (nixpkgs `lib/modules.nix`
+  # `mergeOptionDecls`/`evalOptionValue`), so `"${opt}"` reads the path there as here.
   #
-  # Applied to the PUBLISHED record and the stratum-1 door only, never inside the evaluation body:
-  # there every child evaluation would pay it (measured: the hub perf-bench's deepSubmodule thunk row).
+  # THE STRATUM-1 DOOR (`declaredOptions`) folds no value, so its record is the declaration and the
+  # evaluated keys nixpkgs adds beside it are REFUSED BY NAME, never absent, because an absent key is
+  # an uncatchable abort in the reader (ADR-0025 item 1). One shared record, so a refusal costs no
+  # thunk per option. nixpkgs has no such door.
   unansweredOptionKeys = listToAttrs (
     map
       (k: {
@@ -297,6 +295,62 @@ let
         "valueMeta"
       ]
   );
+  # THE EVALUATED RECORD, served wherever an evaluation publishes one: its `options`, a module's own
+  # `options` argument, and `getSubOptions`. nixpkgs' keys are projections of ONE list, the
+  # definitions its type merge read (`defsFinal`), and here they are projections of the list gen's
+  # type merge read (`typeDefs`, carried on `optionDefs.defs`), so no key is a second derivation free
+  # to disagree with the fold. `value` is the option's own merged value (`optionDefs.values`, the
+  # declared-only tree), as nixpkgs' is, never the module config: that one's freeform layer would
+  # make a freeform key gated on `options.x.value` a cycle. The `<default>` sentinel takes the file
+  # nixpkgs gives it, `head declarations`; `highestPrio`'s `null` (nothing survived discharge) reads
+  # as nixpkgs' `filterOverrides'` seed, 9999; `options` is `[ ]`, nixpkgs' value after
+  # `fixupOptionType`. `valueMeta` is refused by name: it is nixpkgs' v2-merge metadata, whose records
+  # carry nixpkgs' type objects and evaluations, and gen's types have no such merge.
+  serveOptions =
+    sitesAt: rel: loc: prov: defs: cfg: tree:
+    mapAttrs (
+      k: v:
+      let
+        lk = loc ++ [ k ];
+      in
+      if isOptLeaf v then
+        let
+          # the reference's declaration order: its module list reversed once, as its definitions are
+          sites = reverse (sitesAt lk);
+          dwl = map (d: if d.file == "<default>" then d // { file = (head sites).file; } else d) defs.${k};
+          p = prov.${k};
+        in
+        v
+        // {
+          loc = lk;
+          declarations = map (s: s.file) sites;
+          __toString = _: showOption lk;
+          definitionsWithLocations = dwl;
+          definitions = map (d: d.value) dwl;
+          files = map (d: d.file) dwl;
+          isDefined = dwl != [ ];
+          highestPrio = if p.priority == null then 9999 else p.priority;
+          value = cfg.${k};
+          declarationPositions = map (
+            s:
+            let
+              pos = builtins.unsafeGetAttrPos k (getAttrByPath rel s.options);
+            in
+            if pos != null then
+              pos
+            else
+              {
+                inherit (s) file;
+                line = null;
+                column = null;
+              }
+          ) sites;
+          options = [ ];
+          valueMeta = throw "gen-merge: the option `${showOption lk}' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations";
+        }
+      else
+        serveOptions sitesAt (rel ++ [ k ]) lk prov.${k} defs.${k} cfg.${k} v
+    ) tree;
   stampOptions =
     sitesAt: loc: tree:
     mapAttrs (
@@ -309,7 +363,7 @@ let
         // unansweredOptionKeys
         // {
           loc = lk;
-          declarations = map (s: s.file) (sitesAt lk);
+          declarations = map (s: s.file) (reverse (sitesAt lk));
           __toString = _: showOption lk;
         }
       else
@@ -2450,7 +2504,16 @@ let
       winners = r.winners;
       sorted =
         if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
-      typeDefs = map (w: { inherit (w) file value; }) sorted;
+      typeDefs = map (
+        w:
+        if w ? orderStated then
+          {
+            inherit (w) file value;
+            priority = w.orderPriority;
+          }
+        else
+          { inherit (w) file value; }
+      ) sorted;
       fold = ownFold type;
       result =
         if fold != null then
@@ -2517,7 +2580,16 @@ let
       # call's argument thunk per winner is not paid.
       sorted =
         if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
-      typeDefs = map (w: { inherit (w) file value; }) sorted;
+      typeDefs = map (
+        w:
+        if w ? orderStated then
+          {
+            inherit (w) file value;
+            priority = w.orderPriority;
+          }
+        else
+          { inherit (w) file value; }
+      ) sorted;
       fold = ownFold type;
       result =
         if winners == [ ] then
@@ -2599,7 +2671,16 @@ let
       # the filter selected, and the order axis must not be allowed to answer that question.
       sorted =
         if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
-      typeDefs = map (w: { inherit (w) file value; }) sorted;
+      typeDefs = map (
+        w:
+        if w ? orderStated then
+          {
+            inherit (w) file value;
+            priority = w.orderPriority;
+          }
+        else
+          { inherit (w) file value; }
+      ) sorted;
       # The fold dispatch, exactly as the value path reads it above — the twin stays parallel —
       # except where a report is carried and the type's fold states one (a nesting seam's
       # `mergeDefs.reported`): there ONE application yields `{ value; undeclared; }`, read apart
@@ -3901,6 +3982,7 @@ let
           {
             value = undefined;
             undeclared = undefined;
+            typeDefs = [ ];
             prov = {
               defs = [ ];
               winners = [ ];
@@ -3966,6 +4048,7 @@ let
         # Threaded unchanged — an option that is BOTH `moduleTree`-typed and carries `apply`/
         # `readOnly` must not lose its undeclared report at this second re-wrap seam.
         undeclared = builtins.seq _ro merged.undeclared;
+        typeDefs = builtins.seq _ro merged.typeDefs;
       };
 
   # ── STRATUM 1 — THE DECLARATION FOLD. NOT A FIXPOINT ──────────────────────────────────────────
@@ -4863,6 +4946,7 @@ let
                   m = {
                     value = getAttrByPath lk warm.prevConfig;
                     prov = getAttrByPath lk warm.prevProv;
+                    typeDefs = getAttrByPath lk warm.prevDefs;
                     # The reused leaf's findings are the PRIOR eval's report records at and below `abs`,
                     # passed through unchanged: both are in the absolute frame. The same §2 predicate
                     # (decls and defs here come only from clean modules) makes that report the cold
@@ -4930,6 +5014,12 @@ let
             map (x: {
               inherit (x) name;
               value = x.m.prov;
+            }) declaredPairs
+          );
+          typeDefs = listToAttrs (
+            map (x: {
+              inherit (x) name;
+              value = x.m.typeDefs;
             }) declaredPairs
           );
           # TWO CHANNELS, ONE PER KIND OF RECORD, each in exactly one frame.
@@ -5060,7 +5150,9 @@ let
               # module declares `options._module`, `moduleArgs` holds it, after any `apply`.
               if knot.positioned then
                 {
-                  inherit (result) options;
+                  options =
+                    serveOptions sitesAt [ ] prefix result.provenance result.optionDefs.defs result.optionDefs.values
+                      result.options;
                   # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
                   # parity); the returned `result.config` stays `_module`-free.
                   config = result.moduleConfig;
@@ -5071,7 +5163,9 @@ let
                 }
               else
                 {
-                  inherit (result) options;
+                  options =
+                    serveOptions sitesAt [ ] prefix result.provenance result.optionDefs.defs result.optionDefs.values
+                      result.options;
                   config = result.moduleConfig;
                   inherit prefix;
                 }
@@ -5275,6 +5369,7 @@ let
                 inherit (decision) isClean;
                 prevConfig = warmFrom.warmDecision.uncheckedConfig;
                 prevProv = warmFrom.provenance;
+                prevDefs = warmFrom.optionDefs.defs;
                 # The prior eval's OWN undeclared report, read by `mergeTree`'s reused leaf only when
                 # the leaf's type carries `mergeDefs.reported` (see there). Its paths are absolute, the
                 # frame of `mergeTree`'s `reported` channel, so the reader passes them through as is.
@@ -6173,6 +6268,10 @@ let
             freeformProv
             warmDecision
             ;
+          optionDefs = {
+            defs = realized.typeDefs;
+            values = realized.value;
+          };
           options = allOptions;
           # THE NESTED POSITIONS OF THIS TREE (den-hoag-n6dh7 item 2): one group per declared
           # option, in declaration order, and one for the freeform plane, last. Read by the minting
@@ -6231,7 +6330,10 @@ let
           let
             entries = prelude.imap0 declEntry result._flat;
           in
-          stampOptions (declaringSitesAt (length prefix) entries) prefix result.options;
+          serveOptions (declaringSitesAt (length prefix) entries) [ ] prefix result.provenance
+            result.optionDefs.defs
+            (builtins.seq result.identityHeld result.optionDefs.values)
+            result.options;
         inherit (result)
           provenance
           # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
@@ -6246,6 +6348,7 @@ let
           # a CHAINED warm re-eval reuses `warmFrom.freeformConfig`/`freeformProv` directly (spec §2).
           freeformConfig
           freeformProv
+          optionDefs
           # The memoization decision trace (spec §4); `mode = "cold"` on a plain compose (no warmFrom).
           warmDecision
           ;
@@ -6272,9 +6375,9 @@ let
         #   * THE FREEFORM DATUM is this evaluation's resolved freeform type, `unroledNested`, derived
         #     from the published closure (`_flat`) by the body's own functions when the type is read,
         #     never carried as a field of every evaluation result.
-        #   * `getSubOptions` is the tree's declarations under the foreign prefix, a nested evaluation
-        #     that folds no value (`evalModuleTreeNested`), whose published records carry `loc` and
-        #     `declarations` (`stampOptions`): nixpkgs' docs read nothing else gen's records lack.
+        #   * `getSubOptions` is the tree's declarations under the foreign prefix, a standalone
+        #     evaluation (`evalModuleTreeUnchecked`), as nixpkgs' `extendModules { prefix }` is, so it
+        #     evaluates its own nested trees, whose records are the evaluated ones (`serveOptions`).
         type =
           let
             # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
@@ -6425,7 +6528,7 @@ let
               modules = modList;
               declares =
                 prefix:
-                (evalModuleTreeNested {
+                (evalModuleTreeUnchecked {
                   modules = modList ++ [ namePlaceholder ];
                   inherit prefix specialArgs check;
                 }).options;
