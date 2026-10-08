@@ -1151,7 +1151,11 @@ Two rules that look like details and are not:
   changed, so a re-completed `addCheck T p` is enforced alone and beside `T` and its identity is
   refused by name, as the raw copy's is. A copy departing only at fields a door does not read (a
   `description` or a caller field at `defineType`; the import door also reads the protocol fields it
-  translates) keeps its completion's identity there.
+  translates) keeps its completion's identity there. **A record gen did not complete is returned as
+  it is** (den-hoag-ukitj): every completion states a type-merge relation, so a foreign-protocol
+  record stating none (a nixpkgs `int`, `addCheck np.int p`, `np.submodule M`) passes the published
+  `types.defineType` unchanged, and the engine imports it where it is declared, enforcing its own
+  `check`.
 - **A completed parametric leaf merges only the SAME type, or two `enum`s.** Sameness is
   decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
   textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,
