@@ -4620,8 +4620,10 @@ let
         deprecationMessage = t.deprecated or null;
         # `_checkWitness` is not a fifteenth protocol field: it is gen-types' check-witness
         # protocol field, the record of which `check` was published, read only by `rewritesCheck`.
+        # A witnessed rewrite keeps its own stale witness (C1): the name is decided at construction, so
+        # `t`'s binding survives the `//` and no per-export thunk is allocated for the choice.
         inherit check;
-        _checkWitness = if t ? _checkWitness && t.check != t._checkWitness then t._checkWitness else check;
+        ${if t ? _checkWitness && t.check != t._checkWitness then null else "_checkWitness"} = check;
         # Through the bridge where the fold carries the sibling (den-hoag-n6dh7 item 7, OQ11 (d)):
         # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
         # each element through its one `split`, so the forward mount keeps working without a third
