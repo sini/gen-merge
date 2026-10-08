@@ -2868,6 +2868,9 @@ let
   # It is the export BRIDGE's child (item 7, OQ11 (d)), where no gen evaluation holds the tree: one
   # root evaluation per nested tree, as many as the called form made. With no definition it is the tree over none, with `nests.empty`'s arguments, as a child with an
   # empty seed is (item 4). It is a ROOT evaluation, so the trees it holds are its own children.
+  # It is driven on a root knot, never a partial one, whatever `nests.partial` says: a partial fold's value
+  # is definitions a later gen fold completes, and nothing folds a foreign evaluation's value again, so
+  # the export bridge serves the full fold (den-hoag-5ov3p gate C3).
   nestedTreeAt =
     m: site:
     if site.defs == [ ] then
@@ -4578,16 +4581,32 @@ let
       throw "gen-merge: `evalModuleTree': option `${showOption p.loc}': the fold of the tree holding it did not select a nested tree at this position${
         if isAttrs member then " (it folds as `${member.name or "<unnamed>"}')" else ""
       }, so this nested tree is a candidate and is never evaluated"
+    # The child of a PARTIAL nesting type (`nests.partial`, lib/types.nix `partialSubmodule`) is driven on a
+    # partial knot, built here so that only a partial child pays for it, and selected as the call's head so
+    # that every other child pays no argument for the choice. With an empty seed too: its declared defaults
+    # are a definition at `mkOptionDefault` there as they are under one empty definition, or the empty
+    # value would beat a later `mkDefault` at the default priority (den-hoag-5ov3p gate C1).
     else if p.defs == [ ] then
-      evalModuleTreeWith knotChild m.carried m.inherited {
-        modules = n.modules ++ [ namePlaceholder ];
-        inherit (n) coreShortCircuit;
-        inherit (n.empty) prefix specialArgs check;
-      } self (self.get id knotAttr)
+      (
+        if n.partial or false then
+          evalModuleTreeWith (knotChild // { partial = true; })
+        else
+          evalModuleTreeWith knotChild
+      )
+        m.carried
+        m.inherited
+        {
+          modules = n.modules ++ [ namePlaceholder ];
+          inherit (n) coreShortCircuit;
+          inherit (n.empty) prefix specialArgs check;
+        }
+        self
+        (self.get id knotAttr)
     # A nesting type that declares `nests.declAt` receives each seed's declaration address
     # (`seedDeclAts`), in its own call; every other child is built exactly as before, with no `declAt`
     # attribute and no `if` operand in its `modules`. The chosen call is applied once, outside the
-    # `if`: applied in each branch, every tree pays 48 bytes more.
+    # `if`: applied in each branch, every tree pays 48 bytes more. A partial type declares no `declAt`
+    # (lib/types.nix `mkSubmodule`), so the first branch never holds a partial child.
     else
       (
         if n.declAt or false then
@@ -4608,11 +4627,19 @@ let
             inherit (n) specialArgs check coreShortCircuit;
           }
         else
-          evalModuleTreeWith knotChildPositioned m.carried m.inherited {
-            modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
-            prefix = p.loc;
-            inherit (n) specialArgs check coreShortCircuit;
-          }
+          (
+            if n.partial or false then
+              evalModuleTreeWith (knotChildPositioned // { partial = true; })
+            else
+              evalModuleTreeWith knotChildPositioned
+          )
+            m.carried
+            m.inherited
+            {
+              modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
+              prefix = p.loc;
+              inherit (n) specialArgs check coreShortCircuit;
+            }
       )
         self
         (self.get id knotAttr);
@@ -4620,8 +4647,10 @@ let
   # The knots an evaluation is driven on, chosen where `evalModuleTreeWith` is bound, so a call
   # pays no argument for the choice: a root's (the minting knot), a root's whose evaluation is
   # exposed to this library's suites, and the declaration-only plain knot a type's `declares` reads
-  # (it folds no value, so it holds no child). A child's knot is its own node (`childTree`).
+  # (it folds no value, so it holds no child). A child's knot is its own node (`childTree`). `partial`: the
+  # evaluation's declared options fold partially (the realizer's `mergeOption`); only `childTree` sets it.
   knotChild = {
+    partial = false;
     mints = true;
     exposes = false;
     inner = true;
@@ -4636,6 +4665,7 @@ let
     positioned = true;
   };
   knotNested = {
+    partial = false;
     mints = false;
     exposes = false;
     inner = false;
@@ -4643,6 +4673,7 @@ let
     drive = driveKnot;
   };
   knotRoot = {
+    partial = false;
     mints = true;
     exposes = false;
     inner = false;
@@ -4653,6 +4684,7 @@ let
     positioned = true;
   };
   knotExposed = {
+    partial = false;
     mints = true;
     exposes = true;
     inner = false;
@@ -5215,16 +5247,51 @@ let
           # descent's context, with this node's `reader`, through which a declared option that may
           # nest reads its nested trees as this node's `nested` children (den-hoag-n6dh7 item 5);
           # `prefix` makes the option's group its path within the tree.
-          mergeOption = mergeOptionWith {
-            inherit
-              coreShortCircuit
-              carried
-              strict
-              prefix
-              ;
-            reader = self;
-            inherit result;
-          };
+          #
+          # On a PARTIAL knot (den-hoag-5ov3p) the record's `value` is a definition again, as
+          # `mergeDefsPartial`'s is: the winners' value under the priority that selected them (bare at the
+          # default priority), and with no winners the monoid's identity. The declared default is one of the
+          # definitions, at `mkOptionDefault`, so a default-only option is that definition. `prov`,
+          # `undeclared` and `typeDefs` ride through. Selected here, with no binding of its own, so a full
+          # evaluation pays nothing for it.
+          mergeOption =
+            (
+              if knot.partial then
+                mode: loc: optDecl: rawDefs:
+                let
+                  r = mergeOptionWith mode loc optDecl rawDefs;
+                in
+                r
+                // {
+                  value =
+                    if r.prov.winners == [ ] then
+                      {
+                        _type = "if";
+                        condition = false;
+                        content = { };
+                      }
+                    else if r.prov.priority == defaultPriority then
+                      r.value
+                    else
+                      {
+                        _type = "override";
+                        priority = r.prov.priority;
+                        content = r.value;
+                      };
+                }
+              else
+                mergeOptionWith
+            )
+              {
+                inherit
+                  coreShortCircuit
+                  carried
+                  strict
+                  prefix
+                  ;
+                reader = self;
+                inherit result;
+              };
           # Reuse the WHOLE prev freeform layer iff the coarse flag holds (§2, soundness-forced: a
           # single edited freeformType flips every freeform loc). Else re-merge cold. Byte-identical
           # either way when the flag holds; the flag exists to keep the SKIP sound.

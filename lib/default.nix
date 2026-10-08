@@ -686,8 +686,9 @@ in
     # than a divergence if the declarations it is asking about turn out to need the value stratum.
     declaredOptions
     mergeDefs
-    # A partial fold, and the container whose every key folds partially (den-hoag-fjdnf): for a consumer that
-    # folds some of a position's definitions now and the rest later. Outside `types`, whose every member the
+    # A partial fold, the container whose every key folds partially (den-hoag-fjdnf), and the submodule whose
+    # every declared option does (`partialSubmodule`, den-hoag-5ov3p, below): for a consumer that folds some of
+    # a position's definitions now and the rest later. Outside `types`, whose every member the
     # vocabulary censuses (the linkset, the p5 scan, the tree-type census) enumerate as nixpkgs-shaped types.
     mergeDefsPartial
     mergeOneOption
@@ -702,6 +703,13 @@ in
     ;
 
   inherit (strategies) partialAttrsOf;
+  # `submodule` whose every declared option folds PARTIALLY (den-hoag-5ov3p), the declared-plane twin of
+  # `partialAttrsOf`: an option's value is its winning definitions merged, under the priority that selected
+  # them, and a default-only option is its declared default at `mkOptionDefault` (lib/modules.nix, the
+  # realizer's `mergeOption`), so a later fold of the value with further definitions is the fold over all of
+  # them. Built here rather than bound in lib/types.nix and inherited: each of those is one more thunk on
+  # every process that loads this library.
+  partialSubmodule = strategies.mkSubmodule true "partialSubmodule" { };
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
@@ -855,6 +863,7 @@ in
         exports = builtins.removeAttrs strategies [
           "defineEmbedded"
           "partialAttrsOf"
+          "mkSubmodule"
         ];
       };
       allow = import ./types-allowlist.nix;
