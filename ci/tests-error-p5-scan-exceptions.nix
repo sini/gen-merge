@@ -101,6 +101,7 @@ in
   "test-op-showOption-on-null" = class.list;
   "test-op-showOption-on-str" = class.list;
   "test-op-submodule-on-attrs" = class.unprefixed;
+  "test-op-partialSubmodule-on-attrs" = class.unprefixed;
   "test-types-op-comparisonSubject-on-bool" = class.set;
   "test-types-op-comparisonSubject-on-float" = class.set;
   "test-types-op-comparisonSubject-on-fn" = class.set;

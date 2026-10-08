@@ -156,6 +156,30 @@ let
           "whenEmpty"
         ]
       );
+      submodule = sorted (
+        minted
+        ++ [
+          "__phraseWithin"
+          "_checkWitness"
+          "_protoLeafMerge"
+          "_substSubModulesWitness"
+          "admits"
+          "carries"
+          "mergeDefs"
+          # den-hoag-n6dh7 U2.1, a declared gain: the nested tree stated as data (`nests`)
+          "nests"
+          "recarry"
+          # den-hoag-foreign-mount-parity-knhyg: how a definition is read (as config), which the
+          # module-set payload publishes and the relation keys on, and the resolved freeform type
+          "shorthandOnlyDefinesConfig"
+          "specialArgs"
+          "substructure"
+          "typeMergeRel"
+          "unroledNested"
+          "whenEmpty"
+          "withArgs"
+        ]
+      );
     in
     {
       str = leaf;
@@ -232,30 +256,9 @@ let
       # while the export is a pass-through, so an ordinary attribute is how the args cross and how a
       # partner's become readable from the relation. `withArgs` is the method that states them.
       # Both are gen's own words; neither is a protocol field, which is why they land in this half.
-      submodule = sorted (
-        minted
-        ++ [
-          "__phraseWithin"
-          "_checkWitness"
-          "_protoLeafMerge"
-          "_substSubModulesWitness"
-          "admits"
-          "carries"
-          "mergeDefs"
-          # den-hoag-n6dh7 U2.1, a declared gain: the nested tree stated as data (`nests`)
-          "nests"
-          "recarry"
-          # den-hoag-foreign-mount-parity-knhyg: how a definition is read (as config), which the
-          # module-set payload publishes and the relation keys on, and the resolved freeform type
-          "shorthandOnlyDefinesConfig"
-          "specialArgs"
-          "substructure"
-          "typeMergeRel"
-          "unroledNested"
-          "whenEmpty"
-          "withArgs"
-        ]
-      );
+      inherit submodule;
+      # den-hoag-5ov3p: a partial submodule is a submodule on every field; only its mint differs
+      partialSubmodule = submodule;
     };
 
   # a representative type of every constructor class the completion reaches, INCLUDING a consumer type
@@ -270,6 +273,8 @@ let
       deferredModule
       ;
     submodule = gmT.submodule { options = { }; };
+    # den-hoag-5ov3p: its own constructor (the tag enters the mint), so its own class
+    partialSubmodule = genMerge.partialSubmodule { options = { }; };
     attrsOf = gmT.attrsOf gmT.str;
     lazyAttrsOf = gmT.lazyAttrsOf gmT.str;
     listOf = gmT.listOf gmT.str;
@@ -557,6 +562,7 @@ in
         "lazyAttrsOf"
         "listOf"
         "nullOr"
+        "partialSubmodule"
         "raw"
         "str"
         "submodule"
@@ -603,6 +609,7 @@ in
         anything = false;
         deferredModule = false;
         submodule = false;
+        partialSubmodule = false;
         attrsOf = false;
         lazyAttrsOf = false;
         listOf = false;

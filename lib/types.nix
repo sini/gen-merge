@@ -829,8 +829,14 @@ let
   # including a single declaration, and gen's own containers delegate their rebuild to their
   # element's — so `attrsOf ((submodule mods).withArgs { … })` would lose the args without ever
   # crossing the boundary.
+  #
+  # `partial` (den-hoag-5ov3p): the nested tree's declared options fold PARTIALLY, so its value is a
+  # definition tree that a later fold completes (`partialSubmodule`, lib/default.nix). It is data on the
+  # nested tree (`nests.partial`), read where the child is evaluated (lib/modules.nix `childTree`). `ctor`
+  # is the constructor the type is minted as, `submodule` or `partialSubmodule`: a parameter rather than a
+  # choice made here, because an argument computed per construction is a thunk per construction.
   mkSubmodule =
-    args: modOrMods:
+    partial: ctor: args: modOrMods:
     let
       mods = if isList modOrMods then modOrMods else [ modOrMods ];
       # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
@@ -850,6 +856,7 @@ let
         specialArgs = args;
         check = null;
         coreShortCircuit = false;
+        inherit partial;
         entry = d: head (defsAsModules true [ d ]);
         empty = {
           prefix = [ ];
@@ -876,7 +883,9 @@ let
       # so one function module handed to two constructions compares equal on every evaluator. A slot
       # per module (`imap0`) is a fresh thunk per module, which upstream Nix and Determinate compare by
       # slot and Lix by the forced closure (den-hoag-1fo91).
-      identified "submodule" [ ] (_: { specialArgs = args; })
+      # The constructor tag enters the mint (ADR-0034): a `partialSubmodule` and a `submodule` over one
+      # module set are two types, and the name, which both keep, decides nothing.
+      identified ctor [ ] (_: { specialArgs = args; })
         [
           {
             path = [ "modules" ];
@@ -906,7 +915,7 @@ let
                 + "value would be discarded rather than used"
               )
             else
-              mkSubmodule (args // a) mods;
+              mkSubmodule partial ctor (args // a) mods;
           inherit admits nests;
           # With no surviving definition the value is the module set evaluated over NO definitions, as
           # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
@@ -919,11 +928,17 @@ let
           # declaring the union of what they declare. On a nullary relation the second declaration would
           # be discarded silently.
           carries.moduleSet = mods;
-          recarry = c: mkSubmodule args c.moduleSet;
+          recarry = c: mkSubmodule partial ctor args c.moduleSet;
           typeMergeRel =
             other:
             if !(isAttrs other) || (keyOf other) != "submodule" then
               { refused = "`submodule' and `${nameOf other}'"; }
+            # One name, two folds: a partial tree's value is definitions and a full one's is data, so a
+            # mixed redeclaration has no union, and the later declaration would decide which it serves.
+            else if (other.nests.partial or false) != partial then
+              {
+                refused = "`${ctor}' and `${if partial then "submodule" else "partialSubmodule"}'";
+              }
             # The one datum two `submodule' declarations must agree on beside the name: whether an
             # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
             # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
@@ -990,7 +1005,7 @@ let
               # the union nixpkgs builds. Pinned by
               # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
               else
-                { merged = mkSubmodule (args // partnerArgs) (partnerMods ++ mods); };
+                { merged = mkSubmodule partial ctor (args // partnerArgs) (partnerMods ++ mods); };
           substructure = {
             # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
             #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
@@ -1011,7 +1026,7 @@ let
             # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
             # second time, double-evaluating the base module (a readOnly config value — e.g.
             # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
-            rebuild = m: mkSubmodule args m;
+            rebuild = m: mkSubmodule partial ctor args m;
           };
           # A definition outside `admits` is refused here, naming the option and the file, before the
           # module reader would refuse it without either (`refusingOutside`).
@@ -1037,7 +1052,7 @@ let
 
   # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
   # base module args to the TYPE it returns, never to this.
-  submodule = mkSubmodule { };
+  submodule = mkSubmodule false "submodule" { };
 
   # listOf — concat all list defs in order (byte-mode drops the order pass; spec §7), each element
   # merged through the element type (a submodule element becomes an instance; a leaf is verified).
@@ -1890,5 +1905,8 @@ in
     oneOf
     raw
     anything
+    # The submodule constructor with its fold and its constructor stated, for lib/default.nix's
+    # `partialSubmodule`. Not a type, so not in `types`.
+    mkSubmodule
     ;
 }

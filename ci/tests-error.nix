@@ -9435,5 +9435,45 @@ in
           ]
         ) (builtins.attrNames pairs)
       );
+    # den-hoag-5ov3p — a mixed `submodule`/`partialSubmodule` redeclaration refuses by name, naming both
+    # constructors, in both orders. The catchable form and the identity cells are ./tests/partial-submodule.nix.
+    flake.testsError.partial-submodule =
+      let
+        lopt = {
+          options.l = gm.mkOption {
+            type = t.listOf t.str;
+            default = [ ];
+          };
+        };
+        bopt = {
+          options.b = gm.mkOption {
+            type = t.bool;
+            default = false;
+          };
+        };
+        mixed =
+          first: second:
+          builtins.deepSeq
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = first lopt; }; }
+              { options.x = gm.mkOption { type = second bopt; }; }
+              { x.l = gm.mkForce [ "a" ]; }
+            ]).config.x
+            null;
+        refusal = pair: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <gen-merge>, <gen-merge>$";
+        };
+      in
+      {
+        test-mixed-submodule-first-refuses-naming-both = {
+          expr = mixed t.submodule gm.partialSubmodule;
+          expectedError = refusal "`submodule' and `partialSubmodule'";
+        };
+        test-mixed-partial-first-refuses-naming-both = {
+          expr = mixed gm.partialSubmodule t.submodule;
+          expectedError = refusal "`partialSubmodule' and `submodule'";
+        };
+      };
   };
 }
