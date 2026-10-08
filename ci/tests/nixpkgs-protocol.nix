@@ -994,13 +994,13 @@ in
         let
           r = gmT.union [
             gmT.int
-            (genTypes.listOf r)
+            (genTypes.checkedListOf r)
           ];
           flat = gmT.union [
             gmT.int
-            (genTypes.listOf gmT.int)
+            (genTypes.checkedListOf gmT.int)
           ];
-          chain = n: if n == 0 then gmT.int else genTypes.listOf (chain (n - 1));
+          chain = n: if n == 0 then gmT.int else genTypes.checkedListOf (chain (n - 1));
           rel = t: builtins.attrNames (t.typeMergeRel t);
           deep =
             n:

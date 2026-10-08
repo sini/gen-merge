@@ -1150,7 +1150,7 @@ Two rules that look like details and are not:
   mark over the constructor, spelled `gen-merge.<name>`, and one tag per component (the element, the
   alternatives in order; a submodule's module set sealed and its `withArgs` arguments inert), with the
   sealed components in `__sealed` beside it. So `listOf int` built twice is one type, and is itself
-  after transport through `anything`; gen-types' own `listOf int` and `option int` are other types,
+  after transport through `anything`; gen-types' own `checkedListOf int` and `checkedOption int` are other types,
   because they fold differently. The mint is lazy: a declaration never compared mints nothing, and a
   kind's mark demands its option types' mints. Identity and a redeclaration's value are two
   questions: one submodule binding declared twice is one type (`typeEq` `true`), and its

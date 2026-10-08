@@ -3,14 +3,17 @@
     This namespace is the drop-in a foreign module system mounts, and at this name such a
     consumer requires the CROSS-DEFINITION MERGE meaning: the strategy folds definitions
     across modules, where gen-types' constructor is a structural PREDICATE over one value.
-    The cost is exactly the unqualified spelling inside this namespace — the gen-types
-    predicate stays reachable through the hub's flat roster and from gen-types directly.
+    gen-types now publishes that predicate as `checkedListOf` (grammar R10 rule 3), and what
+    it keeps at this name is a refused-by-name tombstone, so the overlap is the tombstone's:
+    the entry retires with it, and `rosterMissing` names the entry once it does.
   '';
   attrsOf.ground = ''
     The same cross-definition merge meaning as `listOf`, over attribute sets rather than
     lists: a mounting consumer declaring `attrsOf` in a foreign module system needs
     definitions from several modules folded, not one value checked. Stated for THIS name
     rather than carried from `listOf` because the two constructors differ in what they fold.
+    The predicate it shadowed is gen-types' `checkedAttrsOf` now, and the name it leaves here
+    is a tombstone that retires with this entry.
   '';
   attrs.ground = ''
     The one name at which BOTH sides mint a nullary VALUE rather than a constructor, and the
@@ -22,8 +25,8 @@
   '';
   option.ground = ''
     ★ THE WEAKEST ENTRY, AND IT SAYS SO. This library's `option` is a bare alias for
-    `nullOr`, so what shadows gen-types' parametric `option` is an alias rather than a
-    distinct construct — the winning side wins by sitting in the drop-in namespace, not by
-    meaning more. This is the first entry to retire if the namespace is ever split.
+    `nullOr`, so what shadows gen-types' name is an alias rather than a distinct construct.
+    gen-types' parametric predicate is `checkedOption` now, and its old name here is a
+    refused-by-name tombstone; this entry exists only for that tombstone and retires with it.
   '';
 }
