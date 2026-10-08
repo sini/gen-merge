@@ -1298,10 +1298,10 @@ in
 
     # n8cpq: the join witness reads an operand's name modulo the row its RECORD reaches (`joinsAs`),
     # never one its name collides with. A caller's `enum "string"` against nixpkgs' `str` is a
-    # renaming, so a join that answered `str` for it is not taken as keeping its check, and so is a
-    # `//` copy of gen-types' `string` under another predicate, whose mark is its base's (the
-    # completion stamp); gen-types' own `string` and `pathLike` are read as `str` and `path`, as the
-    # leaf rows state.
+    # renaming, so a join that answered `str` for it is not taken as keeping its check; a `//` copy of
+    # gen-types' `string` under another name and predicate is read as `string`, its completion, whose
+    # relation it carries, and the meet owes its predicate (den-hoag-ndgcz); gen-types' own `string`
+    # and `pathLike` are read as `str` and `path`, as the leaf rows state.
     test-join-witness-reads-the-row-a-record-reaches = {
       expr = {
         genuineString = interface.joinRenames np.types.str t.string;
@@ -1319,7 +1319,7 @@ in
       expected = {
         genuineString = false;
         namedString = true;
-        copiedString = true;
+        copiedString = false;
         genuinePathLike = false;
         namedPathLike = true;
       };

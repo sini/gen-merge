@@ -486,10 +486,16 @@ let
                 && t._checkWitness == (t.__meetJoin._checkWitness or t.__meetJoin.check)
               then
                 bare t.__meetJoin
-              else if core.interface.rewritesCheck t && builtins.isFunction (t.__typeSelf or null) then
+              else if
+                builtins.isFunction (t.__typeSelf or null)
+                && (core.interface.rewritesCheck t || core.interface.departsWithinCarrier t)
+              then
                 let
                   c = t.__typeSelf null;
-                  names = core.interface.exportClasses.nameCarried ++ [ "check" ];
+                  names = core.interface.exportClasses.nameCarried ++ [
+                    "check"
+                    "verify"
+                  ];
                 in
                 if
                   checkedTypes.stampOk (
