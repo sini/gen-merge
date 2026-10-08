@@ -1,5 +1,5 @@
 # ONE option loc declared with a type by 12800 modules evaluates: the declaration fold's depth does not
-# grow with the module count. The leaf fold forces each step as it is made (`mergeOptionDeclTrees`);
+# grow with the module count. The leaf fold forces each step as it is made (`redeclareDecl`);
 # folded through a lazy accumulator the n-step chain is forced from the outside, to depth n, and the
 # evaluator refuses with `max-call-depth exceeded` at this size. This is the cell for that `seq`.
 { genMerge, ... }:
