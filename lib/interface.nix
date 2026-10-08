@@ -2810,8 +2810,10 @@ let
       # is its join (`meetOf`'s `__meetJoin`) while it is still the record `meetOf` built, whose witness
       # is its join's: a re-completion (`mkOptionType`, `defineType`) re-ties the witness to the met
       # check and carries `__meetJoin` across, and the meet then owes it nothing, so read as its join it
-      # would lose that check. A `//` copy whose only departure from its completion is `check` and
-      # name-carried fields (nixpkgs `addCheck`) has its completion; any other record is its own.
+      # would lose that check. A met record over a foreign join reads as itself too: its witness is the
+      # join's `check` function, and Nix compares no two functions equal. A `//` copy whose only
+      # departure from its completion is `check` and name-carried fields (nixpkgs `addCheck`) has its
+      # completion; any other record is its own.
       # Restated inline at the entry of `default.nix`'s parametric relation, for the load gates' cost;
       # the two spellings are held alike by `check-family-merge`'s carrier cell.
       bare =
