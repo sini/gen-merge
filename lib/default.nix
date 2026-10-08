@@ -707,9 +707,13 @@ in
   # `partialAttrsOf`: an option's value is its winning definitions merged, under the priority that selected
   # them, and a default-only option is its declared default at `mkOptionDefault` (lib/modules.nix, the
   # realizer's `mergeOption`), so a later fold of the value with further definitions is the fold over all of
-  # them. Built here rather than bound in lib/types.nix and inherited: each of those is one more thunk on
-  # every process that loads this library.
-  partialSubmodule = strategies.mkSubmodule true "partialSubmodule" { };
+  # them, for every option that has a definition or a declared default. THE BOUND (den-hoag-5ov3p landing
+  # gate K1, the identity ruled): an option with neither a definition nor a declared default moves nothing (the
+  # monoid's identity), so a later fold that supplies none serves no key where `submodule` serves the type's
+  # empty value. Pinned by `ci/tests/partial-submodule.nix`.
+  # Built here rather than bound in lib/types.nix and inherited, and as a lambda: each of those, and an
+  # argument that is an attribute-set literal, is one more thunk on every process that loads this library.
+  partialSubmodule = mods: strategies.mkSubmodule true "partialSubmodule" { } mods;
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)

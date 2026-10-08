@@ -133,10 +133,21 @@ evaluation an option's value is its winners as the table above gives them, and a
 declared default at `mkOptionDefault` (`{ _type = "override"; priority = 1500; content = <default>; }`), as
 nixpkgs' fold holds it. Its child is evaluated on a partial knot in `childTree`, with or without a seed. It
 is its own type: the constructor tag enters the mint, so `typeEq` separates it from `submodule mods`, and a
-redeclaration mixing the two refuses by name. Mounted in nixpkgs `evalModules` it serves the full fold,
-because nothing folds a foreign evaluation's value again. Its consumer is gen-aspects' guard carrier's typed
-child, whose declared `includes` then keeps its priority to the fired content. Tests:
-`ci/tests/partial-submodule.nix`.
+redeclaration mixing the two refuses by name. Its consumer is gen-aspects' guard carrier's typed child, whose
+declared `includes` then keeps its priority to the fired content. Tests: `ci/tests/partial-submodule.nix`.
+
+Its bounds, each pinned there:
+
+- **An option with neither a definition nor a declared default moves nothing.** Its value is the identity, so
+  a later fold that supplies no definition serves no key, where `submodule` and nixpkgs serve the type's empty
+  value (`[ ]` for a list). Every option that has a definition or a declared default folds as the whole fold.
+- **Mounted in nixpkgs `evalModules`, it serves the full fold at the mounted option's own type only.** A
+  `partialSubmodule` nested below it, at depth 1 or more (inside a `submodule`, or inside another
+  `partialSubmodule`), is a child of the mounted evaluation and stays partial, so the nixpkgs consumer reads
+  its definitions (`{ _type = "override"; … }`). Partial is meaningful where a gen fold consumes the value.
+- **A nested tree keeps its priorities only when it is itself declared `partialSubmodule`.** A `submodule`
+  declared inside a `partialSubmodule` folds fully, so its own options' priorities are spent: a later
+  `mkDefault` beside it loses to its declared default, carried as data at the default priority.
 
 ### `mergeDefaultOption` — the shape-directed law (INTERIM, exported beside `mergeLeaf`)
 
