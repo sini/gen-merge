@@ -253,6 +253,7 @@ let
           // {
             value = def.value.content;
             orderPriority = def.value.priority;
+            orderStated = true;
           }
         else
           def // { orderPriority = defaultOrderPriority; };
