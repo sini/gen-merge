@@ -3394,11 +3394,6 @@ let
         # `interface.keysExactly`, read inline: every container the walk splits would pay a call
         # (`ci/tests/nesting-keys.nix` `nesting-keys-keys-exactly-census` holds the two equal)
         exact = t.keysExactly or (name == "attrsOf" || name == "listOf" || name == "nullOr");
-        # A threaded foreign split hands its foreign merge `{ file; value; }` alone, so a definition
-        # that merge built carries no address back (`foreignDeclAtRefusal`); every other split is
-        # gen's own and passes the carrier through. Below a foreign split the carrier is told apart by
-        # its `at`, since the foreign merge may write an attrset `file` of its own.
-        foreign = t ? __threadedForeign;
       in
       concatMap (
         e:
@@ -3408,7 +3403,12 @@ let
           (
             addressedDefs (
               map (
-                if foreign then
+                # A threaded foreign split hands its foreign merge `{ file; value; }` alone, so a definition
+                # that merge built carries no address back (`foreignDeclAtRefusal`); every other split is
+                # gen's own and passes the carrier through. Below a foreign split the carrier is told apart
+                # by its `at`, since the foreign merge may write an attrset `file` of its own. Tested inline:
+                # a `let` binding costs every gen-native split a thunk.
+                if t ? __threadedForeign then
                   d:
                   if isAttrs d.file && d.file ? at then
                     {

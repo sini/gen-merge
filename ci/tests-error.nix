@@ -9589,11 +9589,16 @@ in
     # reversing and an attrset-`file`-writing merge, in both module orders; and a foreign `coercedTo`
     # over nixpkgs' and over gen's own `attrsOf`, whose element definitions the wrapper's merge builds.
     # Two threaded levels, with the attrset-`file` merge at the inner and at the outer one.
+    # A stock `attrsWith` with a non-default placeholder, which is not recognised and so threads with no
+    # wrapper and no override; its default-placeholder control is served in `ci/tests`.
     # Catchability and the served controls are `ci/tests/foreign-split-def-record.nix`.
     flake.testsError.foreign-split-def-record =
       let
         fsdr = import ./tests/_fixtures/foreign-split-def-record.nix { inherit genMerge nixpkgsLib; };
-        fsdrRefusal = "^gen-merge: `declAt': option `xs.*': the definition at `xs.*' was built by the foreign merge of `coercedTo', which hands each definition only `\\{ file; value; }' and states no declaring position, so it has no declaration address$";
+        fsdrRefusal = fsdrRefusalOf "coercedTo";
+        fsdrRefusalOf =
+          container:
+          "^gen-merge: `declAt': option `xs.*': the definition at `xs.*' was built by the foreign merge of `${container}', which hands each definition only `\\{ file; value; }' and states no declaring position, so it has no declaration address$";
       in
       {
         test-declat-refused-nest-stock-ab = {
@@ -9713,6 +9718,20 @@ in
           expectedError = {
             type = "ThrownError";
             msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-awuser-stock-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "awuser" "stock" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusalOf "attrsOf";
+          };
+        };
+        test-declat-refused-awuser-stock-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "awuser" "stock" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusalOf "attrsOf";
           };
         };
         test-declat-refused-ncogatt-stock-ab = {
