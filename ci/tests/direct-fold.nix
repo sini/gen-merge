@@ -5,8 +5,9 @@
 # (discharge, priority, order) and through the element's own fold. The refusals through the same
 # branch are pinned on `testsError` (`../tests-error.nix`, group `direct-fold`).
 #
-# Beside them, the leaf fold's early arm (`modules.nix` `ownFold`): a record stating `verify` beside
-# a fold of its own spelled as `merge` keeps that fold.
+# Beside them, two pins on `modules.nix` `ownFold`: a record stating `verify` beside a fold of its
+# own spelled as `merge` keeps that fold. A leaf arm keyed on `verify` ahead of the import call
+# serves these a different value (den-hoag-c7jkw.1, dropped for that reason).
 {
   genMerge,
   nixpkgsLib,
