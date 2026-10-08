@@ -2370,13 +2370,6 @@ let
       type ? mergeDefs && !(type ? _checkWitness && type ? check && type.check != type._checkWitness)
     then
       type.mergeDefs
-    # A gen leaf the boundary completed with no fold of its own, under the `check` it published, is a
-    # record `interface.importedFold` answers `null` for, and its `verify` and witness pair say so
-    # without the call. A `verify` beside a `merge` and no witness is not one: it keeps its fold.
-    else if
-      type ? verify && type ? _checkWitness && type ? check && type.check == type._checkWitness
-    then
-      null
     else
       interface.importedFold type;
 
