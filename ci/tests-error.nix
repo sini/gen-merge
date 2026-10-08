@@ -9618,6 +9618,7 @@ in
     # nest chain and a step-free wrapper over a lazy `attrsWith` (`wlazy`), under the stock, a
     # reversing and an attrset-`file`-writing merge, in both module orders; and a foreign `coercedTo`
     # over nixpkgs' and over gen's own `attrsOf`, whose element definitions the wrapper's merge builds.
+    # Two threaded levels, with the attrset-`file` merge at the inner and at the outer one.
     # Catchability and the served controls are `ci/tests/foreign-split-def-record.nix`.
     flake.testsError.foreign-split-def-record =
       let
@@ -9711,6 +9712,34 @@ in
         };
         test-declat-refused-ncoatt-stock-ab = {
           expr = builtins.deepSeq (fsdr.addresses "ncoatt" "stock" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest2i-fileset-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "nest2i" "fileset" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest2i-fileset-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "nest2i" "fileset" "at" "ba") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest2o-fileset-ab = {
+          expr = builtins.deepSeq (fsdr.addresses "nest2o" "fileset" "at" "ab") null;
+          expectedError = {
+            type = "ThrownError";
+            msg = fsdrRefusal;
+          };
+        };
+        test-declat-refused-nest2o-fileset-ba = {
+          expr = builtins.deepSeq (fsdr.addresses "nest2o" "fileset" "at" "ba") null;
           expectedError = {
             type = "ThrownError";
             msg = fsdrRefusal;

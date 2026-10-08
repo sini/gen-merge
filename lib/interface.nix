@@ -2992,11 +2992,12 @@ let
         # result keeps the eager walk, whose sites are found wherever the merge put them
         let
           # the foreign merge is handed nixpkgs' own definition records, `{ file; value; }`
-          # (`plainDefs`): the walk's carriers stay on the gen side, in `defs`
+          # (`plainDefs`): the walk's carriers stay on the gen side, in `defs`; a carrier is told apart
+          # by its `at`, as in `keyWalk`, since a foreign merge may write an attrset `file` of its own
           captured = (importedFold capture) loc (
             map (
               d:
-              if isAttrs d.file then
+              if isAttrs d.file && d.file ? at then
                 {
                   inherit (d.file) file;
                   inherit (d) value;
