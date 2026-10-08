@@ -799,9 +799,8 @@ in
           "b"
         ];
         # a met record (`y` rejected by its wrapped operand) re-completed by `mkOptionType`: the completion
-        # re-ties its witness to the met check and carries `__meetJoin` across, so the meet owes it nothing
-        # and it is not the record `meetOf` built. Read as its join, the met check would be enforced by
-        # nobody, in one order; read as itself it refuses in both.
+        # keeps its witnessed check (den-hoag-59gnz C1), so it is read as its join and the meet owes it the
+        # met check, in every order.
         recompleted = gm.mkOptionType (
           (gm.evalModuleTree { } [
             {
@@ -994,10 +993,12 @@ in
               p = rej;
               bad = rej;
             };
+            # re-completion keeps the met record's witnessed check (den-hoag-59gnz C1), so the meet owes
+            # it and every order reads the law's verdict
             recompleted = {
-              x = ref;
-              y = ref;
-              z = ref;
+              x = acc;
+              y = rej;
+              z = rej;
             };
           };
       };
@@ -1156,7 +1157,8 @@ in
               verifyCopy = row (sh "e" 0 true) (sh "e" 0 true);
               met = row (sh "g" 1 true) (sh "g" 0 false);
               metOfMet = row (sh "g" 2 true) (sh "g" 0 false);
-              recompletedMet = row (sh "k" 1 false) (sh "k" 1 false);
+              # re-completed, it keeps its witnessed check (den-hoag-59gnz C1): a met record read as its join
+              recompletedMet = row (sh "k" 1 true) (sh "k" 0 false);
             };
         };
       };
