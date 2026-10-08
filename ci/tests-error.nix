@@ -10411,5 +10411,53 @@ in
           };
         };
       };
+    # ★ A STATED EVALUATOR DIVERGENCE (README "Known byte-mode boundaries", the `submodule` bullet).
+    # `mkSubmodule`'s sealed `modules` component is the caller's module list, so one function reached
+    # through two slots of an option type inside it splits `==`: refused on Nix and Determinate, `true`
+    # on Lix. The split cell holds the verdict to the RUNNING evaluator's own `==` on a literal two-slot
+    # shape, so it reds on any evaluator whose `typeEq` stops answering as its `==` does; the partner,
+    # one bound function in two constructions, is the verdict a closure here would move, `true` ×3.
+    flake.testsError.submodule-evaluator-divergence =
+      let
+        verdict =
+          v:
+          let
+            o = builtins.tryEval (builtins.deepSeq v v);
+          in
+          if o.success then o.value else "REFUSED";
+        teq = a: b: verdict (genTypes.typeEq a b);
+        ownEq =
+          x: y:
+          let
+            o = builtins.tryEval (x == y);
+          in
+          o.success && o.value;
+        sl = {
+          f = x: x;
+        };
+        f = sl.f;
+        twoSlots = if ownEq { c = sl.f; } { c = sl.f; } then true else "REFUSED";
+        sub = m: t.submodule { options.a = gm.mkOption { type = m; }; };
+      in
+      {
+        test-a-function-option-type-by-selection-answers-as-the-evaluator-s-own-identity = {
+          expr = teq (sub sl.f) (sub sl.f) == twoSlots;
+          expected = true;
+        };
+        test-a-bound-function-option-type-is-one-submodule = {
+          expr = {
+            bound = teq (sub f) (sub f);
+            self =
+              let
+                x = sub f;
+              in
+              teq x x;
+          };
+          expected = {
+            bound = true;
+            self = true;
+          };
+        };
+      };
   };
 }
