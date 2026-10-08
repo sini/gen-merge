@@ -1868,11 +1868,16 @@ is refused. One that only drops a key's tree serves nixpkgs' value; one that dup
 too, except below a node whose own record is a level, where it is refused; and one whose result is
 not an attribute set keeps the eager walk. A node's regime is trusted from its record's name the same way: a
 stock-named `attrsOf`, `listOf` or `nullOr` whose `merge` was overridden to a lazy one is keyed
-exactly. **Not reached, and stated as a shortfall:** a `listOf` step is not a level (its keys are
-positions its functor does not name), so a lazy step reached through it still aborts with a sibling
-reading the read tree, where nixpkgs serves: `uniq (listOf (lazyAttrsOf e))` with a key below the
-list `mkIf` on the read tree, or `uniq (listOf (attrsOf e))` with a second element's key `mkIf` on
-it.
+exactly. **A `listOf` step is a level where its chain is stock.** Its positions, the
+`[definition n-entry m]` segments nixpkgs' merge names, are keyed from the definitions it folds,
+which is sound only where stock code folds them, and no probe of a merge can tell that. So the level
+stands only where every record on the chain, its wrappers above the step and every record below it
+down to the gen element, is bound where its own functor's fresh build binds it; nothing compares
+functions. **Not reached, and stated as a shortfall:** a list on a chain holding an overridden
+record, an `addCheck`, or any `unique` (whose merge a hand-built type copying its functor binds at
+the same position), and a list below a `coercedTo` that coerces its definitions, keep the eager walk
+and abort with a sibling reading the read tree, where nixpkgs serves: `uniq (listOf (lazyAttrsOf e))` with a key below the list `mkIf` on the read tree, or `uniq (listOf (attrsOf e))` with a second
+element's key `mkIf` on it.
 
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared
