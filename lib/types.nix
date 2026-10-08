@@ -762,8 +762,10 @@ let
   # container, `[ d i ]` for `listOf`, `[ ]` for `nullOr` and `either`), the `loc` its element is
   # folded at, and the element type. The container's own value fold reads it, and so does the
   # nested-tree key walk, so the positions a walk keys and the positions a fold reads are one
-  # binding's answer, never two copies that can drift. Each element folds through the engine's
-  # CALLED fold, as every container's did before the split existed.
+  # binding's answer, never two copies that can drift. Where the walk has already applied it, the
+  # fold reads the walk's records instead of applying it again: an `attrsOf` of nested trees at an
+  # accessor's root (`attrsOfWith`). Each element folds through the engine's CALLED fold, as every
+  # container's did before the split existed.
   foldElement = e: mergeDefs e.loc e.type e.defs;
   # The same element through the engine's THREADED twin (den-hoag-n6dh7 item 5): the evaluation's
   # accessor `ev` goes with it, its position extended by the element's `step`, so the tree a nesting
@@ -1038,14 +1040,14 @@ let
           mergeDefs = {
             __functor = _: called;
             threaded =
-              ev:
-              refusingOutside "submodule" admits (
-                loc: defs:
+              ev: loc: defs:
+              if all (d: admits d.value) defs then
                 (ev.child {
                   inherit (ev) position;
                   inherit nests loc defs;
                 }).config
-              );
+              else
+                refusingOutside "submodule" admits null loc defs;
           };
         }
     );
@@ -1205,20 +1207,56 @@ let
       # under the bridge each element folds inline, one root evaluation per nested tree.
       marks = tyName == "lazyAttrsOf" && !(interface.isNesting element);
       thread = if tyName == "attrsOf" then exactThread element else threadElement;
+      # THE DIRECT FOLD (den-hoag-c7jkw.1). At an accessor's root, the key walk has already applied
+      # the split of an `attrsOf` whose element nests directly, and keeps one record per element:
+      # its `key` (`[ k ]`), its `loc`, and its `defs` after the passes the engine's element fold
+      # would re-run. The fold reads those records (`ev.child { positions = true; }`) and hands each
+      # to the element's own threaded fold, whose door tests the same definitions. Where every
+      # definition is `{ }` there is no element and nothing is read, as the walk would mint nothing.
+      # An element stating `verify` or a rewritten `check` folds by the engine's element path, which
+      # reads them, and so does every other position, accessor and container. The choice is made
+      # here, between two lambdas, so the other folds pay nothing for it.
       threaded =
-        ev:
-        refusingOutside tyName admits (
-          loc: defs:
-          let
-            ev' = if marks && ev.containerNodes then ev // { under = true; } else ev;
-          in
-          listToAttrs (
-            map (e: {
-              name = head e.step;
-              value = thread ev' e;
-            }) (split loc defs)
+        if
+          tyName == "attrsOf"
+          && interface.isNesting element
+          && !(element ? verify)
+          && !(element ? _checkWitness && element ? check && element.check != element._checkWitness)
+        then
+          ev:
+          refusingOutside tyName admits (
+            loc: defs:
+            if !(ev.containerNodes or false) || ev.position != [ ] then
+              listToAttrs (
+                map (e: {
+                  name = head e.step;
+                  value = thread ev e;
+                }) (split loc defs)
+              )
+            else if all (d: d.value == { }) defs then
+              { }
+            else
+              listToAttrs (
+                map (r: {
+                  name = head r.key;
+                  value = element.mergeDefs.threaded (ev // { position = r.key; }) r.loc r.defs;
+                }) (builtins.attrValues (ev.child { positions = true; }))
+              )
           )
-        );
+        else
+          ev:
+          refusingOutside tyName admits (
+            loc: defs:
+            let
+              ev' = if marks && ev.containerNodes then ev // { under = true; } else ev;
+            in
+            listToAttrs (
+              map (e: {
+                name = head e.step;
+                value = thread ev' e;
+              }) (split loc defs)
+            )
+          );
       # The CALLED fold, selected once when the type is built (below).
       called = refusingOutside tyName admits (
         if tyName == "attrsOf" then

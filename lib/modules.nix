@@ -229,7 +229,9 @@ let
   # the engine's discharge has already done. The refusal list is built only on refusal. The
   # quantifier is spelled inline rather than read from `admitsAll`: this door sits on every
   # structural fold, the submodule fold among them, and the call through the binding is a measured
-  # allocation on the hub perf-bench's ratcheted `deepSubmodule` row (den-hoag-mda6f).
+  # allocation on the hub perf-bench's ratcheted `deepSubmodule` row (den-hoag-mda6f). The
+  # submodule's threaded fold spells the quantifier the same way and reaches this binding only to
+  # refuse (`fold` is then never read), so its text is this throw's (den-hoag-c7jkw.1).
   refusingOutside =
     tyName: inDomain: fold: loc: defs:
     if all (d: inDomain d.value) defs then
@@ -2368,6 +2370,13 @@ let
       type ? mergeDefs && !(type ? _checkWitness && type ? check && type.check != type._checkWitness)
     then
       type.mergeDefs
+    # A gen leaf the boundary completed with no fold of its own, under the `check` it published, is a
+    # record `interface.importedFold` answers `null` for, and its `verify` and witness pair say so
+    # without the call. A `verify` beside a `merge` and no witness is not one: it keeps its fold.
+    else if
+      type ? verify && type ? _checkWitness && type ? check && type.check == type._checkWitness
+    then
+      null
     else
       interface.importedFold type;
 
@@ -3081,11 +3090,13 @@ let
   # v8): a nested tree is read through the reading node's own record, as its `nested` child at the
   # group and the fold's position, never through an identifier.
   # `host`: the reading node's `reader` and its `result`, whose `_nested.positions` are the walk's
-  # own records by group, from which its `nested` children are minted. The accessor answers two
-  # questions at a position: its child (`child { position; }`), and, asked with `minted`, WHAT the
-  # walk minted there (`containerNodeAt`), read off those records and never re-derived from a type:
-  # `true` a container node, `false` another child, `null` nothing. One field answers both, so an
-  # accessor record costs nothing for the second.
+  # own records by group, from which its `nested` children are minted. The accessor answers three
+  # questions: its child at a position (`child { position; }`); asked with `minted`, WHAT the walk
+  # minted there (`containerNodeAt`), read off those records and never re-derived from a type:
+  # `true` a container node, `false` another child, `null` nothing; and, asked with `positions`, the
+  # group's records themselves, which an `attrsOf` of nested trees at the root folds instead of
+  # splitting its definitions again (`types.nix` `attrsOfWith`, den-hoag-c7jkw.1). One field answers
+  # all three, so an accessor record costs nothing for the second or the third.
   evAt = host: group: {
     position = [ ];
     containerNodes = true;
@@ -3096,6 +3107,8 @@ let
           r = host.result._nested.positions.${group}.${builtins.toJSON site.position} or null;
         in
         if r == null then null else r.mode == "container"
+      else if site ? positions then
+        host.result._nested.positions.${group}
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
