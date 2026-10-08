@@ -194,9 +194,9 @@ in
         eitherOrder = t.typeEq (t.either t.int t.str) (t.either t.str t.int);
         args = t.typeEq ((t.submodule { }).withArgs { x = 1; }) ((t.submodule { }).withArgs { x = 2; });
         deriveArg = t.typeEq (spoolOf t.int) (spoolOf t.str);
-        genTypesListOf = t.typeEq (t.listOf t.int) (genTypes.listOf genTypes.int);
-        genTypesAttrsOf = t.typeEq (t.attrsOf t.int) (genTypes.attrsOf genTypes.int);
-        genTypesOption = t.typeEq (t.nullOr t.int) (genTypes.option genTypes.int);
+        genTypesListOf = t.typeEq (t.listOf t.int) (genTypes.checkedListOf genTypes.int);
+        genTypesAttrsOf = t.typeEq (t.attrsOf t.int) (genTypes.checkedAttrsOf genTypes.int);
+        genTypesOption = t.typeEq (t.nullOr t.int) (genTypes.checkedOption genTypes.int);
       };
       expected = {
         element = false;

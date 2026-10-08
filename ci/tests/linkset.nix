@@ -12,6 +12,7 @@
 # not a precondition.
 {
   genLinkset,
+  genMerge,
   genMergeWith,
   genTypes,
   nixpkgsLib,
@@ -420,6 +421,47 @@ in
     expected = {
       shipped = [ ];
       plantedDrift = [ "listOf" ];
+    };
+  };
+
+  # den-hoag-7gp66 O4 (R10 rule 3): gen-types publishes its checkers as `checkedListOf`,
+  # `checkedAttrsOf` and `checkedOption`, which reach `types` through the union, and keeps the old
+  # names as refused-by-name tombstones, so the three entries still decide an overlap: this
+  # library's option type answers at each, and the shadowed value is the tombstone.
+  flake.tests.linkset.test-checked-composites-reach-the-union = {
+    expr = {
+      checked = map (n: genMerge.types ? ${n}) [
+        "checkedListOf"
+        "checkedAttrsOf"
+        "checkedOption"
+      ];
+      mergeMeaning = map (n: ok (builtins.typeOf genMerge.types.${n})) [
+        "listOf"
+        "attrsOf"
+        "option"
+      ];
+      shadowedRefuses = map (n: refuses (builtins.typeOf genTypes.${n})) [
+        "listOf"
+        "attrsOf"
+        "option"
+      ];
+    };
+    expected = {
+      checked = [
+        true
+        true
+        true
+      ];
+      mergeMeaning = [
+        true
+        true
+        true
+      ];
+      shadowedRefuses = [
+        true
+        true
+        true
+      ];
     };
   };
 }
