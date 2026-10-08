@@ -2991,7 +2991,20 @@ let
         # on a level, and only where the merge returned the attrset its functors state; any other
         # result keeps the eager walk, whose sites are found wherever the merge put them
         let
-          captured = (importedFold capture) loc defs;
+          # the foreign merge is handed nixpkgs' own definition records, `{ file; value; }`
+          # (`plainDefs`): the walk's carriers stay on the gen side, in `defs`
+          captured = (importedFold capture) loc (
+            map (
+              d:
+              if isAttrs d.file then
+                {
+                  inherit (d.file) file;
+                  inherit (d) value;
+                }
+              else
+                d
+            ) defs
+          );
         in
         splitAt lvT null loc captured loc defs captured;
       mergeDefs = {

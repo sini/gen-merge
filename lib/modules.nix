@@ -3180,6 +3180,14 @@ let
   stepContainerInvariantRefusal =
     group: under: t:
     "gen-merge: nta: option `${showOption group}': invariant: the key walk reached `${t.name or "<container>"}' of nested trees below a step under `${under}' as no container node, where `containerAt' makes it one; the walk and `containerAt' disagree. This is a gen-merge defect";
+  # A definition a FOREIGN merge built (the threaded split's site, below a nixpkgs container's own
+  # merge) has no declaration address: the merge may reorder, filter, merge or construct its
+  # definitions, and hands each only nixpkgs' `{ file; value; }`, so no declaring position survives
+  # it (ADR-0034: what has no structural identity gets none, and a named refusal where one is
+  # demanded). Read only by a nesting type that declares `nests.declAt`.
+  foreignDeclAtRefusal =
+    group: loc: t:
+    "gen-merge: `declAt': option `${showOption group}': the definition at `${showOption loc}' was built by the foreign merge of `${t.name or "<container>"}', which hands each definition only `{ file; value; }' and states no declaring position, so it has no declaration address";
   unionStepContainerInvariantRefusal =
     group: under: u: pos: t:
     "gen-merge: nta: option `${showOption group}': invariant: the key walk reached `${u.name or "<union>"}' at position ${builtins.toJSON pos}, whose member `${t.name or "<container>"}' holds nested trees, below a step under `${under}' as no container node, where `containerAt' makes it one; the walk and `containerAt' disagree. This is a gen-merge defect";
@@ -3403,6 +3411,11 @@ let
         # `interface.keysExactly`, read inline: every container the walk splits would pay a call
         # (`ci/tests/nesting-keys.nix` `nesting-keys-keys-exactly-census` holds the two equal)
         exact = t.keysExactly or (name == "attrsOf" || name == "listOf" || name == "nullOr");
+        # A threaded foreign split hands its foreign merge `{ file; value; }` alone, so a definition
+        # that merge built carries no address back (`foreignDeclAtRefusal`); every other split is
+        # gen's own and passes the carrier through. Below a foreign split the carrier is told apart by
+        # its `at`, since the foreign merge may write an attrset `file` of its own.
+        foreign = t ? __threadedForeign;
       in
       concatMap (
         e:
@@ -3411,11 +3424,27 @@ let
           e.loc
           (
             addressedDefs (
-              map (d: {
-                inherit (d.file) file;
-                inherit (d) value;
-                at = d.file.at ++ (if name == "listOf" then [ (prelude.last e.step) ] else e.step);
-              }) e.defs
+              map (
+                if foreign then
+                  d:
+                  if isAttrs d.file && d.file ? at then
+                    {
+                      inherit (d.file) file;
+                      inherit (d) value;
+                      at = d.file.at ++ (if name == "listOf" then [ (prelude.last e.step) ] else e.step);
+                    }
+                  else
+                    {
+                      inherit (d) file value;
+                      at = throw (foreignDeclAtRefusal group e.loc t);
+                    }
+                else
+                  d: {
+                    inherit (d.file) file;
+                    inherit (d) value;
+                    at = d.file.at ++ (if name == "listOf" then [ (prelude.last e.step) ] else e.step);
+                  }
+              ) e.defs
             )
           )
       ) (t.split loc (map (d: d // { file = d; }) defs));
