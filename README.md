@@ -949,7 +949,10 @@ linkset's named refusal when demanded, and every other name still publishes, so 
 `{ inherit (lib.types) str nullOr; }` publishes `str` and `listOf` and refuses at `nullOr`. nixpkgs'
 entire `lib.types`, which carries no protocol, is refused whole at construction. The allowlist is gen-merge's own declaration, so an entry is stale
 only when it names nothing gen-merge exports; an entry naming a name the vocabulary lacks is
-inapplicable, and whether the shipped gen-types still collides at each entry is a CI cell.
+inapplicable, and whether the shipped gen-types still collides at each entry is a CI cell. The
+allowlist's own hygiene (a stale, groundless or byte-copied entry) is a CI cell too and not a load
+check, since the allowlist and the strategies it is judged against are both gen-merge's constants:
+`linkset.test-the-shipped-allowlist-is-hygienic`.
 
 ## The nixpkgs `optionType` protocol
 

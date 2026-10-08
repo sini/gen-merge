@@ -74,8 +74,56 @@ let
       clash = filter (p: entries.${p.a}.ground == entries.${p.b}.ground) pairs;
     in
     if clash == [ ] then null else prelude.head clash;
+  # The declaration's own checks, a function of the right side and its allowlist alone. `mergeExports`
+  # runs them before it links; the published `types` link runs them in the suite instead
+  # (ci/tests/linkset.nix), because both of its arguments are this library's constants.
+  hygiene =
+    { right, allow }:
+    let
+      groundless = filter (
+        n: !(allow.${n} ? ground) || !(isString allow.${n}.ground) || allow.${n}.ground == ""
+      ) (attrNames allow);
+      copied = duplicateGround allow;
+      # An allowlist entry naming a name the RIGHT side does not export is a stale exemption — it
+      # reads as a decided overlap and can decide nothing, whatever the left supplies. Named rather
+      # than ignored. It is judged against `right` alone because the allowlist is right's claim: an
+      # entry naming a name the LEFT lacks is inapplicable to this link (no overlap there, nothing
+      # decided, nothing shadowed), not stale, and refusing on it would judge the left for the right's
+      # hygiene. Whether a particular left still collides at each entry is a fact about that pair,
+      # checked by whoever pins the pair.
+      stale = filter (n: !(right.exports ? ${n})) (attrNames allow);
+    in
+    if groundless != [ ] then
+      refuseGroundless (prelude.head groundless)
+    else if copied != null then
+      refuseCopiedGround copied.a copied.b
+    else if stale != [ ] then
+      throw (
+        "linkset: allowlist entry '${prelude.head stale}' names no export of '${right.library}', "
+        + "the side the allowlist decides in favour of. A stale exemption reads as a decided overlap "
+        + "and decides nothing; remove it or state the collision it is for."
+      )
+    else
+      true;
+  # An undecided name is BOUND TO ITS REFUSAL rather than taking the namespace with it, decided per
+  # name and lazily: the spine is the two export sets' own, and a name's collision is read when it is.
+  link =
+    {
+      left,
+      right,
+      allow,
+    }:
+    left.exports
+    // builtins.mapAttrs (
+      n: v:
+      if left.exports ? ${n} && !(allow ? ${n}) then
+        refuseUndeclared left.library right.library [ n ]
+      else
+        v
+    ) right.exports;
 in
 {
+  inherit hygiene link;
   # mergeExports — Cardelli's linkset merge, gated on declared disjointness.
   #
   #   left  : { library; exports; }   the environment that LOSES an admitted collision
@@ -107,23 +155,7 @@ in
     }:
     let
       collisions = filter (n: right.exports ? ${n}) (attrNames left.exports);
-      undeclared = filter (n: !(allow ? ${n})) collisions;
       declared = filter (n: allow ? ${n}) collisions;
-
-      groundless = filter (
-        n: !(allow.${n} ? ground) || !(isString allow.${n}.ground) || allow.${n}.ground == ""
-      ) (attrNames allow);
-
-      copied = duplicateGround allow;
-
-      # An allowlist entry naming a name the RIGHT side does not export is a stale exemption — it
-      # reads as a decided overlap and can decide nothing, whatever the left supplies. Named rather
-      # than ignored. It is judged against `right` alone because the allowlist is right's claim: an
-      # entry naming a name the LEFT lacks is inapplicable to this link (no overlap there, nothing
-      # decided, nothing shadowed), not stale, and refusing on it would judge the left for the right's
-      # hygiene. Whether a particular left still collides at each entry is a fact about that pair,
-      # checked by whoever pins the pair.
-      stale = filter (n: !(right.exports ? ${n})) (attrNames allow);
 
       admitted = prelude.listToAttrs (
         map (n: {
@@ -139,32 +171,11 @@ in
           };
         }) declared
       );
-
-      # An undecided name is BOUND TO ITS REFUSAL rather than taking the namespace with it: the
-      # decision is owed per name, so the merge is of the decided domain and every undecided name
-      # still answers, by name, when demanded.
-      refusedAt = prelude.listToAttrs (
-        map (n: {
-          name = n;
-          value = refuseUndeclared left.library right.library [ n ];
-        }) undeclared
-      );
     in
-    if groundless != [ ] then
-      refuseGroundless (prelude.head groundless)
-    else if copied != null then
-      refuseCopiedGround copied.a copied.b
-    else if stale != [ ] then
-      throw (
-        "linkset: allowlist entry '${prelude.head stale}' names no export of '${right.library}', "
-        + "the side the allowlist decides in favour of. A stale exemption reads as a decided overlap "
-        + "and decides nothing; remove it or state the collision it is for."
-      )
-    else
-      {
-        exports = left.exports // right.exports // refusedAt;
-        # The admitted shadows, as data a consumer can read — which is what makes the declaration
-        # checkable from outside rather than a comment inside this file.
-        inherit admitted;
-      };
+    builtins.seq (hygiene { inherit right allow; }) {
+      exports = link { inherit left right allow; };
+      # The admitted shadows, as data a consumer can read — which is what makes the declaration
+      # checkable from outside rather than a comment inside this file.
+      inherit admitted;
+    };
 }

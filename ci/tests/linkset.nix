@@ -13,6 +13,7 @@
 {
   genLinkset,
   genMerge,
+  prelude,
   genMergeWith,
   genTypes,
   nixpkgsLib,
@@ -422,6 +423,24 @@ in
       shipped = [ ];
       plantedDrift = [ "listOf" ];
     };
+  };
+
+  # ALLOWLIST HYGIENE, over the shipped allowlist and the shipped right side (den-hoag-9lg69). The
+  # `types` link no longer runs `hygiene` at load, so a groundless, byte-copied or stale entry reds
+  # here. The right side's names are read with `core` and `types` bound to throws: they are this
+  # library's constants, and no supplied vocabulary can make an entry stale.
+  flake.tests.linkset.test-the-shipped-allowlist-is-hygienic = {
+    expr = genLinkset.hygiene {
+      right = import ../../lib/types-link.nix {
+        strategies = import ../../lib/types.nix {
+          inherit prelude;
+          core = throw "linkset hygiene: the right side's names were read through `core`";
+          types = throw "linkset hygiene: the right side's names were read through `types`";
+        };
+      };
+      allow = allowlist;
+    };
+    expected = true;
   };
 
   # den-hoag-7gp66 O4 (R10 rule 3): gen-types publishes its checkers as `checkedListOf`,
