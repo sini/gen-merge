@@ -9542,5 +9542,46 @@ in
           expectedError = refusal "`partialSubmodule' and `submodule'";
         };
       };
+    # den-hoag-c7jkw.3 / den-hoag-83wmp — the check passes keep every refusal. The value cells are
+    # ./tests/check-pass-sharing.nix.
+    flake.testsError.check-pass-sharing = {
+      # The orphan refusal skips its grouping only where every key of every definition is declared,
+      # so an undeclared key beside a declared one in the same definition still refuses. A test that
+      # asked whether ANY key were declared would admit this set silently.
+      test-an-undeclared-key-beside-a-declared-one-refuses = {
+        expr =
+          (gm.evalModuleTree { } [
+            {
+              _file = "/real/D.nix";
+              options.g.h = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+            }
+            {
+              _file = "/real/F.nix";
+              config.g.h = 1;
+              config.g.zz = 2;
+            }
+          ]).config.g.h;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^The option `g\\.zz' does not exist\\. Definition values:\n- In `/real/F\\.nix': 2\n\nDid you mean `g\\.h'\\?$";
+        };
+      };
+      # Two throwing declarations: the misuse walk copies every group per key, so the first key in
+      # key order across the modules refuses (`a`, declared second), not the first module's.
+      test-two-throwing-declarations-refuse-in-key-order = {
+        expr =
+          (gm.evalModuleTree { } [
+            { options.b = throw "B"; }
+            { options.a = throw "A"; }
+          ]).config.a;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^A$";
+        };
+      };
+    };
   };
 }

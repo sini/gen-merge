@@ -359,21 +359,19 @@ let
   # Walks a module's declaration subtree, refusing BY NAME the instant it meets a misplaced tag at
   # ANY depth. Stops at a genuine leaf — an option descriptor's own internals (`type`, `default`, …)
   # are not a declaration tree — and otherwise recurses exactly where `isOptLeaf`'s group arm would,
-  # so the per-key `mapAttrs` thunks keep today's laziness.
+  # so the per-key `mapAttrs` thunks keep today's laziness. A leaf child is returned without its
+  # location, which only a refusal below it reads, and the tag is re-derived on the refusing branch
+  # rather than bound on every group node.
   validateDeclSubtree =
     loc: v:
     if isOptLeaf v then
       v
+    else if declPlaneMisuseTag v != null then
+      throw (declPlaneMisuseMessage loc v (declPlaneMisuseTag v))
+    else if isAttrs v then
+      mapAttrs (k: c: if isOptLeaf c then c else validateDeclSubtree (loc ++ [ k ]) c) v
     else
-      let
-        tag = declPlaneMisuseTag v;
-      in
-      if tag != null then
-        throw (declPlaneMisuseMessage loc v tag)
-      else if isAttrs v then
-        mapAttrs (k: validateDeclSubtree (loc ++ [ k ])) v
-      else
-        v;
+      v;
 
   # ── fixed-input core marker (design spec §2.5) ────────────────────────────
   # A def value that CARRIES an already-merged subtree: `mkCoreValue digest values` tags
@@ -2445,7 +2443,8 @@ let
       ) rawDefs;
       r = filterOverridesRich discharged;
       winners = r.winners;
-      sorted = if any (w: isOrderMarker w.value) winners then sortProperties winners else winners;
+      sorted =
+        if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
       typeDefs = map (w: { inherit (w) file value; }) sorted;
       fold = ownFold type;
       result =
@@ -2508,8 +2507,11 @@ let
       winners = filterOverrides discharged;
       # The order pass, gated exactly as nixpkgs gates it: the overwhelming majority of locs carry no
       # order marker, and for them the sort is the identity permutation, so the scan buys the fast
-      # path its skip. Everything after this point consumes `sorted`, never `winners`.
-      sorted = if any (w: isOrderMarker w.value) winners then sortProperties winners else winners;
+      # path its skip. Everything after this point consumes `sorted`, never `winners`. The test is
+      # `isOrderMarker`'s body inline, at all three twins: `or null` answers a non-attrset, and the
+      # call's argument thunk per winner is not paid.
+      sorted =
+        if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
       typeDefs = map (w: { inherit (w) file value; }) sorted;
       fold = ownFold type;
       result =
@@ -2553,8 +2555,8 @@ let
   # structural `.merge` / leaf `verify` / `apply` live on the value path (`checked`), never reached by a
   # prov read. So provenance forces WHO-defined-what to WHNF, never the resolved value. (Weaker than
   # nixpkgs `definitionsWithLocations`, which forces nothing — byte-mode discharges eagerly for priority.)
-  # `winners` alone reads further: the order pass (`sorted`) asks `isOrderMarker` of each winning
-  # VALUE, so it forces the values to WHNF, and a `default = throw …` fires on a `.winners` read
+  # `winners` alone reads further: the order pass (`sorted`) tests each winning VALUE for the order
+  # marker, so it forces the values to WHNF, and a `default = throw …` fires on a `.winners` read
   # where `defs`/`priority`/`defaulted` leave it unforced (den-hoag-zakjg U1).
   #   • defs      — every contributing def post property-discharge, pre priority pass (a property tag
   #                 keeps its originating file; a false-`mkIf` sub-def has already dropped in discharge).
@@ -2590,7 +2592,8 @@ let
       # `prov.priority` below deliberately keeps reading `discharged`/`filterOverridesRich`, i.e. the
       # OVERRIDE axis upstream of this sort: the record's `priority` field means the override number
       # the filter selected, and the order axis must not be allowed to answer that question.
-      sorted = if any (w: isOrderMarker w.value) winners then sortProperties winners else winners;
+      sorted =
+        if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
       typeDefs = map (w: { inherit (w) file value; }) sorted;
       # The fold dispatch, exactly as the value path reads it above — the twin stays parallel —
       # except where a report is carried and the type's fold states one (a nesting seam's
@@ -4008,97 +4011,11 @@ let
       specialArgs ? { },
       prefix ? [ ],
     }:
-    let
-      inadmissible =
-        subject: demand:
-        throw "gen-merge: a module ${demand} while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output (nothing consumes its own stratum's in-flight output, so the option key set is unconditional). Declare the option unconditionally and gate its `config' instead${
-          if subject == "options" then
-            ""
-          else
-            ", or compose the modules before evaluation rather than through `imports = [ config.… ]'"
-        }";
-
-      # A caller key among `config`/`options`/`prefix` would be written over by the right operand and
-      # reach no module, so it refuses by name (ADR-0025 item 1), as at `baseArgs`. The guard is
-      # inline and the key list is built only on the refusing branch: a new binding on this path
-      # costs a constant thunk per nested evaluation, which the hub perf-bench prices.
-      declArgs =
-        (
-          if !(specialArgs ? config || specialArgs ? options || specialArgs ? prefix) then
-            specialArgs
-          else
-            let
-              stated = filter (k: specialArgs ? ${k}) [
-                "config"
-                "options"
-                "prefix"
-              ];
-            in
-            throw (
-              "gen-merge: `specialArgs' cannot supply the base module argument"
-              + (if length stated == 1 then " " else "s ")
-              + concatStringsSep ", " (map (k: "`${k}'") stated)
-              + "; the engine injects its own value there, so the caller's would be discarded rather than used"
-            )
-        )
-        // (
-          if positioned then
-            {
-              config = inadmissible "config" "read `config'";
-              options = inadmissible "options" "read `options'";
-              inherit prefix;
-              name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
-            }
-          else
-            {
-              config = inadmissible "config" "read `config'";
-              options = inadmissible "options" "read `options'";
-              inherit prefix;
-            }
-        );
-
-      # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
-      # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
-      # it refuses with the same reason rather than resolving to a different one.
-      #
-      # `declArgs` is the RIGHT operand for `callM`'s reason: a formal it holds (specialArgs, the
-      # refusing `config`/`options`, `prefix`) binds `declArgs`' OWN attribute, so every declaring
-      # module sees one value slot, and a `withArgs` relation comparing what two of them pass
-      # decides on that slot (`slotsDiffer`). The swap changes cell identity only, never a value.
-      # Per key k: a formal in `declArgs` has `extra.k` = `declArgs.k`; a formal not in `declArgs`
-      # has the inadmissible refusal in `extra` and nothing in `declArgs`; a key in `declArgs`
-      # that is not a formal is absent from `extra`. Both operand orders hold one value per key.
-      callD =
-        m:
-        if builtins.isPath m then
-          callD (import m)
-        else if isFunction m || m ? __functor && isFunction m.__functor && isFunction (m.__functor m) then
-          let
-            formals =
-              if m ? __functor then m.__functionArgs or (functionArgs (m.__functor m)) else functionArgs m;
-            extra = mapAttrs (
-              name: _: declArgs.${name} or (inadmissible "config" "read the module argument `${name}'")
-            ) formals;
-          in
-          # `callM`'s elision: every formal in `declArgs` means `extra // declArgs` IS `declArgs`.
-          if all (name: declArgs ? ${name}) (attrNames formals) then m declArgs else m (extra // declArgs)
-        else if isAttrs m then
-          if m ? __functor then callD (m.__functor m) else m
-        else if isPathString m then
-          callD (import m)
-        else
-          notAModule m;
-
-      flat = moduleClosure callD modules;
-      declEntries = prelude.imap0 (i: e: {
-        idx = i;
-        file = e._file;
-        options = optionsOf (moduleSyntaxChecked e).content;
-      }) flat;
-      sitesAt = declaringSitesAt (length prefix) declEntries;
-    in
-    # A closed set (see THE DECLARATION GUARD) publishes `flat` and `validated` as well, for the
-    # value stratum to share; `isList` because `declaredOptions` passes the caller's raw field.
+    # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
+    # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
+    # `declArgs`, `inadmissible` and `callD`; it publishes `flat` and `validated` as well, for the
+    # value stratum to share. `isList` because `declaredOptions` passes the caller's raw field. The
+    # branch spells `declEntries` a second time: a shared top-level helper costs a load thunk.
     if
       isList modules
       && all isAttrs modules
@@ -4107,6 +4024,13 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
+        flat = moduleClosure (m: m) modules;
+        declEntries = prelude.imap0 (i: e: {
+          idx = i;
+          file = e._file;
+          options = optionsOf (moduleSyntaxChecked e).content;
+        }) flat;
+        sitesAt = declaringSitesAt (length prefix) declEntries;
         validated = map (e: validateDeclSubtree prefix e.options) declEntries;
       in
       {
@@ -4119,6 +4043,95 @@ let
         options = mergeOptionDeclTrees (onRedeclare sitesAt) sitesAt prefix validated;
       }
     else
+      let
+        inadmissible =
+          subject: demand:
+          throw "gen-merge: a module ${demand} while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output (nothing consumes its own stratum's in-flight output, so the option key set is unconditional). Declare the option unconditionally and gate its `config' instead${
+            if subject == "options" then
+              ""
+            else
+              ", or compose the modules before evaluation rather than through `imports = [ config.… ]'"
+          }";
+
+        # A caller key among `config`/`options`/`prefix` would be written over by the right operand and
+        # reach no module, so it refuses by name (ADR-0025 item 1), as at `baseArgs`. The guard is
+        # inline and the key list is built only on the refusing branch: a new binding on this path
+        # costs a constant thunk per nested evaluation, which the hub perf-bench prices.
+        declArgs =
+          (
+            if !(specialArgs ? config || specialArgs ? options || specialArgs ? prefix) then
+              specialArgs
+            else
+              let
+                stated = filter (k: specialArgs ? ${k}) [
+                  "config"
+                  "options"
+                  "prefix"
+                ];
+              in
+              throw (
+                "gen-merge: `specialArgs' cannot supply the base module argument"
+                + (if length stated == 1 then " " else "s ")
+                + concatStringsSep ", " (map (k: "`${k}'") stated)
+                + "; the engine injects its own value there, so the caller's would be discarded rather than used"
+              )
+          )
+          // (
+            if positioned then
+              {
+                config = inadmissible "config" "read `config'";
+                options = inadmissible "options" "read `options'";
+                inherit prefix;
+                name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
+              }
+            else
+              {
+                config = inadmissible "config" "read `config'";
+                options = inadmissible "options" "read `options'";
+                inherit prefix;
+              }
+          );
+
+        # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
+        # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
+        # it refuses with the same reason rather than resolving to a different one.
+        #
+        # `declArgs` is the RIGHT operand for `callM`'s reason: a formal it holds (specialArgs, the
+        # refusing `config`/`options`, `prefix`) binds `declArgs`' OWN attribute, so every declaring
+        # module sees one value slot, and a `withArgs` relation comparing what two of them pass
+        # decides on that slot (`slotsDiffer`). The swap changes cell identity only, never a value.
+        # Per key k: a formal in `declArgs` has `extra.k` = `declArgs.k`; a formal not in `declArgs`
+        # has the inadmissible refusal in `extra` and nothing in `declArgs`; a key in `declArgs`
+        # that is not a formal is absent from `extra`. Both operand orders hold one value per key.
+        callD =
+          m:
+          if builtins.isPath m then
+            callD (import m)
+          else if isFunction m || m ? __functor && isFunction m.__functor && isFunction (m.__functor m) then
+            let
+              formals =
+                if m ? __functor then m.__functionArgs or (functionArgs (m.__functor m)) else functionArgs m;
+              extra = mapAttrs (
+                name: _: declArgs.${name} or (inadmissible "config" "read the module argument `${name}'")
+              ) formals;
+            in
+            # `callM`'s elision: every formal in `declArgs` means `extra // declArgs` IS `declArgs`.
+            if all (name: declArgs ? ${name}) (attrNames formals) then m declArgs else m (extra // declArgs)
+          else if isAttrs m then
+            if m ? __functor then callD (m.__functor m) else m
+          else if isPathString m then
+            callD (import m)
+          else
+            notAModule m;
+
+        flat = moduleClosure callD modules;
+        declEntries = prelude.imap0 (i: e: {
+          idx = i;
+          file = e._file;
+          options = optionsOf (moduleSyntaxChecked e).content;
+        }) flat;
+        sitesAt = declaringSitesAt (length prefix) declEntries;
+      in
       {
         inherit declEntries sitesAt;
         # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
@@ -4851,20 +4864,29 @@ let
           # level, like `defsByKey`, over each entry's undeclared keys (its keys less the declared
           # ones it defines). `attrValues` of the grouping is key order and each group keeps `pushed`'s
           # order, so the list is key-major; the report and the orphan refusal read that order.
-          ownUnmatched = concatLists (
-            builtins.attrValues (
-              builtins.zipAttrsWith (_: us: us) (
-                map (
-                  p:
-                  mapAttrs (k: value: {
-                    inherit (p) file modIndex;
-                    path = loc ++ [ k ];
-                    inherit value;
-                  }) (builtins.removeAttrs p.attrs (attrNames (builtins.intersectAttrs opts p.attrs)))
-                ) pushed
-              )
-            )
-          );
+          # A level whose every definition key is declared groups nothing: the test quantifies over
+          # every key of every definition, so it takes `[ ]` exactly where the grouping would build
+          # it, and it forces each `p.attrs` in `pushed` order as the grouping does. On a level WITH
+          # an undeclared key (a freeform level) the test is paid in front of the grouping, about 8 B
+          # per key (den-hoag-r8y89 c3; den-hoag-c7jkw.3).
+          ownUnmatched =
+            if all ({ attrs, ... }: all (k: opts ? ${k}) (attrNames attrs)) pushed then
+              [ ]
+            else
+              concatLists (
+                builtins.attrValues (
+                  builtins.zipAttrsWith (_: us: us) (
+                    map (
+                      p:
+                      mapAttrs (k: value: {
+                        inherit (p) file modIndex;
+                        path = loc ++ [ k ];
+                        inherit value;
+                      }) (builtins.removeAttrs p.attrs (attrNames (builtins.intersectAttrs opts p.attrs)))
+                    ) pushed
+                  )
+                )
+              );
         in
         {
           value = listToAttrs (
@@ -4939,18 +4961,22 @@ let
       # It costs one declaration-side application of the module set. The value side — the merge, the
       # priority pass, the type folds — is untouched, and the guard forces no definition.
       #
-      # On a CLOSED module set (every module an attrset with no `__functor`, `imports` or `require`)
-      # `callD` and `callM` both return each module unchanged, so the two strata collect one value:
-      # the guard returns `declarationStratumWith`'s record, and the body reads `flat`,
-      # `declEntries`, `sitesAt` and the validated declarations from it instead of computing them a
-      # second time. The syntax checks, the spine merge and the spine walk stay the guard's own and
-      # stay eager. Any other set returns `null` and the body computes its own. The closedness test
-      # is spelled inline in primops at both sites: a named predicate costs a load thunk.
+      # The guard returns `declarationStratumWith`'s record for every module set. On a CLOSED set
+      # (every module an attrset with no `__functor`, `imports` or `require`) `callD` and `callM` both
+      # return each module unchanged, so the two strata collect one value: that record carries
+      # `flat`, and the body reads `flat`, `declEntries`, `sitesAt` and the validated declarations
+      # from it instead of computing them a second time. Any other set's record carries no `flat`,
+      # and the body, which decides by `declarationGuard ? flat`, computes its own. The syntax
+      # checks, the spine merge and the spine walk stay the guard's own and stay eager. Closedness is
+      # decided once, in `declarationStratumWith`, spelled inline in primops: a named predicate costs
+      # a load thunk.
       #
       # The spine is forced by a copy of `declLeafEntries`'s descent — the same `isOptLeaf` stop, the
       # same group recursion, so the same set of forced nodes — answered as a boolean rather than as
       # `deepSeq (declLeafPaths …)`, which builds and then forces a loc list per declared leaf that
-      # nothing reads. Forcing is the whole of the guard; no path is its product.
+      # nothing reads. Forcing is the whole of the guard; no path is its product. The copy inlines
+      # `isOptLeaf` and reads the values by `attrValues`, which lists them in `attrNames` order, so
+      # each node is forced at the same step and no binding is made per key.
       #
       # The spine needs leafness per declaring module and never the merged record, so the guard
       # reads `declarationSpine`, whose redeclaration step keeps the later operand, and forces no
@@ -4958,40 +4984,15 @@ let
       declarationGuard =
         let
           spine =
-            t:
-            all (
-              k:
-              let
-                v = t.${k};
-              in
-              if isOptLeaf v then
-                true
-              else if isAttrs v then
-                spine v
-              else
-                true
-            ) (attrNames t);
+            t: all (v: !(isAttrs v) || (v._type or null) == "option" || spine v) (builtins.attrValues t);
         in
-        if
-          all isAttrs modList
-          && builtins.catAttrs "__functor" modList == [ ]
-          && builtins.catAttrs "imports" modList == [ ]
-          && builtins.catAttrs "require" modList == [ ]
-        then
-          let
-            s = (if knot.positioned then declarationSpinePositioned else declarationSpine) {
-              inherit specialArgs prefix;
-              modules = modList;
-            };
-          in
-          builtins.seq (spine s.options) s
-        else
-          builtins.seq (spine
-            ((if knot.positioned then declarationSpinePositioned else declarationSpine) {
-              inherit specialArgs prefix;
-              modules = modList;
-            }).options
-          ) null;
+        let
+          s = (if knot.positioned then declarationSpinePositioned else declarationSpine) {
+            inherit specialArgs prefix;
+            modules = modList;
+          };
+        in
+        builtins.seq (spine s.options) s;
 
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
