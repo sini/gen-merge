@@ -182,6 +182,7 @@ in
       "lib/modules.nix"
       "lib/priority.nix"
       "lib/types-allowlist.nix"
+      "lib/types-link.nix"
       "lib/types.nix"
       "lib/undeclared-text.nix"
       "flake.nix"

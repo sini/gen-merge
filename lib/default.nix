@@ -854,27 +854,21 @@ in
   # leaves the shadowed value reachable. An undeclared collision refuses.
   #
   # ★ THE ALLOWLIST IS THIS LIBRARY'S DECLARATION, SO ITS STALENESS IS JUDGED AGAINST THIS LIBRARY'S
-  # EXPORTS (`linkset.nix`, `stale`), never against the supplied vocabulary. An entry naming a name
+  # EXPORTS (`linkset.nix`, `hygiene`), never against the supplied vocabulary. Both are this
+  # library's constants, so that judgement and the allowlist's ground checks run in the suite
+  # (ci/tests/linkset.nix) rather than at every load; what stays here is the per-name collision
+  # refusal, the one rule the supplied vocabulary can reach (den-hoag-9lg69). An entry naming a name
   # the vocabulary lacks is INAPPLICABLE — no overlap there, nothing decided, nothing shadowed — which
   # is `scopeDefect`'s rule: the caller is judged only on names this library demands. Whether the
   # SHIPPED roster still collides at each entry is a fact about the pair, checked where the roster is
   # pinned (ci/tests/linkset.nix, `rosterMissing`). The left label is neutral because this library
   # cannot know which vocabulary it was handed.
-  types =
-    (linkset.mergeExports {
-      left = {
-        library = "the supplied `types` vocabulary";
-        exports = completedLeaves;
-      };
-      right = {
-        library = "gen-merge";
-        exports = builtins.removeAttrs strategies [
-          "defineEmbedded"
-          "partialAttrsOf"
-          "mkSubmodule"
-          "completeType"
-        ];
-      };
-      allow = import ./types-allowlist.nix;
-    }).exports;
+  types = linkset.link {
+    left = {
+      library = "the supplied `types` vocabulary";
+      exports = completedLeaves;
+    };
+    right = import ./types-link.nix { inherit strategies; };
+    allow = import ./types-allowlist.nix;
+  };
 }
