@@ -8150,6 +8150,36 @@ in
         };
       };
 
+    # THE IMPORT PRE-FLIGHT FORCES A FOREIGN LEAF'S `nestedTypes` MEMBERS IN NAME ORDER
+    # (den-hoag-c7uhw). `importedDecidable`'s leaf arm asks `{ } == nestedTypes` with `{ }` on the
+    # left: the other order asks whether `nestedTypes` is a derivation first, which forces its
+    # `type` member ahead of `a` and moves the refusal to the later key's text.
+    flake.testsError.imported-pre-flight-order = {
+      test-a-foreign-leafs-nested-members-are-forced-in-name-order = {
+        expr =
+          (cfg {
+            modules = [
+              {
+                options.p = gm.mkOption {
+                  type = nixpkgsLib.types.str // {
+                    nestedTypes = {
+                      a = throw "AKEY";
+                      type = throw "TKEY";
+                    };
+                  };
+                };
+              }
+              { options.p = gm.mkOption { type = nixpkgsLib.types.str; }; }
+              { p = "v"; }
+            ];
+          }).p;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^AKEY$";
+        };
+      };
+    };
+
     # A NIXPKGS SUBMODULE'S `nestedTypes` IS NEVER FORCED WHERE NIXPKGS WOULD NOT FORCE IT
     # (den-hoag-a0c4z; `../tests/submodule-laziness.nix` holds the values). The recogniser is for
     # laziness only, so what it does not admit keeps its carrying spelling read: the same poison on

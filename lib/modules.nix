@@ -827,7 +827,7 @@ let
   # (ADR-0029) and `⊳` is not associative, so the fold cannot compute (c ⊳ b) ⊳ a step by step.
   # The loc's typed sites and the index of the last of them are read from `sitesAt` once per loc, and
   # each step is told its position `j` in the loc's declaration list; the step with no typed site
-  # after it (`modIndex >= lastTypedIdx`) is `final`, and only there does a refusal throw. An earlier step's `type` is
+  # after it (`modIndex >= lastTypedIdx`) decides, and only there does a refusal throw. An earlier step's `type` is
   # the prefix's answer — lazy, so `overridden[].declaration.type` keeps its meaning of "the
   # accumulated earlier declaration" — and a prefix that does not merge on its own reads as a named
   # throw if forced, since a later declaration may still merge the whole list (with `B = attrsOf
@@ -856,77 +856,108 @@ let
       # once per declaring module
       typed = filter (s: s.decl ? type) sites;
       lastTypedIdx = if typed == [ ] then -1 else (prelude.last typed).idx;
-    in
-    j: av: bv:
-    let
-      modIndex = (prelude.elemAt sites j).idx;
-      merged = av // bv;
-      # PRESENCE, never value equality: deciding "did B restate this field" by comparison would
-      # force declaration values nothing has asked for. `_type` is the metadata every option record
-      # carries — identical by construction, so never a shadow.
-      shadowed = filter (k: k != "_type" && bv ? ${k}) (attrNames av);
-      # `av` is an ACCUMULATION of every earlier module that declared `lk`, and `file` names the one
-      # that most recently contributed to it — the last declaring site before this merge. It is NOT
-      # "the file that declared every field in the record": a module that only ADDS a field shadows
-      # nothing and records no entry, yet its contribution is what a later module goes on to shadow,
-      # and that entry must name IT rather than whoever declared the option first. Indexing the site
-      # list by how many entries have accumulated says otherwise and is wrong for exactly that shape
-      # — shadow events and declaring modules are different counts. `<unknown-file>` where there is
-      # no earlier site (a decl tree assembled outside the module fold): a sentinel in the shape of
-      # `<default>`/`<def>`, never a guess.
-      #
-      # `overridden` appears ONLY where a declaration really was shadowed: a layering module that
-      # merely ADDS fields leaves the record exactly what the plain union produced. An intermediate
-      # step's `overridden` is a chain node (`shadowChainList`), cons-ed in constant space; nothing
-      # observes it, since each entry's `declaration` drops the field and only the next step reads
-      # it. The last step (`j + 1 == length sites`, the alignment `elemAt sites j` already rests on)
-      # publishes the list, oldest first.
-      kept =
-        if shadowed == [ ] then
-          if av ? overridden && j + 1 == length sites then
-            merged // { overridden = shadowChainList av.overridden; }
+      # the declared-type list through module index `i`: every typed site at or before it, and the
+      # list's answer. Bound once per loc and applied per step, so a step that is not the last typed
+      # one allocates the one `type` thunk that reads it, and nothing else.
+      through =
+        i:
+        let
+          prior = filter (s: s.idx <= i) typed;
+          declaredTypes = map (s: s.decl.type) prior;
+        in
+        {
+          inherit prior declaredTypes;
+          upTo = mergeDeclaredTypes declaredTypes;
+        };
+      typeOf =
+        r:
+        if r.upTo ? merged then
+          fixupModuleSets r.declaredTypes r.upTo.merged
+        else
+          throw "gen-merge: option `${showOption lk}': the declarations through the one in ${(prelude.last r.prior).file} do not merge on their own (${declaredRefusalText r.upTo}); a later declaration decides them";
+      step =
+        j: av: bv:
+        let
+          modIndex = (prelude.elemAt sites j).idx;
+          merged = av // bv;
+          # PRESENCE, never value equality: deciding "did B restate this field" by comparison would
+          # force declaration values nothing has asked for. `_type` is the metadata every option record
+          # carries — identical by construction, so never a shadow.
+          shadowed = filter (k: k != "_type" && bv ? ${k}) (attrNames av);
+          # `av` is an ACCUMULATION of every earlier module that declared `lk`, and `file` names the one
+          # that most recently contributed to it — the last declaring site before this merge. It is NOT
+          # "the file that declared every field in the record": a module that only ADDS a field shadows
+          # nothing and records no entry, yet its contribution is what a later module goes on to shadow,
+          # and that entry must name IT rather than whoever declared the option first. Indexing the site
+          # list by how many entries have accumulated says otherwise and is wrong for exactly that shape
+          # — shadow events and declaring modules are different counts. `<unknown-file>` where there is
+          # no earlier site (a decl tree assembled outside the module fold): a sentinel in the shape of
+          # `<default>`/`<def>`, never a guess.
+          #
+          # `overridden` appears ONLY where a declaration really was shadowed: a layering module that
+          # merely ADDS fields leaves the record exactly what the plain union produced. An intermediate
+          # step's `overridden` is a chain node (`shadowChainList`), cons-ed in constant space; nothing
+          # observes it, since each entry's `declaration` drops the field and only the next step reads
+          # it. The last step (`j + 1 == length sites`, the alignment `elemAt sites j` already rests on)
+          # publishes the list, oldest first.
+          chain =
+            let
+              c = {
+                key = (av.overridden.key or 0) + 1;
+                entry = {
+                  file = if j == 0 then "<unknown-file>" else (prelude.elemAt sites (j - 1)).file;
+                  declaration = builtins.removeAttrs av [ "overridden" ];
+                };
+                prev = av.overridden or null;
+              };
+            in
+            if j + 1 == length sites then shadowChainList c else c;
+          kept =
+            if shadowed == [ ] then
+              if av ? overridden && j + 1 == length sites then
+                merged // { overridden = shadowChainList av.overridden; }
+              else
+                merged
+            else
+              merged // { overridden = chain; };
+        in
+        # A step whose two operands both carry a `type` shadows `type`, so it records a shadow by
+        # construction: its record is the union, the chain and the type, built in one `//`.
+        if !((av ? type) && (bv ? type)) then
+          kept
+        # the LAST typed declaration decides the whole list; an earlier step's prefix is provisional
+        else if modIndex >= lastTypedIdx then
+          let
+            r = through modIndex;
+          in
+          if r.upTo ? refused then
+            throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${declaredRefusalText r.upTo}); declared in ${
+              concatStringsSep ", " (map (s: s.file) sites)
+            }"
           else
             merged
+            // {
+              overridden = chain;
+              type = typeOf r;
+            }
         else
           merged
           // {
-            overridden =
-              let
-                c = {
-                  key = (av.overridden.key or 0) + 1;
-                  entry = {
-                    file = if j == 0 then "<unknown-file>" else (prelude.elemAt sites (j - 1)).file;
-                    declaration = builtins.removeAttrs av [ "overridden" ];
-                  };
-                  prev = av.overridden or null;
-                };
-              in
-              if j + 1 == length sites then shadowChainList c else c;
+            overridden = chain;
+            type = typeOf (through modIndex);
           };
     in
-    if (av ? type) && (bv ? type) then
+    # the leaf's k declarations, folded from the left as the binary fold does, each step forced to
+    # WHNF as it is made (a lazy accumulator would be forced from the outside, to depth k); `j` is the
+    # position of the step's later operand in the loc's list
+    ys:
+    (foldl' (
+      acc: j:
       let
-        # the LAST typed declaration decides the whole list; an earlier step's prefix is provisional
-        final = modIndex >= lastTypedIdx;
-        prior = filter (s: s.idx <= modIndex) typed;
-        declaredTypes = map (s: s.decl.type) prior;
-        upTo = mergeDeclaredTypes declaredTypes;
+        v = step j acc.v (prelude.elemAt ys j);
       in
-      if final && upTo ? refused then
-        throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${declaredRefusalText upTo}); declared in ${
-          concatStringsSep ", " (map (s: s.file) sites)
-        }"
-      else
-        kept
-        // {
-          type =
-            if upTo ? merged then
-              fixupModuleSets declaredTypes upTo.merged
-            else
-              throw "gen-merge: option `${showOption lk}': the declarations through the one in ${(prelude.last prior).file} do not merge on their own (${declaredRefusalText upTo}); a later declaration decides them";
-        }
-    else
-      kept;
+      builtins.seq v { inherit v; }
+    ) { v = head ys; } (prelude.genList (j: j + 1) (length ys - 1))).v;
 
   # mergeOptionDecls — combine two option-decl TREES (nixpkgs mergeModules' descent, byte-mode).
   # This is what lets `options.a.b.c = mkOption {…}` build a NESTED tree rather than the old
@@ -972,16 +1003,13 @@ let
   # LIST of trees (the declaring entries' validated `options`, in entry order), grouped once per level
   # with `zipAttrsWith`, so no step copies a growing accumulator (a `//` fold copies it once per
   # module). A key declared once is that declaration; a group recurses; a leaf/group mix throws the
-  # binary fold's collision text; a leaf declared k times folds `onRedeclare` from the left, as the
-  # binary fold does, forcing each step to WHNF as it is made (a lazy accumulator would be forced from
-  # the outside, to depth k; the record's fields, `type` among them, stay unforced). The
-  # j-th declaration of a leaf is the j-th declaring site at its loc (both are the entries carrying
-  # that loc as a leaf, in entry order), so its module index is read from `sitesAt` rather than
-  # carried on a per-key record. Here `onRedeclare lk` is bound ONCE per leaf and applied as
-  # `step j acc y`, `j` being the position of `y` in the loc's list. The binary `mergeOptionDecls` stays
-  # the lint's fold, and applies `onRedeclare lk av bv`.
+  # binary fold's collision text; a leaf declared k times is `onRedeclare lk ys`, one call over the
+  # loc's k declarations: `redeclareDecl` folds its step from the left there, as the binary fold
+  # does, and the guard's `spineRedeclare` answers the last declaration, which is what that fold
+  # keeping the later operand answers. The binary `mergeOptionDecls` stays the lint's fold, and
+  # applies `onRedeclare lk av bv`.
   mergeOptionDeclTrees =
-    onRedeclare: sitesAt: loc: trees:
+    onRedeclare: loc: trees:
     let
       xs = filter (v: v != { }) trees;
     in
@@ -1002,19 +1030,9 @@ let
           if !(all (y: isOptLeaf y == leaf) ys) then
             throw "gen-merge: option `${showOption lk}' is declared both as an option and as an option-group (leaf/group collision)"
           else if leaf then
-            let
-              sites = sitesAt lk;
-              step = onRedeclare lk;
-            in
-            (foldl' (
-              acc: j:
-              let
-                v = step j acc.v (prelude.elemAt ys j);
-              in
-              builtins.seq v { inherit v; }
-            ) { v = head ys; } (prelude.genList (j: j + 1) (length ys - 1))).v
+            onRedeclare lk ys
           else
-            mergeOptionDeclTrees onRedeclare sitesAt lk ys
+            mergeOptionDeclTrees onRedeclare lk ys
       ) xs;
 
   # ── list/path helpers for the warm re-eval path (design spec §§1-3) ─────────
@@ -2858,12 +2876,11 @@ let
   declarationStratumPositioned = declarationStratumWith true redeclareDecl;
   declarationSpine = declarationStratumWith false spineRedeclare;
   declarationSpinePositioned = declarationStratumWith true spineRedeclare;
-  # The guard's redeclaration step: keep the later operand. Its arity is `redeclareDecl`'s (sitesAt,
-  # loc, position, accumulated, later); the merge of k leaves is a leaf by construction, so the spine
-  # needs no merged record.
-  spineRedeclare =
-    _: _: _: _: bv:
-    bv;
+  # The guard's leaf: the LAST of a loc's k declarations, which is what a fold keeping the later
+  # operand answers, so no step is folded. Its arity is `redeclareDecl`'s (sitesAt, loc, the loc's
+  # declarations); the merge of k leaves is a leaf by construction, so the spine needs no merged
+  # record. Every declaration was forced by the leaf/group test before this is asked.
+  spineRedeclare = _: _: prelude.last;
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
@@ -4042,7 +4059,7 @@ let
           flat
           validated
           ;
-        options = mergeOptionDeclTrees (onRedeclare sitesAt) sitesAt prefix validated;
+        options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix validated;
       }
     else
       let
@@ -4140,7 +4157,7 @@ let
         # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
         # traced back to it, so guarding the producer here covers all five tags at any nesting depth
         # on both the `.options` and `.config` planes.
-        options = mergeOptionDeclTrees (onRedeclare sitesAt) sitesAt prefix (
+        options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
           map (e: validateDeclSubtree prefix e.options) declEntries
         );
       };
@@ -5143,7 +5160,7 @@ let
           # `declaredPairs`, `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes
           # `allOptions` or a value traced back to it, so guarding the producer here covers all
           # five tags at any nesting depth on both the `.options` and `.config` planes.
-          allOptions = mergeOptionDeclTrees (redeclareDecl sitesAt) sitesAt prefix (
+          allOptions = mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
             if declarationGuard ? flat then
               declarationGuard.validated
             else

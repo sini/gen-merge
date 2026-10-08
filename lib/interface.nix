@@ -1184,6 +1184,13 @@ let
         # paid there). A record with more than one role takes the general arm.
         else if t ? carries && attrNames t.carries == [ "element" ] then
           go (fuel - 1) t.carries.element
+        # A record that wraps nothing (no `carries`, no `nestedTypes`) is a leaf, decidable at once:
+        # `importedWrapped` would answer `[ ]` for it, so the walk answers without building that list
+        # (den-hoag-c7uhw: every declared-type fold step asks this of both operands). `{ }` stands on
+        # the left as in `importType0`: `==` first asks whether its LEFT operand is a derivation, which
+        # would force a `nestedTypes.type` member the general arm does not force first.
+        else if !(t ? carries) && { } == (t.nestedTypes or { }) then
+          true
         else
           all (go (fuel - 1)) (importedWrapped t);
     in
