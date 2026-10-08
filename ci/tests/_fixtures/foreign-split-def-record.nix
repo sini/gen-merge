@@ -14,6 +14,7 @@
 #
 # `addresses pos mg rd order`: the 8hlo3 declaration address of each element below a foreign level.
 #   pos   glist (gen listOf E, the control), nest (coercedTo str _ (over (listOf (lazyAttrsOf E)))),
+#         nest2i / nest2o (two threaded levels, `over` at the inner / the outer one),
 #         wlazy (coercedTo str _ (over (lazyAttrsOf E))), ncoatt (coercedTo str _ (nixpkgs attrsOf E)),
 #         ncogatt (coercedTo str _ (gen attrsOf E))
 #   mg    stock, id, rev, drop, sortf (sort by `file`), grp (group by `file`), dk (keep only
@@ -223,6 +224,18 @@ in
             t = t.listOf E;
             d = tag: [ { inherit tag; } ];
             r = c: c.xs;
+          };
+          # two threaded levels: the merge under test below an identity-overridden outer level, and above
+          # an identity-overridden inner one
+          nest2i = {
+            t = coerced (overWith (d: d) (nt.listOf (coerced (over (nt.lazyAttrsOf E)))));
+            d = tag: [ (keyed tag) ];
+            r = c: builtins.concatMap builtins.attrValues c.xs;
+          };
+          nest2o = {
+            t = coerced (over (nt.listOf (coerced (overWith (d: d) (nt.lazyAttrsOf E)))));
+            d = tag: [ (keyed tag) ];
+            r = c: builtins.concatMap builtins.attrValues c.xs;
           };
           nest = {
             t = coerced (over (nt.listOf (nt.lazyAttrsOf E)));

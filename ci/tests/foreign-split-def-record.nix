@@ -1444,6 +1444,42 @@ in
         "s"
       ];
     };
+    test-serves-nest2i-fileset-ab = {
+      expr = fx.addresses "nest2i" "fileset" "val" "ab";
+      expected = [
+        "r"
+        "s"
+        "q"
+        "p"
+      ];
+    };
+    test-serves-nest2i-fileset-ba = {
+      expr = fx.addresses "nest2i" "fileset" "val" "ba";
+      expected = [
+        "p"
+        "q"
+        "r"
+        "s"
+      ];
+    };
+    test-serves-nest2o-fileset-ab = {
+      expr = fx.addresses "nest2o" "fileset" "val" "ab";
+      expected = [
+        "r"
+        "s"
+        "q"
+        "p"
+      ];
+    };
+    test-serves-nest2o-fileset-ba = {
+      expr = fx.addresses "nest2o" "fileset" "val" "ba";
+      expected = [
+        "p"
+        "q"
+        "r"
+        "s"
+      ];
+    };
   };
   # G3: the declaration address. gen's own `listOf` keeps it in both orders (8hlo3 A6); below a
   # threaded foreign split every definition is built by the foreign merge, and the read is refused
@@ -1699,6 +1735,42 @@ in
     };
     test-catchable-ncogatt-stock-ab = {
       expr = map (e: builtins.elemAt e 1) (fx.addresses "ncogatt" "stock" "atc" "ab");
+      expected = [
+        false
+        false
+        false
+        false
+      ];
+    };
+    test-catchable-nest2i-fileset-ab = {
+      expr = map (e: builtins.elemAt e 1) (fx.addresses "nest2i" "fileset" "atc" "ab");
+      expected = [
+        false
+        false
+        false
+        false
+      ];
+    };
+    test-catchable-nest2i-fileset-ba = {
+      expr = map (e: builtins.elemAt e 1) (fx.addresses "nest2i" "fileset" "atc" "ba");
+      expected = [
+        false
+        false
+        false
+        false
+      ];
+    };
+    test-catchable-nest2o-fileset-ab = {
+      expr = map (e: builtins.elemAt e 1) (fx.addresses "nest2o" "fileset" "atc" "ab");
+      expected = [
+        false
+        false
+        false
+        false
+      ];
+    };
+    test-catchable-nest2o-fileset-ba = {
+      expr = map (e: builtins.elemAt e 1) (fx.addresses "nest2o" "fileset" "atc" "ba");
       expected = [
         false
         false
