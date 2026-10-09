@@ -1997,7 +1997,10 @@ let
   #     `null` (it has no module set to lose: a leaf, `either`), and the rebuild keeps it as an
   #     option type. A sibling that answers anything else would receive the marker in place of the
   #     module set nixpkgs leaves it, whether it evaluates the list (`submoduleWith`), stores it
-  #     (`deferredModuleWith`), relabels it, or drops `getSubModules` from its rebuild.
+  #     (`deferredModuleWith`), relabels it, or drops `getSubModules` from its rebuild. A sibling
+  #     whose `getSubModules` is not a list has no module set to lose and is not asked: nixpkgs'
+  #     `fixupOptionType` calls `substSubModules` only where it is a list, so an override that
+  #     reads its stock rebuild's `null` is never called there either (den-hoag-87nvk).
   # A sibling's answer is a value, read to weak head normal form only; a rebuild that reads the
   # marker as modules meets its import, which throws the import refusal (`threadMarker`), so a
   # consumer the declarations do not show still refuses by name, never folding an empty module.
@@ -2012,7 +2015,13 @@ let
         let
           s = if isAttrs o then o.substSubModules or null else null;
         in
-        (!(isFunction s || isAttrs s && s ? __functor) || s marker == null) && isAttrs r && r ? merge;
+        (
+          !(isList (o.getSubModules or null))
+          || !(isFunction s || isAttrs s && s ? __functor)
+          || s marker == null
+        )
+        && isAttrs r
+        && r ? merge;
       go =
         fuel: o: r:
         if o ? carries || isNesting o then

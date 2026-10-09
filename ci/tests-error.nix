@@ -6316,6 +6316,26 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `fanOut' declares a gen nesting type as an element [(]its `nestedTypes[.]left'[)], ${rule}";
           };
         };
+        # A sibling stating no module set is not handed the marker (den-hoag-87nvk), so its override
+        # reading the stock rebuild's `null` is never called; a stock `either` as the element is then
+        # refused by name as it is beside any sibling (`nesting-threaded-rehome` serves the gen ones).
+        test-a-stock-either-beside-a-sibling-whose-rebuild-reads-the-module-set-is-refused-by-name = {
+          expr =
+            let
+              readsNull =
+                a:
+                a
+                // {
+                  merge = loc: defs: a.merge loc (builtins.tail defs);
+                  substSubModules = m: readsNull (a.substSubModules m);
+                };
+            in
+            opt (np.coercedTo (readsNull np.int) (_: throw "coerced") (np.either sub np.str)) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+          };
+        };
         # A consumer the declarations do not show reads the marker as modules and meets its import,
         # which refuses by name: never an empty module folded silently.
         test-an-undeclared-consumer-meets-the-marker-and-is-refused-by-name = {
