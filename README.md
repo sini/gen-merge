@@ -1143,7 +1143,10 @@ Two rules that look like details and are not:
   identity to the record its constructor completed, and a `//` copy keeps the stamp while changing
   what the identity stands for. This boundary rebuilds every record it imports and exports, so it
   re-ties the stamp to the record it completes; a record failing the stamp on entry is imported and
-  served, but unminted, and gen-types' `typeEq` refuses it by name. The price: a description-only
+  served, but unminted, and gen-types' `typeEq` refuses it by name. The published `mkOptionType`
+  first returns a copy departing within its carrier as it is, as `types.defineType` does (below): one
+  departing at its `verify` or `check` keeps its mark and stale stamp, so `idOf` and `typeEq` refuse
+  it by name as they refuse the raw copy. The price: a description-only
   `//` (`t // { description = …; }`) is a copy too, and `typeEq` refuses it; as an option type it
   is still served. **Re-completion keeps the witnesses a record arrives with**: the
   published `types.defineType` and `mkOptionType` never re-tie the check witness over a `check` they
@@ -1152,8 +1155,9 @@ Two rules that look like details and are not:
   refused by name, as the raw copy's is. A copy departing only at fields a door does not read (a
   `description` or a caller field at `defineType`; the import door also reads the protocol fields it
   translates) keeps its completion's identity there. **`types.defineType` returns a copy departing
-  within its carrier as it is**: a `//` copy of a completed gen record that states `verify` and departs
-  from its completion only at `check`, `verify`, `typeMerge` or a name-carried field keeps its row,
+  within its carrier as it is**, and so does the published `mkOptionType`: a `//` copy of a completed
+  gen record that states `verify` and departs from its completion only at `check`, `verify`,
+  `typeMerge` or a name-carried field keeps its row,
   functor, relation, fold, mint and stale stamp, and the door re-derives only the two foreign fields its
   departure invalidates: `check`, its declared domain published as a witnessed rewrite, and `typeMerge`,
   its completion's foreign relation met with the copy (`interface.carriedCopy`). A container copy
