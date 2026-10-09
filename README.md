@@ -2635,7 +2635,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `.type`, gen-merge's own import of a nixpkgs submodule, and any copy of them re-entering
   `mkOptionType`, gen-schema's `refined` among them) states `nestedTypes` as a function of that set
   too, so its role is the carried module set and the field is never read
-  (`ci/tests/gen-module-set-laziness.nix`, a poisoned module set; den-hoag-60hql). A hand-built
+  (`ci/tests/gen-module-set-laziness.nix`, a poisoned module set). A hand-built
   record claiming that spelling is served as a module set with any static `nestedTypes` role unread,
   and one stating no sub-protocol, refused by name before, is served
   (`test-a-forged-gen-module-set-record-is-served`). The residue, pinned (`test-the-residue-is-served-as-a-module-set`): such a record
