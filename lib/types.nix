@@ -1964,6 +1964,14 @@ in
     ;
   # The published door: a caller's record enters here, so a `//` copy of a completed record is read as
   # the copy it is (`interface.keepStamp`), as the raw record holds its witnesses (den-hoag-59gnz C2).
-  defineType = t: defineType (interface.keepStamp t);
+  # A `//` copy of a completed record departing only where its carrier still reads it as that completion is
+  # returned as it is (`interface.carriedCopy`, den-hoag-5kzqp); its `verify` presence test is restated here so
+  # a record stating none (gen-aspects' per-instance submodule copies) pays one attribute test and no call.
+  defineType =
+    t:
+    let
+      c = interface.carriedCopy t;
+    in
+    if t ? verify && c != null then c else defineType (interface.keepStamp t);
   completeType = defineType;
 }

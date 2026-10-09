@@ -1409,6 +1409,171 @@ in
           };
       };
 
+    # A RE-COMPLETION DOOR CARRIES A `//` COPY DEPARTING WITHIN ITS CARRIER AS IT IS (den-hoag-5kzqp).
+    # Re-completed from its gen datum alone, a copy of a completed leaf lost the row its completion was
+    # built under (`enum` published its caller's name with no payload, `string` published `string`) and
+    # became its own record to every carrier reader, so through `defineType` it was refused where the
+    # raw copy is served: beside a widening gen `enum` the union-admitted `c` (ADR-0039, the enum union),
+    # beside nixpkgs' `str` the value its verify admits. The door returns it as it is, its declared domain
+    # published as a witnessed rewrite and its `typeMerge` met with itself. Each gen row is the set of
+    # verdicts over both orders; `parity` lists every (copy, twin, wrapper) whose door row is not the raw
+    # copy's. `foreign` reads nixpkgs' own `evalModules` over the door's output.
+    test-a-door-carries-a-copy-departing-within-its-carrier =
+      let
+        verdict = r: if r == "REFUSED" then r else builtins.elemAt (builtins.split " / " r) 2;
+        orders =
+          a: b: v:
+          nixpkgsLib.unique [
+            (verdict (ev [ a b ] v))
+            (verdict (ev [ b a ] v))
+          ];
+        E = gt.enum "e" [
+          "a"
+          "b"
+        ];
+        notA = v: if v == "a" then "rejected by notA" else E.verify v;
+        copies = {
+          verify = E // {
+            verify = notA;
+          };
+          renamed = E // {
+            name = "r";
+            verify = notA;
+          };
+          checkOnly = E // {
+            check = v: E.check v && v != "a";
+          };
+          described = E // {
+            description = "a described copy";
+          };
+        };
+        twins = {
+          wideningGen = gt.enum "g" [
+            "b"
+            "c"
+          ];
+          nixpkgs = t.enum [
+            "a"
+            "b"
+          ];
+          widening = t.enum [
+            "b"
+            "c"
+          ];
+        };
+        wraps = {
+          bare = {
+            ty = x: x;
+            v = x: x;
+          };
+          listOf = {
+            ty = t.listOf;
+            v = x: [ x ];
+          };
+        };
+        row =
+          door: copy: twin: w:
+          builtins.listToAttrs (
+            map
+              (v: {
+                name = v;
+                value = orders (wraps.${w}.ty (door copy)) (wraps.${w}.ty twin) (wraps.${w}.v v);
+              })
+              [
+                "a"
+                "b"
+                "c"
+              ]
+          );
+        parity = builtins.concatLists (
+          nixpkgsLib.mapAttrsToList (
+            cn: copy:
+            builtins.concatLists (
+              nixpkgsLib.mapAttrsToList (
+                tn: twin:
+                builtins.concatMap (
+                  w: if row gt.defineType copy twin w == row (x: x) copy twin w then [ ] else [ "${cn}/${tn}/${w}" ]
+                ) (builtins.attrNames wraps)
+              ) twins
+            )
+          ) copies
+        );
+        S = gt.string // {
+          verify = v: if v == "a" then "rejected by notA" else null;
+        };
+        np =
+          tys: v:
+          let
+            r = nixpkgsLib.evalModules {
+              modules = map (ty: { options.p = nixpkgsLib.mkOption { type = ty; }; }) tys ++ [ { p = v; } ];
+            };
+            o = tryEval (deepSeq r.config.p r.config.p);
+          in
+          if o.success then "ACCEPTED" else "REJECTED";
+        door = gt.defineType copies.verify;
+      in
+      {
+        expr = {
+          inherit parity;
+          wideningGen = {
+            verify = row gt.defineType copies.verify twins.wideningGen "bare";
+            renamed = row gt.defineType copies.renamed twins.wideningGen "listOf";
+          };
+          string = {
+            a = orders (gt.defineType S) t.str "a";
+            b = orders (gt.defineType S) t.str "b";
+          };
+          foreign = {
+            alone = {
+              a = np [ door ] "a";
+              b = np [ door ] "b";
+            };
+            # nixpkgs asks the later declaration's `typeMerge`: here the door's
+            asksTheDoor = {
+              a = np [ twins.nixpkgs door ] "a";
+              b = np [ twins.nixpkgs door ] "b";
+            };
+            union = {
+              a = np [ (gt.listOf door) (gt.listOf twins.wideningGen) ] [ "a" ];
+              c = np [ (gt.listOf door) (gt.listOf twins.wideningGen) ] [ "c" ];
+            };
+          };
+        };
+        expected = {
+          parity = [ ];
+          wideningGen = {
+            verify = {
+              a = [ "REJECTED" ];
+              b = [ "ACCEPTED" ];
+              c = [ "ACCEPTED" ];
+            };
+            renamed = {
+              a = [ "REJECTED" ];
+              b = [ "ACCEPTED" ];
+              c = [ "ACCEPTED" ];
+            };
+          };
+          string = {
+            a = [ "REJECTED" ];
+            b = [ "ACCEPTED" ];
+          };
+          foreign = {
+            alone = {
+              a = "REJECTED";
+              b = "ACCEPTED";
+            };
+            asksTheDoor = {
+              a = "REJECTED";
+              b = "ACCEPTED";
+            };
+            union = {
+              a = "REJECTED";
+              c = "ACCEPTED";
+            };
+          };
+        };
+      };
+
     # THE TWO CARRIER SPELLINGS AGREE (den-hoag-7kj5s). `interface.joinRenames`' `bare` is restated at the
     # entry of `default.nix`'s parametric relation rather than shared, for the load gates' cost, so the
     # carrier has two spellings. Each is read off its source and evaluated, and over one population both
@@ -1427,6 +1592,7 @@ in
             rewritesCheck
             exportClasses
             departsWithinCarrier
+            carrierTolerated
             ;
           stampOk = genTypes.stampOk;
           checkedTypes = genTypes;
@@ -1454,7 +1620,7 @@ in
           {
             count = builtins.length at;
             read = import (builtins.toFile "carrier.nix" ''
-              { rewritesCheck, exportClasses, departsWithinCarrier, stampOk, checkedTypes, core }:
+              { rewritesCheck, exportClasses, departsWithinCarrier, carrierTolerated, stampOk, checkedTypes, core }:
               let
                 bare =
               ${builtins.concatStringsSep "\n" (body (builtins.head at + 1))}

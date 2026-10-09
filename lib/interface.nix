@@ -2841,10 +2841,7 @@ let
         then
           let
             c = x.__typeSelf null;
-            names = exportClasses.nameCarried ++ [
-              "check"
-              "verify"
-            ];
+            names = carrierTolerated;
           in
           if
             stampOk (
@@ -3948,6 +3945,81 @@ let
     )
   );
   departsWithinCarrier = t: carrierSlice t != carrierSlice (t.__typeSelf null);
+  # The fields at which a `//` copy may depart from its completion and still be read as it by every carrier
+  # reader (`joinRenames`' `bare`, its restatement in `default.nix`, `carriedCopy`): the name-carried ones,
+  # which translate nothing; `check` and `verify`, which the meet owes; and `typeMerge`, which a
+  # re-completion door re-states (`carriedCopy`). The engine reads a gen record's relation at its
+  # `typeMergeRel` wherever one is stated (`lib/modules.nix` `relationMergeWithin`), so `typeMerge` reaches
+  # gen's engine only through a foreign container's relation asking its element's exported field; there a
+  # carried copy's met relation keeps its check (den-hoag-5kzqp, its gate's `npwrap.nix`).
+  carrierTolerated = exportClasses.nameCarried ++ [
+    "check"
+    "verify"
+    "typeMerge"
+  ];
+  # ★ A `//` COPY A RE-COMPLETION DOOR CARRIES AS IT IS (den-hoag-5kzqp). A copy of a completed gen record
+  # departing from its completion only where `joinRenames`' `bare` reads it as that completion (`check`,
+  # `verify`, name-carried fields) already holds everything a door would derive but its foreign `check`:
+  # its row, functor, relation and fold are its completion's, and re-deriving them from the gen datum alone
+  # loses the row (`enum` publishes its caller's name with no payload, `string` publishes `string`) and
+  # makes the copy its own record to every carrier reader. So the door returns it as it is, and where its
+  # `verify` replaced its completion's it publishes the copy's declared domain, as the engine reads one
+  # declaration alone (`meetOf`'s `dom`), as a witnessed rewrite: a foreign engine enforces it, and every
+  # gen reader owes it. A copy departing only at name-carried fields keeps the door's re-tied stamp
+  # (`keepStamp`). `null` for every other record. A container copy stating `verify` (`listOf`, `struct`) is
+  # carried too, its own functor kept. The `verify` presence test comes first: a per-instance submodule
+  # copy (gen-aspects `entryCoerced`) states none, so its stamp is never asked here.
+  carriedCopy =
+    x:
+    if
+      !(
+        x ? verify
+        && builtins.isFunction (x.__typeSelf or null)
+        && (rewritesCheck x || departsWithinCarrier x)
+      )
+    then
+      null
+    else
+      let
+        c = x.__typeSelf null;
+        names = carrierTolerated;
+        dom =
+          if x.check == x._checkWitness then
+            (v: x.verify v == null)
+          else
+            (v: x.check v && x.verify v == null);
+      in
+      if
+        !(stampOk (
+          builtins.removeAttrs x names
+          // builtins.intersectAttrs (builtins.listToAttrs (
+            map (n: {
+              name = n;
+              value = null;
+            }) names
+          )) c
+        ))
+      then
+        null
+      else if replacesVerify x || rewritesCheck x then
+        let
+          s = x // {
+            ${if replacesVerify x then "check" else null} = witnessRecord dom // {
+              isV2MergeCoherent = true;
+            };
+            # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
+            # answers: a foreign engine asking this record's `typeMerge` keeps its check
+            typeMerge =
+              f:
+              let
+                r = x.typeMerge f;
+              in
+              if r == null then null else metWith r [ s ];
+          };
+        in
+        s
+      else
+        keepStamp x;
   # `t` departs from the record its constructor completed only at fields `reads` does not hold.
   departsOnlyOutside =
     reads: t:
@@ -4885,6 +4957,8 @@ in
     isOptionType
     rewritesCheck
     keepStamp
+    carriedCopy
+    carrierTolerated
     typeDefect
     ;
 }
