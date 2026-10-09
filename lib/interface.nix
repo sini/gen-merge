@@ -1683,17 +1683,24 @@ let
       throw (owedCopyRefusal door loc t)
     else
       t;
-  # `f`'s domain: its `verify` where it states one, and its `check`
-  holdsFor = f: v: (!(f ? verify) || f.verify v == null) && f.check v;
-  # `r`'s fold, its merged value refused by name outside `f`'s domain
+  # `r`'s fold, its merged value refused by name outside `f`'s domain: `f`'s `verify` where it states one,
+  # and its `check`
   valueRestrictedBy =
-    f: restrictedBy "the merged value is outside the domain of `${nameOf f}'" (_: v: !(holdsFor f v));
+    f:
+    restrictedBy "the merged value is outside the domain of `${nameOf f}'" (
+      _: v: !((!(f ? verify) || f.verify v == null) && f.check v)
+    );
   # `r`'s fold, refused by name where a definition its stale `coercedType` admits, so the fold coerces it,
   # is outside `f`'s domain (that side completed)
   coercionRestrictedBy =
     f: r:
     restrictedBy "a definition it coerces is outside the domain of `${nameOf f}'" (
-      defs: _: prelude.any (d: r.nestedTypes.coercedType.check d.value && !(holdsFor f d.value)) defs
+      defs: _:
+      prelude.any (
+        d:
+        r.nestedTypes.coercedType.check d.value
+        && !((!(f ? verify) || f.verify d.value == null) && f.check d.value)
+      ) defs
     ) r;
   # `r`'s fold, refused by name with `message` where `refuses defs value` holds
   restrictedBy =
