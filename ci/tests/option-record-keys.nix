@@ -656,7 +656,7 @@ let
     };
 
   # The `<default>` definition beside a priority-1500 one survives the filter, and nixpkgs puts it
-  # FIRST (`defs' = optional (opt ? default) … ++ defs`) where gen-merge's fold puts it last.
+  # FIRST (`defs' = optional (opt ? default) … ++ defs`), as gen-merge's fold does (den-hoag-12e7r).
   dflt1500 =
     M:
     let
@@ -767,23 +767,9 @@ in
       };
     };
 
-    # PINNED, a known divergence (den-hoag-12e7r): the record projects gen-merge's fold, whose
-    # `<default>` comes last where nixpkgs' comes first (`l = [ 1 5 9 ]`,
-    # `definitions = [ [ 1 ] [ 5 ] [ 9 ] ]`). The row's fix moves this cell to nixpkgs' value.
-    test-default-beside-priority-1500-folds-last-pinned = {
+    test-default-beside-priority-1500-folds-first = {
       expr = dflt1500 gm;
-      expected = {
-        l = [
-          5
-          9
-          1
-        ];
-        definitions = [
-          [ 5 ]
-          [ 9 ]
-          [ 1 ]
-        ];
-      };
+      expected = dflt1500 nl;
     };
   };
 }
