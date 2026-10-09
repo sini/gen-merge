@@ -1864,7 +1864,8 @@ declared domain published as its `check` (`interface.completedOver`); `coercedTo
 with its merged value restricted by a copy that is its `finalType`, or a definition it coerces
 restricted by a copy on its coercion side. A gen container whose element is such a foreign container
 (`listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr`, `either` and `partialAttrsOf`) homes that element
-before it folds it, selected once when the container is built (`interface.owesThroughForeign`). The
+before it folds it, selected once when the container is built (`interface.owesThroughForeign`;
+`partialAttrsOf` asks it per key, at the same cost per key as `attrsOf`). The
 copy's domain is the one the engine reads for it bare (`interface.copyDomain`, as `carriedCopy`
 publishes it): its `verify` alone while its `check` is its completion's, so a copy whose `verify`
 admits what its base's `check` rejects is served under `listOf`, `attrsOf`, `attrsWith` and
@@ -1875,8 +1876,9 @@ whose `finalType` holds the copy under a container, and a record outside the sto
 `nestedTypes` hold one (a hand-rolled `mkOptionType`), are refused whole by name, values nixpkgs serves
 included, naming `types.defineType`; on `coercedTo`'s coercion side a definition the copy rejects is
 refused by name even where the `finalType` would take it uncoerced, and under a container there the
-copy is read as the container's head, as both engines read a check copy; under `nullOr`, `either` and
-`uniq` the container's own `check`, its base's, still refuses what a weaker `verify` admits. The walk
+copy is read as the container's head, as both engines read a check copy; under `nullOr`, `either`,
+`uniq` and either side of `coercedTo` the container's own `check`, its base's, still decides what a
+weaker `verify` admits (refused as `finalType`, left uncoerced as `coercedType`, as nixpkgs does). The walk
 costs per option, Nix thunks: +7 for `listOf int`, +19 for a three-deep stock nest, +26 for `uniq (listOf int)`, +14 for gen `listOf` over a stock one, and +836 (1.2%) over a self-referential
 `valueType`, against a floor that no longer serves the copy's rejected value.
 
