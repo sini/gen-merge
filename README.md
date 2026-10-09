@@ -1643,10 +1643,10 @@ decides acceptance, a lower bound by induction over the fold. A gen x gen step o
 answered before the meet is built, except to a `//` copy whose `verify` no completion vouches for
 (`interface.replacesVerify`: it replaced its completion's `verify`, or states one with no completion
 stamp). Its `check`, witness and relation are still its base's, so no relation carries that `verify`, and
-the step owes the copy its declared domain, its `verify` and any `check` it rewrote (den-hoag-ndgcz). The
+the step owes the copy its declared domain, its `verify` and any `check` it rewrote. The
 carrier (`interface.joinRenames`) reads such a copy, and one departing only at its name, its description
 or its `typeMerge` (`interface.carrierTolerated`), as its completion, so beside nixpkgs' `enum` its
-verdict is the same in both orders (den-hoag-69w3d); a raw copy overriding `typeMerge` is therefore read
+verdict is the same in both orders; a raw copy overriding `typeMerge` is therefore read
 as its completion too, which moves it from refused to served only. A
 fresh join that widens a constructor's own parameters keeps that
 constructor's law over them (two `enum`s union their values), and each operand stays owed for the
