@@ -1037,6 +1037,26 @@ in
           msg = "^gen-merge: the option `_module\\.args' is read-only, but it is defined more than once \\(the engine defines it too\\); defined in /g/O\\.nix$";
         };
       };
+      # A readOnly option's declared default counts as a setting, as nixpkgs' `defs'` counts it, so one
+      # definition beside it is refused by name (den-hoag-1gv6r).
+      test-read-only-default-beside-one-definition-refused-by-name = {
+        expr = realize {
+          modules = [
+            {
+              options.o = gm.mkOption {
+                type = t.int;
+                readOnly = true;
+                default = 1;
+              };
+            }
+            { config.o = 2; }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' is read-only, but it is defined 2 times \\(its declared default counts as one\\)$";
+        };
+      };
       # `check` is not read from a module, so a re-declaration that would act on it is refused by
       # name.
       test-module-check-redeclared-with-an-apply-refused-by-name = {

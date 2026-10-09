@@ -3985,9 +3985,14 @@ let
       merged
     else
       let
+        # The declared default counts as a setting, as nixpkgs' `evalOptionValue` counts `defs'`: a
+        # readOnly declaration with a default has fixed the value, so one definition beside it is a
+        # second setting (ADR-0039, den-hoag-1gv6r).
         _ro =
-          if readOnly && length rawDefs > 1 then
-            throw "gen-merge: the option `${showOption loc}' is read-only, but it is defined ${toString (length rawDefs)} times"
+          if readOnly && length withDefault > 1 then
+            throw "gen-merge: the option `${showOption loc}' is read-only, but it is defined ${toString (length withDefault)} times${
+              if optDecl ? default then " (its declared default counts as one)" else ""
+            }"
           else
             null;
         applied = if hasApply then optDecl.apply merged.value else merged.value;

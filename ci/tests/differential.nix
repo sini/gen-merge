@@ -325,7 +325,69 @@ let
     });
   };
 
-  fixtures = valueFixtures // refusalFixtures // readerFixtures;
+  # ── `readOnly` COUNTS THE DECLARED DEFAULT ────────────────────────────────────────────────────
+  #
+  # nixpkgs' `evalOptionValue` counts `defs'`, the declared default prepended to the definitions, so a
+  # readOnly declaration with a default has fixed the value and one definition beside it is a second
+  # setting (den-hoag-1gv6r, ADR-0039). The two refusals with a default are the divergence; the default
+  # alone, a lone definition and two definitions are its controls.
+  readOnlyDecl = P: extra: {
+    options.o = P.mkOption (
+      {
+        type = P.types.int;
+        readOnly = true;
+      }
+      // extra
+    );
+  };
+  readOnlyFixtures = {
+    read-only-default-beside-one-definition = d.mkFixture {
+      comparison = "throws";
+      observables = valueOnly;
+      modules = P: [
+        (readOnlyDecl P { default = 1; })
+        { config.o = 2; }
+      ];
+    };
+    read-only-nested-default-beside-one-definition = d.mkFixture {
+      comparison = "throws";
+      observables = valueOnly;
+      modules = P: [
+        {
+          options.s = P.mkOption {
+            type = P.types.submodule { options.l = P.mkOption { type = P.types.listOf P.types.int; }; };
+            default.l = [ 1 ];
+            readOnly = true;
+          };
+        }
+        { config.s = P.mkDefault { l = [ 9 ]; }; }
+      ];
+    };
+    read-only-two-definitions = d.mkFixture {
+      comparison = "throws";
+      observables = valueOnly;
+      modules = P: [
+        (readOnlyDecl P { })
+        { config.o = 2; }
+        { config.o = 2; }
+      ];
+    };
+    read-only-default-alone = d.mkFixture {
+      comparison = "value";
+      observables = valueOnly;
+      modules = P: [ (readOnlyDecl P { default = 1; }) ];
+    };
+    read-only-one-definition = d.mkFixture {
+      comparison = "value";
+      observables = valueOnly;
+      modules = P: [
+        (readOnlyDecl P { })
+        { config.o = 2; }
+      ];
+    };
+  };
+
+  fixtures = valueFixtures // refusalFixtures // readerFixtures // readOnlyFixtures;
 
   # ── THE SUBJECTS ──────────────────────────────────────────────────────────────────────────────
   #
@@ -837,10 +899,10 @@ in
         expr = builtins.attrNames valueFixtures == builtins.attrNames corpus;
         expected = true;
       };
-      # The refusal and module-reader fixtures are the additions, and the count says so.
+      # The refusal and module-reader and readOnly fixtures are the additions, and the count says so.
       test-fixture-count = {
         expr = builtins.length (builtins.attrNames fixtures);
-        expected = builtins.length (builtins.attrNames corpus) + 2 + 6;
+        expected = builtins.length (builtins.attrNames corpus) + 2 + 6 + 5;
       };
     };
 }
