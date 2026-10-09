@@ -7617,10 +7617,22 @@ in
         # The type is named by nixpkgs' phrase for the same construction over nixpkgs' own types.
         npSub = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
         phrase = ref: nixpkgsLib.escapeRegex ref.description;
-        carried = ref: {
+        carriedAt = loc: ref: {
           type = "ThrownError";
-          msg = "^gen-merge: a definition for option `s' is not of type `${phrase ref}', in `def[.]nix'$";
+          msg = "^gen-merge: a definition for option `${loc}' is not of type `${phrase ref}', in `def[.]nix'$";
         };
+        carried = carriedAt "s";
+        adHoc = T: T // { check = v: T.check v && v != { a = 7; }; };
+        oneOfSub = np.oneOf [
+          sub
+          np.str
+          np.int
+        ];
+        oneOfNpSub = np.oneOf [
+          npSub
+          np.str
+          np.int
+        ];
       in
       {
         test-a-rewritten-leaf-check-refuses-as-the-checked-fold = {
@@ -7663,6 +7675,34 @@ in
             type = "ThrownError";
             msg = ''^gen-merge: a definition for option `s[.]"\[definition 1-entry 1\]"' is not of type `${phrase (np.either npSub np.str)}', in `def[.]nix'$'';
           };
+        };
+        # An ad-hoc `// { check }` over a stock `either`/`oneOf` holding a gen nesting element is
+        # carried on the re-home and enforced by gen's own fold: a definition the stock union admits
+        # and the override rejects refuses, at the root, under a gen container and under a re-homed
+        # nixpkgs one (den-hoag-lok6a, ADR-0039's planted-rejection oracle).
+        test-an-ad-hoc-check-over-a-re-homed-either-refuses-what-it-rejects = {
+          expr = opt (adHoc (np.either sub np.str)) { a = 7; };
+          expectedError = carried (np.either npSub np.str);
+        };
+        test-an-ad-hoc-check-over-a-re-homed-oneOf-refuses-what-it-rejects = {
+          expr = opt (adHoc oneOfSub) { a = 7; };
+          expectedError = carried oneOfNpSub;
+        };
+        test-an-ad-hoc-check-over-a-re-homed-either-under-a-gen-container-refuses-what-it-rejects = {
+          expr = opt (t.attrsOf (adHoc (np.either sub np.str))) { k.a = 7; };
+          expectedError = carriedAt "s[.]k" (np.either npSub np.str);
+        };
+        test-an-ad-hoc-check-over-a-re-homed-oneOf-under-a-gen-container-refuses-what-it-rejects = {
+          expr = opt (t.attrsOf (adHoc oneOfSub)) { k.a = 7; };
+          expectedError = carriedAt "s[.]k" oneOfNpSub;
+        };
+        test-an-ad-hoc-check-over-a-re-homed-either-under-a-nixpkgs-list-refuses-what-it-rejects = {
+          expr = opt (np.listOf (adHoc (np.either sub np.str))) [ { a = 7; } ];
+          expectedError = carriedAt ''s[.]"\[definition 1-entry 1\]"'' (np.either npSub np.str);
+        };
+        test-an-ad-hoc-check-over-a-re-homed-oneOf-under-a-nixpkgs-list-refuses-what-it-rejects = {
+          expr = opt (np.listOf (adHoc oneOfSub)) [ { a = 7; } ];
+          expectedError = carriedAt ''s[.]"\[definition 1-entry 1\]"'' oneOfNpSub;
         };
       };
 
