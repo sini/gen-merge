@@ -154,6 +154,226 @@ in
       };
     };
 
+    # A `//` COPY'S `verify` IS ENFORCED INSIDE A NIXPKGS CONTAINER (den-hoag-dyww5). The copy publishes its
+    # base's `check`, and a foreign container's fold reads an element's `check` alone, so declared alone
+    # under any nixpkgs container the value its `verify` rejects was served, while bare and under a gen
+    # container it is refused. Each wrapper's row reads the rejected value and its passing twin. The
+    # residue is pinned as a value: `submodule` and `attrTag`, whose interiors are nixpkgs' own option
+    # evaluation, still serve the rejected value; `coercedTo` over a container holding the copy, and a
+    # record outside the stock vocabulary whose `nestedTypes` hold it (`box`), are refused whole; on
+    # `coercedTo`'s coercion side under a container the copy is read as its head, as both engines read a
+    # check copy there. `weak` reads a copy whose `verify` admits what its base's `check` rejects: served
+    # where the container's fold reads the copy alone, as gen serves it bare, and refused under `nullOr`,
+    # `either` and `uniq`, whose own `check` is its base's; `weakUnstamped` reads it with no completion
+    # stamp, re-homed and rebuilt alike, so every arm gives it one domain. `untouched` reads a value no
+    # declared check touches, beside a copy on the coercion side: served.
+    test-a-verify-copy-inside-a-foreign-container-is-enforced =
+      let
+        E = gt.enum "e" [
+          "a"
+          "b"
+        ];
+        C = E // {
+          verify = v: if v == "a" then "rejected by the copy" else E.verify v;
+        };
+        W = gt.int // {
+          verify = _: null;
+        };
+        # the same copy with no completion stamp, so the published door does not carry it
+        H = builtins.removeAttrs W [ "__typeSelf" ];
+        box =
+          inner:
+          nixpkgsLib.mkOptionType {
+            name = "box";
+            check = builtins.isAttrs;
+            merge = loc: defs: {
+              v =
+                (nixpkgsLib.modules.mergeDefinitions loc inner (
+                  map (d: {
+                    inherit (d) file;
+                    value = d.value.v;
+                  }) defs
+                )).mergedValue;
+            };
+            nestedTypes.inner = inner;
+          };
+        wraps = {
+          listOf = {
+            w = np.listOf;
+            v = x: [ x ];
+          };
+          nonEmptyListOf = {
+            w = np.nonEmptyListOf;
+            v = x: [ x ];
+          };
+          attrsOf = {
+            w = np.attrsOf;
+            v = x: { k = x; };
+          };
+          lazyAttrsOf = {
+            w = np.lazyAttrsOf;
+            v = x: { k = x; };
+          };
+          attrsWithPlaceholder = {
+            w =
+              e:
+              np.attrsWith {
+                elemType = e;
+                lazy = false;
+                placeholder = "p";
+              };
+            v = x: { k = x; };
+          };
+          nullOr = {
+            w = np.nullOr;
+            v = x: x;
+          };
+          either = {
+            w = e: np.either e np.bool;
+            v = x: x;
+          };
+          oneOf = {
+            w =
+              e:
+              np.oneOf [
+                e
+                np.bool
+              ];
+            v = x: x;
+          };
+          coercedTo = {
+            w = np.coercedTo np.bool (_: "b");
+            v = x: x;
+          };
+          uniq = {
+            w = np.uniq;
+            v = x: x;
+          };
+          functionTo = {
+            w = np.functionTo;
+            v = x: _: x;
+            call = true;
+          };
+          listOfAttrsOf = {
+            w = e: np.listOf (np.attrsOf e);
+            v = x: [ { k = x; } ];
+          };
+          genListOfListOf = {
+            w = e: gt.listOf (np.listOf e);
+            v = x: [ [ x ] ];
+          };
+          submodule = {
+            w = e: np.submodule { options.y = nixpkgsLib.mkOption { type = e; }; };
+            v = x: { y = x; };
+          };
+          coercedToListOf = {
+            w = e: np.coercedTo np.bool (_: [ "b" ]) (np.listOf e);
+            v = x: [ x ];
+          };
+          attrTag = {
+            w = e: np.attrTag { y = nixpkgsLib.mkOption { type = e; }; };
+            v = x: { y = x; };
+          };
+          partialAttrsOf = {
+            w = e: gm.partialAttrsOf (np.listOf e);
+            v = x: { k = [ x ]; };
+          };
+          box = {
+            w = box;
+            v = x: { v = x; };
+          };
+          coercedFromCopy = {
+            w = e: np.coercedTo e (x: "coerced-${x}") np.str;
+            v = x: x;
+          };
+          coercedFromListOf = {
+            w = e: np.coercedTo (np.listOf e) (_: "coerced") np.str;
+            v = x: [ x ];
+          };
+        };
+        # a function's body is folded when it is called
+        at =
+          c: w: x:
+          let
+            o = opt (w.w c) (w.v x);
+            r = if w ? call then o null else o;
+          in
+          (tryEval (deepSeq r r)).success;
+      in
+      {
+        expr = {
+          copy = builtins.mapAttrs (_: w: {
+            a = at C w "a";
+            b = at C w "b";
+          }) wraps;
+          weak = builtins.mapAttrs (_: w: at W w "s") {
+            inherit (wraps)
+              listOf
+              attrsOf
+              attrsWithPlaceholder
+              functionTo
+              nullOr
+              either
+              uniq
+              ;
+          };
+          weakUnstamped = {
+            listOf = at H wraps.listOf "s";
+            attrsWithPlaceholder = at H wraps.attrsWithPlaceholder "s";
+          };
+          untouched = {
+            coercedFromCopy = at C wraps.coercedFromCopy "x";
+            coercedFromListOf = at C (wraps.coercedFromListOf // { v = x: x; }) "x";
+          };
+        };
+        expected = {
+          copy =
+            builtins.mapAttrs (_: _: {
+              a = false;
+              b = true;
+            }) wraps
+            // {
+              submodule = {
+                a = true;
+                b = true;
+              };
+              attrTag = {
+                a = true;
+                b = true;
+              };
+              coercedToListOf = {
+                a = false;
+                b = false;
+              };
+              box = {
+                a = false;
+                b = false;
+              };
+              coercedFromListOf = {
+                a = true;
+                b = true;
+              };
+            };
+          weak = {
+            listOf = true;
+            attrsOf = true;
+            attrsWithPlaceholder = true;
+            functionTo = true;
+            nullOr = false;
+            either = false;
+            uniq = false;
+          };
+          weakUnstamped = {
+            listOf = true;
+            attrsWithPlaceholder = true;
+          };
+          untouched = {
+            coercedFromCopy = true;
+            coercedFromListOf = true;
+          };
+        };
+      };
+
     # THE RESIDUE (README "The prices, stated"): a check over the bare tree, served, as pinned here.
     # A stock `either`/`oneOf`/`nullOr` over the bare tree is NOT in it: the tree's `check` is its
     # module-value domain, so the rewritten check over the union is carried (member B) and refuses,

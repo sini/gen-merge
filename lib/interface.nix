@@ -1518,8 +1518,9 @@ let
   # ── HOMING: WHAT A TYPE BOUND TO A POSITION FOLDS AS (den-hoag-n6dh7 item 5; gate C9) ──────────
   # The type itself when it is gen's own — it states `carries`, is a nesting type, or is a checker
   # stating `verify` — and gen's own container when it is one of the six stock foreign containers
-  # (`importedRehome` above) and MAY nest (a stock container over no nesting element keeps its own
-  # fold: re-homing buys a tree to thread to and nothing else, *defaulted, reversible*), rebuilt over
+  # (`importedRehome` above) and MAY nest or holds an owed copy (a stock container over no nesting
+  # element and no owed copy keeps its own fold: re-homing buys a tree to thread to, or a fold that reads
+  # the copy's `verify`, and nothing else, *defaulted, reversible*), rebuilt over
   # gen's constructor with its elements homed in turn, lazily,
   # so a self-referential stock type is unfolded only as deep as a fold reaches. Otherwise the type
   # itself — UNLESS IT DECLARES A GEN NESTING ELEMENT. Then the container outside the six is
@@ -1548,7 +1549,9 @@ let
       let
         r = importedRehomeAt door loc t;
       in
-      if r != null && canNest t then
+      # an element below may owe a verify the foreign fold cannot read (`owedCopyBelow`), asked only of a
+      # record `canNest` walked to its end; no binding, so a record re-homed for nesting pays nothing more
+      if r != null && (canNest t || owedCopyBelow t) then
         (
           let
             rebuilt =
@@ -1570,8 +1573,145 @@ let
         )
       else if declaresNestingAt door loc t then
         threadedForeign door loc t
+      else if r == null && !(canNest t) && owedCopyBelow t then
+        completedOver door loc t
       else
         t;
+
+  # ── A VERIFY THE FOREIGN FOLD CANNOT READ (den-hoag-dyww5) ─────────────────────────────────────────
+  # A `//` copy whose `verify` no completion vouches for (`replacesVerify`) publishes its base's `check`, and
+  # a foreign container's fold reads an element's `check` alone (nixpkgs `mergeDefinitions`), so below one
+  # the copy's `verify` is read by no one, where gen's own fold reads it bare and under a gen container. So
+  # a foreign container over such a copy, at any depth, is re-homed where re-homing recognises it, and
+  # otherwise rebuilt by its own functor over its element completed (`completedOver`); one whose functor
+  # rebuilds nothing is refused by name. Bounded by `importedTypeWalkFuel` and `false` AT EXHAUSTION, and
+  # asked only of a record `canNest` walked to its end (`homedAt`), so it walks no more than `canNest`
+  # did: a walk over a self-referential type exhausts `canNest` first, whose `true` re-homes or threads as
+  # before. THE PRICE, stated: a copy below a type `canNest` cannot decide, or below a gen nesting element,
+  # is not reached by this walk.
+  copyAt =
+    owed:
+    let
+      go = fuel: t: isAttrs t && (owed t || fuel > 0 && prelude.any (go (fuel - 1)) (declaredWrapped t));
+    in
+    go importedTypeWalkFuel;
+  owedCopyAt = copyAt replacesVerify;
+  # an owed copy whose `check` is still its completion's witness, so a foreign fold reads its base's domain
+  # alone; a copy whose `check` was rewritten (the published door's, or an author's) states its own
+  staleCopyAt = copyAt (x: replacesVerify x && !(rewritesCheck x));
+  owedCopyBelow = t: prelude.any owedCopyAt (declaredWrapped t);
+  # Is `e` a foreign container `homedAt` completes (`completedOver`) or re-homes for an owed copy below it?
+  # A gen container asks it of its element ONCE, when it is built, and folds an element so answering
+  # through `homedAt` at its position, as the threaded twin homes every element (`modules.mergeDefsThreaded`):
+  # its called fold otherwise hands the foreign record to the foreign fold, which reads no `verify`.
+  owesThroughForeign =
+    e:
+    isAttrs e
+    && !(e ? verify || e ? carries || e ? __threadedForeign || isNesting e)
+    && statesWrapped e
+    && !(canNest e)
+    && owedCopyBelow e;
+  # An element as a foreign fold must read it: an owed copy as the published door carries it, its declared
+  # domain published as its `check` (`carriedCopy`), or the same domain (`copyDomain`) over a record the
+  # door does not carry; any other element homed at its own position, so a foreign container below is
+  # re-homed in turn.
+  completedElement =
+    door: loc: e:
+    let
+      c = carriedCopy e;
+    in
+    if !(isAttrs e) then
+      e
+    else if replacesVerify e then
+      (
+        if c != null then
+          c
+        else
+          e
+          // {
+            check = witnessRecord (copyDomain e) // {
+              isV2MergeCoherent = true;
+            };
+          }
+      )
+    else
+      homedAt door loc e;
+  # A foreign container re-homing does not recognise, rebuilt by its own functor over its element completed,
+  # and restricted by its own `check` as every foreign rebuild is (`carryBy`, den-hoag-4ifgb M-B). A record
+  # whose functor rebuilds nothing but whose merged value is typed by the copy itself (nixpkgs `coercedTo`'s
+  # `finalType`) keeps its own fold, its merged value restricted by the copy completed, as gen's spine
+  # restricts a merged value by its `verify`; one whose copy is on its coercion side alone (`coercedType`)
+  # keeps it too, a definition it coerces restricted by that side completed, so a definition the copy
+  # rejects is refused by name where the stale `check` would coerce it. Under a container that side
+  # completed reads its head alone, as `coercedTo` reads a check copy's there (both engines). Any other
+  # owing record is refused by name: a container's `check` reads its head alone (nixpkgs' and gen's
+  # alike), so no predicate over a merged value reaches a copy below one; that is a `finalType` holding
+  # the copy under a container, and a record outside the stock vocabulary whose `nestedTypes` hold one.
+  # A record holding only copies whose `check` was rewritten is folded as it is: its fold reads the
+  # check they state.
+  completedOver =
+    door: loc: t:
+    let
+      e = carriedAt "element" t;
+      x = if e == null then null else rebuiltOverAt "element" (completedElement door loc e) t;
+      final = t.nestedTypes.finalType or null;
+      coerced = t.nestedTypes.coercedType or null;
+    in
+    if isAttrs x && x ? merge && x ? check then
+      carryBy false t x
+    else if e == null && replacesVerify final && !(owedCopyAt coerced) && t ? merge then
+      valueRestrictedBy (completedElement door loc final) t
+    else if e == null && owedCopyAt coerced && !(owedCopyAt final) && t ? merge then
+      coercionRestrictedBy (completedElement door loc coerced) t
+    else if prelude.any staleCopyAt (declaredWrapped t) then
+      throw (owedCopyRefusal door loc t)
+    else
+      t;
+  # `f`'s domain: its `verify` where it states one, and its `check`
+  holdsFor = f: v: (!(f ? verify) || f.verify v == null) && f.check v;
+  # `r`'s fold, its merged value refused by name outside `f`'s domain
+  valueRestrictedBy =
+    f: restrictedBy "the merged value is outside the domain of `${nameOf f}'" (_: v: !(holdsFor f v));
+  # `r`'s fold, refused by name where a definition its stale `coercedType` admits, so the fold coerces it,
+  # is outside `f`'s domain (that side completed)
+  coercionRestrictedBy =
+    f: r:
+    restrictedBy "a definition it coerces is outside the domain of `${nameOf f}'" (
+      defs: _: prelude.any (d: r.nestedTypes.coercedType.check d.value && !(holdsFor f d.value)) defs
+    ) r;
+  # `r`'s fold, refused by name with `message` where `refuses defs value` holds
+  restrictedBy =
+    message: refuses: r:
+    r
+    // {
+      merge =
+        if isV2 r then
+          {
+            __functor =
+              self: loc: defs:
+              (self.v2 { inherit loc defs; }).value;
+            v2 =
+              args:
+              let
+                v = r.merge.v2 args;
+              in
+              if v.headError != null || !(refuses args.defs v.value) then
+                v
+              else
+                v // { headError.message = message; };
+          }
+        else
+          loc: defs:
+          let
+            v = r.merge loc defs;
+          in
+          if refuses defs v then throw "gen-merge: option `${showOption loc}': ${message}" else v;
+    };
+  owedCopyRefusal =
+    door: loc: t:
+    "${doorAt door loc}the option type `${nameOf t}' holds a `//' copy whose `verify' its fold cannot read "
+    + "(it reads the copy's `check', its base's), and its functor rebuilds no element to carry it. Complete "
+    + "the copy with `types.defineType', which publishes its `verify' as its `check'";
 
   # MAY this type be a CONTAINER NODE at an exact container's element, at its own position or
   # through a container below it? Gen's own union, or the stock foreign `either` that `homedAt`
@@ -1802,6 +1942,70 @@ let
     __functor = _: x: fixed.check x && t.check x;
     isV2MergeCoherent = true;
   };
+  # `r` restricted by the owed record `o`'s check, or refused by name where `o` is an override: the carriage
+  # `carriedAtDepth` applies at every depth, and `homedAt` applies to a foreign container it rebuilds over a
+  # completed element (`completedOver`)
+  carryBy =
+    top: o: r:
+    let
+      holds = o.check;
+    in
+    if adHocChecked o then
+      # a root keeps the override's own `check`, which routes the mount to the fold (`homedRootFixed`); an
+      # element keeps its coherent one, so a foreign container's fold reaches the merge. Its rebuild is
+      # refused the same way, so a later rebuild (the mount's, over the fixup's) does not erase it.
+      r
+      // {
+        merge = {
+          __functor =
+            _: loc: defs:
+            adHocFold o loc defs;
+          v2 = args: adHocFold o args.loc args.defs;
+        };
+      }
+      // (
+        if r ? substSubModules then { substSubModules = m: carryBy top o (r.substSubModules m); } else { }
+      )
+      // (if top then { inherit (o) check; } else { })
+    else
+      r
+      // {
+        check = {
+          # a FOREIGN carrier's own check is asked elsewhere: a declaration list's root is mounted, and
+          # the mount meets its rebuild's (`homedRootFixed`); a v2 element's merge computes its own
+          # `headError`. A gen carrier and a v1 element are asked it here.
+          __functor = if r ? typeMergeRel || !top && !(isV2 r) then _: x: r.check x && holds x else _: holds;
+          isV2MergeCoherent = true;
+        };
+      }
+      # an element's v2 merge judges its own definitions inside a foreign container's fold, which reads
+      # no `check`, so the owed checks ride on its `headError` too, as nixpkgs' `addCheck` places its
+      # own; a root's `check` is what gen's checked fold reads (`importedFold`), and it pays no merge
+      # wrapper
+      // (
+        if !top && isV2 r then
+          {
+            merge = {
+              __functor =
+                self: loc: defs:
+                (self.v2 { inherit loc defs; }).value;
+              v2 =
+                args:
+                let
+                  v = r.merge.v2 args;
+                in
+                if v.headError != null || builtins.all holds (builtins.catAttrs "value" args.defs) then
+                  v
+                else
+                  v
+                  // {
+                    headError.message = "a definition is rejected by the check of a declaration of this option";
+                  };
+            };
+          }
+        else
+          { }
+      );
   # THE SAME CARRIAGE OVER A DECLARATION LIST AND AT EVERY DEPTH (den-hoag-8ip0d). `carriedAtDepth true ts
   # r` is the rebuild `r` restricted by every check in `ts` (the records it was rebuilt from) that it
   # cannot carry, its element rebuilt over the same carriage of their elements; `carriedAtDepth false t
@@ -1870,68 +2074,6 @@ let
                 check = if length owed == 2 then (x: c0 x && c1 x) else (x: builtins.all (o: o.check x) owed);
               }
           ) (below fuel ts r);
-      # `r` restricted by the owed record `o`'s check, or refused by name where `o` is an override
-      carryBy =
-        top: o: r:
-        let
-          holds = o.check;
-        in
-        if isAdHoc o then
-          # a root keeps the override's own `check`, which routes the mount to the fold (`homedRootFixed`); an
-          # element keeps its coherent one, so a foreign container's fold reaches the merge. Its rebuild is
-          # refused the same way, so a later rebuild (the mount's, over the fixup's) does not erase it.
-          r
-          // {
-            merge = {
-              __functor =
-                _: loc: defs:
-                adHocFold o loc defs;
-              v2 = args: adHocFold o args.loc args.defs;
-            };
-          }
-          // (
-            if r ? substSubModules then { substSubModules = m: carryBy top o (r.substSubModules m); } else { }
-          )
-          // (if top then { inherit (o) check; } else { })
-        else
-          r
-          // {
-            check = {
-              # a FOREIGN carrier's own check is asked elsewhere: a declaration list's root is mounted, and
-              # the mount meets its rebuild's (`homedRootFixed`); a v2 element's merge computes its own
-              # `headError`. A gen carrier and a v1 element are asked it here.
-              __functor = if r ? typeMergeRel || !top && !(isV2 r) then _: x: r.check x && holds x else _: holds;
-              isV2MergeCoherent = true;
-            };
-          }
-          # an element's v2 merge judges its own definitions inside a foreign container's fold, which reads
-          # no `check`, so the owed checks ride on its `headError` too, as nixpkgs' `addCheck` places its
-          # own; a root's `check` is what gen's checked fold reads (`importedFold`), and it pays no merge
-          # wrapper
-          // (
-            if !top && isV2 r then
-              {
-                merge = {
-                  __functor =
-                    self: loc: defs:
-                    (self.v2 { inherit loc defs; }).value;
-                  v2 =
-                    args:
-                    let
-                      v = r.merge.v2 args;
-                    in
-                    if v.headError != null || builtins.all holds (builtins.catAttrs "value" args.defs) then
-                      v
-                    else
-                      v
-                      // {
-                        headError.message = "a definition is rejected by the check of a declaration of this option";
-                      };
-                };
-              }
-            else
-              { }
-          );
       carryElement = carryBy false;
       # `t.substSubModules m`, with an owing module-set element rebuilt by the same function, carried, and the
       # container rebuilt over it by its own constructor: one rebuild per level, as nixpkgs' forwarding does.
@@ -4337,11 +4479,7 @@ let
       let
         c = x.__typeSelf null;
         names = carrierTolerated;
-        dom =
-          if x.check == x._checkWitness then
-            (v: x.verify v == null)
-          else
-            (v: x.check v && x.verify v == null);
+        dom = copyDomain x;
       in
       if
         !(stampOk (
@@ -4374,6 +4512,14 @@ let
         s
       else
         keepStamp x;
+  # A copy's declared domain, as the engine reads one declaration alone (`meetOf`'s `dom`): its `verify`
+  # alone where its `check` is still its completion's witness, and both where it rewrote its `check`.
+  copyDomain =
+    x:
+    if x ? _checkWitness && x.check == x._checkWitness then
+      (v: x.verify v == null)
+    else
+      (v: x.check v && x.verify v == null);
   # `t` departs from the record its constructor completed only at fields `reads` does not hold.
   departsOnlyOutside =
     reads: t:
@@ -5278,6 +5424,7 @@ in
     canNest
     declaresNesting
     homedAt
+    owesThroughForeign
     homedRootAt
     crossedRoot
     mayFoldNested

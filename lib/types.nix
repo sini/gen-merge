@@ -783,6 +783,11 @@ let
   # accessor's root (`attrsOfWith`). Each element folds through the engine's CALLED fold, as every
   # container's did before the split existed.
   foldElement = e: mergeDefs e.loc e.type e.defs;
+  # An element homed at its position before it folds: a gen container whose element is a foreign container
+  # holding a `//` copy whose `verify` the foreign fold cannot read (`interface.owesThroughForeign`,
+  # den-hoag-dyww5) selects it, between two lambdas when the type is built, as `threaded` selects its fold,
+  # so a container over any other element pays nothing for it. The threaded twin homes every element.
+  homedFoldElement = e: mergeDefs e.loc (interface.homedAt "evalModuleTree" e.loc e.type) e.defs;
   # The same element through the engine's THREADED twin (den-hoag-n6dh7 item 5): the evaluation's
   # accessor `ev` goes with it, its position extended by the element's `step`, so the tree a nesting
   # element reads is the one at that position. It is the called fold's call with `ev` added.
@@ -1109,7 +1114,12 @@ let
             )
           ) defs
         );
-      called = refusingOutside "listOf" admits (loc: defs: map foldElement (split loc defs));
+      called = refusingOutside "listOf" admits (
+        if interface.owesThroughForeign element then
+          loc: defs: map homedFoldElement (split loc defs)
+        else
+          loc: defs: map foldElement (split loc defs)
+      );
       thread = exactThread element;
     in
     defineType (
@@ -1275,7 +1285,20 @@ let
           );
       # The CALLED fold, selected once when the type is built (below).
       called = refusingOutside tyName admits (
-        if tyName == "attrsOf" then
+        if tyName == "attrsOf" && interface.owesThroughForeign element then
+          loc: defs:
+          listToAttrs (
+            map (e: {
+              name = head e.step;
+              value = homedFoldElement e;
+            }) (split loc defs)
+          )
+        else if interface.owesThroughForeign element then
+          loc: defs:
+          builtins.mapAttrs (
+            k: mergeDefs (loc ++ [ k ]) (interface.homedAt "evalModuleTree" (loc ++ [ k ]) element)
+          ) (defsByKey defs)
+        else if tyName == "attrsOf" then
           loc: defs:
           listToAttrs (
             map (e: {
@@ -1346,7 +1369,16 @@ let
         __functor =
           _:
           refusingOutside "partialAttrsOf" isAttrs (
-            loc: defs: builtins.mapAttrs (k: mergeDefsPartial (loc ++ [ k ]) element) (defsByKey defs)
+            loc: defs:
+            builtins.mapAttrs (
+              k:
+              mergeDefsPartial (loc ++ [ k ]) (
+                if interface.owesThroughForeign element then
+                  interface.homedAt "evalModuleTree" (loc ++ [ k ]) element
+                else
+                  element
+              )
+            ) (defsByKey defs)
           );
         threaded =
           ev:
@@ -1605,7 +1637,7 @@ let
           })"
         else
           foldE e;
-      called = foldWith foldElement;
+      called = foldWith (if interface.owesThroughForeign element then homedFoldElement else foldElement);
     in
     defineType (
       identified "nullOr" [ element ] head [ ] {
@@ -1751,7 +1783,12 @@ let
               "`${nameOf t}' refuses them whole: ${judged}";
         in
         "${member a}; ${member b}";
-      called = foldWith foldElement;
+      called = foldWith (
+        if interface.owesThroughForeign a || interface.owesThroughForeign b then
+          homedFoldElement
+        else
+          foldElement
+      );
     in
     defineType (
       identified "either" [ a b ] (ids: ids) [ ] {
