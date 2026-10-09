@@ -2599,7 +2599,15 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   recognised for laziness only (the one exception to reading what a record carries off its
   carrying spelling): its role is the module set, read off `getSubModules`, and its `nestedTypes`
   crosses as an unforced thunk (`ci/tests/submodule-laziness.nix`, a poisoned `nestedTypes` on
-  every route). The residue, pinned (`test-the-residue-is-served-as-a-module-set`): such a record
+  every route). A second recogniser sits outside that exception, because it reads no payload: a
+  record stating `carries.moduleSet` in gen's own spelling (a gen submodule, `evalModuleTree`'s
+  `.type`, gen-merge's own import of a nixpkgs submodule, and any copy of them re-entering
+  `mkOptionType`, gen-schema's `refined` among them) states `nestedTypes` as a function of that set
+  too, so its role is the carried module set and the field is never read
+  (`ci/tests/gen-module-set-laziness.nix`, a poisoned module set; den-hoag-60hql). A hand-built
+  record claiming that spelling is served as a module set with any static `nestedTypes` role unread,
+  and one stating no sub-protocol, refused by name before, is served
+  (`test-a-forged-gen-module-set-record-is-served`). The residue, pinned (`test-the-residue-is-served-as-a-module-set`): such a record
   that also states a static role in `nestedTypes` (a nixpkgs submodule given an `elemType` by `//`)
   is served as a module set with that role unread; a record whose `nestedTypes` is evaluation-derived
   but whose payload states no `modules` (a hand-copied submodule) or which states no
