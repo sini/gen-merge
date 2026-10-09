@@ -4200,9 +4200,11 @@ let
   # changes what the record's mark stands for. This boundary REBUILDS every record it imports and
   # exports, and whatever completes a record ties its stamp, so the rebuilt record is RE-TIED here,
   # on import and on export. A record that fails the stamp on entry is a `//` copy: it is imported
-  # and SERVES, but UNMINTED (owner Q3 ruling "A": the comparison site refuses an unminted pair by
-  # name), keeping the stale witness, so gen-types' `typeEq` refuses it by name. Nothing is refused at
-  # import. A vocabulary publishing no `stampOk` stamps nothing.
+  # and SERVES, but UNMINTED (an orchestrator default of arm (c), 2026-10-03), keeping the stale
+  # witness, so gen-types' `typeEq` refuses it by name (owner Q3 ruling "A": the comparison site
+  # refuses an unminted pair by name). Nothing is refused at import. The published `mkOptionType`
+  # returns a copy departing within its carrier before it reaches this boundary (`carriedCopy`,
+  # den-hoag-r23mj). A vocabulary publishing no `stampOk` stamps nothing.
   stampOk = types.stampOk or (_: true);
   retied =
     r:

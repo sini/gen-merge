@@ -805,8 +805,9 @@ in
 
   # The unified `types` namespace — gen-types leaf CHECKERS ⊎ gen-merge structural strategies.
   # This is the `lib.types` drop-in the re-host (C2/C3) points at: `lib.types.X` → `genMerge.types.X`.
-  # The injected gen-types leaf checkers are PROTOCOL-COMPLETED (via `strategies.mkOptionType`) so they
-  # too mount inside a real nixpkgs `lib.evalModules` — mkIdentityModule's `id_hash` uses `types.str`,
+  # The injected gen-types leaf checkers are PROTOCOL-COMPLETED (`completeExport`: `importLeaf`, under
+  # its `interface.embeddings` row) so they too mount inside a real nixpkgs `lib.evalModules` —
+  # mkIdentityModule's `id_hash` uses `types.str`,
   # which the corpus's `mkInstanceRegistry` mounts in flake-parts. gen-merge's own strategies are already
   # completed at their constructors (types.nix). A non-type entry (non-type value) passes through.
   #
