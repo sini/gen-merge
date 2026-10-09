@@ -152,6 +152,22 @@ let
       inherit (o) declarations;
       defs = map (d: d.file) (if r ? provenance then r.provenance.x.defs else o.definitionsWithLocations);
     };
+  # The nested arm: an anonymous module declaring a submodule option, read at the option and at the
+  # submodule's own option.
+  nestedFiles =
+    evalModules: mo: ty:
+    let
+      r = evalModules {
+        modules = [
+          { options.s = mo { type = ty.submodule { options.y = mo { type = ty.int; }; }; }; }
+          { s.y = 1; }
+        ];
+      };
+    in
+    {
+      inherit (r.options.s) declarations;
+      sub = (r.options.s.type.getSubOptions [ "s" ]).y.declarations;
+    };
   anonFiles = {
     declarations = [ "<unknown-file>" ];
     defs = [ "<unknown-file>" ];
@@ -386,11 +402,28 @@ in
     # `<unknown-file>` in `declarations` and in its definitions' files, as nixpkgs' `evalModules`
     # labels it (`unknownModule`; den-hoag-z9dby, ADR-0039). An explicit `_file` is the control.
     test-nixpkgs-equivalence-anonymous-root-file = {
-      expr = builtins.mapAttrs (_: arm: {
-        genMerge = rootFiles evalRequest mkOption t.int arm;
-        nixpkgs = rootFiles nixpkgsLib.evalModules nixpkgsLib.mkOption nixpkgsLib.types.int arm;
-      }) rootArms;
+      expr =
+        builtins.mapAttrs (_: arm: {
+          genMerge = rootFiles evalRequest mkOption t.int arm;
+          nixpkgs = rootFiles nixpkgsLib.evalModules nixpkgsLib.mkOption nixpkgsLib.types.int arm;
+        }) rootArms
+        // {
+          nested = {
+            genMerge = nestedFiles evalRequest mkOption t;
+            nixpkgs = nestedFiles nixpkgsLib.evalModules nixpkgsLib.mkOption nixpkgsLib.types;
+          };
+        };
       expected = {
+        nested = {
+          genMerge = {
+            declarations = [ "<unknown-file>" ];
+            sub = [ "<unknown-file>" ];
+          };
+          nixpkgs = {
+            declarations = [ "<unknown-file>" ];
+            sub = [ "<unknown-file>" ];
+          };
+        };
         anonymous = {
           genMerge = anonFiles;
           nixpkgs = anonFiles;

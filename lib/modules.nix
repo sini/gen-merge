@@ -901,8 +901,9 @@ let
           # and that entry must name IT rather than whoever declared the option first. Indexing the site
           # list by how many entries have accumulated says otherwise and is wrong for exactly that shape
           # — shadow events and declaring modules are different counts. `<unknown-file>` where there is
-          # no earlier site (a decl tree assembled outside the module fold): a sentinel in the shape of
-          # `<default>`/`<def>`, never a guess.
+          # no earlier site (a decl tree assembled outside the module fold), never a guess. It is also
+          # the label an anonymous declaring module carries (nixpkgs' `unknownModule`), so the entry does
+          # not tell "no earlier site" from "an anonymous module declared it"; nothing compares it.
           #
           # `overridden` appears ONLY where a declaration really was shadowed: a layering module that
           # merely ADDS fields leaves the record exactly what the plain union produced. An intermediate
