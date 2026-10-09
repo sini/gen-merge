@@ -7,9 +7,7 @@
 #
 # Beside them, two pins on `modules.nix` `ownFold`: a record stating `verify` beside a fold of its
 # own spelled as `merge` keeps that fold. A leaf arm keyed on `verify` ahead of the import call
-# serves these a different value (den-hoag-c7jkw.1, dropped for that reason). A foreign base stating
-# `verify` keeps its own `check` as well (`interface.nix` `checksDefs`); its refusals are on
-# `testsError`, group `foreign-leaf-check`.
+# serves these a different value (den-hoag-c7jkw.1, dropped for that reason).
 {
   genMerge,
   nixpkgsLib,
@@ -135,17 +133,6 @@ in
         "b"
       ];
       expected = "b\na";
-    };
-    # The base's own check runs beside the copy's `verify`, and a value inside both is served.
-    test-a-foreign-attrs-with-a-verify-serves-a-value-its-base-admits = {
-      expr = leaf (nixpkgsLib.types.attrs // { verify = _: null; }) [
-        { a = 1; }
-        { b = 2; }
-      ];
-      expected = {
-        a = 1;
-        b = 2;
-      };
     };
   };
 }

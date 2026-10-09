@@ -380,6 +380,52 @@ let
         { options.p = gm.mkOption { type = T; }; }
         { p = v; }
       ]).config.p;
+
+  # A foreign base carrying a `// { verify }` copy keeps its own `check` over each definition
+  # (`interface.nix` `checksDefs`). The bad values' refusals are on `testsError`; these are their
+  # good-value twins over the same bases × doors, each served as the base serves it.
+  copy = T: T // { verify = _: null; };
+  read =
+    T: defs:
+    (gm.evalModuleTree { } ([ { options.p = gm.mkOption { type = T; }; } ] ++ map (v: { p = v; }) defs))
+    .config.p;
+  copyBases = {
+    attrs = [
+      t.attrs
+      { a = 1; }
+    ];
+    submodule = [
+      (t.submodule { options.a = nixpkgsLib.mkOption { type = t.int; }; })
+      { a = 1; }
+    ];
+    lines = [
+      t.lines
+      "x"
+    ];
+    attrTag = [
+      (t.attrTag { x = nixpkgsLib.mkOption { type = t.int; }; })
+      { x = 1; }
+    ];
+  };
+  copyDoors = {
+    raw = T: T;
+    mkOptionType = gm.mkOptionType;
+  };
+  copyServed = builtins.listToAttrs (
+    concatMap (
+      bn:
+      map (dn: {
+        name = "${bn}/${dn}";
+        value =
+          let
+            good = builtins.elemAt copyBases.${bn} 1;
+            served = read (copyDoors.${dn} (copy (builtins.elemAt copyBases.${bn} 0))) [ good ];
+            r = tryEval (deepSeq served served);
+          in
+          r.success && r.value == good;
+      }) (attrNames copyDoors)
+    ) (attrNames copyBases)
+  );
 in
 {
   flake.tests.foreign-leaf-check = {
@@ -563,6 +609,34 @@ in
         routedCheckAccepting = 1;
         routedDescriptor = 1;
         optionSite = false;
+      };
+    };
+
+    # 4 foreign bases × 2 doors, a `// { verify }` copy given a value its base admits: every cell
+    # served, as the base serves it. The refusals of a value outside the base are on `testsError`.
+    test-a-verify-copy-of-a-foreign-base-serves-a-value-its-base-admits-at-both-doors = {
+      expr = copyServed;
+      expected = {
+        "attrs/mkOptionType" = true;
+        "attrs/raw" = true;
+        "attrTag/mkOptionType" = true;
+        "attrTag/raw" = true;
+        "lines/mkOptionType" = true;
+        "lines/raw" = true;
+        "submodule/mkOptionType" = true;
+        "submodule/raw" = true;
+      };
+    };
+    # The base's own check runs beside the copy's `verify` on each definition, and the fold merges
+    # the definitions inside both.
+    test-a-foreign-attrs-with-a-verify-serves-a-value-its-base-admits = {
+      expr = read (copy t.attrs) [
+        { a = 1; }
+        { b = 2; }
+      ];
+      expected = {
+        a = 1;
+        b = 2;
       };
     };
   };

@@ -4828,9 +4828,10 @@ in
           };
         };
       }
-      # A foreign base carrying a `// { verify }` copy keeps its own `check` over each definition: a
-      # value outside the base is refused with the base's own message, the no-copy control's, at both
-      # doors. Without the check these bases' raw merges abort uncatchably (`{ } // 5`, `concatStrings`).
+      # A foreign base carrying a `// { verify }` copy keeps its own `check` over each definition. At
+      # both doors a value outside the base is refused with the base's own message, the no-copy
+      # control's; the last two cells pin gen-merge's own wording, which is not nixpkgs'. Without the
+      # check these bases' raw merges abort uncatchably (`{ } // 5`, `concatStrings`).
       // (
         let
           np = nixpkgsLib.types;

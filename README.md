@@ -1893,9 +1893,12 @@ restricted by a copy on its coercion side. A gen container whose element is such
 before it folds it, selected once when the container is built (`interface.owesThroughForeign`;
 `partialAttrsOf` asks it per key, at the same cost per key as `attrsOf`). The
 copy's domain is the one the engine reads for it bare (`interface.copyDomain`, as `carriedCopy`
-publishes it): its `verify` alone while its `check` is its completion's, so a copy whose `verify`
-admits what its base's `check` rejects is served under `listOf`, `attrsOf`, `attrsWith` and
-`functionTo` as it is bare, where nixpkgs refuses it. **The prices, stated:** inside a nixpkgs
+publishes it): its `verify` alone while its `check` is its completion's, so a copy of a gen
+completion (one carrying `_checkWitness` or `__typeSelf`) whose `verify` admits what its base's
+`check` rejects is served under `listOf`, `attrsOf`, `attrsWith` and `functionTo` as it is bare,
+where nixpkgs refuses it. A foreign record carrying `verify` keeps its foreign `check` over each
+definition (`interface.checksDefs`), so its `verify` judges only the merged value, widens nothing,
+and a value outside the base is refused by name, as nixpkgs refuses it. **The prices, stated:** inside a nixpkgs
 `submodule` or `attrTag` the option is folded by nixpkgs' own option evaluation, which reads the
 copy's `check`, so the raw copy is dropped there, and `types.defineType` is the way out; `coercedTo`
 whose `finalType` holds the copy under a container, and a record outside the stock vocabulary whose
