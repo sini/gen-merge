@@ -4392,6 +4392,21 @@ let
   # returns a copy departing within its carrier before it reaches this boundary (`carriedCopy`,
   # den-hoag-r23mj). A vocabulary publishing no `stampOk` stamps nothing.
   stampOk = types.stampOk or (_: true);
+  # whether `t` agrees with its completion at the fields `reads` holds, and nowhere else: ONE `stampOk` over
+  # the two projections, each carrying one shared completion witness, so only the domain's cells are forced
+  # and a field present on one side only changes the projection's name set (den-hoag-6foy1)
+  stampHoldsOver =
+    reads: t:
+    !(isAttrs t && t ? __typeSelf)
+    || (
+      isFunction t.__typeSelf
+      && (
+        let
+          f = _: builtins.intersectAttrs reads (t.__typeSelf null) // { __typeSelf = f; };
+        in
+        stampOk (builtins.intersectAttrs reads t // { __typeSelf = f; })
+      )
+    );
   retied =
     r:
     let
@@ -4421,11 +4436,7 @@ let
         # a record whose `check` a wrapper rewrote is guarded by its check witness at every identity
         # reader (`rewritesCheck`, den-hoag-ydro3) and keeps its mark as the join's carrier; a copy
         # departing only at fields this door does not read keeps its completion's (den-hoag-59gnz C3)
-        copy =
-          src ? __typeSelf
-          && !(rewritesCheck src)
-          && !(stampOk src)
-          && !(builtins.isFunction src.__typeSelf && departsOnlyOutside importReads src);
+        copy = src ? __typeSelf && !(rewritesCheck src) && !(departsOnlyOutside importReads src);
         s = r // {
           __typeSelf = if copy then src.__typeSelf else (_: s);
           __stampReads = stampReads;
@@ -4462,7 +4473,20 @@ let
   # is an output of the record's own evaluation (`unroledNested`, the a0c4z rule: no walk reads it).
   # Every other field is metadata or derived from these, so a member departing only there is the type
   # its mark names, and none of them is forced to decide it.
-  stampReads = filter (n: n != "unroledNested") (attrNames completionReads);
+  stampReads = attrNames (builtins.removeAttrs completionReads ownEvaluation);
+  # ★ THE FIELDS THAT ARE AN OUTPUT OF A RECORD'S OWN EVALUATION (gen-merge a0c4z), on a record whose
+  # `nestedTypes` is (`evaluatesOwnRoles`): its module set's declarations decide each of them, so forcing
+  # one to WHNF evaluates the module set, and inside a registry knot that is an uncatchable infinite
+  # recursion on Nix and Determinate, which force every cell `==` compares (den-hoag-6foy1). Neither entry
+  # door's copy test asks them (`restamp`'s `copy`, `keepStamp`'s `stale`). Each is derived from the module
+  # set the mint covers, and gen's fold reads none of them. The price: on such a record, a copy departing
+  # only at these fields is the same type to `typeEq` at both doors, its forged value carried, its `idOf`
+  # still refused (the record is sealed). `ci/tests/stamp-door.nix` holds the list to what the fields force.
+  ownEvaluation = [
+    "descriptionClass"
+    "nestedTypes"
+    "unroledNested"
+  ];
   importReads =
     completionReads
     // builtins.listToAttrs (
@@ -4574,13 +4598,16 @@ let
       (v: x.verify v == null)
     else
       (v: x.check v && x.verify v == null);
-  # `t` departs from the record its constructor completed only at fields `reads` does not hold.
+  # `t` departs from the record its constructor completed only at fields `reads` does not hold, decided by one
+  # comparison of the two records' projections onto `reads` so only those cells are forced (`stampHoldsOver`),
+  # and never at a field that is an output of the completion's own evaluation (`ownEvaluation`). Whether a
+  # record evaluates its own roles is read off the completion, which a `//` copy cannot change; `false` for a
+  # record whose completion witness is not a function.
   departsOnlyOutside =
     reads: t:
-    let
-      c = t.__typeSelf null;
-    in
-    stampOk (builtins.removeAttrs c (attrNames reads) // builtins.intersectAttrs reads t);
+    stampHoldsOver (
+      if evaluatesOwnRoles (t.__typeSelf null) then builtins.removeAttrs reads ownEvaluation else reads
+    ) t;
   # THE PUBLISHED `defineType` DOOR (den-hoag-59gnz C2): a caller's record keeps the witnesses it arrived with,
   # as the raw record holds them. A record whose stamp holds, or that departs from its completion only
   # at metadata, is re-tied; any other copy keeps its stale stamp (`__staleStamp`, read by the export),
@@ -4601,7 +4628,6 @@ let
         # door, and the door reads there what the import door reads (den-hoag-59gnz gate G-1)
         stale =
           builtins.isFunction t.__typeSelf
-          && !(stampOk t)
           && !(departsOnlyOutside (
             if rowFunctorNames ? ${(t.functor or { }).name or ""} then importReads else completionReads
           ) t);
@@ -5516,6 +5542,9 @@ in
     keepStamp
     carriedCopy
     carrierTolerated
+    importReads
+    ownEvaluation
+    departsOnlyOutside
     typeDefect
     ;
 }

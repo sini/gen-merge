@@ -1159,7 +1159,13 @@ Two rules that look like details and are not:
   changed, so a re-completed `addCheck T p` is enforced alone and beside `T` and its identity is
   refused by name, as the raw copy's is. A copy departing only at fields a door does not read (a
   `description` or a caller field at `defineType`; the import door also reads the protocol fields it
-  translates) keeps its completion's identity there. **`types.defineType` returns a copy departing
+  translates) keeps its completion's identity there. Neither door's copy test (the import door's
+  `copy`, `types.defineType`'s `stale`) asks a field that is an output of the record's own evaluation
+  (`interface.ownEvaluation`: `descriptionClass`, `nestedTypes`, `unroledNested`, on a record whose
+  module set decides its `nestedTypes`), because forcing one evaluates the module set, and inside a
+  registry knot that is an uncatchable infinite recursion on Nix and Determinate. The price: a copy
+  departing only there is the same type to `typeEq` at both doors, its forged value carried, its
+  `idOf` still refused (the record is sealed). **`types.defineType` returns a copy departing
   within its carrier as it is**, and so does the published `mkOptionType`: a `//` copy of a completed
   gen record that states `verify` and departs from its completion only at `check`, `verify`,
   `typeMerge` or a name-carried field keeps its row,
