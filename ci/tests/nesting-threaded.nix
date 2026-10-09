@@ -72,6 +72,45 @@ let
     file = "/f";
     value = v;
   });
+  # A leaf whose override reads its stock rebuild (`m: null`) as a type, and whose merge drops the
+  # first definition: nixpkgs never rebuilds it, since it states no module set (den-hoag-87nvk).
+  readsNull =
+    a:
+    a
+    // {
+      merge = loc: defs: a.merge loc (builtins.tail defs);
+      substSubModules = m: readsNull (a.substSubModules m);
+    };
+  tagged = t.submodule {
+    options.tags = gm.mkOption {
+      type = t.listOf t.str;
+      default = [ ];
+    };
+  };
+  # nixpkgs' `coercedTo` from that leaf to `el`, four definitions in three modules.
+  besideReadsNull =
+    el: def:
+    (cfg [
+      { options.xs = gm.mkOption { type = np.coercedTo (readsNull np.int) (_: throw "coerced") el; }; }
+      {
+        key = "mA";
+        _file = "zz";
+        config.xs = def "p";
+      }
+      {
+        key = "mB";
+        _file = "aa";
+        config.xs = def "q";
+      }
+      {
+        key = "mC";
+        _file = "zz";
+        config.xs = gm.mkMerge [
+          (def "r")
+          (def "s")
+        ];
+      }
+    ]).xs;
 
   # U2.2-a's fixtures: every nesting shape gen-merge's suites fold, each as `{ type; loc; defs; }`.
   fixtures = {
@@ -578,6 +617,46 @@ in
         forwards.x = 1;
         function-body-string = "s";
       };
+    };
+    # A sibling whose `getSubModules` is not a list is not handed the marker, as nixpkgs'
+    # `fixupOptionType` hands it no module set: its override is never called and the value is
+    # nixpkgs' (den-hoag-87nvk). A stock `either` in the element's place is refused by name,
+    # `ci/tests-error.nix`.
+    test-a-sibling-whose-rebuild-reads-the-module-set-is-not-handed-the-marker = {
+      expr =
+        (besideReadsNull tagged (tag: {
+          tags = [ tag ];
+        })).tags;
+      expected = [
+        "p"
+        "q"
+        "s"
+        "r"
+      ];
+    };
+    test-a-sibling-whose-rebuild-reads-the-module-set-beside-a-union-is-not-handed-the-marker = {
+      expr =
+        (besideReadsNull (t.either tagged t.str) (tag: {
+          tags = [ tag ];
+        })).tags;
+      expected = [
+        "p"
+        "q"
+        "s"
+        "r"
+      ];
+    };
+    test-a-sibling-whose-rebuild-reads-the-module-set-beside-a-tree-is-not-handed-the-marker = {
+      expr =
+        (besideReadsNull (t.attrsOf tagged) (tag: {
+          k.tags = [ tag ];
+        })).k.tags;
+      expected = [
+        "p"
+        "q"
+        "s"
+        "r"
+      ];
     };
   };
 
