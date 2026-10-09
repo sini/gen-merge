@@ -571,6 +571,66 @@ in
         ]
       ];
     };
+    # An option default that survives beside an `mkOptionDefault` definition seeds the child with the
+    # default's address and the definition with its module's (den-hoag-12e7r): `declAtsOfGroup` joins
+    # the default where `definitions` does, through `withDeclaredDefault`. It guards the two lists
+    # against partial application, so the state it reds is the default moved in one list and not the
+    # other; the order is read through the values, never the list position.
+    test-surviving-default-keeps-its-address = {
+      expr =
+        let
+          sub = t.submodule {
+            options.l = gm.mkOption {
+              type = t.listOf t.int;
+              default = [ ];
+            };
+            options.seen = gm.mkOption {
+              type = t.listOf t.anything;
+              default = [ ];
+            };
+          };
+          n = sub.nests;
+          S = t.defineType (
+            sub
+            // {
+              nests = n // {
+                declAt = true;
+                entry = d: {
+                  imports = [ (n.entry { inherit (d) file value; }) ];
+                  config.seen = [
+                    {
+                      v = d.value.l;
+                      at = d.declAt;
+                    }
+                  ];
+                };
+              };
+            }
+          );
+        in
+        builtins.listToAttrs (
+          map
+            (s: {
+              name = toString s.v;
+              value = builtins.head s.at;
+            })
+            (gm.evalModuleTree { } [
+              {
+                options.s = gm.mkOption {
+                  type = S;
+                  default.l = [ 1 ];
+                };
+              }
+              { config.s = gm.mkOptionDefault { l = [ 9 ]; }; }
+            ]).config.s.seen
+        );
+      expected = {
+        "1" = {
+          default = true;
+        };
+        "9" = "a:1";
+      };
+    };
     # The freeform plane's positions take their declaring module's anchor and their own key.
     test-freeform-positions-are-addressed = {
       expr = builtins.mapAttrs (_: e: e.seen) (

@@ -148,12 +148,12 @@ in
       expected = {
         defs = [
           {
-            file = "M";
-            priority = 50;
-          }
-          {
             file = "<default>";
             priority = 1500;
+          }
+          {
+            file = "M";
+            priority = 50;
           }
         ];
         winners = [ { file = "M"; } ];
@@ -271,12 +271,12 @@ in
       expected = {
         defs = [
           {
-            file = "N";
-            priority = 100;
-          }
-          {
             file = "<default>";
             priority = 1500;
+          }
+          {
+            file = "N";
+            priority = 100;
           }
         ];
         winners = [ { file = "N"; } ];

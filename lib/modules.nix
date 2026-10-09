@@ -2596,7 +2596,7 @@ let
   #                 Per-def `priority` = its `mkOverride` wrapper's number, else the default override 100.
   #   • winners   — the defs the priority pass kept (the merge's actual inputs).
   #   • priority  — the effective (min) priority the filter selected (`highestPrio`).
-  #   • defaulted — the synthetic option `default` (`file = "<default>"`, appended by `mergeOptionWith`)
+  #   • defaulted — the synthetic option `default` (`file = "<default>"`, joined by `withDeclaredDefault`)
   #                 is the SOLE surviving winner ⇒ nobody else set the option (the `<default>` def won).
   # coreShortCircuit skip: the record is SYNTHESIZED from the marker (core def as sole def + winner at
   # the bare priority, defaulted=false) so the skip stays a skip — the discharge/fold spine never runs.
@@ -3571,17 +3571,7 @@ let
             l.m.typeDefs
           else
             map (d: { inherit (d) file value; }) (
-              addressedDefs (
-                map (d: d // { at = [ ]; }) (
-                  normalize (
-                    l.defs
-                    ++ optional (l.opt ? default) {
-                      file = "<default>";
-                      value = mkOptionDefault l.opt.default;
-                    }
-                  )
-                )
-              )
+              addressedDefs (map (d: d // { at = [ ]; }) (normalize (withDeclaredDefault l.opt l.defs)))
             );
       };
       # No freeform group where the tree declares no freeform type (L5f, its freeform half), decided
@@ -3873,13 +3863,31 @@ let
     else
       (head defs).value;
 
-  # An option merge = mergeDefs + default (as a lowest-priority def) + readOnly + apply. `mergeOption`
-  # is the public value-only form; `mergeOptionWith coreShortCircuit` is the RICH realizer form
-  # (`{ value; prov }`), threading the opt-in kernel into the fold via `mergeDefsRichWith`. The
-  # appended `<default>` def (`file = "<default>"`, priority 1500) is what the fold reads back for the
-  # record's `defaulted` flag. NOTE: a present `default =` appends a second def, which demotes a lone
-  # core def to fall-through — still byte-identical (the plain `values` beats the mkOptionDefault),
-  # only without the spine skip.
+  # The declared default seeds the fold (den-hoag-12e7r): nixpkgs' `evalOptionValue` puts it FIRST among
+  # the definitions (`defs' = [ default ] ++ defs`), and every order-sensitive merge downstream reads
+  # that order, a nested tree's module reversal included. The one place the default joins a definition
+  # list: `mergeOptionWith`'s fold, `optionGroup`'s `definitions` and `declAtsOfGroup`'s addresses, so
+  # the addresses stay aligned with the definitions they name.
+  withDeclaredDefault =
+    opt: defs:
+    if opt ? default then
+      [
+        {
+          file = "<default>";
+          value = mkOptionDefault opt.default;
+        }
+      ]
+      ++ defs
+    else
+      defs;
+
+  # An option merge = mergeDefs + default (as the seed def, `withDeclaredDefault`) + readOnly + apply.
+  # `mergeOption` is the public value-only form; `mergeOptionWith coreShortCircuit` is the RICH realizer
+  # form (`{ value; prov }`), threading the opt-in kernel into the fold via `mergeDefsRichWith`. The
+  # `<default>` def (`file = "<default>"`, priority 1500) is what the fold reads back for the record's
+  # `defaulted` flag. NOTE: a present `default =` adds a second def, which demotes a lone core def to
+  # fall-through — still byte-identical (the plain `values` beats the mkOptionDefault), only without
+  # the spine skip.
   #
   # COMMON CASE (no `apply`, no `readOnly` — the bulk of the surface): the rich record is returned
   # STRAIGHT THROUGH — the realizer's value tree reads `.value`, the provenance tree reads `.prov`, and
@@ -3904,12 +3912,7 @@ let
     let
       hasApply = optDecl ? apply;
       readOnly = optDecl.readOnly or false;
-      withDefault =
-        rawDefs
-        ++ optional (optDecl ? default) {
-          file = "<default>";
-          value = mkOptionDefault optDecl.default;
-        };
+      withDefault = withDeclaredDefault optDecl rawDefs;
       merged =
         # An empty-able type is NOT an error when undefined — fall through to the fold, whose
         # `winners == [ ]` arm is the single place `emptyValue` is consulted (nixpkgs answers both
@@ -4579,13 +4582,7 @@ let
           map (d: d.at) (
             addressedDefs (
               map (d: d // { at = anchorOf (d.modIndex or null) ++ l.path; }) (
-                normalize (
-                  l.defs
-                  ++ optional (l.opt ? default) {
-                    file = "<default>";
-                    value = mkOptionDefault l.opt.default;
-                  }
-                )
+                normalize (withDeclaredDefault l.opt l.defs)
               )
             )
           );

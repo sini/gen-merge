@@ -14,6 +14,7 @@ let
       mkIf
       mkForce
       mkDefault
+      mkOverride
       ;
     inherit (gm) types;
   };
@@ -24,6 +25,7 @@ let
       mkIf
       mkForce
       mkDefault
+      mkOverride
       ;
     inherit (lib) types;
   };
