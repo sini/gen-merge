@@ -1169,8 +1169,12 @@ Two rules that look like details and are not:
   In gen's engine the door's verdict is the raw copy's over every leaf, wrapper, partner and order the
   door matrix enumerates (19,140 cells), except a copy of a caller-check `mkOptionType`, which states no
   `verify` and is re-completed. Outside that population, a copy changing `merge`, or only `typeMerge`,
-  is still re-completed and loses its row, and inside a nixpkgs container the door enforces the copy's
-  `verify` where the raw copy is dropped. Gen's engine drops at no door; under nixpkgs' `evalModules` a
+  is still re-completed and loses its row. Inside a nixpkgs container the raw copy's `verify` is read
+  too (see "A `//` copy's `verify` is read inside a foreign container"), except inside a nixpkgs
+  `submodule` or `attrTag`, where the door enforces it and the raw copy is dropped, and except under
+  `nullOr`, `either` and `uniq` over a copy whose `verify` admits what its base's `check` rejects,
+  where the door serves and the raw copy is refused by the container's own `check`, its base's. Gen's
+  engine drops at no door; under nixpkgs' `evalModules` a
   copy declared FIRST beside a partner is dropped where the raw copy is, because nixpkgs asks the
   later declaration's `typeMerge` and hands it only the copy's functor, so the copy's check is
   unreachable even when that declaration is gen's. That is nixpkgs' own later-operand rule, which it
@@ -1845,8 +1849,36 @@ in. Pinned by `ci/tests/nesting-declaration.nix` and `ci/tests-error.nix`
 declared option (`evalModuleTree`), and when a record crosses whole through `mkOptionType`. One of
 the six stock foreign containers whose element may nest is folded as gen-merge's own container, so
 `nixpkgs.lib.types.attrsOf (submodule …)` threads like gen's. A stock container over no nesting
-element keeps its own fold, unless its two statements of the element disagree (below). The six are recognised by their functor, the relation they merge by,
+element and no owed copy keeps its own fold, unless its two statements of the element disagree (below). The six are recognised by their functor, the relation they merge by,
 and rebuilt over the element their carrying spellings state, never over their payload's.
+
+**A `//` copy's `verify` is read inside a foreign container.** A copy whose `verify` no completion
+vouches for (`interface.replacesVerify`) still publishes its base's `check`, and a nixpkgs container's
+fold reads an element's `check` alone, so declared alone under one the value its `verify` rejects was
+served, where gen's own fold reads that `verify` bare and under a gen container. A foreign container
+holding such a copy at any depth (`interface.owedCopyBelow`, a walk bounded as `canNest`'s is and
+asked only where `canNest` answered `false`) is now folded so the copy is read: one of the six is
+re-homed as gen's own container; one whose functor states an element (`uniq`, `functionTo`,
+`attrsWith` with another placeholder) is rebuilt by that functor over its element completed, its
+declared domain published as its `check` (`interface.completedOver`); `coercedTo` keeps its fold,
+with its merged value restricted by a copy that is its `finalType`, or a definition it coerces
+restricted by a copy on its coercion side. A gen container whose element is such a foreign container
+(`listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr`, `either` and `partialAttrsOf`) homes that element
+before it folds it, selected once when the container is built (`interface.owesThroughForeign`). The
+copy's domain is the one the engine reads for it bare (`interface.copyDomain`, as `carriedCopy`
+publishes it): its `verify` alone while its `check` is its completion's, so a copy whose `verify`
+admits what its base's `check` rejects is served under `listOf`, `attrsOf`, `attrsWith` and
+`functionTo` as it is bare, where nixpkgs refuses it. **The prices, stated:** inside a nixpkgs
+`submodule` or `attrTag` the option is folded by nixpkgs' own option evaluation, which reads the
+copy's `check`, so the raw copy is dropped there, and `types.defineType` is the way out; `coercedTo`
+whose `finalType` holds the copy under a container, and a record outside the stock vocabulary whose
+`nestedTypes` hold one (a hand-rolled `mkOptionType`), are refused whole by name, values nixpkgs serves
+included, naming `types.defineType`; on `coercedTo`'s coercion side a definition the copy rejects is
+refused by name even where the `finalType` would take it uncoerced, and under a container there the
+copy is read as the container's head, as both engines read a check copy; under `nullOr`, `either` and
+`uniq` the container's own `check`, its base's, still refuses what a weaker `verify` admits. The walk
+costs per option, Nix thunks: +7 for `listOf int`, +19 for a three-deep stock nest, +26 for `uniq (listOf int)`, +14 for gen `listOf` over a stock one, and +836 (1.2%) over a self-referential
+`valueType`, against a floor that no longer serves the copy's rejected value.
 
 **An unrecognised container threads through its own rebuild** (ruled 2026-09-30, arm (T)). At a
 declared option, a foreign type outside the six that declares a gen nesting element (`coercedTo`,
