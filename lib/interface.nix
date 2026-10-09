@@ -1209,8 +1209,18 @@ let
   # payload stating `modules` (the parameter set it MERGES on is a module set, so its roles are a
   # function of that set) AND by stating its module set in a carrying spelling (`getSubModules`), for
   # LAZINESS ONLY. What it carries is never read off the payload. `getSubModules` is read only once
-  # the payload test holds: a container forwards it to its element, and is never asked. A gen record
-  # (`carries`) never pays the read.
+  # the payload test holds: a container forwards it to its element, and is never asked.
+  #
+  # ★ THE GEN RECOGNISER, outside the rider (it reads no payload; den-hoag-60hql): a record stating
+  # `carries.moduleSet` in gen's own carrying spelling states `nestedTypes` as a function of that set
+  # too (a gen submodule's freeform is its module set evaluated, and gen-merge's import of a nixpkgs
+  # submodule keeps that field as `unroledNested`), so a copy re-entering this door (gen-schema's
+  # `refined`, a `//` wrapper, a second `mkOptionType`) is recognised by the one presence test and
+  # its role stays the carried module set. ADR-0033's first clause: the door never consumes the
+  # in-flight evaluation of the set the type is part of. At the sites that read `carries` first
+  # (`importedWrapped`, `declaredWrapped`, `statesWrapped`, the identity walk's `roles`) it changes
+  # nothing; it acts at `readRoles`, `importedDecidable` and `importType`'s `unroled` test, refusal
+  # and publish.
   #
   # ★ THE STATED RESIDUE: a record stating both and ALSO a static role in `nestedTypes` is served as
   # a module set with that role unread (no test that leaves `nestedTypes` unread can separate it);
@@ -1219,12 +1229,18 @@ let
   # recognised record answers `importedDecidable` without a walk, so its own `typeMerge` runs
   # unguarded, and a hand-built one recursing through itself overflows the stack uncatchably where
   # the fuel refused it by name. What its `freeformType` wraps is unread too: a gen nesting type
-  # there evaluates standalone through the bridge, and the lint does not scan it.
+  # there evaluates standalone through the bridge, and the lint does not scan it. The gen recogniser
+  # carries the same price: a hand-built record stating `carries.moduleSet` is served as a module set
+  # with any static `nestedTypes` role unread, and one stating no sub-protocol, refused by name before
+  # as a carrier missing `getSubModules`, is served with its `carries.moduleSet` crossing unvalidated.
   evaluatesOwnRoles =
     t:
-    !(t ? carries)
-    && ((t.functor or { }).payload or null) ? modules
-    && (t.getSubModules or null) != null;
+    (t ? carries.moduleSet)
+    || (
+      !(t ? carries)
+      && ((t.functor or { }).payload or null) ? modules
+      && (t.getSubModules or null) != null
+    );
 
   # ── NESTING-NESS, AND THE TWO PREDICATES THAT READ IT (den-hoag-n6dh7 item 1, item 5) ─────────
   # A NESTING TYPE is one whose value is a nested module tree: it states that tree as data (`nests`,
