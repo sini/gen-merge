@@ -273,6 +273,69 @@ let
       in
       r.config.x;
 
+    # nixpkgs' RENAMED-OPTION FAMILY under the guard's staged passes (den-hoag-9oc7y). A rename cycle
+    # forced uncontained refuses on the guard's named channel: containment alone cannot tell a by-name
+    # refusal from a cycle the passes certified. Its two neighbours are the stated prices, uncatchable
+    # on purpose: a declaration reading a field its target does not carry dies as nixpkgs dies once
+    # the view is real, and a module that catches a stamped-view refusal takes a leaf's shape at the
+    # pass and a group's on the value side, where it reaches Nix's recursion abort (ADR-0008 §3).
+    rename-cycle-read =
+      let
+        np = import "${nixpkgsSrc}/lib";
+      in
+      (eval [
+        { options.a = np.mkOption { type = np.types.int; }; }
+        (np.mkAliasOptionModule [ "b" ] [ "c" ])
+        (np.mkAliasOptionModule [ "c" ] [ "b" ])
+        { a = 1; }
+      ]).config.a;
+    leaf-reads-absent-field =
+      let
+        np = import "${nixpkgsSrc}/lib";
+      in
+      (eval [
+        { options.a = np.mkOption { type = np.types.int; }; }
+        (
+          { options, ... }:
+          {
+            options.b =
+              np.mkOption {
+                type = np.types.int;
+                default = 1;
+              }
+              // np.optionalAttrs (options.a.example == 0) { };
+          }
+        )
+        { a = 1; }
+      ]).config.b;
+    catch-group =
+      let
+        np = import "${nixpkgsSrc}/lib";
+      in
+      (eval [
+        { options.a = np.mkOption { type = np.types.int; }; }
+        (
+          { options, ... }:
+          {
+            options.b =
+              if (builtins.tryEval options.a.isDefined).success then
+                {
+                  x = np.mkOption {
+                    type = np.types.int;
+                    default = 3;
+                  };
+                }
+              else
+                np.mkOption {
+                  type = np.types.int;
+                  default = 4;
+                }
+                // np.optionalAttrs (options.a.type != null) { };
+          }
+        )
+        { a = 1; }
+      ]).config.b;
+
     # THE CYCLE CLOSED THROUGH A FOREIGN RECORD'S `description` (den-hoag-type-description-parity-5k1l1):
     # the docs phrase's one argued exception. A gen container composes a foreign member's STATED
     # phrase, and when the foreign phrase is itself built from the gen type's `description` (a gen

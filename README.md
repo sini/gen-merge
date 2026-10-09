@@ -1600,6 +1600,25 @@ reads the option it types (`_module.args.ty = if config.p == … then str else i
 count, as nixpkgs does. Refusing it by name would mean refusing every stratum-2 read in a declared
 `type`, including the common `(pkgs.formats.json { }).type`, which the guard admits.
 
+**A declaration that reads an earlier-resolved declaration is served: nixpkgs' renamed-option
+family.** `mkRenamedOptionModule`, `mkRenamedOptionModuleWith`, `mkAliasOptionModule` and their
+`doRename` declare the alias leaf with its target's `type`, so the leaf reads `options` and the
+guard's poisoned fold cannot resolve it. The guard then runs **staged passes**: each unresolved node
+is re-tried with `options` bound to the previous pass's declarations, stamped as `declaredOptions`
+stamps them, so a pass reads only what strictly earlier passes settled and a chain of renames
+resolves one link per pass, in any module order. What no pass resolves refuses at the end, the
+spine-first unresolved node: a rename cycle and an option whose **presence** reads `options` refuse
+with the `options` poison's text, and a node whose read resolved reports its own error. The passes
+decide admission only; every value still comes from the value side. Two prices are stated, both
+uncatchable: a declaration reading a field its target does not carry (`options.a.example`) dies as
+nixpkgs dies, where the poison once refused it by name; and a module that **catches** a stamped-view
+refusal (`tryEval options.a.isDefined`) can pass as a leaf and take a group's shape on the value
+side, where it reaches Nix's recursion abort. The second is the guard's standing price for a module
+that catches its refusal, a cycle with nothing to detect it, reached now at any pass rather than
+only at the first. Each pass
+re-folds the whole module set, so a set holding renames pays about one extra declaration fold per
+rename depth.
+
 **An earlier gen-native relation's refusal is never overruled.** Each fold step first asks the
 earlier operand's `typeMergeRel`, if it has one, about the type every later declaration jointly
 became; a refusal there is the answer. So `[gt.int, Fint, str]` refuses as nixpkgs does. The one

@@ -4061,6 +4061,175 @@ in
       };
     };
 
+    # ── nixpkgs' renamed-option family: what the staged passes still refuse (den-hoag-9oc7y) ─────
+    # The guard's staged passes serve a declaration that reads an earlier-resolved one
+    # (`ci/tests/renamed-option-module.nix`). What no pass resolves refuses at the end, the spine-first
+    # of the groups and the residue: a group at pass 0, so a presence that moves with `options` reads
+    # the poison, and a residue node at the last pass, so a cycle bottoms out in the poison while a
+    # node whose read resolved reports its own error rather than a read it did not make.
+    flake.testsError.renamed-option-module =
+      let
+        lib = nixpkgsLib;
+        inherit (lib) mkOption types;
+        A = lib.mkAliasOptionModule;
+        base = {
+          options.warnings = mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+          };
+          options.a = mkOption { type = types.int; };
+        };
+        refused = modules: realize { inherit modules; };
+        optionsRead = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read `options' while its own declarations were being folded.*";
+        };
+        presenceReadsA = (
+          { options, ... }:
+          {
+            options.s =
+              if options ? a then
+                {
+                  x = mkOption {
+                    type = types.int;
+                    default = 3;
+                  };
+                }
+              else
+                { };
+          }
+        );
+      in
+      {
+        test-a-rename-cycle-refuses-by-name = {
+          expr = refused [
+            base
+            (A [ "b" ] [ "c" ])
+            (A [ "c" ] [ "b" ])
+            { a = 1; }
+          ];
+          expectedError = optionsRead;
+        };
+        test-a-three-cycle-refuses-by-name = {
+          expr = refused [
+            base
+            (A [ "b" ] [ "c" ])
+            (A [ "c" ] [ "d" ])
+            (A [ "d" ] [ "b" ])
+            { a = 1; }
+          ];
+          expectedError = optionsRead;
+        };
+        # Beside a rename that serves, the cycle still refuses: the served node leaves the pending
+        # set and the cycle is what remains.
+        test-a-cycle-beside-a-served-rename-refuses-by-name = {
+          expr = refused [
+            base
+            (lib.mkRenamedOptionModule [ "e" ] [ "a" ])
+            (A [ "b" ] [ "c" ])
+            (A [ "c" ] [ "b" ])
+            { e = 1; }
+          ];
+          expectedError = optionsRead;
+        };
+        # An option's PRESENCE moving with `options` stays refused (ADR-0033's carried bound,
+        # declarations staying unconditional), though nixpkgs serves it.
+        test-a-presence-reading-options-refuses-by-name = {
+          expr = refused [
+            base
+            presenceReadsA
+            { a = 1; }
+          ];
+          expectedError = optionsRead;
+        };
+        test-a-declaration-reading-config-refuses-with-the-config-text = {
+          expr = refused [
+            base
+            (
+              { config, ... }:
+              {
+                options.b = mkOption { type = types.int; } // lib.optionalAttrs (config.a == 1) { default = 2; };
+              }
+            )
+            { a = 1; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read `config' while its own declarations were being folded.*";
+          };
+        };
+        # A pass's view is the stamped declaration record, so an evaluated field refuses there by the
+        # record's own name, catchably, not as a missing attribute.
+        test-a-declaration-reading-an-evaluated-field-refuses-with-the-record-text = {
+          expr = refused [
+            base
+            (
+              { options, ... }:
+              {
+                options.b =
+                  mkOption { type = types.int; } // lib.optionalAttrs options.a.isDefined { default = 2; };
+              }
+            )
+            { a = 1; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a gen option record does not answer `isDefined'.*";
+          };
+        };
+        # The read resolves at pass 1 and the node then throws its own error: that error is the
+        # refusal, as in nixpkgs, and not the in-flight poison of pass 0.
+        test-a-resolved-read-reports-the-node-own-error = {
+          expr = refused [
+            base
+            (
+              { options, ... }:
+              {
+                options.b =
+                  if options ? a then
+                    throw "planted: a exists"
+                  else
+                    mkOption {
+                      type = types.int;
+                      default = 1;
+                    };
+              }
+            )
+            { a = 1; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^planted: a exists$";
+          };
+        };
+        test-a-throw-at-every-pass-reports-its-own-error = {
+          expr = refused [
+            base
+            (lib.mkRenamedOptionModule [ "b" ] [ "a" ])
+            (_: { options.c = throw "planted every pass"; })
+            { b = 1; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^planted every pass$";
+          };
+        };
+        # The refusal is the spine-first unresolved node, a group or a residue alike: a throw at `aa`
+        # is reported before the group at `s`, as the base guard and nixpkgs report it.
+        test-the-spine-first-unresolved-node-is-reported = {
+          expr = refused [
+            base
+            (_: { options.aa = throw "planted aa"; })
+            presenceReadsA
+            { a = 1; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^planted aa$";
+          };
+        };
+      };
+
     # ── `withArgs`'s reserved keys ────────────────────────────────────────────────────────────
     # The inlet refuses a key a submodule's own evaluation would write over, AT THE MOMENT THE
     # CALLER STATES IT, and names the key. Refusing at the eval sites instead would be too late in
