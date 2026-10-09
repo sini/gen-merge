@@ -72,8 +72,9 @@ let
     file = "/f";
     value = v;
   });
-  # A leaf whose override reads its stock rebuild (`m: null`) as a type, and whose merge drops the
-  # first definition: nixpkgs never rebuilds it, since it states no module set (den-hoag-87nvk).
+  # A leaf whose override dereferences its stock rebuild's `null` as a type, and whose merge drops
+  # the first definition. It states no module set, and `coercedTo`'s rebuild passes it through
+  # unrebuilt, so only the walk's own call on the marker would reach it (den-hoag-87nvk).
   readsNull =
     a:
     a
@@ -618,11 +619,11 @@ in
         function-body-string = "s";
       };
     };
-    # A sibling whose `getSubModules` is not a list is not handed the marker, as nixpkgs'
-    # `fixupOptionType` hands it no module set: its override is never called and the value is
-    # nixpkgs' (den-hoag-87nvk). A stock `either` in the element's place is refused by name,
-    # `ci/tests-error.nix`.
-    test-a-sibling-whose-rebuild-reads-the-module-set-is-not-handed-the-marker = {
+    # A sibling whose `getSubModules` is not a list is not asked: the walk does not call its
+    # `substSubModules` on the marker, a call nixpkgs never makes, so the override is never called
+    # here and the value is nixpkgs' (den-hoag-87nvk). A stock `either` in the element's place is
+    # refused by name, `ci/tests-error.nix`.
+    test-a-sibling-stating-no-module-set-is-not-asked = {
       expr =
         (besideReadsNull tagged (tag: {
           tags = [ tag ];
@@ -634,7 +635,7 @@ in
         "r"
       ];
     };
-    test-a-sibling-whose-rebuild-reads-the-module-set-beside-a-union-is-not-handed-the-marker = {
+    test-a-sibling-stating-no-module-set-is-not-asked-beside-a-union = {
       expr =
         (besideReadsNull (t.either tagged t.str) (tag: {
           tags = [ tag ];
@@ -646,7 +647,42 @@ in
         "r"
       ];
     };
-    test-a-sibling-whose-rebuild-reads-the-module-set-beside-a-tree-is-not-handed-the-marker = {
+    # ★ THE STATED PRICE until den-hoag-87nvk §2b decides the container: a declared sibling that
+    # stores a module set while stating `getSubModules = null` is not asked by the walk, and the
+    # container's own rebuild hands it the marker, so the list it stores leads with the marker
+    # item where nixpkgs keeps its static module. §2b's landing refuses it by name and reds this.
+    test-a-sibling-storing-a-module-set-it-does-not-state-carries-the-marker = {
+      expr =
+        let
+          fanOut =
+            l: r:
+            nixpkgsLib.mkOptionType {
+              name = "fanOut";
+              check = x: l.check x || r.check x;
+              merge =
+                loc: defs: if builtins.all (d: l.check d.value) defs then l.merge loc defs else r.merge loc defs;
+              nestedTypes = {
+                left = l;
+                right = r;
+              };
+              substSubModules = m: fanOut (l.substSubModules m) (r.substSubModules m);
+            };
+          stored = np.deferredModuleWith { staticModules = [ { _file = "static"; } ]; } // {
+            getSubModules = null;
+          };
+          type = fanOut (np.listOf sub) stored;
+          first = v: (builtins.head v.imports)._file;
+        in
+        {
+          gen = first (opt type { x = 1; });
+          nixpkgs = first (fwd type { x = 1; });
+        };
+      expected = {
+        gen = "<gen-merge thread marker>";
+        nixpkgs = "static";
+      };
+    };
+    test-a-sibling-stating-no-module-set-is-not-asked-beside-a-tree = {
       expr =
         (besideReadsNull (t.attrsOf tagged) (tag: {
           k.tags = [ tag ];

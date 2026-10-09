@@ -1893,8 +1893,9 @@ of the one evaluation, so the value is nixpkgs'. Whether the rebuild threads is 
 ORIGINAL record against its rebuild, position by position and at any depth: every declared position
 that may nest comes back as the marked element (or as a record that threads in turn), and every
 other declared position is a sibling with no module set to lose: its `getSubModules` is not a list,
-so it is never called, as nixpkgs' `fixupOptionType` never calls it (den-hoag-87nvk), or its own
-`substSubModules`, called on the marker, answers `null`. The marker's import throws the import
+so the walk does not call its `substSubModules` on the marker, a call nixpkgs never makes
+(den-hoag-87nvk), or its own `substSubModules`, called on the marker, answers `null`. Either way the
+sibling still receives whatever the container's own rebuild hands it. The marker's import throws the import
 refusal if anything evaluates it as a module. Five things are refused by name instead:
 
 - a rebuild that does not THREAD: it drops its argument (and would reach the tree as a standalone
@@ -1999,7 +2000,9 @@ declarations do not show whose merge STORES the handed list (`deferredModule`) i
 marker item in its value: inspecting the stored list (its length, its `_file` labels) differs from
 nixpkgs silently, and evaluating it refuses by name. No predicate reaches it without reading a
 payload: it is the half of arm (T)'s stated domain (a merge that does not inspect element values)
-that has no predicate here.
+that has no predicate here. Until den-hoag-87nvk §2b decides the container, a DECLARED sibling whose
+`getSubModules` does not show the module set it stores (`deferredModuleWith` stating `null`) pays
+the same price: the walk does not ask it, and a container that rebuilds it hands it the marker.
 
 **Design note: the root mount's cost, and its measured out.** Measured against nixpkgs' own
 evaluation of the same workload on stock submodule roots, on nix, Determinate and Lix, the full
