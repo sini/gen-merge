@@ -2946,6 +2946,79 @@ let
     _: _: _: _: bv:
     bv;
 
+  # THE STAGED DECLARATION PASSES (den-hoag-9oc7y), the declaration guard's path when its spine did
+  # not resolve. Pass 0 is the guard's poisoned fold, `s0`. A node whose WHNF did not resolve there
+  # (`pending`) is re-tried at pass k with `options` bound to pass k-1's declarations, stamped as
+  # `declaredOptions` stamps them, so a pass reads only the settled output of strictly earlier passes
+  # (ADR-0016 ruling 7, ADR-0033) and a node resolves at the least pass its reads allow. A pending node
+  # must resolve to a LEAF: one resolving to a group is an option's presence moving with `options`.
+  # The passes run until nothing is pending or a pass resolves nothing, and then the spine-first of the
+  # groups and the residue (a node whose WHNF throws at every pass) is forced outside `tryEval`: a
+  # group at pass 0, where its own demand reads the poison, and a residue node at the last pass, so a
+  # read that resolved does not hide the node's own error and a cycle still bottoms out in the poison.
+  # The root's key set is forced outside `tryEval` too: a module whose option key set or `imports`
+  # read a refused argument refuses there, as the guard's spine always did. A module that catches a
+  # stamped-view refusal can take another shape on the value side, where it reaches Nix's recursion
+  # abort uncatchably; that is the guard's standing price for a module that catches it (ADR-0008 §3),
+  # now reached at any pass rather than only at pass 0. One binding, because a top-level binding is a
+  # load thunk the hub perf-bench prices.
+  stagedDeclarations =
+    positioned: args: s0:
+    let
+      stratum = if positioned then declarationSpinePositioned else declarationSpine;
+      prefix = args.prefix;
+      pendingIn =
+        p: t:
+        concatMap (
+          n:
+          let
+            v = t.${n};
+            w = builtins.tryEval (!(isAttrs v) || (v._type or null) == "option");
+          in
+          if !w.success then
+            [ (p ++ [ n ]) ]
+          else if w.value then
+            [ ]
+          else
+            pendingIn (p ++ [ n ]) v
+        ) (attrNames t);
+      refuse =
+        t: p:
+        builtins.seq (isOptLeaf (getAttrByPath p t.options)) (
+          throw "gen-merge: the declaration of `${showOption (prefix ++ p)}' resolved in no pass"
+        );
+      go =
+        prev: pending: groups:
+        let
+          sk = stratum (args // { optionsView = stampOptions prev.sitesAt prefix prev.options; });
+          tried = map (p: {
+            inherit p;
+            w = builtins.tryEval (
+              let
+                v = getAttrByPath p sk.options;
+              in
+              !(isAttrs v) || (v._type or null) == "option"
+            );
+          }) pending;
+          grouped = groups ++ map (x: x.p) (filter (x: x.w.success && !x.w.value) tried);
+          left = map (x: x.p) (filter (x: !x.w.success) tried);
+          first = head (filter (p: builtins.elem p grouped || builtins.elem p left) pending0);
+        in
+        if left != [ ] && length left < length pending then
+          go sk left grouped
+        else if grouped == [ ] && left == [ ] then
+          true
+        else if builtins.elem first left then
+          refuse sk first
+        else
+          refuse s0 first;
+      pending0 = pendingIn [ ] s0.options;
+    in
+    if pending0 == [ ] then
+      throw "gen-merge: the declaration guard's spine did not resolve, and no declaration node is unresolved"
+    else
+      go s0 pending0 [ ];
+
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
   namePlaceholder._module.args.name = mkOptionDefault "‹name›";
@@ -4079,7 +4152,10 @@ let
   #     the residue ADR-0033 leaves open and the owner ruled refused (arm A, 2026-09-14). The
   #     composition it made expressible belongs at the composing library's own stratum, which is
   #     where it has since been relocated;
-  #   · a module reading `options` while declaring options — the in-flight clause read literally.
+  #   · a module whose option PRESENCE reads `options`, or whose declaration reads one that no
+  #     earlier pass resolved — the in-flight clause read literally. A declaration that reads an
+  #     earlier-resolved one (nixpkgs' `doRename`, whose alias leaf copies its target's `type`) is
+  #     admitted by the guard's staged passes (`stagedDeclarations`).
   # Forcing the declaration side is what raises them, so none is a predicate that can drift from
   # the property it tests.
   #
@@ -4124,6 +4200,7 @@ let
       modules,
       specialArgs ? { },
       prefix ? [ ],
+      optionsView ? null,
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -4194,14 +4271,14 @@ let
             if positioned then
               {
                 config = inadmissible "config" "read `config'";
-                options = inadmissible "options" "read `options'";
+                options = if optionsView == null then inadmissible "options" "read `options'" else optionsView;
                 inherit prefix;
                 name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
               }
             else
               {
                 config = inadmissible "config" "read `config'";
-                options = inadmissible "options" "read `options'";
+                options = if optionsView == null then inadmissible "options" "read `options'" else optionsView;
                 inherit prefix;
               }
           );
@@ -5105,6 +5182,10 @@ let
       # The spine needs leafness per declaring module and never the merged record, so the guard
       # reads `declarationSpine`, whose redeclaration step keeps the later operand, and forces no
       # type. A type-merge refusal surfaces from the value fold, on the read that reaches the option.
+      #
+      # When the spine does not resolve, the guard takes `stagedDeclarations`: the unresolved nodes are
+      # re-tried against the declarations of strictly earlier passes, and only what no pass resolves
+      # refuses. The guard still returns `s` either way, so the staged passes decide admission only.
       declarationGuard =
         let
           spine =
@@ -5116,7 +5197,13 @@ let
             modules = modList;
           };
         in
-        builtins.seq (spine s.options) s;
+        if (builtins.tryEval (spine s.options)).success then
+          s
+        else
+          builtins.seq (stagedDeclarations knot.positioned {
+            inherit specialArgs prefix;
+            modules = modList;
+          } s) s;
 
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).

@@ -105,6 +105,19 @@
           [ "$rc" -eq 0 ] || die outer-default-read "expected exit 0, got $rc"
           [ "$val" = '"on"' ] || die outer-default-read "expected value \"on\", got '$val'"
 
+          # den-hoag-9oc7y: a rename cycle dies on the guard's named channel under the staged passes;
+          # a declaration reading a field its target lacks dies as nixpkgs does, and a module catching
+          # a stamped-view refusal reaches the recursion abort (the stated prices).
+          evalArm rename-cycle-read
+          [ "$rc" -ne 0 ] || die rename-cycle-read "expected a by-name refusal, got exit 0 with '$val'"
+          grep -Fq "gen-merge: a module read \`options' while its own declarations were being folded" "$TMPDIR/err" || die rename-cycle-read "refusal is not the declaration guard's named refusal"
+          evalArm leaf-reads-absent-field
+          [ "$rc" -ne 0 ] || die leaf-reads-absent-field "expected a death, got exit 0 with '$val'"
+          grep -q "attribute 'example' missing" "$TMPDIR/err" || die leaf-reads-absent-field "death is not the missing-attribute channel"
+          evalArm catch-group
+          [ "$rc" -ne 0 ] || die catch-group "expected a death, got exit 0 with '$val'"
+          grep -q 'infinite recursion encountered' "$TMPDIR/err" || die catch-group "death is not the infinite-recursion channel"
+
           # den-hoag-n6dh7 U2-g: ONE gen-scope evaluation per `evalModuleTree`, however many nested
           # trees its value holds. The spy counts `scope.eval` calls; its live control reads 2.
           for arm in one-eval-flat one-eval-sub-one one-eval-attrs-two one-eval-list-two one-eval-sub-empty one-eval-deep one-eval-np-attrs; do
@@ -192,8 +205,8 @@
           [ $((kw1600 - kw400)) -lt $((5 * (kw400 - kw100))) ] || die key-walk-wide-1600 "function calls grow faster than linear in the definitions: $kw100 / $kw400 / $kw1600"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "29" ] || die runner "expected 29 evaluations, ran $ran"
-          echo "tests-process: 29 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "32" ] || die runner "expected 32 evaluations, ran $ran"
+          echo "tests-process: 32 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
