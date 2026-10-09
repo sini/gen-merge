@@ -5217,6 +5217,9 @@ let
       # When the spine does not resolve, the guard takes `stagedDeclarations`: the unresolved nodes are
       # re-tried against the declarations of strictly earlier passes, and only what no pass resolves
       # refuses. The guard still returns `s` either way, so the staged passes decide admission only.
+      # A closed set (`s ? flat`) has no module that reads `options`, so every pass would equal the
+      # first and the staged path could only re-raise its error: the spine is forced outright there,
+      # with no `tryEval` record.
       declarationGuard =
         let
           spine =
@@ -5228,7 +5231,9 @@ let
             modules = modList;
           };
         in
-        if (builtins.tryEval (spine s.options)).success then
+        if s ? flat then
+          builtins.seq (spine s.options) s
+        else if (builtins.tryEval (spine s.options)).success then
           s
         else
           builtins.seq (stagedDeclarations knot.positioned {
