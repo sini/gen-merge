@@ -1966,12 +1966,16 @@ in
   # the copy it is (`interface.keepStamp`), as the raw record holds its witnesses (den-hoag-59gnz C2).
   # A `//` copy of a completed record departing only where its carrier still reads it as that completion is
   # returned as it is (`interface.carriedCopy`, den-hoag-5kzqp); its `verify` presence test is restated here so
-  # a record stating none (gen-aspects' per-instance submodule copies) pays one attribute test and no call.
+  # a record stating none (gen-aspects' per-instance submodule copies) pays one attribute test and no call,
+  # and `carriedCopy` is bound under that test, so it is asked once and a binding costs only a record stating `verify`.
   defineType =
     t:
-    let
-      c = interface.carriedCopy t;
-    in
-    if t ? verify && c != null then c else defineType (interface.keepStamp t);
+    if t ? verify then
+      let
+        c = interface.carriedCopy t;
+      in
+      if c != null then c else defineType (interface.keepStamp t)
+    else
+      defineType (interface.keepStamp t);
   completeType = defineType;
 }
