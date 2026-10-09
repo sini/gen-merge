@@ -2190,7 +2190,8 @@ let
           s = if isAttrs o then o.substSubModules or null else null;
         in
         (
-          !(isList (o.getSubModules or null))
+          (o.getSubModules or null) == null
+          || !(isList (o.getSubModules or null))
           || !(isFunction s || isAttrs s && s ? __functor)
           || s marker == null
         )
