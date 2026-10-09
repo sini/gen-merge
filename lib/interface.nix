@@ -596,10 +596,15 @@ let
   # owns whatever fold it published.
   #
   # A foreign fold is the foreign engine's CHECKED merge: where the type states its domain as a
-  # foreign `check` (and no `verify`, which marks a gen leaf whose `check` is curried and which the
-  # spine already applies), every definition passes that `check` before the fold sees it — nixpkgs
+  # foreign `check`, every definition passes that `check` before the fold sees it — nixpkgs
   # `mergeDefinitions`' `checkedAndMerged`. The check wraps the descriptor's OWN fold, whichever
-  # spelling states it, and reaches `leafFold` only for a descriptor that states none.
+  # spelling states it, and reaches `leafFold` only for a descriptor that states none. A `verify`
+  # beside the `check` marks a gen leaf, whose `check` is curried and which the spine already
+  # applies, only on a record that carries gen's check witness or completion stamp. A FOREIGN
+  # record carrying a `verify` (`np.attrs // { verify }`) carries neither, and its `check` is still
+  # the foreign one: `verify` judges the MERGED value, so it cannot stand in for the
+  # per-definition check, and a definition outside the base reaches the raw merge as a primop error
+  # no `tryEval` catches. Such a record keeps the check, refused by name as nixpkgs refuses it.
   #
   # A type whose `merge` carries `v2` is checked by the v2 PROTOCOL instead, as nixpkgs checks it:
   # its `check` is refused unless it is the coherent one the constructor shipped, and the verdict is
@@ -646,7 +651,7 @@ let
   isV2 = t: (t.merge or { }) ? v2;
   # a v2 type whose `check` is not the coherent one its constructor shipped: `type // { check = ...; }`
   adHocChecked = t: isV2 t && !(t.check.isV2MergeCoherent or false);
-  checksDefs = t: t ? check && !(t ? verify);
+  checksDefs = t: t ? check && !(t ? verify && (t ? _checkWitness || t ? __typeSelf));
   describe = t: if builtins.isString (t.description or null) then t.description else nameOf t;
 
   adHocFold =
