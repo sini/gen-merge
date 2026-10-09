@@ -899,7 +899,7 @@ in
         expr = builtins.attrNames valueFixtures == builtins.attrNames corpus;
         expected = true;
       };
-      # The refusal and module-reader and readOnly fixtures are the additions, and the count says so.
+      # The refusal, module-reader and readOnly fixtures are the additions, and the count says so.
       test-fixture-count = {
         expr = builtins.length (builtins.attrNames fixtures);
         expected = builtins.length (builtins.attrNames corpus) + 2 + 6 + 5;
