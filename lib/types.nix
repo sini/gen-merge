@@ -1935,7 +1935,6 @@ in
 {
   inherit
     mkOption
-    mkOptionType
     # The two halves of a type's construction, published in `types` (not at the top level):
     # `mkType` is the gen record alone (what the boundary is handed, and what a C-2 reading is taken
     # on), `defineType` is that record expressed in the foreign protocol as well (what every
@@ -1978,4 +1977,19 @@ in
     else
       defineType (interface.keepStamp t);
   completeType = defineType;
+  # The published import door: a `//` copy of a completed record departing only where its carrier still reads it
+  # as that completion is returned as it is (`interface.carriedCopy`), its mark and stale stamp kept, as the
+  # published `defineType` returns it (den-hoag-r23mj); every other descriptor is imported. The `verify`
+  # presence test and the binding under it are `defineType`'s, so a descriptor stating no `verify` pays one
+  # attribute test and no call, and the library's own completions, which call the internal `mkOptionType`, are
+  # never asked.
+  mkOptionType =
+    t:
+    if t ? verify then
+      let
+        c = interface.carriedCopy t;
+      in
+      if c != null then c else mkOptionType t
+    else
+      mkOptionType t;
 }

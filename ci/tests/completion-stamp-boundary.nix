@@ -1,6 +1,8 @@
 # THE COMPLETION STAMP AT THE PROTOCOL BOUNDARY (gate C3, ruled arm (c)). The boundary rebuilds every
 # record it imports and exports and re-ties the stamp to what it completes, so every exported type is
-# decided as before; a `//` copy entering it is served, unminted, and `typeEq` refuses it by name.
+# decided as before; a `//` copy entering it is served and `typeEq` refuses it by name: `importType` imports
+# it unminted, and the published `mkOptionType` returns a copy departing within its carrier as it is, its
+# mark and stale stamp kept (den-hoag-r23mj).
 {
   genMerge,
   interface,
@@ -62,6 +64,10 @@ in
         # through the import boundary: served, unminted, its stale witness kept, refused by name
         afterImport = refused (t.typeEq t.int (imported slash));
         importedMinted = (imported slash).__mint ? minted;
+        # through the published import door: returned as it is, its mark and stale stamp kept (den-hoag-r23mj),
+        # and refused by name as the raw copy is
+        afterDoor = refused (t.typeEq t.int (gm.mkOptionType slash));
+        doorMinted = (gm.mkOptionType slash).__mint ? minted;
         # the control: an honest type through the same door is re-tied and decides
         honestImport = t.typeEq t.int (imported t.int);
       };
@@ -70,6 +76,8 @@ in
         afterAnything = true;
         afterImport = true;
         importedMinted = false;
+        afterDoor = true;
+        doorMinted = true;
         honestImport = true;
       };
     };

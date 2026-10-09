@@ -1574,6 +1574,218 @@ in
         };
       };
 
+    # THE IMPORT DOOR CARRIES A `//` COPY DEPARTING WITHIN ITS CARRIER AS IT IS (den-hoag-r23mj). Imported as a
+    # record of its own, a copy of a completed gen type was rebuilt from its own functor and entered unminted,
+    # so through `mkOptionType` it was refused where the raw copy is served: beside its gen twin in both orders
+    # (`enum`, `struct`, `typedef`; beside a widening gen `enum` the union-admitted `c` too), beside nixpkgs'
+    # twin in one order. The door returns it as `defineType` does (`interface.carriedCopy`). `parity` lists
+    # every (copy, twin, wrapper) whose door row is not the raw copy's; `identity` reads ADR-0034 on the door's
+    # output: the copy keeps its mark and its stale stamp, so `idOf` and `typeEq` refuse it by name, while the
+    # completion answers for itself.
+    test-the-import-door-carries-a-copy-departing-within-its-carrier =
+      let
+        verdict = r: if r == "REFUSED" then r else builtins.elemAt (builtins.split " / " r) 2;
+        orders =
+          a: b: v:
+          nixpkgsLib.unique [
+            (verdict (ev [ a b ] v))
+            (verdict (ev [ b a ] v))
+          ];
+        notBad =
+          bad: base: v:
+          if v == bad then "rejected by notBad" else (base.verify or (_: null)) v;
+        E = gt.enum "e" [
+          "a"
+          "b"
+        ];
+        St = gt.struct "s" { a = gt.int; };
+        Td = gt.typedef "td" builtins.isInt;
+        # each copy with the values it is read at and the twins it is declared beside
+        cases = {
+          enumVerify = {
+            copy = E // {
+              verify = notBad "a" E;
+            };
+            vals = [
+              "a"
+              "b"
+              "c"
+            ];
+            twins = {
+              gen = E;
+              wideningGen = gt.enum "g" [
+                "b"
+                "c"
+              ];
+              nixpkgs = t.enum [
+                "a"
+                "b"
+              ];
+              widening = t.enum [
+                "b"
+                "c"
+              ];
+            };
+          };
+          enumRenamed = cases.enumVerify // {
+            copy = E // {
+              name = "r";
+              verify = notBad "a" E;
+            };
+          };
+          enumCheckOnly = cases.enumVerify // {
+            copy = E // {
+              check = v: E.check v && v != "a";
+            };
+          };
+          structVerify = {
+            copy = St // {
+              verify = notBad { a = 1; } St;
+            };
+            vals = [
+              { a = 1; }
+              { a = 2; }
+            ];
+            twins = {
+              gen = St;
+              nixpkgs = t.attrs;
+            };
+          };
+          typedefVerify = {
+            copy = Td // {
+              verify = notBad 1 Td;
+            };
+            vals = [
+              1
+              2
+            ];
+            twins = {
+              gen = Td;
+              nixpkgs = t.int;
+            };
+          };
+          stringVerify = {
+            copy = gt.string // {
+              verify = notBad "a" gt.string;
+            };
+            vals = [
+              "a"
+              "b"
+            ];
+            twins = {
+              nixpkgs = t.str;
+            };
+          };
+        };
+        wraps = {
+          bare = {
+            ty = x: x;
+            v = x: x;
+          };
+          listOf = {
+            ty = t.listOf;
+            v = x: [ x ];
+          };
+        };
+        row =
+          door: c: twin: w:
+          map (v: orders (wraps.${w}.ty (door c.copy)) (wraps.${w}.ty twin) (wraps.${w}.v v)) c.vals;
+        parity = builtins.concatLists (
+          nixpkgsLib.mapAttrsToList (
+            cn: c:
+            builtins.concatLists (
+              nixpkgsLib.mapAttrsToList (
+                tn: twin:
+                builtins.concatMap (
+                  w: if row imp c twin w == row (x: x) c twin w then [ ] else [ "${cn}/${tn}/${w}" ]
+                ) (builtins.attrNames wraps)
+              ) c.twins
+            )
+          ) cases
+        );
+        refused = e: !(tryEval (deepSeq e e)).success;
+        identity =
+          base: copy:
+          let
+            d = imp copy;
+          in
+          {
+            minted = d.__mint ? minted;
+            idOf = refused (genTypes.idOf d == genTypes.idOf base);
+            typeEq = refused (gt.typeEq base d);
+          };
+      in
+      {
+        expr = {
+          inherit parity;
+          gen = {
+            enum = row imp cases.enumVerify E "bare";
+            struct = row imp cases.structVerify St "bare";
+            typedef = row imp cases.typedefVerify Td "bare";
+            union = row imp cases.enumVerify cases.enumVerify.twins.wideningGen "bare";
+          };
+          string = row imp cases.stringVerify t.str "bare";
+          identity = {
+            enum = identity E cases.enumVerify.copy;
+            struct = identity St cases.structVerify.copy;
+            typedef = identity Td cases.typedefVerify.copy;
+          };
+          # the predicates answer: the completion compares equal to itself
+          control = {
+            enum = gt.typeEq E (imp E);
+            idOf = genTypes.idOf (imp E) == genTypes.idOf E;
+          };
+        };
+        expected = {
+          parity = [ ];
+          gen = {
+            enum = [
+              [ "REJECTED" ]
+              [ "ACCEPTED" ]
+              [ "REJECTED" ]
+            ];
+            struct = [
+              [ "REJECTED" ]
+              [ "ACCEPTED" ]
+            ];
+            typedef = [
+              [ "REJECTED" ]
+              [ "ACCEPTED" ]
+            ];
+            union = [
+              [ "REJECTED" ]
+              [ "ACCEPTED" ]
+              [ "ACCEPTED" ]
+            ];
+          };
+          string = [
+            [ "REJECTED" ]
+            [ "ACCEPTED" ]
+          ];
+          identity = {
+            enum = {
+              minted = true;
+              idOf = true;
+              typeEq = true;
+            };
+            struct = {
+              minted = true;
+              idOf = true;
+              typeEq = true;
+            };
+            typedef = {
+              minted = true;
+              idOf = true;
+              typeEq = true;
+            };
+          };
+          control = {
+            enum = true;
+            idOf = true;
+          };
+        };
+      };
+
     # THE TWO CARRIER SPELLINGS AGREE (den-hoag-7kj5s). `interface.joinRenames`' `bare` is restated at the
     # entry of `default.nix`'s parametric relation rather than shared, for the load gates' cost, so the
     # carrier has two spellings. Each is read off its source and evaluated, and over one population both
