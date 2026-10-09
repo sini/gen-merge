@@ -1151,7 +1151,23 @@ Two rules that look like details and are not:
   changed, so a re-completed `addCheck T p` is enforced alone and beside `T` and its identity is
   refused by name, as the raw copy's is. A copy departing only at fields a door does not read (a
   `description` or a caller field at `defineType`; the import door also reads the protocol fields it
-  translates) keeps its completion's identity there.
+  translates) keeps its completion's identity there. **`types.defineType` returns a copy departing
+  within its carrier as it is**: a `//` copy of a completed gen record that states `verify` and departs
+  from its completion only at `check`, `verify`, `typeMerge` or a name-carried field keeps its row,
+  functor, relation, fold, mint and stale stamp, and the door re-derives only the two foreign fields its
+  departure invalidates: `check`, its declared domain published as a witnessed rewrite, and `typeMerge`,
+  its completion's foreign relation met with the copy (`interface.carriedCopy`). A container copy
+  stating `verify` (`listOf`, `struct`) is carried the same way. So a verify copy of `enum "e" [a b]`
+  keeps the `enum` row, and beside a widening `enum` it serves the union's member as the raw copy does.
+  In gen's engine the door's verdict is the raw copy's over every leaf, wrapper, partner and order the
+  door matrix enumerates (19,140 cells), except a copy of a caller-check `mkOptionType`, which states no
+  `verify` and is re-completed. Outside that population, a copy changing `merge`, or only `typeMerge`,
+  is still re-completed and loses its row, and inside a nixpkgs container the door enforces the copy's
+  `verify` where the raw copy is dropped. Gen's engine drops at no door; under nixpkgs' `evalModules` a
+  copy declared FIRST beside a partner is dropped where the raw copy is, because nixpkgs asks the
+  later declaration's `typeMerge` and hands it only the copy's functor, so the copy's check is
+  unreachable even when that declaration is gen's. That is nixpkgs' own later-operand rule, which it
+  applies to its own `addCheck` copies too.
 - **A completed parametric leaf merges only the SAME type, or two `enum`s.** Sameness is
   decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
   textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,
@@ -1628,8 +1644,10 @@ answered before the meet is built, except to a `//` copy whose `verify` no compl
 (`interface.replacesVerify`: it replaced its completion's `verify`, or states one with no completion
 stamp). Its `check`, witness and relation are still its base's, so no relation carries that `verify`, and
 the step owes the copy its declared domain, its `verify` and any `check` it rewrote (den-hoag-ndgcz). The
-carrier (`interface.joinRenames`) reads such a copy, and one departing only at its name or description,
-as its completion, so beside nixpkgs' `enum` its verdict is the same in both orders (den-hoag-69w3d). A
+carrier (`interface.joinRenames`) reads such a copy, and one departing only at its name, its description
+or its `typeMerge` (`interface.carrierTolerated`), as its completion, so beside nixpkgs' `enum` its
+verdict is the same in both orders (den-hoag-69w3d); a raw copy overriding `typeMerge` is therefore read
+as its completion too, which moves it from refused to served only. A
 fresh join that widens a constructor's own parameters keeps that
 constructor's law over them (two `enum`s union their values), and each operand stays owed for the
 values its own parameters admit, so a wrapper over an `enum` is kept. A container's element is one of
