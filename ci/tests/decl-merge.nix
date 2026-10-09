@@ -1263,20 +1263,27 @@ in
           attrsOfBesideGen = rowsOf (t.defineType (t.attrsOf t.int)) (t.attrsOf t.int) { k = 1; };
           describedCopy = rowsOf described np.types.str "s";
           describedCopyDefined = rowsOf (t.defineType described) np.types.str "s";
-          # a copy REPLACING the predicate is not returned as it is: under nixpkgs' engine it is refused
-          # beside `str` at a value only `str` admits, as its twin (the same copy of nixpkgs' `str`) is
+          # a copy REPLACING the predicate keeps its row through the door too (den-hoag-5kzqp): under
+          # nixpkgs' engine it is served beside `str` at a value both admit, and at a value only `str`
+          # admits it is refused where nixpkgs asks the copy's own `typeMerge` (o21) and served where
+          # nixpkgs asks `str`'s (o12), nixpkgs' own later-operand drop, as over its own copy of `str`
           predicateCopyDefined =
             let
-              r = rowsOf (t.defineType (
+              copy = t.defineType (
                 t.string
                 // {
                   name = "e";
                   verify = x: if x == "a" then null else "not a";
                 }
-              )) np.types.str "zz";
+              );
+              r = rowsOf copy np.types.str "zz";
+              admitted = rowsOf copy np.types.str "a";
             in
             {
               inherit (r) np-o12 np-o21;
+              admitted = {
+                inherit (admitted) np-o12 np-o21;
+              };
             };
         };
         expected = {
@@ -1290,8 +1297,12 @@ in
           describedCopy = served;
           describedCopyDefined = served;
           predicateCopyDefined = {
-            np-o12 = "REFUSED";
+            np-o12 = "served";
             np-o21 = "REFUSED";
+            admitted = {
+              np-o12 = "served";
+              np-o21 = "served";
+            };
           };
         };
       };

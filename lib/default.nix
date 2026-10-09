@@ -492,10 +492,7 @@ let
               then
                 let
                   c = t.__typeSelf null;
-                  names = core.interface.exportClasses.nameCarried ++ [
-                    "check"
-                    "verify"
-                  ];
+                  names = core.interface.carrierTolerated;
                 in
                 if
                   checkedTypes.stampOk (
