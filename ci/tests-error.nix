@@ -7639,6 +7639,25 @@ in
           expr = opt (np.addCheck t.int no) 5;
           expectedError = carried (np.addCheck np.int no);
         };
+        # A `//` copy's `verify` under a foreign container whose functor rebuilds no element (den-hoag-dyww5):
+        # `coercedTo` over a `listOf` holding the copy is refused whole, naming the door, the option and the
+        # way out, before any definition is read.
+        test-a-verify-copy-no-rebuild-carries-is-refused-by-name = {
+          expr =
+            let
+              E = t.enum "e" [
+                "a"
+                "b"
+              ];
+            in
+            opt (np.coercedTo np.bool (_: [ "b" ]) (
+              np.listOf (E // { verify = v: if v == "a" then "rejected by the copy" else E.verify v; })
+            )) [ "b" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `s': the option type `coercedTo' holds a `//' copy whose `verify' its fold cannot read [(]it reads the copy's `check', its base's[)], and its functor rebuilds no element to carry it[.] Complete the copy with `types[.]defineType', which publishes its `verify' as its `check'$";
+          };
+        };
         # Re-homed, the refusal is the gen `listOf`'s, so its phrase is `listOf`'s, not the wrapper's.
         test-a-re-homed-non-empty-list-refuses-as-the-checked-fold = {
           expr = opt (np.nonEmptyListOf sub) [ ];
