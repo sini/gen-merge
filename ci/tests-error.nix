@@ -4827,7 +4827,65 @@ in
             msg = "option `p'.*not of type `.*`bad\\.nix'";
           };
         };
-      };
+      }
+      # A foreign base carrying a `// { verify }` copy keeps its own `check` over each definition: a
+      # value outside the base is refused with the base's own message, the no-copy control's, at both
+      # doors. Without the check these bases' raw merges abort uncatchably (`{ } // 5`, `concatStrings`).
+      // (
+        let
+          np = nixpkgsLib.types;
+          copy = T: T // { verify = _: null; };
+          refusedAt = loc: T: {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `${loc}' is not of type `${nixpkgsLib.escapeRegex T.description}', in `bad[.]nix'$";
+          };
+          bases = {
+            attrs = np.attrs;
+            submodule = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+            lines = np.lines;
+            attrTag = np.attrTag { x = nixpkgsLib.mkOption { type = np.int; }; };
+          };
+          doors = {
+            raw = T: T;
+            mkOptionType = gm.mkOptionType;
+          };
+        in
+        builtins.listToAttrs (
+          builtins.concatMap (
+            bn:
+            [
+              {
+                name = "test-a-foreign-${bn}-control-refuses-by-name";
+                value = {
+                  expr = read bases.${bn} (bad 5);
+                  expectedError = refusedAt "p" bases.${bn};
+                };
+              }
+            ]
+            ++ map (dn: {
+              name = "test-a-verify-copy-of-a-foreign-${bn}-at-the-${dn}-door-refuses-as-its-base";
+              value = {
+                expr = read (doors.${dn} (copy bases.${bn})) (bad 5);
+                expectedError = refusedAt "p" bases.${bn};
+              };
+            }) (builtins.attrNames doors)
+          ) (builtins.attrNames bases)
+        )
+        // {
+          # The copy's `verify` judges the merged value, so it widens no foreign base: nixpkgs refuses
+          # this value, and so does the copy.
+          test-a-verify-copy-of-a-foreign-int-widens-nothing = {
+            expr = read (copy np.int) (bad "s");
+            expectedError = refusedAt "p" np.int;
+          };
+          test-a-verify-copy-of-a-foreign-attrs-under-a-foreign-attrsOf-refuses-as-its-base = {
+            expr = read (np.attrsOf (copy np.attrs)) (bad {
+              k = 5;
+            });
+            expectedError = refusedAt "p.k" np.attrs;
+          };
+        }
+      );
 
     # THE MODULE READER IS THE REFERENCE'S `unifyModuleSyntax`. A structured module (one carrying
     # `config` or `options`) with any other key outside the module keys is refused BY NAME, naming
