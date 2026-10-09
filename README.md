@@ -56,7 +56,8 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 `evalModuleTree` reproduces exactly the primitive den's grammar/registry surface reduces to:
 
 1. **typed options + defaults** — `mkOption { type; default?; apply?; readOnly? }`; a `default`
-   desugars to a lowest-priority definition (no separate codepath).
+   desugars to a lowest-priority definition (no separate codepath), and a `readOnly` option counts it
+   as a setting, as nixpkgs does: a default beside one definition is refused by name.
 2. **freeformType** — `lazyAttrsOf` / `attrsOf` routing of undeclared keys.
 3. **per-key `name` + `_module.args`** binding under keyed collections.
 4. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
