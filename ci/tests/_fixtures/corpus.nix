@@ -4,7 +4,7 @@
 # "the lint accepts the whole oracle corpus" is mechanically true, not a re-declared approximation.
 #
 # Each fixture :: P -> [ modules ], where P is the constructor pack
-# `{ mkOption; types; mkMerge; mkIf; mkForce; mkDefault; }`. Path leaves resolve relative to THIS
+# `{ mkOption; types; mkMerge; mkIf; mkForce; mkDefault; mkOverride; }`. Path leaves resolve relative to THIS
 # file's directory (`./plain-config.nix`), so both consumers reach the same ctor-free leaf.
 # `_`-prefixed, so import-tree skips it (it is not a test module — mkCi's flakeModule.nix).
 {
@@ -137,6 +137,44 @@
       ];
     }
     { xs = [ "c" ]; }
+  ];
+  # A declared `default` that survives the priority filter beside priority-1500 definitions
+  # (`mkOverride 1500` is `mkOptionDefault`) seeds the fold: nixpkgs' `evalOptionValue` puts it FIRST,
+  # so `listOf` concatenation serves it first, and a submodule's nested tree, which reverses its
+  # modules, serves it last. `subApply` states `apply`, so its nested tree is seeded from the option
+  # group's own definitions, not the merge record's. A plain definition beside the same default drops
+  # it (`plain`).
+  default-seeds-the-fold = P: [
+    {
+      options.xs = P.mkOption {
+        type = P.types.listOf P.types.str;
+        default = [ "d" ];
+      };
+      options.sub = P.mkOption {
+        type = P.types.submodule {
+          options.ys = P.mkOption { type = P.types.listOf P.types.str; };
+        };
+        default.ys = [ "d" ];
+      };
+      options.subApply = P.mkOption {
+        type = P.types.submodule {
+          options.ys = P.mkOption { type = P.types.listOf P.types.str; };
+        };
+        default.ys = [ "d" ];
+        apply = x: x;
+      };
+      options.plain = P.mkOption {
+        type = P.types.listOf P.types.str;
+        default = [ "d" ];
+      };
+      config.xs = P.mkOverride 1500 [ "a" ];
+    }
+    {
+      xs = P.mkOverride 1500 [ "b" ];
+      sub = P.mkOverride 1500 { ys = [ "b" ]; };
+      subApply = P.mkOverride 1500 { ys = [ "b" ]; };
+      plain = [ "p" ];
+    }
   ];
   nested-submodule = P: [
     {

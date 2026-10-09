@@ -29,6 +29,7 @@ let
       mkIf
       mkForce
       mkDefault
+      mkOverride
       ;
     inherit (gm) types;
   };
