@@ -1998,9 +1998,11 @@ let
   #     option type. A sibling that answers anything else would receive the marker in place of the
   #     module set nixpkgs leaves it, whether it evaluates the list (`submoduleWith`), stores it
   #     (`deferredModuleWith`), relabels it, or drops `getSubModules` from its rebuild. A sibling
-  #     whose `getSubModules` is not a list has no module set to lose and is not asked: nixpkgs'
-  #     `fixupOptionType` calls `substSubModules` only where it is a list, so an override that
-  #     reads its stock rebuild's `null` is never called there either (den-hoag-87nvk).
+  #     whose `getSubModules` is not a list states no module set, and the walk does not ask it:
+  #     `s marker` is the walk's own call, one nixpkgs never makes, and an override that reads its
+  #     stock rebuild's `null` aborts on it uncatchably (den-hoag-87nvk). The sibling still receives
+  #     whatever the container's own rebuild hands it, which this does not decide: one that stores a
+  #     module set while stating none is the stated price at `threadedForeign`.
   # A sibling's answer is a value, read to weak head normal form only; a rebuild that reads the
   # marker as modules meets its import, which throws the import refusal (`threadMarker`), so a
   # consumer the declarations do not show still refuses by name, never folding an empty module.
@@ -2090,6 +2092,9 @@ let
   # above, and the second has no predicate here. Inside it sits a position the declarations do not
   # show whose merge STORES the handed list (`deferredModule`): its value carries the marker item,
   # silent on inspection, and refuses by name where the list is evaluated (the marker's import).
+  # Until den-hoag-87nvk §2b decides the container, so does a DECLARED sibling whose
+  # `getSubModules` does not show the module set it stores (`deferredModuleWith` stating `null`):
+  # `threadsAt` does not ask it, and a container that rebuilds it hands it the marker.
   threadedForeign =
     door: loc0: t:
     threadedForeignWith (threadsAt door loc0 t) door loc0 t;

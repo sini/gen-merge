@@ -6316,10 +6316,11 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `fanOut' declares a gen nesting type as an element [(]its `nestedTypes[.]left'[)], ${rule}";
           };
         };
-        # A sibling stating no module set is not handed the marker (den-hoag-87nvk), so its override
-        # reading the stock rebuild's `null` is never called; a stock `either` as the element is then
-        # refused by name as it is beside any sibling (`nesting-threaded-rehome` serves the gen ones).
-        test-a-stock-either-beside-a-sibling-whose-rebuild-reads-the-module-set-is-refused-by-name = {
+        # A sibling stating no module set is not asked by the walk (den-hoag-87nvk), so its override
+        # dereferencing the stock rebuild's `null` is never called; a stock `either` as the element is
+        # then refused by name as it is beside any sibling (`nesting-threaded-rehome` serves the gen
+        # ones).
+        test-a-stock-either-beside-a-sibling-stating-no-module-set-is-refused-by-name = {
           expr =
             let
               readsNull =
