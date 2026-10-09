@@ -1766,7 +1766,7 @@ carry the evaluated keys nixpkgs adds beside a declaration (den-hoag-ixcxl): `va
 own merged value), `isDefined`, `definitions`, `definitionsWithLocations`, `files`, `highestPrio`,
 `declarationPositions` and `options` (`[ ]`, nixpkgs' value), each equal to nixpkgs', on `.options`, on
 `getSubOptions` and on a module's own `options` argument alike (`ci/tests/option-record-keys.nix`); they
-project gen's fold, so a default beside a priority-1500 definition comes last where nixpkgs' comes first
+project gen's fold, which puts a declared default first among the definitions, as nixpkgs' does
 (den-hoag-12e7r).
 `valueMeta`, nixpkgs' v2-merge metadata, is refused by name, never absent; so a deep force of a
 published `.options` tree refuses, for every tree
