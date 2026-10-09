@@ -394,6 +394,14 @@ let
                 default = options.x.isDefined;
               };
             };
+          selfDecls =
+            { options, ... }:
+            {
+              options.d = M.mkOption {
+                type = T.int;
+                default = builtins.length options.d.declarations;
+              };
+            };
         }
         .${cell};
       ev = evalWith M [
@@ -410,6 +418,7 @@ let
           argUndefVal = ev.config.out;
           siblingIsDef = ev.config.y;
           declIsDef = ev.config.w;
+          selfDecls = ev.config.d;
         }
         .${cell};
       r = builtins.tryEval (builtins.deepSeq read read);
@@ -722,6 +731,7 @@ in
     test-arg-value-of-an-undefined-option-refuses = bothArg "argUndefVal";
     test-arg-isDefined-gates-a-sibling = bothArg "siblingIsDef";
     test-arg-isDefined-in-a-declaration-default = bothArg "declIsDef";
+    test-arg-declarations-of-its-own-option = bothArg "selfDecls";
 
     # ── a freeform module gated on `value` (C1), and the control with no freeform layer ──────────
     test-freeform-gated-on-value = bothFreeform "ffVal";
