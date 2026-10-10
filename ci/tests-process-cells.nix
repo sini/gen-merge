@@ -131,6 +131,8 @@ let
     inherit scope;
     strategies = ct;
     types = genTypesLib;
+    # The published leaves, the knot `lib/default.nix` ties as `completedLeaves`.
+    leaves = spied.types;
   };
   genTypesLib = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
   # The core seam's own vocabulary, tied to it as `ci/flake.nix` ties `genMergeVocab`.
