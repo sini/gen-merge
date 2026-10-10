@@ -1377,7 +1377,8 @@ type is **refused by name**, as nixpkgs refuses it; state the check with `addChe
 is carried and enforced instead: what its check rejects is refused, what it admits is served. On a
 **submodule-bearing** v2 type (`submodule`, `attrsOf submodule`, …) nixpkgs does not refuse the override
 but erases it without a word when it rebuilds the type at declaration (`substSubModules`); gen-merge
-refuses it by name there too, a deliberate departure from a silent answer. An ad-hoc `check` on a
+enforces it as the check it is, as it enforces an `addCheck` there: a value it admits is served, and a
+value it rejects is refused by name, a deliberate departure from a silent answer. An ad-hoc `check` on a
 non-v2 submodule-bearing type (`deferredModule`, `attrTag`, `functionTo`, `uniq`) cannot be told from
 the one its constructor shipped, and is applied.
 
@@ -2149,7 +2150,7 @@ record's own `check` rides on the rebuild, gen's own or foreign, so the domain i
 (`carriedCheck`, the re-home law): an `addCheck` over such a root refuses what it rejects, where
 nixpkgs' rebuild erases it silently. A rebuild that is no option type (null, a bare attrset, absent,
 or stating `merge` but no `check`) is refused by name (`rootRebuildRefusal`), where nixpkgs aborts, and
-an ad-hoc `type // { check = ...; }` keeps its by-name refusal. A freeform type is no option's root
+an ad-hoc `type // { check = ...; }` is such a `check`, riding on the rebuild as an `addCheck` does. A freeform type is no option's root
 and is not mounted. The fix-up item's `_file` is `<unknown-file>`, as nixpkgs labels a module stating
 no file, not the declaring file, and the module set is the merged type's, not a union per
 declaration. Refused by name. The first two are open defects (the owner's parity-defect rule,
@@ -2849,14 +2850,17 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 
   In gen's engine this reaches a module set: nixpkgs' `addCheck` over a submodule, alone or beside
   another submodule declaration, gen or nixpkgs, at the top or as a container's element at any depth
-  (below a gen container too), rejects what it rejects, where nixpkgs' own rebuild (`fixupOptionType`)
-  erases it and serves. A foreign record states no check witness, so every foreign
+  of gen's own fold (below a gen container too), rejects what it rejects, where nixpkgs' own rebuild
+  (`fixupOptionType`) erases it and serves. A foreign record states no check witness, so every foreign
   module-set declaration's check is asked of each definition, a wrapped one or not. An ad-hoc
-  `type // { check = ...; }` override there is refused by name, as it is alone (`adHocFold`).
+  `type // { check = ...; }` override there is the same check, enforced the same way: what it admits
+  is served and what it rejects is refused by name.
 
   Not covered: in nixpkgs' engine, a wrapper over a module set (nixpkgs' rebuild erases it), and a
   check on a gen type declared first (nixpkgs asks only the later relation) or hidden behind a functor
-  gen is handed. Nor a drop under a
+  gen is handed. Nor such a check on a submodule-typed option declared inside a stock nixpkgs
+  submodule, or as an `attrTag`'s tag: that option is merged by nixpkgs' own evaluation of the
+  enclosing type, which erases it and serves, as nixpkgs does. Nor a drop under a
   key `nestedTypes` states that names no role this boundary carries (`freeformType`,
   `coercedType`/`finalType`, an `attrTag`'s tags): it is not in gen's vocabulary, so a join is not
   judged over it.
