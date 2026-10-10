@@ -327,10 +327,13 @@ in
           (row "/r/a.nix" (gm.mkBefore "e") 100)
         ];
     };
-    # nixpkgs' three limits, mirrored. Each is read on an untyped option, where the leftover wrapper is
-    # the served value, so a discharge that read deeper (or shallower) changes the `_type` it shows.
-    # (1) Exactly ONE priority wrapper below the record is read. Before: gen showed `definition`.
-    test-one-override-level-below-a-record-is-read = {
+    # nixpkgs' three limits, mirrored on an untyped option. There nixpkgs' own served value is a
+    # LEAKED marker (`override`, `if`, `definition`), which is silent: the cells below assert gen serves
+    # the SAME silent value, parity with nixpkgs rather than an endorsement of it. gen had no named
+    # refusal on these rows to keep (before the arm it leaked `definition` on all three). The leftover
+    # marker shows how deep the discharge read, so a deeper or shallower one changes it.
+    # (1) Exactly one priority wrapper below the record is read: the second is nixpkgs' leak.
+    test-one-override-level-below-a-record-serves-nixpkgs-value = {
       expr = both (P: [
         { options.x = P.mkOption { }; }
         { config.x = d "/r/a.nix" (P.mkForce (P.mkDefault 1)); }
@@ -340,8 +343,8 @@ in
         nixpkgs = "override";
       };
     };
-    # (2) An `mkIf` inside the record's value is not discharged. Before: gen showed `definition`.
-    test-an-mkIf-inside-a-record-is-not-discharged = {
+    # (2) An `mkIf` inside the record's value is not discharged: the `if` marker is nixpkgs' leak.
+    test-an-mkIf-inside-a-record-serves-nixpkgs-value = {
       expr = both (P: [
         { options.x = P.mkOption { }; }
         { config.x = d "/r/a.nix" (P.mkIf true true); }
@@ -370,9 +373,8 @@ in
       };
     };
     # (3) `mkForce` AROUND a record is unsupported (nixpkgs' manual: it "would NOT work"): the override
-    # is read, and the record under it is the value. On a permissive type that leaked record is
-    # nixpkgs' own served value, and gen serves the same (as for a nested record, and an `mkMerge`
-    # inside a record); gen never refused it, and before this arm it served a different leak.
+    # is read, and the record under it is nixpkgs' leaked value (as for a nested record, and an
+    # `mkMerge` inside a record).
     test-mkForce-around-a-record-serves-nixpkgs-value = {
       expr = both (P: [
         { options.x = P.mkOption { }; }

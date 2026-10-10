@@ -166,7 +166,7 @@ let
   # gen-scope's `walkAddress` reads.
   #
   # A `definition` record steps `"value"`, and `"value"` `"content"` when its one override level is
-  # read.
+  # read, and its entry also carries the record's own `file` (`dischargeDefAt` prefers it).
   #
   # ★ A TWIN, NOT A GENERALISATION. `dischargeIn` above carries no path: one more binding in the
   # value fold is a thunk on every definition, and the hub bench's `wideFreeform` row has no
