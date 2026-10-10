@@ -75,6 +75,17 @@ let
   mapValN = builtins.mapAttrs (_: v: if v.k.a == 1 then v else null);
   # the value keeps its own trees, the capture fold (whose site records lack `k`) swaps them
   valSwap = r: if r.foo.j ? k then r else swap r;
+  # a leaf read decides the placement: the element read to decide (baz, foo) and the one placed at
+  # the key read are each refused where the capture holds another there
+  valOrSwap = r: if (r.foo.j.k.a or 0) == 1 then r else swap r;
+  valOrBaz = r: if (r.baz.j.k.a or 0) == 3 then r else swap r;
+  valOrRot = r: if (r.foo.j.k.a or 0) == 1 then r else rot r;
+  # the same decisions on a chain whose node holds a list (an eager walk, `unique` above it): the element
+  # read to decide is refused at its own position, which the capture gave another key's element
+  valHasL = r: if (builtins.head r.foo) ? k then r else swap r;
+  valOrL = r: if ((builtins.head r.foo).k.a or 0) == 1 then r else swap r;
+  valOrLj = r: if ((builtins.head r.foo).j.k.a or 0) == 1 then r else swap r;
+  valOrLL = r: if ((at (at r.foo 0) 0).k.a or 0) == 1 then r else swap r;
   toList = builtins.attrValues;
   addConst = r: r // { extra.j.k.a = 9; };
   inDup =
@@ -239,6 +250,10 @@ let
     };
   names = builtins.attrNames;
   at = builtins.elemAt;
+  twoLj = {
+    s.foo = [ { j.k.a = 1; } ];
+    s.bar = [ { j.k.a = 2; } ];
+  };
 in
 {
   # read cell `c`: its type mounted at option `s`, its definitions, its read of the merged `s`
@@ -662,6 +677,71 @@ in
       t = O valSwap;
       m = two;
       r = s: s.bar.j.k.a;
+    };
+    valOrSwapLeaf = {
+      t = O valOrSwap;
+      m = two;
+      r = s: s.foo.j.k.a;
+    };
+    valOrSwapBar = {
+      t = O valOrSwap;
+      m = two;
+      r = s: s.bar.j.k.a;
+    };
+    valOrBazBar = {
+      t = O valOrBaz;
+      m = three;
+      r = s: s.bar.j.k.a;
+    };
+    valOrBazFoo = {
+      t = O valOrBaz;
+      m = three;
+      r = s: s.foo.j.k.a;
+    };
+    valOrRotBar = {
+      t = O valOrRot;
+      m = three;
+      r = s: s.bar.j.k.a;
+    };
+    valHasLBar = {
+      t = O5s valHasL;
+      m = twoL;
+      r = s: (at s.bar 0).k.a;
+    };
+    valHasLFoo = {
+      t = O5s valHasL;
+      m = twoL;
+      r = s: (at s.foo 0).k.a;
+    };
+    valOrLBar = {
+      t = O5s valOrL;
+      m = twoL;
+      r = s: (at s.bar 0).k.a;
+    };
+    valOrLFoo = {
+      t = O5s valOrL;
+      m = twoL;
+      r = s: (at s.foo 0).k.a;
+    };
+    valOrLjBar = {
+      t = O5 valOrLj;
+      m = twoLj;
+      r = s: (at s.bar 0).j.k.a;
+    };
+    valOrLjFoo = {
+      t = O5 valOrLj;
+      m = twoLj;
+      r = s: (at s.foo 0).j.k.a;
+    };
+    valOrLLBar = {
+      t = O9 valOrLL;
+      m = mixL;
+      r = s: (at (at s.bar 0) 0).k.a;
+    };
+    valOrLLFoo = {
+      t = O9 valOrLL;
+      m = mixL;
+      r = s: (at (at s.foo 0) 0).k.a;
     };
     # list records
     catLLen = {

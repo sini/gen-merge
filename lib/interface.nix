@@ -2383,20 +2383,31 @@ let
       # ★ THE STATED PRICE, an extension of den-hoag-n6dh7's (owner-accepted 2026-09-25: a stock
       # container whose `merge` was overridden cannot be told from the stock one, since Nix cannot
       # compare functions): the steps are TRUSTED from the functor names, at each level. The
-      # run stays the authority over which tree sits at which key: a capture site must sit at its
-      # own key (`siteLocAt`, and below a node, under the node's key), in the split and in the fold.
-      # So a chain whose stock-named `attrsWith` step, lazy or strict, has a merge that does not fold
-      # each element at `loc ++ [ k ]` (one key deeper, keys renamed or swapped, or a key holding no
-      # element's tree) is refused by name at the key read (`statedStepRefusal`, and
-      # `nodeStepRefusal` where the key holds a node, raised where an element below the key is
-      # read, at the key), where nixpkgs serves it, and where base served it at a strict step,
-      # below a `nullOr`, or at a step reached through either
-      # (den-hoag-i01nx; measured: 14 overrides on the strict or `nullOr` step itself and 5 to 8 on
-      # the step below it, each a catchable refusal, none a silent value); one that only drops a
-      # key's tree serves nixpkgs' value, one that duplicates it does too except below a node whose
-      # own record is a level, where it is refused, and one whose result is not an attrset keeps the
-      # eager walk (below the option's own strict step, keyed over definitions, it is refused by
-      # name). The
+      # run stays the authority over which tree sits at which key. A tree the merge folds under a key
+      # not its own (keys renamed, swapped or fanned out) is the host's child at its declaring
+      # position where the levels are keyed from the definitions, else at the read position, read
+      # where the merge put it (`movedRead`, den-hoag-lif3n, den-hoag-i4j0n); two entries of the
+      # result at one loc are each keyed at their own entry (`entryAt`). So a chain whose
+      # stock-named `attrsWith` step, lazy or strict, has a merge that holds no element's tree at a
+      # key read (one key deeper) is refused by name at the key read (`statedStepRefusal`), where
+      # nixpkgs serves it; one whose result is not an attrset keeps the eager walk (below the
+      # option's own strict step, keyed over definitions, it is refused by name).
+      #
+      # ★ THE STATED PRICE of a merge that reads its elements' values (den-hoag-lif3n; owner sitting
+      # 2026-10-09: zero defects preferred, nothing enumerated). The capture fold runs the merge over
+      # site records, so a merge deciding placement on a value places as the records lead it. A moved
+      # read re-runs the threaded fold over this evaluation's values at the read path (`qRead`) and
+      # serves the element the capture placed there; an element that fold reached otherwise, placed
+      # at the key read or read while deciding placement, where the capture holds another element at
+      # the key read, has its nested-tree read refused by name at its own loc, where nixpkgs serves
+      # the value. Its position is not found without forcing the capture beyond the read path, which
+      # forces a sibling's definedness nixpkgs does not. Below a node walked eagerly (a `listOf` that is
+      # no level), an element whose own node the capture gave another key's tree, at steps that node's
+      # split did not key (`movedSteps`), is refused by name at its own loc when the merge reads it,
+      # naming its own position. Those causes are stated on the moved-read and moved-node paths
+      # only: a value-reading merge whose capture DROPS the element (`mapAttrs`, `filter` over a value
+      # a site record lacks) makes no moved read, and its refusal names an unexposed position
+      # (`unexposedRefusal`), the cause it stated before this fold. The
       # same trust reaches a node's REGIME: a node keys its elements exactly where its stated
       # record's NAME says it does (`keysExactly`), so a stock-named `attrsOf`, `listOf` or `nullOr`
       # whose merge was overridden to a lazy one is keyed exactly, as its name states.
@@ -2703,14 +2714,19 @@ let
         el: loc: r:
         map (k: {
           step = [ k ];
-          loc = loc ++ [ k ];
+          # the site found at `k`, whichever key's it is: its loc and its definitions (den-hoag-lif3n)
+          loc =
+            let
+              v = r.${k};
+            in
+            if isAttrs v && v ? __genTSite then v.__genTSite.loc else loc ++ [ k ];
           defs =
             let
               v = r.${k};
             in
             if v ? __genTEmpty then
               [ ]
-            else if isAttrs v && v ? __genTSite && v.__genTSite.loc == loc ++ [ k ] then
+            else if isAttrs v && v ? __genTSite then
               v.__genTSite.defs
             else
               throw (statedStepRefusal door (loc ++ [ k ]) t);
@@ -2784,22 +2800,35 @@ let
               type = node;
             }) (attrNames r)
         else
-          map (
-            s:
-            let
-              st = under base s.loc;
-            in
-            {
-              step =
-                if stated == null then
-                  stepOf base s.loc
-                else if st != null then
-                  st
-                else
-                  throw (nodeStepRefusal door base t stated);
+          let
+            ss = sitesOf r;
+            shared = if stated == null then sharedAt ss else { };
+          in
+          # an entry at a loc another shares is keyed at its own position (`entryAt`); below a node, a site
+          # under another key (a merge moved it) at its path in the node's result
+          if shared == { } && (stated == null || all (s: under base s.loc != null) ss) then
+            map (s: {
+              step = if stated == null then stepOf base s.loc else under base s.loc;
               inherit (s) loc defs type;
-            }
-          ) (sitesOf r);
+            }) ss
+          else
+            map (
+              x:
+              let
+                s = x.site;
+                st = under base s.loc;
+              in
+              {
+                step =
+                  if stated == null then
+                    (if shared ? ${builtins.toJSON s.loc} then entryAt base s x.path else stepOf base s.loc)
+                  else if st != null then
+                    st
+                  else
+                    x.path;
+                inherit (s) loc defs type;
+              }
+            ) (sitesAt [ ] r);
       # The node at `base` (a key of a `node` level), holding `c`, the record the level's step
       # states there; `rB` is the capture fold's result read at `base`. Its walk is `c`'s level
       # over `rB`; its value is this chain's threaded fold over the option's definitions, read at
@@ -2827,14 +2856,157 @@ let
       # The fold's result at a level, read where it is read: a `node` level's keys are read off
       # their nodes; a `one` level's keys are checked against their own capture sites
       # (`keyedWhereRead`); otherwise as folded.
+      # The host's child at `position` of accessor `ev`, folding site `s` as the threaded fold folds an
+      # element (`threadedAt`'s `merge`).
+      childFold =
+        ev: position: s:
+        carriedElement s.type (
+          eloc: edefs:
+          mergeDefsThreaded (
+            ev
+            // {
+              inherit position;
+              exactAt = null;
+            }
+          ) eloc s.type edefs
+        ) s.loc s.defs;
+      # The threaded fold at `at`, `placeAt`'s placement, applied to an element's type and
+      # definitions. Off it (`at.ok` false, or `un`: in the moved read's re-run, an element the
+      # capture did not place at the read path), its accessor states what the walk minted and a
+      # nested-tree read refuses by name, so a member that never reads the tree still answers
+      # (ADR-0025 item 1). `at.other` marks an element whose own steps the capture gave another
+      # element's site (`placeAt`).
+      foldAt =
+        at: un: eloc:
+        mergeDefsThreaded (
+          at.ev
+          // {
+            position = at.ev.position ++ (if at.st == null then [ ] else at.st);
+            # The threaded fold never sets the exact-element mark (`unionNodeAt` reads it): an element it
+            # folds is keyed over-approximately. A node's own walk keys its elements in its stated
+            # record's regime (`keysExactly`), which this mark does not govern.
+            exactAt = null;
+          }
+          // (
+            if at.ok && !un then
+              { }
+            else
+              {
+                # What the walk minted here (`minted`, the key walk's own records) is still the
+                # accessor's to state; only a read refuses.
+                child =
+                  site:
+                  if site ? __genMergeMinted then
+                    at.ev.child site
+                  else
+                    throw (
+                      if un then
+                        # the merge, over this evaluation's values, reached an element the same merge over
+                        # the definitions' sites does not hold at the key read: placed there, or read
+                        # while deciding placement (den-hoag-lif3n)
+                        "${doorAt door eloc}the option type `${nameOf t}' reads its elements' values in its merge, "
+                        + "and over this evaluation's values it reached this element, placed at the key read or read "
+                        + "while deciding placement, where the same merge over the definitions' sites holds another "
+                        + "element at the key read, so no nested tree of this evaluation is this element's. Declare a "
+                        + "merge whose placement does not read its elements' values, or state "
+                        + "`declaresNesting = false' on the type and take the stated price: a nested tree it forwards "
+                        + "to is then evaluated standalone"
+                      else if at.other or false then
+                        # the merge read an element whose own position the same
+                        # merge over the definitions' sites gave to another element (den-hoag-lif3n)
+                        "${doorAt door eloc}the option type `${nameOf t}' reads its elements' values in its merge, "
+                        + "and the same merge over the definitions' sites put another element at this element's own "
+                        + "position, so no nested tree of this evaluation is this element's there. Declare a merge "
+                        + "whose placement does not read its elements' values, or state `declaresNesting = false' on "
+                        + "the type and take the stated price: a nested tree it forwards to is then evaluated "
+                        + "standalone"
+                      else if at.sharedLoc or false then
+                        # a loc two entries of the result share (den-hoag-lif3n)
+                        "${doorAt door eloc}the option type `${nameOf t}' folds two entries of its result at this "
+                        + "loc, so no one nested tree is this loc's, and its merge read an element here. Declare the "
+                        + "entries at distinct locs, or state `declaresNesting = false' on the type and take the "
+                        + "stated price: a nested tree it forwards to is then evaluated standalone"
+                      else
+                        (if at.lvOn then statedStepRefusal else unexposedRefusal) door eloc t
+                    );
+              }
+          )
+        ) eloc;
+      # `rd` at the node at key `k` of a `node` or list level below `base` (`placeAt`'s descent)
+      nodeRd =
+        rd: base: k:
+        rd
+        // {
+          ev = (rd.ev.child { position = rd.ev.position ++ [ k ]; }).accessor;
+          eb = base ++ [ k ];
+        };
+      # A site `s` found under a key not its own. Where its own placement is a level keyed from the
+      # definitions (`placeAt`'s `over` arm), the host's child at its declaring position, which they key;
+      # otherwise the host's child at the read position `rp` (steps below `rd`'s), which the result keys.
+      movedRead =
+        rd: rp: s:
+        let
+          at = declaredAt rd.root.lv rd.root.ev rd.root.base s.loc;
+        in
+        if at != null then
+          childFold at.ev (at.ev.position ++ at.st) s
+        else
+          childFold rd.ev (rd.ev.position ++ rp) s;
+      # The declaring position of an element folded at `l`, where a level keyed from the definitions holds
+      # it: `placeAt`'s descent read off the levels alone, never the fold's result (`node`/list levels
+      # descend to the node at the element's own key, an `over` level holds it); `null` elsewhere.
+      declaredAt =
+        lv: ev: base: l:
+        let
+          st = under base l;
+        in
+        if lv == null || st == null || st == [ ] then
+          null
+        else if lv ? over then
+          { inherit ev st; }
+        else if lv ? node && lv.next != null then
+          declaredAt lv.next (ev.child { position = ev.position ++ [ (head st) ]; }).accessor (
+            base ++ [ (head st) ]
+          ) l
+        else
+          null;
+      # Off a level: the value read beside the capture fold's result, an entry at a shared loc served the
+      # host's child at its own position (`entryAt`), every other read as folded. The loc table is read
+      # only where a site is reached.
+      entriesRead =
+        rd: base: rB: v:
+        let
+          inherit (rd) shared;
+          go =
+            p: r: x:
+            if isAttrs r then
+              (
+                if r ? __genTSite then
+                  (
+                    if shared != { } && shared ? ${builtins.toJSON r.__genTSite.loc} then
+                      childFold rd.ev (rd.ev.position ++ entryAt rd.eb r.__genTSite p) r.__genTSite
+                    else
+                      x
+                  )
+                else if isAttrs x then
+                  prelude.mapAttrs (j: go (p ++ [ j ]) (r.${j} or null)) x
+                else
+                  x
+              )
+            else if isList r && isList x && length r == length x then
+              builtins.genList (i: go (p ++ [ (toString i) ]) (elemAt r i) (elemAt x i)) (length x)
+            else
+              x;
+        in
+        go [ ] rB v;
       finishAt =
-        oloc: lv: base: rB: ev: ds: v:
+        oloc: lv: base: rB: rd: ds: v:
         if lv != null && lv ? list && !(lv ? es) then
           (
             let
               w = lv.at oloc lv base ds rB;
             in
-            if w.lv != null && isList v then finishAt oloc w.lv base w.r ev ds v else v
+            if w.lv != null && isList v then finishAt oloc w.lv base w.r rd ds v else v
           )
         # A list level's read check: index `i` of the threaded fold holds the entry the split ranked
         # `i` (`es`), read off it as the node at that entry (`finishAt`, `heldAt`). A stock chain's
@@ -2852,9 +3024,9 @@ let
             if i >= length lv.es then
               throw (statedStepRefusal door (base ++ [ (toString i) ]) t)
             else if lv.next != null then
-              finishAt oloc lv.next e.loc (rB.${k} or null) ev e.defs x
+              finishAt oloc lv.next e.loc (rB.${k} or null) (nodeRd rd base k) e.defs x
             else
-              heldAt lv base rB k (rB.${k} or null) x
+              heldAt rd base k [ ] (rB.${k} or null) x
           ) (length v)
         else if lv != null && (lv.keyed or false) && isAttrs rB && isAttrs v then
           let
@@ -2905,30 +3077,36 @@ let
           prelude.mapAttrs (
             k: x:
             if lv.next != null then
-              finishAt oloc lv.next (base ++ [ k ]) (rB.${k} or null) ev (byKey.${k} or [ ]) x
+              finishAt oloc lv.next (base ++ [ k ]) (rB.${k} or null) (nodeRd rd base k) (byKey.${k} or [ ]) x
             else
-              heldAt lv base rB k (rB.${k} or null) x
+              heldAt rd base k [ ] (rB.${k} or null) x
           ) v
         else if lv != null && (lv ? node || lv ? over) && isAttrs rB && isAttrs v then
           prelude.mapAttrs (
             k: x:
             if lv.next != null then
-              finishAt oloc lv.next (base ++ [ k ]) (rB.${k} or null) ev ds x
+              finishAt oloc lv.next (base ++ [ k ]) (rB.${k} or null) (
+                if lv ? node then nodeRd rd base k else rd
+              ) ds x
             else
-              heldAt lv base rB k (rB.${k} or null) x
+              heldAt rd base k [ ] (rB.${k} or null) x
           ) v
         else if lv != null && lv ? one && isAttrs rB then
-          keyedWhereRead base rB v
+          keyedWhereRead rd base rB v
+        else if lv == null then
+          entriesRead rd base rB v
         else
           v;
       # The value read at key `k` of a `node` level whose record is not itself a level, checked where
       # each element is read (`keyedWhereRead`'s rule, one record further down): walked beside `r`,
       # the capture fold's result at `k`, an element's tree is served where its site was folded
-      # under `k`, or under a key `m` that holds its own tree (every site of `m`'s sits under `m`);
-      # otherwise the read refuses at `k`. A read that reaches no element reads no site, so it
-      # forces what nixpkgs forces for it.
+      # under `k`. A read that reaches no element reads no site, so it forces what nixpkgs forces
+      # for it. A site under another key (the merge moved it) is the moved read: below a node keyed
+      # from the result, the node's child at its path `p` in the node's result, which the node's split
+      # keys there (`movedRead`), or, on a chain with no list level, the threaded fold's own answer
+      # at the read path (`qRead`) (den-hoag-lif3n, den-hoag-i4j0n).
       heldAt =
-        lv: base: rB: k: r: x:
+        rd: base: k: p: r: x:
         if isAttrs r then
           if r ? __genTSite then
             let
@@ -2936,46 +3114,143 @@ let
               n = length base;
               m = if length l > n && builtins.genList (elemAt l) n == base then elemAt l n else null;
             in
-            if
-              m == k || (m != null && rB ? ${m} && all (s: under (base ++ [ m ]) s.loc != null) (sitesOf rB.${m}))
-            then
+            if m == k then
               x
             else
-              throw (nodeStepRefusal door (base ++ [ k ]) t lv.node)
+              (
+                let
+                  nrd = nodeRd rd base k;
+                in
+                if pOn then qRead rd (base ++ [ k ] ++ p) else movedRead nrd p r.__genTSite
+              )
           else if isAttrs x && !(r ? __genTEmpty) then
-            prelude.mapAttrs (j: heldAt lv base rB k (r.${j} or null)) x
+            prelude.mapAttrs (j: heldAt rd base k (p ++ [ j ]) (r.${j} or null)) x
           else
             x
         else if isList r && isList x && length r == length x then
-          builtins.genList (i: heldAt lv base rB k (elemAt r i) (elemAt x i)) (length x)
+          builtins.genList (i: heldAt rd base k (p ++ [ (toString i) ]) (elemAt r i) (elemAt x i)) (length x)
         else
           x;
       # The threaded fold's result, read at key `k`, holds the tree folded at the site found there,
-      # and that site must be its own key's (`loc ++ [ k' ]`, held at `k'`), or the empty value of a
-      # key with none; a merge that duplicates or drops a key's tree passes, one that moves it
-      # refuses here, where it is read.
+      # served where that site is its own key's (`loc ++ [ k ]`) or the key holds none; a site of
+      # another key's (the merge moved it) is the moved read, as at a node (`heldAt`); a key holding
+      # no site refuses here, where it is read.
       keyedWhereRead =
-        loc: captured: v:
+        rd: loc: captured: v:
         if isAttrs v then
           prelude.mapAttrs (
             k: x:
             let
               l = siteLocAt captured k;
             in
-            if
-              emptyAt captured k
-              ||
-                l != null
-                && length l == length loc + 1
-                && l == loc ++ [ (prelude.last l) ]
-                && siteLocAt captured (prelude.last l) == l
-            then
+            if emptyAt captured k || l == loc ++ [ k ] then
               x
+            else if l != null then
+              (
+                if pOn then
+                  qRead rd (loc ++ [ k ])
+                else
+                  movedRead rd (stepOf rd.eb loc ++ [ k ]) captured.${k}.__genTSite
+              )
             else
               throw (statedStepRefusal door (loc ++ [ k ]) t)
           ) v
         else
           v;
+      # The capture sites of `v`, each with its path in `v`, in `sitesOf`'s order; `sharedAt`, the locs
+      # two of them share (`{ }` where none is, read off one name table); `entryAt`, the steps of an
+      # entry at a shared loc: the loc's own, then a marker no attribute step or index spells
+      # (den-hoag-lif3n).
+      sitesAt =
+        p: v:
+        if isAttrs v then
+          (
+            if v ? __genTSite then
+              [
+                {
+                  site = v.__genTSite;
+                  path = p;
+                }
+              ]
+            else
+              prelude.concatMap (k: sitesAt (p ++ [ k ]) v.${k}) (attrNames v)
+          )
+        else if isList v then
+          prelude.concatMap (i: sitesAt (p ++ [ (toString i) ]) (elemAt v i)) (
+            builtins.genList (i: i) (length v)
+          )
+        else
+          [ ];
+      sharedAt =
+        ss:
+        let
+          locs = map (s: builtins.toJSON s.loc) ss;
+        in
+        if
+          length (
+            attrNames (
+              builtins.listToAttrs (
+                map (l: {
+                  name = l;
+                  value = null;
+                }) locs
+              )
+            )
+          ) == length ss
+        then
+          { }
+        else
+          prelude.filterAttrs (_: ls: length ls > 1) (builtins.groupBy (l: l) locs);
+      entryAt =
+        base: s: p:
+        stepOf base s.loc ++ [ { entry = p; } ];
+      # arm Q: chains whose moved read re-runs the fold over the elements' own values (no list level)
+      hasList = lv: lv != null && (lv ? list || hasList (lv.next or null));
+      pOn = lvT != null && !(hasList lvT);
+      # the value at path `q` of a capture result, `null` off it
+      siteAtPath =
+        r: q:
+        if q == [ ] then
+          r
+        else if isAttrs r && !(r ? __genTSite) && r ? ${head q} then
+          siteAtPath r.${head q} (builtins.tail q)
+        else if
+          isList r && builtins.match "[0-9]+" (head q) != null && builtins.fromJSON (head q) < length r
+        then
+          siteAtPath (elemAt r (builtins.fromJSON (head q))) (builtins.tail q)
+        else
+          null;
+      # the accessor and position of element `l`'s site at capture path `q` below a level `lv` at `b`
+      # (`nodeRd`'s descent); below a node, the eager walk keys it at its own steps where its loc extends the
+      # node's, else at its path (`splitAt`); a lazy step keys the site found at a key there (`lazySplit`)
+      descendTo =
+        lv: ev: b: n: l: q:
+        if lv != null && lv ? node && q != [ ] then
+          descendTo (lv.next or null) (ev.child { position = ev.position ++ [ (head q) ]; }).accessor (
+            b ++ [ (head q) ]
+          ) true l (builtins.tail q)
+        else
+          {
+            inherit ev;
+            position =
+              ev.position
+              ++ (
+                let
+                  u = under b l;
+                in
+                if n && lv == null && u != null then u else q
+              );
+          };
+      # the fold's value at absolute read loc `al`, the fold re-run with every element at its own definitions
+      qRead =
+        rd: al:
+        let
+          q = under rd.root.base al;
+          v =
+            threadedAt q rd.shared rd.root.lv false rd.root.base rd.root.captured rd.root.ev rd.root.base
+              rd.root.defs;
+        in
+        builtins.foldl' (x: k: if isList x then elemAt x (builtins.fromJSON k) else x.${k}) v q;
       sitesOf =
         v:
         if isAttrs v then
@@ -3015,7 +3290,7 @@ let
       # `ev` at its steps below `base`, where `lv` (the level at `base`, `rB` the capture fold's
       # result there) placed it; any other element's nested-tree read refuses by name.
       threadedAt =
-        lv: checked: base: rB: ev: loc: defs:
+        qh: sh: lv: checked: base: rB: ev: loc: defs:
         let
           # One record per level, built once per fold and lazily per key (a `node` level's `sub`), so
           # an element's placement reads its level's `steps` rather than re-deriving them.
@@ -3038,6 +3313,17 @@ let
                   ;
                 onLevel = lv != null && isAttrs rB;
                 steps = map (s: stepOf base s.loc) (sitesOf rB);
+                # Where this node's capture holds a tree of another key's (a site not under `base`), the
+                # steps its eager split keyed each site at (`splitAt`): its own below `base`, else its path
+                # in the node's result; `null` where every site is its own key's. Read by `placeAt` only.
+                movedSteps =
+                  if all (s: under base s.loc != null) (sitesOf rB) then
+                    null
+                  else
+                    map (x: if under base x.site.loc != null then stepOf base x.site.loc else x.path) (sitesAt [ ] rB);
+                # off a node, a loc two entries of the result share places no element (den-hoag-lif3n): the
+                # eager split keys each entry at its own position there, and below a node it keys none
+                shared = if checked then { } else sh;
                 sub =
                   if !(onLevel && lv ? node) then
                     { }
@@ -3123,9 +3409,27 @@ let
                 ok = length st == 2 && isAttrs rK && siteLocAt rK (elemAt st 1) == eloc;
               }
             else if i.onLevel && i.lv ? node && st != [ ] && i.sub ? ${head st} then
-              placeAt i.sub.${head st} (ev.child { position = ev.position ++ [ (head st) ]; }).accessor
-                (builtins.tail st)
-                eloc
+              # an element whose own node the capture gave another key's tree, at steps that node's eager
+              # split did not key: a merge reading its elements' values placed it otherwise there
+              # (den-hoag-lif3n)
+              (
+                if
+                  i.sub.${head st}.lv == null
+                  && i.sub.${head st}.movedSteps != null
+                  && !(builtins.elem (builtins.tail st) i.sub.${head st}.movedSteps)
+                then
+                  placeAt i.sub.${head st} (ev.child { position = ev.position ++ [ (head st) ]; }).accessor
+                    (builtins.tail st)
+                    eloc
+                  // {
+                    ok = false;
+                    other = true;
+                  }
+                else
+                  placeAt i.sub.${head st} (ev.child { position = ev.position ++ [ (head st) ]; }).accessor
+                    (builtins.tail st)
+                    eloc
+              )
             else
               {
                 inherit ev;
@@ -3137,9 +3441,29 @@ let
                   else if i.onLevel && i.lv ? node then
                     false
                   else
-                    builtins.elem st i.steps;
+                    builtins.elem st i.steps && (i.shared == { } || !(i.shared ? ${builtins.toJSON eloc}));
+                sharedLoc = i.shared != { } && i.shared ? ${builtins.toJSON eloc};
               };
           onLevel = info0.onLevel;
+          qPos =
+            eloc:
+            let
+              d = declaredAt lv ev base eloc;
+              atQ = siteAtPath rB qh;
+            in
+            if under base eloc == null then
+              null
+            else if d != null then
+              {
+                inherit (d) ev;
+                position = d.ev.position ++ d.st;
+              }
+            else if isAttrs atQ && atQ ? __genTSite && atQ.__genTSite.loc == eloc then
+              descendTo lv ev base false eloc qh
+            else
+              # the merge's answer holds an element the capture did not place at the read path: its host
+              # position is not read without forcing the capture elsewhere, so a nested-tree read refuses by name
+              { unkeyed = true; };
         in
         checkedThreaded (importedFold (
           via (
@@ -3151,37 +3475,28 @@ let
               # `child` refuses by name: only a nested-tree read refuses, so a member that never
               # reads the tree still answers (ADR-0025 item 1).
               merge = carriedElement e (
-                eloc: edefs:
-                let
-                  at = placeAt info0 ev (if checked then under base eloc else stepOf base eloc) eloc;
-                  ok = at.ok;
-                in
-                mergeDefsThreaded (
-                  at.ev
-                  // {
-                    position = at.ev.position ++ (if at.st == null then [ ] else at.st);
-                    # The threaded fold never sets the exact-element mark (`unionNodeAt` reads it):
-                    # an element it folds is keyed over-approximately. A node's own walk keys its
-                    # elements in its stated record's regime (`keysExactly`), which this mark does
-                    # not govern.
-                    exactAt = null;
-                  }
-                  // (
-                    if ok then
-                      { }
-                    else
-                      {
-                        # What the walk minted here (`minted`, the key walk's own records) is
-                        # still the accessor's to state; only a read refuses.
-                        child =
-                          site:
-                          if site ? __genMergeMinted then
-                            at.ev.child site
-                          else
-                            throw ((if at.lvOn then statedStepRefusal else unexposedRefusal) door eloc t);
+                if qh == null then
+                  eloc: edefs:
+                  let
+                    at = placeAt info0 ev (if checked then under base eloc else stepOf base eloc) eloc;
+                  in
+                  foldAt at false eloc e edefs
+                else
+                  eloc: edefs:
+                  let
+                    at = placeAt info0 ev (if checked then under base eloc else stepOf base eloc) eloc;
+                    mv = qPos eloc;
+                  in
+                  if mv != null && !(mv ? unkeyed) then
+                    mergeDefsThreaded (
+                      mv.ev
+                      // {
+                        inherit (mv) position;
+                        exactAt = null;
                       }
-                  )
-                ) eloc e edefs
+                    ) eloc e edefs
+                  else
+                    foldAt at (mv ? unkeyed) eloc e edefs
               );
             }
           )
@@ -3223,7 +3538,19 @@ let
           let
             captured = (importedFold capture) loc defs;
           in
-          finishAt loc lvT loc captured ev defs (threadedAt lvT false loc captured ev loc defs);
+          let
+            # the locs two entries of this fold's result share, read by the placement and the read alike
+            shared = sharedAt (sitesOf captured);
+          in
+          finishAt loc lvT loc captured {
+            inherit ev shared;
+            eb = loc;
+            root = {
+              lv = lvT;
+              inherit ev captured defs;
+              base = loc;
+            };
+          } defs (threadedAt null shared lvT false loc captured ev loc defs);
       };
     };
 
@@ -3269,18 +3596,6 @@ let
     + "function body), so that nested tree cannot be threaded into this evaluation. Declare the tree "
     + "at a position the merge returns as a value, or state `declaresNesting = false' on the type and "
     + "take the stated price: a nested tree it forwards to is then evaluated standalone";
-
-  # The node-level form of the stated-step refusal (den-hoag-rlskz, den-hoag-i01nx): a chain whose
-  # step, lazy or strict, states that each key holds the record `c` folded at that key, whose merge
-  # folded at the key read, `at`, a tree that sits under another key.
-  nodeStepRefusal =
-    door: at: t: c:
-    "${doorAt door at}the option type `${nameOf t}' states (its functors) that each key below it, "
-    + "under an `attrsWith', holds a `${nameOf c}' folded at that key, and its merge folded a tree "
-    + "of another key's there: the merge was overridden, so the functor misstates it, and this tree "
-    + "cannot be keyed where it is read. Declare the element under a container whose merge is its "
-    + "constructor's, or state `declaresNesting = false' on the type and take the stated price: a "
-    + "nested tree it forwards to is then evaluated standalone";
 
   # The stated-step refusal's text (den-hoag-fozin): a chain keyed by the step its functors state,
   # whose merge folded no element of its own at the key read, `at`.

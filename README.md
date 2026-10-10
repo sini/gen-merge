@@ -2021,15 +2021,28 @@ read off the merge's result at that key only, and it keys its elements in that r
 (exactly below a stock `attrsOf`, `listOf` or `nullOr`), as gen keys its own. Either way a sibling
 whose key set, `mkIf` or alias reads the read tree is served as nixpkgs serves it. **The price,
 stated as an extension of the overridden-merge price below:** the steps are trusted from the
-functor names at each level, while the run still says which tree sits at which key. A
-stock-named `attrsWith`, lazy or strict, whose `merge` does not fold each element at its own key (one key
-deeper, keys renamed or swapped, or a key holding no element's tree) is refused by name at the key
-read, where nixpkgs serves it. Below a container node it is refused where an element below the key
-is read, at that key, so a read of the key's record that reaches no element serves; where the key's
-value is the element itself (`nullOr` directly over it), a read of that value reads the element and
-is refused. One that only drops a key's tree serves nixpkgs' value; one that duplicates it does
-too, except below a node whose own record is a level, where it is refused; and one whose result is
-not an attribute set keeps the eager walk. A node's regime is trusted from its record's name the same way: a
+functor names at each level, while the run still says which tree sits at which key. A tree the
+`merge` folds under a key not its own (keys renamed, swapped or fanned out) is the evaluation's own
+child at the position its definitions declare, or, where the levels are keyed from the result, at
+the position it is read, so it serves nixpkgs' value; two entries of the result at one loc are each
+keyed apart. A stock-named `attrsWith`, lazy or strict, whose `merge` holds no element's tree at a key
+read (one key deeper) is refused by name at the key read, where nixpkgs serves it; one whose result
+is not an attribute set keeps the eager walk. **A merge that reads its elements' values** is run
+twice: once over the definitions' sites, which are records, to key the tree, and once over the
+evaluation's values. Where it places an element by a value, a moved read re-runs the fold over the
+values at the read path. An element that fold reached, placed at the key read or read while deciding
+placement, where the run over the sites holds another element there, has its nested-tree read refused
+by name at its own loc, where nixpkgs serves the value: its position is not found without forcing a
+sibling nixpkgs does not force. Below a key whose list the walk keys eagerly, an element the merge
+reads, whose own position the run over the sites gave another key's element, is refused by name at
+its own loc, naming that position. Those causes are stated on the moved-read and moved-node paths
+only. A value-reading
+merge that drops an element the sites lack a value for makes no moved read, and its refusal names a
+position the merge does not expose. **The cost**, read on the hub perf-bench: `threadedRegistry`
+gains 4 thunks and about 590 bytes per threaded element and 2,051 thunks of load, `wrappedRegistry`
+51 thunks of load, both still below their nixpkgs reference; startup gains 100 bytes, every one of them
+gen-merge's own allocation (the member row rises by the same 100 bytes); no other load row rises.
+A node's regime is trusted from its record's name the same way: a
 stock-named `attrsOf`, `listOf` or `nullOr` whose `merge` was overridden to a lazy one is keyed
 exactly. **A `listOf` step is a level where its chain is stock.** Its positions, the
 `[definition n-entry m]` segments nixpkgs' merge names, are keyed from the definitions it folds,

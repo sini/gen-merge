@@ -7619,19 +7619,6 @@ in
         };
       in
       {
-        test-a-merge-swapping-two-keys-trees-is-refused-at-the-key-read = {
-          expr =
-            force
-              (cfgOf (
-                r:
-                r
-                // {
-                  foo = r.bar;
-                  bar = r.foo;
-                }
-              )).foo.k.x;
-          expectedError = refusal "foo";
-        };
         test-a-merge-folding-one-key-deeper-is-refused-at-the-key-read = {
           expr =
             force
@@ -7640,18 +7627,13 @@ in
               })).wrap.foo.k.x;
           expectedError = refusal "wrap";
         };
-        test-a-merge-renaming-a-key-is-refused-at-the-key-read = {
-          expr = force (cfgOf (nixpkgsLib.mapAttrs' (n: nixpkgsLib.nameValuePair "x${n}"))).xfoo.k.x;
-          expectedError = refusal "xfoo";
-        };
       };
 
     # den-hoag-rlskz: a foreign chain with a second step below its lazy `attrsWith` refuses by the
     # level that holds the element. A `functionTo` below the lazy step folds its gen element inside
     # a function body that no level's split exposes, so it is refused as unexposed, as at the
-    # option's own level. A merge that folds another key's tree at a node's key is refused where an
-    # element below the read key is read, at that key (`heldAt`): reading `foo` names `foo`, whichever
-    # key holds the moved tree, and a tree served at two keys names each where it is read.
+    # option's own level. A merge that folds another key's tree at a node's key serves nixpkgs' value
+    # (`tests.nesting-keys-foreign-chain-nested`, den-hoag-lif3n).
     flake.testsError.nesting-keys-foreign-chain-nested =
       let
         np = nixpkgsLib.types;
@@ -7667,25 +7649,6 @@ in
             { options.s = gm.mkOption { inherit type; }; }
             m
           ]).config.s;
-        reshaped =
-          g: a:
-          a
-          // {
-            merge = loc: defs: g (a.merge loc defs);
-            substSubModules =
-              m:
-              let
-                r = a.substSubModules m;
-              in
-              r // { merge = loc: defs: g (r.merge loc defs); };
-          };
-        swap =
-          r:
-          r
-          // {
-            foo = r.bar;
-            bar = r.foo;
-          };
       in
       {
         test-a-functionTo-below-a-lazy-step-is-refused-as-unexposed = {
@@ -7700,58 +7663,6 @@ in
           expectedError = {
             type = "ThrownError";
             msg = "^gen-merge: `evalModuleTree' at option `s[.]foo[.]<function body>': the option type `unique' folds its gen nesting element at a position its own merge does not expose when the option is merged [(]inside a value it returns, such as a function body[)], so that nested tree cannot be threaded into this evaluation[.] Declare the tree at a position the merge returns as a value, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
-          };
-        };
-        test-a-tree-served-at-two-keys-is-refused-at-the-other-key-read = {
-          expr =
-            force
-              (cfgOf
-                (np.uniq (
-                  reshaped (
-                    r:
-                    r
-                    // {
-                      foo = r.bar;
-                      bar = r.foo;
-                      baz = r.bar;
-                    }
-                  ) (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))
-                ))
-                {
-                  s.foo.j.k.a = 1;
-                  s.bar.j.k.a = 2;
-                  s.baz.j.k.a = 3;
-                }
-              ).baz.j.k.a;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s[.]baz': the option type `unique' states [(]its functors[)] that each key below it, under an `attrsWith', holds a `attrsOf' folded at that key";
-          };
-        };
-        test-a-tree-served-at-two-keys-is-refused-at-the-key-read = {
-          expr =
-            force
-              (cfgOf
-                (np.uniq (
-                  reshaped (
-                    r:
-                    r
-                    // {
-                      foo = r.bar;
-                      bar = r.foo;
-                      baz = r.bar;
-                    }
-                  ) (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub)))
-                ))
-                {
-                  s.foo.j.k.a = 1;
-                  s.bar.j.k.a = 2;
-                  s.baz.j.k.a = 3;
-                }
-              ).foo.j.k.a;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo': the option type `unique' states [(]its functors[)] that each key below it, under an `attrsWith', holds a `attrsOf' folded at that key";
           };
         };
         # den-hoag-i01nx: below `nullOr`, the lazy step is a level, and a `functionTo` below it with a
@@ -7774,36 +7685,20 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `s[.]foo[.]<function body>': the option type `unique' folds its gen nesting element at a position its own merge does not expose when the option is merged [(]inside a value it returns, such as a function body[)], so that nested tree cannot be threaded into this evaluation[.] Declare the tree at a position the merge returns as a value, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
           };
         };
-        test-a-merge-swapping-two-keys-trees-at-a-node-is-refused-at-the-key-read = {
-          expr =
-            force
-              (cfgOf (np.uniq (reshaped swap (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub))))) {
-                s.foo.j.k.a = 1;
-                s.bar.j.k.a = 2;
-              }).foo.j.k.a;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: `evalModuleTree' at option `s[.]foo': the option type `unique' states [(]its functors[)] that each key below it, under an `attrsWith', holds a `attrsOf' folded at that key, and its merge folded a tree of another key's there: the merge was overridden, so the functor misstates it, and this tree cannot be keyed where it is read[.] Declare the element under a container whose merge is its constructor's, or state `declaresNesting = false' on the type and take the stated price: a nested tree it forwards to is then evaluated standalone$";
-          };
-        };
       };
 
     # den-hoag-q6d1z: the reads of a foreign chain below a node whose merge reshapes what each key
-    # holds (`tests/_fixtures/foreign-chain-reshaped.nix`) that do not serve. A node-level refusal
-    # names the key whose value the read entered (`heldAt`), and one key deeper where the record
-    # below it is a level; where the element is the key's own value (`nullOr` directly over it) a
-    # shape read of a moved key reads the element and refuses at the key, as `keyedWhereRead` does
-    # at a one-step level (the stated price). Every other cell is base's own outcome, unchanged: the
-    # one-step level's refusals, the stated shortfall's aborts, and a merge that reads an element's
-    # value, which in the capture fold is a site record.
+    # holds (`tests/_fixtures/foreign-chain-reshaped.nix`) that do not serve. A merge that decides
+    # placement on its elements' values, read where the capture fold placed another element at the
+    # key read, refuses the element its real fold reached, at that element's own loc (`vals`,
+    # den-hoag-lif3n); below a node holding a list, the element it read, whose own position the
+    # capture gave another key's element, at that position (`own`). The rest are the one-step level's refusals, the stated shortfall's aborts, and a
+    # merge reading an element's value that the capture fold, whose sites are records, drops: that
+    # read is not a moved read, and its refusal (`other`) names an unexposed position.
     flake.testsError.nesting-keys-foreign-chain-reshaped =
       let
         fx = import ./tests/_fixtures/foreign-chain-reshaped.nix { inherit gm nixpkgsLib; };
         head = at: "^gen-merge: `evalModuleTree' at option `${at}': the option type `unique' ";
-        node = at: c: {
-          type = "ThrownError";
-          msg = "${head at}states [(]its functors[)] that each key below it, under an `attrsWith', holds a `${c}' folded at that key, and its merge folded a tree of another key's there";
-        };
         one = at: {
           type = "ThrownError";
           msg = "${head at}states [(]its functors[)] that its gen element sits one key below it, under a lazy `attrsWith', and its merge did not fold that key's own element there";
@@ -7811,6 +7706,14 @@ in
         other = at: {
           type = "ThrownError";
           msg = "${head at}folds its gen nesting element at a position its own merge does not expose";
+        };
+        vals = at: {
+          type = "ThrownError";
+          msg = "${head at}reads its elements' values in its merge, and over this evaluation's values it reached this element, placed at the key read or read while deciding placement, where the same merge over the definitions' sites holds another element at the key read, so no nested tree of this evaluation is this element's[.] Declare a merge whose placement does not read its elements' values";
+        };
+        own = at: {
+          type = "ThrownError";
+          msg = "${head at}reads its elements' values in its merge, and the same merge over the definitions' sites put another element at this element's own position, so no nested tree of this evaluation is this element's there[.] Declare a merge whose placement does not read its elements' values";
         };
         evalError = msg: {
           type = "EvalError";
@@ -7826,34 +7729,7 @@ in
           }
         )
         {
-          swapBar = node "s[.]bar" "attrsOf";
-          # a whole-value read refuses at a key below it, whichever the evaluator forces first
-          swapAll = node "s[.](bar|foo)" "attrsOf";
-          swapFooJNames = node "s[.]foo" "attrsOf";
-          swapONamesM = node "s[.]foo" "attrsOf";
-          rotFoo = node "s[.]foo" "attrsOf";
-          rotBaz = node "s[.]baz" "attrsOf";
-          fanBar = node "s[.]bar" "attrsOf";
-          deeperRead = node "s[.]wrap" "attrsOf";
-          graftJ = node "s[.]foo" "attrsOf";
-          swap3Foo = node "s[.]foo[.]j" "attrsOf";
-          swap3Bar = node "s[.]bar[.]j" "attrsOf";
-          deep7Swap = node "s[.]foo[.]j[.]j" "attrsOf";
-          deep8Swap = node "s[.]foo[.]j" "attrsOf";
-          deep8SwapNames2 = node "s[.]foo[.]j" "attrsOf";
-          swapFooLazy = one "s[.]foo[.]j";
-          oneSwapFoo = one "s[.]foo";
-          oneSwapFooNames = one "s[.]foo";
-          strictLazySwap = one "s[.]foo[.]j[.]x";
           listLazyMkX = evalError "infinite recursion encountered";
-          swapSelf = evalError "infinite recursion encountered";
-          oneSwapSelf = evalError "infinite recursion encountered";
-          swapNNames = node "s[.]foo" "nullOr";
-          swapNLeaf = node "s[.]foo" "nullOr";
-          twoNm = node "s[.]foo" "nullOr";
-          twoNmHas = node "s[.]foo" "nullOr";
-          twoNmNull = node "s[.]foo" "nullOr";
-          fanNNames = node "s[.]baz" "nullOr";
           filtValTop = evalError "attribute 'k' missing";
           filtValNames = evalError "attribute 'k' missing";
           filtValLeaf = evalError "attribute 'k' missing";
@@ -7871,17 +7747,26 @@ in
           mapValNNull = evalError "attribute 'k' missing";
           mapValNNames = evalError "attribute 'k' missing";
           mapValNLeaf = evalError "attribute 'k' missing";
-          valSwapNames = node "s[.]foo" "attrsOf";
-          valSwapJNames = node "s[.]foo" "attrsOf";
-          valSwapLeaf = node "s[.]foo" "attrsOf";
-          valSwapBar = node "s[.]foo" "attrsOf";
-          catL0 = node "s[.]foo" "listOf";
+          valSwapLeaf = vals "s[.]foo[.]j";
+          valSwapBar = vals "s[.]bar[.]j";
+          # the element read to decide the placement is refused where it is read, at its own loc
+          valOrSwapLeaf = vals "s[.]foo[.]j";
+          valOrSwapBar = vals "s[.]bar[.]j";
+          valOrBazBar = vals "s[.]baz[.]j";
+          valOrBazFoo = vals "s[.]baz[.]j";
+          valOrRotBar = vals "s[.]foo[.]j";
+          # a node holding a list: the element read to decide is refused at its own position
+          valHasLBar = own "s[.]bar[.]\"\\[definition 1-entry 1\\]\"";
+          valHasLFoo = own "s[.]foo[.]\"\\[definition 1-entry 1\\]\"";
+          valOrLBar = own "s[.]foo[.]\"\\[definition 1-entry 1\\]\"";
+          valOrLFoo = own "s[.]foo[.]\"\\[definition 1-entry 1\\]\"";
+          valOrLjBar = own "s[.]foo[.]\"\\[definition 1-entry 1\\]\"[.]j";
+          valOrLjFoo = own "s[.]foo[.]\"\\[definition 1-entry 1\\]\"[.]j";
+          valOrLLBar = own "s[.]foo[.]\"\\[definition 1-entry 1\\]\"[.]\"\\[definition 1-entry 1\\]\"";
+          valOrLLFoo = own "s[.]foo[.]\"\\[definition 1-entry 1\\]\"[.]\"\\[definition 1-entry 1\\]\"";
           filtLLen = other "s[.]foo[.]\"\\[definition 1-entry 1\\]\"";
           filtL0 = other "s[.]foo[.]\"\\[definition 1-entry 1\\]\"";
           filtLBarLen = other "s[.]bar[.]\"\\[definition 1-entry 1\\]\"";
-          swapL0 = node "s[.]foo" "listOf";
-          swapLNames = node "s[.]foo" "listOf";
-          swapLNamesM = node "s[.]foo" "listOf";
           stockLmkX = evalError "infinite recursion encountered";
         };
 

@@ -878,8 +878,33 @@ in
         };
       };
       # den-hoag-fozin C1: the run, not the functor, says which tree sits at which key. A merge that
-      # duplicates or drops a key's tree serves nixpkgs' value; one that moves a tree to another key
-      # is refused by name (`testsError.nesting-keys-foreign-chain`).
+      # duplicates, drops, moves or renames a key's tree serves nixpkgs' value: a moved tree is the
+      # host's child at its own definitions' position, read where the merge put it (den-hoag-lif3n).
+      test-a-merge-swapping-two-keys-trees-serves-nixpkgs-value = {
+        expr =
+          (cfgOf (
+            host (np.uniq (
+              reshapeOf (
+                r:
+                r
+                // {
+                  foo = r.bar;
+                  bar = r.foo;
+                }
+              ) (aw (t.attrsOf sub))
+            )) two
+          )).foo.k.x;
+        expected = 2;
+      };
+      test-a-merge-renaming-a-key-serves-nixpkgs-value = {
+        expr =
+          (cfgOf (
+            host (np.uniq (
+              reshapeOf (nixpkgsLib.mapAttrs' (n: nixpkgsLib.nameValuePair "x${n}")) (aw (t.attrsOf sub))
+            )) two
+          )).xfoo.k.x;
+        expected = 1;
+      };
       test-a-merge-duplicating-a-keys-tree-serves-nixpkgs-value = {
         expr =
           (cfgOf (host (np.uniq (reshapeOf (r: r // { bar = r.foo; }) (aw (t.attrsOf sub)))) two)).bar.k.x;
@@ -1176,7 +1201,73 @@ in
             ]).foo;
         expected = 1;
       };
-    };
+    }
+    # den-hoag-lif3n: a merge that folds another key's tree at a node's key, or one tree at two keys,
+    # serves nixpkgs' value: each moved tree is the host's child at its own position, read where the
+    # merge put it
+    // (
+      let
+        reshaped =
+          g: a:
+          a
+          // {
+            merge = loc: defs: g (a.merge loc defs);
+            substSubModules =
+              m:
+              let
+                r = a.substSubModules m;
+              in
+              r // { merge = loc: defs: g (r.merge loc defs); };
+          };
+        moved =
+          g: defs: cfgOf (host (np.uniq (reshaped g (np.lazyAttrsOf (np.attrsOf (t.attrsOf sub))))) defs);
+        three = [
+          {
+            foo.j.k.x = 1;
+            bar.j.k.x = 2;
+            baz.j.k.x = 3;
+          }
+        ];
+        swapFanned =
+          r:
+          r
+          // {
+            foo = r.bar;
+            bar = r.foo;
+            baz = r.bar;
+          };
+      in
+      {
+        test-a-merge-swapping-two-keys-trees-at-a-node-serves-nixpkgs-value = {
+          expr =
+            (moved
+              (
+                r:
+                r
+                // {
+                  foo = r.bar;
+                  bar = r.foo;
+                }
+              )
+              [
+                {
+                  foo.j.k.x = 1;
+                  bar.j.k.x = 2;
+                }
+              ]
+            ).foo.j.k.x;
+          expected = 2;
+        };
+        test-a-tree-served-at-two-keys-serves-nixpkgs-value-at-the-key-read = {
+          expr = (moved swapFanned three).foo.j.k.x;
+          expected = 2;
+        };
+        test-a-tree-served-at-two-keys-serves-nixpkgs-value-at-the-other-key-read = {
+          expr = (moved swapFanned three).baz.j.k.x;
+          expected = 2;
+        };
+      }
+    );
 
   # den-hoag-i01nx (ADR-0039, the serve half; ADR-0025 item 1): a level's step-free wrappers include
   # `nullOr`, and a strict `attrsWith` step over a record that may nest is a level of nodes. So a lazy
@@ -2005,6 +2096,53 @@ in
         toListLeaf = 2;
         addConstLeaf = 9;
         addConstFoo = 1;
+        valSwapNames = [ "j" ];
+        valSwapJNames = [ "k" ];
+        catL0 = 1;
+        deep7Swap = 2;
+        deep8Swap = 2;
+        deep8SwapNames2 = [ "k" ];
+        deeperRead = 1;
+        fanBar = 1;
+        fanNNames = [ "k" ];
+        graftJ = 1;
+        oneSwapFoo = 2;
+        oneSwapFooNames = [ "k" ];
+        oneSwapSelf = 2;
+        rotBaz = 1;
+        rotFoo = 2;
+        strictLazySwap = 2;
+        swap3Bar = 1;
+        swap3Foo = 2;
+        swapAll = {
+          bar = {
+            j = {
+              k = {
+                a = 1;
+              };
+            };
+          };
+          foo = {
+            j = {
+              k = {
+                a = 2;
+              };
+            };
+          };
+        };
+        swapBar = 1;
+        swapFooJNames = [ "k" ];
+        swapFooLazy = 2;
+        swapL0 = 2;
+        swapLNames = [ "k" ];
+        swapLNamesM = [ "m" ];
+        swapNLeaf = 2;
+        swapNNames = [ "k" ];
+        swapONamesM = [ "m" ];
+        swapSelf = 2;
+        twoNm = [ "m" ];
+        twoNmHas = true;
+        twoNmNull = false;
         inDupLeaf = 1;
         inDupNames = [
           "j"
@@ -2032,4 +2170,64 @@ in
         ];
         mixSwap01 = 3;
       };
+
+  # den-hoag-lif3n: nixpkgs' `attrListOf` over a gen element folds every definition's entry at one
+  # loc. Each entry is keyed at its own position, so each reads its own tree, in nixpkgs' order;
+  # keyed by the loc alone, every entry read the last one's.
+  flake.tests.nesting-keys-attr-list-entries =
+    let
+      e = t.submodule {
+        options.tags = gm.mkOption {
+          type = t.listOf t.str;
+          default = [ ];
+        };
+      };
+      entries =
+        type: wrap: read:
+        let
+          d = tag: { o = wrap { tags = [ tag ]; }; };
+        in
+        builtins.concatMap (x: (read x.o).tags)
+          (gm.evalModuleTree { } [
+            { options.xs = gm.mkOption { type = np.attrListOf type; }; }
+            {
+              key = "mA";
+              _file = "zz";
+              config.xs = d "p";
+            }
+            {
+              key = "mB";
+              _file = "aa";
+              config.xs = d "q";
+            }
+            {
+              key = "mC";
+              _file = "zz";
+              config.xs = gm.mkMerge [
+                (d "r")
+                (d "s")
+              ];
+            }
+          ]).config.xs;
+      order = [
+        "r"
+        "s"
+        "q"
+        "p"
+      ];
+    in
+    {
+      test-entries-over-a-gen-submodule-each-read-their-own-tree = {
+        expr = entries e (x: x) (x: x);
+        expected = order;
+      };
+      test-entries-over-a-gen-union-each-read-their-own-tree = {
+        expr = entries (t.either e t.str) (x: x) (x: x);
+        expected = order;
+      };
+      test-entries-over-a-gen-tree-container-each-read-their-own-tree = {
+        expr = entries (t.attrsOf e) (x: { k = x; }) (x: x.k);
+        expected = order;
+      };
+    };
 }
