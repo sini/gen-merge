@@ -157,10 +157,11 @@ in
     # A `//` COPY'S `verify` IS ENFORCED INSIDE A NIXPKGS CONTAINER (den-hoag-dyww5). The copy publishes its
     # base's `check`, and a foreign container's fold reads an element's `check` alone, so declared alone
     # under any nixpkgs container the value its `verify` rejects was served, while bare and under a gen
-    # container it is refused. Each wrapper's row reads the rejected value and its passing twin. The
-    # residue is pinned as a value: `submodule` and `attrTag`, whose interiors are nixpkgs' own option
-    # evaluation, still serve the rejected value; `coercedTo` over a container holding the copy, and a
-    # record outside the stock vocabulary whose `nestedTypes` hold it (`box`), are refused whole; on
+    # container it is refused. Each wrapper's row reads the rejected value and its passing twin, `submodule`
+    # and `attrTag` included, whose interiors are nixpkgs' own option evaluation, read at the nested option
+    # (den-hoag-dk6zg, the cells below). The residue is pinned as a value: `coercedTo` over a container
+    # holding the copy, and a record outside the stock vocabulary whose `nestedTypes` hold it (`box`), are
+    # refused whole; on
     # `coercedTo`'s coercion side under a container the copy is read as its head, as both engines read a
     # check copy there. `weak` reads a copy whose `verify` admits what its base's `check` rejects: served
     # where the container's fold reads the copy alone, as gen serves it bare, and refused under `nullOr`,
@@ -333,14 +334,6 @@ in
               b = true;
             }) wraps
             // {
-              submodule = {
-                a = true;
-                b = true;
-              };
-              attrTag = {
-                a = true;
-                b = true;
-              };
               coercedToListOf = {
                 a = false;
                 b = false;
@@ -374,6 +367,265 @@ in
         };
       };
 
+    # A `//` COPY'S `verify` IS ENFORCED INSIDE A NIXPKGS SUBMODULE, AT THE OPTION'S OWN READ (den-hoag-dk6zg).
+    # nixpkgs' option evaluation reads an option's `check` alone, so a copy declared inside a stock
+    # `submodule` (or as an `attrTag` tag) was served at the value its `verify` rejects. Each reach is read at
+    # the rejected value and its passing twin; `lazy` reads `y` beside a sibling whose type is an error, which
+    # nixpkgs never forces while only `y` is read, so the guard judges an option only where it is read.
+    # `freeform` pins OPEN DEFECT D4 on den-hoag-dk6zg as a value: a copy below a freeform type is still served.
+    test-a-verify-copy-inside-a-nixpkgs-submodule-is-enforced-at-its-read =
+      let
+        C = gt.int // {
+          verify = v: if v == 7 then "rejected by the copy" else gt.int.verify v;
+        };
+        sub = t: np.submodule { options.y = nixpkgsLib.mkOption { type = t; }; };
+        tag = t: np.attrTag { y = nixpkgsLib.mkOption { type = t; }; };
+        reach = {
+          submodule = {
+            w = sub;
+            v = x: { y = x; };
+          };
+          twoDeep = {
+            w = t: sub (sub t);
+            v = x: { y.y = x; };
+          };
+          attrsOfSubmodule = {
+            w = t: np.attrsOf (sub t);
+            v = x: { k.y = x; };
+          };
+          listOfSubmodule = {
+            w = t: np.listOf (sub t);
+            v = x: [ { y = x; } ];
+          };
+          genAttrsOfSubmodule = {
+            w = t: gt.attrsOf (sub t);
+            v = x: { k.y = x; };
+          };
+          attrTag = {
+            w = tag;
+            v = x: { y = x; };
+          };
+          submoduleInAttrTag = {
+            w = t: tag (sub t);
+            v = x: { y.y = x; };
+          };
+          listOfInSubmodule = {
+            w = t: sub (np.listOf t);
+            v = x: { y = [ x ]; };
+          };
+          apply = {
+            w =
+              t:
+              np.submodule {
+                options.y = nixpkgsLib.mkOption {
+                  type = t;
+                  apply = x: x + 100;
+                };
+              };
+            v = x: { y = x; };
+          };
+        };
+        lazy = np.submodule {
+          options.y = nixpkgsLib.mkOption { type = C; };
+          options.z = nixpkgsLib.mkOption { type = throw "the unread sibling's type"; };
+        };
+      in
+      {
+        expr = {
+          reach = builtins.mapAttrs (_: w: {
+            rejected = accepted (w.w C) (w.v 7);
+            twin = accepted (w.w C) (w.v 1);
+          }) reach;
+          lazy = (opt lazy { y = 1; }).y;
+          freeform = (opt (np.submodule { freeformType = np.attrsOf C; }) { k = 7; }).k;
+        };
+        expected = {
+          reach = builtins.mapAttrs (_: _: {
+            rejected = false;
+            twin = true;
+          }) reach;
+          lazy = 1;
+          freeform = 7;
+        };
+      };
+
+    # THE GUARD READS ONLY WHAT NIXPKGS' OWN READ FORCES, AND JUDGES THE VALUE BEFORE `apply` (den-hoag-dk6zg v1).
+    # `served` rows are working cells: an `apply` above a nested submodule or container that restructures or drops
+    # the value, and a type member nixpkgs never forces (an `either`'s unchosen right member, `coercedTo`'s coerced
+    # `either`), each at nixpkgs' value. `refused` rows are reaches through `either`, `oneOf`, `coercedTo` and
+    # `attrListOf`, at the root and nested, and below a `coercedTo`'s final member, where the copy's rejected value
+    # was served. `open` pins the silent residue this landing leaves as OPEN DEFECTS on den-hoag-dk6zg (a value, so
+    # a change to it is seen): a copy read through a sibling's cross-read inside the evaluation (D1), below a record
+    # outside nixpkgs' vocabulary (D3), and below a freeform type (D4).
+    test-a-verify-copy-inside-a-nixpkgs-submodule-is-read-where-nixpkgs-reads =
+      let
+        C = gt.int // {
+          verify = v: if v == 7 then "rejected by the copy" else gt.int.verify v;
+        };
+        never = throw "never forced";
+        sub = t: np.submodule { options.y = nixpkgsLib.mkOption { type = t; }; };
+        mid =
+          t: apply:
+          np.submodule {
+            options.m = nixpkgsLib.mkOption {
+              inherit apply;
+              type = t;
+            };
+          };
+        got = T: V: (served T V).value;
+      in
+      {
+        expr = {
+          served = {
+            applyMiddle = got (mid (sub (np.listOf C)) (c: c // { y = [ 0 ]; })) { m.y = [ 1 ]; };
+            applyReverse = got (mid (np.listOf (sub (np.listOf C))) builtins.tail) {
+              m = [
+                { y = [ 1 ]; }
+                { y = [ 2 ]; }
+              ];
+            };
+            applyDropsRejected = got (mid (sub C) (_: {
+              y = 0;
+            })) { m.y = 7; };
+            eitherRightUnforced = got (sub (np.either np.int never)) { y = 1; };
+            # nixpkgs modules.sh `freeform-deprecated-malicous`: an `either` freeform with no `attrsOf`, warned and served
+            freeformEither =
+              (got (np.submodule { freeformType = np.either np.int np.int; }) { int = "foo"; }).int;
+            coercedEitherUnforced =
+              got (sub (np.coercedTo (np.either np.str never) (_: { y = 2; }) (sub np.int)))
+                {
+                  y = "s";
+                };
+          };
+          # a function's body is folded when it is called
+          calledFunctionTo =
+            (tryEval (deepSeq ((opt (sub (np.functionTo (sub C))) { y = _: { y = 7; }; }).y null) null))
+            .success;
+          refused = builtins.mapAttrs (_: w: accepted w.t w.v) {
+            either = {
+              t = np.either (sub C) np.str;
+              v = {
+                y = 7;
+              };
+            };
+            oneOf = {
+              t = np.oneOf [
+                np.str
+                (sub C)
+              ];
+              v = {
+                y = 7;
+              };
+            };
+            coercedTo = {
+              t = np.coercedTo np.str (_: { y = 7; }) (sub C);
+              v = "s";
+            };
+            attrListOf = {
+              t = np.attrListOf (sub C);
+              v = {
+                a.y = 7;
+              };
+            };
+            nestedAttrListOfCopy = {
+              t = sub (np.attrListOf C);
+              v = {
+                y.a = 7;
+              };
+            };
+            nestedEitherCopy = {
+              t = sub (np.either np.str C);
+              v = {
+                y = 7;
+              };
+            };
+            nestedApplyIdentity = {
+              t = mid (np.either (sub C) np.str) (c: c);
+              v = {
+                m.y = 7;
+              };
+            };
+            # the copy below `coercedTo`'s final member, defined as it is and coerced to it
+            coercedFinalListOf = {
+              t = sub (np.coercedTo np.str (_: [ 7 ]) (np.listOf C));
+              v.y = [ 7 ];
+            };
+            coercedFinalListOfCoerced = {
+              t = sub (np.coercedTo np.str (_: [ 7 ]) (np.listOf C));
+              v.y = "s";
+            };
+            coercedFinalAttrsOf = {
+              t = sub (np.coercedTo np.str (_: { k = 7; }) (np.attrsOf C));
+              v.y = "s";
+            };
+            coercedFinalEither = {
+              t = sub (np.coercedTo np.str (_: 7) (np.either np.bool C));
+              v.y = "s";
+            };
+            # the copy below an `either` below the member `oneOf` chose
+            oneOfListOfEither = {
+              t = sub (
+                np.oneOf [
+                  np.str
+                  (np.listOf (np.either np.bool C))
+                ]
+              );
+              v.y = [ 7 ];
+            };
+          };
+          open = {
+            # only `z` is read: `y` itself is refused
+            crossRead =
+              (opt (np.submodule (
+                { config, ... }:
+                {
+                  options.y = nixpkgsLib.mkOption { type = C; };
+                  options.z = nixpkgsLib.mkOption { type = np.int; };
+                  config.z = config.y;
+                }
+              )) { y = 7; }).z;
+            nonStock = got (sub (
+              nixpkgsLib.mkOptionType {
+                name = "box";
+                check = builtins.isAttrs;
+                merge = loc: defs: { v = (builtins.head defs).value.v; };
+                nestedTypes.inner = C;
+              }
+            )) { y.v = 7; };
+            freeform = (got (np.submodule { freeformType = np.attrsOf (np.either np.str C); }) { k = 7; }).k;
+          };
+        };
+        expected = {
+          served = {
+            applyMiddle.m.y = [ 0 ];
+            applyReverse.m = [ { y = [ 2 ]; } ];
+            applyDropsRejected.m.y = 0;
+            eitherRightUnforced.y = 1;
+            coercedEitherUnforced.y.y = 2;
+            freeformEither = "foo";
+          };
+          calledFunctionTo = false;
+          refused = builtins.mapAttrs (_: _: false) {
+            either = null;
+            oneOf = null;
+            coercedTo = null;
+            attrListOf = null;
+            nestedAttrListOfCopy = null;
+            nestedEitherCopy = null;
+            nestedApplyIdentity = null;
+            coercedFinalListOf = null;
+            coercedFinalListOfCoerced = null;
+            coercedFinalAttrsOf = null;
+            coercedFinalEither = null;
+            oneOfListOfEither = null;
+          };
+          open = {
+            crossRead = 7;
+            nonStock.y.v = 7;
+            freeform = 7;
+          };
+        };
+      };
     # THE RESIDUE (README "The prices, stated"): a check over the bare tree, served, as pinned here.
     # A stock `either`/`oneOf`/`nullOr` over the bare tree is NOT in it: the tree's `check` is its
     # module-value domain, so the rewritten check over the union is carried (member B) and refuses,

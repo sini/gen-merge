@@ -1578,15 +1578,10 @@ let
   # opt-out `declaresNesting = false`, by name.
   homedAt =
     door: loc: t:
-    if
-      !(isAttrs t)
-      || t ? verify
-      || t ? carries
-      || t ? __threadedForeign
-      || isNesting t
-      || !(statesWrapped t)
-    then
+    if !(isAttrs t) || t ? verify || t ? carries || t ? __threadedForeign || isNesting t then
       t
+    else if !(statesWrapped t) then
+      guardedSubmodule t
     else
       let
         r = importedRehomeAt door loc t;
@@ -1615,10 +1610,259 @@ let
         )
       else if declaresNestingAt door loc t then
         threadedForeign door loc t
-      else if r == null && !(canNest t) && owedCopyBelow t then
+      else if
+        !(canNest t) && (if r == null then guardedBelow t else !(owedCopyBelow t) && guardedBelow t)
+      then
         completedOver door loc t
       else
         t;
+
+  # ── A VERIFY INSIDE A NIXPKGS SUBMODULE, READ WHERE NIXPKGS READS (den-hoag-dk6zg) ──────────────────────────
+  # A stock nixpkgs submodule's nested evaluation reads each option's `check` alone, so a `//` copy declared inside
+  # it is not read there. Its merge is kept, its headError untouched, and its value served with each option guarded
+  # AT ITS OWN READ (`guardedConfig`), on what nixpkgs' read of that option checks: its final definitions, before
+  # `apply`, along the members nixpkgs forces. A freeform value is nixpkgs' own: its definitions are internal to
+  # nixpkgs' `freeformConfig` and its merged value is not a definition, so a copy below a freeform type is served
+  # (den-hoag-dk6zg OPEN DEFECT D4), as is one read through a sibling's cross-read inside the evaluation (D1).
+  guardedSubmodule =
+    t:
+    if !(isStockSubmodule t) || t ? __guardedSubmodule then
+      t
+    else
+      t
+      // {
+        __guardedSubmodule = true;
+        substSubModules = m: guardedSubmodule (t.substSubModules m);
+        # the stock called form reads `self.v2`, so it serves the guarded value too
+        merge = t.merge // {
+          v2 =
+            args:
+            let
+              v = t.merge.v2 args;
+            in
+            v // { value = guardedConfig (v.valueMeta.configuration.options or { }) v.value; };
+        };
+      };
+  # an evaluated configuration's value, each option guarded at its own read; `_module` and a freeform value are
+  # nixpkgs'. No binding per key or per option: each is paid on every read of every stock submodule's option.
+  guardedConfig =
+    opts: cfg:
+    if !(isAttrs cfg) then
+      cfg
+    else
+      builtins.mapAttrs (n: if opts ? ${n} && n != "_module" then guardedAt opts.${n} else (v: v)) cfg;
+  # An option of a stock submodule's evaluation, at its read, judged only through what nixpkgs' own read of it
+  # forces: the type's frontier (`frontierAt`, the members nixpkgs' `fixupOptionType` forces through
+  # `getSubModules`), the `either` member nixpkgs' merge chose (`eitherChosen`), and the metadata nixpkgs' merge
+  # built (`valueMeta`). A record gen completed itself (a gen leaf, a gen container) folds its own `verify`.
+  guardedAt =
+    o: v:
+    if !(isAttrs o) then
+      v
+    else if o._type or null != "option" then
+      guardedConfig o v
+    else
+      guardedOption o (o.type or null) (o.definitionsWithLocations or [ ]) v;
+  guardedOption =
+    o: t: defs: v:
+    if !(isAttrs t) || defs == [ ] || t ? carries || isNesting t then
+      v
+    # the copy itself: its `verify` over its own fold, as gen's engine applies one declared bare; nixpkgs' value kept
+    else if replacesVerify t then
+      guardedVerify o.loc (t.verify (t.merge o.loc defs)) v
+    # an owed copy, a module set or an `either` on the frontier: the option folded again over nixpkgs' final
+    # definitions by its type completed along that frontier (`frontierCompleted`), then its `apply`
+    else if frontierAt owesAtFrontier t then
+      guardedOwed o.loc t defs (if o ? apply then o.apply else (x: x)) v
+    else
+      v;
+  owesAtFrontier = x: replacesVerify x || isStockSubmodule x || isEither x;
+  # the member nixpkgs' `either` merge folds these definitions by: the left one where it admits every definition,
+  # else the right one; `null` where neither admits them all (nixpkgs' own refusal) or the member is itself an `either`
+  # whose choice it makes in turn
+  eitherChosen =
+    t: defs:
+    let
+      l = t.nestedTypes.left;
+      r = t.nestedTypes.right;
+    in
+    if prelude.all (d: l.check d.value) defs then
+      (if isEither l then eitherChosen l defs else l)
+    else if prelude.all (d: r.check d.value) defs then
+      (if isEither r then eitherChosen r defs else r)
+    else
+      null;
+  isEither = x: isAttrs x && x.name or null == "either" && x ? nestedTypes.left && !(x ? carries);
+  # Does `p` hold at a record on `t`'s FRONTIER: `t`, and the members nixpkgs' `fixupOptionType` forces when the
+  # option is read, through `getSubModules` (nixpkgs `lib/types.nix`: `listOf`, `attrListOf`, `attrsWith`, `nullOr`,
+  # `unique`, `functionTo` forward it to their element, `coercedTo` to `finalType` and asserts on `coercedType`,
+  # `attrTag` asks every tag's type)? An `either` forwards nothing, so its members are not on it; a record outside
+  # that vocabulary is not walked (den-hoag-dk6zg OPEN DEFECT D3).
+  frontierAt =
+    p:
+    let
+      go =
+        fuel: t:
+        isAttrs t
+        && (
+          p t
+          ||
+            fuel > 0
+            && !(t ? carries || t ? verify || isNesting t || isStockSubmodule t)
+            && prelude.any (go (fuel - 1)) (frontierOf t)
+        );
+    in
+    go importedTypeWalkFuel;
+  frontierOf =
+    t:
+    let
+      n = t.name or null;
+      e = (t.functor.payload or { }).elemType or (t.nestedTypes.elemType or null);
+    in
+    # a container nixpkgs ships with a v2 merge that states none is a `//` override of its fold, which reads its
+    # element as it chooses; it is not walked
+    if
+      (n == "listOf" || n == "attrListOf" || n == "attrsOf" || n == "lazyAttrsOf" || n == "nullOr")
+      && t ? merge.v2
+      || n == "unique"
+      || n == "functionTo"
+    then
+      (if isAttrs e then [ e ] else [ ])
+    else if n == "coercedTo" && t ? merge.v2 then
+      [
+        t.nestedTypes.coercedType
+        t.nestedTypes.finalType
+      ]
+    else if n == "attrTag" then
+      map (o: o.type) (builtins.attrValues (t.nestedTypes or { }))
+    else
+      [ ];
+  # an option whose type owes along its frontier, folded over its final definitions by the type completed there, then
+  # its `apply`: the value nixpkgs' read would give, its checks those of the type as declared
+  guardedOwed =
+    l: ty: defs: applied: v:
+    applied (foldCompleted l ty defs);
+  foldCompleted =
+    l: ty: defs:
+    let
+      c = frontierCompleted l ty;
+      r =
+        if c ? merge.v2 then
+          c.merge.v2 {
+            loc = l;
+            inherit defs;
+          }
+        else
+          null;
+    in
+    if r != null then
+      (
+        if r.headError != null then
+          throw "gen-merge: a definition for option `${showOption l}' is not of the expected type: ${r.headError.message}"
+        else
+          r.value
+      )
+    else if prelude.all (d: c.check d.value) defs then
+      c.merge l defs
+    else
+      throw "gen-merge: a definition for option `${showOption l}' is not of the expected type `${nameOf ty}'";
+  # A type completed along its frontier only, lazily: a copy completed (`completedElement`'s copy arm, which walks
+  # nothing), a stock submodule guarded, an `either` and a `coercedTo` kept and their value guarded through the member
+  # nixpkgs' fold chose (`metaGuarded`), a `coercedTo` whose final member holds a copy below it judged along that
+  # member (`judgedBelow`), an `attrTag` and a stock element container rebuilt by their own functor over their
+  # frontier members completed, each member completed only when the rebuilt record forces it.
+  frontierCompleted =
+    l: t:
+    if !(isAttrs t) || t ? carries || isNesting t || (t ? verify && !(replacesVerify t)) then
+      t
+    else if replacesVerify t then
+      completedElement "evalModuleTree" l t
+    else if isStockSubmodule t then
+      guardedSubmodule t
+    else if isEither t && t ? merge.v2 then
+      metaGuarded t
+    else if t.name or null == "coercedTo" && t ? merge.v2 then
+      (
+        let
+          f = t.nestedTypes.finalType;
+          k = t.nestedTypes.coercedType;
+          # a copy below `finalType` (a container's element, an `either`'s member): the merged value judged along
+          # `finalType`'s frontier, each element at its own read (`judgedBelow`)
+          final =
+            if replacesVerify f then
+              valueRestrictedBy (completedElement "evalModuleTree" l f) t
+            else if frontierAt judgedAt f then
+              judgedBelow f (metaGuarded t)
+            else
+              metaGuarded t;
+        in
+        if replacesVerify k then
+          coercionRestrictedBy (completedElement "evalModuleTree" l k) final
+        else
+          final
+      )
+    else if
+      t.name or null == "attrTag" && t ? functor.payload.tags && isFunction (t.functor.type or null)
+    then
+      carryBy false t (
+        t.functor.type {
+          tags = builtins.mapAttrs (
+            _: o: if isAttrs o && o ? type then o // { type = frontierCompleted l o.type; } else o
+          ) t.functor.payload.tags;
+        }
+      )
+    # a v2 container with no copy on its frontier keeps its own fold, its value guarded through its metadata; one
+    # holding a copy is rebuilt by its functor over its element completed, as nixpkgs rebuilds it; one whose functor
+    # rebuilds nothing (`attrListOf`) keeps its fold; over a copy its elements are judged by the copy's `verify`
+    else if t ? merge.v2 && !(frontierAt judgedAt t) then
+      metaGuarded t
+    else if frontierOf t != [ ] then
+      (
+        let
+          x = rebuiltOverAt "element" (frontierCompleted l (head (frontierOf t))) t;
+        in
+        if isAttrs x && x ? merge && x ? check then
+          carryBy false t x
+        # `attrListOf` rebuilds nothing by its functor: its fold kept, each element's merged value judged by the copy's
+        # `verify`, as gen's spine judges a merged value
+        else if t.name or null == "attrListOf" && t ? merge.v2 && judgedAt (head (frontierOf t)) then
+          attrListVerified (head (frontierOf t)) t
+        else if t ? merge.v2 then
+          metaGuarded t
+        else
+          t
+      )
+    else
+      t;
+  # gen's own refusal of a value its declared `verify` rejects (`modules.nix`, the spine's)
+  guardedVerify =
+    l: e: v:
+    if e == null then
+      v
+    else
+      throw "gen-merge: a definition for option `${showOption l}' is not of the expected type: ${e}";
+  # a value through the metadata nixpkgs' merge built for it: a submodule's configuration, a container's elements
+  guardedMeta =
+    m: v:
+    if m ? configuration then
+      guardedConfig (m.configuration.options or { }) v
+    else if m ? attrs && isAttrs v then
+      builtins.mapAttrs (k: x: if m.attrs ? ${k} then guardedMeta m.attrs.${k} x else x) v
+    else if m ? list && isList v && length m.list == length v then
+      prelude.genList (i: guardedMeta (elemAt m.list i) (elemAt v i)) (length v)
+    # nixpkgs `attrListWith`: one single-key set per element, its metadata in the same order
+    else if m ? attrList && isList v && length m.attrList == length v then
+      prelude.genList (i: builtins.mapAttrs (_: guardedMeta (elemAt m.attrList i)) (elemAt v i)) (
+        length v
+      )
+    else
+      v;
+  isStockSubmodule =
+    x:
+    x.name or null == "submodule"
+    && x ? merge.v2
+    && x ? functor.payload.modules
+    && !(x ? carries || x ? verify);
 
   # ── A VERIFY THE FOREIGN FOLD CANNOT READ (den-hoag-dyww5) ─────────────────────────────────────────
   # A `//` copy whose `verify` no completion vouches for (`replacesVerify`) publishes its base's `check`, and
@@ -1634,10 +1878,24 @@ let
   copyAt =
     owed:
     let
-      go = fuel: t: isAttrs t && (owed t || fuel > 0 && prelude.any (go (fuel - 1)) (declaredWrapped t));
+      # an option record (nixpkgs `attrTag`'s tags) wraps its declared type
+      go =
+        fuel: t:
+        isAttrs t
+        && (
+          owed t
+          ||
+            fuel > 0
+            && prelude.any (go (fuel - 1)) (
+              if t._type or null == "option" then [ t.type ] else declaredWrapped t
+            )
+        );
     in
     go importedTypeWalkFuel;
   owedCopyAt = copyAt replacesVerify;
+  # an owed copy, or a stock submodule whose nested options may hold one (`guardedSubmodule`)
+  guardedCopyAt = copyAt (x: replacesVerify x || isStockSubmodule x);
+  guardedBelow = t: prelude.any guardedCopyAt (declaredWrapped t);
   # an owed copy whose `check` is still its completion's witness, so a foreign fold reads its base's domain
   # alone; a copy whose `check` was rewritten (the published door's, or an author's) states its own
   staleCopyAt = copyAt (x: replacesVerify x && !(rewritesCheck x));
@@ -1652,7 +1910,8 @@ let
     && !(e ? verify || e ? carries || e ? __threadedForeign || isNesting e)
     && statesWrapped e
     && !(canNest e)
-    && owedCopyBelow e;
+    && guardedBelow e
+    || isAttrs e && isStockSubmodule e;
   # An element as a foreign fold must read it: an owed copy as the published door carries it, its declared
   # domain published as its `check` (`carriedCopy`), or the same domain (`copyDomain`) over a record the
   # door does not carry; any other element homed at its own position, so a foreign container below is
@@ -1705,10 +1964,126 @@ let
       valueRestrictedBy (completedElement door loc final) t
     else if e == null && owedCopyAt coerced && !(owedCopyAt final) && t ? merge then
       coercionRestrictedBy (completedElement door loc coerced) t
+    # nixpkgs `attrTag`: its functor rebuilds it over its tags, each tag's type completed
+    else if t ? functor.payload.tags && builtins.isFunction (t.functor.type or null) then
+      carryBy false t (
+        t.functor.type {
+          tags = builtins.mapAttrs (
+            _: o: if isAttrs o && o ? type then o // { type = completedElement door loc o.type; } else o
+          ) t.functor.payload.tags;
+        }
+      )
     else if prelude.any staleCopyAt (declaredWrapped t) then
       throw (owedCopyRefusal door loc t)
+    # a stock module set below a v2 record no rebuild above reaches (`either`, `coercedTo`, `attrListOf`): its fold
+    # kept, its value guarded through the metadata that fold returned, which records the member it chose
+    else if t ? merge.v2 then
+      metaGuarded t
     else
       t;
+  # a merged value as a copy's `verify` judges it, through the `either` member nixpkgs' merge chose for it: the message
+  # of the first rejection, or `null`
+  judgedAt = x: replacesVerify x || isEither x;
+  judged =
+    e: v:
+    if replacesVerify e then
+      e.verify v
+    else if isEither e then
+      (
+        let
+          c = eitherChosen e [ { value = v; } ];
+        in
+        if c == null then null else judged c v
+      )
+    else
+      null;
+  # `r`'s fold, its merged value judged along `e`'s frontier (`guardedJudged`)
+  judgedBelow =
+    e: r:
+    r
+    // {
+      merge = r.merge // {
+        v2 =
+          args:
+          let
+            x = r.merge.v2 args;
+          in
+          x // { value = guardedJudged args.loc e x.value; };
+      };
+    };
+  # a merged value refused by name where a copy on `e`'s frontier rejects it: through the `either` member nixpkgs'
+  # merge chose for it, and into a stock container's elements, each judged only when it is read
+  guardedJudged =
+    l: e: v:
+    let
+      n = e.name or null;
+      x = head (frontierOf e);
+    in
+    if replacesVerify e then
+      guardedVerify l (e.verify v) v
+    else if isEither e then
+      (
+        let
+          c = eitherChosen e [ { value = v; } ];
+        in
+        if c == null then v else guardedJudged l c v
+      )
+    else if frontierOf e == [ ] then
+      v
+    else if (n == "listOf" || n == "unique") && isList v then
+      map (guardedJudged l x) v
+    else if (n == "attrsOf" || n == "lazyAttrsOf") && isAttrs v then
+      builtins.mapAttrs (_: guardedJudged l x) v
+    else if n == "nullOr" && v != null then
+      guardedJudged l x v
+    else
+      v;
+  attrListVerified =
+    e: t:
+    t
+    // {
+      merge = t.merge // {
+        v2 =
+          args:
+          let
+            r = t.merge.v2 args;
+            bad = prelude.foldl' (
+              acc: el:
+              if acc != null || !(isAttrs el) then
+                acc
+              else
+                prelude.foldl' (a: k: if a != null then a else judged e el.${k}) null (attrNames el)
+            ) null (if isList r.value then r.value else [ ]);
+          in
+          if r.headError == null && bad != null then r // { headError.message = bad; } else r;
+      };
+    };
+  metaGuarded =
+    t:
+    t
+    // {
+      merge = t.merge // {
+        v2 =
+          args:
+          let
+            r = t.merge.v2 args;
+          in
+          let
+            c = if isEither t then eitherChosen t args.defs else null;
+          in
+          r
+          // {
+            value =
+              if c != null && replacesVerify c then
+                guardedVerify args.loc (c.verify (c.merge args.loc args.defs)) r.value
+              # the chosen member holds a copy or an `either` on its frontier: folded again by that member completed
+              else if c != null && frontierAt judgedAt c then
+                foldCompleted args.loc c args.defs
+              else
+                guardedMeta (r.valueMeta or { }) r.value;
+          };
+      };
+    };
   # `r`'s fold, its merged value refused by name outside `f`'s domain: `f`'s `verify` where it states one,
   # and its `check`
   valueRestrictedBy =

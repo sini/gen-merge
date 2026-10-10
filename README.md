@@ -1220,8 +1220,8 @@ Two rules that look like details and are not:
   door matrix enumerates (19,140 cells), except a copy of a caller-check `mkOptionType`, which states no
   `verify` and is re-completed. Outside that population, a copy changing `merge`, or only `typeMerge`,
   is still re-completed and loses its row. Inside a nixpkgs container the raw copy's `verify` is read
-  too (see "A `//` copy's `verify` is read inside a foreign container"), except inside a nixpkgs
-  `submodule` or `attrTag`, where the door enforces it and the raw copy is dropped, and except under
+  too (see "A `//` copy's `verify` is read inside a foreign container", and "… inside a nixpkgs
+  submodule" for its open defects there), except under
   `nullOr`, `either` and `uniq` over a copy whose `verify` admits what its base's `check` rejects,
   where the door serves and the raw copy is refused by the container's own `check`, its base's. Gen's
   engine drops at no door; under nixpkgs' `evalModules` a
@@ -1978,9 +1978,8 @@ completion (one carrying `_checkWitness` or `__typeSelf`) whose `verify` admits 
 `check` rejects is served under `listOf`, `attrsOf`, `attrsWith` and `functionTo` as it is bare,
 where nixpkgs refuses it. A foreign record carrying `verify` keeps its foreign `check` over each
 definition (`interface.checksDefs`), so its `verify` judges only the merged value, widens nothing,
-and a value outside the base is refused by name, as nixpkgs refuses it. **The prices, stated:** inside a nixpkgs
-`submodule` or `attrTag` the option is folded by nixpkgs' own option evaluation, which reads the
-copy's `check`, so the raw copy is dropped there, and `types.defineType` is the way out; `coercedTo`
+and a value outside the base is refused by name, as nixpkgs refuses it. Inside a nixpkgs `submodule` or
+`attrTag` the copy is read at the nested option (next paragraph). **The prices, stated:** `coercedTo`
 whose `finalType` holds the copy under a container, and a record outside the stock vocabulary whose
 `nestedTypes` hold one (a hand-rolled `mkOptionType`), are refused whole by name, values nixpkgs serves
 included, naming `types.defineType`; on `coercedTo`'s coercion side a definition the copy rejects is
@@ -1990,6 +1989,28 @@ copy is read as the container's head, as both engines read a check copy; under `
 weaker `verify` admits (refused as `finalType`, left uncoerced as `coercedType`, as nixpkgs does). The walk
 costs per option, Nix thunks: +7 for `listOf int`, +19 for a three-deep stock nest, +26 for `uniq (listOf int)`, +14 for gen `listOf` over a stock one, and +836 (1.2%) over a self-referential
 `valueType`, against a floor that no longer serves the copy's rejected value.
+
+**A `//` copy's `verify` is read inside a nixpkgs submodule.** A stock nixpkgs `submodule` (also as an
+`attrTag` tag, or a container's element) is evaluated by nixpkgs' own option evaluation, which reads each
+option's `check` alone. Its merge is kept and its value is served with each option guarded at its own read,
+where nixpkgs reads that option's check: on the option's final definitions, before `apply`, and only along
+the members nixpkgs' read forces (`interface.frontierAt`: what `getSubModules` reaches, and the member an
+`either` or `oneOf` merge chooses). A copy declared there, or below a container, an `either`'s chosen member
+or a `coercedTo`'s final member there, is refused by name where the value its `verify` rejects was served:
+the copy itself with the spine's message (`… is not of the expected type: <verify's message>`), a copy
+reached through a container or `attrTag` with nixpkgs' phrase over the completed record. A value nixpkgs
+refuses there with no copy anywhere, at an option typed by an `either` or by a container over a submodule
+(`nullOr (submodule …)`), is refused with gen's phrase in place of nixpkgs'
+(`gen-merge: a definition for option … is not of the expected type: …`), which drops the type's
+description. An option read both by a sibling inside the evaluation and from outside it is folded
+twice, once by nixpkgs and once by the guard, so its `apply` runs twice; the values agree. **Open
+defects**, served where nixpkgs' own `addCheck` refuses, each pinned as a value in
+`check-carriage.test-a-verify-copy-inside-a-nixpkgs-submodule-is-read-where-nixpkgs-reads`: a copy read
+through a sibling's cross-read inside the evaluation (`config.z = config.y`, read at `z`), since the guard
+holds the evaluation's returned value and not its fixpoint; a copy below a record outside nixpkgs'
+vocabulary (a hand-rolled `mkOptionType` merging over it), since walking an unknown record forces what
+nixpkgs may not force; and a copy below a freeform type, since nixpkgs merges the freeform definitions
+internally and its merged value cannot be merged again unchanged.
 
 **An unrecognised container threads through its own rebuild** (ruled 2026-09-30, arm (T)). At a
 declared option, a foreign type outside the six that declares a gen nesting element (`coercedTo`,

@@ -8053,6 +8053,21 @@ in
           expr = opt (np.listOf (adHoc oneOfSub)) [ { a = 7; } ];
           expectedError = carriedAt ''s[.]"\[definition 1-entry 1\]"'' oneOfNpSub;
         };
+        # A `//` copy's `verify` inside a nixpkgs submodule (den-hoag-dk6zg) is refused with gen's own message for the
+        # copy declared bare, at the nested option's path: the copy's own `verify` text.
+        test-a-verify-copy-inside-a-nixpkgs-submodule-is-refused-as-the-copy-bare = {
+          expr = opt (np.submodule {
+            options.y = nixpkgsLib.mkOption {
+              type = t.int // {
+                verify = v: if v == 7 then "rejected by the copy" else null;
+              };
+            };
+          }) { y = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `s[.]y' is not of the expected type: rejected by the copy$";
+          };
+        };
       };
 
     # A FOREIGN `addCheck` OVER A MODULE SET (den-hoag-8ip0d; `../tests/module-set-carriage.nix` holds
