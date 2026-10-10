@@ -258,7 +258,8 @@ let
     ) (cellsOf rows);
   v2Accepted = acceptedOf v2Stock;
   # A submodule-bearing v2 type: nixpkgs rebuilds it at declaration (`substSubModules`) and so ERASES
-  # an ad-hoc `check`; gen-merge refuses that override by name instead of reproducing the erasure.
+  # an ad-hoc `check`; gen-merge enforces the override as a check instead of reproducing the erasure
+  # (den-hoag-ukitj, owner-ruled 2026-10-09).
   sub = t.submodule { options.q = nixpkgsLib.mkOption { type = t.int; }; };
   subStock = {
     submodule = [
@@ -512,18 +513,23 @@ in
         stockAccepted = 56;
       };
     };
-    # 2 submodule-bearing v2 types x 8 gen-owned positions, each given a check that ADMITS the value:
-    # the override is refused in every cell (nixpkgs erases it, and a silent erasure is not
-    # reproduced), and the stock type admits the same value in every cell.
-    test-submodule-bearing-adhoc-check-override-refused-at-every-gen-position = {
+    # 2 submodule-bearing v2 types x 8 gen-owned positions: an override that ADMITS the value serves it
+    # in every cell, as nixpkgs does, and one that REJECTS it refuses it in every cell, where nixpkgs
+    # erases the override and serves it (a silent erasure is not reproduced); the stock type admits the
+    # same value in every cell.
+    test-submodule-bearing-adhoc-check-override-enforced-at-every-gen-position = {
       expr = {
         cells = length (cellsOf subStock);
-        overrideAccepted = map (c: "${c.pn}/${c.ln}") (acceptedOf subStock adHoc);
+        overrideAccepted = length (acceptedOf subStock adHoc);
+        rejectingAccepted = map (c: "${c.pn}/${c.ln}") (
+          acceptedOf subStock (T: T // { check = _: false; })
+        );
         stockAccepted = length (acceptedOf subStock (T: T));
       };
       expected = {
         cells = 16;
-        overrideAccepted = [ ];
+        overrideAccepted = 16;
+        rejectingAccepted = [ ];
         stockAccepted = 16;
       };
     };

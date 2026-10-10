@@ -4897,13 +4897,15 @@ in
             msg = "called without required argument 'headError'";
           };
         };
-        test-submodule-bearing-adhoc-check-override-refused-by-name = {
+        # an ad-hoc override over a submodule-bearing v2 type is enforced (den-hoag-ukitj): what it
+        # rejects is refused by the checked fold, naming the option and the file
+        test-submodule-bearing-adhoc-check-override-refuses-what-it-rejects-by-name = {
           expr =
             read
               (
                 nixpkgsLib.types.submodule { options.q = nixpkgsLib.mkOption { type = nixpkgsLib.types.int; }; }
                 // {
-                  check = builtins.isAttrs;
+                  check = v: builtins.isAttrs v && v.q != 1;
                 }
               )
               (bad {
@@ -4911,7 +4913,7 @@ in
               });
           expectedError = {
             type = "ThrownError";
-            msg = "option `p'.*ad-hoc.*submodule-bearing";
+            msg = "^gen-merge: a definition for option `p' is not of type `submodule', in `bad[.]nix'$";
           };
         };
         test-v2-adhoc-check-override-refused-by-name = {
@@ -6943,15 +6945,15 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `nullsub' states a module set [(]`getSubModules'[)], and its `substSubModules' rebuild over that set is not an option type[.]";
           };
         };
-        # 6yfat: a door record stating a v2 merge beside a plain `check` keeps the ad-hoc refusal
-        # (`adHocFold`), as a foreign root does: the mount never replaces that refusal.
-        test-a-door-root-with-an-adhoc-check-keeps-its-refusal = {
+        # 6yfat: a door record stating a v2 merge beside a plain `check` over a module set has its check
+        # ride on the mount, as a foreign root's does (den-hoag-ukitj): what the check rejects is refused.
+        test-a-door-root-with-an-adhoc-check-refuses-what-it-rejects = {
           expr = opt (
             let
               ySub = np.submodule { options.x = nixpkgsLib.mkOption { type = np.int; }; };
               self = gm.mkOptionType {
                 name = "adhoc";
-                check = builtins.isAttrs;
+                check = v: builtins.isAttrs v && v.x != 2;
                 inherit (ySub) merge getSubOptions;
                 getSubModules = [ ];
                 substSubModules = _: ySub;
@@ -6966,7 +6968,7 @@ in
           ) { x = 2; };
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `h' has a type `adhoc' that uses an ad-hoc `type // [{] check = [.][.][.]; [}]' override";
+            msg = "^gen-merge: a definition for option `h' is not of type `submodule', in `<unknown-file>'$";
           };
         };
         # 6yfat: a door record stating `verify` is a gen leaf, never mounted: a refinement over a gen
@@ -7133,9 +7135,9 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `nocheck' states a module set [(]`getSubModules'[)], and its `substSubModules' rebuild over that set is not an option type[.]";
           };
         };
-        # 2lmky: an ad-hoc `check` on a copied submodule keeps `adHocFold`'s refusal; the mount,
-        # which would erase it silently, is not taken.
-        test-an-adhoc-check-on-a-copied-submodule-root-is-refused-by-name = {
+        # 2lmky: an ad-hoc `check` on a copied submodule rides on the mount, which would otherwise erase
+        # it silently (den-hoag-ukitj): what it rejects is refused by the checked fold.
+        test-an-adhoc-check-on-a-copied-submodule-root-refuses-what-it-rejects = {
           expr = opt (
             let
               r = np.submodule { options.x = gm.mkOption { type = t.int; }; };
@@ -7159,7 +7161,7 @@ in
           ) { x = 2; };
           expectedError = {
             type = "ThrownError";
-            msg = "option `h'.*ad-hoc.*submodule-bearing";
+            msg = "^gen-merge: a definition for option `h' is not of type `submodule'";
           };
         };
         # A rebuild whose marked element is stated, but beside a position that CONSUMED the marker
@@ -8163,8 +8165,9 @@ in
     # A FOREIGN `addCheck` OVER A MODULE SET (den-hoag-8ip0d; `../tests/module-set-carriage.nix` holds
     # the values). At the top the refusal is the checked fold's, naming the option and the file; at a
     # container's element it is nixpkgs' element fold reading the carried check's `headError`. An ad-hoc
-    # `// { check }` override is refused by name wherever it is carried, an accepted value included
-    # (`adHocFold`, den-hoag-ku5dt Q1), as it is alone.
+    # `// { check }` override over the submodule is carried the same way (den-hoag-ukitj, owner-ruled
+    # 2026-10-09): what it rejects is refused, and `../tests/module-set-carriage.nix` holds the value it
+    # admits.
     flake.testsError.module-set-carriage =
       let
         np = nixpkgsLib.types;
@@ -8184,9 +8187,6 @@ in
         Ah = sA // {
           check = v: sA.check v && not7 v;
         };
-        adHoc =
-          loc:
-          "^gen-merge: the option `${loc}' has a type `submodule' that uses an ad-hoc `type // [{] check = [.][.][.]; [}]' override, which the foreign engine erases without a word when it rebuilds a submodule-bearing type; state the check with `addCheck' instead$";
         G = t.submodule {
           options.c = gm.mkOption {
             type = t.int;
@@ -8222,21 +8222,21 @@ in
             msg = "^A definition for option `s[.]k' is not of type `submodule'[.] TypeError: a definition is rejected by the check of a declaration of this option$";
           };
         };
-        test-an-ad-hoc-override-beside-a-gen-submodule-refuses-by-name = {
+        test-an-ad-hoc-override-beside-a-gen-submodule-refuses-what-it-rejects = {
           expr = opt [
             Ah
             G
-          ] { a = 1; };
+          ] { a = 7; };
           expectedError = {
             type = "ThrownError";
-            msg = adHoc "s";
+            msg = "^gen-merge: a definition for option `s' is not of type `submodule', in `def[.]nix'$";
           };
         };
-        test-an-ad-hoc-override-as-an-element-refuses-by-name = {
-          expr = opt [ (np.attrsOf Ah) ] { k.a = 1; };
+        test-an-ad-hoc-override-as-an-element-refuses-what-it-rejects = {
+          expr = opt [ (np.attrsOf Ah) ] { k.a = 7; };
           expectedError = {
             type = "ThrownError";
-            msg = adHoc "s[.]k";
+            msg = "^A definition for option `s[.]k' is not of type `submodule'[.] TypeError: a definition is rejected by the check of a declaration of this option$";
           };
         };
       };

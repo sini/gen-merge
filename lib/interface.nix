@@ -612,10 +612,11 @@ let
   #
   # A type whose `merge` carries `v2` is checked by the v2 PROTOCOL instead, as nixpkgs checks it:
   # its `check` is refused unless it is the coherent one the constructor shipped, and the verdict is
-  # the `headError` its own merge computes, never the record's `check` (`v2Fold`). A submodule-bearing
-  # v2 type keeps the checked fold, and an ad-hoc `check` on one is refused by name too: nixpkgs
-  # rebuilds such a type at declaration (`substSubModules`), which erases the override silently, and a
-  # silent erasure is the one answer this side does not reproduce (`adHocFold`).
+  # the `headError` its own merge computes, never the record's `check` (`v2Fold`), and an ad-hoc
+  # `check` on one is refused by name (`adHocFold`). A submodule-bearing v2 type keeps the checked fold,
+  # an ad-hoc `check` included, which is enforced as any `check` is: nixpkgs rebuilds such a type at
+  # declaration (`substSubModules`), which erases the override silently, and a silent erasure is the
+  # one answer this side does not reproduce (den-hoag-ukitj, owner-ruled 2026-10-09).
   importedFold =
     t:
     # gen-types' `rewritesCheck`, restated inline for cost: a call here is an environment on every
@@ -653,19 +654,16 @@ let
       null;
 
   isV2 = t: (t.merge or { }) ? v2;
-  # a v2 type whose `check` is not the coherent one its constructor shipped: `type // { check = ...; }`
-  adHocChecked = t: isV2 t && !(t.check.isV2MergeCoherent or false);
+  # a v2 type whose `check` is not the coherent one its constructor shipped: `type // { check = ...; }`,
+  # over a type stating no module set; over a module set the override is a check, enforced as one
+  adHocChecked =
+    t: isV2 t && !(t.check.isV2MergeCoherent or false) && (t.getSubModules or null) == null;
   checksDefs = t: t ? check && !(t ? verify && (t ? _checkWitness || t ? __typeSelf));
   describe = t: if builtins.isString (t.description or null) then t.description else nameOf t;
 
   adHocFold =
     t: loc: _defs:
-    throw "gen-merge: the option `${showOption loc}' has a type `${describe t}' that uses an ad-hoc `type // { check = ...; }' override, which ${
-      if (t.getSubModules or null) == null then
-        "the v2 merge protocol refuses"
-      else
-        "the foreign engine erases without a word when it rebuilds a submodule-bearing type"
-    }; state the check with `addCheck' instead";
+    throw "gen-merge: the option `${showOption loc}' has a type `${describe t}' that uses an ad-hoc `type // { check = ...; }' override, which the v2 merge protocol refuses; state the check with `addCheck' instead";
 
   # nixpkgs reads a v2 merge's answer through a CLOSED pattern, so an answer missing `headError` or
   # carrying anything beyond the three fields aborts there; it aborts here the same way.
@@ -2259,9 +2257,9 @@ let
   # mount as nixpkgs' `substSubModules` forwards to the element's; `either` carries no element and
   # states no module set, and is never mounted. The class is re-tested on the record handed in, never
   # trusted from the door: `importedSubstructure` copies a stated `substructure` wholesale, so a
-  # crossed record passed through the door again with a `verify` (gen-schema's `refined`), overridden
-  # ad hoc (`// { check }`) or with its module set nulled (`// { getSubModules = null; }`) still
-  # states the mark it was given at its first crossing.
+  # crossed record passed through the door again with a `verify` (gen-schema's `refined`) or with its
+  # module set nulled (`// { getSubModules = null; }`) still states the mark it was given at its first
+  # crossing. An ad-hoc `// { check }` over the set is mounted, its check riding on the rebuild.
   #
   # Bounded by `importedTypeWalkFuel`, and `false` AT EXHAUSTION: a cycle through containers alone
   # (`cyclic-types`) reaches no crossed record, and `mountOf` follows only a walk that found one. THE
@@ -2273,7 +2271,7 @@ let
         fuel: t:
         isAttrs t
         && (
-          t ? substructure.mount && !(t ? verify) && isList (t.getSubModules or null) && !(adHocChecked t)
+          t ? substructure.mount && !(t ? verify) && isList (t.getSubModules or null)
           ||
             fuel > 0
             && t ? recarry
@@ -2331,13 +2329,13 @@ let
     in
     # the rebuild first, before any read of the record's own roles (a0c4z: never take a read nixpkgs
     # never takes): at an option root, a rebuild that is an option type declaring no gen nesting
-    # element is mounted; an ad-hoc `check` keeps `adHocFold`
-    if isOptionRoot site && !(adHocChecked t) && mountable && !(declaresNestingAt door loc fixed) then
+    # element is mounted, an ad-hoc `check` riding on it as any `check` does
+    if isOptionRoot site && mountable && !(declaresNestingAt door loc fixed) then
       mounted
     else if !(statesWrapped t && declaresNestingAt door loc t) then
       # no gen nesting element: a rebuild that is not an option type is refused by name
       (
-        if !(isOptionRoot site) || adHocChecked t then
+        if !(isOptionRoot site) then
           homedAt door loc t
         else if !mountable then
           throw (rootRebuildRefusal door loc t)
@@ -2446,8 +2444,9 @@ let
   # unconditionally, since a foreign wrapper states no witness (`homedAt`'s carriage, den-hoag-4ifgb
   # M-B, reads it the same way). The walk descends through a record that owes nothing itself to an
   # element that does, a gen container's included (`owesIn`). An owed AD-HOC override
-  # (`type // { check = ...; }`) is refused by name at any depth (`adHocFold`, den-hoag-ku5dt Q1), as it
-  # is alone: the carried record is that override, so each reader that folds it refuses it.
+  # (`type // { check = ...; }`) of a type stating no module set is refused by name at any depth
+  # (`adHocFold`, den-hoag-ku5dt Q1), as it is alone: the carried record is that override, so each
+  # reader that folds it refuses it. Over a module set the override is owed as any check is.
   #
   # Bounded by `importedTypeWalkFuel`. THE PRICE, stated: a wrapper nested that many containers deep is
   # not carried, as `crossedRoot` states for the mount.
@@ -2481,7 +2480,7 @@ let
         else
           r;
       # `adHocChecked`, the coherence mark read first: every owed record is asked
-      isAdHoc = o: !(o.check.isV2MergeCoherent or false) && isV2 o;
+      isAdHoc = o: !(o.check.isV2MergeCoherent or false) && isV2 o && (o.getSubModules or null) == null;
       go =
         top: fuel: ts: r:
         let
@@ -5530,7 +5529,8 @@ let
             # for gen's root fix-up (`homedRootAt`), which mounts its rebuild as `fixupOptionType` mounts
             # `substSubModules`, with the record's own `check` riding on it (`mountOf`); the published
             # `substSubModules` stays the author's. Only its presence is read, and the class is re-tested
-            # where it is read (`crossedRoot`). An ad-hoc `check` keeps `adHocFold`. A record stating
+            # where it is read (`crossedRoot`). An ad-hoc `check` over a record stating no module set keeps
+            # `adHocFold`. A record stating
             # `verify` is marked too and never mounted while it states it (`crossedRoot`, `homedRootAt`):
             # its refinement is its own fold's, which a rebuild would drop, and a copy that drops the
             # `verify` is mounted as nixpkgs mounts the same copy. Presence first, so a record outside

@@ -115,6 +115,28 @@ in
       expr = nested [ (np.attrsOf (gt.attrsOf W)) ];
       expected = enforced;
     };
+    # an ad-hoc `// { check }` override of a nixpkgs submodule is the same check (den-hoag-ukitj): beside
+    # a gen submodule and as an element, what it admits is served and what it rejects is refused
+    test-an-ad-hoc-override-of-a-submodule-is-enforced-as-a-wrapper-is = {
+      expr =
+        let
+          S = np.submodule (intOpt nixpkgsLib.mkOption np.int "a");
+          Ah = S // {
+            check = v: S.check v && not7 v;
+          };
+        in
+        {
+          beside = top [
+            Ah
+            G
+          ];
+          element = attrs [ (np.attrsOf Ah) ];
+        };
+      expected = {
+        beside = enforced;
+        element = enforced;
+      };
+    };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))
