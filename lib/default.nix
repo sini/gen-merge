@@ -671,6 +671,11 @@ in
   # den-hoag-gi421) asks here, rather than restating either vocabulary or that rule.
   inherit (core.interface) importedCarried;
 
+  # The bound every type walk in this library takes (`importedDecidable`, `canNest`, the spine), for
+  # a walk outside it over what a type carries (gen-schema's deferral of a field carrying a module
+  # set, den-hoag-60hql) to stop at the same depth, rather than restating the constant.
+  inherit (core.interface) importedTypeWalkFuel;
+
   # The type relation, two positional operands in their order (den-hoag-7gp66 P2, rule 4): the
   # relation is asked of the FIRST, whose own `typeMergeRel` answers (a foreign operand there answers
   # through the import boundary), about the second. On a declaration plane the later declaration
