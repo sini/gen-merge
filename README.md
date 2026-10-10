@@ -1849,12 +1849,11 @@ a module states `name` is decided by that key set, so it cannot wait on `name`.
 `declaredOptions`) records carry `loc`, `declarations` (the declaring modules' files) and nixpkgs'
 string form, `__toString = _: showOption loc`, so nixpkgs' `optionAttrSetToDocList` renders a mounted
 tree's docs byte-equal to its own in `make-options-doc`'s view (`visible && !internal`). They also
-carry the evaluated keys nixpkgs adds beside a declaration (den-hoag-ixcxl): `value` (the option's
+carry the evaluated keys nixpkgs adds beside a declaration: `value` (the option's
 own merged value), `isDefined`, `definitions`, `definitionsWithLocations`, `files`, `highestPrio`,
 `declarationPositions` and `options` (`[ ]`, nixpkgs' value), each equal to nixpkgs', on `.options`, on
 `getSubOptions` and on a module's own `options` argument alike (`ci/tests/option-record-keys.nix`); they
-project gen's fold, which puts a declared default first among the definitions, as nixpkgs' does
-(den-hoag-12e7r).
+project gen's fold, which puts a declared default first among the definitions, as nixpkgs' does.
 `valueMeta`, nixpkgs' v2-merge metadata, is refused by name, never absent; so a deep force of a
 published `.options` tree refuses, for every tree
 (`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which folds
@@ -2022,8 +2021,8 @@ of the one evaluation, so the value is nixpkgs'. Whether the rebuild threads is 
 ORIGINAL record against its rebuild, position by position and at any depth: every declared position
 that may nest comes back as the marked element (or as a record that threads in turn), and every
 other declared position is a sibling with no module set to lose: its `getSubModules` is not a list,
-so the walk does not call its `substSubModules` on the marker, a call nixpkgs never makes
-(den-hoag-87nvk), or its own `substSubModules`, called on the marker, answers `null`. Either way the
+so the walk does not call its `substSubModules` on the marker, a call nixpkgs never makes,
+or its own `substSubModules`, called on the marker, answers `null`. Either way the
 sibling still receives whatever the container's own rebuild hands it. The marker's import throws the import
 refusal if anything evaluates it as a module. Five things are refused by name instead:
 
@@ -2146,7 +2145,7 @@ declarations do not show whose merge STORES the handed list (`deferredModule`) i
 marker item in its value: inspecting the stored list (its length, its `_file` labels) differs from
 nixpkgs silently, and evaluating it refuses by name. No predicate reaches it without reading a
 payload: it is the half of arm (T)'s stated domain (a merge that does not inspect element values)
-that has no predicate here. Until den-hoag-87nvk §2b decides the container, a DECLARED sibling whose
+that has no predicate here. Until the container's own rule is decided, a DECLARED sibling whose
 `getSubModules` does not show the module set it stores (`deferredModuleWith` stating `null`) pays
 the same price: the walk does not ask it, and a container that rebuilds it hands it the marker.
 
