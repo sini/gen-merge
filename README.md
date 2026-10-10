@@ -2469,7 +2469,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   site, is refused on Nix and Determinate and `true` on Lix. Its partner, one bound function in two
   constructions, is `true` on all three, and Lix gives the two one verdict, so no construction here
   can move the split without moving the partner, and upstream has no observer of closure identity to
-  raise it. It closes when the caller lambda migrates to a first-order term (ADR-0034).
+  raise it. It closes when the caller lambda migrates to a first-order term.
   `ci/tests-error.nix` `submodule-evaluator-divergence` pins the split to each evaluator's own `==`
   on a literal two-slot shape, beside its partner at `true` ×3.
 
@@ -3119,7 +3119,7 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   and it runs from HEAD's own tree, so a commit that edits `ci/modules-sh-ratchet.*`, or moves the
   register together with the guard's `reg=`, escapes it.
 - **The budget** for the process-plane step is 20 minutes per column. Exceeding it is not a red: a
-  gated cost bound counts thunks and allocation, never CPU time (ADR-0032). It calls for sharding the
+  gated cost bound counts thunks and allocation, never CPU time. It calls for sharding the
   run inside the process plane.
 
 ## Theoretical foundations
