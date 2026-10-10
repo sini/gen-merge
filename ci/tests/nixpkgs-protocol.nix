@@ -118,6 +118,7 @@ let
         "__sealed"
         "__stampReads"
         "__typeSelf"
+        "__witness"
         "_checkWitness"
         "_protoLeafMerge"
         "_substSubModulesWitness"
@@ -135,6 +136,7 @@ let
         "__sealed"
         "__stampReads"
         "__typeSelf"
+        "__witness"
       ];
       sorted = builtins.sort builtins.lessThan;
       # A type parameterised by one thing: what it carries, how to rebuild it over another, its own
@@ -220,6 +222,7 @@ let
         "__phraseWithin"
         "__stampReads"
         "__typeSelf"
+        "__witness"
         "_checkWitness"
         "_protoLeafMerge"
         "_substSubModulesWitness"

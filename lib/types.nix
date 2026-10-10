@@ -358,6 +358,7 @@ let
         __sealed = ids.__sealed;
         ${if members == [ ] then null else "__okAt"} = ids.__okAt;
         __typeSelf = null;
+        ${if types ? typeWitness then "__witness" else null} = types.typeWitness;
       }
     else
       t;
@@ -1507,6 +1508,7 @@ let
       # row-stated type carries the stamp so that re-completing it returns it as it is
       # (`defineType`), and a `//` copy of it does not (den-hoag-n8cpq).
       __typeSelf = null;
+      ${if types ? typeWitness then "__witness" else null} = types.typeWitness;
       # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
       # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
       # "this type has no sub-module concept at all" (a leaf's answer), `[ ]` says "this type has a

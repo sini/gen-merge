@@ -7,7 +7,7 @@
 # reds until it is removed here. An entry naming no generated cell is refused by
 # `p5-scan.test-every-exception-names-a-generated-cell`.
 #
-# The population at gen-merge 359a36f: 157 cells, by class list 52, assertion 45, set 37, json 9, call 8, unprefixed 5, string 1.
+# The population: 150 cells, by class list 52, assertion 45, set 30, json 9, call 8, unprefixed 5, string 1.
 let
   class = {
     list = "the operation takes its argument as a list and indexes or folds it without asking its domain first, so a non-list reaches the interpreter: `expected a list but found …`, naming neither the operation nor the input. The class `refusingOutside` closed for the structural containers. Disposition: den-hoag-jmwbf.";
@@ -102,13 +102,6 @@ in
   "test-op-showOption-on-str" = class.list;
   "test-op-submodule-on-attrs" = class.unprefixed;
   "test-op-partialSubmodule-on-attrs" = class.unprefixed;
-  "test-types-op-comparisonSubject-on-bool" = class.set;
-  "test-types-op-comparisonSubject-on-float" = class.set;
-  "test-types-op-comparisonSubject-on-fn" = class.set;
-  "test-types-op-comparisonSubject-on-int" = class.set;
-  "test-types-op-comparisonSubject-on-list" = class.set;
-  "test-types-op-comparisonSubject-on-null" = class.set;
-  "test-types-op-comparisonSubject-on-str" = class.set;
   "test-types-op-defaultOnError-on-fn" = class.json;
   "test-types-op-defaultOnError-on-list" = class.set;
   "test-types-op-defineType-on-bool" = class.set;

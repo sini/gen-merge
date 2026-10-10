@@ -151,6 +151,12 @@ nixpkgs' later-operand rule.
 **`__` keys crossing the boundary** (R12 stated contracts; the census that reads these lines takes the
 first line of each).
 
+- `__witness` — writer `identified` and `deferredModule` (`lib/types.nix`), and `retied`, `restamp` and `keepStamp` (`lib/interface.nix`), at each tie of `__typeSelf`, holding the vocabulary's `typeWitness` where it publishes one; read by gen-algebra `conservativeEq`:
+  the declaration of the fields that witness a record's mark, which gen-types owns (`typeWitness`:
+  the completion stamp `__typeSelf`, the check witness `_checkWitness`). Every tie declares it, and the
+  export's re-tie (`exported`) inherits it through `//`. A vocabulary publishing no declaration
+  declares nothing, as `stampOk` stamps nothing there; the key is conditional, so an empty record never
+  overrides the declaration of a leaf being tied. In `interface.nix`'s identity partition.
 - `__keyEq` — writer gen-schema `mkSchemaEntryType` (`lib/entry-type.nix`, binding `keyEqRecord`, on the kind value's functor record), reader `keyedDrop` through `keqOf` (`lib/modules.nix`):
   `{ subject; decide; }` on a keyed module, the comparison gen-merge's key dedup applies when a second
   occurrence shares the key. `decide kept.subject dropped.subject` true is one module; false, a
@@ -411,7 +417,7 @@ nix eval --json .#lib --apply 'l: { top = builtins.attrNames l; types = builtins
 Current output (verbatim):
 
 ```json
-{"top":["anything","attrsOf","bandedLeaves","closuresFirst","declaredOptions","deferredModule","deriveType","either","evalModuleTree","importedCarried","importedTypeWalkFuel","lazyAttrsOf","lint","listOf","mergeDefaultOption","mergeDefs","mergeDefsPartial","mergeOneOption","mergeTypes","mkAfter","mkBefore","mkCoreValue","mkDefault","mkDefinition","mkForce","mkIf","mkMerge","mkOption","mkOptionDefault","mkOptionType","mkOrder","mkOverride","moduleSyntax","nullOr","oneOf","option","partialAttrsOf","partialSubmodule","priorityBand","pureModule","raw","showOption","submodule","types"],"types":["any","anything","attrs","attrsOf","bool","checkedAttrsOf","checkedListOf","checkedOption","comparisonSubject","conservativeEq","defaultOnError","deferredModule","defineType","derivation","deriveType","either","enum","float","formatErrors","function","idOf","identityGuard","int","intersection","lazyAttrsOf","list","listOf","mkIdentity","mkOption","mkOptionType","mkType","mkValidator","never","null","nullOr","number","oneOf","option","optionType","optionalAttr","path","pathLike","payloadOf","raw","refined","refinements","rewritesCheck","runValidators","stampOk","str","strict","string","struct","submodule","tuple","typeEq","typedef","typedef'","union","unspecified","witnessRecord","witnessedCheck"]}
+{"top":["anything","attrsOf","bandedLeaves","closuresFirst","declaredOptions","deferredModule","deriveType","either","evalModuleTree","importedCarried","importedTypeWalkFuel","lazyAttrsOf","lint","listOf","mergeDefaultOption","mergeDefs","mergeDefsPartial","mergeOneOption","mergeTypes","mkAfter","mkBefore","mkCoreValue","mkDefault","mkDefinition","mkForce","mkIf","mkMerge","mkOption","mkOptionDefault","mkOptionType","mkOrder","mkOverride","moduleSyntax","nullOr","oneOf","option","partialAttrsOf","partialSubmodule","priorityBand","pureModule","raw","showOption","submodule","types"],"types":["any","anything","attrs","attrsOf","bool","checkedAttrsOf","checkedListOf","checkedOption","comparisonSubject","conservativeEq","defaultOnError","deferredModule","defineType","derivation","deriveType","either","enum","float","formatErrors","function","idOf","identityGuard","int","intersection","lazyAttrsOf","list","listOf","mkIdentity","mkOption","mkOptionType","mkType","mkValidator","never","null","nullOr","number","oneOf","option","optionType","optionalAttr","path","pathLike","payloadOf","raw","refined","refinements","rewritesCheck","runValidators","stampOk","str","strict","string","struct","submodule","tuple","typeEq","typeWitness","typedef","typedef'","union","unspecified","witnessRecord","witnessedCheck"]}
 ```
 
 The `types` half depends on the LOCKED `gen-types` input (`flake.lock`), so a leaf-name change there

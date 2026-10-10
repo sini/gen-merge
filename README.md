@@ -747,6 +747,11 @@ its definitions fold through the same binding (`mergeTypeDefs`, lib/modules.nix)
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
+The union carries gen-types' identity helpers too. Every one of them is a function (`stampOk`,
+`rewritesCheck`, `witnessedCheck`, …) except **`typeWitness`**, gen-types' witness declaration, a
+record of field names: it is the one value member of `types` that is not a type, and a fold through
+it as a declared option type is refused by name.
+
 **`anything`'s fold.** Lists concatenate (reverse definition order). Attrsets recurse per key, and a
 conflict names the full path (`` `o.svc.k' ``). A key's definitions take the engine's priority spine
 before the recursion, as nixpkgs' `(attrsOf anything).merge` does: a property marker at a nested key
@@ -1180,8 +1185,11 @@ Two rules that look like details and are not:
 - **The boundary re-ties a type's completion stamp.** A gen-types record carries a stamp tying its
   identity to the record its constructor completed, and a `//` copy keeps the stamp while changing
   what the identity stands for. This boundary rebuilds every record it imports and exports, so it
-  re-ties the stamp to the record it completes; a record failing the stamp on entry is imported and
-  served, but unminted, and gen-types' `typeEq` refuses it by name. The published `mkOptionType`
+  re-ties the stamp to the record it completes, and wherever it ties one it declares it: the record
+  carries the vocabulary's witness declaration (`__witness = types.typeWitness`, where the vocabulary
+  publishes one), which gen-algebra's `conservativeEq`, gen-types' `typeEq`, reads at decision time.
+  gen-merge's own composites tie and declare the same way. A record failing the stamp on entry is
+  imported and served, but unminted, and `typeEq` refuses it by name. The published `mkOptionType`
   first returns a gen-merge completion's copy departing at its `verify` or `check` as it is, as
   `types.defineType` does (below): it keeps its mark and stale stamp, so `idOf` and `typeEq` refuse
   it by name as they refuse the raw copy. The price: a description-only

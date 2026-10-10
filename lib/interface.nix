@@ -233,6 +233,7 @@ let
       "__payload"
       "__sealed"
       "__typeSelf"
+      "__witness"
       "__staleStamp"
       "__stampReads"
     ];
@@ -5115,6 +5116,7 @@ let
     let
       s = r // {
         __typeSelf = _: s;
+        ${if types ? typeWitness then "__witness" else null} = types.typeWitness;
         __stampReads = stampReads;
       };
     in
@@ -5142,6 +5144,7 @@ let
         copy = src ? __typeSelf && !(rewritesCheck src) && !(departsOnlyOutside importReads src);
         s = r // {
           __typeSelf = if copy then src.__typeSelf else (_: s);
+          ${if types ? typeWitness then "__witness" else null} = types.typeWitness;
           __stampReads = stampReads;
           __mint = if copy then copyMint else src.__mint;
         };
@@ -5364,6 +5367,7 @@ let
         # as it is (`completedUnderRow`) and keeps the row
         s = t // {
           __typeSelf = if stale then t.__typeSelf else (_: s);
+          ${if types ? typeWitness then "__witness" else null} = types.typeWitness;
           __stampReads = stampReads;
           __staleStamp = stale;
         };
