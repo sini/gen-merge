@@ -63,6 +63,7 @@
   # The nested tree's door and gen's own containers (den-hoag-n6dh7 items 5, 7), each read lazily:
   # the engine above supplies both, closing a loop this unit otherwise keeps a chain.
   nestedTreeAt,
+  emptyTreeAt,
   mergeDefsThreaded,
   constructors,
   # gen-types' library, for the check-witness protocol it owns (`witnessRecord`, `rewritesCheck`):
@@ -3987,7 +3988,13 @@ let
     position = [ ];
     containerNodes = false;
     child = site: nestedTreeAt site.nests.calledMode site;
+    # Its child for an EMPTY VALUE: the tree over none, never a merge at a position, which is the one
+    # place nixpkgs evaluates a nested tree named by the placeholder (den-hoag-hnz4t).
+    emptyChild = site: emptyTreeAt site.nests.calledMode site;
   };
+  # The accessor an empty value folds through: the bridge's, wherever its `emptyChild` rides, and
+  # the evaluation's own otherwise, whose child with an empty seed is already the tree over none.
+  emptyAccessor = ev: if ev ? emptyChild then ev // { child = ev.emptyChild; } else ev;
   # A fold as the foreign protocol publishes it: through the bridge where it carries the sibling,
   # and itself where it does not (a foreign fold, or a fold nothing nests under) — the export's
   # presence arm (gate C3).
@@ -6105,10 +6112,13 @@ let
                   valueMeta = { };
                 };
             };
-        # A nesting type's empty value is its tree over no definitions, through the same bridge: its
-        # called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
+        # A nesting type's empty value is its tree over no definitions, through the bridge's empty
+        # accessor (`emptyAccessor`): its called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
         emptyValue =
-          if isNesting t then { value = t.mergeDefs.threaded bridge [ ] [ ]; } else t.whenEmpty or { };
+          if isNesting t then
+            { value = t.mergeDefs.threaded (emptyAccessor bridge) [ ] [ ]; }
+          else
+            t.whenEmpty or { };
         nestedTypes =
           (t.unroledNested or { })
           // (if role == null then { } else roleSpelling.${role}.nested t.carries.${role});
@@ -6237,6 +6247,7 @@ in
     crossedRoot
     mayFoldNested
     bridge
+    emptyAccessor
     importedCarried
     importedOffered
     importedDecidable

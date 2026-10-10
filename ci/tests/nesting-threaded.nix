@@ -68,6 +68,40 @@ let
         { config.h = def; }
       ];
     }).config.h;
+  # A tree reading its `name` and its own `loc`, under a hand-rolled container whose merge hands it
+  # NO definitions, in library `T`: a merge over `[ ]`, never the element's empty value.
+  zeroOf =
+    T: mkOpt:
+    let
+      g = T.submodule (
+        { name, options, ... }:
+        {
+          options.a = mkOpt {
+            type = T.int;
+            default = 0;
+          };
+          options.n = mkOpt {
+            type = T.str;
+            default = name;
+          };
+          options.l = mkOpt {
+            type = T.str;
+            default = nixpkgsLib.concatStringsSep "." options.a.loc;
+          };
+        }
+      );
+    in
+    {
+      elem = g;
+      zero = nixpkgsLib.mkOptionType {
+        name = "zero";
+        inherit (g) check;
+        merge = loc: _: g.merge loc [ ];
+        nestedTypes.elemType = g;
+      };
+    };
+  # Its three readings, without the `_module` nixpkgs' tree carries.
+  read = v: { inherit (v) a n l; };
   defsOf = map (v: {
     file = "/f";
     value = v;
@@ -425,7 +459,8 @@ in
       };
     };
     # The name is the engine's, not a nesting type's: no nesting type states a `name` channel, and
-    # the placeholder every nested tree over no definitions reads is nixpkgs' `mkOptionDefault "‹name›"`.
+    # the placeholder every nested tree over no definitions reads is nixpkgs' `mkOptionDefault "‹name›"`
+    # (an exported merge over none is at its `loc` instead: `nesting-threaded-export`).
     test-the-name-is-the-engines-not-a-nesting-types = {
       expr = {
         typeStates = builtins.filter (k: sub.nests ? ${k} || tree.nests ? ${k}) [
@@ -727,6 +762,39 @@ in
         exp-hand = "a";
       };
     };
+    # A merge over no definitions keeps its `loc`: nixpkgs' `submoduleWith` merges `[ ]` with the
+    # name the loc's last segment and the loc as the prefix, so the tree's `name` and its options'
+    # `loc` are the host's (den-hoag-hnz4t). `expected` is nixpkgs over its own submodule.
+    test-a-merge-over-no-definitions-keeps-its-loc =
+      let
+        at = T: mkOpt: {
+          bare = read (fwd (zeroOf T mkOpt).zero { a = 1; });
+          keyed = read (fwd (np.attrsOf (zeroOf T mkOpt).zero) { k.a = 1; }).k;
+        };
+      in
+      {
+        expr = at t gm.mkOption;
+        expected = at np nixpkgsLib.mkOption;
+      };
+    # Control: the empty value alone is the tree over none, named by the placeholder at no prefix,
+    # the type's own and an element's under a container of the library's that discharges its key.
+    test-an-empty-value-keeps-the-placeholder =
+      let
+        at = T: mkOpt: {
+          bare =
+            read
+              (nixpkgsLib.evalModules {
+                modules = [ { options.h = nixpkgsLib.mkOption { type = (zeroOf T mkOpt).elem; }; } ];
+              }).config.h;
+          keyed =
+            read
+              (fwd (T.lazyAttrsOf (zeroOf T mkOpt).elem) { k = nixpkgsLib.mkIf false { a = 1; }; }).k;
+        };
+      in
+      {
+        expr = at t gm.mkOption;
+        expected = at np nixpkgsLib.mkOption;
+      };
     test-a-declaring-hand-rolled-container-is-refused-at-construction = {
       expr =
         let

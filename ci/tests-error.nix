@@ -6688,6 +6688,34 @@ in
         tree = _: (gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.int; }; } ]).type;
       in
       {
+        # A merge over no definitions is at its `loc` (den-hoag-hnz4t): an option of the tree it
+        # merges, used and never defined, is named at the host's loc, as nixpkgs names `h.u'.
+        test-a-merge-over-no-definitions-names-the-hosts-loc = {
+          expr =
+            let
+              g = t.submodule { options.u = gm.mkOption { type = t.int; }; };
+            in
+            force
+              (nixpkgsLib.evalModules {
+                modules = [
+                  {
+                    options.h = nixpkgsLib.mkOption {
+                      type = nixpkgsLib.mkOptionType {
+                        name = "zero";
+                        inherit (g) check;
+                        merge = loc: _: g.merge loc [ ];
+                        nestedTypes.elemType = g;
+                      };
+                    };
+                  }
+                  { config.h = { }; }
+                ];
+              }).config.h.u;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `h[.]u' is used but not defined$";
+          };
+        };
         # F2 α (M3): a rebuild that drops its argument does not bring the threaded element back marked
         # (`threadsAt`), and would reach the tree through the bridge, so it is refused by name (one
         # that forwards it threads: `ci/tests/nesting-threaded.nix`, `nesting-threaded-rehome`).

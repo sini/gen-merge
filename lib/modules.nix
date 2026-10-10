@@ -173,6 +173,7 @@ let
       showConflict
       mergeDescriptorDefault
       nestedTreeAt
+      emptyTreeAt
       types
       mergeDefsThreaded
       ;
@@ -3093,8 +3094,9 @@ let
   # argument sets its modules are applied to (`baseArgs`, and `declArgs` on the declaration plane);
   # it enters a merge, as one priority-100 definition, only in `positionNameOf`, when a module states
   # `name`. `moduleArgs` zips the modules' own sets alone, except where a module declares
-  # `options._module`, whose `apply` nixpkgs runs over the set holding `name` (`moduleOwnArgs`). A nested tree over no definitions, and
-  # every nesting type's declarations, read the placeholder module `namePlaceholder` instead. The
+  # `options._module`, whose `apply` nixpkgs runs over the set holding `name` (`moduleOwnArgs`). A nested tree over no definitions
+  # (a child with an empty seed, and the export's empty value, `emptyTreeAt`), and every nesting
+  # type's declarations, read the placeholder module `namePlaceholder` instead. The
   # first always outranks the second, so a child never carries both. A key and not a module, because
   # the module's collection is what costs.
   positionArgsAt = loc: {
@@ -3283,8 +3285,12 @@ let
   # seed definition, the placing fold's `loc` as the prefix, and its own arguments, with `name`
   # carried by the positioned knot (`positionArgsAt`, resolved by `positionNameOf`).
   # It is the export BRIDGE's child (item 7, OQ11 (d)), where no gen evaluation holds the tree: one
-  # root evaluation per nested tree, as many as the called form made. With no definition it is the tree over none, with `nests.empty`'s arguments, as a child with an
-  # empty seed is (item 4). It is a ROOT evaluation, so the trees it holds are its own children.
+  # root evaluation per nested tree, as many as the called form made. It is a MERGE, so with no
+  # definition it is still the tree at `loc`, named by it, as nixpkgs' `submoduleWith` merges `[ ]`
+  # (den-hoag-hnz4t); the tree over none, with `nests.empty`'s arguments, is the type's EMPTY VALUE
+  # alone, which every empty value folded through the bridge reads, `emptyTreeAt` below
+  # (`interface.emptyAccessor`, item 4). It is a ROOT evaluation, so the trees it holds are its own
+  # children.
   # It is driven on a root knot, never a partial one, whatever `nests.partial` says: a partial fold's value
   # is definitions a later gen fold completes, and nothing folds a foreign evaluation's value again, so
   # the export bridge's ROOT serves the full fold (den-hoag-5ov3p gate C3). Only the root: a partial tree
@@ -3293,18 +3299,20 @@ let
   # nixpkgs consumer at depth 1 or more reads its definitions.
   nestedTreeAt =
     m: site:
-    if site.defs == [ ] then
-      evalModuleTreeWith knotRoot m.carried m.inherited {
-        modules = site.nests.modules ++ [ namePlaceholder ];
-        inherit (site.nests) coreShortCircuit;
-        inherit (site.nests.empty) prefix specialArgs check;
-      }
-    else
-      evalModuleTreeWith knotRootPositioned m.carried m.inherited {
-        modules = site.nests.modules ++ map site.nests.entry site.defs;
-        prefix = site.loc;
-        inherit (site.nests) specialArgs check coreShortCircuit;
-      };
+    evalModuleTreeWith knotRootPositioned m.carried m.inherited {
+      modules = site.nests.modules ++ map site.nests.entry site.defs;
+      prefix = site.loc;
+      inherit (site.nests) specialArgs check coreShortCircuit;
+    };
+  # The door's EMPTY VALUE: the tree over no definitions at no position, named by the placeholder,
+  # as nixpkgs' `emptyValue` is `base.config`.
+  emptyTreeAt =
+    m: site:
+    evalModuleTreeWith knotRoot m.carried m.inherited {
+      modules = site.nests.modules ++ [ namePlaceholder ];
+      inherit (site.nests) coreShortCircuit;
+      inherit (site.nests.empty) prefix specialArgs check;
+    };
 
   # ── THE ENGINE'S THREADED TWIN (den-hoag-n6dh7 item 5) ───────────────────────────────────────────
   # The CALLED fold over the type whose fold is its threaded form, bound to the evaluation's
@@ -3321,8 +3329,8 @@ let
   # the empty value and `verify` (the rest is read only where no fold is brought), so binding it
   # copies none of the type's other fields. A nesting type's reporting twin rides beside its
   # threaded fold (`.reported`, which the rich fold selects on), and its EMPTY value is its threaded
-  # fold over no definitions: the child at this position with an empty seed. Its called `whenEmpty`
-  # refuses (item 1).
+  # fold over no definitions through its accessor's empty view (`interface.emptyAccessor`): the
+  # child at this position with an empty seed. Its called `whenEmpty` refuses (item 1).
   threadedAs =
     ev: type:
     if isAttrs type && type ? mergeDefs.threaded then
@@ -3342,7 +3350,10 @@ let
           else
             type.mergeDefs.threaded ev;
         whenEmpty =
-          if type ? nests then { value = type.mergeDefs.threaded ev [ ] [ ]; } else whenEmptyOf type;
+          if type ? nests then
+            { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
+          else
+            whenEmptyOf type;
       in
       if type ? verify then
         {
@@ -7121,6 +7132,7 @@ in
     # The nested tree's door and the engine's threaded twin (den-hoag-n6dh7 items 4, 5, 7): the
     # containers in `./types.nix` fold each element through the twin, and the suites read the door.
     nestedTreeAt
+    emptyTreeAt
     mergeDefsThreaded
     mergeDefsThreadedPartial
     readsMintedNode
