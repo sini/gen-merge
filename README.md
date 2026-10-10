@@ -1167,8 +1167,8 @@ Two rules that look like details and are not:
   what the identity stands for. This boundary rebuilds every record it imports and exports, so it
   re-ties the stamp to the record it completes; a record failing the stamp on entry is imported and
   served, but unminted, and gen-types' `typeEq` refuses it by name. The published `mkOptionType`
-  first returns a copy departing within its carrier as it is, as `types.defineType` does (below): one
-  departing at its `verify` or `check` keeps its mark and stale stamp, so `idOf` and `typeEq` refuse
+  first returns a gen-merge completion's copy departing at its `verify` or `check` as it is, as
+  `types.defineType` does (below): it keeps its mark and stale stamp, so `idOf` and `typeEq` refuse
   it by name as they refuse the raw copy. The price: a description-only
   `//` (`t // { description = …; }`) is a copy too, and `typeEq` refuses it; as an option type it
   is still served. **Re-completion keeps the witnesses a record arrives with**: the
@@ -1184,12 +1184,21 @@ Two rules that look like details and are not:
   registry knot that is an uncatchable infinite recursion on Nix and Determinate. The price: a copy
   departing only there is the same type to `typeEq` at both doors, its forged value carried, its
   `idOf` still refused (the record is sealed). **`types.defineType` returns a copy departing
-  within its carrier as it is**, and so does the published `mkOptionType`: a `//` copy of a completed
-  gen record that states `verify` and departs from its completion only at `check`, `verify`,
-  `typeMerge` or a name-carried field keeps its row,
+  within its carrier as it is**, and so does the published `mkOptionType`: a `//` copy of a gen-merge
+  completion that states `verify`, departs from its completion at `check` or `verify`, and elsewhere
+  only at fields the door does not compare (`interface.doorUnread`: `typeMerge`, a name-carried or
+  identity field, a module set's own outputs) keeps its row,
   functor, relation, fold, mint and stale stamp, and the door re-derives only the two foreign fields its
   departure invalidates: `check`, its declared domain published as a witnessed rewrite, and `typeMerge`,
-  its completion's foreign relation met with the copy (`interface.carriedCopy`). A container copy
+  its completion's foreign relation met with the copy (`interface.carriedCopy`). Only a gen-merge
+  completion is carried (it states `typeMergeRel` and `_checkWitness`): a raw gen-types record holds no
+  row, functor, relation or fold to keep, and its `check` is not a predicate, so it is imported, and a
+  verify copy of one leaves the door unminted and refused by name. A copy departing only at name-carried
+  fields is imported too, and the import boundary re-ties it, so it keeps its completion's identity. The
+  door decides the carriage without forcing a field whose value reads the members (the name, the
+  description, the identity cells, a module set's own outputs), so a self-referential checked container
+  (`let s = mkOptionType (gt.checkedListOf s)`) has a value, and so does the same through
+  `types.defineType`. A container copy
   stating `verify` (`listOf`, `struct`) is carried the same way. So a verify copy of `enum "e" [a b]`
   keeps the `enum` row, and beside a widening `enum` it serves the union's member as the raw copy does.
   In gen's engine the door's verdict is the raw copy's over every leaf, wrapper, partner and order the

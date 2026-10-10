@@ -136,9 +136,10 @@ crossing site `lib/types.nix` `defineType`): `_type`, `name`, `description`, `de
 `substSubModules`, `typeMerge`, `nestedTypes`, `functor`. The names are the foreign protocol's and
 are private to that unit; a gen type states itself in gen's own words (`verify`/`admits`,
 `mergeDefs`, `typeMergeRel`, `carries`/`recarry`, `substructure`, `whenEmpty`, `deprecated`) and
-acquires these only by being exported. The published `types.defineType` returns a `//` copy of a
-completed gen record that states `verify` and departs only at `check`, `verify`, `typeMerge` or a
-name-carried field as it is (`interface.carriedCopy`, den-hoag-5kzqp), re-deriving only `check` (its
+acquires these only by being exported. The published `types.defineType` and `mkOptionType` return a
+`//` copy of a gen-merge completion (it states `typeMergeRel` and `_checkWitness`) that states `verify`
+and departs at `check` or `verify`, elsewhere only at fields the door does not compare
+(`interface.doorUnread`, none of which it forces) as it is (`interface.carriedCopy`, den-hoag-5kzqp), re-deriving only `check` (its
 declared domain, a witnessed rewrite) and `typeMerge` (its completion's relation met with the copy);
 under nixpkgs' engine such a copy declared first beside a partner is dropped as the raw copy is, by
 nixpkgs' later-operand rule.

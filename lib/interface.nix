@@ -4477,8 +4477,8 @@ let
   # ★ THE FIELDS THAT ARE AN OUTPUT OF A RECORD'S OWN EVALUATION (gen-merge a0c4z), on a record whose
   # `nestedTypes` is (`evaluatesOwnRoles`): its module set's declarations decide each of them, so forcing
   # one to WHNF evaluates the module set, and inside a registry knot that is an uncatchable infinite
-  # recursion on Nix and Determinate, which force every cell `==` compares (den-hoag-6foy1). Neither entry
-  # door's copy test asks them (`restamp`'s `copy`, `keepStamp`'s `stale`). Each is derived from the module
+  # recursion on Nix and Determinate, which force every cell `==` compares (den-hoag-6foy1). No entry
+  # door's copy test asks them (`restamp`'s `copy`, `keepStamp`'s `stale`, `carriedCopy`'s `doorUnread`). Each is derived from the module
   # set the mint covers, and gen's fold reads none of them. The price: on such a record, a copy departing
   # only at these fields is the same type to `typeEq` at both doors, its forged value carried, its `idOf`
   # still refused (the record is sealed). `ci/tests/stamp-door.nix` holds the list to what the fields force.
@@ -4539,57 +4539,80 @@ let
   # makes the copy its own record to every carrier reader. So the door returns it as it is, and where its
   # `verify` replaced its completion's it publishes the copy's declared domain, as the engine reads one
   # declaration alone (`meetOf`'s `dom`), as a witnessed rewrite: a foreign engine enforces it, and every
-  # gen reader owes it. A copy departing only at name-carried fields keeps the door's re-tied stamp
-  # (`keepStamp`). `null` for every other record. A container copy stating `verify` (`listOf`, `struct`) is
-  # carried too, its own functor kept. The `verify` presence test comes first: a per-instance submodule
-  # copy (gen-aspects `entryCoerced`) states none, so its stamp is never asked here.
+  # gen reader owes it. A container copy stating `verify` (`listOf`, `struct`) is carried too, its own
+  # functor kept. `null` for every other record, which the door imports.
+  # Only a gen-merge completion is carried: that premise is the test (`? typeMergeRel`, and
+  # `? _checkWitness`, which says its `check` is this library's predicate). A raw gen-types record holds no
+  # row, functor, relation or fold, and its `check` is not a predicate, so carrying one would publish an
+  # abort; it is imported, and a verify copy of one leaves the door unminted and refused by name at every
+  # identity reader. A copy departing only at name-carried fields is not carried either: it is imported, and
+  # the import boundary's `restamp` re-ties it, so it keeps its completion's identity.
+  # The admission is LAZY IN THE MEMBERS: the copy departs at `check` (a pointer against its witness) or at
+  # `verify` (`replacesVerify`'s one slot), and agrees with its completion outside `doorUnread`
+  # (`agreesOutside`), so no test after the `__typeSelf` one reads a field whose WHNF reads the members, and
+  # a self-referential checked container (`let s = mkOptionType (checkedListOf s)`) has a WHNF. The
+  # `__typeSelf` test itself reads an exported record's mint, which for a self-referential gen container is
+  # the door's own result; that cycle is the import's, not this admission's. The `verify` presence test
+  # comes first: a per-instance submodule copy (gen-aspects `entryCoerced`) states none, so its stamp is
+  # never asked here.
   carriedCopy =
     x:
     if
       !(
         x ? verify
+        && x ? typeMergeRel
+        && x ? _checkWitness
         && builtins.isFunction (x.__typeSelf or null)
-        && (rewritesCheck x || departsWithinCarrier x)
+        && (rewritesCheck x || replacesVerify x)
+        && agreesOutside doorUnread x
       )
     then
       null
     else
       let
-        c = x.__typeSelf null;
-        names = carrierTolerated;
         dom = copyDomain x;
-      in
-      if
-        !(stampOk (
-          builtins.removeAttrs x names
-          // builtins.intersectAttrs (builtins.listToAttrs (
-            map (n: {
-              name = n;
-              value = null;
-            }) names
-          )) c
-        ))
-      then
-        null
-      else if replacesVerify x || rewritesCheck x then
-        let
-          s = x // {
-            ${if replacesVerify x then "check" else null} = witnessRecord dom // {
-              isV2MergeCoherent = true;
-            };
-            # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
-            # answers: a foreign engine asking this record's `typeMerge` keeps its check
-            typeMerge =
-              f:
-              let
-                r = x.typeMerge f;
-              in
-              if r == null then null else metWith r [ s ];
+        s = x // {
+          ${if replacesVerify x then "check" else null} = witnessRecord dom // {
+            isV2MergeCoherent = true;
           };
-        in
-        s
-      else
-        keepStamp x;
+          # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
+          # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
+          # stating none (gen-types' own records) gets none
+          ${if x ? typeMerge then "typeMerge" else null} =
+            f:
+            let
+              r = x.typeMerge f;
+            in
+            if r == null then null else metWith r [ s ];
+        };
+      in
+      s;
+  # The fields the import door's admission does not compare (`carriedCopy`): the carrier's tolerated ones;
+  # the identity class, whose WHNF reads the members (`__okAt`), and a copy departing there keeps its stale
+  # stamp on either outcome, so every identity reader (`idOf`, `typeEq`) refuses it by name; the outputs of a
+  # record's own evaluation (`ownEvaluation`), which inside a registry knot evaluate the knot; and gen-types'
+  # two name fields (`__name` is its renderer's base, `__nameWithin` the renderer), each of which reads the
+  # members, which for a self-referential type is the door's own result.
+  doorUnread =
+    carrierTolerated
+    ++ deriveClasses.identity
+    ++ ownEvaluation
+    ++ [
+      "__name"
+      "__nameWithin"
+    ];
+  # Whether a stamped `t` agrees with its completion at every field outside `names`, by the stamp (`stampOk`)
+  # over both records with `names` removed from each, so no field in `names` is forced: one `__typeSelf` slot
+  # serves both, so the stamp's own cell agrees by pointer.
+  agreesOutside =
+    names: t:
+    let
+      drop = names ++ [ "__typeSelf" ];
+      slot = {
+        __typeSelf = _: builtins.removeAttrs (t.__typeSelf null) drop // slot;
+      };
+    in
+    stampOk (builtins.removeAttrs t drop // slot);
   # A copy's declared domain, as the engine reads one declaration alone (`meetOf`'s `dom`): its `verify`
   # alone where its `check` is still its completion's witness, and both where it rewrote its `check`.
   copyDomain =
