@@ -990,6 +990,26 @@ let
         rebuild = t.substSubModules or (_m: null);
       };
 
+  # The rebuild of a nesting type for an option-group declared beneath it (nixpkgs'
+  # `optionTreeToOption`): the type over the group's module, stating no `specialArgs`, as nixpkgs'
+  # converted declaration (`submoduleWith { specialArgs = { }; }`) states none. A foreign
+  # `submoduleWith` is rebuilt through its own functor with its `specialArgs` emptied, since its
+  # `substSubModules` keeps them and its relation refuses two declarations sharing one; a gen type's
+  # `rebuild` already joins, its relation comparing the slots the rebuild shares.
+  importedGroupRebuild =
+    t:
+    if !(t ? substructure) && (t.functor.payload or null) ? specialArgs then
+      m:
+      t.functor.type (
+        t.functor.payload
+        // {
+          modules = m;
+          specialArgs = { };
+        }
+      )
+    else
+      (importedSubstructure t).rebuild;
+
   # A descriptor carrying a `substructure` BESIDE a callable `substSubModules` is a copy of a built
   # record (`base // Δ`), and the copy states its rebuild in one of the two fields, carrying the
   # other from the base. Which one the author overrode is read off the witness `exportType`
@@ -5563,6 +5583,7 @@ in
     importedPartner
     importedRebuilds
     importedSubstructure
+    importedGroupRebuild
     spineModules
     spineDeclares
     importedTypeWalkFuel

@@ -271,6 +271,47 @@ let
   # Anything else inside the `options` tree is an option-GROUP: a plain attrset of sub-declarations.
   isOptLeaf = v: isAttrs v && (v._type or null) == "option";
 
+  # A GROUP declared at a loc another module declares as a LEAF (nixpkgs `mergeModules'`'s
+  # `optionTreeToOption`, the `nix.settings` shape). Where every leaf there is typed `submodule`, which
+  # is nixpkgs' own admission predicate (the type's name), each group is one more declaration of that
+  # option: the last leaf's type rebuilt over the one module `{ options = <group>; }`. The rebuild
+  # keeps the leaf's constructor, partiality, shorthand and class and states no specialArgs, as
+  # nixpkgs' converted declaration (`specialArgs = { }`, `class = null`, `shorthand = null`) is
+  # neutral in every field its relation joins (`interface.importedGroupRebuild`). The leaves'
+  # relation folds it in and `fixupModuleSets` unions its module beside theirs, so the nested tree
+  # declares the group's options. Any other leaf admits no nested option: the two declaration folds
+  # (`lk` the loc) refuse naming the first such leaf's type, nixpkgs' ground ("its type … does not
+  # support nested options"), and `declaringSitesAt` (`lk = null`) reads `null`. `ys` keeps its
+  # order; the folds and `declaringSitesAt` read this one answer.
+  nestedGroupDecls =
+    lk: ys:
+    let
+      leaves = filter isOptLeaf ys;
+      blocking = filter (
+        l:
+        !((l.type.name or null) == "submodule" && (interface.importedSubstructure l.type).modules != null)
+      ) leaves;
+      l = head blocking;
+      ty = if l ? type then "its type `${interface.nameOf l.type}'" else "it states no type, which";
+      rebuild = interface.importedGroupRebuild (prelude.last leaves).type;
+    in
+    if blocking != [ ] then
+      if lk == null then
+        null
+      else
+        throw "gen-merge: option `${showOption lk}' is declared both as an option and as an option-group, and ${ty} admits no nested option"
+    else
+      map (
+        y:
+        if isOptLeaf y then
+          y
+        else
+          {
+            _type = "option";
+            type = rebuild [ { options = y; } ];
+          }
+      ) ys;
+
   # ── THE OPTION RECORD, IN nixpkgs' SHAPE (den-hoag-foreign-mount-parity-knhyg, den-hoag-ixcxl) ──────
   # A declaration carries `loc` and `declarations` (the declaring modules' files, read off the
   # evaluation's own `sitesAt`, in nixpkgs' order: its module list is reversed once) and nixpkgs'
@@ -830,7 +871,15 @@ let
     depth: entries:
     let
       node = xs: {
-        sites = map (x: x.e // { decl = x.o; }) (filter (x: isOptLeaf x.o) xs);
+        sites =
+          let
+            ls = filter (x: isOptLeaf x.o) xs;
+            cs = if ls == [ ] || length ls == length xs then null else nestedGroupDecls null (map (x: x.o) xs);
+          in
+          if cs == null then
+            map (x: x.e // { decl = x.o; }) ls
+          else
+            prelude.genList (i: (prelude.elemAt xs i).e // { decl = prelude.elemAt cs i; }) (length xs);
         under = builtins.zipAttrsWith (_: node) (
           map (
             x:
@@ -1035,17 +1084,17 @@ let
   # single-level view:
   #   leaf ∪ leaf  = `onRedeclare` — see below;
   #   group ∪ group = RECURSE (a second module's `options.a.b.d` merges beside `options.a.b.c`);
-  #   leaf ⁄ group at the same path = a hard collision (nixpkgs likewise refuses to make an option
-  #                  the parent of sub-options) — must throw, never silently `//`-merge.
+  #   leaf ⁄ group at the same path = `nestedGroupDecls`: under leaves typed `submodule` each group
+  #                  is one more declaration of the leaf; under any other leaf a refusal naming the
+  #                  type (nixpkgs likewise refuses to make it the parent of sub-options) — never a
+  #                  silent `//`-merge.
   # `onRedeclare lk av bv` is a REQUIRED formal, not a defaulted hook: the tree walk knows the shape
   # of a redeclaration and nothing about what it means, and the two callers genuinely disagree. The
   # engine passes `redeclareDecl`; the portable-subset lint passes the plain field-union, because a
   # lint that ABORTED on the redeclaration it exists to report could never report it. Making the
   # caller state it keeps that divergence one legible argument rather than a fork of the descent.
-  # DELIBERATE divergence: nixpkgs' `optionTreeToOption` has one sugar case —
-  # raw options merged INTO a `submodule`-typed leaf — that byte-mode does not reproduce (out of the
-  # den surface; submodule nesting rides the separate `submodule`/`attrsOf` `.merge` path). Byte-mode
-  # conservatively throws here rather than risk emitting wrong bytes.
+  # nixpkgs' `optionTreeToOption` sugar, raw options declared beneath a `submodule`-typed leaf, is
+  # that construction: the converted group reaches `onRedeclare` as a leaf redeclaration does.
   mergeOptionDecls =
     onRedeclare: loc: a: b:
     a
@@ -1065,7 +1114,13 @@ let
         else if (!aLeaf) && (!bLeaf) then
           mergeOptionDecls onRedeclare lk av bv
         else
-          throw "gen-merge: option `${showOption lk}' is declared both as an option and as an option-group (leaf/group collision)"
+          let
+            cs = nestedGroupDecls lk [
+              av
+              bv
+            ];
+          in
+          onRedeclare lk (head cs) (prelude.last cs)
       else
         bv
     ) b;
@@ -1073,10 +1128,10 @@ let
   # mergeOptionDeclTrees — the engine's declaration fold: `mergeOptionDecls`' answer over a whole
   # LIST of trees (the declaring entries' validated `options`, in entry order), grouped once per level
   # with `zipAttrsWith`, so no step copies a growing accumulator (a `//` fold copies it once per
-  # module). A key declared once is that declaration; a group recurses; a leaf/group mix throws the
-  # binary fold's collision text; a leaf declared k times is `onRedeclare lk ys`, one call over the
-  # loc's k declarations: `redeclareDecl` folds its step from the left there, as the binary fold
-  # does, and the guard's `spineRedeclare` answers the last declaration, which is what that fold
+  # module). A key declared once is that declaration; a group recurses; a leaf/group mix is
+  # `onRedeclare` over the binary fold's `nestedGroupDecls` answer; a leaf declared k times is
+  # `onRedeclare lk ys`, one call over the loc's k declarations: `redeclareDecl` folds its step from
+  # the left there, as the binary fold does, and the guard's `spineRedeclare` answers the last declaration, which is what that fold
   # keeping the later operand answers. The binary `mergeOptionDecls` stays the lint's fold, and
   # applies `onRedeclare lk av bv`.
   mergeOptionDeclTrees =
@@ -1099,7 +1154,7 @@ let
             leaf = isOptLeaf (head ys);
           in
           if !(all (y: isOptLeaf y == leaf) ys) then
-            throw "gen-merge: option `${showOption lk}' is declared both as an option and as an option-group (leaf/group collision)"
+            onRedeclare lk (nestedGroupDecls lk ys)
           else if leaf then
             onRedeclare lk ys
           else

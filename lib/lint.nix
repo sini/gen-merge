@@ -271,7 +271,7 @@ let
         ) (optionLeaves (e.module.options or { }));
 
       # ── construct 1: order markers in CONFIG defs, guided by the merged decl tree (mergeTree-style) ──
-      # The engine's own declaration merge — the same descent, the same leaf/group collision throw —
+      # The engine's own declaration merge — the same descent, the same leaf/group answer —
       # with the ONE argument the engine and the lint genuinely disagree on: what a REDECLARED leaf
       # means. The engine consults the type algebra and refuses when it answers "not mergeable"; here
       # it is the plain field-union, because a lint that ABORTED on the redeclaration it exists to

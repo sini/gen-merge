@@ -1,7 +1,7 @@
 # THE SECOND TEST OUTPUT — cells whose subject is an ERROR, and the runner that reads them.
 #
 # The engine refuses several shapes BY NAME: an undeclared key names the option path it could not
-# place, a leaf/group collision names the colliding option. That each refuses is a boolean and
+# place, an option-group beneath a leaf whose type admits none names the option and the type. That each refuses is a boolean and
 # `builtins.tryEval` can assert it — the suites under ./tests do exactly that in a dozen places.
 # WHICH option a refusal named is a claim about the message, and `tryEval` discards the message
 # (`{ success = false; value = false; }`). The only assertion available for it is nix-unit's
@@ -191,8 +191,9 @@ let
       }) defs
     )).config;
 
-  # Declaring `thing` as a leaf in one module and as an option-group in another: the decl merge
-  # cannot `//` these together without emitting wrong bytes, so it refuses.
+  # Declaring `thing` as a `str` leaf in one module and as an option-group in another: a `str`
+  # admits no nested option (only a leaf typed `submodule` does, nixpkgs' `optionTreeToOption`), so
+  # the decl merge refuses rather than `//` the two together.
   collision = {
     modules = [
       {
@@ -517,13 +518,13 @@ in
           msg = "^The option `rack\\.stray' does not exist\\. Definition values:\n- In `<unknown-file>': 1\n\nDid you mean `rack.slot'\\?$";
         };
       };
-      # The collision refusal names the option that collided, which is the one piece of the
-      # module set the author has to go edit.
+      # The refusal names the option and the type that admits no nested option: the option is
+      # the piece of the module set the author has to go edit, and the type is why.
       test-leaf-group-collision-refusal-names-the-option = {
         expr = realize collision;
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: option `thing' is declared both as an option and as an option-group \\(leaf/group collision\\)$";
+          msg = "^gen-merge: option `thing' is declared both as an option and as an option-group, and its type `string' admits no nested option$";
         };
       };
       # LIVE CONTROL, same run: the same skeleton and the same stray key, plus a `freeformType`

@@ -1772,6 +1772,26 @@ separates them.
 that merely adds fields (the `apply`-layering shape) leaves the record exactly what a plain field
 union produces. A third declaration appends to the chain rather than replacing it.
 
+### An option declared beneath a `submodule`
+
+`options.thing` typed `submodule { … }` in one module and `options.thing.sub` in another (the
+`nix.settings` shape) is nixpkgs' `optionTreeToOption`: the option-group is one more declaration of
+`thing`, whose module set gains `{ options.sub = …; }` beside the leaf's, in authored order. The
+admission is nixpkgs' own predicate, every leaf at the loc has a type named `submodule`, and it holds
+under gen's `submodule`, nixpkgs' `submodule`/`submoduleWith` and the tree-as-a-type, in either module
+order and at any depth (`decl-merge.test-an-option-declared-beneath-a-submodule-joins-its-module-set`).
+The group's declaration is the last leaf's type rebuilt over the group: the leaf's constructor,
+partiality, shorthand and class, with no `specialArgs`, which is nixpkgs' converted declaration
+(`specialArgs = { }`, `class = null`, `shorthand = null`, neutral in every field the relation joins).
+So a `submoduleWith` stating `specialArgs` takes the group without a duplicate-`specialArgs` refusal.
+
+Any other leaf admits no nested option and is refused by name, the refusal naming the option and the
+type: `str`, `attrsOf submodule` (whose nested meaning nixpkgs calls ambiguous), `nullOr submodule`,
+`deferredModule` (`ci/tests-error.nix` `test-leaf-group-collision-refusal-names-the-option`, a `str`
+leaf). The group redeclaring an option the submodule already declares is the redeclaration rule
+above: with a `default` on both, gen's submodule serves the later default where nixpkgs refuses
+`already declared`, the ordered fold's divergence, reached through this spelling as through two leaves.
+
 ### The tree-as-a-type is an option type named `submodule`
 
 `(evalModuleTree …).type` is the seam that lets a parent tree nest a child (submodule recursion,
@@ -2778,12 +2798,6 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   sub-option's is, so under a stock `uniq` OQ11 (d)'s named refusal becomes a silent standalone
   evaluation whose value equals nixpkgs'
   (`test-a-freeform-gen-nesting-type-serves-through-the-bridge`).
-
-- **A sub-option declared beneath an option whose type is a submodule is refused by name, where
-  nixpkgs merges it** (the `nix.settings` shape: `options.thing` of type `submodule { … }` in one
-  module, `options.thing.sub` in another). nixpkgs folds the sub-option into the submodule; here
-  the declaration merge refuses it as a leaf/group collision, naming the option
-  (`ci/tests-error.nix` `test-leaf-group-collision-refusal-names-the-option`).
 
 - **An identity inside an instance is not walked.** The identity walk stops at an instance (a
   position whose declaration declares `id_hash`) and reads only that instance's `id_hash`, never its

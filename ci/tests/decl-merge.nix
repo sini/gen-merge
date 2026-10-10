@@ -327,6 +327,252 @@ in
         };
       };
 
+    # 3pnlv: an option declared BENEATH an option typed `submodule` (the `nix.settings` shape) is one
+    # more declaration of the submodule's own module set, as nixpkgs' `optionTreeToOption` reads it, in
+    # either order, under gen's `submodule`, nixpkgs' and the tree-as-a-type, two levels down, and beside
+    # a freeform type. Under a nixpkgs `submoduleWith` that states `specialArgs` the group's declaration
+    # states none, as nixpkgs' converted one does (`specialArgs`, `specialArgsRev`, and `specialArgsTwo`,
+    # whose two leaves state `{ k }` and `{ j }`). `intLeaf` and `attrsOfSub` are the refusals nixpkgs
+    # keeps, kept: a leaf whose type is not named `submodule` admits no nested option. `ref` is the same
+    # table under `lib.evalModules`.
+    test-an-option-declared-beneath-a-submodule-joins-its-module-set =
+      let
+        read =
+          ev: mk: T: ms: rd:
+          let
+            r = builtins.tryEval (
+              let
+                v = rd (ev { modules = ms; }).config;
+              in
+              builtins.deepSeq v v
+            );
+          in
+          if r.success then r.value else "REFUSED";
+        table =
+          ev: mk: T: tree:
+          let
+            sub = ty: {
+              options.thing = mk {
+                type = ty {
+                  options.a = mk {
+                    type = T.int;
+                    default = 1;
+                  };
+                };
+                default = { };
+              };
+            };
+            below = {
+              options.thing.sub = mk {
+                type = T.int;
+                default = 2;
+              };
+            };
+            withArgs = args: m: extra: {
+              options.thing = mk (
+                {
+                  type = np.types.submoduleWith {
+                    modules = [ m ];
+                    specialArgs = args;
+                  };
+                }
+                // extra
+              );
+            };
+            argK = withArgs { k = 1; } ({ k, ... }: {
+              options.a = mk {
+                type = T.int;
+                default = k;
+              };
+            }) { default = { }; };
+            argJ = withArgs { j = 2; } {
+              options.b = mk {
+                type = T.int;
+                default = 4;
+              };
+            } { };
+          in
+          {
+            o12 = read ev mk T [ (sub T.submodule) below ] (c: c.thing);
+            o21 = read ev mk T [ below (sub T.submodule) ] (c: c.thing);
+            np = read ev mk T [ (sub np.types.submodule) below ] (c: c.thing);
+            tree = read ev mk T [
+              {
+                options.thing = mk {
+                  type = tree [
+                    {
+                      options.a = mk {
+                        type = T.int;
+                        default = 1;
+                      };
+                    }
+                  ];
+                  default = { };
+                };
+              }
+              below
+            ] (c: c.thing);
+            defined = read ev mk T [
+              (sub T.submodule)
+              below
+              {
+                thing = {
+                  a = 7;
+                  sub = 5;
+                };
+              }
+            ] (c: c.thing);
+            deep = read ev mk T [
+              {
+                options.thing = mk {
+                  type = T.submodule {
+                    options.inner = mk {
+                      type = T.submodule {
+                        options.a = mk {
+                          type = T.int;
+                          default = 1;
+                        };
+                      };
+                      default = { };
+                    };
+                  };
+                  default = { };
+                };
+              }
+              {
+                options.thing.inner.b = mk {
+                  type = T.int;
+                  default = 3;
+                };
+              }
+            ] (c: c.thing);
+            settings = read ev mk T [
+              {
+                options.nix.settings = mk {
+                  type = T.submodule {
+                    freeformType = T.attrsOf T.str;
+                    options.max-jobs = mk {
+                      type = T.int;
+                      default = 1;
+                    };
+                  };
+                  default = { };
+                };
+              }
+              {
+                options.nix.settings.sandbox = mk {
+                  type = T.bool;
+                  default = true;
+                };
+              }
+              {
+                nix.settings = {
+                  max-jobs = 4;
+                  extra-x = "y";
+                };
+              }
+            ] (c: c.nix.settings);
+            specialArgs = read ev mk T [ argK below ] (c: c.thing);
+            specialArgsRev = read ev mk T [ below argK ] (c: c.thing);
+            specialArgsTwo = read ev mk T [ argK below argJ ] (c: c.thing);
+            badDef = read ev mk T [
+              (sub T.submodule)
+              below
+              { thing.sub = "s"; }
+            ] (c: c.thing);
+            intLeaf = read ev mk T [
+              {
+                options.thing = mk {
+                  type = T.int;
+                  default = 1;
+                };
+              }
+              below
+            ] (c: c.thing);
+            attrsOfSub = read ev mk T [
+              {
+                options.thing = mk {
+                  type = T.attrsOf (
+                    T.submodule {
+                      options.a = mk {
+                        type = T.int;
+                        default = 1;
+                      };
+                    }
+                  );
+                  default = { };
+                };
+              }
+              below
+            ] (c: c.thing);
+          };
+        expected = {
+          o12 = {
+            a = 1;
+            sub = 2;
+          };
+          o21 = {
+            a = 1;
+            sub = 2;
+          };
+          np = {
+            a = 1;
+            sub = 2;
+          };
+          tree = {
+            a = 1;
+            sub = 2;
+          };
+          defined = {
+            a = 7;
+            sub = 5;
+          };
+          deep = {
+            inner = {
+              a = 1;
+              b = 3;
+            };
+          };
+          settings = {
+            extra-x = "y";
+            max-jobs = 4;
+            sandbox = true;
+          };
+          specialArgs = {
+            a = 1;
+            sub = 2;
+          };
+          specialArgsRev = {
+            a = 1;
+            sub = 2;
+          };
+          specialArgsTwo = {
+            a = 1;
+            b = 4;
+            sub = 2;
+          };
+          badDef = "REFUSED";
+          intLeaf = "REFUSED";
+          attrsOfSub = "REFUSED";
+        };
+      in
+      {
+        expr = {
+          gm = table evalRequest mkOption t (ms: (evalModuleTree { } ms).type);
+          ref = table np.evalModules np.mkOption np.types (
+            ms:
+            np.types.submoduleWith {
+              modules = ms;
+              shorthandOnlyDefinesConfig = false;
+            }
+          );
+        };
+        expected = {
+          gm = expected;
+          ref = expected;
+        };
+      };
+
     # zvidt: ONE option declared by a nixpkgs container and a gen container has ONE declared-type spine
     # whichever declaration comes first, under either engine: nixpkgs' own. `sig` asks `? typeMergeRel`,
     # which every gen record states (a `? carries` test never reads a gen leaf: den-hoag-x4j3w). The partner's relation
