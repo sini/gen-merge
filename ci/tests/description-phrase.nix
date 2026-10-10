@@ -431,6 +431,8 @@ let
               type = T.int;
               default = 0;
             };
+            # an option stating no type renders its fixup type, `unspecified value`
+            options.u = T.mkOpt { };
           }
         ]
         ++ (if free then [ { freeformType = T.attrsOf T.int; } ] else [ ]);

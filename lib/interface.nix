@@ -5105,6 +5105,10 @@ let
       flat (noun "raw value")
     else if name == "anything" then
       flat (noun "anything")
+    else if name == "unspecified" then
+      flat (noun "unspecified value")
+    else if name == "optionType" then
+      flat (noun "optionType")
     else if name == "deferredModule" then
       flat (noun "module")
     else if name == "attrs" then

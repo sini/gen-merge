@@ -1210,6 +1210,91 @@ in
         };
       };
 
+    # ── THE ENGINE'S OWN `_module` RECORDS AND THE TWO TYPES THEY STATE (den-hoag-a67l3) ──────────
+    # `ci/tests/module-option-records.nix` reads what is served; here, what is refused by name. A pair
+    # of types that does not merge is refused with the type-merge text (nixpkgs says `already
+    # declared`), naming its files in authored order; `types.optionType.merge` is handed its
+    # definitions last module first, as every type's merge is, so a direct call names them reversed.
+    flake.testsError.module-option-records =
+      let
+        T = gm.types;
+        pair = [
+          {
+            file = "A";
+            value = T.attrsOf T.int;
+          }
+          {
+            file = "B";
+            value = T.attrsOf T.str;
+          }
+        ];
+        atOption =
+          defs:
+          (gm.evalModuleTree { } (
+            [ { options.t = gm.mkOption { type = T.optionType; }; } ]
+            ++ map (d: {
+              _file = d.file;
+              config.t = d.value;
+            }) defs
+          )).config.t;
+        valueMeta = loc: {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `${loc}' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations$";
+        };
+      in
+      {
+        test-optionType-merge-of-an-unmergeable-pair-refused-by-name = {
+          expr = builtins.deepSeq (T.optionType.merge [ "t" ] pair) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `t' is defined with types that do not merge \\(`attrsOf' over `string' and `attrsOf' over `int', whose element types do not merge: `string' and `int'\\); defined in B, A$";
+          };
+        };
+        test-optionType-option-of-an-unmergeable-pair-refused-by-name = {
+          expr = builtins.deepSeq (atOption pair) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `t' is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge: `int' and `string'\\); defined in A, B$";
+          };
+        };
+        test-optionType-option-of-a-non-type-refused-by-name = {
+          expr = builtins.deepSeq (atOption [
+            {
+              file = "A";
+              value = 5;
+            }
+          ]) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `t' has definitions `optionType' cannot consume \\(A\\)$";
+          };
+        };
+        test-published-record-valueMeta = {
+          expr = (gm.evalModuleTree { } [ ]).options._module.check.valueMeta;
+          expectedError = valueMeta "_module.check";
+        };
+        test-module-argument-record-valueMeta = {
+          expr =
+            (gm.evalModuleTree { } [
+              (
+                { options, ... }:
+                {
+                  options.o = gm.mkOption { default = null; };
+                  config.o = options._module.args.valueMeta;
+                }
+              )
+            ]).config.o;
+          expectedError = valueMeta "_module.args";
+        };
+        test-declared-record-value = {
+          expr = (gm.declaredOptions { } [ ])._module.check.value;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a gen option record does not answer `value'";
+          };
+        };
+      };
+
     # ── `valueMeta`, REFUSED BY NAME AT EVERY POSITION gen-merge serves the record (den-hoag-ixcxl) ──
     # The one evaluated key the record does not serve: nixpkgs' v2-merge metadata carries nixpkgs'
     # own type objects and evaluations. The getSubOptions position is `tree-type`'s cell.
@@ -3247,9 +3332,12 @@ in
         # each stamped with its `loc`.
         test-protocol-read-answers-the-field = {
           expr = builtins.mapAttrs (_: o: o.loc) (
-            (gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.str; }; } ]).type.getSubOptions [
-              "x"
-            ]
+            builtins.removeAttrs (
+              (gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.str; }; } ]).type.getSubOptions
+                [
+                  "x"
+                ]
+            ) [ "_module" ]
           );
           expected = {
             a = [
@@ -4917,7 +5005,7 @@ in
       test-function-result-not-a-module-refused-on-the-options-read = {
         expr = withControl (readerOptionNames (_: {
           a = 5;
-        })) [ "a" "foo" ] (readerOptionNames (_: readerSelfFn));
+        })) [ "_module" "a" "foo" ] (readerOptionNames (_: readerSelfFn));
         expectedError = {
           type = "ThrownError";
           msg = fnResultMsg "<unknown-file>" "lambda";
@@ -4926,7 +5014,7 @@ in
       test-function-result-not-a-module-refused-by-declared-options = {
         expr = withControl (readerDeclaredNames (_: {
           a = 5;
-        })) [ "a" "foo" ] (readerDeclaredNames (_: readerSelfFn));
+        })) [ "_module" "a" "foo" ] (readerDeclaredNames (_: readerSelfFn));
         expectedError = {
           type = "ThrownError";
           msg = fnResultMsg "<unknown-file>" "lambda";
@@ -5050,6 +5138,7 @@ in
       # where the reference refuses the module.
       test-declaration-only-read-of-a-typo-key-refused-by-name = {
         expr = withControl (builtins.attrNames (gm.declaredOptions { } [ readerRight ])) [
+          "_module"
           "b"
           "c"
         ] (builtins.attrNames (gm.declaredOptions { } [ readerTypo ]));
@@ -5072,6 +5161,7 @@ in
       };
       test-substructure-declares-of-a-typo-key-refused-by-name = {
         expr = withControl (readerDeclares readerRight) [
+          "_module"
           "b"
           "c"
         ] (readerDeclares readerTypo);
@@ -5083,7 +5173,7 @@ in
       # Where the reference REMOVES `x` (`[ "_module" ]`), the declaration read answered `[ "x" ]`:
       # a changed meaning on a module set the reference accepts. It is refused by name instead.
       test-declaration-only-read-of-disabled-modules-refused-by-name = {
-        expr = withControl (builtins.attrNames (gm.declaredOptions { } [ readerKeyed ])) [ "x" ] (
+        expr = withControl (builtins.attrNames (gm.declaredOptions { } [ readerKeyed ])) [ "_module" "x" ] (
           builtins.attrNames (
             gm.declaredOptions { } [
               readerKeyed

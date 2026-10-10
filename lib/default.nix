@@ -307,6 +307,7 @@ let
           ;
         scope = checkedScope;
         types = checkedTypes;
+        leaves = completedLeaves;
       }
     )
   );
@@ -728,12 +729,12 @@ in
     mkIf
     ;
 
-  # ── THE nixpkgs-PARITY SURFACE — COMPAT VOCABULARY, AND AN INTERIM ───────────────────────────
+  # ── THE nixpkgs-PARITY SURFACE — COMPAT VOCABULARY ───────────────────────────────────────────
   #
-  # Two things land here together, and the marker below governs both.
+  # Two things land here together.
   #
-  # ★★★ MARKER — INTERIM (ADR-0031 F1's marker discipline). `mergeDefaultOption` is a NEW EXPORTED
-  # SURFACE BESIDE `mergeLeaf`, NOT a replacement for it. `mergeLeaf` (lib/modules.nix) REMAINS this
+  # `mergeDefaultOption` is an exported surface BESIDE `mergeLeaf`, NOT a replacement for it.
+  # `mergeLeaf` (lib/modules.nix) REMAINS this
   # engine's no-`.merge` default and keeps its agree-or-refuse posture, so no typed option's merge
   # semantics move on that axis. The caller it exists for is gen-aspects' freeform primitive arm.
   # Inside this library two routes reach it. One is `mkOptionType`'s default for a descriptor stating
@@ -743,14 +744,17 @@ in
   # `verify` is a gen leaf and keeps `mergeLeaf`. The other is an option stating no `type` and
   # defined more than once (`mergeUntyped`): nixpkgs' `types.unspecified`, which takes that same
   # default where every definition is a list, a string, a bool or an attrset, and keeps `mergeLeaf`
-  # at every other shape (ADR-0039's serve half; its refuse half is not ruled). The untyped option's
-  # value moves there: `"s"`,`"s"` reads `"ss"` where it read `"s"`.
+  # at every other shape (ADR-0039's serve half; its refuse half is not ruled). That option's record
+  # states `types.unspecified` (lib/types.nix), whose fold is the same `mergeUntyped`, so an explicit
+  # `type = types.unspecified` and a declaration stating none fold alike, as nixpkgs'
+  # `fixupOptionType` makes them. The untyped option's value moves there: `"s"`,`"s"` reads `"ss"`
+  # where it read `"s"`.
   # **What it explicitly does NOT claim: whole-pipeline nixpkgs parity.** It is ONE law at ONE arm.
   # Replacing `mergeLeaf` with it would not have bought parity either — nixpkgs' own
   # `attrsOf`/`listOf` merge each key THROUGH the element type, where this law's attrset arm is a
   # shallow `//` chain that never consults it, so two definitions of `attrsOf (listOf str)` sharing
-  # a key CONCATENATE under nixpkgs and DROP THE FIRST under this law. The interim is therefore not
-  # a compromise against a better-but-larger option. Real parity at the leaf is a per-type merge
+  # a key CONCATENATE under nixpkgs and DROP THE FIRST under this law. Keeping `mergeLeaf` is
+  # therefore not a compromise against a better-but-larger option. Real parity at the leaf is a per-type merge
   # question, and it is the merge design review's subject rather than this export's.
   #
   # ★★ AND THE ORDER VOCABULARY IS COMPAT SURFACE, NOT gen's AUTHORITY MODEL. gen expresses

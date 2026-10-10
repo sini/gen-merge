@@ -40,6 +40,10 @@
   # every fold's witness by (den-hoag-ydro3). `lib/default.nix` has refused a `types` without it,
   # and one whose protocol disagrees with this engine's inline test, before this is imported.
   types,
+  # The published, protocol-complete leaves (`lib/default.nix` `completedLeaves`), for the type the
+  # engine's own `_module.check` record states: nixpkgs' docs walker reads `getSubOptions` off it,
+  # which the raw gen-types leaf lacks. A KNOT, tied as `strategies` is.
+  leaves,
 }:
 let
   inherit (prelude)
@@ -322,6 +326,8 @@ let
         in
         v
         // {
+          # nixpkgs' `fixupOptionType`: a declaration stating no type is `unspecified` (den-hoag-pm14k)
+          type = v.type or strategies.unspecified;
           loc = lk;
           declarations = map (s: s.file) sites;
           __toString = _: showOption lk;
@@ -1321,22 +1327,173 @@ let
     };
     specialArgs.description = true;
   };
+  # ── THE ENGINE'S OWN `_module` RECORDS, SERVED (den-hoag-a67l3) ─────────────────────────────────
+  # nixpkgs' `internalModule` declares the four keys in every evaluation, so its `options`, a
+  # module's `options` argument and `getSubOptions` hold their records. They stay out of
+  # `allOptions` (the warm identity walk, the docs and lint read that tree) and are added where an
+  # evaluated record is served, over the values the module-visible `config._module` holds
+  # (`moduleConfig`), so `options._module.<k>.value` and `config._module.<k>` are one value. The file
+  # is the one that states them here, the name nixpkgs gives its own.
+  moduleOwn = rec {
+    file = "lib/modules.nix";
+    options = prefix: {
+      args = {
+        type = strategies.lazyAttrsOf strategies.raw;
+        description = "The arguments each module is applied to beside `config', `options', `prefix' and the caller's `specialArgs': the modules' own `_module.args', merged, with a positioned evaluation's `name'.";
+      }
+      // (if prefix == [ ] then { } else { internal = true; });
+      check = {
+        type = leaves.bool;
+        internal = true;
+        default = true;
+        description = "Whether to check whether all option definitions have matching declarations.";
+      };
+      freeformType = {
+        type = strategies.nullOr strategies.optionType;
+        internal = true;
+        default = null;
+        description = "If set, the type every definition without an associated option is merged with; its result is combined with the declared options' values to produce `config'.";
+      };
+      # nixpkgs' states no type: its record's `unspecified` is the fixup every untyped declaration gets
+      specialArgs = {
+        readOnly = true;
+        internal = true;
+        description = "The caller's `specialArgs', which every module is applied to; a module cannot define it.";
+      };
+    };
+    # The four records over `own`, the evaluation's `optionDefs.moduleOwn`, added to a served tree. A
+    # module re-declaring a key states fields beside the engine's own, as nixpkgs merges the two
+    # (`moduleOwnRedeclared` has judged the pair), and its files follow the engine's in `declarations`,
+    # as nixpkgs' reversed module list puts its own module first. A `submodule`-typed `_module` leaf
+    # is one option, and nixpkgs serves that record alone.
+    serve =
+      prefix: own: served:
+      let
+        user = served._module or { };
+        record =
+          k: d:
+          let
+            lk = prefix ++ [
+              "_module"
+              k
+            ];
+            u = user.${k} or { };
+            o = own.${k};
+          in
+          {
+            _type = "option";
+          }
+          // d
+          // u
+          // {
+            # the engine's stated type (a re-declaration's has been judged to merge with it), else the
+            # re-declaration's, else nixpkgs' `fixupOptionType` default; a served `u` states the
+            # fixup for an untyped re-declaration, which must not displace the engine's own
+            type = d.type or u.type or strategies.unspecified;
+            loc = lk;
+            __toString = _: showOption lk;
+            declarations = [ file ] ++ (u.declarations or [ ]);
+            declarationPositions = [
+              (builtins.unsafeGetAttrPos k (options prefix))
+            ]
+            ++ (u.declarationPositions or [ ]);
+            definitionsWithLocations = o.defs;
+            definitions = map (x: x.value) o.defs;
+            files = map (x: x.file) o.defs;
+            isDefined = o.defs != [ ];
+            highestPrio = o.prio;
+            inherit (o) value;
+            options = [ ];
+            valueMeta = throw "gen-merge: the option `${showOption lk}' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations";
+          };
+      in
+      if isOptLeaf user then
+        served
+      else
+        served
+        // {
+          _module = user // mapAttrs (k: _: record k (options prefix).${k}) moduleOwnDecls;
+        };
+    # The same four declarations on the stratum-1 door's tree (`declaredOptions`), whose records are
+    # declarations whose evaluated keys refuse by name (`unansweredOptionKeys`), so the two
+    # publications agree on the declared key set.
+    stamp =
+      prefix: stamped:
+      let
+        user = stamped._module or { };
+      in
+      if isOptLeaf user then
+        stamped
+      else
+        stamped
+        // {
+          _module =
+            user
+            // mapAttrs (
+              k: _:
+              let
+                lk = prefix ++ [
+                  "_module"
+                  k
+                ];
+                u = user.${k} or { };
+              in
+              {
+                _type = "option";
+              }
+              // (options prefix).${k}
+              // u
+              // unansweredOptionKeys
+              // {
+                loc = lk;
+                __toString = _: showOption lk;
+                declarations = [ file ] ++ (u.declarations or [ ]);
+              }
+            ) moduleOwnDecls;
+        };
+    # A key's surviving definitions as nixpkgs' option reads them: discharged, override-filtered,
+    # each `{ file; value; }`, with the priority that survived (`null` for none, nixpkgs' 9999).
+    winners =
+      defs:
+      let
+        w = filterOverrides (
+          concatMap (d: map (x: x // { inherit (d) file; }) (dischargeProperties d.value)) defs
+        );
+      in
+      {
+        defs = map (x: { inherit (x) file value; }) w;
+        prio = if w == [ ] then 9999 else (head w).priority;
+      };
+  };
   # The declarations of an engine-owned `_module.<k>` an evaluation's modules state, in authored order,
   # each `{ file; decl; }`. A `_module` group declares them as `options._module.<k>` leaves
   # (`sitesAt`). A `submodule`-typed `_module` leaf declares them inside its submodule, which nixpkgs
   # merges with its own `_module` options, so they are read off the leaf type's sub-options, one
   # merged record named by the files that declared the leaf (`interface.moduleLeafSubOptions`). A
   # record nixpkgs has already judged against its own declarations carries `judged`.
+  # A gen `submodule` leaf's sub-options are read off its DECLARATIONS (the stratum-1 door over its
+  # own modules and arguments), never its served records: a served record states `unspecified` for a
+  # declaration that states no type (`serveOptions`, nixpkgs' `fixupOptionType`), which an explicit
+  # `type = unspecified` cannot be told from, and the judge asks what was declared. A nixpkgs leaf is
+  # judged by nixpkgs (`interface.moduleLeafSubOptions`).
+  moduleLeafSubOptions =
+    t: loc:
+    if t ? carries && t ? nests then
+      {
+        judged = false;
+        options = declaredOptions {
+          prefix = loc;
+          inherit (t.nests) specialArgs;
+        } (t.nests.modules ++ [ namePlaceholder ]);
+      }
+    else
+      interface.moduleLeafSubOptions moduleOwnDecls t loc;
   moduleOwnSites =
     sitesAt: prefix: allOptions: leafSub: k:
     let
       m = allOptions._module;
       leafFiles = map (s: s.file) (sitesAt (prefix ++ [ "_module" ]));
-      sub =
-        if leafSub != null then
-          leafSub
-        else
-          interface.moduleLeafSubOptions moduleOwnDecls m.type (prefix ++ [ "_module" ]);
+      sub = if leafSub != null then leafSub else moduleLeafSubOptions m.type (prefix ++ [ "_module" ]);
     in
     if !(isOptLeaf m) then
       if m ? ${k} && !(isOptLeaf m.${k}) then
@@ -1660,17 +1817,36 @@ let
       winners = filterOverrides (
         concatMap (c: map (d: d // { inherit (c) _file; }) (dischargeProperties c.type)) candidates
       );
-      files = concatStringsSep ", " (map (w: w._file) winners);
-      decided = mergeDeclaredTypes (map (w: w.value) winners);
     in
     if winners == [ ] then
       null
-    else if length winners == 1 then
-      (head winners).value
-    else if decided ? merged then
-      decided.merged
     else
-      throw "gen-merge: the freeform type is defined with types that do not merge (${declaredRefusalText decided}); defined in ${files}";
+      mergeTypeDefs "the freeform type" (
+        map (w: {
+          file = w._file;
+          inherit (w) value;
+        }) winners
+      );
+  # nixpkgs' `types.optionType.merge`, read over an AUTHORED list (first module first): one
+  # definition is its own type, several merge through the declaration type-merge
+  # (`mergeDeclaredTypes`, the last authored deciding), and a pair that does not merge is refused by
+  # name, its files in authored order. The freeform winners arrive authored. `types.optionType`'s
+  # fold is handed its definitions last module first, as every type's merge is, and reverses them
+  # before calling this (lib/types.nix), so both readers fold one list one way.
+  mergeTypeDefs =
+    what: defs:
+    if length defs == 1 then
+      (head defs).value
+    else
+      let
+        decided = mergeDeclaredTypes (map (d: d.value) defs);
+      in
+      if decided ? merged then
+        decided.merged
+      else
+        throw "gen-merge: ${what} is defined with types that do not merge (${declaredRefusalText decided}); defined in ${
+          concatStringsSep ", " (map (d: d.file) defs)
+        }";
 
   # ── source-class classifier (design spec §0.3 / §3) ────────────────────────
   # Tag a module with the CLASS of its PRE-application source. The class is decided on `m0` (before
@@ -2923,11 +3099,12 @@ let
         throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}";
 
   # Each module's `_module.args`, one set of `{ _file; value; }` definitions per module stating any.
-  moduleArgSetsOf =
+  # Each module's `_module.args` definition, `{ _file; args; }`, as written (`args` undischarged).
+  # Pay per use: `filter` calls its predicate without allocating a thunk, so a module
+  # stating no `_module` costs nothing here, and one stating no `_module.args` costs
+  # its `m` alone (an `optional` call would thunk both of its arguments).
+  moduleArgDefsOf =
     pushed:
-    # Pay per use: `filter` calls its predicate without allocating a thunk, so a module
-    # stating no `_module` costs nothing here, and one stating no `_module.args` costs
-    # its `m` alone (an `optional` call would thunk both of its arguments).
     concatMap (
       p:
       let
@@ -2935,14 +3112,23 @@ let
       in
       if m ? args then
         [
-          (mapAttrs (_: value: {
+          {
             inherit (p) _file;
-            inherit value;
-          }) (pushDownProperties m.args))
+            inherit (m) args;
+          }
         ]
       else
         [ ]
     ) (filter (p: p.attrs ? _module) pushed);
+  moduleArgSetsOf =
+    pushed:
+    map (
+      d:
+      mapAttrs (_: value: {
+        inherit (d) _file;
+        inherit value;
+      }) (pushDownProperties d.args)
+    ) (moduleArgDefsOf pushed);
 
   # A positioned evaluation's `name`, as nixpkgs' `submoduleWith` resolves it: the position's
   # `last loc` is one priority-100 definition beside whatever the modules state. A module stating
@@ -3851,13 +4037,14 @@ let
   # where no PER-KEY type was authored. It combines by the definitions' RUNTIME SHAPE rather than by
   # requiring them to agree.
   #
-  # ★★★ IT SITS BESIDE `mergeLeaf`, NOT IN PLACE OF IT, AND IT IS AN INTERIM SURFACE. `mergeLeaf`
+  # ★★★ IT SITS BESIDE `mergeLeaf`, NOT IN PLACE OF IT. `mergeLeaf`
   # above remains this engine's no-`.merge` default and keeps its agree-or-refuse posture, and no
   # typed option's merge semantics move. Two routes inside this library reach it, both through
   # `mergeDescriptorDefault` below: `mkOptionType`'s default for a descriptor stating no fold, which
   # is nixpkgs' constructor default rather than a leaf default, and an untyped option defined more
-  # than once at the four combining shapes (`mergeUntyped`, below).
-  # The full statement of what the marker means and does not claim is at the public export
+  # than once at the four combining shapes (`mergeUntyped`, below), which is also
+  # `types.unspecified`'s fold.
+  # The full statement of what it means and does not claim is at the public export
   # (lib/default.nix), which is where a caller meets it.
   #
   # THE ARMS, in nixpkgs' own order (`lib/options.nix` `mergeDefaultOption`), because for a
@@ -4396,7 +4583,7 @@ let
         let
           s = declarationStratum (o // { inherit modules; });
         in
-        stampOptions s.sitesAt (o.prefix or [ ]) s.options
+        moduleOwn.stamp (o.prefix or [ ]) (stampOptions s.sitesAt (o.prefix or [ ]) s.options)
       );
 
   # ── THE ONE DRIVER — this library declares no fixpoint of its own ─────────────────────────────
@@ -5273,9 +5460,10 @@ let
               # module declares `options._module`, `moduleArgs` holds it, after any `apply`.
               if knot.positioned then
                 {
-                  options =
+                  options = moduleOwn.serve prefix result.optionDefs.moduleOwn (
                     serveOptions sitesAt [ ] prefix result.provenance result.optionDefs.defs result.optionDefs.values
-                      result.options;
+                      result.options
+                  );
                   # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
                   # parity); the returned `result.config` stays `_module`-free.
                   config = result.moduleConfig;
@@ -5286,9 +5474,10 @@ let
                 }
               else
                 {
-                  options =
+                  options = moduleOwn.serve prefix result.optionDefs.moduleOwn (
                     serveOptions sitesAt [ ] prefix result.provenance result.optionDefs.defs result.optionDefs.values
-                      result.options;
+                      result.options
+                  );
                   config = result.moduleConfig;
                   inherit prefix;
                 }
@@ -5668,9 +5857,7 @@ let
                     if all (s: (s.decl.type.name or null) == "submodule") (sitesAt (prefix ++ [ "_module" ])) then
                       let
                         # The leaf's sub-options are a nested evaluation: read once for the four keys.
-                        leafSub = interface.moduleLeafSubOptions moduleOwnDecls allOptions._module.type (
-                          prefix ++ [ "_module" ]
-                        );
+                        leafSub = moduleLeafSubOptions allOptions._module.type (prefix ++ [ "_module" ]);
                       in
                       foldl' (
                         acc: k:
@@ -6119,6 +6306,9 @@ let
                 else
                   null;
               inherit strict uncheckedConfig;
+              # the declaration tree the next warm evaluation walks this one's identities with: the
+              # unserved one, as that evaluation walks its own (`nextIdentities`)
+              options = allOptions;
               reused = if warmActive then map showOption reusableLeaves else [ ];
               remerged = if warmActive then remerged else { };
               inherit (decision) modules;
@@ -6226,7 +6416,11 @@ let
                       }
                   )
                 else if isAttrs d && isAttrs v then
-                  foldl' (acc: k: acc // go (loc ++ [ k ]) d.${k} (v.${k} or null)) { } (attrNames d)
+                  # an evaluation's config holds no `_module` (`uncheckedConfig` drops it), so the engine's group is not read
+                  foldl' (
+                    acc: k:
+                    if k == "_module" && !(v ? _module) then acc else acc // go (loc ++ [ k ]) d.${k} (v.${k} or null)
+                  ) { } (attrNames d)
                 else
                   { };
 
@@ -6373,7 +6567,7 @@ let
                   # Using `allOptions` for both would be wrong and silently so: a decl-side edit that
                   # ADDS an option is the discrimination the warm path exists to make, and one that
                   # REMOVES an option leaves the next tree under-describing the prior config.
-                  priorIdentities = identityMapOf warmFrom.options warmFrom.warmDecision.uncheckedConfig;
+                  priorIdentities = identityMapOf warmFrom.warmDecision.options warmFrom.warmDecision.uncheckedConfig;
                   nextIdentities = identityMapOf allOptions config;
                 };
 
@@ -6394,6 +6588,120 @@ let
           optionDefs = {
             defs = realized.typeDefs;
             values = realized.value;
+            # The evaluated half of the engine's own `_module` records (`moduleOwn.serve`), read only
+            # where a record is served: each key's value off the module-visible view, and the
+            # definitions nixpkgs' option for it reads. `check` is an option of `realized` wherever a
+            # module or the door touches `_module`, and its default alone otherwise.
+            moduleOwn =
+              let
+                # GATE PROBE: the four values off their own bindings, never through `moduleConfig`
+                m = {
+                  args =
+                    if allOptions ? _module || !knot.positioned then
+                      moduleArgs
+                    else
+                      moduleArgs // { name = positionNameOf prefix moduleArgs pushed; };
+                  check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
+                  freeformType = freeform;
+                  specialArgs =
+                    if allOptions ? _module then
+                      moduleOwnSpecialArgs (
+                        prefix
+                        ++ [
+                          "_module"
+                          "specialArgs"
+                        ]
+                      ) (moduleOwnSites sitesAt prefix allOptions null "specialArgs") specialArgs
+                    else
+                      specialArgs;
+                };
+                realizedCheck = (realized.typeDefs._module or { }).check or null;
+                # in nixpkgs' definition order, the module list reversed
+                ff = moduleOwn.winners (
+                  reverse (
+                    map (c: {
+                      file = c._file;
+                      value = c.type;
+                    }) (filter (c: c.type != null) freeformDeclared)
+                  )
+                );
+              in
+              {
+                args = {
+                  value = m.args;
+                }
+                // moduleOwn.winners (
+                  (
+                    if knot.positioned then
+                      [
+                        {
+                          file = moduleOwn.file;
+                          value.name = (positionArgsAt prefix).name;
+                        }
+                      ]
+                    else
+                      [ ]
+                  )
+                  ++ reverse (
+                    map (d: {
+                      file = d._file;
+                      value = d.args;
+                    }) (moduleArgDefsOf pushed)
+                  )
+                );
+                check =
+                  if realizedCheck == null then
+                    {
+                      value = m.check;
+                      defs = [
+                        {
+                          file = moduleOwn.file;
+                          value = true;
+                        }
+                      ];
+                      prio = 1500;
+                    }
+                  else
+                    {
+                      value = m.check;
+                      defs = map (d: {
+                        inherit (d) value;
+                        file = if d.file == "<default>" then moduleOwn.file else d.file;
+                      }) realizedCheck;
+                      prio =
+                        let
+                          p = provenance._module.check.priority;
+                        in
+                        if p == null then 9999 else p;
+                    };
+                freeformType = {
+                  value = m.freeformType;
+                }
+                // (
+                  if ff.defs == [ ] then
+                    {
+                      defs = [
+                        {
+                          file = moduleOwn.file;
+                          value = null;
+                        }
+                      ];
+                      prio = 1500;
+                    }
+                  else
+                    ff
+                );
+                specialArgs = {
+                  value = m.specialArgs;
+                  defs = [
+                    {
+                      file = moduleOwn.file;
+                      value = specialArgs;
+                    }
+                  ];
+                  prio = 100;
+                };
+              };
           };
           options = allOptions;
           # THE NESTED POSITIONS OF THIS TREE (den-hoag-n6dh7 item 2): one group per declared
@@ -6453,10 +6761,12 @@ let
           let
             entries = prelude.imap0 declEntry result._flat;
           in
-          serveOptions (declaringSitesAt (length prefix) entries) [ ] prefix result.provenance
-            result.optionDefs.defs
-            (builtins.seq result.identityHeld result.optionDefs.values)
-            result.options;
+          moduleOwn.serve prefix result.optionDefs.moduleOwn (
+            serveOptions (declaringSitesAt (length prefix) entries) [ ] prefix result.provenance
+              result.optionDefs.defs
+              (builtins.seq result.identityHeld result.optionDefs.values)
+              result.options
+          );
         inherit (result)
           provenance
           # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
@@ -6721,10 +7031,14 @@ in
     unionAgreeing
     isDefinedValue
     isDefinedBy
-    # The shape-directed default-merge law (nixpkgs `lib.mergeDefaultOption` parity) — an INTERIM
-    # surface BESIDE `mergeLeaf`, which stays this engine's own no-`.merge` default. See the public
-    # export in lib/default.nix for the marker.
+    # The shape-directed default-merge law (nixpkgs `lib.mergeDefaultOption` parity) — a surface
+    # BESIDE `mergeLeaf`, which stays this engine's own no-`.merge` default. See the public export
+    # in lib/default.nix.
     mergeDefaultOption
+    # `types.unspecified`'s fold and `types.optionType`'s (lib/types.nix), the engine's own untyped
+    # fold and freeform-type merge, so a served record's type folds as the engine does.
+    mergeUntyped
+    mergeTypeDefs
     showOption
     setDefaultModuleLocation
     defsAsModules

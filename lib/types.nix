@@ -59,6 +59,8 @@ let
     isModuleValue
     refusingOutside
     interface
+    mergeUntyped
+    mergeTypeDefs
     ;
 
   # mkOption — a plain descriptor; evalModuleTree reads .type/.default/.apply/.readOnly. Identity
@@ -1970,6 +1972,32 @@ let
     name = "anything";
     mergeDefs = mergeAnythingDefs;
   };
+
+  # unspecified — the type a declaration stating none has (nixpkgs' `fixupOptionType`). It admits
+  # anything and folds as the engine folds an untyped option (`mergeUntyped`), one definition being
+  # its own value.
+  unspecified = defineType {
+    name = "unspecified";
+    mergeDefs = loc: defs: if length defs == 1 then (head defs).value else mergeUntyped loc defs;
+  };
+
+  # optionType — a type whose values are types, gen's own records or foreign ones (`_module.freeformType`
+  # is `nullOr optionType`). It folds through the declaration type-merge (`mergeTypeDefs`).
+  optionType =
+    let
+      admits = v: isAttrs v && (interface.isOptionType v || v ? typeMergeRel);
+    in
+    defineType {
+      name = "optionType";
+      inherit admits;
+      mergeDefs = refusingOutside "optionType" admits (
+        loc: defs:
+        # a type's merge is handed its definitions last module first; the fold reads them authored
+        mergeTypeDefs "the option `${showOption loc}'" (
+          prelude.genList (i: elemAt defs (length defs - 1 - i)) (length defs)
+        )
+      );
+    };
 in
 {
   inherit
@@ -1996,6 +2024,8 @@ in
     oneOf
     raw
     anything
+    unspecified
+    optionType
     # The submodule constructor with its fold and its constructor stated, for lib/default.nix's
     # `partialSubmodule`. Not a type, so not in `types`.
     mkSubmodule

@@ -86,6 +86,8 @@
         strategies = genMergeVocab;
         # gen-types, for the check-witness protocol the core builds and reads every export by.
         types = genTypes;
+        # The published leaves, the knot `lib/default.nix` ties as `completedLeaves`.
+        leaves = genMerge.types;
       };
       # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
       # boundary is reached through the core rather than re-imported, so the suite reads the same

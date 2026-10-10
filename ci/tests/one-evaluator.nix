@@ -102,6 +102,10 @@ let
   # sides compared only to each other agree on the EMPTY set, which is exactly what a publication
   # that quietly stopped answering produces.
   ordinaryPaths = [
+    "_module.args"
+    "_module.check"
+    "_module.freeformType"
+    "_module.specialArgs"
     "label"
     "pigment.binder"
     "pigment.depth"

@@ -37,7 +37,7 @@ let
         inherit (r) config provenance undeclared;
         options = builtins.mapAttrs (_: o: {
           inherit (o) loc declarations;
-        }) r.options;
+        }) (builtins.removeAttrs r.options [ "_module" ]);
       };
       e = builtins.tryEval (builtins.deepSeq v v);
     in

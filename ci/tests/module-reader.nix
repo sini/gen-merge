@@ -57,6 +57,7 @@ in
         ]
       );
       expected = [
+        "_module"
         "b"
         "c"
       ];

@@ -67,7 +67,7 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
    built only when the graph is read, and checked node by node against the merge's list first.
 6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`. A
    descriptor stating `name` and no fold takes nixpkgs' constructor default (see
-   [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-interim-exported-beside-mergeleaf)).
+   [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-exported-beside-mergeleaf)).
 7. **`deferredModule`** — a lazy, import-usable module value, **never forced** by composition (handed
    opaque to the terminal). `functionTo` is intentionally omitted (consumers wrap guard functions as
    data).
@@ -150,7 +150,7 @@ Its bounds, each pinned there:
   declared inside a `partialSubmodule` folds fully, so its own options' priorities are spent: a later
   `mkDefault` beside it loses to its declared default, carried as data at the default priority.
 
-### `mergeDefaultOption` — the shape-directed law (INTERIM, exported beside `mergeLeaf`)
+### `mergeDefaultOption` — the shape-directed law (exported beside `mergeLeaf`)
 
 `genMerge.mergeDefaultOption loc defs` is the nixpkgs `lib.mergeDefaultOption` analogue: the law
 nixpkgs applies where no *per-key* type was authored. It combines by the definitions' **runtime
@@ -161,10 +161,11 @@ last-wins** · all bools ⇒ OR-folded · all strings ⇒ concatenated · all in
 value · anything else ⇒ a named refusal. **Only differing ints and type-heterogeneous definition lists
 refuse**; differing bools and strings combine.
 
-★ **It is an INTERIM surface and it does NOT replace `mergeLeaf`.** `mergeLeaf` remains the engine's
+★ **It does NOT replace `mergeLeaf`.** `mergeLeaf` remains the engine's
 no-`.merge` default with its agree-or-refuse posture. Two routes inside this library reach the law, both
 below: `mkOptionType`'s default, and an option that states no `type`, at four shapes. The second moves
-the value of an untyped option defined more than once; no typed option's merge semantics move. It claims one law at one arm, never
+the value of an untyped option defined more than once, and it is `types.unspecified`'s fold too; no
+typed option's merge semantics move. It claims one law at one arm, never
 whole-pipeline parity: nixpkgs' own `attrsOf`/`listOf` merge each key *through* the element type where
 this law's attrset arm never consults it, so two definitions of `attrsOf (listOf str)` sharing a key
 concatenate under nixpkgs and drop the first here.
@@ -216,6 +217,12 @@ nixpkgs' refusal of those shapes is the refuse half of nixpkgs parity, which is 
 keeps the leaf fold's agreement there. Functions and functors stay compared, never applied. A single
 definition is its own value under both folds and stays on the leaf fold. Cells:
 `ci/tests/parity-surface.nix` `test-untyped-*` and `ci/tests-error.nix` `untyped-default-merge`.
+
+**Such an option's record states `types.unspecified`**, as nixpkgs' `fixupOptionType` gives it, so
+`options.<o>.type.name` reads `unspecified` and nixpkgs' docs walker renders `unspecified value`.
+`types.unspecified` folds by this same fold (one definition is its own value), so an explicit
+`type = types.unspecified` and a declaration stating none are one type with one fold, as they are in
+nixpkgs (`ci/tests/module-option-records.nix`).
 
 **The parity claim is watched live, not stamped.** Every law cell in `ci/tests/parity-surface.nix` runs
 through `bothLaws`, whose `nixpkgs` arm calls `nixpkgsLib.mergeDefaultOption` at whatever rev
@@ -710,7 +717,18 @@ are internal fields — additive, threaded between chained evals, not part of th
 drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 
 - from gen-merge (merge-bearing): `submodule`, `listOf`, `attrsOf`, `lazyAttrsOf`, `deferredModule`,
-  `either`, `raw`, `anything`, plus `mkOption` / `mkOptionType` / `deriveType`.
+  `either`, `raw`, `anything`, `unspecified`, `optionType`, plus `mkOption` / `mkOptionType` /
+  `deriveType`. `unspecified` and `optionType` are published here only, not at the top level.
+
+**`unspecified`** admits anything and folds as an option stating no `type` folds (see
+[`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-exported-beside-mergeleaf)).
+**`optionType`**'s values are types, gen's own records or foreign ones. One definition is its own
+value; several merge through the declaration type-merge, the later module deciding against each
+earlier one, as nixpkgs' `types.optionType.merge` hands them to its own; a pair that does not merge is
+refused by name with the type-merge text (where nixpkgs says `already declared`), and a definition
+that is not a type is refused as outside the type. `_module.freeformType` is `nullOr optionType`, and
+its definitions fold through the same binding (`mergeTypeDefs`, lib/modules.nix).
+
 - from gen-types (verify-only leaves): `str`, `int`, `bool`, `enum`, `path`, `union`, `refined`, …
   (the merge-bearing gen-merge versions of `listOf`/`attrsOf` win in the union).
 
@@ -1796,9 +1814,21 @@ project gen's fold, which puts a declared default first among the definitions, a
 `valueMeta`, nixpkgs' v2-merge metadata, is refused by name, never absent; so a deep force of a
 published `.options` tree refuses, for every tree
 (`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which folds
-no value, refuses all nine by name. The tree declares no
-`_module` options, so its full doc list departs from nixpkgs' by the four `_module.*` entries nixpkgs
-marks internal below the root.
+no value, refuses all nine by name.
+
+**The engine's own `_module` records are served too.** nixpkgs' `internalModule` declares
+`_module.args`, `check`, `freeformType` and `specialArgs` in every evaluation, and gen-merge serves the
+four records at every position it serves one (`.options`, a module's `options` argument,
+`getSubOptions`), typed as nixpkgs types them: `lazyAttrsOf raw`, `bool`, `nullOr optionType` and, for
+`specialArgs`, which states no type, `unspecified`. A record's `value` is the value
+`config._module.<k>` holds, and its definitions list the last module first, as nixpkgs' do.
+`declaredOptions` carries the four declarations, whose evaluated keys refuse by name. They stay out of
+the tree the warm walk, lint and the docs projection read. So nixpkgs' docs walker lists the four
+entries as nixpkgs does, internal below the root, each with nixpkgs' type; their descriptions are
+gen's own. Two departures are stated: `args` lacks nixpkgs' `extendModules`/`moduleType` definition,
+so where no module defines `_module.args` its record reads `isDefined = false` where nixpkgs' reads
+`true`; and under `evalModuleTree { check = false; }`, a door nixpkgs lacks, the `check` record reads
+the door's definition (`ci/tests/module-option-records.nix`).
 
 **A union holds the tree as a member**, in gen's own eval and abroad. A gen union (`either`, `oneOf`,
 `nullOr`) asks its members `admits` before `check`, so `either tree str` is union membership, and
@@ -2351,14 +2381,17 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   stated, not converted into a named refusal: a `tryEval` there would turn the split into a
   quieter one (refused on two evaluators, merged on the third).
 
-- **An option stating no `type` departs from nixpkgs' `types.unspecified` in four stated places**
-  (`mergeUntyped`, lib/modules.nix; cells `ci/tests/parity-surface.nix` `test-untyped-*` and
-  `ci/tests-error.nix` `untyped-default-merge`):
+- **`types.unspecified`, the type an option stating no `type` carries, departs from nixpkgs' in four
+  stated places**, at the top level, at an element site (`attrsOf unspecified`) and mounted in
+  `lib.evalModules` alike (`mergeUntyped`, lib/modules.nix; cells `ci/tests/parity-surface.nix`
+  `test-untyped-*`, `ci/tests/module-option-records.nix` and `ci/tests-error.nix`
+  `untyped-default-merge`):
 
   - *Equal floats, nulls and paths, and `1` beside `1.0`, are served* where nixpkgs' law refuses
-    (`Cannot merge definitions`). This is the refuse half of nixpkgs parity, not ruled: gen accepts more, and
-    accepting more never breaks a nixpkgs-valid config. A check-only `mkOptionType` refuses the same
-    shapes, so the two folds differ there by design.
+    (`Cannot merge definitions`). This is the refuse half of nixpkgs parity, which no parity ruling
+    reaches; it rests on the ruling of 2026-10-06 that serving beyond nixpkgs is an option wherever it
+    never costs correctness, and serving an agreement costs none. A check-only `mkOptionType` refuses
+    the same shapes, so the two folds differ there by design.
   - *Function and functor definitions are compared, never applied.* nixpkgs returns a merged lambda
     that aborts uncatchably, or silently unwraps a `{ value; }` result, when applied. This is the
     function carve-out of the constructor default above; one function bound once and written twice

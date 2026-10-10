@@ -681,7 +681,10 @@ in
     # so a membership-only or all-of check would pass vacuously against the very regression this guards.
     test-getSubOptions-submodule = {
       expr = builtins.attrNames ((gmT.submodule strMod).getSubOptions [ ]);
-      expected = [ "y" ];
+      expected = [
+        "_module"
+        "y"
+      ];
     };
     # attrsOf/listOf descend to the element type under the nixpkgs placeholder segments, so an
     # `attrsOf (submodule …)` registry exposes its per-instance option surface.
@@ -691,8 +694,14 @@ in
         list = builtins.attrNames ((gmT.listOf (gmT.submodule strMod)).getSubOptions [ ]);
       };
       expected = {
-        attrs = [ "y" ];
-        list = [ "y" ];
+        attrs = [
+          "_module"
+          "y"
+        ];
+        list = [
+          "_module"
+          "y"
+        ];
       };
     };
     # The FAIL-FOR-ITS-OWN-REASON control: a container over a LEAF element still reports no sub-options,
@@ -752,7 +761,10 @@ in
         checkRejectsNonModule = false;
         declaresNothing = { };
         mergedImportsCount = 1;
-        submoduleOverSameModuleDeclares = [ "y" ];
+        submoduleOverSameModuleDeclares = [
+          "_module"
+          "y"
+        ];
       };
     };
 
@@ -772,9 +784,18 @@ in
         nested = builtins.attrNames ((gmT.nullOr (gmT.nullOr (gmT.submodule strMod))).getSubOptions [ ]);
       };
       expected = {
-        submodule = [ "y" ];
-        throughContainer = [ "y" ];
-        nested = [ "y" ];
+        submodule = [
+          "_module"
+          "y"
+        ];
+        throughContainer = [
+          "_module"
+          "y"
+        ];
+        nested = [
+          "_module"
+          "y"
+        ];
       };
     };
 
@@ -1453,11 +1474,18 @@ in
       expected = {
         name = "submodule";
         subOptions = [
+          "_module"
           "a"
           "b"
         ];
-        left = [ "a" ];
-        right = [ "b" ];
+        left = [
+          "_module"
+          "a"
+        ];
+        right = [
+          "_module"
+          "b"
+        ];
       };
     };
 
@@ -1812,7 +1840,10 @@ in
           emptyValue = true;
           nestedTypes = { };
           description = "submodule";
-          subOptions = [ "a" ];
+          subOptions = [
+            "_module"
+            "a"
+          ];
         };
         unanswered = [ ];
       };
@@ -1864,20 +1895,23 @@ in
               };
             }
           ];
-          declarationOnly = builtins.mapAttrs (
-            _: o:
-            builtins.removeAttrs o [
-              "value"
-              "isDefined"
-              "definitions"
-              "definitionsWithLocations"
-              "files"
-              "highestPrio"
-              "declarationPositions"
-              "options"
-              "valueMeta"
-            ]
-          );
+          # the engine's own `_module` group is a group of records, not a record
+          declarationOnly =
+            opts:
+            builtins.mapAttrs (
+              _: o:
+              builtins.removeAttrs o [
+                "value"
+                "isDefined"
+                "definitions"
+                "definitionsWithLocations"
+                "files"
+                "highestPrio"
+                "declarationPositions"
+                "options"
+                "valueMeta"
+              ]
+            ) (builtins.removeAttrs opts [ "_module" ]);
         in
         {
           deepForceOfDeclTree = resolves parentTree.options;
@@ -2622,9 +2656,10 @@ in
 
     # nixpkgs' docs (`optionAttrSetToDocList`) over an option of each type, bare and under nixpkgs'
     # containers, plain, freeform and declared in a file, read in `make-options-doc`'s own view
-    # (`visible && !internal`): byte-equal to nixpkgs' docs over its own type. The full list departs
-    # by the four `_module.*` entries nixpkgs marks internal below the root, which gen does not
-    # declare. `cells` keeps the universe from shrinking silently.
+    # (`visible && !internal`): byte-equal to nixpkgs' docs over its own type. The full list, the four
+    # `_module.*` entries nixpkgs marks internal below the root included, is equal on each entry's
+    # name, visibility and type (`docsAll`); their descriptions are gen's own. `cells` keeps the
+    # universe from shrinking silently.
     test-the-rendered-docs-of-a-mounted-module-set-type-equal-nixpkgs =
       let
         np = nixpkgsLib.types;
@@ -2670,35 +2705,42 @@ in
           listOf = np.listOf;
           nullOr = np.nullOr;
         };
+        docsOf =
+          T:
+          nixpkgsLib.optionAttrSetToDocList
+            (nixpkgsLib.evalModules {
+              modules = [
+                {
+                  options.s = nixpkgsLib.mkOption {
+                    type = T;
+                    description = "s";
+                  };
+                }
+              ];
+            }).options;
+        docsAll =
+          T:
+          map (o: {
+            inherit (o)
+              name
+              internal
+              visible
+              type
+              ;
+          }) (docsOf T);
         docs =
           T:
-          map
-            (o: {
-              inherit (o)
-                loc
-                name
-                description
-                declarations
-                readOnly
-                type
-                ;
-              default = o.default or null;
-            })
-            (
-              builtins.filter (o: o.visible && !o.internal) (
-                nixpkgsLib.optionAttrSetToDocList
-                  (nixpkgsLib.evalModules {
-                    modules = [
-                      {
-                        options.s = nixpkgsLib.mkOption {
-                          type = T;
-                          description = "s";
-                        };
-                      }
-                    ];
-                  }).options
-              )
-            );
+          map (o: {
+            inherit (o)
+              loc
+              name
+              description
+              declarations
+              readOnly
+              type
+              ;
+            default = o.default or null;
+          }) (builtins.filter (o: o.visible && !o.internal) (docsOf T));
         cells = builtins.concatMap (
           side:
           builtins.concatMap (
@@ -2709,6 +2751,9 @@ in
                 differs =
                   docs (containers.${c} (sides.${side}.gen shape))
                   != docs (containers.${c} (sides.${side}.ref shape));
+                differsAll =
+                  docsAll (containers.${c} (sides.${side}.gen shape))
+                  != docsAll (containers.${c} (sides.${side}.ref shape));
               })
               [
                 "plain"
@@ -2721,18 +2766,19 @@ in
       {
         expr = {
           differ = map (c: c.name) (builtins.filter (c: c.differs) cells);
+          differAll = map (c: c.name) (builtins.filter (c: c.differsAll) cells);
           cells = builtins.length cells;
         };
         expected = {
           differ = [ ];
+          differAll = [ ];
           cells = 24;
         };
       };
 
     # A freeform module-set type crosses its freeform datum: nixpkgs' "open submodule of …"
-    # description and `_freeformOptions` beside the declared sub-options. nixpkgs' `_module`
-    # sub-options are set aside: gen declares no `_module` options, which nixpkgs marks internal
-    # below the root (the docs cell above reads them away the same way).
+    # description and `_freeformOptions` beside the declared sub-options. The `_module` sub-options
+    # are set aside here: the docs cell above compares them.
     test-a-freeform-module-set-type-crosses-its-freeform-type =
       let
         np = nixpkgsLib.types;
