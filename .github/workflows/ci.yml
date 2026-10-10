@@ -13,3 +13,8 @@ jobs:
   # rewrites it when that lock moves.
   evaluators:
     uses: sini/gen-harness/.github/workflows/evaluators.yml@732f7fbb0ddd31cb4b4979b6a18f54258eff4a3e
+    with:
+      # den-hoag-06toi: the modules.sh baseline never lowers the bar silently. A HISTORY property (each
+      # revision of the register against its predecessor), so it reads git, never an evaluator; it unshallows
+      # the depth-1 checkout itself. It runs in every column because `extra-run` does, at a cost of seconds.
+      extra-run: bash ci/modules-sh-ratchet.sh

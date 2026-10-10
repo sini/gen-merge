@@ -17,7 +17,12 @@
 {
   perSystem =
     { pkgs, ... }:
+    let
+      # den-hoag-06toi stage 1: nixpkgs' modules.sh against this engine, scored against its baseline.
+      modulesSh = import ./modules-sh.nix { inherit pkgs inputs; };
+    in
     {
+      apps.modules-sh.program = "${modulesSh}/bin/modules-sh";
       apps.tests-process.program = pkgs.writeShellScriptBin "tests-process" (
         ''
           set -e
@@ -43,6 +48,10 @@
           cd "$TMPDIR"
           # The evaluator the cells run under, from this process and the binary they call.
           echo "evaluator: $(nix-instantiate --version | sed -n 1p)"
+          # den-hoag-06toi stage 1 runs FIRST and its status is held to the end, so a red cell below
+          # (which stops this runner) never hides its report, nor its report the cells.
+          modulesRc=0
+          ${modulesSh}/bin/modules-sh || modulesRc=$?
         ''
         + ''
           export NIX_STATE_DIR=$TMPDIR/nix-state NIX_LOG_DIR=$TMPDIR/nix-log
@@ -210,6 +219,7 @@
         ''
         + ''
           cat "$out"
+          exit "$modulesRc"
         ''
       );
     };

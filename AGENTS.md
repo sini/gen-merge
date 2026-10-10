@@ -428,6 +428,7 @@ changing its output.
 nix develop ./ci --command ci                # the suites, guarded
 nix develop ./ci --command ci --tests-error  # the error-plane cells, guarded
 nix develop ./ci --command ci --tests-process  # the per-process cells, under the nix on PATH
+bash ci/modules-sh-ratchet.sh                 # the modules.sh register's history guard (git + jq)
 nix flake check ./ci                         # what CI runs; unguarded
 ```
 

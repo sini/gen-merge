@@ -3038,6 +3038,44 @@ Running the suites directly through the nix-unit CLI (`nix-unit --flake ./ci#tes
 traversal of the deep module-system evals overflows it (the pre-commit hook and the devshell command
 raise it automatically; `nix flake check ./ci` is a plain eval and does not need it).
 
+### nixpkgs' `modules.sh` on this engine
+
+`ci --tests-process` first runs nixpkgs' own `lib/tests/modules.sh` (from the `ci` flake's `nixpkgs`
+input) with top-level `lib.evalModules` replaced by `evalModuleTree`, and scores every assertion
+against the committed register `ci/modules-sh-baseline.jsonl`: one row per assertion, keyed by its
+check function, env flags and argv, with verdict `PASS`, `PASS-CLASS` (gen-merge refuses by name for
+nixpkgs' reason, pinned by the row's `class` literals) or `FAIL`. Any disagreement in either direction
+exits 1, so a fix ratchets the register in the same change:
+
+```sh
+nix run ./ci#modules-sh -- --write-baseline ci/modules-sh-baseline.jsonl
+bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluators' extra step
+```
+
+- **The evaluator** is resolved once from PATH and never falls back. A run for a named column sets
+  `MODULES_SH_EVALUATOR` (its bin directory) and `MODULES_SH_EVALUATOR_VERSION` (the first line of its
+  `--version`); either unmet exits 2, before any evaluation.
+- **Each evaluation** is bounded at 120 s, and an exit other than 0 or 1 exits 2. The whole run is
+  bounded at 60 minutes (three times the budget below, well inside GitHub's 360-minute job limit):
+  past it the run exits 2, naming how many assertions completed. Without it, ~410 × 120 s of hanging
+  evaluations would outlast the job limit and be cancelled without saying why.
+- **The over-reach check** is a witness test: a class literal that also fires where nixpkgs serves
+  must carry an `overreach` argument. It does not see a literal that matches a different refusal only
+  on rows where nixpkgs refuses too, so authoring a class stays a review judgement.
+- **The ratchet guard** refuses a register revision that lowers a key (PASS > PASS-CLASS > FAIL, or a
+  PASS / PASS-CLASS key gone) unless a commit from the older revision to HEAD carries
+  `Modules-Sh-Decrease: <hash> relock <census row>` (admitted only if nixpkgs' lock node moved between
+  the two revisions) or `Modules-Sh-Decrease: <hash> correction <reason>`; `--write-baseline` prints
+  each lowered key's hash. On a GitHub force-push it also walks the register revisions the push
+  replaced and compares the replaced tip's register with HEAD's.
+  What it does not decide, review reads: a relock admission is as wide as the gap between two register
+  revisions, so a regression landed in a gap where nixpkgs also moved is admitted by a `relock` trailer;
+  and it runs from HEAD's own tree, so a commit that edits `ci/modules-sh-ratchet.*`, or moves the
+  register together with the guard's `reg=`, escapes it.
+- **The budget** for the process-plane step is 20 minutes per column. Exceeding it is not a red: a
+  gated cost bound counts thunks and allocation, never CPU time (ADR-0032). It calls for sharding the
+  run inside the process plane.
+
 ## Theoretical foundations
 
 - **byte-mode = the conformance oracle + terminal contract** (structural-dedup spike §3).
