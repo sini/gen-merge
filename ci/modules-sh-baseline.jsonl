@@ -358,8 +358,8 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enableAlias","./alias-with-priority.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.foo.ok","./prefix-module-argument.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.isLazy","./declare-lazyAttrsOf.nix","./attrsOf-lazy-check.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkForce","./mkDefinition.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkMerge","./mkDefinition.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkForce","./mkDefinition.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkMerge","./mkDefinition.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.nullableValue.bool","./types.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.okChecks","./types-attrTag.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.positive.enable","./disable-module-with-key.nix"]},"verdict":"PASS"}
@@ -385,7 +385,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.value.trueFalse","./boolByOr.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.value.trueTrue","./boolByOr.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.valueIsFunction.single-lambda","./types-anything/functions.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.viaConfig","./mkDefinition.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.viaConfig","./mkDefinition.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","options._module.args.value.result","./freeform-attrsOf.nix","./define-freeform-keywords-shorthand.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config","./freeform-attrsOf.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config.ok.config","./class-check.nix"]},"verdict":"FAIL"}

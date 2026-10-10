@@ -110,6 +110,21 @@ graph position and provenance rather than by an integer priority lattice; these 
 because gen accepts nixpkgs module vocabulary and a definition written in it must not leak its wrapper
 into the value domain.
 
+### The definition record
+
+nixpkgs' `mkDefinition { file; value; }` (exported here too) builds `{ _type = "definition"; file; value; }`, and the record **is** a definition in its own file. nixpkgs reads it right after
+discharge, so it is legal under `mkIf` and `mkMerge`, and below it only one override level
+(`mkForce` / `mkDefault`) is read before the order pass sorts. gen-merge reads it at the same seat:
+discharge maps a definition to definitions (`dischargeIn file value`), the record is a terminal arm
+carrying its own file, and every fold that pairs a file calls it, so `options.x.files` and a refusal
+name the record's file rather than the enclosing module's. Two readings differ from nixpkgs:
+
+- `definitionsWithLocations` serves `{ file; value; }`, without the record's `_type` key, which nixpkgs
+  keeps.
+- A record as a whole `submodule` value, or a whole submodule element of `attrsOf` / `lazyAttrsOf` /
+  `listOf` / `nullOr`, serves the checked value where nixpkgs aborts uncatchably. A value the
+  submodule's check rejects is refused.
+
 ### A partial fold — `mergeDefsPartial`, `partialAttrsOf` and `partialSubmodule`
 
 `mergeDefsPartial loc type defs` runs the spine over SOME of a position's definitions, for a consumer that

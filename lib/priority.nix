@@ -21,6 +21,13 @@
 # `{ _type = "order"; priority = 500; content = "x"; }` (measured at this repo before the pass
 # landed), and three order-marked list defs aborted uncatchably on `expected a list but found a set`.
 #
+# ★ THE `definition` RECORD WAS THE SAME LEAK. nixpkgs' `mkDefinition { file; value; }` is
+# `{ _type = "definition"; file; value; }`, and nixpkgs reads it right after its own discharge
+# (`mergeDefinitions`' `defsNormalized`): the record IS a definition, in its own file. Here the
+# `else` arm handed it on as the value, and every fold re-paired the enclosing module's file. So
+# discharge maps a definition to definitions (`dischargeIn`), with the record a terminal arm, and
+# the file-pairing folds call it instead of pairing a file themselves.
+#
 # Priority numbers match nixpkgs exactly so a def carrying a nixpkgs-authored `mkForce`/`mkDefault`
 # resolves identically:
 #   bare def (unspecified) .......... 100   (defaultOverridePriority)
@@ -75,19 +82,30 @@ let
   mkBefore = mkOrder 500;
   mkAfter = mkOrder 1500;
 
+  # nixpkgs' definition record, carried by the same TOTAL correspondence. nixpkgs destructures
+  # `{ file, value, ... }`, which aborts uncatchably on any other shape; this refuses it by name.
+  mkDefinition =
+    args:
+    if isAttrs args && args ? file && args ? value then
+      args // { _type = "definition"; }
+    else
+      throw "gen-merge.mkDefinition: the argument is not `{ file; value; }', a definition's file and value";
+
   isProperty = v: isAttrs v && v ? _type;
   isOrderMarker = v: isAttrs v && (v._type or null) == "order";
 
-  # ── dischargeProperties : a (possibly-wrapped) def value → [{ priority; value }] ──
-  # Flattens mkMerge, resolves mkIf (false ⇒ contributes nothing), and stamps mkOverride's
-  # priority onto every discharged sub-def. A property-free value is a bare def at priority 100.
-  dischargeProperties =
-    v:
+  # ── dischargeIn : a definition's file and (possibly-wrapped) value → [{ file; priority; value }] ──
+  # Discharge maps a definition to definitions. Flattens mkMerge, resolves mkIf (false ⇒ contributes
+  # nothing), and stamps mkOverride's priority onto every discharged sub-def. A property-free value
+  # is a bare def at priority 100, in the enclosing `file`. A `definition` record is a definition in
+  # its OWN file (`definitionOf`), so no fold pairs a file after a discharge.
+  dischargeIn =
+    file: v:
     if isProperty v then
       if v._type == "merge" then
-        concatMap dischargeProperties v.contents
+        concatMap (dischargeIn file) v.contents
       else if v._type == "if" then
-        (if v.condition then dischargeProperties v.content else [ ])
+        (if v.condition then dischargeIn file v.content else [ ])
       else if v._type == "override" then
         # Stamp the override priority but keep `content` LAZY — do NOT recurse into it. nixpkgs
         # `dischargeProperties` never descends into an mkOverride's content (its override case is the
@@ -97,13 +115,17 @@ let
         # `{…}.${config.class}` for `class == "droid"`), which must be dropped, not evaluated.
         [
           {
+            inherit file;
             inherit (v) priority;
             value = v.content;
           }
         ]
+      else if v._type == "definition" then
+        [ (definitionOf v) ]
       else
         [
           {
+            inherit file;
             priority = defaultPriority;
             value = v;
           }
@@ -111,10 +133,30 @@ let
     else
       [
         {
+          inherit file;
           priority = defaultPriority;
           value = v;
         }
       ];
+  # A `definition` record (nixpkgs' `mkDefinition`) IS a definition: its own file, its own value, and
+  # nothing below it is discharged but the one override level nixpkgs' `filterOverrides'` strips.
+  definitionOf =
+    v:
+    if (v.value._type or null) == "override" then
+      {
+        inherit (v) file;
+        inherit (v.value) priority;
+        value = v.value.content;
+      }
+    else
+      {
+        inherit (v) file value;
+        priority = defaultPriority;
+      };
+  # The value-only reading (`isDefinedValue`, lint) is the same body with no enclosing file: ONE
+  # algebra, so the value path and the file-pairing folds cannot drift. Its cost is one `file` slot
+  # per discharged definition (+16 B), which the hub bench reads below parity.
+  dischargeProperties = dischargeIn null;
 
   # ── dischargePropertiesAt : the same discharge, each result carrying the PATH it was reached by ──
   # `[{ value; priority; path; }]`, where `path` is the steps from the definition value to `value`:
@@ -123,10 +165,13 @@ let
   # nested-tree key walk's seeds, den-hoag-n6dh7 item 2), in the attribute-name / list-index steps
   # gen-scope's `walkAddress` reads.
   #
-  # ★ A TWIN, NOT A GENERALISATION. `dischargeProperties` above stays byte-unchanged on the value
-  # path: one more binding in the value fold is a thunk on every definition, and the hub bench's
-  # `wideFreeform` row has no headroom for it. The two agree on values by a cell
-  # (`ci/tests/nesting-declaration.nix`, `discharge-twin`), not by sharing text.
+  # A `definition` record steps `"value"`, and `"value"` `"content"` when its one override level is
+  # read.
+  #
+  # ★ A TWIN, NOT A GENERALISATION. `dischargeIn` above carries no path: one more binding in the
+  # value fold is a thunk on every definition, and the hub bench's `wideFreeform` row has no
+  # headroom for it. The two agree on values by a cell (`ci/tests/nesting-declaration.nix`,
+  # `discharge-twin`, and `ci/tests/definition-record.nix` on records), not by sharing text.
   dischargePropertiesAt =
     let
       bare = path: v: [
@@ -163,10 +208,38 @@ let
               path = path ++ [ "content" ];
             }
           ]
+        else if v._type == "definition" then
+          [
+            (
+              definitionOf v
+              // {
+                path =
+                  path
+                  ++ (
+                    if (v.value._type or null) == "override" then
+                      [
+                        "value"
+                        "content"
+                      ]
+                    else
+                      [ "value" ]
+                  );
+              }
+            )
+          ]
         else
           bare path v;
     in
     go [ ];
+  # The addressed definitions of one definition `{ file; value; at; }`: each its own file (a
+  # `definition` record's, else the enclosing one's) and its address from the group's list.
+  dischargeDefAt =
+    d:
+    map (x: {
+      file = x.file or d.file;
+      inherit (x) value priority;
+      at = d.at ++ x.path;
+    }) (dischargePropertiesAt d.value);
 
   # ── filterOverrides : keep only the defs of minimum priority-number (highest precedence) ──
   # nixpkgs' override pass. Ties (equal min priority) are all kept and merged downstream, in
@@ -421,10 +494,13 @@ in
     mkOrder
     mkBefore
     mkAfter
+    mkDefinition
     isProperty
     isOrderMarker
     dischargeProperties
     dischargePropertiesAt
+    dischargeIn
+    dischargeDefAt
     filterOverrides
     filterOverridesRich
     sortProperties

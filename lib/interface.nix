@@ -3049,16 +3049,7 @@ let
                           defs
                         else
                           let
-                            winners = priority.filterOverrides (
-                              builtins.concatMap (
-                                d:
-                                map (x: {
-                                  inherit (d) file;
-                                  inherit (x) value priority;
-                                  at = d.at ++ x.path;
-                                }) (priority.dischargePropertiesAt d.value)
-                              ) defs
-                            );
+                            winners = priority.filterOverrides (builtins.concatMap priority.dischargeDefAt defs);
                           in
                           if builtins.any (w: priority.isOrderMarker w.value) winners then
                             priority.sortProperties (
@@ -3356,16 +3347,7 @@ let
                                       defs
                                     else
                                       let
-                                        winners = priority.filterOverrides (
-                                          builtins.concatMap (
-                                            d:
-                                            map (x: {
-                                              inherit (d) file;
-                                              inherit (x) value priority;
-                                              at = d.at ++ x.path;
-                                            }) (priority.dischargePropertiesAt d.value)
-                                          ) defs
-                                        );
+                                        winners = priority.filterOverrides (builtins.concatMap priority.dischargeDefAt defs);
                                       in
                                       if builtins.any (w: priority.isOrderMarker w.value) winners then
                                         priority.sortProperties (

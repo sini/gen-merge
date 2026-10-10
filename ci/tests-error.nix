@@ -292,13 +292,13 @@ let
     type = t.str;
     default = "x";
   };
-  # The four combinators share ONE message shape parameterized by their path and tag — which is the
+  # The five combinators share ONE message shape parameterized by their path and tag — which is the
   # claim being asserted (same remedy, different tag), not a shortcut. The `option-type` cell below
   # spells its own regex out in full precisely because it must NOT match this one.
   combinatorRefusal =
     loc: tag:
     "^gen-merge: option `${loc}' is declared as the `${tag}' combinator "
-    + "\\(mkMerge/mkIf/mkOrder/mkBefore/mkAfter/mkForce/mkOverride build DEFINITIONS, not "
+    + "\\(mkMerge/mkIf/mkOrder/mkBefore/mkAfter/mkForce/mkOverride/mkDefinition build DEFINITIONS, not "
     + "DECLARATIONS\\); move it under `config'/`imports', or write one plain attrset here$";
 
   # ── the SECOND call site's fixture: a DECLARED-ONLY misuse on the warm path ─────────────────
@@ -3983,6 +3983,20 @@ in
         expectedError = {
           type = "ThrownError";
           msg = combinatorRefusal "a" "override";
+        };
+      };
+      # Before the tag joined the set, this aborted uncatchably: `expected a set but found a string:
+      # "definition"`.
+      test-definition-combinator-refusal-names-the-option = {
+        expr = misdeclare (
+          gm.mkDefinition {
+            file = "/r/a.nix";
+            value = declLeaf;
+          }
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = combinatorRefusal "a" "definition";
         };
       };
       # THE DISCRIMINATING CELL. Same boundary, same class, DIFFERENT mistake: a bare type where a
@@ -10254,6 +10268,148 @@ in
               msg = "^gen-merge: option `p' is declared with types that do not merge \\(`attrsOf' and a partner that states no element type of its own\\); declared in <unknown-file>, <unknown-file>$";
             };
           };
+      };
+    # nixpkgs' `definition` record (ci/tests/definition-record.nix): a refusal names the RECORD's file,
+    # not the enclosing module's, on an option and on a module argument (nixpkgs names `/r/B.nix` and
+    # `/r/A.nix` in both). Each has a plain-definition control carrying the same message.
+    flake.testsError.definition-record =
+      let
+        d = file: value: nixpkgsLib.mkDefinition { inherit file value; };
+        conflictMsg = "^gen-merge: the option `x' has conflicting definitions:\n- In `/r/B\\.nix': false\n- In `/r/A\\.nix': true$";
+        argMsg = "^gen-merge: module argument `foo' \\(`_module\\.args\\.foo'\\) is defined multiple times, and a module argument must be unique; defined in /r/A\\.nix, /r/B\\.nix$";
+        conflict =
+          a: b:
+          builtins.deepSeq
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = t.bool; }; }
+              a
+              b
+            ]).config.x
+            null;
+        freeformMsg = "^gen-merge: the freeform type is defined with types that do not merge \\(`attrsOf' over `int' and `attrsOf' over `string', whose element types do not merge: `int' and `string'\\); defined in /r/A\\.nix, /r/B\\.nix$";
+        freeform =
+          a: b:
+          builtins.deepSeq
+            (gm.evalModuleTree { } [
+              a
+              b
+              { config.k = "v"; }
+            ]).config
+            null;
+        argTwice =
+          a: b:
+          builtins.deepSeq
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { }; }
+              a
+              b
+              (
+                { foo, ... }:
+                {
+                  config.x = foo;
+                }
+              )
+            ]).config.x
+            null;
+      in
+      {
+        test-a-conflict-names-the-records-files = {
+          expr =
+            conflict
+              {
+                _file = "/m/1.nix";
+                config.x = d "/r/A.nix" true;
+              }
+              {
+                _file = "/m/2.nix";
+                config.x = d "/r/B.nix" false;
+              };
+          expectedError = {
+            type = "ThrownError";
+            msg = conflictMsg;
+          };
+        };
+        test-a-conflict-names-the-module-files-control = {
+          expr =
+            conflict
+              {
+                _file = "/r/A.nix";
+                config.x = true;
+              }
+              {
+                _file = "/r/B.nix";
+                config.x = false;
+              };
+          expectedError = {
+            type = "ThrownError";
+            msg = conflictMsg;
+          };
+        };
+        test-a-module-argument-twice-names-the-records-files = {
+          expr =
+            argTwice
+              {
+                _file = "/m/1.nix";
+                config._module.args.foo = d "/r/A.nix" 1;
+              }
+              {
+                _file = "/m/2.nix";
+                config._module.args.foo = d "/r/B.nix" 2;
+              };
+          expectedError = {
+            type = "ThrownError";
+            msg = argMsg;
+          };
+        };
+        # The freeform type's selection (`resolvedFreeform`) discharges too.
+        test-two-freeform-types-name-the-records-files = {
+          expr =
+            freeform
+              {
+                _file = "/m/1.nix";
+                config._module.freeformType = d "/r/A.nix" (t.attrsOf t.int);
+              }
+              {
+                _file = "/m/2.nix";
+                config._module.freeformType = d "/r/B.nix" (t.attrsOf t.str);
+              };
+          expectedError = {
+            type = "ThrownError";
+            msg = freeformMsg;
+          };
+        };
+        test-two-freeform-types-name-the-module-files-control = {
+          expr =
+            freeform
+              {
+                _file = "/r/A.nix";
+                config._module.freeformType = t.attrsOf t.int;
+              }
+              {
+                _file = "/r/B.nix";
+                config._module.freeformType = t.attrsOf t.str;
+              };
+          expectedError = {
+            type = "ThrownError";
+            msg = freeformMsg;
+          };
+        };
+        test-a-module-argument-twice-names-the-module-files-control = {
+          expr =
+            argTwice
+              {
+                _file = "/r/A.nix";
+                config._module.args.foo = 1;
+              }
+              {
+                _file = "/r/B.nix";
+                config._module.args.foo = 2;
+              };
+          expectedError = {
+            type = "ThrownError";
+            msg = argMsg;
+          };
+        };
       };
   };
 }

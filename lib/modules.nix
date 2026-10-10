@@ -81,6 +81,8 @@ let
   inherit (priority)
     dischargeProperties
     dischargePropertiesAt
+    dischargeDefAt
+    dischargeIn
     filterOverrides
     filterOverridesRich
     sortProperties
@@ -362,6 +364,11 @@ let
         let
           # the reference's declaration order: its module list reversed once, as its definitions are
           sites = reverse (sitesAt lk);
+          # A `definition` record (`mkDefinition`) is served as the definition it is, `{ file; value; }`;
+          # nixpkgs serves the record itself, so its entry also carries `_type = "definition"`. Equal
+          # file and value, not equal records, and the difference is observable: nixos'
+          # `tasks/filesystems/zfs.nix:703` compares `definitionsWithLocations == [ { file; value; } ]`,
+          # which reads `true` here and `false` under nixpkgs for an option defined by a record.
           dwl = map (d: if d.file == "<default>" then d // { file = (head sites).file; } else d) defs.${k};
           p = prov.${k};
         in
@@ -423,9 +430,9 @@ let
   # as a raw, pathless, `tryEval`-UNCATCHABLE Nix type error (`expected a set but found a string:
   # "merge"`). ADR-0025 item 1 rules that every operation returns a value or a NAMED refusal.
   #
-  # The misplaceable tag set is CLOSED at five, enumerable from this library's own source
-  # (`grep -rhoP '_type\s*=\s*"\K[a-zA-Z-]+' lib/`): `merge`, `if`, `order`, `override` are
-  # DEFINITION-plane combinators (`lib/priority.nix`), and the type tag belongs to a TYPE object
+  # The misplaceable tag set is CLOSED at six, enumerable from this library's own source
+  # (`grep -rhoP '_type\s*=\s*"\K[a-zA-Z-]+' lib/`): `merge`, `if`, `order`, `override` and
+  # `definition` are DEFINITION-plane combinators (`lib/priority.nix`), and the type tag belongs to a TYPE object
   # (`lib/interface.nix`, asked through `interface.isOptionType` because that literal is private to
   # that unit); `option` is the legitimate leaf. They carry TWO diagnoses, not one message repeated —
   # a combinator on the wrong plane and a type where a declaration belongs have different remedies,
@@ -440,7 +447,10 @@ let
       let
         tag = v._type or null;
       in
-      if tag == "merge" || tag == "if" || tag == "order" || tag == "override" then "combinator" else null;
+      if tag == "merge" || tag == "if" || tag == "order" || tag == "override" || tag == "definition" then
+        "combinator"
+      else
+        null;
 
   declPlaneMisuseMessage =
     loc: v: tag:
@@ -454,7 +464,7 @@ let
       + "wrap it: `mkOption { type = <that type>; }'"
     else
       "gen-merge: ${at} is declared as the `${v._type}' combinator "
-      + "(mkMerge/mkIf/mkOrder/mkBefore/mkAfter/mkForce/mkOverride build DEFINITIONS, not "
+      + "(mkMerge/mkIf/mkOrder/mkBefore/mkAfter/mkForce/mkOverride/mkDefinition build DEFINITIONS, not "
       + "DECLARATIONS); move it under `config'/`imports', or write one plain attrset here";
 
   # Walks a module's declaration subtree, refusing BY NAME the instant it meets a misplaced tag at
@@ -1511,9 +1521,7 @@ let
     winners =
       defs:
       let
-        w = filterOverrides (
-          concatMap (d: map (x: x // { inherit (d) file; }) (dischargeProperties d.value)) defs
-        );
+        w = filterOverrides (concatMap (d: dischargeIn d.file d.value) defs);
       in
       {
         defs = map (x: { inherit (x) file value; }) w;
@@ -1866,19 +1874,14 @@ let
     freeformDeclared:
     let
       candidates = filter (c: c.type != null) freeformDeclared;
-      # `dischargeProperties` is shared with the value-path def folds (`mergeDefsWith`,
-      # `mergeDefsRichWith`) and emits `{ priority; value; }`, so the originating file is
-      # paired back on HERE rather than grown as a field there.
-      winners = filterOverrides (
-        concatMap (c: map (d: d // { inherit (c) _file; }) (dischargeProperties c.type)) candidates
-      );
+      winners = filterOverrides (concatMap (c: dischargeIn c._file c.type) candidates);
     in
     if winners == [ ] then
       null
     else
       mergeTypeDefs "the freeform type" (
         map (w: {
-          file = w._file;
+          inherit (w) file;
           inherit (w) value;
         }) winners
       );
@@ -2754,13 +2757,7 @@ let
   mergeDefsPartial =
     loc: type: rawDefs:
     let
-      discharged = concatMap (
-        d:
-        map (x: {
-          inherit (d) file;
-          inherit (x) value priority;
-        }) (dischargeProperties d.value)
-      ) rawDefs;
+      discharged = concatMap (d: dischargeIn d.file d.value) rawDefs;
       r = filterOverridesRich discharged;
       winners = r.winners;
       sorted =
@@ -2826,13 +2823,7 @@ let
           map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
         else
           rawDefs;
-      discharged = concatMap (
-        d:
-        map (x: {
-          inherit (d) file;
-          inherit (x) value priority;
-        }) (dischargeProperties d.value)
-      ) normalized;
+      discharged = concatMap (d: dischargeIn d.file d.value) normalized;
       winners = filterOverrides discharged;
       # The order pass, gated exactly as nixpkgs gates it: the overwhelming majority of locs carry no
       # order marker, and for them the sort is the identity permutation, so the scan buys the fast
@@ -2915,13 +2906,7 @@ let
           map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
         else
           rawDefs;
-      discharged = concatMap (
-        d:
-        map (x: {
-          inherit (d) file;
-          inherit (x) value priority;
-        }) (dischargeProperties d.value)
-      ) normalized;
+      discharged = concatMap (d: dischargeIn d.file d.value) normalized;
       # Value path uses the plain (allocation-free) filterOverrides — SHARED by the prov record's
       # `winners`. The prov record's `priority` reads `filterOverridesRich`'s `highestPrio` LAZILY (only
       # when `.priority` is forced), so an unforced provenance channel never pays for the rich wrapper.
@@ -3126,15 +3111,13 @@ let
       (head defs).value
     else
       let
-        winners = filterOverrides (
-          concatMap (d: map (w: w // { inherit (d) _file; }) (dischargeProperties d.value)) defs
-        );
+        winners = filterOverrides (concatMap (d: dischargeIn d._file d.value) defs);
         # Each file once, in fold order; a file carrying several definitions (an `mkMerge`
         # inside one module) says how many.
         files =
           ws:
           let
-            fs = map (w: w._file) ws;
+            fs = map (w: w.file or w._file) ws;
           in
           concatStringsSep ", " (
             map (
@@ -3562,14 +3545,7 @@ let
       defs
     else
       let
-        discharged = concatMap (
-          d:
-          map (x: {
-            inherit (d) file;
-            inherit (x) value priority;
-            at = d.at ++ x.path;
-          }) (dischargePropertiesAt d.value)
-        ) defs;
+        discharged = concatMap dischargeDefAt defs;
         winners = filterOverrides discharged;
       in
       if any (w: isOrderMarker w.value) winners then

@@ -762,7 +762,8 @@ in
   # `mkOrder`/`mkBefore`/`mkAfter` and the pass behind them exist because gen accepts nixpkgs module
   # vocabulary and a definition written in it must not leak its wrapper into the value domain — they
   # are the compatibility promise being kept, and they carry no architectural claim about how gen
-  # itself decides which contribution wins.
+  # itself decides which contribution wins. `mkDefinition` (nixpkgs' definition record, a definition
+  # in its own file) is carried on the same ground.
   #
   # ★ PARITY IS VERIFIED AGAINST THE LIVE nixpkgs, WHICH IS WHY NO REV IS STAMPED HERE. This
   # library's `lib/` is nixpkgs-free (ci/tests/purity.nix), so the law and the pass are an
@@ -782,6 +783,7 @@ in
     mkOrder
     mkBefore
     mkAfter
+    mkDefinition
     ;
 
   # The band each contributor's own evaluation resolved a leaf at, and per leaf the record it moves
