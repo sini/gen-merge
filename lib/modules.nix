@@ -824,22 +824,24 @@ let
   # (`interface.carriedAtDepth`, den-hoag-8ip0d): nixpkgs' rebuild erases them, gen's enforces them. A type
   # that states no module set (a leaf, `either`, `oneOf`) is returned as is. Lives on the
   # declaration plane, not in `mergeDeclaredTypes`, because that is also the freeform-type merge,
-  # which nixpkgs's `optionType.merge` leaves unrebuilt.
+  # which nixpkgs's `optionType.merge` leaves unrebuilt. Each module is handed on located at its
+  # declaring file (`setDefaultModuleLocation`), as nixpkgs' `mergeOptionDecls` hands `opt.options`:
+  # a foreign `substSubModules` may destructure that shape (`attrTag`'s takes `{ _file, imports }`).
   fixupModuleSets =
-    declared: merged:
+    r:
     let
-      sub = interface.importedSubstructure merged;
+      sub = interface.importedSubstructure r.upTo.merged;
       own =
-        t:
+        s:
         let
-          m = (interface.importedSubstructure t).modules;
+          m = (interface.importedSubstructure s.decl.type).modules;
         in
-        if m == null then [ ] else m;
+        if m == null then [ ] else map (setDefaultModuleLocation s.file) m;
     in
     if sub.modules == null then
-      merged
+      r.upTo.merged
     else
-      interface.carriedAtDepth true declared (sub.rebuild (concatMap own declared));
+      interface.carriedAtDepth true r.declaredTypes (sub.rebuild (concatMap own r.prior));
   # The list, in AUTHORED order; stops at the first refusing step. A one-element list is itself.
   mergeDeclaredTypes =
     ts:
@@ -1002,7 +1004,7 @@ let
       typeOf =
         r:
         if r.upTo ? merged then
-          fixupModuleSets r.declaredTypes r.upTo.merged
+          fixupModuleSets r
         else
           throw "gen-merge: option `${showOption lk}': the declarations through the one in ${(prelude.last r.prior).file} do not merge on their own (${declaredRefusalText r.upTo}); a later declaration decides them";
       step =

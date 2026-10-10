@@ -137,6 +137,65 @@ in
         element = enforced;
       };
     };
+    # a module set reaches a foreign `substSubModules` located at its declaring file, as nixpkgs'
+    # `mergeOptionDecls` hands it: `attrTag`'s destructures `{ _file, imports }`, so a bare module
+    # aborted it, uncatchably, wherever the declaration list is rebuilt
+    test-a-nixpkgs-attrTag-over-a-submodule-redeclared-serves-nixpkgs-value = {
+      expr =
+        let
+          tag = np.attrTag {
+            t = nixpkgsLib.mkOption {
+              type = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+            };
+          };
+          door = gt.defineType tag;
+          served =
+            ts:
+            (gm.evalModuleTree { } (
+              map (t: { options.x = gm.mkOption { type = t; }; }) ts ++ [ { x.t.a = 2; } ]
+            )).config.x;
+        in
+        {
+          raw = served [
+            tag
+            tag
+          ];
+          door = served [
+            door
+            door
+          ];
+          rawBesideDoor = served [
+            tag
+            door
+          ];
+          doorBesideRaw = served [
+            door
+            tag
+          ];
+        };
+      expected =
+        let
+          tag = np.attrTag {
+            t = nixpkgsLib.mkOption {
+              type = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+            };
+          };
+          served =
+            (nixpkgsLib.evalModules {
+              modules = [
+                { options.x = nixpkgsLib.mkOption { type = tag; }; }
+                { options.x = nixpkgsLib.mkOption { type = tag; }; }
+                { x.t.a = 2; }
+              ];
+            }).config.x;
+        in
+        {
+          raw = served;
+          door = served;
+          rawBesideDoor = served;
+          doorBesideRaw = served;
+        };
+    };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))
