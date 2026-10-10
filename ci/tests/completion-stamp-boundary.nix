@@ -1,8 +1,8 @@
 # THE COMPLETION STAMP AT THE PROTOCOL BOUNDARY (gate C3, ruled arm (c)). The boundary rebuilds every
 # record it imports and exports and re-ties the stamp to what it completes, so every exported type is
 # decided as before; a `//` copy entering it is served and `typeEq` refuses it by name: `importType` imports
-# it unminted, and the published `mkOptionType` returns a copy departing within its carrier as it is, its
-# mark and stale stamp kept (den-hoag-r23mj).
+# it unminted, and the published `mkOptionType` returns a gen-merge completion's copy departing at its `check`
+# or `verify` as it is, its mark and stale stamp kept (den-hoag-r23mj, den-hoag-zwqq2).
 {
   genMerge,
   interface,

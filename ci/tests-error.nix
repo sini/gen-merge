@@ -10257,5 +10257,82 @@ in
           };
         };
       };
+
+    # THE IMPORT DOOR CARRIES ONLY A gen-merge COMPLETION (`interface.carriedCopy`). Each copy below states
+    # `verify` and is declared beside its twin, so the door's choice reaches the merge: carried, a record that is
+    # not a gen-merge completion publishes gen-types' two-argument `check` and the declaration aborts uncatchably
+    # (`expected a Boolean`), or a relation-less record is served as the twin's equal; imported, it is unminted
+    # and the merge refuses it by name. Live control: `carried-copy-door`'s gen-merge verify copy serves.
+    flake.testsError.carried-copy-door =
+      let
+        rejA = v: if v == "a" then "no" else null;
+        twin = t.enum "e" [
+          "a"
+          "b"
+        ];
+        raw = genTypes.enum "e" [
+          "a"
+          "b"
+        ];
+        beside =
+          ty:
+          let
+            p =
+              (gm.evalModuleTree { } [
+                { options.p = gm.mkOption { type = gm.mkOptionType (ty // { verify = rejA; }); }; }
+                { options.p = gm.mkOption { type = twin; }; }
+                { p = "b"; }
+              ]).config.p;
+          in
+          builtins.deepSeq p p;
+        refusal =
+          why:
+          "^gen-merge: option `p' is declared with types that do not merge \\(`e' and `e', ${why}\\); declared in <unknown-file>, <unknown-file>$";
+        uncomparable = refusal "two separately constructed `mkOptionType' types of one name whose checks are caller-supplied functions and cannot be compared";
+        unreconciled = refusal "which mint to different constructions and carry no readable component values to reconcile";
+      in
+      {
+        # a raw gen-types record: RED (the abort) where carried
+        test-a-raw-gen-types-verify-copy-is-refused-by-name = {
+          expr = beside raw;
+          expectedError = {
+            type = "ThrownError";
+            msg = uncomparable;
+          };
+        };
+        # a raw record that ties its own stamp and borrows gen-merge's relation: RED (the abort) where the
+        # admission takes `typeMergeRel` for a gen-merge completion without asking its check witness
+        test-a-forged-stamp-borrowing-a-relation-is-refused-by-name = {
+          expr = beside (
+            let
+              s = raw // {
+                inherit (twin) typeMergeRel;
+                __typeSelf = _: s;
+              };
+            in
+            s
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = unreconciled;
+          };
+        };
+        # a gen-merge record stating no relation, its stamp tied to itself: RED (served) where the admission
+        # does not ask `typeMergeRel`
+        test-a-relation-less-copy-is-refused-by-name = {
+          expr = beside (
+            let
+              s = builtins.removeAttrs twin [ "typeMergeRel" ] // {
+                __typeSelf = _: s;
+              };
+            in
+            s
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = unreconciled;
+          };
+        };
+      };
   };
 }
