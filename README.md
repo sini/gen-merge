@@ -1240,7 +1240,11 @@ Two rules that look like details and are not:
   copy declared FIRST beside a partner is dropped where the raw copy is, because nixpkgs asks the
   later declaration's `typeMerge` and hands it only the copy's functor, so the copy's check is
   unreachable even when that declaration is gen's. That is nixpkgs' own later-operand rule, which it
-  applies to its own `addCheck` copies too.
+  applies to its own `addCheck` copies too. **A record gen did not complete is returned
+  as it is**: every completion states a type-merge relation, so a foreign-protocol
+  record stating none (a nixpkgs `int`, `addCheck np.int p`, `np.submodule M`) passes the published
+  `types.defineType` unchanged, and the engine imports it where it is declared, enforcing its own
+  `check`.
 - **A completed parametric leaf merges only the SAME type, or two `enum`s.** Sameness is
   decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
   textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,
