@@ -12,7 +12,7 @@ jobs:
   # gen-harness rev locked in ci/flake.lock, so one harness identity governs the run; `relock`
   # rewrites it when that lock moves.
   evaluators:
-    uses: sini/gen-harness/.github/workflows/evaluators.yml@732f7fbb0ddd31cb4b4979b6a18f54258eff4a3e
+    uses: sini/gen-harness/.github/workflows/evaluators.yml@23b8ea7f0bb7123a37290b70677a933fb6ef0d43
     with:
       # den-hoag-06toi: the modules.sh baseline never lowers the bar silently. A HISTORY property (each
       # revision of the register against its predecessor), so it reads git, never an evaluator; it unshallows
