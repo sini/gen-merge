@@ -2026,34 +2026,38 @@ functor names at each level, while the run still says which tree sits at which k
 child at the position its definitions declare, or, where the levels are keyed from the result, at
 the position it is read, so it serves nixpkgs' value; two entries of the result at one loc are each
 keyed apart. A stock-named `attrsWith`, lazy or strict, whose `merge` holds no element's tree at a key
-read (one key deeper) is refused by name at the key read, where nixpkgs serves it; one whose result
-is not an attribute set keeps the eager walk. **A merge that reads its elements' values** is run
-twice: once over the definitions' sites, which are records, to key the tree, and once over the
-evaluation's values. Where it places an element by a value, a moved read re-runs the fold over the
-values at the read path. An element that fold reached, placed at the key read or read while deciding
-placement, where the run over the sites holds another element there, has its nested-tree read refused
-by name at its own loc, where nixpkgs serves the value: its position is not found without forcing a
-sibling nixpkgs does not force. Below a key whose list the walk keys eagerly, an element the merge
-reads, whose own position the run over the sites gave another key's element, is refused by name at
-its own loc, naming that position. Those causes are stated on the moved-read and moved-node paths
-only. A value-reading
-merge that drops an element the sites lack a value for makes no moved read, and its refusal names a
-position the merge does not expose. **The cost**, read on the hub perf-bench: `threadedRegistry`
-gains 4 thunks and about 590 bytes per threaded element and 2,051 thunks of load, `wrappedRegistry`
-51 thunks of load, both still below their nixpkgs reference; startup gains 100 bytes, every one of them
-gen-merge's own allocation (the member row rises by the same 100 bytes); no other load row rises.
-A node's regime is trusted from its record's name the same way: a
-stock-named `attrsOf`, `listOf` or `nullOr` whose `merge` was overridden to a lazy one is keyed
-exactly. **A `listOf` step is a level where its chain is stock.** Its positions, the
-`[definition n-entry m]` segments nixpkgs' merge names, are keyed from the definitions it folds,
-which is sound only where stock code folds them, and no probe of a merge can tell that. So the level
-stands only where every record on the chain, its wrappers above the step and every record below it
-down to the gen element, is bound where its own functor's fresh build binds it; nothing compares
-functions. **Not reached, and stated as a shortfall:** a list on a chain holding an overridden
-record, an `addCheck`, or any `unique` (whose merge a hand-built type copying its functor binds at
-the same position), and a list below a `coercedTo` that coerces its definitions, keep the eager walk
-and abort with a sibling reading the read tree, where nixpkgs serves: `uniq (listOf (lazyAttrsOf e))` with a key below the list `mkIf` on the read tree, or `uniq (listOf (attrsOf e))` with a second
-element's key `mkIf` on it.
+read (one key deeper) is refused by name at the key read, where nixpkgs serves it; this is an open
+defect (the owner's parity-defect rule, 2026-10-09), not a price. One whose result is not an
+attribute set keeps the eager walk. **A merge that reads its elements' values** is run twice: once
+over the definitions' sites, which are records, to key the tree, and once over the evaluation's
+values. Where it places an element by a value, a moved read re-runs the fold over the values at the
+read path. An element that fold reached, placed at the key read or read while deciding placement,
+where the run over the sites holds another element there, has its nested-tree read refused by name at
+its own loc, where nixpkgs serves the value: its position is not found without forcing a sibling
+nixpkgs does not force; this is an open defect (the owner's parity-defect rule, 2026-10-09), not a
+price. Below a key whose list the walk keys eagerly, an element the merge reads, whose own position
+the run over the sites gave another key's element, is refused by name at its own loc, naming that
+position; this is an open defect (the owner's parity-defect rule, 2026-10-09), not a price. Those
+causes are stated on the moved-read and moved-node paths only. A value-reading merge that reads,
+with a default, a field the sites lack drops the element, makes no moved read, and its refusal names
+a position the merge does not expose; one that reads that field without a default aborts
+uncatchably, where nixpkgs serves. Both are open defects (the owner's parity-defect rule,
+2026-10-09), not a price. **The cost**, read on the hub perf-bench: `threadedRegistry` gains 4 thunks
+and about 590 bytes per threaded element, and 51 thunks of per-process load on each of
+`threadedRegistry` and `wrappedRegistry`, both still below their nixpkgs reference; startup gains 100
+bytes, every one of them gen-merge's own allocation (the member row rises by the same 100 bytes); no
+other load row rises. A node's regime is trusted from its record's name the same way: a stock-named
+`attrsOf`, `listOf` or `nullOr` whose `merge` was overridden to a lazy one is keyed exactly. **A
+`listOf` step is a level where its chain is stock.** Its positions, the `[definition n-entry m]`
+segments nixpkgs' merge names, are keyed from the definitions it folds, which is sound only where
+stock code folds them, and no probe of a merge can tell that. So the level stands only where every
+record on the chain, its wrappers above the step and every record below it down to the gen element,
+is bound where its own functor's fresh build binds it; nothing compares functions. **Not reached, an
+open defect:** a list on a chain holding an overridden record, an `addCheck`, or any `unique` (whose
+merge a hand-built type copying its functor binds at the same position), and a list below a
+`coercedTo` that coerces its definitions, keep the eager walk and abort with a sibling reading the read
+tree, where nixpkgs serves: `uniq (listOf (lazyAttrsOf e))` with a key below the list `mkIf` on the
+read tree, or `uniq (listOf (attrsOf e))` with a second element's key `mkIf` on it.
 
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared

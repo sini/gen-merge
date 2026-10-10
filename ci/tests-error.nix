@@ -7692,9 +7692,13 @@ in
     # placement on its elements' values, read where the capture fold placed another element at the
     # key read, refuses the element its real fold reached, at that element's own loc (`vals`,
     # den-hoag-lif3n); below a node holding a list, the element it read, whose own position the
-    # capture gave another key's element, at that position (`own`). The rest are the one-step level's refusals, the stated shortfall's aborts, and a
-    # merge reading an element's value that the capture fold, whose sites are records, drops: that
-    # read is not a moved read, and its refusal (`other`) names an unexposed position.
+    # capture gave another key's element, at that position (`own`). The rest do not serve, each an
+    # open defect where nixpkgs serves (parity-defect rule 1; carried on den-hoag-zm7rd): the
+    # one-step level's refusals; a list the listOf level does not reach, which aborts
+    # (`listLazyMkX`); a merge reading a field of an element's value that the capture fold's site
+    # records lack, which aborts uncatchably (`mapVal*`, `filtVal*`); and the same merge reading the
+    # field with a default, whose capture drops the element: not a moved read, so its refusal
+    # (`other`) names an unexposed position.
     flake.testsError.nesting-keys-foreign-chain-reshaped =
       let
         fx = import ./tests/_fixtures/foreign-chain-reshaped.nix { inherit gm nixpkgsLib; };

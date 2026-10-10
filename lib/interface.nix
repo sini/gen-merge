@@ -2372,13 +2372,13 @@ let
       # stock, and keep the eager walk; so do a definition a `coercedTo` above the step coerces and
       # a result that is not a list (`at`).
       #
-      # ★ THE STATED SHORTFALL (ADR-0025 item 1, enumerated; den-hoag-i01nx, den-hoag-obi4j): where a
-      # `listOf` step is not a level by that rule, a record that may nest below it is walked eagerly,
-      # and aborts uncatchably where nixpkgs serves with an element whose own tree reads the read
-      # tree: a list below or above any `unique` (`uniq (listOf (lazyAttrsOf e))` with a key below
-      # the list `mkIf` on the read tree), a list on a chain with any overridden or `addCheck`
-      # record, and a list below a `coercedTo` that coerces one of its definitions or one at a keyed
-      # level above it.
+      # ★ AN OPEN DEFECT (parity-defect rule 1; formerly enumerated under ADR-0025 item 1;
+      # den-hoag-i01nx, den-hoag-obi4j; carried on den-hoag-zm7rd): where a `listOf` step is not a
+      # level by that rule, a record that may nest below it is walked eagerly, and aborts uncatchably
+      # where nixpkgs serves with an element whose own tree reads the read tree: a list below or above
+      # any `unique` (`uniq (listOf (lazyAttrsOf e))` with a key below the list `mkIf` on the read
+      # tree), a list on a chain with any overridden or `addCheck` record, and a list below a
+      # `coercedTo` that coerces one of its definitions or one at a keyed level above it.
       #
       # ★ THE STATED PRICE, an extension of den-hoag-n6dh7's (owner-accepted 2026-09-25: a stock
       # container whose `merge` was overridden cannot be told from the stock one, since Nix cannot
@@ -2390,11 +2390,15 @@ let
       # result at one loc are each keyed at their own entry (`entryAt`). So a chain whose
       # stock-named `attrsWith` step, lazy or strict, has a merge that holds no element's tree at a
       # key read (one key deeper) is refused by name at the key read (`statedStepRefusal`), where
-      # nixpkgs serves it; one whose result is not an attrset keeps the eager walk (below the
-      # option's own strict step, keyed over definitions, it is refused by name).
+      # nixpkgs serves it — that refusal is an OPEN DEFECT (parity-defect rule 1), carried on
+      # den-hoag-zm7rd, not part of the price; one whose result is not an attrset keeps the eager
+      # walk (below the option's own strict step, keyed over definitions, it is refused by name). The
+      # same trust reaches a node's REGIME: a node keys its elements exactly where its stated
+      # record's NAME says it does (`keysExactly`), so a stock-named `attrsOf`, `listOf` or `nullOr`
+      # whose merge was overridden to a lazy one is keyed exactly, as its name states.
       #
-      # ★ THE STATED PRICE of a merge that reads its elements' values (den-hoag-lif3n; owner sitting
-      # 2026-10-09: zero defects preferred, nothing enumerated). The capture fold runs the merge over
+      # ★ AN OPEN DEFECT, NOT A PRICE (owner's parity-defect rule, 2026-10-09, rule 1; carried on
+      # den-hoag-zm7rd): a merge that reads its elements' values. The capture fold runs the merge over
       # site records, so a merge deciding placement on a value places as the records lead it. A moved
       # read re-runs the threaded fold over this evaluation's values at the read path (`qRead`) and
       # serves the element the capture placed there; an element that fold reached otherwise, placed
@@ -2406,11 +2410,11 @@ let
       # split did not key (`movedSteps`), is refused by name at its own loc when the merge reads it,
       # naming its own position. Those causes are stated on the moved-read and moved-node paths
       # only: a value-reading merge whose capture DROPS the element (`mapAttrs`, `filter` over a value
-      # a site record lacks) makes no moved read, and its refusal names an unexposed position
-      # (`unexposedRefusal`), the cause it stated before this fold. The
-      # same trust reaches a node's REGIME: a node keys its elements exactly where its stated
-      # record's NAME says it does (`keysExactly`), so a stock-named `attrsOf`, `listOf` or `nullOr`
-      # whose merge was overridden to a lazy one is keyed exactly, as its name states.
+      # a site record lacks, read with a default) makes no moved read, and its refusal names an
+      # unexposed position (`unexposedRefusal`); one that reads that field without a default aborts
+      # uncatchably (`attribute 'k' missing`). The refusal holds the cell above an abort or a silent
+      # value (rule 3) until a construction serves nixpkgs' value without forcing a sibling's
+      # definedness nixpkgs does not force.
       levelOf =
         c:
         let
@@ -2853,9 +2857,6 @@ let
               throw (nestingImportRefusal door loc t);
           };
         };
-      # The fold's result at a level, read where it is read: a `node` level's keys are read off
-      # their nodes; a `one` level's keys are checked against their own capture sites
-      # (`keyedWhereRead`); otherwise as folded.
       # The host's child at `position` of accessor `ev`, folding site `s` as the threaded fold folds an
       # element (`threadedAt`'s `merge`).
       childFold =
@@ -2999,6 +3000,9 @@ let
               x;
         in
         go [ ] rB v;
+      # The fold's result at a level, read where it is read: a `node` level's keys are read off
+      # their nodes; a `one` level's keys are checked against their own capture sites
+      # (`keyedWhereRead`); otherwise as folded.
       finishAt =
         oloc: lv: base: rB: rd: ds: v:
         if lv != null && lv ? list && !(lv ? es) then
