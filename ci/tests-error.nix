@@ -10333,6 +10333,37 @@ in
             msg = unreconciled;
           };
         };
+        # a verify copy of a record that does not evaluate its own roles, forging `nestedTypes` too: its
+        # own-evaluation fields are compared there, so it is imported and its join with its completion is
+        # refused as the same forgery without `verify` is; RED (served) where the admission tolerates them on
+        # every record
+        test-a-verify-copy-forging-nested-types-is-refused-by-name =
+          let
+            base = t.attrsOf t.int;
+            p =
+              (gm.evalModuleTree { } [
+                {
+                  options.p = gm.mkOption {
+                    type = gm.mkOptionType (
+                      base
+                      // {
+                        verify = _: null;
+                        nestedTypes.elemType = t.str;
+                      }
+                    );
+                  };
+                }
+                { options.p = gm.mkOption { type = base; }; }
+                { p.a = 1; }
+              ]).config.p;
+          in
+          {
+            expr = builtins.deepSeq p p;
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: option `p' is declared with types that do not merge \\(`attrsOf' and a partner that states no element type of its own\\); declared in <unknown-file>, <unknown-file>$";
+            };
+          };
       };
   };
 }

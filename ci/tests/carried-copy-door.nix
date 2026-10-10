@@ -141,5 +141,19 @@ in
       expr = whnf (gm.mkOptionType (sub abort // { verify = _: null; }));
       expected = "whnf";
     };
+    # a verify copy of a record that does not evaluate its own roles, forging `nestedTypes`, through
+    # `defineType`: imported, so its `nestedTypes` is re-derived from what it carries; RED (`string` over an
+    # `int` fold) where the admission carries the forged field
+    test-a-forged-nested-type-is-re-derived = {
+      expr =
+        (t.defineType (
+          t.attrsOf t.int
+          // {
+            verify = _: null;
+            nestedTypes.elemType = t.str;
+          }
+        )).nestedTypes.elemType.name;
+      expected = "int";
+    };
   };
 }

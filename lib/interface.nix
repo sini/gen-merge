@@ -4564,7 +4564,7 @@ let
         && x ? _checkWitness
         && builtins.isFunction (x.__typeSelf or null)
         && (rewritesCheck x || replacesVerify x)
-        && agreesOutside doorUnread x
+        && agreesOutside (doorUnread x) x
       )
     then
       null
@@ -4587,16 +4587,19 @@ let
         };
       in
       s;
-  # The fields the import door's admission does not compare (`carriedCopy`): the carrier's tolerated ones;
-  # the identity class, whose WHNF reads the members (`__okAt`), and a copy departing there keeps its stale
-  # stamp on either outcome, so every identity reader (`idOf`, `typeEq`) refuses it by name; the outputs of a
-  # record's own evaluation (`ownEvaluation`), which inside a registry knot evaluate the knot; and gen-types'
-  # two name fields (`__name` is its renderer's base, `__nameWithin` the renderer), each of which reads the
-  # members, which for a self-referential type is the door's own result.
+  # The fields the import door's admission does not compare for a stamped `t` (`carriedCopy`): the carrier's
+  # tolerated ones; the identity class, whose WHNF reads the members (`__okAt`), and a copy departing there
+  # keeps its stale stamp on either outcome, so every identity reader (`idOf`, `typeEq`) refuses it by name;
+  # the outputs of a record's own evaluation (`ownEvaluation`), on a record that evaluates its own roles
+  # (`evaluatesOwnRoles` of its completion, as `departsOnlyOutside` scopes them), which inside a registry knot
+  # evaluate the knot, while on any other record they are compared, so a verify copy forging one is imported;
+  # and gen-types' two name fields (`__name` is its renderer's base, `__nameWithin` the renderer), each of
+  # which reads the members, which for a self-referential type is the door's own result.
   doorUnread =
+    t:
     carrierTolerated
     ++ deriveClasses.identity
-    ++ ownEvaluation
+    ++ (if evaluatesOwnRoles (t.__typeSelf null) then ownEvaluation else [ ])
     ++ [
       "__name"
       "__nameWithin"
