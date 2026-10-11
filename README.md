@@ -2854,7 +2854,11 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   (`fixupOptionType`) erases it and serves. A foreign record states no check witness, so every foreign
   module-set declaration's check is asked of each definition, a wrapped one or not. An ad-hoc
   `type // { check = ...; }` override there is the same check, enforced the same way: what it admits
-  is served and what it rejects is refused by name.
+  is served and what it rejects is refused by name. The same holds for such a record imported through
+  `mkOptionType` (declared beside its twin, twice, or as the element of a nixpkgs container declared
+  alone), as a member of gen's `either` or `oneOf`, as the `freeformType` of two modules, and for a
+  module set copied with a `// { verify }`, whose `verify` is asked as part of its check: every step
+  that joins module sets carries what the join does not.
 
   Not covered: in nixpkgs' engine, a wrapper over a module set (nixpkgs' rebuild erases it), and a
   check on a gen type declared first (nixpkgs asks only the later relation) or hidden behind a functor
