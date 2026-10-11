@@ -275,6 +275,105 @@ in
           adHoc = every;
         };
       };
+    # a checked nixpkgs submodule as a member of gen's `either` or `oneOf`: the union merges its members
+    # pairwise, and a member's join at a module set is met as every step's is (den-hoag-78k2m), raw and
+    # through `mkOptionType`, beside the plain submodule's union, after it, and twice
+    test-a-checked-nixpkgs-submodule-as-a-union-member-is-enforced-redeclared =
+      let
+        M = gm.mkOptionType;
+        # no default: a module set declared twice (see the cell above)
+        S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        forms = {
+          wrapper = np.addCheck S not7;
+          adHoc = S // {
+            check = v: S.check v && not7 v;
+          };
+        };
+        unions = {
+          left = m: gt.either m gt.str;
+          right = m: gt.either gt.str m;
+          oneOf =
+            m:
+            gt.oneOf [
+              gt.str
+              m
+            ];
+        };
+        at =
+          X:
+          builtins.mapAttrs (_: u: {
+            beside = top [
+              (u S)
+              (u X)
+            ];
+            after = top [
+              (u X)
+              (u S)
+            ];
+            twice = top [
+              (u X)
+              (u X)
+            ];
+            door = top [
+              (u (M S))
+              (u (M X))
+            ];
+          }) unions;
+        every = {
+          beside = enforced;
+          after = enforced;
+          twice = enforced;
+          door = enforced;
+        };
+        members = {
+          left = every;
+          right = every;
+          oneOf = every;
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: at) forms;
+        expected = {
+          wrapper = members;
+          adHoc = members;
+        };
+      };
+    # the same record as the `freeformType` of two modules: the freeform plane's steps are met too, though
+    # the declaration list's fixup does not run there (den-hoag-78k2m)
+    test-a-checked-nixpkgs-submodule-as-a-freeformType-of-two-modules-is-enforced =
+      let
+        S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        free =
+          X: v:
+          let
+            x =
+              (gm.evalModuleTree { } [
+                { freeformType = gt.lazyAttrsOf X; }
+                { freeformType = gt.lazyAttrsOf X; }
+                { x = v; }
+              ]).config.x;
+          in
+          (tryEval (deepSeq x x)).success;
+        at = X: {
+          ok = free X { a = 1; };
+          bad = free X { a = 7; };
+        };
+      in
+      {
+        expr = {
+          wrapper = at (np.addCheck S not7);
+          adHoc = at (
+            S
+            // {
+              check = v: S.check v && not7 v;
+            }
+          );
+        };
+        expected = {
+          wrapper = enforced;
+          adHoc = enforced;
+        };
+      };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))

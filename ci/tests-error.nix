@@ -8255,6 +8255,22 @@ in
             msg = "^gen-merge: a definition for option `s' is not of type `submodule', in `def[.]nix'$";
           };
         };
+        # as a member of gen's `either`, declared twice: the union refuses as it does declared once (den-hoag-78k2m)
+        test-a-checked-submodule-as-a-union-member-redeclared-refuses-what-it-rejects = {
+          expr =
+            let
+              S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+              U = t.either (np.addCheck S not7) t.str;
+            in
+            opt [
+              U
+              U
+            ] { a = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `s' has definitions no single `either' member accepts [(]`submodule' rejects def[.]nix; `string' rejects def[.]nix[)]$";
+          };
+        };
       };
 
     # den-hoag-7gp66 P2: which message fires at gen-merge's doors — the options steps of

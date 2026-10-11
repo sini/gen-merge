@@ -644,14 +644,13 @@ let
   #  - The constructor's own law over its PARAMETERS is kept: a fresh join of one constructor that
   #    widens an operand's parameters (`enum`'s value union) owes that operand only where its own
   #    parameters admit the value, so a wrapper over it stays owed (`metWith`).
-  #  - ★ AT A MODULE SET THE STEP CARRIES A DROPPED WITNESSED REWRITE'S CHECK (den-hoag-59gnz C4): the
-  #    module-set fold does not enforce a met record's check, so the step answers the join restricted
-  #    by the dropped check (`interface.carriedAtDepth`), a witnessed rewrite of the join, which the
-  #    fold enforces as it enforces one declared alone. That is the carriage the declaration list's
-  #    fixup gives a FOREIGN wrapper, which states no witness, so no step can see it dropped
-  #    (`fixupModuleSets`, den-hoag-8ip0d); taken here, the freeform plane, which the fixup does not
-  #    run on, is carried too. `dropsWrappedCheck` is asked first, so an unwrapped module set never
-  #    builds the substructure read.
+  #  - ★ AT A MODULE SET THE STEP CARRIES EVERY CHECK THE JOIN DROPS (den-hoag-59gnz C4, 78k2m): the
+  #    module-set fold does not enforce a met record's check, so `metWith` answers the join restricted by
+  #    the dropped checks (`interface.carriedAtDepth`), which the fold enforces as it enforces one declared
+  #    alone: a witnessed rewrite's, a foreign wrapper's, which states no witness, and a mounted record's.
+  #    The declaration list's fixup carries a root again over its rebuild (`fixupModuleSets`,
+  #    den-hoag-8ip0d); a union's member and the freeform plane, which no fixup reaches, are carried by
+  #    the step.
   #
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
@@ -690,11 +689,6 @@ let
         ]
     else if sameTypeValue a b then
       a
-    else if (interface.importedSubstructure m).modules != null then
-      interface.carriedAtDepth true [
-        a
-        b
-      ] m
     else
       interface.metWith m [
         a

@@ -2438,8 +2438,9 @@ let
   # r` is the rebuild `r` restricted by every check in `ts` (the records it was rebuilt from) that it
   # cannot carry, its element rebuilt over the same carriage of their elements; `carriedAtDepth false t
   # m` is `t.substSubModules m` with its element so carried, as `fixupOptionType`'s rebuild forwards to
-  # the element's. A rebuild erases a wrapper at the element as at the root, and a declaration fold joins
-  # module sets without one (`metWith`), so neither depth is enforced unless carried. A gen record
+  # the element's. A rebuild erases a wrapper at the element as at the root, so neither depth is enforced
+  # unless carried; a declaration fold's join is carried by every step (`metWith`), and the fixup's rebuild
+  # over the authored module sets is carried again. A gen record
   # stating its own check owes nothing where gen's constructor built that check and the rebuild as one
   # (gen relations are exact); a foreign one is owed unconditionally, since a foreign wrapper states no
   # witness (`homedAt`'s carriage, den-hoag-4ifgb M-B, reads it the same way). A MOUNTED record — a module
@@ -4857,9 +4858,15 @@ let
   #    nothing). An operand that IS `m` owes nothing.
   #  - A module set's join is the union of its declarations, itself the meet of what they declare, and its
   #    own check is the module shape: its records are never compared (a comparison would evaluate their
-  #    modules). A witnessed rewrite dropped there is refused by the step before this is asked
-  #    (`lib/modules.nix` `mergeTypesBy`); a foreign wrapper's check is carried by the declaration
-  #    list's fixup (`carriedAtDepth`).
+  #    modules). Every check it does not carry rides on it instead, as the declaration list's fixup carries
+  #    a root (`carriedAtDepth`): a witnessed rewrite's, a foreign wrapper's, a mounted record's. The step
+  #    carries it HERE, at every step, because the fixup reaches only a root and its containers' elements:
+  #    a union's member (`either` states no module set) and the freeform plane are steps no fixup runs on
+  #    (den-hoag-78k2m). Carried here, the meet holds at every step by itself, which is the induction the
+  #    redeclaration law states (`lib/modules.nix` `mergeTypesBy`). Over a FOREIGN join, which states no
+  #    relation, the owed conjunction REPLACES the join's own check rather than conjoining it, as at a
+  #    root (`carryBy`): a foreign join stricter than its operands' conjunction is not kept stricter
+  #    there, and nixpkgs' own union serves the same value.
   #  - A FRESH join (neither operand) of the SAME constructors that changes an operand's own PARAMETERS
   #    is those constructors' law over them, as nixpkgs' `enum` unions its values: that operand is owed
   #    RELATIVISED to its own parameters, `v: o.check v || !(stock o).check v`, where `stock o` is its
@@ -4956,7 +4963,11 @@ let
         owed = map (o: if fresh && widens o then relativised o else o) notM;
         once = if length owed == 2 && same (head owed) (elemAt owed 1) then [ (head owed) ] else owed;
       in
-      if maybe == [ ] || (importedSubstructure m).modules != null || owed == [ ] then
+      if maybe == [ ] then
+        m
+      else if (importedSubstructure m).modules != null then
+        carriedAtDepth true os m
+      else if owed == [ ] then
         m
       else
         meetOf m once;
