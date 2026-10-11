@@ -2289,12 +2289,14 @@ let
     let
       # The mount over a module set: the door record's own rebuild with the record's own `check` riding on
       # it (`carriedCheck`, den-hoag-4ifgb M-B), built from the record handed in, or the container rebuilt
-      # over its element's (`recarry`, the container's own rebuild over another payload).
+      # over its element's (`recarry`, the container's own rebuild over another payload). A door record
+      # that is a nixpkgs container rebuilds with its element's check carried (`carriedAtDepth`), as the
+      # same container declared twice does: its root's check alone is not its element's (den-hoag-uf3lg).
       mountOf =
         t: m:
         if t ? substructure.mount then
           let
-            r = t.substructure.rebuild m;
+            r = carriedAtDepth false t m;
           in
           if isAttrs r && r ? merge && r ? check && t ? check then r // { check = carriedCheck t r; } else r
         else

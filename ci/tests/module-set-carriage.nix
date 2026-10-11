@@ -374,6 +374,24 @@ in
           adHoc = enforced;
         };
       };
+    # a nixpkgs container through `mkOptionType` whose element is a checked submodule, declared alone:
+    # the mount rebuilds the container with its element's check carried, not its root's alone
+    test-a-checked-nixpkgs-submodule-element-through-mkOptionType-is-enforced-alone =
+      let
+        M = gm.mkOptionType;
+      in
+      {
+        expr = {
+          attrsOf = attrs [ (M (np.attrsOf W)) ];
+          lazyAttrsOf = attrs [ (M (np.lazyAttrsOf W)) ];
+          listOf = list [ (M (np.listOf W)) ];
+        };
+        expected = {
+          attrsOf = enforced;
+          lazyAttrsOf = enforced;
+          listOf = enforced;
+        };
+      };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))
