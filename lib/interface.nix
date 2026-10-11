@@ -5426,6 +5426,9 @@ let
     # A record that is ITSELF a nesting type declares nothing by crossing: it is a record copy, whose
     # fold this import replaces with the copied exported one — the stated price (gen-schema's
     # `refined` over a `submodule`), not a declaration.
+    # A nesting record whose check a wrapper rewrote (`addCheck`, `// { check }`) is none of that: it
+    # is gen-merge's own completed record, its fold is its threaded sibling and the rewritten check
+    # rides on it, so it crosses as itself (arm below), as `types.defineType` returns it.
     else if
       !(isNesting t) && statesWrapped t && importedRehomeAt "mkOptionType" null t != null && canNest t
     then
@@ -5466,6 +5469,16 @@ let
           )
         else
           { refused = nestingImportRefusal "mkOptionType" null t; }
+      )
+    else if isNesting t && t ? carries && t ? __typeSelf && rewritesCheck t then
+      (
+        let
+          rehomed = restamp t t;
+        in
+        {
+          imported = rehomed;
+          inherit rehomed;
+        }
       )
     else if carrierRefusal t roles != null then
       { refused = carrierRefusal t roles; }

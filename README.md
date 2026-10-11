@@ -1192,7 +1192,9 @@ Two rules that look like details and are not:
   imported and served, but unminted, and `typeEq` refuses it by name. The published `mkOptionType`
   first returns a gen-merge completion's copy departing at its `verify` or `check` as it is, as
   `types.defineType` does (below): it keeps its mark and stale stamp, so `idOf` and `typeEq` refuse
-  it by name as they refuse the raw copy. The price: a description-only
+  it by name as they refuse the raw copy. A gen nesting record (`submodule`, `partialSubmodule`)
+  whose check is rewritten (`addCheck`, `// { check }`) needs no `verify`: it crosses as itself too,
+  its threaded fold intact, so it is served below a gen union as the raw record is. The price: a description-only
   `//` (`t // { description = …; }`) is a copy too, and `typeEq` refuses it; as an option type it
   is still served. **Re-completion keeps the witnesses a record arrives with**: the
   published `types.defineType` and `mkOptionType` never re-tie the check witness over a `check` they
