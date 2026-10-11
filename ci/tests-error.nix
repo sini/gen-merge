@@ -8239,6 +8239,22 @@ in
             msg = "^A definition for option `s[.]k' is not of type `submodule'[.] TypeError: a definition is rejected by the check of a declaration of this option$";
           };
         };
+        # through `mkOptionType`, redeclared beside the plain submodule: the same checked fold (den-hoag-aux3h)
+        test-a-checked-submodule-through-mkOptionType-redeclared-refuses-what-it-rejects = {
+          expr =
+            let
+              # no default: the module set is declared twice (see the value cell)
+              S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+            in
+            opt [
+              S
+              (gm.mkOptionType (np.addCheck S not7))
+            ] { a = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `s' is not of type `submodule', in `def[.]nix'$";
+          };
+        };
       };
 
     # den-hoag-7gp66 P2: which message fires at gen-merge's doors — the options steps of

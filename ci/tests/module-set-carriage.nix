@@ -196,6 +196,85 @@ in
           doorBesideRaw = served;
         };
     };
+    # a checked nixpkgs submodule through `mkOptionType` is a gen completion over a module set gen did not
+    # build: its check rides on every rebuild as the raw record's does, redeclared beside the plain
+    # submodule, beside it through the same door, twice, below a gen container and as a nixpkgs
+    # container's element
+    test-a-checked-nixpkgs-submodule-through-mkOptionType-is-enforced-redeclared =
+      let
+        M = gm.mkOptionType;
+        # the twin is the record the form wraps, and it states no default: a module set declared twice
+        # declares its options twice, and two declarations of one option may not both state a default
+        S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        forms = {
+          wrapper = np.addCheck S not7;
+          adHoc = S // {
+            check = v: S.check v && not7 v;
+          };
+        };
+        at = X: {
+          beside = top [
+            S
+            (M X)
+          ];
+          after = top [
+            (M X)
+            S
+          ];
+          door = top [
+            (M S)
+            (M X)
+          ];
+          twice = top [
+            (M X)
+            (M X)
+          ];
+          container = attrs [
+            (gt.attrsOf S)
+            (gt.attrsOf (M X))
+          ];
+          # the door record as the element of a nixpkgs container, alone, beside the plain container and
+          # twice
+          npAttrs = attrs [ (np.attrsOf (M X)) ];
+          npAttrsBeside = attrs [
+            (np.attrsOf S)
+            (np.attrsOf (M X))
+          ];
+          npAttrsTwice = attrs [
+            (np.attrsOf (M X))
+            (np.attrsOf (M X))
+          ];
+          npList = list [ (np.listOf (M X)) ];
+          npListBeside = list [
+            (np.listOf S)
+            (np.listOf (M X))
+          ];
+          npListTwice = list [
+            (np.listOf (M X))
+            (np.listOf (M X))
+          ];
+        };
+        every = {
+          beside = enforced;
+          after = enforced;
+          door = enforced;
+          twice = enforced;
+          container = enforced;
+          npAttrs = enforced;
+          npAttrsBeside = enforced;
+          npAttrsTwice = enforced;
+          npList = enforced;
+          npListBeside = enforced;
+          npListTwice = enforced;
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: at) forms;
+        expected = {
+          wrapper = every;
+          adHoc = every;
+        };
+      };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))

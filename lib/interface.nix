@@ -2440,25 +2440,40 @@ let
   # m` is `t.substSubModules m` with its element so carried, as `fixupOptionType`'s rebuild forwards to
   # the element's. A rebuild erases a wrapper at the element as at the root, and a declaration fold joins
   # module sets without one (`metWith`), so neither depth is enforced unless carried. A gen record
-  # stating its own check owes nothing (gen relations are exact); a foreign one is owed
-  # unconditionally, since a foreign wrapper states no witness (`homedAt`'s carriage, den-hoag-4ifgb
-  # M-B, reads it the same way). The walk descends through a record that owes nothing itself to an
-  # element that does, a gen container's included (`owesIn`). An owed AD-HOC override
-  # (`type // { check = ...; }`) of a type stating no module set is refused by name at any depth
-  # (`adHocFold`, den-hoag-ku5dt Q1), as it is alone: the carried record is that override, so each
-  # reader that folds it refuses it. Over a module set the override is owed as any check is.
+  # stating its own check owes nothing where gen's constructor built that check and the rebuild as one
+  # (gen relations are exact); a foreign one is owed unconditionally, since a foreign wrapper states no
+  # witness (`homedAt`'s carriage, den-hoag-4ifgb M-B, reads it the same way). A MOUNTED record — a module
+  # set that crossed the `mkOptionType` door (`crossedRoot`'s class: the `mount` mark, no `verify`, a
+  # module set) — is owed too, though the completion states a gen relation: its check and its rebuild
+  # crossed as two values gen did not build as one, so its rebuild is not known to carry its check, and
+  # the mount rides that check on it when the record is declared alone (`homedRootFixed`'s `mountOf`).
+  # A redeclaration owes it for the same reason (den-hoag-aux3h). The walk descends through a record
+  # that owes nothing itself to an element that does, a gen container's included (`owesIn`). An owed
+  # AD-HOC override (`type // { check = ...; }`) of a type stating no module set is refused by name at
+  # any depth (`adHocFold`, den-hoag-ku5dt Q1), as it is alone: the carried record is that override, so
+  # each reader that folds it refuses it. Over a module set the override is owed as any check is.
   #
   # Bounded by `importedTypeWalkFuel`. THE PRICE, stated: a wrapper nested that many containers deep is
   # not carried, as `crossedRoot` states for the mount.
   carriedAtDepth =
     let
-      owes = o: isAttrs o && (!(o ? typeMergeRel) || rewritesCheck o);
+      owes =
+        o:
+        isAttrs o
+        && (
+          !(o ? typeMergeRel)
+          || rewritesCheck o
+          || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
+        );
       # `owes`, inlined: it is asked once per element of every rebuild
       owesIn =
         fuel: o:
         isAttrs o
         && (
-          !(o ? typeMergeRel) || rewritesCheck o || fuel > 0 && owesIn (fuel - 1) (carriedAt "element" o)
+          !(o ? typeMergeRel)
+          || rewritesCheck o
+          || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
+          || fuel > 0 && owesIn (fuel - 1) (carriedAt "element" o)
         );
       over =
         r: e:
