@@ -682,10 +682,11 @@ in
         "r"
       ];
     };
-    # ★ THE STATED PRICE until den-hoag-87nvk §2b decides the container: a declared sibling that
-    # stores a module set while stating `getSubModules = null` is not asked by the walk, and the
-    # container's own rebuild hands it the marker, so the list it stores leads with the marker
-    # item where nixpkgs keeps its static module. §2b's landing refuses it by name and reds this.
+    # ★ AN OPEN DEFECT (parity-defect rule 1; den-hoag-87nvk): a declared sibling that stores a
+    # module set while stating `getSubModules = null` is not asked by the walk, and the container's
+    # own rebuild hands it the marker, so the list it stores leads with the marker item where
+    # nixpkgs keeps its static module (silent). This pins the current value, not a verdict that it
+    # is right: a construction that serves nixpkgs' value reds it.
     test-a-sibling-storing-a-module-set-it-does-not-state-carries-the-marker = {
       expr =
         let
@@ -2108,6 +2109,109 @@ in
         expr = opt (t.attrsOf adHocV2) { a.x = 2; };
         expected = {
           a = opt adHocV2 { x = 2; };
+        };
+      };
+    };
+
+  # den-hoag-p06j3: OPEN DEFECTS (the owner's parity-defect rule, 2026-10-09, rule 1; ruled 2026-10-10,
+  # sitting den-hoag-55ca6, OQ1 arm (a): no threading door lands). A foreign `either` or `oneOf`
+  # holding a gen submodule is served at the option's root and under the six, and refused by name
+  # below a container that does not thread (`coercedTo`, `uniq`), where nixpkgs serves. Each row is
+  # the pair: nixpkgs' value, evaluated here with nixpkgs' own submodule, and whether gen refuses the
+  # same shape. A row whose `genRefuses` turns false is a defect closed or a value served silently,
+  # and either way the row, the pins in `ci/tests-error.nix` and the README paragraph move with it.
+  # The `control` rows are served on both sides, so the refusal reading is seen to read false.
+  flake.tests.nesting-threaded-open-defects =
+    let
+      cf = _: throw "coerced";
+      gSub = t.submodule {
+        options.a = gm.mkOption {
+          type = t.int;
+          default = 0;
+        };
+      };
+      nSub = np.submodule {
+        options.a = nixpkgsLib.mkOption {
+          type = np.int;
+          default = 0;
+        };
+      };
+      one = {
+        a = 1;
+      };
+      rows = {
+        coercedTo-either = {
+          type = _: G: np.coercedTo np.int cf (np.either G np.str);
+          def = one;
+        };
+        coercedTo-oneOf = {
+          type =
+            _: G:
+            np.coercedTo np.int cf (
+              np.oneOf [
+                np.str
+                np.bool
+                G
+              ]
+            );
+          def = one;
+        };
+        uniq-either = {
+          type = _: G: np.uniq (np.either G np.str);
+          def = one;
+        };
+        uniq-oneOf = {
+          type =
+            _: G:
+            np.uniq (
+              np.oneOf [
+                np.str
+                np.bool
+                G
+              ]
+            );
+          def = one;
+        };
+        coercedTo-listOf-either = {
+          type = _: G: np.coercedTo np.int cf (np.listOf (np.either G np.str));
+          def = [ one ];
+        };
+        control-either-at-the-root = {
+          type = _: G: np.either G np.str;
+          def = one;
+        };
+        control-gen-either-under-coercedTo = {
+          type = E: G: np.coercedTo np.int cf (E.either G np.str);
+          def = one;
+        };
+      };
+      read = r: {
+        nixpkgs = fwd (r.type np nSub) r.def;
+        genRefuses = refused (opt (r.type t gSub) r.def);
+      };
+      served = {
+        nixpkgs = one;
+        genRefuses = false;
+      };
+      open = {
+        nixpkgs = one;
+        genRefuses = true;
+      };
+    in
+    {
+      test-the-open-defects-are-refused-where-nixpkgs-serves = {
+        expr = builtins.mapAttrs (_: read) rows;
+        expected = {
+          coercedTo-either = open;
+          coercedTo-oneOf = open;
+          uniq-either = open;
+          uniq-oneOf = open;
+          coercedTo-listOf-either = {
+            nixpkgs = [ one ];
+            genRefuses = true;
+          };
+          control-either-at-the-root = served;
+          control-gen-either-under-coercedTo = served;
         };
       };
     };

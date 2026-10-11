@@ -2580,7 +2580,7 @@ let
   #     `s marker` is the walk's own call, one nixpkgs never makes, and an override that reads its
   #     stock rebuild's `null` aborts on it uncatchably (den-hoag-87nvk). The sibling still receives
   #     whatever the container's own rebuild hands it, which this does not decide: one that stores a
-  #     module set while stating none is the stated price at `threadedForeign`.
+  #     module set while stating none is an open defect at `threadedForeign` (den-hoag-87nvk).
   # A sibling's answer is a value, read to weak head normal form only; a rebuild that reads the
   # marker as modules meets its import, which throws the import refusal (`threadMarker`), so a
   # consumer the declarations do not show still refuses by name, never folding an empty module.
@@ -2654,8 +2654,15 @@ let
   # (`threadsAt`: every declared position that may nest comes back marked, every other declared
   # position is a sibling with no module set to lose) is refused by name, as F2 α requires: a
   # container that drops its argument would otherwise reach the nested tree through the bridge, a
-  # silent standalone evaluation. A foreign ROOT stating a module set is mounted as nixpkgs mounts
-  # it instead, where that rebuild declares no gen element (`homedRootAt`).
+  # second ROOT evaluation outside this one graph, which loses one graph (ADR-0012), the declared
+  # identity of the tree's options (ADR-0034's rider, ADR-0025 item 1) and costs an evaluation per
+  # tree. ★ AN OPEN DEFECT, NOT A PRICE (the owner's parity-defect rule, 2026-10-09, rule 1; OQ1 arm
+  # (a), 2026-10-10; carried on den-hoag-p06j3): where nixpkgs serves the shape (a foreign `either` or
+  # `oneOf` holding a gen submodule below `coercedTo` or `uniq`, or a hand-rolled container that
+  # does not thread), the refusal stays until gen serves it. No threading door lands: nixpkgs' own
+  # rebuild cannot change, and a carrier on the gen element fails the delivery check and leaks. A
+  # foreign ROOT stating a module set is mounted as nixpkgs mounts it instead, where that rebuild
+  # declares no gen element (`homedRootAt`).
   #
   # ★ THE BOUNDARY (ADR-0014, ADR-0023): a FOREIGN closure, the container's own `merge` and `check`,
   # runs inside gen's evaluation with a gen-threaded element fold under it. No foreign engine
@@ -2671,9 +2678,15 @@ let
   # above, and the second has no predicate here. Inside it sits a position the declarations do not
   # show whose merge STORES the handed list (`deferredModule`): its value carries the marker item,
   # silent on inspection, and refuses by name where the list is evaluated (the marker's import).
-  # Until den-hoag-87nvk §2b decides the container, so does a DECLARED sibling whose
-  # `getSubModules` does not show the module set it stores (`deferredModuleWith` stating `null`):
-  # `threadsAt` does not ask it, and a container that rebuilds it hands it the marker.
+  # ★ AN OPEN DEFECT, NOT A PRICE (the owner's parity-defect rule, 2026-10-09, rule 1; arm (a),
+  # 2026-10-10; carried on den-hoag-87nvk): a DECLARED sibling whose `getSubModules` does not show
+  # the module set it stores (`deferredModuleWith` stating `null`) is not asked by `threadsAt`, and a
+  # container that rebuilds it hands it the marker. It is SILENT on inspection (gen reads `<gen-merge
+  # thread marker>` where nixpkgs reads `static`; rule 4 ranks it first) and refused by name where
+  # the stored list is evaluated. Beside it, uncatchable: an override of a nixpkgs `either` or
+  # `oneOf` (or any foreign record) below a threaded container, whose rebuild dereferences its
+  # stock rebuild's `null`, aborts where nixpkgs serves (204 shapes at b4b4688); a container's own
+  # rebuild of a sibling is the same class. PU is not built; no construction is in view.
   threadedForeign =
     door: loc0: t:
     threadedForeignWith (threadsAt door loc0 t) door loc0 t;

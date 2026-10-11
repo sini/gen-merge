@@ -6719,6 +6719,7 @@ in
         # F2 α (M3): a rebuild that drops its argument does not bring the threaded element back marked
         # (`threadsAt`), and would reach the tree through the bridge, so it is refused by name (one
         # that forwards it threads: `ci/tests/nesting-threaded.nix`, `nesting-threaded-rehome`).
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves { x = 1; }; this pins the refusal, not a verdict that it is right.
         test-a-rebuild-that-drops-its-element-is-refused-by-name = {
           expr = opt (fwdBy (_: sub) sub) { x = 1; };
           expectedError = {
@@ -6731,6 +6732,7 @@ in
         # set nixpkgs leaves it. It is judged on the ORIGINAL record (its own `substSubModules` over
         # the marker answers non-null), whatever its rebuild then says: one that relabels the list,
         # one whose rebuild drops `getSubModules`, and one that stores the list as its value.
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves { y = 7; }; this pins the refusal, not a verdict that it is right.
         test-a-sibling-that-relabels-the-module-list-is-refused-by-name = {
           expr = opt (np.uniq (
             fanOut (np.listOf sub) (
@@ -6746,6 +6748,7 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `unique' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
           };
         };
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves { y = 7; }; this pins the refusal, not a verdict that it is right.
         test-a-sibling-whose-rebuild-drops-its-module-set-is-refused-by-name = {
           expr = opt (np.uniq (
             fanOut (np.listOf sub) (
@@ -6757,6 +6760,7 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `unique' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
           };
         };
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves 1; this pins the refusal, not a verdict that it is right.
         test-a-sibling-that-stores-the-module-list-is-refused-by-name = {
           expr = builtins.length (opt (fanOut (np.listOf sub) np.deferredModule) { }).imports;
           expectedError = {
@@ -6768,6 +6772,7 @@ in
         # dereferencing the stock rebuild's `null` is never called; a stock `either` as the element is
         # then refused by name as it is beside any sibling (`nesting-threaded-rehome` serves the gen
         # ones).
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves { x = 1; }; this pins the refusal, not a verdict that it is right.
         test-a-stock-either-beside-a-sibling-stating-no-module-set-is-refused-by-name = {
           expr =
             let
@@ -6785,8 +6790,62 @@ in
             msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
           };
         };
+        # den-hoag-p06j3, OPEN DEFECTS (the owner's parity-defect rule, 2026-10-09, rule 1; OQ1 arm (a),
+        # 2026-10-10): nixpkgs serves each of these, a foreign `either` or `oneOf` holding a gen
+        # submodule below a container that does not thread; the value twin is
+        # `ci/tests/nesting-threaded.nix`, `nesting-threaded-open-defects`.
+        test-a-foreign-either-below-coercedTo-is-refused-by-name = {
+          expr = opt (np.coercedTo np.int (_: throw "coerced") (np.either sub np.str)) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+          };
+        };
+        test-a-foreign-oneOf-below-coercedTo-is-refused-by-name = {
+          expr = opt (np.coercedTo np.int (_: throw "coerced") (
+            np.oneOf [
+              np.str
+              np.bool
+              sub
+            ]
+          )) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+          };
+        };
+        test-a-foreign-either-below-uniq-is-refused-by-name = {
+          expr = opt (np.uniq (np.either sub np.str)) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `unique' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
+          };
+        };
+        test-a-foreign-oneOf-below-uniq-is-refused-by-name = {
+          expr = opt (np.uniq (
+            np.oneOf [
+              np.str
+              np.bool
+              sub
+            ]
+          )) { x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `unique' declares a gen nesting type as an element [(]its `nestedTypes[.]elemType'[)], ${rule}";
+          };
+        };
+        test-a-foreign-either-below-a-listOf-below-coercedTo-is-refused-by-name = {
+          expr = opt (np.coercedTo np.int (_: throw "coerced") (np.listOf (np.either sub np.str))) [
+            { x = 1; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `h': the option type `coercedTo' declares a gen nesting type as an element [(]its `nestedTypes[.]finalType'[)], ${rule}";
+          };
+        };
         # A consumer the declarations do not show reads the marker as modules and meets its import,
         # which refuses by name: never an empty module folded silently.
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves { y = 7; }; this pins the refusal, not a verdict that it is right.
         test-an-undeclared-consumer-meets-the-marker-and-is-refused-by-name = {
           expr = opt (
             let
@@ -6810,6 +6869,7 @@ in
         # nixpkgs mounts a type as its rebuild at the option's ROOT only. Below a union, which states
         # no module set, it folds the member by the member's own merge, so gen does not rebuild it
         # there: it is refused by name, never served by a rebuild nixpkgs does not take.
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves "OWN-MERGE"; this pins the refusal, not a verdict that it is right.
         test-a-member-below-a-union-is-not-mounted-as-its-rebuild = {
           expr = opt (np.either np.int (
             nixpkgsLib.mkOptionType {
@@ -6827,7 +6887,7 @@ in
           };
         };
         # A root whose rebuild is not an option type (`mkOptionType`'s default `m: null`) is not
-        # mounted as one.
+        # mounted as one. Parity refusal: nixpkgs aborts (`expected a set but found null`).
         test-a-root-whose-rebuild-is-not-a-type-is-refused-by-name = {
           expr = opt (nixpkgsLib.mkOptionType {
             name = "nullsub";
@@ -7107,6 +7167,7 @@ in
         # nixpkgs merges with: threading it would fold the copy as an empty module and drop its
         # defaulted option, silently. The record states no module set to be mounted over, so it is
         # refused by name.
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves { y = 7; }; this pins the refusal, not a verdict that it is right.
         test-a-rebuild-beside-a-consumed-marker-is-refused-by-name = {
           expr =
             let
@@ -7154,6 +7215,7 @@ in
         # set to be mounted over as nixpkgs' `fixupOptionType` mounts one, so it is refused by name.
         # (A record that does state one is mounted so and gives nixpkgs' value,
         # `ci/tests/nesting-threaded.nix`, `nesting-threaded-parity-residue`.)
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves { x = 1; }; this pins the refusal, not a verdict that it is right.
         test-a-null-rebuild-is-refused-by-name = {
           expr = opt (
             let
@@ -8711,12 +8773,14 @@ in
           ];
           expectedError = fired;
         };
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves [ { y = 2; } ]; this pins the refusal, not a verdict that it is right.
         test-a-payload-stating-modules-keeps-the-nesting-element-refusal = {
           expr = at (nesting {
             modules = [ ];
           });
           expectedError = nestingRefusal;
         };
+        # ★ OPEN DEFECT (parity-defect rule 1; den-hoag-p06j3): nixpkgs serves [ { y = 2; } ]; this pins the refusal, not a verdict that it is right.
         test-a-payload-stating-static-modules-keeps-the-nesting-element-refusal = {
           expr = at (nesting {
             staticModules = [ ];

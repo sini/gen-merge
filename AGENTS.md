@@ -279,7 +279,7 @@ state, never its functor payload's. Its stated price: an overridden `merge` on i
 type outside the six that declares a nesting element threads at a declared option through its own
 `substSubModules` rebuild (`threadedForeign`, arm (T)) where that rebuild threads (`threadsAt`,
 judged on the original record position by position, at any depth), and is refused by name where it
-does not, where a tree is read at a position its merge does not expose (`unexposedRefusal`), where
+does not (an open defect where nixpkgs serves the shape, not a price: den-hoag-p06j3), where a tree is read at a position its merge does not expose (`unexposedRefusal`), where
 an undeclared position evaluates the marker (its import throws the refusal), and at
 `mkOptionType`. At an option ROOT stating a module set whose rebuild does not thread, it is mounted
 as nixpkgs' `fixupOptionType` mounts it, where that rebuild is an option type declaring no gen
@@ -317,7 +317,7 @@ is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
 
 - The CALLED fold of a nesting type (`mergeDefs`, `submodule`'s `whenEmpty.value`, the tree
   record's `emptyTree`) **refuses by name**. So does any container that does not thread the
-  evaluation. The exported `merge` and `emptyValue` bridge (one root evaluation per tree).
+  evaluation (an open defect where nixpkgs serves the shape, not a price: den-hoag-p06j3). The exported `merge` and `emptyValue` bridge (one root evaluation per tree).
 - An over-approximated child the host fold never selected (a union position under a lazy
   container) is a CANDIDATE: enumerated, and its `result` alone refuses, before any module is applied.
 - A union over a container (`either (attrsOf sub) str`) is keyed member by member, a container member
