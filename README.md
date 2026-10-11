@@ -1955,7 +1955,8 @@ with no walk and no fuel. **The price, taken by name:** a marked type that DOES 
 nesting type becomes a silent standalone evaluation through the exported `merge` (OQ11 (d)'s
 stated price). Only `false` is accepted. `declaresNesting = true`, or any non-boolean, is refused by
 name at `mkOptionType` and wherever the walk meets it, since a declared `true` is not a way to opt
-in. Pinned by `ci/tests/nesting-declaration.nix` and `ci/tests-error.nix`
+in. The walk does not run below a gen container, so an element marked `true` there is bound as gen's
+container binds it, at a declared option and through `mkOptionType` alike. Pinned by `ci/tests/nesting-declaration.nix` and `ci/tests-error.nix`
 (`nesting-declaration.*`).
 
 **Where the refusal fires, and re-homing.** A type is HOMED where it is bound to a position: at a
@@ -1964,6 +1965,18 @@ the six stock foreign containers whose element may nest is folded as gen-merge's
 `nixpkgs.lib.types.attrsOf (submodule …)` threads like gen's. A stock container over no nesting
 element and no owed copy keeps its own fold, unless its two statements of the element disagree (below). The six are recognised by their functor, the relation they merge by,
 and rebuilt over the element their carrying spellings state, never over their payload's.
+
+**A container gen-merge itself completed crosses `mkOptionType` as itself.** It is already in the
+door's image, so where it may nest (`nullOr`, `attrsOf`, `listOf`, `either`, … over a gen
+`submodule`, cyclic ones included) the door returns it re-tied by the import's identity rule, and
+it serves the value nixpkgs' `lib.evalModules` serves on the same record. The door's result is
+`typeEq` to the record handed in, a `description` copy keeps its completion's identity, and a copy
+whose `check` was rewritten keeps that check: the value it rejects is refused by name, where
+nixpkgs drops the check and serves it. An element below it that only offers a nesting type through
+its functor payload is refused, with the same text, where the option is bound rather than at
+construction. A record stating `carries` without the completion stamp asks the door to complete it
+and keeps the import refusal. Pinned by `ci/tests/gen-container-door.nix` and `ci/tests-error.nix`
+(`gen-container-door.*`).
 
 **A `//` copy's `verify` is read inside a foreign container.** A copy whose `verify` no completion
 vouches for (`interface.replacesVerify`) still publishes its base's `check`, and a nixpkgs container's

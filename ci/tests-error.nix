@@ -10312,6 +10312,76 @@ in
             };
           };
       };
+    # A gen-merge completion crossing `mkOptionType` as itself (ci/tests/gen-container-door.nix). A copy whose
+    # `check` rejects `a = 1` keeps it through the door, so the planted value is refused by name, where nixpkgs drops
+    # the check and serves it. An element that only offers a gen nesting type through its functor payload is refused
+    # with the walk's own text where the option is bound, `null` included. RED (each): the door's construction
+    # refusal, not these texts.
+    flake.testsError.gen-container-door =
+      let
+        sub = t.submodule { options.a = gm.mkOption { type = t.int; }; };
+        p = v: v == null || (v.a or 0) != 1;
+        read =
+          ty: defs:
+          let
+            x =
+              (gm.evalModuleTree { } (
+                [
+                  {
+                    options.x = gm.mkOption {
+                      type = gm.mkOptionType ty;
+                      default = null;
+                    };
+                  }
+                ]
+                ++ defs
+              )).config.x;
+          in
+          builtins.deepSeq x x;
+        notOfType = "gen-merge: a definition for option `x' is not of type `null or \\(submodule\\)'.*";
+        offersOnly = {
+          name = "fwd";
+          check = builtins.isAttrs;
+          merge = loc: defs: sub.merge loc defs;
+          functor = {
+            name = "fwd";
+            payload.elemType = sub;
+            binOp = _: _: null;
+            type = _: null;
+            wrapped = null;
+          };
+          inherit (sub) getSubOptions getSubModules;
+          substSubModules = _: sub;
+        };
+      in
+      {
+        test-a-check-copy-keeps-its-check-through-the-door = {
+          expr = read (
+            let
+              b = t.nullOr sub;
+            in
+            b // { check = v: b.check v && p v; }
+          ) [ { x.a = 1; } ];
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType;
+          };
+        };
+        test-an-add-check-keeps-its-check-through-the-door = {
+          expr = read (nixpkgsLib.types.addCheck (t.nullOr sub) p) [ { x.a = 1; } ];
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType;
+          };
+        };
+        test-an-element-offering-a-nesting-type-is-refused-where-the-option-is-bound = {
+          expr = read (t.nullOr offersOnly) [ ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `evalModuleTree' at option `x': the option type `fwd' offers a type declaring a gen nesting type to merge on \\(its functor payload's `elemType'\\) but states no element it carries.*$";
+          };
+        };
+      };
     # nixpkgs' `definition` record (ci/tests/definition-record.nix): a refusal names the RECORD's file,
     # not the enclosing module's, on an option and on a module argument (nixpkgs names `/r/B.nix` and
     # `/r/A.nix` in both). Each has a plain-definition control carrying the same message.

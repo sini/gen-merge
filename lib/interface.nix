@@ -1350,7 +1350,10 @@ let
   # nesting type becomes a silent standalone evaluation through the exported `merge` (OQ11 (d)'s
   # stated price, now taken by name). Only `false` is a door; any other value is refused by name
   # (a declared `true` is not an opt-in, *defaulted, reversible*). ONE text, read by `importType`
-  # at construction and by the walk wherever it meets the field.
+  # at construction and by the walk wherever the walk runs. The walk does not run below a gen
+  # container: at a position, and for a gen-merge completion at `mkOptionType`, an element there is
+  # bound as gen's own container binds it, so neither this refusal nor the payload-offer refusal
+  # fires on it at construction.
   declaresNestingMarkerRefusal =
     t:
     if !(t ? declaresNesting) || t.declaresNesting == false then
@@ -5422,8 +5425,35 @@ let
           inherit rehomed;
         }
       )
-    else if !(isNesting t) && statesWrapped t && declaresNestingAt "mkOptionType" null t then
-      { refused = nestingImportRefusal "mkOptionType" null t; }
+    # A record gen-merge itself COMPLETED (it states `carries` and holds the completion stamp) is already
+    # in this door's image, so where it may nest it crosses AS ITSELF, re-tied by the import's own
+    # identity rule (`restamp`), as a position binds it: an intact completion keeps its mint, and a copy
+    # keeps the identity the import gives the same copy of a container that does not nest. It is asked
+    # gen's own dispatch predicate (`canNest`, `true` at the fuel's exhaustion, so a cyclic container
+    # crosses), never the foreign walk, whose by-name refusals below the top it does not read: an element
+    # marked `declaresNesting = true` is served as the position serves it, and an element that only
+    # offers a nesting type is refused by the engine where it is bound, with the walk's own text. A record
+    # without the stamp asks this door to complete it (gen-schema's `refined` strips it), and keeps the
+    # import refusal.
+    else if
+      !(isNesting t)
+      && statesWrapped t
+      && (if t ? carries && t ? __typeSelf then canNest t else declaresNestingAt "mkOptionType" null t)
+    then
+      (
+        if t ? carries && t ? __typeSelf then
+          (
+            let
+              rehomed = restamp t t;
+            in
+            {
+              imported = rehomed;
+              inherit rehomed;
+            }
+          )
+        else
+          { refused = nestingImportRefusal "mkOptionType" null t; }
+      )
     else if carrierRefusal t roles != null then
       { refused = carrierRefusal t roles; }
     else if functorRefusal t != null then
