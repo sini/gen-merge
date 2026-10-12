@@ -1607,7 +1607,11 @@ let
   # (`lib/default.nix`).
   isValid =
     t: v:
-    if t ? verify then
+    # a `verify` judging a merged value is asked by the head judgement (`interface.importedHeadJudge`), whole; asked
+    # here, per definition, it is the record's own `check`
+    if t ? verify && (!(t ? typeMergeRel || t ? __typeSelf) || t ? carries) then
+      t.check v
+    else if t ? verify then
       t.verify v == null
       && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
     else if t ? admits then

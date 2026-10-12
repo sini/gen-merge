@@ -735,7 +735,29 @@ let
   # no further than its definitions one by one.
   importedHeadJudge =
     t: loc: defs:
-    if t ? mergeDefs.headJudge then
+    if t ? verify && (!(t ? typeMergeRel || t ? __typeSelf) || t ? carries) then
+      # a `verify` copy the choice cannot ask per definition (a foreign record's, whose verify judges the merged value):
+      # its own head judgement, then its verify on the merged value, which the choice asks whole as nixpkgs asks a
+      # member's `headError`
+      (
+        let
+          r =
+            if isV2 t then
+              v2Result (t.merge.v2 { inherit loc defs; })
+            else
+              {
+                headError = null;
+                value = t.merge loc defs;
+              };
+        in
+        if t ? mergeDefs.headJudge && t.mergeDefs.headJudge loc defs != null then
+          t.mergeDefs.headJudge loc defs
+        else if r.headError != null then
+          r.headError.message or "a definition is not of the member's type"
+        else
+          t.verify r.value
+      )
+    else if t ? mergeDefs.headJudge then
       t.mergeDefs.headJudge loc defs
     else if !(t ? typeMergeRel) && isV2 t then
       (v2Result (t.merge.v2 { inherit loc defs; })).headError.message or null
@@ -1934,10 +1956,39 @@ let
         else
           e
           // {
-            check = witnessRecord (copyDomain e) // {
-              isV2MergeCoherent = true;
-            };
+            check =
+              witnessRecord (if e ? _checkWitness && e.check == e._checkWitness then copyDomain e else e.check)
+              // {
+                isV2MergeCoherent = true;
+              };
           }
+          // (
+            if e ? merge.v2 then
+              {
+                merge = e.merge // {
+                  __functor =
+                    self: loc: defs:
+                    (self.v2 { inherit loc defs; }).value;
+                  v2 =
+                    args:
+                    let
+                      m = e.merge.v2 args;
+                    in
+                    m // { value = guardedVerify args.loc (e.verify m.value) m.value; };
+                };
+              }
+            else if e ? merge then
+              {
+                merge =
+                  l: defs:
+                  let
+                    m = e.merge l defs;
+                  in
+                  guardedVerify l (e.verify m) m;
+              }
+            else
+              { }
+          )
       )
     else
       homedAt door loc e;
@@ -2452,15 +2503,27 @@ let
                 args:
                 let
                   v = r.merge.v2 args;
+                  c =
+                    if v.headError != null || builtins.all holds (builtins.catAttrs "value" args.defs) then
+                      v
+                    else
+                      v
+                      // {
+                        headError.message = "a definition is rejected by the check of a declaration of this option";
+                      };
                 in
-                if v.headError != null || builtins.all holds (builtins.catAttrs "value" args.defs) then
-                  v
-                else
-                  v
-                  // {
-                    headError.message = "a definition is rejected by the check of a declaration of this option";
-                  };
+                # an owed `verify` is read once, on the merged value, where the fold reads the value
+                if o ? verify then c // { value = guardedVerify args.loc (o.verify c.value) c.value; } else c;
             };
+          }
+        else if !top && o ? verify && r ? merge then
+          {
+            merge =
+              loc: defs:
+              let
+                v = r.merge loc defs;
+              in
+              guardedVerify loc (o.verify v) v;
           }
         else
           { }
@@ -2592,6 +2655,7 @@ let
                     c
                   else if isV2 c then
                     c
+                    // (if isNesting c then { } else { verify = verdict; })
                     // {
                       merge = {
                         __functor =
@@ -2608,6 +2672,7 @@ let
                     }
                   else
                     c
+                    // (if isNesting c then { } else { verify = verdict; })
                     // {
                       merge =
                         loc: defs:
@@ -4958,7 +5023,7 @@ let
         let
           c = direct o.check;
         in
-        if !(o ? verify) then
+        if !(o ? verify) || !(o ? typeMergeRel) then
           c
         else if o ? _checkWitness && o.check == o._checkWitness then
           (v: o.verify v == null)
@@ -5060,8 +5125,39 @@ let
             if r == null then null else metWith r [ met ];
         }
         // (if fold == null then { } else { mergeDefs = fold; });
+      # a foreign operand's `verify`, read once on the met record's merged value: the first rejection
+      vf =
+        v:
+        builtins.foldl' (
+          e: o: if e != null || !(o ? verify) || o ? typeMergeRel then e else o.verify v
+        ) null os;
     in
-    met;
+    if !(builtins.any (o: o ? verify && !(o ? typeMergeRel)) os) then
+      met
+    else
+      met
+      // {
+        verify = vf;
+        merge =
+          if met.merge ? v2 then
+            {
+              __functor =
+                self: loc: defs:
+                (self.v2 { inherit loc defs; }).value;
+              v2 =
+                args:
+                let
+                  m = met.merge.v2 args;
+                in
+                m // { value = guardedVerify args.loc (vf m.value) m.value; };
+            }
+          else
+            loc: defs:
+            let
+              m = met.merge loc defs;
+            in
+            guardedVerify loc (vf m) m;
+      };
   # The answer of every type merge: `m` met with each operand whose check it does not carry.
   #  - A gen relation's answer over a gen operand stating its own check carries it (gen x gen relations
   #    are exact), so only a foreign operand, a witnessed rewrite (a wrapper's check, or a met record), or

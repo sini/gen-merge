@@ -514,6 +514,172 @@ in
           cTb = every;
         }) doors;
       };
+    # a `// { verify }` copy merged by a nixpkgs fold in gen's engine: an attrTag's tag, a nixpkgs attrsOf element
+    # beside the plain one, and a nixpkgs either's member beside the plain union. Its verify is read once, on the
+    # merged value: a value it rejects is refused, and two definitions whose merge it admits are served
+    test-a-verify-copy-merged-by-a-nixpkgs-fold-reads-the-merged-value =
+      let
+        # keyed, so a redeclaration merges one module rather than declaring its options twice
+        S2 = np.submodule {
+          key = "module-set-carriage-verify-copy";
+          options.a = nixpkgsLib.mkOption {
+            type = np.int;
+            default = 0;
+          };
+          options.b = nixpkgsLib.mkOption {
+            type = np.int;
+            default = 0;
+          };
+        };
+        GS = gt.submodule {
+          key = "module-set-carriage-verify-copy-gen";
+          options.a = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
+          options.b = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
+        };
+        needsB =
+          t:
+          t // { verify = v: if (v.a or 0) == 7 && (v.b or 0) == 0 then "a is 7 and b is unset" else null; };
+        X = needsB (np.nullOr S2);
+        L = np.listOf np.int // {
+          verify = v: if builtins.elem 7 v then "7 is listed" else null;
+        };
+        tag = t: np.attrTag { t = nixpkgsLib.mkOption { type = t; }; };
+        served =
+          ts: defs:
+          (tryEval (
+            deepSeq
+              (gm.evalModuleTree { } (
+                map (t: { options.x = gm.mkOption { type = t; }; }) ts ++ map (d: { x = d; }) defs
+              )).config.x
+              true
+          )).success;
+        three = ts: w: {
+          bad = served ts [ (w { a = 7; }) ];
+          ok = served ts [ (w { a = 1; }) ];
+          split = served ts [
+            (w { a = 7; })
+            (w { b = 1; })
+          ];
+        };
+        read = {
+          bad = false;
+          ok = true;
+          split = true;
+        };
+      in
+      {
+        expr = {
+          tagAlone = three [ (tag X) ] (v: {
+            t = v;
+          });
+          tagDoor = three [ (tag (gt.defineType X)) ] (v: {
+            t = v;
+          });
+          tagTwice =
+            three
+              [
+                (tag X)
+                (tag X)
+              ]
+              (v: {
+                t = v;
+              });
+          tagLeaf = {
+            bad = served [ (tag (gt.defineType L)) ] [ { t = [ 7 ]; } ];
+            ok = served [ (tag (gt.defineType L)) ] [ { t = [ 1 ]; } ];
+          };
+          # attrset definitions, each failing the verify alone, beside the plain union: the member CHOICE reads the merged value
+          memberSplit = three [
+            (np.either (needsB S2) np.str)
+            (np.either S2 np.str)
+          ] (v: v);
+          # a gen submodule copy as a union member beside the plain union: the CHOICE reads the merged value
+          memberGen = three [
+            (np.either (needsB GS) np.str)
+            (np.either GS np.str)
+          ] (v: v);
+          # a nixpkgs attrs copy as a tag declared once: the completed copy's check is its own, its verify merged
+          tagAttrs = {
+            ok =
+              served
+                [
+                  (tag (
+                    np.attrs
+                    // {
+                      verify = v: if (v.a or 0) == 7 && (v.b or 0) == 0 then "a is 7 and b is unset" else null;
+                    }
+                  ))
+                ]
+                [
+                  { t.a = 7; }
+                  { t.b = 1; }
+                ];
+            bad =
+              served
+                [
+                  (tag (
+                    np.attrs
+                    // {
+                      verify = v: if (v.a or 0) == 7 && (v.b or 0) == 0 then "a is 7 and b is unset" else null;
+                    }
+                  ))
+                ]
+                [
+                  { t.a = 7; }
+                ];
+          };
+          # a gen submodule copy as a tag, redeclared beside the plain one: the held option keeps gen's own fold
+          tagGen =
+            three
+              [
+                (tag (needsB GS))
+                (tag GS)
+              ]
+              (v: {
+                t = v;
+              });
+          element =
+            three
+              [
+                (np.attrsOf (gt.defineType (needsB S2)))
+                (np.attrsOf S2)
+              ]
+              (v: {
+                k = v;
+              });
+          # a gen submodule as an either's member, the copy's own `addCheck` blind to a module-function definition
+          member = three [
+            (np.either (gt.defineType (
+              needsB (np.addCheck (np.either GS np.str) (v: !(builtins.isAttrs v) || (v.a or 0) != 7))
+            )) np.str)
+            (np.either (np.either GS np.str) np.str)
+          ] (v: { ... }: v);
+        };
+        expected = {
+          tagAlone = read;
+          tagDoor = read;
+          tagTwice = read;
+          tagLeaf = {
+            bad = false;
+            ok = true;
+          };
+          memberSplit = read;
+          memberGen = read;
+          tagAttrs = {
+            ok = true;
+            bad = false;
+          };
+          tagGen = read;
+          element = read;
+          member = read;
+        };
+      };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))
