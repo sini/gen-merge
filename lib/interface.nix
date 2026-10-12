@@ -5430,6 +5430,8 @@ let
     # A nesting record whose check a wrapper rewrote (`addCheck`, `// { check }`) is none of that: it
     # is gen-merge's own completed record, its fold is its threaded sibling and the rewritten check
     # rides on it, so it crosses as itself (arm below), as `types.defineType` returns it.
+    # The arm's guard asks the has-attr tests first, so an import without the completion stamp pays
+    # no call on this path (the hub perf-bench's ratchets are exact).
     else if
       !(isNesting t) && statesWrapped t && importedRehomeAt "mkOptionType" null t != null && canNest t
     then
@@ -5471,7 +5473,7 @@ let
         else
           { refused = nestingImportRefusal "mkOptionType" null t; }
       )
-    else if isNesting t && t ? carries && t ? __typeSelf && rewritesCheck t then
+    else if t ? carries && t ? __typeSelf && isNesting t && rewritesCheck t then
       (
         let
           rehomed = restamp t t;
