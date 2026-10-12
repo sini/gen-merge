@@ -435,6 +435,85 @@ in
           definedCopy = every;
         };
       };
+    # a verify copy is read once, on the MERGED value: split across two definitions of a redeclared option, the
+    # value it admits is served, and the one definition it rejects alone is refused (a reading per definition
+    # would refuse both)
+    test-a-verify-copy-of-a-nixpkgs-submodule-reads-the-merged-value-redeclared =
+      let
+        o = nixpkgsLib.mkOption {
+          type = np.int;
+          default = 0;
+        };
+        A = np.submodule { options.a = o; };
+        B = np.submodule { options.b = o; };
+        X = A // {
+          verify = v: if (v.a or 0) == 1 && (v.b or 0) == 0 then "a = 1 needs b" else null;
+        };
+        read =
+          ts: w: rd: ds:
+          let
+            x =
+              rd
+                (gm.evalModuleTree { } (
+                  map (t: { options.x = gm.mkOption { type = t; }; }) ts ++ map (d: { x = w d; }) ds
+                )).config.x;
+            r = tryEval (deepSeq x x);
+          in
+          if r.success then r.value else "REFUSED";
+        at = D: {
+          Tb = {
+            ts = [
+              B
+              (D X)
+            ];
+            w = v: v;
+            rd = x: x;
+          };
+          bT = {
+            ts = [
+              (D X)
+              B
+            ];
+            w = v: v;
+            rd = x: x;
+          };
+          cTb = {
+            ts = [
+              (gt.attrsOf B)
+              (gt.attrsOf (D X))
+            ];
+            w = v: { k = v; };
+            rd = x: x.k;
+          };
+        };
+        both = c: {
+          split = read c.ts c.w c.rd [
+            { a = 1; }
+            { b = 1; }
+          ];
+          alone = read c.ts c.w c.rd [ { a = 1; } ];
+        };
+        doors = {
+          raw = d: d;
+          defineType = gt.defineType;
+          mkOptionType = gm.mkOptionType;
+        };
+        every = {
+          split = {
+            a = 1;
+            b = 1;
+          };
+          alone = "REFUSED";
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: D: builtins.mapAttrs (_: both) (at D)) doors;
+        expected = builtins.mapAttrs (_: _: {
+          Tb = every;
+          bT = every;
+          cTb = every;
+        }) doors;
+      };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))
