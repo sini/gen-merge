@@ -892,7 +892,8 @@ absorbed by its base when both are declared, rebuilds to its base and mints as i
 its check and fold stay right, so nothing a value reaches says so. `deriveType` applies the delta
 **before** completion instead: the base's behaviour fields cross into a source record, the delta and
 the datum `__derivation = { base; read; id; key; }` (`read` is the base as the import boundary
-reads it) are added, and `defineType` completes it. Its relation
+reads it) are added, and `defineType` completes it. A witnessed rewrite of the base's `check` (a `check` copy, `addCheck`) is the base's stated
+check and crosses with its behaviour, so the derivation refuses what the base refuses. Its relation
 merges only a derivation of the same `id` and `key`, answering the bases' own join (through
 `mergeTypes`) derived again; `recarry`, `substructure.rebuild` and `withArgs` derive their result
 again. No protocol field is stated by hand, the phrase included: a derivation stating no
@@ -929,7 +930,8 @@ which Nix `==` cannot compare totally (key a derivation by plain data).
 **Identity.** A derivation never inherits its base's mint. With no `mint` it is minted per
 component through gen-types' identity half: the `id` and the `key` inert, the base by its mark (or
 sealed, where it carries none or a wrapper rewrote its `check`), so `deriveType (listOf t) { … }` is
-one type wherever it is built over one `t`, and gen-types' `idOf` refuses by name only where the
+one type wherever it is built over one `t` (unless the base is a witnessed `check` rewrite, whose
+derivations are compared by value, so two separate constructions are not `typeEq`), and gen-types' `idOf` refuses by name only where the
 base hands up a sealed component. A caller that passes a `mint` keeps that meaning and owes a preimage covering
 the `id`, the `key` and the base's identity; one that omits the `key` mints two different
 derivations as one.

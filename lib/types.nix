@@ -451,7 +451,8 @@ let
   #   · IDENTITY is never the base's (ADR-0034). With no `mint' it is minted PER COMPONENT through the
   #     injected leaf vocabulary's identity half (`identified', den-hoag-6orb8 U2.3): the `id' and the
   #     `key' inert, the base by its mark, or sealed where it carries none or a wrapper rewrote its
-  #     `check'. So a derivation is the same type everywhere whenever its arguments are, and gen-merge
+  #     `check'. So a derivation is the same type everywhere whenever its arguments are (unless the base is a
+  #     witnessed rewrite of `check', whose derivations are COMPARED, ADR-0034), and gen-merge
   #     still mints nothing itself — the one minting authority is gen-identity, behind gen-types. A
   #     caller that minted one passes it and keeps that meaning: it owes a preimage covering the `id',
   #     the `key' and the base's identity, and one omitting the `key' mints two derivations as one.
@@ -500,6 +501,16 @@ let
       # Cut from the source: everything but its behaviour. A delta may restate only the name-carried.
       cut = classes.derived ++ classes.tied ++ classes.identity ++ classes.datum;
       fixed = filter (n: !(builtins.elem n interface.exportClasses.nameCarried)) cut ++ classes.behaviour;
+      # A witnessed rewrite of the base's `check` is its STATED domain, not this boundary's output
+      # (the export keeps it as it keeps its own, den-hoag-59gnz C1): the pair crosses the cut.
+      stated =
+        if interface.rewritesCheck gen then
+          [
+            "check"
+            "_checkWitness"
+          ]
+        else
+          [ ];
       notMetadata = filter (n: builtins.elem n fixed) (attrNames delta);
       holdsType =
         v:
@@ -582,7 +593,7 @@ let
     else
       defineType (
         identify (
-          builtins.removeAttrs gen cut
+          builtins.removeAttrs gen (filter (n: !(builtins.elem n stated)) cut)
           // delta
           // {
             name = spec.name or delta.name or gen.name or "raw";

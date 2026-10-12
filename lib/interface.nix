@@ -195,7 +195,8 @@ let
   #               and the ones that rebuild are lifted through the derivation again.
   #   identity  — the base's mint and what reads it (ADR-0034): a derivation is not its base, and
   #               never inherits them.
-  #   derived   — this boundary's own output, re-derived when the source is exported again: the
+  #   derived   — this boundary's own output, re-derived when the source is exported again (except a witnessed rewrite of
+  #               `check`, the source's stated check, den-hoag-59gnz C1): the
   #               fourteen protocol fields and the two witnesses published beside them, gen-types'
   #               check witness and the rebuild's.
   #   datum     — the derivation's own record of what it was derived from.

@@ -8866,6 +8866,21 @@ in
           );
           expectedError = refusal "^gen-merge: `deriveType' over `string' as `tagged': `fields' sets `check', `mergeDefs', which are not metadata; a type whose behaviour or relation differs is a new type \\(`mkOptionType'\\), not a derivation$";
         };
+        # The check a derivation keeps is its base's, so a delta still cannot restate it: a check-rewritten
+        # base crosses the cut with its pair, and `fields` setting `check` is refused as over any base.
+        test-a-delta-setting-check-over-a-check-rewritten-base-is-refused = {
+          expr = force (
+            derive (t.submodule { } // { check = _: true; }) (
+              tagged
+              // {
+                fields = _: {
+                  check = null;
+                };
+              }
+            )
+          );
+          expectedError = refusal "^gen-merge: `deriveType' over `submodule' as `tagged': `fields' sets `check', which is not metadata; a type whose behaviour or relation differs is a new type \\(`mkOptionType'\\), not a derivation$";
+        };
         test-a-derivation-without-an-id-is-refused = {
           expr = force (gm.deriveType { } null t.str);
           expectedError = refusal "^gen-merge: `deriveType' over `string' states no string `id'; a derivation's merge identity is the string it names$";
