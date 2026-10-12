@@ -140,7 +140,8 @@ in
       };
     };
 
-    # a `// { verify }` copy of a NON-v2 type as the tag, redeclared or beside the plain tag: the verify is read
+    # a `// { verify }` copy of a NON-v2 type (nixpkgs' or a gen container) as the tag, redeclared or beside the plain
+    # tag in either order: the verify is read
     # once, on the MERGED value, so two definitions whose merged value it admits are served (nixpkgs' value) and
     # one definition it rejects is refused; a reading per definition refused both
     test-a-non-v2-verify-copy-as-a-tag-reads-the-merged-value =
@@ -169,6 +170,19 @@ in
             one = {
               a = 1;
             };
+          };
+          # a GEN container copied with a verify: the tag's two declarations are met by the step, which hands the
+          # meet the operands without the verify and reads it once on the merged list
+          glist = {
+            s = gt.listOf gt.int // {
+              verify = v: if builtins.length v == 2 then null else "needs two";
+            };
+            plain = np.listOf np.int;
+            split = [
+              [ 1 ]
+              [ 2 ]
+            ];
+            one = [ 1 ];
           };
         };
         readAll =
@@ -203,6 +217,10 @@ in
                 (tagOf F.plain)
                 (door (tagOf F.s))
               ];
+              LT = [
+                (door (tagOf F.s))
+                (tagOf F.plain)
+              ];
             };
         cell = {
           split = true;
@@ -218,10 +236,12 @@ in
           raw = {
             LL = cell;
             TL = cell;
+            LT = cell;
           };
           defineType = {
             LL = cell;
             TL = cell;
+            LT = cell;
           };
         }) forms;
       };
