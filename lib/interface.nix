@@ -625,7 +625,12 @@ let
     if t ? __meetJoin && isV2 t then
       v2Fold t
     else if t ? _checkWitness && t ? check && t.check != t._checkWitness then
-      checkedFold t (t.mergeDefs or leafFold)
+      (
+        if t.check ? __verifyProjection then
+          checkedFold (t // { check = t.check.__verifyProjection; }) (t.mergeDefs or leafFold)
+        else
+          checkedFold t (t.mergeDefs or leafFold)
+      )
     else if t._protoLeafMerge or false then
       null
     else if adHocChecked t then
@@ -2458,7 +2463,7 @@ let
   carryBy =
     top: o: r:
     let
-      holds = o.check;
+      holds = o.check.__verifyProjection or o.check;
     in
     if adHocChecked o then
       # a root keeps the override's own `check`, which routes the mount to the fold (`homedRootFixed`); an
@@ -2697,8 +2702,8 @@ let
           # verify read per definition, or a raw gen `// { verify }` copy, whose `check` is its base's) is not
           # conjoined: its verify is carried on the merged value below
           owedC = filter (o: !(o ? verify && o ? typeMergeRel && !(rewritesCheck o))) owed;
-          c0 = (head owedC).check;
-          c1 = (elemAt owedC 1).check;
+          c0 = (head owedC).check.__verifyProjection or (head owedC).check;
+          c1 = (elemAt owedC 1).check.__verifyProjection or (elemAt owedC 1).check;
           adHoc = filter isAdHoc owedC;
         in
         if owed == [ ] then
@@ -2727,7 +2732,11 @@ let
                   else
                     # the owed checks' conjunction, as one record's
                     {
-                      check = if length owedC == 2 then (x: c0 x && c1 x) else (x: builtins.all (o: o.check x) owedC);
+                      check =
+                        if length owedC == 2 then
+                          (x: c0 x && c1 x)
+                        else
+                          (x: builtins.all (o: (o.check.__verifyProjection or o.check) x) owedC);
                     }
                 ) (below fuel ts r)
             );
@@ -5021,7 +5030,7 @@ let
       dom =
         o:
         let
-          c = direct o.check;
+          c = direct (o.check.__verifyProjection or o.check);
         in
         if !(o ? verify) || !(o ? typeMergeRel) then
           c
@@ -5693,10 +5702,85 @@ let
     else
       let
         dom = copyDomain x;
+        # the copy's own definition check: a re-doored copy's projection carries it
+        own = x.check.__verifyProjection or x.check;
+        # one definition `v`: the copy's own check, then its `verify` on the base's merge of `v` alone, so a `verify`
+        # written for members reads a member (the base's fold supplies the defaults), never a raw definition; a refusal
+        # inside that merge or the `verify`'s reads is `false`, and a foreign union takes its next alternative
+        base = x.merge.__verifiedMerge or x.merge;
+        projection = {
+          __functor =
+            _: v:
+            own v
+            && (
+              let
+                r = builtins.tryEval (
+                  x.verify (
+                    base
+                      [ "<definition>" ]
+                      [
+                        {
+                          file = "<definition>";
+                          value = v;
+                        }
+                      ]
+                  ) == null
+                );
+              in
+              r.success && r.value
+            );
+          isV2MergeCoherent = true;
+          __verifyProjection = own;
+        };
         s = x // {
-          ${if replacesVerify x then "check" else null} = witnessRecord dom // {
-            isV2MergeCoherent = true;
-          };
+          # a record that carries a role publishes the one-definition projection for a FOREIGN reader; where its own
+          # check is its witness the projection is its witness too, so gen's readers fold it unrewritten and judge its
+          # `verify` on the merged value; an override keeps its stale witness and is read per definition by its own
+          # check (`__verifyProjection`)
+          ${if replacesVerify x then "check" else null} =
+            if x ? carries then
+              projection
+            else
+              witnessRecord dom
+              // {
+                isV2MergeCoherent = true;
+              };
+          ${if replacesVerify x && x ? carries && own == x._checkWitness then "_checkWitness" else null} =
+            projection;
+          # gen's placement of the `verify` for a reader that folds through the protocol: on the merged value, a base
+          # `v2` merge keeping its protocol with the `verify` on its `headError`
+          ${if replacesVerify x && x ? carries then "merge" else null} = {
+            __verifiedMerge = base;
+            __functor =
+              _: loc: defs:
+              let
+                v = base loc defs;
+              in
+              guardedVerify loc (x.verify v) v;
+          }
+          // (
+            if base ? v2 then
+              {
+                v2 =
+                  args:
+                  let
+                    r = base.v2 args;
+                    e = if r.headError == null then x.verify r.value else null;
+                  in
+                  r
+                  // {
+                    headError =
+                      if r.headError != null then
+                        r.headError
+                      else if e == null then
+                        null
+                      else
+                        { message = e; };
+                  };
+              }
+            else
+              { }
+          );
           # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
           # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
           # stating none (gen-types' own records) gets none
@@ -5725,7 +5809,10 @@ let
     ++ [
       "__name"
       "__nameWithin"
-    ];
+    ]
+    ++ (if (t.merge or null) ? __verifiedMerge then [ "merge" ] else [ ])
+    # and a door projection's witness is the door's, re-derived by the next door
+    ++ (if (t.check or null) ? __verifyProjection then [ "_checkWitness" ] else [ ]);
   # Whether a stamped `t` agrees with its completion at every field outside `names`, by the stamp (`stampOk`)
   # over both records with `names` removed from each, so no field in `names` is forced: one `__typeSelf` slot
   # serves both, so the stamp's own cell agrees by pointer.

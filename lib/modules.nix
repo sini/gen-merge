@@ -3401,7 +3401,14 @@ let
           # gen-types' `rewritesCheck`, restated inline for cost; the construction door holds the
           # spelling to the protocol (`lib/default.nix`).
           else if type ? _checkWitness && type ? check && type.check != type._checkWitness then
-            interface.checkedFold type (type.mergeDefs.threaded ev)
+            (
+              if type.check ? __verifyProjection then
+                interface.checkedFold (type // { check = type.check.__verifyProjection; }) (
+                  type.mergeDefs.threaded ev
+                )
+              else
+                interface.checkedFold type (type.mergeDefs.threaded ev)
+            )
           else
             type.mergeDefs.threaded ev;
         whenEmpty =
