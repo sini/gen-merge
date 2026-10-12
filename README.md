@@ -1216,8 +1216,12 @@ Two rules that look like details and are not:
   only at fields the door does not compare (`interface.doorUnread`: `typeMerge`, a name-carried or
   identity field, a module set's own outputs) keeps its row,
   functor, relation, fold, mint and stale stamp, and the door re-derives only the two foreign fields its
-  departure invalidates: `check`, its declared domain published as a witnessed rewrite, and `typeMerge`,
-  its completion's foreign relation met with the copy (`interface.carriedCopy`). Only a gen-merge
+  departure invalidates: `check`, its declared domain, and `typeMerge`, its completion's foreign relation
+  met with the copy (`interface.carriedCopy`). For a copy departing at `verify` alone that domain is a
+  one-definition projection of the `verify`, published as the copy's own check witness: a foreign engine
+  asks it of each definition, and gen's readers see the pair unrewritten and judge the `verify` on the
+  merged value, through either door as raw. A copy that also states an ad-hoc `check` publishes it as a
+  witnessed rewrite, judged per definition. Only a gen-merge
   completion is carried (it states `typeMergeRel` and `_checkWitness`): a raw gen-types record holds no
   row, functor, relation or fold to keep, and its `check` is not a predicate, so it is imported, and a
   verify copy of one leaves the door unminted and refused by name. A copy departing only at name-carried
