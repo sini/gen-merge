@@ -6,9 +6,8 @@
 # evaluate the nested tree"), through the raw record, `defineType` and `mkOptionType` alike. The binding now
 # asks for the threaded sibling, not for `verify`, and `threadedAs` keeps the `verify` the rich fold applies to
 # the merged value. Used raw, that is the whole verdict. Through `defineType` and `mkOptionType` the copy
-# also publishes a `check` derived from its `verify` under its base's check witness, which `threadedAs` reads
-# as a rewrite and applies to each definition (den-hoag-d74w0); the door cells here therefore hold only values
-# every surviving definition of which the `verify` also admits. Each served cell is paired with its refusing twin: a
+# publishes a one-definition projection of its `verify` as its own check witness, for foreign readers; gen's
+# readers see it unrewritten and read the `verify` on the merged value too (den-hoag-d74w0, owner arm (ii)). Each served cell is paired with its refusing twin: a
 # binding that dropped the `verify` would pass the first alone.
 {
   genMerge,

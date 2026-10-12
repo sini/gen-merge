@@ -10687,8 +10687,8 @@ in
     # A gen nesting record copied with a `verify` is threaded (den-hoag-jgr98; `../tests/nesting-verify-copy.nix`
     # holds the values): a value only the merged value shows, its field left to the submodule's default, is
     # refused with the copy's own `verify` text at the option, where it was refused by the called fold's "does
-    # not evaluate the nested tree". The `verify` here admits each definition, so through `defineType` the
-    # per-definition reading of den-hoag-d74w0 does not intervene.
+    # not evaluate the nested tree". Through `defineType` gen's readers read the `verify` on the merged value as
+    # well (den-hoag-d74w0); the projection a foreign reader asks is not on this path.
     flake.testsError.nesting-verify-copy =
       let
         S = t.submodule {

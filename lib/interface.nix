@@ -5672,8 +5672,10 @@ let
   # loses the row (`enum` publishes its caller's name with no payload, `string` publishes `string`) and
   # makes the copy its own record to every carrier reader. So the door returns it as it is, and where its
   # `verify` replaced its completion's it publishes the copy's declared domain, as the engine reads one
-  # declaration alone (`meetOf`'s `dom`), as a witnessed rewrite: a foreign engine enforces it, and every
-  # gen reader owes it. A container copy stating `verify` (`listOf`, `struct`) is carried too, its own
+  # declaration alone (`meetOf`'s `dom`). For a verify-only copy that domain is a one-definition PROJECTION
+  # published as its own check witness (den-hoag-d74w0, owner arm (ii)): a foreign engine enforces it per
+  # definition, every gen reader sees the pair unrewritten and reads the copy's `verify` on the MERGED value
+  # (its `merge` carries it). A copy stating an ad-hoc `check` beside its `verify` stays a witnessed rewrite. A container copy stating `verify` (`listOf`, `struct`) is carried too, its own
   # functor kept. `null` for every other record, which the door imports.
   # Only a gen-merge completion is carried: that premise is the test (`? typeMergeRel`, and
   # `? _checkWitness`, which says its `check` is this library's predicate). A raw gen-types record holds no
