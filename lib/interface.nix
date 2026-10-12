@@ -750,9 +750,12 @@ let
             if isV2 t then
               v2Result (t.merge.v2 { inherit loc defs; })
             else
+              # a form-C copy's merge reads its verify itself and throws on a rejected value: the judgement reads
+              # its base merge (`__verifiedMerge`) and asks the verify below, so a rejection is a reason the
+              # choice moves on from, not a throw inside it
               {
                 headError = null;
-                value = t.merge loc defs;
+                value = (t.merge.__verifiedMerge or t.merge) loc defs;
               };
         in
         if t ? mergeDefs.headJudge && t.mergeDefs.headJudge loc defs != null then
