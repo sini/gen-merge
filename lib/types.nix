@@ -1612,30 +1612,8 @@ let
     if t ? verify && (!(t ? typeMergeRel || t ? __typeSelf) || t ? carries) then
       (t.check.__verifyProjection or t.check) v
     else if t ? verify then
-      # a record that carries a role is asked its `verify` on its merge of `v` alone (den-hoag-d74w0), so a `verify`
-      # written for members reads a member; a leaf's `verify` is its per-value domain
-      (
-        if t ? carries then
-          (
-            let
-              r = builtins.tryEval (
-                t.verify (
-                  (t.merge.__verifiedMerge or t.merge)
-                    [ "<definition>" ]
-                    [
-                      {
-                        file = "<definition>";
-                        value = v;
-                      }
-                    ]
-                ) == null
-              );
-            in
-            r.success && r.value
-          )
-        else
-          t.verify v == null
-      )
+      # a leaf's `verify` is its per-value domain (a record that carries a role took the arm above)
+      t.verify v == null
       && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
     else if t ? admits then
       t.admits v
