@@ -2298,7 +2298,16 @@ let
           let
             r = carriedAtDepth false t m;
           in
-          if isAttrs r && r ? merge && r ? check && t ? check then r // { check = carriedCheck t r; } else r
+          if isAttrs r && r ? merge && r ? check && t ? check then
+            r
+            // {
+              check = {
+                __functor = _: x: r.check x && t.check x;
+                isV2MergeCoherent = true;
+              };
+            }
+          else
+            r
         else
           t.recarry (t.carries // { element = mountOf t.carries.element m; });
     in
@@ -2326,7 +2335,15 @@ let
       # judged on the record as written (a re-homing disagreement), then mounted as the rebuild over
       # the real module set, whose merge is the one served, the record's own `check` riding on it
       mounted = builtins.seq (importedRehomeAt door loc t) (
-        homedAt door loc (fixed // { check = carriedCheck t fixed; })
+        homedAt door loc (
+          fixed
+          // {
+            check = {
+              __functor = _: x: fixed.check x && t.check x;
+              isV2MergeCoherent = true;
+            };
+          }
+        )
       );
     in
     # the rebuild first, before any read of the record's own roles (a0c4z: never take a read nixpkgs
@@ -2368,10 +2385,6 @@ let
   # `homedAt`): a refinement `{ x : F e | p x }` is not part of the functor, so `addCheck` over a
   # module-set root is rebuilt away unless carried. The rebuild's own `check` stays, so the domain is
   # the meet of the two; a v2 merge reads it as the coherent check its constructor would ship.
-  carriedCheck = t: fixed: {
-    __functor = _: x: fixed.check x && t.check x;
-    isV2MergeCoherent = true;
-  };
   # `r` restricted by the owed record `o`'s check, or refused by name where `o` is an override: the carriage
   # `carriedAtDepth` applies at every depth, and `homedAt` applies to a foreign container it rebuilds over a
   # completed element (`completedOver`)
@@ -2454,7 +2467,10 @@ let
   # that owes nothing itself to an element that does, a gen container's included (`owesIn`). An owed
   # AD-HOC override (`type // { check = ...; }`) of a type stating no module set is refused by name at
   # any depth (`adHocFold`, den-hoag-ku5dt Q1), as it is alone: the carried record is that override, so
-  # each reader that folds it refuses it. Over a module set the override is owed as any check is.
+  # each reader that folds it refuses it. Over a module set the override is owed as any check is. A
+  # module set copied with a `// { verify }` is owed too, its `verify` carried as part of its check: no
+  # rebuild reads `verify`, so a redeclaration would drop it where the copy declared alone refuses
+  # (den-hoag-y4w78).
   #
   # Bounded by `importedTypeWalkFuel`. THE PRICE, stated: a wrapper nested that many containers deep is
   # not carried, as `crossedRoot` states for the mount.
@@ -2467,6 +2483,8 @@ let
           !(o ? typeMergeRel)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
+          || o ? verify && isList (o.getSubModules or null)
+          || o ? retainedRelation
         );
       # `owes`, inlined: it is asked once per element of every rebuild
       owesIn =
@@ -2476,6 +2494,8 @@ let
           !(o ? typeMergeRel)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
+          || o ? verify && isList (o.getSubModules or null)
+          || o ? retainedRelation
           || fuel > 0 && owesIn (fuel - 1) (carriedAt "element" o)
         );
       over =
@@ -2487,8 +2507,10 @@ let
       below =
         fuel: ts: r:
         let
-          es = filter (e: owesIn fuel e && isList (e.getSubModules or null)) (map (carriedAt "element") ts);
           re = carriedAt "element" r;
+          es = filter (
+            e: owesIn fuel e && (isList (e.getSubModules or null) || isList (re.getSubModules or null))
+          ) (map (carriedAt "element") ts);
           x = over r (go false (fuel - 1) es re);
         in
         if fuel <= 0 || es == [ ] || !(isAttrs re) then
@@ -2503,24 +2525,43 @@ let
         top: fuel: ts: r:
         let
           owed = filter owes ts;
-          c0 = (head owed).check;
-          c1 = (elemAt owed 1).check;
-          adHoc = filter isAdHoc owed;
+          # a gen completion's `check` is its `verify` read per definition (the export's witness): that verify is
+          # carried on the merged value below, so its check is not conjoined
+          owedC = filter (o: !(o ? verify && o ? typeMergeRel && !(rewritesCheck o))) owed;
+          c0 = (head owedC).check;
+          c1 = (elemAt owedC 1).check;
+          adHoc = filter isAdHoc owedC;
         in
         if owed == [ ] then
           below fuel ts r
         else
-          carryBy top (
-            if adHoc != [ ] then
-              head adHoc
-            else if length owed == 1 then
-              head owed
+          (
+            x:
+            # an owed `verify` rides on the carried record, read on the merged value as a copy's own is
+            if !(builtins.any (o: o ? verify) owed) then
+              x
             else
-              # the owed checks' conjunction, as one record's
-              {
-                check = if length owed == 2 then (x: c0 x && c1 x) else (x: builtins.all (o: o.check x) owed);
-              }
-          ) (below fuel ts r);
+              let
+                vf = v: builtins.foldl' (e: o: if e != null || !(o ? verify) then e else o.verify v) null owed;
+              in
+              x // { verify = vf; }
+          )
+            (
+              if owedC == [ ] then
+                below fuel ts r
+              else
+                carryBy top (
+                  if adHoc != [ ] then
+                    head adHoc
+                  else if length owedC == 1 then
+                    head owedC
+                  else
+                    # the owed checks' conjunction, as one record's
+                    {
+                      check = if length owedC == 2 then (x: c0 x && c1 x) else (x: builtins.all (o: o.check x) owedC);
+                    }
+                ) (below fuel ts r)
+            );
       carryElement = carryBy false;
       # `t.substSubModules m`, with an owing module-set element rebuilt by the same function, carried, and the
       # container rebuilt over it by its own constructor: one rebuild per level, as nixpkgs' forwarding does.
@@ -2547,6 +2588,61 @@ let
           t.substSubModules m;
     in
     top: if top then go true importedTypeWalkFuel else rebuild importedTypeWalkFuel;
+
+  # ── A FOREIGN MODULE SET CROSSING THE PUBLISHED `defineType`, CLOSED UNDER ITS OWN REBUILDS (den-hoag-ukitj M2) ──
+  # The foreign protocol re-derives a module set from its rebuilds: `substSubModules` at a declaration's fixup and
+  # `typeMerge` at a redeclaration, each the constructor's own, and neither carries a check or a `verify` the record
+  # states beyond the constructor. So the record is returned as itself, every check it states kept, its rebuilds
+  # answering it again with the same carriage gen's engine gives a declaration list (`carryBy` over the record,
+  # `carriedAtDepth` for its elements): the carried record states its own check, conjoined, never overwritten.
+  # A `verify` is read on the merged value, as gen's own fold reads one (`checked`) and as the stock-host guard reads
+  # one (`guardedOption`): a definition alone is not the value it refines. A record stating no module set has no
+  # rebuild and is returned as itself.
+  rebuildClosed =
+    t:
+    if !(isList (t.getSubModules or null)) then
+      t
+    else
+      let
+        # a merge whose merged value is refused by `verify`, by name, in both the called and the v2 form
+        verifiedMerge =
+          vf: m:
+          if m ? v2 then
+            {
+              __functor =
+                self: loc: defs:
+                (self.v2 { inherit loc defs; }).value;
+              v2 =
+                args:
+                let
+                  v = m.v2 args;
+                in
+                v // { value = guardedVerify args.loc (vf v.value) v.value; };
+            }
+          else
+            loc: defs:
+            let
+              v = m loc defs;
+            in
+            guardedVerify loc (vf v) v;
+        close =
+          r:
+          let
+            c = carryBy false t r;
+          in
+          c
+          // (if t ? verify then { merge = verifiedMerge t.verify c.merge; } else { })
+          // {
+            substSubModules = m: close (carriedAtDepth false r m);
+            typeMerge =
+              f:
+              let
+                j = r.typeMerge f;
+              in
+              if j == null then null else close (carriedAtDepth true [ r ] j);
+          };
+      in
+      close t;
 
   rootRebuildRefusal =
     door: loc: t:
@@ -6370,6 +6466,7 @@ in
     rewritesCheck
     keepStamp
     carriedCopy
+    rebuildClosed
     carrierTolerated
     importReads
     ownEvaluation

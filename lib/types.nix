@@ -2057,7 +2057,7 @@ in
   defineType =
     t:
     if !(t ? typeMergeRel) && interface.isOptionType t then
-      t
+      interface.rebuildClosed t
     else if t ? verify then
       let
         c = interface.carriedCopy t;

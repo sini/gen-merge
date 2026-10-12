@@ -392,6 +392,49 @@ in
           listOf = enforced;
         };
       };
+    # a module set copied with a `// { verify }`, raw, through either door, and through `defineType` over
+    # the copy: no rebuild reads `verify`, so it rides on the redeclaration as a check does, twice,
+    # beside the uncopied record and below a gen container
+    test-a-verify-copy-of-a-nixpkgs-submodule-is-enforced-redeclared =
+      let
+        S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        copy = R: R // { verify = v: if (v.a or 0) == 7 then "a is 7" else null; };
+        doors = {
+          raw = d: d;
+          defineType = gt.defineType;
+          mkOptionType = gm.mkOptionType;
+        };
+        at = R: V: {
+          twice = top [
+            V
+            V
+          ];
+          besideItsRecord = top [
+            R
+            V
+          ];
+          container = attrs [
+            (gt.attrsOf V)
+            (gt.attrsOf V)
+          ];
+        };
+        every = {
+          twice = enforced;
+          besideItsRecord = enforced;
+          container = enforced;
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: D: at (D S) (copy (D S))) doors // {
+          definedCopy = at S (gt.defineType (copy S));
+        };
+        expected = {
+          raw = every;
+          defineType = every;
+          mkOptionType = every;
+          definedCopy = every;
+        };
+      };
     test-a-foreign-wrapper-below-a-gen-container-beside-its-gen-twin-is-enforced = {
       expr = nested [
         (gt.attrsOf (gt.attrsOf W))
@@ -399,5 +442,131 @@ in
       ];
       expected = enforced;
     };
+    # a nixpkgs module set through the published `defineType`, declared as an option INSIDE a nixpkgs submodule:
+    # the host's evaluation rebuilds it (`fixupOptionType`, and `typeMerge` declared twice), so the record the door
+    # returns answers its rebuilds with its own check and `verify` carried (`interface.rebuildClosed`), the check at
+    # every depth; the copy declared through the door twice, and a container over the checked set. A `verify` is
+    # read on the merged value: two definitions whose merge it admits are served
+    test-a-nixpkgs-module-set-through-defineType-keeps-its-checks-inside-a-nixpkgs-submodule =
+      let
+        S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        inside =
+          ts: ok: bad:
+          both [
+            (np.submodule { imports = map (t: { options.y = nixpkgsLib.mkOption { type = t; }; }) ts; })
+          ] { y = ok; } { y = bad; };
+        D = gt.defineType;
+        at = X: {
+          once = inside [ X ] { a = 1; } { a = 7; };
+          twice = inside [
+            X
+            X
+          ] { a = 1; } { a = 7; };
+        };
+        S2 = np.submodule {
+          options.a = nixpkgsLib.mkOption {
+            type = np.int;
+            default = 0;
+          };
+          options.b = nixpkgsLib.mkOption {
+            type = np.int;
+            default = 0;
+          };
+        };
+        needsB = S2 // {
+          verify = v: if v.a == 7 && v.b == 0 then "a is 7 and b is unset" else null;
+        };
+        merged =
+          defs:
+          (tryEval (
+            deepSeq ((gm.evalModuleTree { } (
+              [
+                {
+                  options.x = gm.mkOption {
+                    type = np.submodule {
+                      options.y = nixpkgsLib.mkOption { type = D needsB; };
+                    };
+                  };
+                }
+              ]
+              ++ map (d: { x.y = d; }) defs
+            )).config.x
+            ) true
+          )).success;
+      in
+      {
+        expr = {
+          check = at (D (D S // { check = v: S.check v && not7 v; }));
+          wrapper = at (D (np.addCheck S not7));
+          verify = at (D (S // { verify = v: if (v.a or 0) == 7 then "a is 7" else null; }));
+          element = {
+            once = inside [ (D (np.listOf (np.addCheck S not7))) ] [ { a = 1; } ] [ { a = 7; } ];
+          };
+          verifyMerged = {
+            admitted = merged [
+              { a = 7; }
+              { b = 1; }
+            ];
+            rejected = merged [ { a = 7; } ];
+          };
+        };
+        expected = {
+          check = {
+            once = enforced;
+            twice = enforced;
+          };
+          wrapper = {
+            once = enforced;
+            twice = enforced;
+          };
+          verify = {
+            once = enforced;
+            twice = enforced;
+          };
+          element.once = enforced;
+          verifyMerged = {
+            admitted = true;
+            rejected = false;
+          };
+        };
+      };
+    # a nixpkgs `addCheck` over a submodule copied with its module set nulled (`// { getSubModules = null; }`)
+    # states no module set while its functor, merge and rebuild are the submodule's: beside the plain submodule
+    # through `mkOptionType`, whose completion retains the author's relation, and as a gen container's element
+    # beside the plain one, the join is the submodule's and drops the check unless it is carried
+    test-a-nulled-copy-of-a-checked-nixpkgs-submodule-beside-its-twin-is-enforced =
+      let
+        S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        Z = np.addCheck S not7 // {
+          getSubModules = null;
+        };
+        M = gm.mkOptionType;
+      in
+      {
+        expr = {
+          beside = top [
+            S
+            (M Z)
+          ];
+          after = top [
+            (M Z)
+            S
+          ];
+          element = attrs [
+            (gt.attrsOf S)
+            (gt.attrsOf Z)
+          ];
+          elementDoor = attrs [
+            (gt.attrsOf S)
+            (gt.attrsOf (M Z))
+          ];
+        };
+        expected = {
+          beside = enforced;
+          after = enforced;
+          element = enforced;
+          elementDoor = enforced;
+        };
+      };
   };
 }
