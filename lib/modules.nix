@@ -4332,15 +4332,21 @@ let
           # item 5, gate C9): a recognised foreign container that may nest is folded as gen's own,
           # and an unrecognised one declaring a gen nesting element threads through its own rebuild
           # or is refused by name before any fold is taken (`interface.threadedForeign`). A gen leaf
-          # checker (`verify`) and a gen container (`carries`) are their own home and are answered
-          # here, inside the argument's one thunk, so a gen option pays a
+          # checker (`verify`, and no threaded sibling) and a gen container (`carries`) are their own
+          # home and are answered here, inside the argument's one thunk, so a gen option pays a
           # presence test and not a call (ez1yq C2 `leaf-cost`). A type that may nest is folded
           # THREADED (den-hoag-n6dh7 item 5): its nested trees are children of this evaluation,
           # read at the group this option's path names, relative to the tree's prefix.
+          #
+          # `verify` alone does not make a leaf: a gen nesting record copied with one (`S // { verify }`,
+          # or a record a door completed stating it) still folds by its threaded sibling, so it takes the
+          # threaded arm, where `threadedAs` binds that sibling and keeps the `verify` the rich fold applies
+          # to the merged value (den-hoag-jgr98). For a record with no sibling the threaded arm would
+          # return it unchanged, so the short cut answers exactly what that arm would.
           mergeDefsRichWith mode loc (
             if optDecl ? type && optDecl.type == null then
               throw (declaredTypeRefusal loc null)
-            else if (optDecl.type or null) ? verify then
+            else if (optDecl.type or null) ? verify && !(optDecl.type ? mergeDefs.threaded) then
               optDecl.type
             else
               threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) (

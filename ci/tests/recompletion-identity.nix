@@ -291,11 +291,10 @@ in
       expected = builtins.mapAttrs (_: _: {
         ovr = subEnforced;
         add = subEnforced;
-        # the `both` form refuses its `ok` value declared alone, raw and through each door alike (its
-        # `verify` reads the submodule's definition as the plain submodule's does not); pre-existing
-        both = subEnforced // {
-          aloneOk = "REFUSED";
-        };
+        # the `both` form states `verify`, which the engine's option binding once read as a gen leaf, so its
+        # called fold refused even its `ok` value declared alone; the binding now threads a record that carries
+        # a threaded fold, and `both` reads as `ovr` and `add` do (den-hoag-jgr98)
+        both = subEnforced;
       }) doors;
     };
     # C4 beyond the bare position: element positions, three declarations, and the freeform plane, which

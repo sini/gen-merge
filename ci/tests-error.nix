@@ -10651,5 +10651,44 @@ in
           };
         };
       };
+
+    # A gen nesting record copied with a `verify` is threaded (den-hoag-jgr98; `../tests/nesting-verify-copy.nix`
+    # holds the values): a value only the merged value shows, its field left to the submodule's default, is
+    # refused with the copy's own `verify` text at the option, where it was refused by the called fold's "does
+    # not evaluate the nested tree". The `verify` here admits each definition, so through `defineType` the
+    # per-definition reading of den-hoag-d74w0 does not intervene.
+    flake.testsError.nesting-verify-copy =
+      let
+        S = t.submodule {
+          options.a = gm.mkOption {
+            type = t.int;
+            default = 1;
+          };
+        };
+        rejected = v: if (v.a or 2) != 1 then null else "rejected by p";
+        opt =
+          ty: v:
+          (gm.evalModuleTree { } [
+            { options.x = gm.mkOption { type = ty; }; }
+            { x = v; }
+          ]).config.x;
+        msg = "^gen-merge: a definition for option `x' is not of the expected type: rejected by p$";
+      in
+      {
+        test-a-verify-copy-of-a-gen-submodule-refuses-a-defaulted-field-by-name = {
+          expr = opt (S // { verify = rejected; }) { };
+          expectedError = {
+            type = "ThrownError";
+            inherit msg;
+          };
+        };
+        test-a-verify-copy-of-a-gen-submodule-through-define-type-refuses-by-name = {
+          expr = opt (t.defineType (S // { verify = rejected; })) { };
+          expectedError = {
+            type = "ThrownError";
+            inherit msg;
+          };
+        };
+      };
   };
 }
