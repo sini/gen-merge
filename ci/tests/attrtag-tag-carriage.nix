@@ -4,7 +4,7 @@
 # gen's engine calls `attrTag`'s own merge (`functor.binOp`, which re-merges a redeclared tag through
 # `mergeOptionDecls`) and its rebuild (`substSubModules`, which rebuilds each tag over its module set). Both
 # drop a wrapper over the tag's type, as nixpkgs' `fixupOptionType` drops one over an option's. The tag's
-# option records are carried as an element is (`interface.optionsAt`, `interface.carriedAtDepth`), and the
+# option records are carried as an element is (`interface.rebuiltOverAt "options"`, `interface.carriedAtDepth`), and the
 # declaration fold meets each held option (`rolesMet`). Each refusal is paired with its passing twin, whose
 # value is nixpkgs' own, so a carriage that refused everything would not pass, and neither would one that
 # served everything.
@@ -139,6 +139,92 @@ in
         tagInTag = every;
       };
     };
+
+    # a `// { verify }` copy of a NON-v2 type as the tag, redeclared or beside the plain tag: the verify is read
+    # once, on the MERGED value, so two definitions whose merged value it admits are served (nixpkgs' value) and
+    # one definition it rejects is refused; a reading per definition refused both
+    test-a-non-v2-verify-copy-as-a-tag-reads-the-merged-value =
+      let
+        forms = {
+          lines = {
+            s = np.lines // {
+              verify = v: if nixpkgsLib.hasInfix "b" v then null else "needs b";
+            };
+            plain = np.lines;
+            split = [
+              "a"
+              "b"
+            ];
+            one = "a";
+          };
+          attrs = {
+            s = np.attrs // {
+              verify = v: if v ? b then null else "needs b";
+            };
+            plain = np.attrs;
+            split = [
+              { a = 1; }
+              { b = 1; }
+            ];
+            one = {
+              a = 1;
+            };
+          };
+        };
+        readAll =
+          ts: vs:
+          let
+            x =
+              (gm.evalModuleTree { } (
+                map (t: { options.x = gm.mkOption { type = t; }; }) ts ++ map (v: { x.t = v; }) vs
+              )).config.x;
+            r = tryEval (deepSeq x x);
+          in
+          if r.success then r.value else "REFUSED";
+        nixpkgsAll =
+          ts: vs:
+          (nixpkgsLib.evalModules {
+            modules =
+              map (t: { options.x = nixpkgsLib.mkOption { type = t; }; }) ts ++ map (v: { x.t = v; }) vs;
+          }).config.x;
+        at =
+          F: door:
+          builtins.mapAttrs
+            (_: ts: {
+              split = readAll ts F.split == nixpkgsAll (map (_: tagOf F.plain) ts) F.split;
+              one = readAll ts [ F.one ];
+            })
+            {
+              LL = [
+                (door (tagOf F.s))
+                (door (tagOf F.s))
+              ];
+              TL = [
+                (tagOf F.plain)
+                (door (tagOf F.s))
+              ];
+            };
+        cell = {
+          split = true;
+          one = "REFUSED";
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: F: {
+          raw = at F (d: d);
+          defineType = at F gt.defineType;
+        }) forms;
+        expected = builtins.mapAttrs (_: _: {
+          raw = {
+            LL = cell;
+            TL = cell;
+          };
+          defineType = {
+            LL = cell;
+            TL = cell;
+          };
+        }) forms;
+      };
 
     # the held-option fast path decides tag-ness by operators alone, so it spells the carried roles' payload keys
     # as literals rather than reading them from `roleSpelling` (a read there costs every foreign rebuild an
