@@ -1241,10 +1241,13 @@ Two rules that look like details and are not:
   later declaration's `typeMerge` and hands it only the copy's functor, so the copy's check is
   unreachable even when that declaration is gen's. That is nixpkgs' own later-operand rule, which it
   applies to its own `addCheck` copies too. **A record gen did not complete is returned
-  as it is**: every completion states a type-merge relation, so a foreign-protocol
-  record stating none (a nixpkgs `int`, `addCheck np.int p`, `np.submodule M`) passes the published
-  `types.defineType` unchanged, and the engine imports it where it is declared, enforcing its own
-  `check`.
+  as itself**: every completion states a type-merge relation, so a foreign-protocol
+  record stating none (a nixpkgs `int`, `addCheck np.int p`) passes the published `types.defineType`
+  unchanged, and the engine imports it where it is declared, enforcing its own `check`. A foreign
+  module set (`np.submodule M`, an `addCheck` or `// { verify }` copy of one) comes back closed under its
+  own rebuilds: its `substSubModules` and `typeMerge` answer with its checks carried, so it keeps its
+  checks where nixpkgs rebuilds it, declared inside a nixpkgs submodule too, and its `verify` is read on
+  the merged value.
 - **A completed parametric leaf merges only the SAME type, or two `enum`s.** Sameness is
   decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
   textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,

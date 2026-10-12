@@ -2484,9 +2484,13 @@ let
   # AD-HOC override (`type // { check = ...; }`) of a type stating no module set is refused by name at
   # any depth (`adHocFold`, den-hoag-ku5dt Q1), as it is alone: the carried record is that override, so
   # each reader that folds it refuses it. Over a module set the override is owed as any check is. A
-  # module set copied with a `// { verify }` is owed too, its `verify` carried as part of its check: no
-  # rebuild reads `verify`, so a redeclaration would drop it where the copy declared alone refuses
-  # (den-hoag-y4w78).
+  # module set copied with a `// { verify }` is owed too: no rebuild reads `verify`, so a redeclaration would
+  # drop it where the copy declared alone refuses (den-hoag-y4w78). The carried record states that `verify`,
+  # read once on the MERGED value as gen's fold reads a copy's own; folded into each definition's check, it
+  # would refuse two definitions whose merged value it admits. A record stating a RETAINED relation (a gen
+  # completion over a relation the author stated, `retainedRelation`) is owed as well: its join is the
+  # author's, not gen's exact one. Below a container the walk reads the REBUILT element as well as each
+  # declared one, so a declared element stating no module set (a nulled copy) is still carried.
   #
   # Bounded by `importedTypeWalkFuel`. THE PRICE, stated: a wrapper nested that many containers deep is
   # not carried, as `crossedRoot` states for the mount.
@@ -2624,8 +2628,9 @@ let
         top: fuel: ts: r:
         let
           owed = filter owes ts;
-          # a gen completion's `check` is its `verify` read per definition (the export's witness): that verify is
-          # carried on the merged value below, so its check is not conjoined
+          # a record gen built that states `verify` and no rewritten check (a completion, whose `check` is that
+          # verify read per definition, or a raw gen `// { verify }` copy, whose `check` is its base's) is not
+          # conjoined: its verify is carried on the merged value below
           owedC = filter (o: !(o ? verify && o ? typeMergeRel && !(rewritesCheck o))) owed;
           c0 = (head owedC).check;
           c1 = (elemAt owedC 1).check;

@@ -2047,9 +2047,11 @@ in
   # the copy it is (`interface.keepStamp`), as the raw record holds its witnesses (den-hoag-59gnz C2).
   # A record in the foreign protocol that states no relation was not completed here (every completion
   # states one; the export refuses a record without it), so it is the foreign engine's record, not this
-  # crossing's to complete: it is returned as it is, and the engine imports it where it is declared, as it
+  # crossing's to complete: it is returned as itself, and the engine imports it where it is declared, as it
   # imports every foreign record. Completing it would publish a `check` derived from a gen datum it does
-  # not state, over its own (den-hoag-ukitj).
+  # not state, over its own (den-hoag-ukitj). A foreign MODULE SET comes back closed under its own rebuilds
+  # (`interface.rebuildClosed`): its `substSubModules` and `typeMerge` answer with its checks carried, so a
+  # nixpkgs evaluation that rebuilds it keeps them.
   # A `//` copy of a completed record departing only where its carrier still reads it as that completion is
   # returned as it is (`interface.carriedCopy`, den-hoag-5kzqp); its `verify` presence test is restated here so
   # a record stating none (gen-aspects' per-instance submodule copies) pays one attribute test and no call,

@@ -142,7 +142,9 @@ and departs at `check` or `verify`, elsewhere only at fields the door does not c
 (`interface.doorUnread`, none of which it forces) as it is (`interface.carriedCopy`, den-hoag-5kzqp), re-deriving only `check` (its
 declared domain, a witnessed rewrite) and `typeMerge` (its completion's relation met with the copy);
 under nixpkgs' engine such a copy declared first beside a partner is dropped as the raw copy is, by
-nixpkgs' later-operand rule.
+nixpkgs' later-operand rule. A foreign record (stating no `typeMergeRel`) is returned by
+`types.defineType` as itself, and a foreign module set comes back closed under its own rebuilds
+(`interface.rebuildClosed`), its checks carried through `substSubModules` and `typeMerge`.
 
 **Provenance record** (per declared loc): `{ defs = [{ file; priority; }]; winners = [{ file; }]; priority = <int>; defaulted = <bool>; }`. Per freeform loc: `defs` only, the other three `null`.
 
