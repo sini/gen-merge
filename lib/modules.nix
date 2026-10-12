@@ -619,7 +619,66 @@ let
           rebuilt "alternatives" m
       )
     else
-      r;
+      # a held option (`attrTag`'s tag) is met as an element is: the join's option with both operands'
+      (
+        let
+          # the meet is handed the operands without `verify`, which is read once on the MERGED value, as the
+          # held option's carriage reads it (`interface.carriedAtDepth`'s `optioned`): met per definition, it would
+          # refuse two definitions whose merged value it admits
+          unverified = d: if d ? verify then builtins.removeAttrs d [ "verify" ] else d;
+          x = interface.rebuiltOverAt "options" {
+            from = [
+              a
+              b
+            ];
+            over =
+              _: _: o: ds:
+              if length ds == 2 then
+                let
+                  vs = filter (d: d ? verify) ds;
+                  c = innerMet o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
+                  verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
+                in
+                if vs == [ ] then
+                  c
+                else if c.merge ? v2 then
+                  c
+                  // {
+                    merge = {
+                      __functor =
+                        self: loc: defs:
+                        (self.v2 { inherit loc defs; }).value;
+                      v2 =
+                        args:
+                        let
+                          v = c.merge.v2 args;
+                          e = verdict v.value;
+                        in
+                        if v.headError != null || e == null then v else v // { headError.message = e; };
+                    };
+                  }
+                else
+                  c
+                  // {
+                    merge =
+                      loc: defs:
+                      let
+                        v = c.merge loc defs;
+                        e = verdict v;
+                      in
+                      if e == null then
+                        v
+                      else
+                        throw "gen-merge: a definition for option `${showOption loc}' is not of type `${
+                          if builtins.isString (c.description or null) then c.description else interface.nameOf c
+                        }'. TypeError: ${e}";
+                  }
+              else
+                o.type;
+          } r;
+        in
+        if x == null then r else x
+      );
   relationMerge =
     a: b:
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then

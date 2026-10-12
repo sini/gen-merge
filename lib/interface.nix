@@ -2320,6 +2320,22 @@ let
           mountOf t
         else if t ? functor.payload.elemType then
           carriedAtDepth false t
+        else if
+          t ? substSubModules
+          # tag-ness first, by operators alone (a primop call would allocate its argument): a payload that is a
+          # type or states a carried role's key holds no options
+          && t ? functor.payload
+          && t.functor.payload != null
+          && !(t.functor.payload ? _type || t.functor.payload ? elemType || t.functor.payload ? modules)
+          &&
+            rebuiltOverAt "options" {
+              from = [ ];
+              over =
+                _: _: o: _:
+                o.type;
+            } t != null
+        then
+          carriedAtDepth false t
         else
           t.substSubModules or null;
       # the shape `mergeOptionDecls` hands a rebuild, labelled as nixpkgs labels a module that states
@@ -2514,11 +2530,94 @@ let
           x = over r (go false (fuel - 1) es re);
         in
         if fuel <= 0 || es == [ ] || !(isAttrs re) then
-          r
+          optioned fuel ts r
         else if isAttrs x then
-          x
+          optioned fuel ts x
         else
-          r;
+          optioned fuel ts r;
+      # the option records `r` holds, each type carried by the checks the same option states in every record `ts` it
+      # was rebuilt from, as an element is, and re-carried through `r`'s own rebuild; a record gen built carries its
+      # own (gen relations are exact)
+      optioned =
+        fuel: ts: r:
+        # tag-ness first, read off the payload without a binding: a record gen built, a payload that is a type or
+        # states a carried role's key, holds no options this walk carries
+        if
+          fuel <= 0
+          || !(isAttrs r)
+          || r ? typeMergeRel
+          || !(r ? functor.payload)
+          || r.functor.payload == null
+          || r.functor.payload ? _type
+          || r.functor.payload ? elemType
+          || r.functor.payload ? modules
+        then
+          r
+        else
+          (
+            x:
+            if x == null then
+              r
+            else
+              x
+              // (
+                if r ? substSubModules then
+                  { substSubModules = m: optioned fuel ts (r.substSubModules m); }
+                else
+                  { }
+              )
+          )
+            (
+              rebuiltOverAt "options" {
+                from = ts;
+                # a held option is merged by nixpkgs' own option evaluation, which reads `check` and a merge, never
+                # `verify`: an owed `verify` is read once, on the MERGED value, as gen's own fold reads it (a v2
+                # merge's `headError`, else a merge refusing by name), so the walk below is handed the records
+                # without it. Read per definition, it would refuse two definitions whose merged value it admits.
+                # The step meeting a held option reads it the same way (`lib/modules.nix`, its held-option arm).
+                over =
+                  _: _: o: ds:
+                  let
+                    vs = filter (d: d ? verify) ds;
+                    c = go false (fuel - 1) (map (
+                      d: if d ? verify then builtins.removeAttrs d [ "verify" ] else d
+                    ) ds) o.type;
+                    verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
+                  in
+                  if vs == [ ] then
+                    c
+                  else if isV2 c then
+                    c
+                    // {
+                      merge = {
+                        __functor =
+                          self: loc: defs:
+                          (self.v2 { inherit loc defs; }).value;
+                        v2 =
+                          args:
+                          let
+                            v = c.merge.v2 args;
+                            e = verdict v.value;
+                          in
+                          if v.headError != null || e == null then v else v // { headError.message = e; };
+                      };
+                    }
+                  else
+                    c
+                    // {
+                      merge =
+                        loc: defs:
+                        let
+                          v = c.merge loc defs;
+                          e = verdict v;
+                        in
+                        if e == null then
+                          v
+                        else
+                          throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe c}'. TypeError: ${e}";
+                    };
+              } r
+            );
       # `adHocChecked`, the coherence mark read first: every owed record is asked
       isAdHoc = o: !(o.check.isV2MergeCoherent or false) && isV2 o && (o.getSubModules or null) == null;
       go =
@@ -2572,7 +2671,7 @@ let
           e = carriedAt "element" t;
           c =
             if carriedAt "element" e == null then
-              carryElement e (e.substSubModules m)
+              carryElement e (optioned fuel [ e ] (e.substSubModules m))
             else
               go false (fuel - 1) [ e ] (rebuild (fuel - 1) e m);
           # `over t c`, inlined: it is asked once per mounted root
@@ -2584,8 +2683,17 @@ let
         in
         if fuel > 0 && owesIn fuel e && isList (e.getSubModules or null) && isAttrs x then
           x
+        else if
+          !(isAttrs t)
+          || !(t ? functor.payload)
+          || t.functor.payload == null
+          || t.functor.payload ? _type
+          || t.functor.payload ? elemType
+          || t.functor.payload ? modules
+        then
+          t.substSubModules m
         else
-          t.substSubModules m;
+          optioned fuel [ t ] (t.substSubModules m);
     in
     top: if top then go true importedTypeWalkFuel else rebuild importedTypeWalkFuel;
 
@@ -5102,6 +5210,13 @@ let
       null;
   # A foreign record rebuilt over another value at `role`, by its own published constructor; `null` where
   # its functor states no payload to rebuild.
+  #
+  # `role = "options"`: the OPTION RECORDS the record nests (nixpkgs `attrTag`'s tags), each rebuilt with its type
+  # replaced by `carried.over key name option types`, where `types` are the same option's types in every record of
+  # `carried.from`; `null` where it holds none. Held options are read structurally: a payload value that is a non-empty
+  # set of option records, keyed as the record's own `nestedTypes`. A payload stating a carried role's key
+  # (`roleSpelling`) holds none and is answered before any payload value is forced (THE PRICE, stated: a constructor
+  # holding both a role and option records is not carried at its options).
   rebuiltOverAt =
     role: carried: t:
     let
@@ -5109,6 +5224,66 @@ let
     in
     if !(isAttrs f) || !(isAttrs (f.payload or null)) then
       null
+    else if role == "options" then
+      (
+        # a payload that is a type, or states a carried role's key, holds no options: answered before any binding
+        if f.payload ? _type || f.payload ? elemType || f.payload ? modules then
+          null
+        else
+          let
+            p = f.payload;
+            isOpts =
+              v:
+              isAttrs v
+              && v != { }
+              && builtins.all (o: isAttrs o && (o._type or null) == "option") (builtins.attrValues v);
+            heldOf =
+              r:
+              let
+                q = (r.functor or { }).payload or null;
+                n = r.nestedTypes or null;
+                ks =
+                  if !(isAttrs q) || q ? _type || q ? elemType || q ? modules then
+                    [ ]
+                  else
+                    filter (k: isOpts q.${k}) (builtins.attrNames q);
+                named =
+                  if ks == [ ] || !(isOpts n) then
+                    [ ]
+                  else
+                    filter (k: builtins.attrNames q.${k} == builtins.attrNames n) ks;
+              in
+              builtins.listToAttrs (
+                map (k: {
+                  name = k;
+                  value = q.${k};
+                }) named
+              );
+            os = heldOf t;
+            types =
+              k: n:
+              builtins.concatMap (
+                r:
+                let
+                  h = heldOf r;
+                in
+                if h ? ${k} && h.${k} ? ${n} then [ h.${k}.${n}.type ] else [ ]
+              ) carried.from;
+          in
+          if os == { } then
+            null
+          else
+            importedPartner (
+              f
+              // {
+                payload =
+                  p
+                  // builtins.mapAttrs (
+                    k: builtins.mapAttrs (n: o: o // { type = carried.over k n o (types k n); })
+                  ) os;
+              }
+            )
+      )
     else
       importedPartner (
         f
