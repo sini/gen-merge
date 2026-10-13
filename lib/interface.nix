@@ -292,11 +292,63 @@ let
       { }
     else
       builtins.intersectAttrs (builtins.listToAttrs (
-        map (n: {
-          name = n;
-          value = null;
-        }) (builtins.filter (n: r ? ${n} && isFunction r.${n}) exportFields)
+        map
+          (n: {
+            name = n;
+            value = null;
+            # never `description` or `descriptionClass`: a type's PHRASE is data by the protocol, and a nesting
+            # type's phrase reads its own evaluation's declarations (`unroledNested`), so testing it for a closure
+            # would evaluate the module set it describes (den-hoag-olrmz). Against probing them, the one answer
+            # this moves is a throwing phrase's: THROW becomes `false` (not one value), the fail-closed answer
+          })
+          (
+            builtins.filter (
+              n: n != "description" && n != "descriptionClass" && r ? ${n} && isFunction r.${n}
+            ) exportFields
+          )
       )) r;
+  # ONE VALUE, AS THE ENGINE ASKS IT OF TWO TYPE RECORDS (`modules.nix`'s merge steps): Nix `==` over
+  # `closuresFirst`'s subject, the record compared WITHOUT ITS PHRASE (`description`, `descriptionClass`). The phrase is
+  # display data by the protocol, never what makes two records one value (two records departing only there fold, check
+  # and merge alike), and for a nesting type it is an output of its own module set's declarations, so comparing it
+  # evaluates the module set it describes (den-hoag-olrmz N1, arm (a)). `sameValue a b` decides it; `sameValue.kept m
+  # a b` is what a pair that is one value merges to: its first operand, which carries every check either states,
+  # publishing the phrase nixpkgs' merge publishes in either declaration order, the join's (`m`, nixpkgs' functor
+  # rebuild) where the two phrases differ (owner-ruled 2026-10-12, den-hoag-olrmz F1). Each phrase field is read
+  # lazily, so the merge step never forces one. The two share one binding, so the library's load pays for one.
+  sameValue = {
+    __functor =
+      _: x: y:
+      closuresFirst [ x ] (
+        if isAttrs x then
+          builtins.removeAttrs x [
+            "description"
+            "descriptionClass"
+          ]
+        else
+          x
+      ) == closuresFirst [ y ] (
+        if isAttrs y then
+          builtins.removeAttrs y [
+            "description"
+            "descriptionClass"
+          ]
+        else
+          y
+      );
+    kept =
+      m: a: b:
+      a
+      // {
+        ${if a ? description then "description" else null} =
+          if a.description == b.description or null then a.description else m.description or a.description;
+        ${if a ? descriptionClass then "descriptionClass" else null} =
+          if a.descriptionClass == b.descriptionClass or null then
+            a.descriptionClass
+          else
+            m.descriptionClass or a.descriptionClass;
+      };
+  };
   closuresFirst = records: v: [
     (map closuresOf records)
     v
@@ -5217,7 +5269,6 @@ let
           || !(m ? typeMergeRel)
           || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
           || replacesVerify o;
-        same = x: y: closuresFirst [ x ] x == closuresFirst [ y ] y;
         # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
         # alternatives; any other `elemType` states no element of the tree
         elementsOf =
@@ -5271,8 +5322,10 @@ let
           in
           so != sm && widensAt so sm;
         maybe = filter mayOwe os;
-        notM = filter (o: !(same m o)) maybe;
-        fresh = builtins.all (o: !(same m o)) os;
+        # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
+        # compared inline so the meet binds nothing for it
+        notM = filter (o: closuresFirst [ m ] m != closuresFirst [ o ] o) maybe;
+        fresh = builtins.all (o: closuresFirst [ m ] m != closuresFirst [ o ] o) os;
         relativised =
           o:
           let
@@ -5280,7 +5333,14 @@ let
           in
           if isAttrs s && s ? check then o // { __stockCheck = s.check; } else o;
         owed = map (o: if fresh && widens o then relativised o else o) notM;
-        once = if length owed == 2 && same (head owed) (elemAt owed 1) then [ (head owed) ] else owed;
+        once =
+          if
+            length owed == 2
+            && closuresFirst [ (head owed) ] (head owed) == closuresFirst [ (elemAt owed 1) ] (elemAt owed 1)
+          then
+            [ (head owed) ]
+          else
+            owed;
       in
       if maybe == [ ] then
         m
@@ -6764,6 +6824,7 @@ in
     admitsCarried
     checkedFold
     closuresFirst
+    sameValue
     carriedPhrase
     deriveClasses
     exportClasses

@@ -135,6 +135,12 @@
             n=$(traced)
             [ "$n" = "1" ] || die "$arm" "expected 1 evaluation, the spy counted $n"
           done
+          # den-hoag-olrmz G3: one `verify` copy of a nesting container declared twice reads 1 and serves.
+          evalArm one-eval-verify-shared
+          [ "$rc" -eq 0 ] || die one-eval-verify-shared "expected exit 0, got $rc"
+          [ "$val" = "1" ] || die one-eval-verify-shared "expected value 1, got '$val'"
+          n=$(traced)
+          [ "$n" = "1" ] || die one-eval-verify-shared "expected 1 evaluation, the spy counted $n"
           evalArm one-eval-control-two-roots
           [ "$rc" -eq 0 ] || die one-eval-control-two-roots "expected exit 0, got $rc"
           [ "$val" = "3" ] || die one-eval-control-two-roots "expected value 3, got '$val'"
@@ -214,8 +220,8 @@
           [ $((kw1600 - kw400)) -lt $((5 * (kw400 - kw100))) ] || die key-walk-wide-1600 "function calls grow faster than linear in the definitions: $kw100 / $kw400 / $kw1600"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "32" ] || die runner "expected 32 evaluations, ran $ran"
-          echo "tests-process: 32 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "33" ] || die runner "expected 33 evaluations, ran $ran"
+          echo "tests-process: 33 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

@@ -604,7 +604,7 @@ let
         let
           m = innerMet (pick el 0) (pick el 1) (pick el 2);
         in
-        if sameTypeValue m (pick el 0) then r else rebuilt "element" m
+        if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
     else if builtins.all (x: x != null) al then
       (
@@ -612,7 +612,8 @@ let
           m = builtins.genList (i: innerMet (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)) 2;
         in
         if
-          sameTypeValue (pick m 0) (pick (pick al 0) 0) && sameTypeValue (pick m 1) (pick (pick al 0) 1)
+          interface.sameValue (pick m 0) (pick (pick al 0) 0)
+          && interface.sameValue (pick m 1) (pick (pick al 0) 1)
         then
           r
         else
@@ -714,10 +715,10 @@ let
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
   # `listOf int` drops it one level down, inside `elementRel`, which `declaredPair` never sees.
-  # "One value" is Nix `==` over `closuresFirst`'s subject, as `sealedRel` compares, because an
-  # exported record is cyclic. The comparison runs only on the path where a witnessed rewrite would
-  # be dropped; a record with no witness short-circuits.
-  sameTypeValue = x: y: interface.closuresFirst [ x ] x == interface.closuresFirst [ y ] y;
+  # "One value" is `interface.sameValue`: Nix `==` over `closuresFirst`'s subject, because an exported
+  # record is cyclic, with the record's PHRASE left out (display data, and for a nesting type an output of
+  # its own module set). The comparison runs only on the path where a witnessed rewrite would be dropped;
+  # a record with no witness short-circuits. The kept value publishes nixpkgs' phrase (`interface.sameValue.kept`).
   # `interface.replacesVerify`, restated inline for cost: this is asked of both operands of every step
   verifySlice = builtins.intersectAttrs { verify = null; };
   dropsWrappedCheck =
@@ -728,7 +729,7 @@ let
         o ? verify
         && !(builtins.isFunction (o.__typeSelf or null) && verifySlice o == verifySlice (o.__typeSelf null))
     )
-    && !(sameTypeValue m o);
+    && !(interface.sameValue m o);
   mergeTypesBy =
     relation: a: b:
     let
@@ -746,8 +747,8 @@ let
           a
           b
         ]
-    else if sameTypeValue a b then
-      a
+    else if interface.sameValue a b then
+      interface.sameValue.kept m a b
     else
       interface.metWith m [
         a
@@ -783,7 +784,7 @@ let
       dA = m != null && dropsWrappedCheck m a;
       dB = m != null && dropsWrappedCheck m b;
     in
-    if (dA || dB) && !(sameTypeValue a b) then
+    if (dA || dB) && !(interface.sameValue a b) then
       "`${interface.nameOf a}' and `${interface.nameOf b}', which merge to `${interface.nameOf m}', a type that drops the `check' a wrapper added to ${
         if dA && dB then
           "both"

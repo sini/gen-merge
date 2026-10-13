@@ -213,6 +213,19 @@ let
         b.x = 2;
       }
     ];
+    # den-hoag-olrmz G3: ONE `verify` copy of a nesting container, declared twice, threads as one
+    # evaluation. Merging the two declarations compares them without their phrase, which for a nesting
+    # type reads its own module set's declarations, so a declaration-only side evaluation costs nothing.
+    one-eval-verify-shared =
+      let
+        T = spied.mkOptionType (st.nullOr sub // { verify = _: null; });
+      in
+      (spied.evalModuleTree { } [
+        { options.o = spied.mkOption { type = T; }; }
+        { options.o = spied.mkOption { type = T; }; }
+        { config.o.x = 1; }
+        { config.o = { }; }
+      ]).config.o.x;
     # The spy's live control: two root evaluations read 2.
     one-eval-control-two-roots = (spiedAt sub [ { x = 1; } ]).x + (spiedAt sub [ { x = 2; } ]).x;
     # U2-l (gate O1): a candidate's `result` refuses before its member's modules are applied, so the

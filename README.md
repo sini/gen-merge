@@ -1764,7 +1764,11 @@ reaches, and its operand stays owed whole. The step sits in `mergeTypes`, so
 the declaration and freeform planes, every container's element relation and the published
 `genMerge.mergeTypes` all answer it. **One wrapped value declared twice keeps its operand**:
 `w = addCheck int p` declared as `[w, w]`, or as two `listOf w`, merges to `w` and rejects what `p`
-rejects. **At a module set the step carries a dropped wrapper's check**: the module-set fold does not enforce a met record's check, so the step answers the join
+rejects. One value is decided **without the type's phrase** (`description`, `descriptionClass`), which is
+display data and, for a nesting type, an output of its own module set, so comparing it would evaluate that
+module set (inside a registry knot, an uncatchable infinite recursion): `w` beside `w // { description = …; }`
+is one value, keeps `p` in either order, and publishes the phrase nixpkgs publishes, the join's, in either
+order (`ci/tests/phrase-free-sameness.nix`). **At a module set the step carries a dropped wrapper's check**: the module-set fold does not enforce a met record's check, so the step answers the join
 restricted by the dropped check (`carriedAtDepth`), a witnessed rewrite the fold enforces as it does
 one declared alone, on the declaration and freeform planes alike; `gt.submodule M // { check }` and
 `addCheck (gt.submodule M) p` beside `gt.submodule M` serve what the override admits and refuse what
