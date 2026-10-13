@@ -2271,8 +2271,9 @@ let
 
   # MAY this type be a CONTAINER NODE at an exact container's element, at its own position or
   # through a container below it? Gen's own union, or the stock foreign `either` that `homedAt`
-  # re-homes as one; a split container other than `nullOr` and the attribute-keyed two (a `listOf`,
-  # or another split container such as gen-aspects' `aspectsRoot`), or the stock `listOf`; an
+  # re-homes as one; a split container other than a `nullOr` stating its element and the
+  # attribute-keyed two (a `listOf`, another split container such as gen-aspects' `aspectsRoot`, or
+  # a `nullOr` copy stating none, which `modules.containerAt` keys where read), or the stock `listOf`; an
   # `attrsOf` whose element may be a container (`mayBeContainer`), which `modules.keyedOverAt` makes
   # a node where that element would itself key over-approximately; a foreign container re-homing does not recognise (`importedRehomeAt`, asked through
   # `recognitionDoor`), which `homedAt` threads; through a gen container's element and a stock
@@ -2296,8 +2297,8 @@ let
             t ? choose
             || (
               t ? split
+              && !((t.name or null) == "nullOr" && t ? carries.element)
               && !(builtins.elem (t.name or null) [
-                "nullOr"
                 "attrsOf"
                 "lazyAttrsOf"
               ])
@@ -2319,7 +2320,8 @@ let
     in
     go importedTypeWalkFuel;
   # MAY this element be a container the key walk's `containerMemberAt` holds? The type-time
-  # answer, read without homing, which over-approximates: a split container other than `nullOr` (a
+  # answer, read without homing, which over-approximates: a split container other than a `nullOr`
+  # stating its element (a
   # gen union states `split`, so every union answers yes), or one looked through `nullOr`; a foreign
   # record answers yes. An `attrsOf` over such an element may be a container node at an exact
   # container's element (`modules.keyedOverAt`), so it is marked. Bounded as `mayFoldNested` is.
@@ -2332,7 +2334,7 @@ let
         && canNest e
         && (
           if e ? carries then
-            (e ? split && (e.name or null) != "nullOr")
+            (e ? split && !((e.name or null) == "nullOr" && e ? carries.element))
             || (e ? carries.element && (fuel <= 0 || go (fuel - 1) e.carries.element))
           else
             true

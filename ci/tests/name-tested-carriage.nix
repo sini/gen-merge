@@ -66,7 +66,7 @@ let
     {
       expr = {
         value = gen (mk sub t) v;
-        twinServes = builtins.isAttrs ref;
+        twinServes = builtins.isAttrs ref || builtins.isList ref;
       };
       expected = {
         value = ref;
@@ -117,5 +117,49 @@ in
     test-an-attrs-copy-carrying-no-element-under-gen-attrs-serves-the-twin = cell (
       s: k: k.attrsOf (k.attrsOf s // { carries.alternatives = [ s ]; })
     ) two;
+
+    # THE MARK OVER-APPROXIMATES THE WALK (`interface.mayFoldNested`, `interface.mayBeContainer`). A `//`
+    # copy of gen's `nullOr` whose `carries` states no element is a container the walk keys where it is
+    # read (`modules.containerAt`): it states no element to look through. An exact container marks its
+    # element by the mark, and the fold reads the walk's node only where the mark is set
+    # (`modules.unionNodeAt`); so a mark that excludes such a copy by its name lets the walk mint a node
+    # the fold never reads. The seven through `attrs-of-attrs` were an uncatchable `attribute 'config'
+    # missing` at c3b4d83 for that reason; the last two pin arms a narrower repair breaks.
+    test-a-nullor-copy-carrying-no-element-under-gen-attrs-serves-the-twin = cell (
+      s: k: k.attrsOf (k.nullOr s // { carries.alternatives = [ s ]; })
+    ) one;
+    test-a-nullor-copy-carrying-no-element-under-gen-list-serves-the-twin = cell (
+      s: k: k.listOf (k.nullOr s // { carries.alternatives = [ s ]; })
+    ) [ one.k ];
+    test-a-nullor-copy-carrying-an-unknown-role-under-nixpkgs-attrs-serves-the-twin = cell (
+      s: k: nt.attrsOf (k.nullOr s // { carries.foo = s; })
+    ) one;
+    test-a-nullor-copy-carrying-no-element-through-the-mkoptiontype-door-serves-the-twin = cell (
+      s: k:
+      k.attrsOf (
+        (if k ? defineType then gm.mkOptionType else (x: x)) (
+          k.nullOr s // { carries.alternatives = [ s ]; }
+        )
+      )
+    ) one;
+    test-a-nullor-copy-over-a-union-carrying-no-element-under-gen-attrs-serves-the-twin = cell (
+      s: k: k.attrsOf (k.nullOr (k.either s k.str) // { carries.alternatives = [ s ]; })
+    ) one;
+    # Below a step under an over-approximating container, and an exact container over an exact one.
+    test-a-nullor-copy-carrying-no-element-under-lazy-attrs-of-attrs-serves-the-twin = cell (
+      s: k: k.lazyAttrsOf (k.attrsOf (k.nullOr s // { carries.alternatives = [ s ]; }))
+    ) two;
+    test-a-nullor-copy-carrying-no-element-under-attrs-of-attrs-serves-the-twin = cell (
+      s: k: k.attrsOf (k.attrsOf (k.nullOr s // { carries.alternatives = [ s ]; }))
+    ) two;
+    # `modules.containerMemberAt`: a union member stating no element makes the union a container, keyed
+    # where read (its `choose`); a walk that looks such a member through keys nothing below it.
+    test-a-nullor-copy-carrying-no-element-as-a-union-member-serves-the-twin = cell (
+      s: k: nt.either (k.nullOr s // { carries.alternatives = [ s ]; }) nt.int
+    ) one.k;
+    # gen's `nullOr` renamed (`// { name }`) is a container node under an over-approximating container.
+    test-a-renamed-gen-nullor-under-lazy-attrs-serves-the-twin = cell (
+      s: k: k.lazyAttrsOf (k.nullOr s // { name = "renamedNullOr"; })
+    ) one;
   };
 }
