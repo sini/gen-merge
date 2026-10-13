@@ -1724,14 +1724,14 @@ let
           # rewritten check (`checkedFold`). One that reaches the nested tree reads the tree's
           # `check`, its module-value domain (den-hoag-f8mgj arm Q).
           # Stated where a fold asks it too: nixpkgs' fold reads `merge.v2`'s `headError`, never `check`, so the
-          # check rides there as nixpkgs' `addCheck` places it, after the rebuild's own (`verifiedMerge.lifted`)
+          # check rides there as nixpkgs' `addCheck` places it, after the rebuild's own (`verifiedMerge.lifted`).
+          # It is one lazy binding in the one update: gen's fold never asks `merge.v2`, so it pays that binding alone
           rebuilt
           // {
             inherit (t) check;
+            merge =
+              if isV2 rebuilt then rebuildClosed.verifiedMerge.lifted t.check rebuilt.merge else rebuilt.merge;
           }
-          // (
-            if isV2 rebuilt then { merge = rebuildClosed.verifiedMerge.lifted t.check rebuilt.merge; } else { }
-          )
         )
       else if declaresNestingAt door loc t then
         threadedForeign door loc t
