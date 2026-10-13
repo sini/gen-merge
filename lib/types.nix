@@ -965,7 +965,21 @@ let
           # declaring the union of what they declare. On a nullary relation the second declaration would
           # be discarded silently.
           carries.moduleSet = mods;
-          recarry = c: mkSubmodule partial ctor args c.moduleSet;
+          recarry =
+            c:
+            mkSubmodule partial ctor args (
+              if isAttrs c && c ? moduleSet then
+                c.moduleSet
+              else
+                throw (
+                  "gen-merge: the option type `submodule' states a `carries' gen cannot read at `moduleSet': `carries' "
+                  + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                  + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                  + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                  + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                  + "together in `types.mkType'"
+                )
+            );
           typeMergeRel =
             other:
             if !(isAttrs other) || (keyOf other) != "submodule" then
@@ -1144,7 +1158,21 @@ let
         inherit admits;
         whenEmpty.value = [ ];
         carries.element = element;
-        recarry = c: listOf c.element;
+        recarry =
+          c:
+          listOf (
+            if isAttrs c && c ? element then
+              c.element
+            else
+              throw (
+                "gen-merge: the option type `listOf' states a `carries' gen cannot read at `element': `carries' "
+                + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                + "together in `types.mkType'"
+              )
+          );
         typeMergeRel = elementRel "listOf" listOf element;
         # Descend to the element type under the positional placeholder segment. A container's module
         # set IS its element's, and substituting one rebuilds the container over the substituted
@@ -1344,7 +1372,21 @@ let
         inherit admits;
         whenEmpty.value = { };
         carries.element = element;
-        recarry = c: attrsOfWith tyName c.element;
+        recarry =
+          c:
+          attrsOfWith tyName (
+            if isAttrs c && c ? element then
+              c.element
+            else
+              throw (
+                "gen-merge: the option type `${tyName}' states a `carries' gen cannot read at `element': `carries' "
+                + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                + "together in `types.mkType'"
+              )
+          );
         # gen-merge keeps `attrsOf`/`lazyAttrsOf` as distinct type NAMES where nixpkgs unifies both
         # under one constructor discriminated by a payload field. Distinct names are the conservative
         # direction: the two never merge with each other. Each is a POINT of the unified foreign
@@ -1692,7 +1734,21 @@ let
         # value it names.
         whenEmpty.value = null;
         carries.element = element;
-        recarry = c: nullOr c.element;
+        recarry =
+          c:
+          nullOr (
+            if isAttrs c && c ? element then
+              c.element
+            else
+              throw (
+                "gen-merge: the option type `nullOr' states a `carries' gen cannot read at `element': `carries' "
+                + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                + "together in `types.mkType'"
+              )
+          );
         typeMergeRel = elementRel "nullOr" nullOr element;
         # Pass straight through to the element, adding NO path segment. A nullable introduces no path
         # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
@@ -1857,7 +1913,19 @@ let
           a
           b
         ];
-        recarry = c: either (head c.alternatives) (elemAt c.alternatives 1);
+        recarry =
+          c:
+          if isAttrs c && c ? alternatives && isList c.alternatives && length c.alternatives == 2 then
+            either (head c.alternatives) (elemAt c.alternatives 1)
+          else
+            throw (
+              "gen-merge: the option type `either' states a `carries' gen cannot read at `alternatives': `carries' "
+              + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+              + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+              + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+              + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+              + "together in `types.mkType'"
+            );
         # ★ ONE CARVE-OUT, against a RAW FOREIGN partner (nixpkgs' `either`, whose relation is in its
         # `typeMerge` and not its functor): the partner rebuilt from its published functor decides
         # (`interface.joinInRebuiltPartner`), as `elementRel`'s carve-out does for a container. The

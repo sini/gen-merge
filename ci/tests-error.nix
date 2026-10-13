@@ -10760,5 +10760,114 @@ in
           };
         };
       };
+    # A `carries` stated by hand that a read has no answer of the record's own for is refused by name,
+    # catchably, at the read (den-hoag-l4bv5, ADR-0025 item 1): each cell below was an uncatchable
+    # `attribute … missing`, `expected a set` or `elemAt` abort before. The refusal text is written at
+    # each read, so each read has its own cell, and a copy drifting from `msg` fails that cell by name.
+    # The served shapes are in `./tests/hand-made-carriage.nix`.
+    flake.testsError.hand-made-carriage =
+      let
+        sub = t.submodule {
+          key = "hand-made-carriage-sub";
+          options.a = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        v1.a = 1;
+        notSet = ty: ty // { carries = 5; };
+        noElem = ty: ty // { carries.alternatives = [ sub ]; };
+        # `x` declared once (`ty` at a gen `attrsOf`, or at the root) or twice, in gen's engine or
+        # nixpkgs'.
+        gen =
+          decls: v:
+          builtins.deepSeq (gm.evalModuleTree { } (decls gm.mkOption ++ [ { x = v; } ])).config.x null;
+        np =
+          decls: v:
+          builtins.deepSeq
+            (nixpkgsLib.evalModules { modules = decls nixpkgsLib.mkOption ++ [ { x = v; } ]; }).config.x
+            null;
+        once = ty: mkOption: [ { options.x = mkOption { type = ty; }; } ];
+        twice = ty: mkOption: once ty mkOption ++ once ty mkOption;
+        msg =
+          name: role:
+          "^gen-merge: the option type `${name}' states a `carries' gen cannot read at `${role}': `carries' "
+          + "states by role what a type carries \\(`element', `alternatives' or `moduleSet'\\), as an attribute "
+          + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand \\(a "
+          + "`//' over a constructed type, or a descriptor's own\\) must state the role its readers ask for\\. "
+          + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+          + "together in `types\\.mkType'$";
+        refused = expr: name: role: {
+          inherit expr;
+          expectedError = {
+            type = "ThrownError";
+            msg = msg name role;
+          };
+        };
+      in
+      {
+        # `interface.importedWrapped`: the roles it lists are not a set.
+        test-a-carries-that-is-no-set-under-gen-attrs-is-refused-by-name = refused (gen (once (
+          t.attrsOf (notSet (t.attrsOf sub))
+        )) { k.j = v1; }) "attrsOf" "carries";
+        # `interface.importedDecidable`: its one-element arm tests the element, and the general arm refuses.
+        test-a-carries-that-is-no-set-declared-twice-is-refused-by-name = refused (gen (twice (
+          t.defineType (notSet (t.attrsOf sub))
+        )) { j = v1; }) "attrsOf" "carries";
+        # `interface.roleOf`, through `exportTypeWith`: the export reads the role it carries.
+        test-a-carries-that-is-no-set-declared-twice-in-nixpkgs-is-refused-by-name = refused (np (twice (
+          t.defineType (notSet (t.attrsOf sub))
+        )) { j = v1; }) "attrsOf" "carries";
+        # `interface.joinRenames`: a role with no spelling is refused at that role.
+        test-a-carries-of-an-unknown-role-declared-twice-is-refused-by-name = refused (gen (twice (
+          gm.mkOptionType (sub // { carries.foo = sub; })
+        )) v1) "submodule" "foo";
+        # `interface.joinRenames`: the roles it spells are not a set.
+        test-a-carries-that-is-no-set-joined-twice-is-refused-by-name =
+          refused (gen (twice (gm.mkOptionType (notSet sub))) v1) "submodule"
+            "carries";
+        # Each constructor's `recarry`, its own role absent from what a nixpkgs redeclaration hands it.
+        test-a-tree-type-carrying-no-module-set-declared-twice-in-nixpkgs-is-refused-by-name = refused (np (
+          twice
+            (
+              t.defineType (
+                noElem (gm.evalModuleTree { } [ { options.a = gm.mkOption { type = t.int; }; } ]).type
+              )
+            )
+        ) v1) "submodule" "moduleSet";
+        test-a-submodule-carrying-no-module-set-declared-twice-in-nixpkgs-is-refused-by-name =
+          refused (np (twice (t.defineType (noElem sub))) v1) "submodule"
+            "moduleSet";
+        test-a-list-carrying-no-element-declared-twice-in-nixpkgs-is-refused-by-name = refused (np (twice (
+          t.defineType (noElem (t.listOf sub))
+        )) [ v1 ]) "listOf" "element";
+        test-an-attrs-carrying-no-element-declared-twice-in-nixpkgs-is-refused-by-name = refused (np
+          (twice (t.defineType (noElem (t.attrsOf sub))))
+          { j = v1; }
+        ) "attrsOf" "element";
+        test-a-nullor-carrying-no-element-declared-twice-in-nixpkgs-is-refused-by-name =
+          refused (np (twice (t.defineType (noElem (t.nullOr sub)))) v1) "nullOr"
+            "element";
+        test-an-either-carrying-one-alternative-declared-twice-in-nixpkgs-is-refused-by-name =
+          refused (np (twice (t.defineType (noElem (t.either sub t.str)))) v1) "either"
+            "alternatives";
+        # The published path: a fresh descriptor through `types.mkType` whose `carries` is no set.
+        test-a-fresh-descriptor-whose-carries-is-no-set-is-refused-by-name =
+          let
+            crate = {
+              name = "crate";
+              carries = 5;
+              recarry = _: crate;
+              substructure = {
+                declares = _: { };
+                modules = null;
+                rebuild = _: null;
+              };
+              admits = builtins.isInt;
+              mergeDefs = _: defs: (builtins.head defs).value;
+            };
+          in
+          refused (gen (once (t.defineType (t.mkType crate))) 1) "crate" "carries";
+      };
   };
 }

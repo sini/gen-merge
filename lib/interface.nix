@@ -624,7 +624,16 @@ let
     let
       roles = attrNames carries;
     in
-    if length roles != 1 then
+    if !(isAttrs carries) then
+      throw (
+        "gen-merge: the option type `${name}' states a `carries' gen cannot read at `carries': `carries' "
+        + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+        + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+        + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+        + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+        + "together in `types.mkType'"
+      )
+    else if length roles != 1 then
       throw (
         "gen-merge: the type `${name}' declares ${toString (length roles)} carried roles ("
         + concatStringsSep ", " (map (r: "`${r}'") roles)
@@ -939,7 +948,17 @@ let
         else
           t.nestedTypes or { };
     in
-    prelude.concatMap (v: if isList v then v else [ v ]) (prelude.attrValues roles);
+    if isAttrs roles then
+      prelude.concatMap (v: if isList v then v else [ v ]) (prelude.attrValues roles)
+    else
+      throw (
+        "gen-merge: the option type `${nameOf t}' states a `carries' gen cannot read at `carries': `carries' "
+        + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+        + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+        + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+        + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+        + "together in `types.mkType'"
+      );
 
   # Does this element have a substructure of its own to substitute INTO? Presence, not truthiness — a
   # container rebuilding over a module set passes the set to its element, and an element with nothing
@@ -975,12 +994,15 @@ let
   # stock foreign container whose override stops forwarding (base answered the override). Both are
   # refusals by name. ★ THE ESCAPE HATCH (S2's posture, den-hoag-n6dh7): a record whose `substructure`
   # states no `forward` answers for itself, so stating a container's substructure ends the walk there.
+  # So does one stating `forward` but carrying no element (a `carries` given by hand over a constructed
+  # container): a container is told by what it carries (den-hoag-i3kma), and its own substructure,
+  # which its fold reads, is its answer (den-hoag-l4bv5).
   forwardStep =
     e:
     if !(isAttrs e) then
       null
     else if e ? substructure then
-      if e.substructure ? forward then
+      if e.substructure ? forward && e ? carries.element then
         {
           name = nameOf e;
           element = e.carries.element;
@@ -1007,6 +1029,15 @@ let
             null;
       in
       if isAttrs element then { inherit name element; } else null;
+  # ── A CARRIAGE GEN CANNOT READ (den-hoag-l4bv5) ─────────────────────────────────────────────────
+  # A gen type's `carries` states what it wraps by role, written by its constructor beside the `recarry`,
+  # `substructure` and fold it states over the same parameter, and the readers below take the role they ask
+  # for as present. A `carries` stated by hand (a `//` over a constructed type, or a descriptor's own) can
+  # state another role, none, or a value that is not a set. Where such a read has an answer of the record's
+  # own it serves it (`forwardStep`); where it has none the read itself refuses by name, catchably, rather
+  # than aborting on a missing attribute: `roleOf`, `importedWrapped`, `joinRenames`, and each constructor's
+  # `recarry` (`types.nix`, and `evalModuleTree`'s in `modules.nix`), one text written at each. Only a read
+  # that would abort is guarded.
   forwardSpentRefusal =
     field: name:
     "gen-merge: cannot read `${field}' of the option type `${name}': its element chain forwards through "
@@ -1291,7 +1322,7 @@ let
         # node `importedWrapped` would list alone, without building that list (den-hoag-iaram: the
         # walk is the gen relation's pre-flight on every redeclaration, so its per-level constant is
         # paid there). A record with more than one role takes the general arm.
-        else if t ? carries && attrNames t.carries == [ "element" ] then
+        else if t ? carries.element && attrNames t.carries == [ "element" ] then
           go (fuel - 1) t.carries.element
         # A record that wraps nothing (no `carries`, no `nestedTypes`) is a leaf, decidable at once:
         # `importedWrapped` would answer `[ ]` for it, so the walk answers without building that list
@@ -3505,6 +3536,9 @@ let
                       [
                         {
                           key = x.key + 1;
+                          # unguarded: `forwardStep` answers `null` for a record stating `forward` but no
+                          # `carries.element`, and this read then aborts as it did before that answer existed;
+                          # no cell reaches it (den-hoag-l4bv5)
                           e = (forwardStep x.e).element;
                         }
                       ]
@@ -4712,7 +4746,33 @@ let
       roles =
         x:
         if x ? carries then
-          prelude.foldl' (acc: r: acc // roleSpelling.${r}.nested x.carries.${r}) { } (attrNames x.carries)
+          (
+            if isAttrs x.carries then
+              prelude.foldl' (
+                acc: r:
+                acc
+                //
+                  (roleSpelling.${r} or (throw (
+                    "gen-merge: the option type `${nameOf x}' states a `carries' gen cannot read at `${r}': `carries' "
+                    + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                    + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                    + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                    + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                    + "together in `types.mkType'"
+                  ))
+                  ).nested
+                    x.carries.${r}
+              ) { } (attrNames x.carries)
+            else
+              throw (
+                "gen-merge: the option type `${nameOf x}' states a `carries' gen cannot read at `carries': `carries' "
+                + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                + "together in `types.mkType'"
+              )
+          )
         else if evaluatesOwnRoles x then
           { }
         else

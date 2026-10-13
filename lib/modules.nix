@@ -3477,7 +3477,7 @@ let
     loc: t:
     !(t ? choose || t ? __threadedForeign)
     && (
-      (t.name or null) == "lazyAttrsOf"
+      ((t.name or null) == "lazyAttrsOf" && t ? carries.element)
       || (
         (t.name or null) == "attrsOf" && t ? carries.element && !(keyedOverMemberAt loc t.carries.element)
       )
@@ -7030,7 +7030,21 @@ let
             inherit nests specialArgs;
             unroledNested = if freeform == null then { } else { freeformType = freeform; };
             carries.moduleSet = modList;
-            recarry = c: over c.moduleSet;
+            recarry =
+              c:
+              over (
+                if isAttrs c && c ? moduleSet then
+                  c.moduleSet
+                else
+                  throw (
+                    "gen-merge: the option type `submodule' states a `carries' gen cannot read at `moduleSet': `carries' "
+                    + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                    + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                    + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                    + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                    + "together in `types.mkType'"
+                  )
+              );
             typeMergeRel =
               other:
               let
