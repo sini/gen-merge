@@ -2753,6 +2753,7 @@ let
           type.check != type._checkWitness
           ||
             (type ? split || type ? choose)
+            && !(type ? verify)
             && (type.mergeDefs.completed._checkWitness or null) != type._checkWitness
         )
       )
@@ -3418,6 +3419,7 @@ let
               type.check != type._checkWitness
               ||
                 (type ? split || type ? choose)
+                && !(type ? verify)
                 && (type.mergeDefs.completed._checkWitness or null) != type._checkWitness
             )
           then
@@ -3548,6 +3550,10 @@ let
           # constructor's, a derivation's cut) is the fold's own. The fold holds that record itself, a
           # variable and not a thunk, under a name decided as the fold record is built, and readers read
           # `mergeDefs.completed._checkWitness`; so a deep force of a fold record forces its type.
+          # A record stating `verify` declares its domain there, and every site judges that `verify`
+          # on the merged value, so the per-fold sites never owe it the per-definition `check` (its
+          # one-definition projection, which would refuse a merged-value refinement split across
+          # definitions).
           ${
             if
               t ? _checkWitness && (t.mergeDefs.completed._checkWitness or null) != t._checkWitness

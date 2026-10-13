@@ -690,7 +690,10 @@ let
       && t ? check
       && (
         t.check != t._checkWitness
-        || (t ? split || t ? choose) && (t.mergeDefs.completed._checkWitness or null) != t._checkWitness
+        ||
+          (t ? split || t ? choose)
+          && !(t ? verify)
+          && (t.mergeDefs.completed._checkWitness or null) != t._checkWitness
       )
     then
       (

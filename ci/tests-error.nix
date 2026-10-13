@@ -10999,6 +10999,28 @@ in
         test-a-witness-less-record-around-a-completed-fold-through-mk-option-type-is-refused-by-its-own-check =
           refused (gen (gm.mkOptionType strsOverListFold) [ 1 ]) "x"
             "strs";
+        # A record stating `verify` is refused by its verify's reason, never by its base's name: the verify is
+        # its declared domain (`ci/tests/fold-witness-verify.nix` serves the split).
+        test-a-verify-copy-of-attrs-is-refused-by-its-verify-reason = {
+          expr = gen (gm.mkOptionType (
+            builtins.removeAttrs (t.attrsOf t.int) [
+              "functor"
+              "typeMerge"
+              "__mint"
+              "__okAt"
+              "__payload"
+              "__sealed"
+              "__typeSelf"
+            ]
+            // {
+              verify = v: if v ? a && v ? b then null else "needs a and b";
+            }
+          )) { a = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of the expected type: needs a and b$";
+          };
+        };
       };
   };
 }
