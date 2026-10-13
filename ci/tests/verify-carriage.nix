@@ -246,6 +246,36 @@ in
         };
       };
     };
+    # S3: a nixpkgs container over a gen submodule copied with a `verify`, through `mkOptionType`, redeclared after its
+    # plain twin under nixpkgs' `evalModules`: the owed `verify` rides on the rebuilt element (`carriedAtDepth`), read
+    # on the element's merged value.
+    test-a-nixpkgs-container-over-a-verify-copy-redeclared-keeps-the-verify-on-its-element =
+      let
+        gSubAB = gt.submodule {
+          options.a = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
+          options.b = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
+        };
+        copy = gm.mkOptionType (np.attrsOf (gSubAB // { verify = notTwo; }));
+      in
+      {
+        expr = {
+          bad = run "np" [ (np.attrsOf gSubAB) copy ] [ { k.a = 2; } ];
+          ok = run "np" [ (np.attrsOf gSubAB) copy ] [ { k.a = 1; } ];
+        };
+        expected = {
+          bad = "REFUSED";
+          ok.k = {
+            a = 1;
+            b = 0;
+          };
+        };
+      };
     # S5: a reader that takes a v2 value past its `headError` (gen's called form of a coercion) still meets the
     # carried `verify`: the value refuses by name on a rejection.
     test-a-coercion-onto-a-verify-copy-refuses-the-folded-value-its-verify-rejects = {
