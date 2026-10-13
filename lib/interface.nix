@@ -3053,6 +3053,118 @@ let
     # a gen container's element `r` rebuilt over its declared element `e`: the `verify` `e` states beyond its rebuild
     # carried on it (a `// { verify }` copy's rebuild is its base's)
     element = e: r: if e ? verify && isAttrs r then rebuildClosed.verify false e.verify r else r;
+    # ★ A STAMPED NESTING RECORD A PUBLISHED DOOR RETURNS AS ITSELF, FACING NIXPKGS' EVALUATION (den-hoag-olrmz). A
+    # record the doors return with no `carriedCopy` admission, stating a `verify` over a module set below it, publishes
+    # the foreign half `carriedCopy` publishes: the one-definition projection as its union-dispatch `check`, the `verify`
+    # on its merged value (`verifiedMerge`, a non-v2 fold `lifted` with its own check per definition, so nixpkgs judges
+    # a module-set record on its merged value and never on a projection), and, where its rebuild carries no `verify` of
+    # its own (`owed`), that rebuild and the relation beside it closed (`rebuilt`). Every other record is
+    # returned unchanged. Members of `rebuildClosed`, so the library's load pays nothing for them.
+    door =
+      r:
+      if
+        !(
+          isAttrs r
+          && r ? verify
+          && r ? carries
+          # a record carrying a module set below it: a container nixpkgs rebuilds (`getSubModules`), or one that nests
+          # (`canNest`: a union of a submodule, stating none); a leaf container, and a refined module set's own record,
+          # keep the check their export derived from their `verify`, read per definition, and their identity
+          && (!(r.carries ? moduleSet) && isList (r.getSubModules or null) || canNest r)
+          && r ? _checkWitness
+          && builtins.isFunction (r.__typeSelf or null)
+        )
+      then
+        r
+      else
+        let
+          # a record re-doored keeps one carriage: its unverified fold and its own check, re-carried with its `verify`
+          base = r.merge.__verifiedMerge or r.merge;
+          # a record re-doored: its merge was carried with a `verify` (`verifiedMerge`), which a `//` copy may have
+          # replaced since, so its own rebuild may re-derive the replaced one. Told by the carriage alone, never by
+          # comparing the two functions: `==` on a function answers by evaluator (nix and Determinate `false` where
+          # Lix answers `true`), and closing a rebuild that already carries the same `verify` changes no value
+          recarried = (r.merge or { }) ? __verifiedMerge;
+          owed = rebuildClosed.stale r || recarried;
+          own = r.check.__verifyProjection or r.check;
+          projection = rebuildClosed.verifiedMerge.projection own r.verify base;
+          result =
+            r
+            // {
+              check = projection;
+              ${if own == r._checkWitness || r.check == r._checkWitness then "_checkWitness" else null} =
+                projection;
+              merge = rebuildClosed.verifiedMerge r.verify (
+                if base ? v2 then base else rebuildClosed.verifiedMerge.lifted own base
+              );
+            }
+            # a rebuild carrying no `verify` of this record's (`owed`): its completion's (`stale`), or the
+            # record's own where its merge was carried before (`recarried`), so the record's own rebuild may re-derive a
+            # replaced one
+            // (if owed then rebuildClosed.carried r.verify r else { })
+            # and the relation beside such a rebuild answers a join without it: the join carries this record's `verify` too
+            // (
+              if owed && r ? typeMerge then
+                {
+                  typeMerge =
+                    f:
+                    let
+                      j = r.typeMerge f;
+                    in
+                    if j == null then null else rebuildClosed.rebuilt r.verify j;
+                }
+              else
+                { }
+            )
+            # a functor whose `type` is the record itself names the record this door returns, so a relation nixpkgs asks
+            # with the functor alone (a redeclaration) reads this record's `verify`, a `//` copy's replaced one included;
+            # read when asked, as the functor's `type` may be the record this door returns
+            // (
+              if r ? functor then
+                {
+                  functor =
+                    r.functor
+                    // (
+                      if r.functor ? type then
+                        { type = if isAttrs r.functor.type then result else r.functor.type; }
+                      else
+                        { }
+                    );
+                }
+              else
+                { }
+            );
+        in
+        result;
+    # a module-set record's rebuild or join `r` carrying `verify`, as nixpkgs' `fixupOptionType` mounts a declared option
+    # and a redeclared union asks its member: `rebuildClosed.verify` below the root (the rebuild keeps its own check, a
+    # non-v2 one lifted, with the `verify` on its merged value, never a projection), over the fold `r`'s carriage was
+    # built from, closed again under its module-set rebuild (`carried`)
+    rebuilt =
+      vf: r:
+      if !(isAttrs r) then
+        r
+      else
+        rebuildClosed.verify false vf (
+          if (r.merge or { }) ? __verifiedMerge then r // { merge = r.merge.__verifiedMerge; } else r
+        )
+        // rebuildClosed.carried vf r;
+    # a module-set record's rebuild answered through `rebuilt`, published under `substSubModules` alone: it carries a
+    # `verify` its completion's rebuild does not, so it IS a rewrite, and the witness keeps naming the completion's.
+    # One closure is never published under both fields: a reader comparing the pair (`importedOwnSubstructure`,
+    # `stale`) by `==` over a function answers by evaluator (nix and Determinate "rewritten", Lix "the export's own"),
+    # and a re-door then closes the rebuild on one evaluator and takes the base's on another
+    carried =
+      vf: r:
+      if !(isList (r.getSubModules or null) && r ? substSubModules) then
+        { }
+      else
+        {
+          substSubModules = m: rebuildClosed.rebuilt vf (r.substSubModules m);
+        };
+    # a record's rebuild is the one its completion's export published (`_substSubModulesWitness`), closed over that
+    # completion, so it cannot carry a `verify` the record states beyond it; a rewritten one is the record's own
+    stale = r: { w = r._substSubModulesWitness or null; } == { w = r.substSubModules or null; };
     # ★ A `verify` STATED WHERE A FOLD ASKS MEMBERSHIP (den-hoag-dw8d3). `verifiedMerge vf m` is `m` with `vf` read once on
     # its merged value: a v2 merge states a rejection where nixpkgs' `addCheck` states its check, in `headError` after its
     # base's, so a union choosing its member by `headError` moves on to the next one, and its value refuses by name for a
@@ -6078,35 +6190,44 @@ let
         # inside that merge or the `verify`'s reads is `false`, and a foreign union takes its next alternative
         base = x.merge.__verifiedMerge or x.merge;
         projection = rebuildClosed.verifiedMerge.projection own x.verify base;
-        s = x // {
-          # a record that carries a role publishes the one-definition projection for a FOREIGN reader; where its own
-          # check is its witness the projection is its witness too, so gen's readers fold it unrewritten and judge its
-          # `verify` on the merged value; an override keeps its stale witness and is read per definition by its own
-          # check (`__verifyProjection`)
-          ${if replacesVerify x then "check" else null} =
-            if x ? carries then
-              projection
-            else
-              witnessRecord dom
-              // {
-                isV2MergeCoherent = true;
-              };
-          ${if replacesVerify x && x ? carries && own == x._checkWitness then "_checkWitness" else null} =
-            projection;
-          # gen's placement of the `verify` for a reader that folds through the protocol: on the merged value, a base
-          # `v2` merge keeping its protocol with the `verify` on its `headError`
-          ${if replacesVerify x && x ? carries then "merge" else null} =
-            rebuildClosed.verifiedMerge x.verify base;
-          # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
-          # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
-          # stating none (gen-types' own records) gets none
-          ${if x ? typeMerge then "typeMerge" else null} =
-            f:
-            let
-              r = x.typeMerge f;
-            in
-            if r == null then null else metWith r [ s ];
-        };
+        s =
+          x
+          // {
+            # a record that carries a role publishes the one-definition projection for a FOREIGN reader; where its own
+            # check is its witness the projection is its witness too, so gen's readers fold it unrewritten and judge its
+            # `verify` on the merged value; an override keeps its stale witness and is read per definition by its own
+            # check (`__verifyProjection`)
+            ${if replacesVerify x then "check" else null} =
+              if x ? carries then
+                projection
+              else
+                witnessRecord dom
+                // {
+                  isV2MergeCoherent = true;
+                };
+            ${if replacesVerify x && x ? carries && own == x._checkWitness then "_checkWitness" else null} =
+              projection;
+            # gen's placement of the `verify` for a reader that folds through the protocol: on the merged value, a base
+            # `v2` merge keeping its protocol with the `verify` on its `headError`
+            ${if replacesVerify x && x ? carries then "merge" else null} =
+              rebuildClosed.verifiedMerge x.verify base;
+            # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
+            # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
+            # stating none (gen-types' own records) gets none
+            ${if x ? typeMerge then "typeMerge" else null} =
+              f:
+              let
+                r = x.typeMerge f;
+              in
+              if r == null then
+                null
+              # a module set's join is rebuilt again by the fixup, so the join carries the verify on its merged value
+              else if replacesVerify x && x ? carries && isList (x.getSubModules or null) then
+                rebuildClosed.rebuilt x.verify (metWith r [ s ])
+              else
+                metWith r [ s ];
+          }
+          // (if replacesVerify x && x ? carries then rebuildClosed.carried x.verify x else { });
       in
       s;
   # The fields the import door's admission does not compare for a stamped `t` (`carriedCopy`): the carrier's

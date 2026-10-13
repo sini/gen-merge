@@ -144,7 +144,11 @@ declared domain, a witnessed rewrite) and `typeMerge` (its completion's relation
 under nixpkgs' engine such a copy declared first beside a partner is dropped as the raw copy is, by
 nixpkgs' later-operand rule. A foreign record (stating no `typeMergeRel`) is returned by
 `types.defineType` as itself, and a foreign module set comes back closed under its own rebuilds
-(`interface.rebuildClosed`), its checks carried through `substSubModules` and `typeMerge`.
+(`interface.rebuildClosed`), its checks carried through `substSubModules` and `typeMerge`. A
+completion a door returns as itself that states `verify` over a module set below it (gen-schema's
+`refined` over a container) faces nixpkgs' evaluation (`interface.rebuildClosed.door`,
+den-hoag-olrmz): its `check` is the verify's one-definition projection, its `merge` reads the
+`verify` on the merged value, and every rebuild nixpkgs calls returns it closed again.
 
 **Provenance record** (per declared loc): `{ defs = [{ file; priority; }]; winners = [{ file; }]; priority = <int>; defaulted = <bool>; }`. Per freeform loc: `defs` only, the other three `null`.
 

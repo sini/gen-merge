@@ -480,7 +480,7 @@ let
       }
       (
         o: id: base:
-        deriveTypeCore base (o // { inherit id; })
+        interface.rebuildClosed.door (deriveTypeCore base (o // { inherit id; }))
       );
   deriveTypeCore =
     base: spec:
@@ -2181,7 +2181,7 @@ in
       let
         c = interface.carriedCopy t;
       in
-      if c != null then c else defineType (interface.keepStamp t)
+      if c != null then c else interface.rebuildClosed.door (defineType (interface.keepStamp t))
     else
       defineType (interface.keepStamp t);
   completeType = defineType;
@@ -2197,7 +2197,7 @@ in
       let
         c = interface.carriedCopy t;
       in
-      if c != null then c else mkOptionType t
+      if c != null then c else interface.rebuildClosed.door (mkOptionType t)
     else
       mkOptionType t;
 }
