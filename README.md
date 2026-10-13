@@ -2075,8 +2075,7 @@ refusal if anything evaluates it as a module. Five things are refused by name in
   module-value `check`, so it is evaluated like any other;
 - the same containers through `mkOptionType`, which keeps the import refusal.
 
-The refusal of the first is an **open defect where nixpkgs serves the shape** (the owner's
-parity-defect rule, 2026-10-09, rule 1; carried on `den-hoag-p06j3`), not a price. nixpkgs serves a
+The refusal of the first is an **open defect where nixpkgs serves the shape** (the parity-defect rule), not a price. nixpkgs serves a
 foreign `either` or `oneOf` holding a gen submodule below its own `coercedTo` or `uniq`, and a
 hand-rolled container whose rebuild drops its argument or stores or relabels the module list; gen
 refuses each by name. No threading door lands (owner, 2026-10-10): the `coercedTo` rebuild is
@@ -2160,9 +2159,8 @@ or stating `merge` but no `check`) is refused by name (`rootRebuildRefusal`), wh
 an ad-hoc `type // { check = ...; }` is such a `check`, riding on the rebuild as an `addCheck` does. A freeform type is no option's root
 and is not mounted. The fix-up item's `_file` is `<unknown-file>`, as nixpkgs labels a module stating
 no file, not the declaring file, and the module set is the merged type's, not a union per
-declaration. Refused by name. The first two are open defects (the owner's parity-defect rule,
-2026-10-09) carried on `den-hoag-p06j3`, where nixpkgs serves the shape; the last two are not
-measured against nixpkgs:
+declaration. Refused by name. The first two are open defects, where nixpkgs serves the shape; the
+last two are not measured against nixpkgs:
 
 - a record declaring a gen nesting element that nixpkgs never rebuilds (no module set at the root,
   or below a union: `uniq (either (attrsOf sub) str)`, `either int copy`, any non-six container over
@@ -2196,10 +2194,9 @@ and one whose merge STORES the handed list (`deferredModule`) is served with gen
 its value: inspecting the stored list (its length, its `_file` labels) differs from nixpkgs
 silently, and evaluating it refuses by name. No predicate reaches it without reading a payload: it
 is the half of arm (T)'s stated domain (a merge that does not inspect element values) that has no
-predicate here. Both are carried on `den-hoag-p06j3`.
+predicate here. Both are open defects.
 
-**Open defects on `den-hoag-87nvk`** (owner, 2026-10-10, arm (a); PU is not built, no construction is
-in view). First, silent, so ranked first by rule 4: a DECLARED sibling whose `getSubModules` does
+**Open defects** (PU is not built, no construction is in view). First, silent, so ranked first by rule 4: a DECLARED sibling whose `getSubModules` does
 not show the module set it stores (`deferredModuleWith` stating `null`) is not asked by the walk,
 and a container that rebuilds it hands it the marker, so its value reads `<gen-merge thread marker>` where nixpkgs reads `static`. Second, uncatchable: an override of a nixpkgs `either` or
 `oneOf` (or any foreign record) whose `substSubModules` forwards over a gen submodule, tree or
@@ -2915,7 +2912,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   but whose payload states no `modules` (a hand-copied submodule) or which states no
   `getSubModules` is not recognised: one stating a module set is mounted at an option root as
   nixpkgs' `fixupOptionType` mounts it (arm (T), the root fix-up), before its `nestedTypes` is
-  read, and one stating none keeps the refusal (an open defect where nixpkgs serves the shape: den-hoag-p06j3). At an option root
+  read, and one stating none keeps the refusal (an open defect where nixpkgs serves the shape). At an option root
   a recognised record is mounted as its rebuild too, so one whose rebuild lies about its roles is
   served what nixpkgs serves. A container whose payload states
   `modules` beside a static element and states no `getSubModules` keeps both its refusals.

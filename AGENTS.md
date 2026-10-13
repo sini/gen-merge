@@ -283,7 +283,9 @@ type outside the six that declares a nesting element threads at a declared optio
 judged on the original record position by position, at any depth), and is refused by name where it
 does not (an open defect where nixpkgs serves the shape, not a price: den-hoag-p06j3), where a tree is read at a position its merge does not expose (`unexposedRefusal`), where
 an undeclared position evaluates the marker (its import throws the refusal), and at
-`mkOptionType`. At an option ROOT stating a module set whose rebuild does not thread, it is mounted
+`mkOptionType`. Open defects with no construction in view (owner 2026-10-10, arm (a); PU is not built) are carried on
+`den-hoag-87nvk`: a declared sibling whose `getSubModules` does not show its stored module set reads the marker; an overridden foreign
+`substSubModules` forwarding over a gen submodule below a threaded container aborts. At an option ROOT stating a module set whose rebuild does not thread, it is mounted
 as nixpkgs' `fixupOptionType` mounts it, where that rebuild is an option type declaring no gen
 element (`homedRootAt`, den-hoag-threadedforeign-parity-residue-0hew4); below a union or a gen root
 it is not. Every foreign option root stating a module set, a nesting element or none, is mounted so,
