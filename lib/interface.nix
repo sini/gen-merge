@@ -4771,10 +4771,20 @@ let
   # is sufficient on every pair measured. It is one more bounded walk on a path that is already
   # deciding a merge, and it closes the second-operand question BY CONSTRUCTION rather than by a
   # census that would need re-running on every nixpkgs bump.
+  #
+  # A join the witness declines because it RENAMES an operand is still answered: it is the step's
+  # carrier, and the one caller (`modules.nix` `relationMergeWithin`) meets it with every operand
+  # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
   importedMerge =
     a: b:
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
-      joinKeepingOperands a b (a.typeMerge b.functor)
+      (
+        let
+          j = a.typeMerge b.functor;
+          k = joinKeepingOperands a b j;
+        in
+        if k != null then k else j
+      )
     else
       null;
 

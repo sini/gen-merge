@@ -1726,36 +1726,39 @@ nixpkgs never asks the earlier operand, so the later relation decides, and the r
 only where that relation gives no join; a partner relation's own `throw` is then reported in gen's
 words. The veto
 protects a gen relation against the type it is actually merged into. A foreign relation keeps the
-authority nixpkgs gives it except over a join that drops a name an operand states, authored or
-inherited, which refuses (below): `[gt.int, str, Fx]` with `Fx = str // { typeMerge = _: int; }`,
-which nixpkgs accepts as `int`, refuses at `Fx`'s step, since `int` states neither `str` nor `Fx`.
+authority nixpkgs gives it, also over a join that drops a name an operand states, authored or
+inherited, which is met at the step (below): `[gt.int, str, Fx]` with `Fx = str // { typeMerge = _: int; }`
+answers `int`, as nixpkgs does, and rejects what `str` rejects.
 
 **Against nixpkgs, on the type.** Over every declaration list of length 3 and 4 in a seven-family
 census (8,338 words), gen-merge agreed with nixpkgs on every all-foreign list whose joins keep their
 operands' names, on both the declaration and the freeform planes. It departs where a fold step's
-gen-native relation refuses, and then by refusing: gen `attrs` against foreign `attrs` in the order
-nixpkgs accepts, directly or under a gen container; an earlier gen relation vetoing a later foreign
-relation that answers another type; and a refinement under a gen container against its bare element.
-It also departs where a foreign join drops a name an operand states (the check-family witness,
-below), and where a merge drops the check a wrapper added to a gen record (below the witness): by
-refusing, or, for a pair that is one shared value, by keeping that value. Over a 65-type
-pair census it merges no pair the relation without the witness refuses. They are listed under
+gen-native relation refuses, and then by refusing: an earlier gen relation vetoing a later foreign
+relation that answers another type, and a refinement under a gen container against its bare element.
+Gen `attrs` against foreign `attrs` merges in both orders, directly or under a gen container, to gen's
+fold met with the partner's check. Where a merge drops a check (a foreign join that renames an
+operand, or the check a wrapper added to a gen record) the join is met, so the value differs only where
+a dropped check rejects it; a record imported through `mkOptionType` still refuses a renaming join,
+and a pair that is one shared value keeps that value. They are listed under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A refined type redeclared against
 its bare base refuses in both orders, directly or under a gen container.
 
-**A foreign join that drops an operand's check refuses.** nixpkgs' `addCheck` is
+**A foreign join that drops an operand's check is met.** nixpkgs' `addCheck` is
 `elemType // { check = …; }`, so it keeps its base's `functor` and `typeMerge`: `port ∥ int`,
 `u8 ∥ u16` and two `ints.between` calls all join to bare `int` there, and `[port, int]` accepts
 70000\. gen-merge takes a foreign join (`later.typeMerge earlier.functor`, or an imported record's
-stated relation) only where it keeps each operand's stated name at every depth the operand wraps a
-type; otherwise the pair refuses, with a reason naming the join. A role the join gains is not a drop,
+stated relation) as is where it keeps each operand's stated name at every depth the operand wraps a
+type. A raw foreign join that renames past an operand is taken as the step's carrier and met with every
+operand (`interface.importedMerge`), so `[port, int]` merges to `int` and rejects 70000; a record
+imported through `mkOptionType` merges on `foreignRel`, whose witness still refuses that join, with a
+reason naming it. A role the join gains is not a drop,
 so a freeform submodule unioned with an option-only one, or two `attrTag`s, merge as on nixpkgs. A
 join that is a gen record is compared with each operand as the import environment reads it, so a
 type whose relation rebuilds it through `mkOptionType` (gen-schema's `refined`, gen-aspects'
 `aspectsRoot`) merges when redeclared as itself. A
 pair that is one shared value keeps it: `[port, port]` from one `types.port` answers `port`, and
-rejects 70000. A redeclaration is the meet (owner-ruled 2026-10-06, below); a join this witness takes is
-met at the step, and one renamed past an operand stays refused, which serves nothing an operand rejects. The cost is one fuel-bounded walk per foreign fold step,
+rejects 70000. A redeclaration is the meet (owner-ruled 2026-10-06, below); every join taken here is
+met at the step, which serves nothing an operand rejects. The cost is one fuel-bounded walk per foreign fold step,
 and a second join only on the refusal path; gen-native pairs never reach it. Measured with
 `NIX_SHOW_STATS`, one option declared in 200 modules: `listOf str` +2.7% thunks and +1.0% function
 calls, a distinct `submodule` each +0.1%, `port` +0.07% and +0.18%. The measured members are under
@@ -2851,25 +2854,20 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   foreign code and accepts what nixpkgs accepts. The list fold's cost is linear in the number of modules
   that declare one option with a type, in thunks and calls ("Redeclaring an option", **Cost**). Measured members:
 
-  - `gt.attrs` against `lib.types.attrs`, in the order nixpkgs accepts (the foreign `attrs` fold is
-    `//`; gen's `attrs` refuses a disagreement, so it refuses a partner that states no fold of its own);
-  - the same pair under a gen container;
   - an earlier gen relation vetoing a later foreign relation that answers another type
     (`[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`, and a refined type before `Fx`);
   - a refinement under a gen container against its bare element (`[listOf R, listOf int, listOf int]`,
     where nixpkgs accepts `listOf` and drops the refinement).
 
-- **A foreign join that drops a name an operand states refuses, even where nixpkgs accepts** ("A
-  foreign join that drops an operand's check refuses"). These departures are also over-refusals,
-  except one that answers the operand. Measured members:
+- **A foreign join that drops a name an operand states is met, or refused where it is imported** ("A
+  foreign join that drops an operand's check is met"). A raw check family whose join renames it
+  (`port ∥ int`, `u8 ∥ u16`, two separately built `ints.between 0 1`, `passwdEntry str ∥ str`, a
+  relation answering a type keeping neither operand's name) merges to nixpkgs' join and rejects what
+  any operand rejects, where nixpkgs serves it. Measured members of the remaining departures:
 
-  - a check family whose join renames it: `port ∥ int` in both orders, `u8 ∥ u16`,
-    `unsigned ∥ positive`, `numbers.between` pairs and `passwdEntry str ∥ str`, directly or under a
-    nixpkgs or gen container;
-  - two separately built `ints.between 0 1`, since two calls build two values;
-  - a foreign relation, authored or inherited, that answers a type keeping neither operand's name
-    (`[int, str, Fx]`, which nixpkgs accepts as `int`);
   - one shared value declared twice, `[port, port]`, which answers `port` where nixpkgs answers `int`;
+  - a renaming pair imported through `mkOptionType` (`[imp port, imp int]`), which refuses at
+    `foreignRel`'s witness where the bare nixpkgs pair serves: an open defect (ADR-0039 parity rule 1);
   - one shared record imported through `mkOptionType` and declared twice, which refuses where the bare
     twin keeps its operand: the imported record meets the engine's own import of its partner, and
     Nix `==` does not survive that path.

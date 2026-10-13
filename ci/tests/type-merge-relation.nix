@@ -73,7 +73,7 @@ let
     let
       a = gmAttrs.typeMergeRel other;
     in
-    if a ? merged then "merged" else a.refused;
+    if a ? merged then (if a.meets or false then "met" else "merged") else a.refused;
 
   # A type carrying BOTH, for the precedence cell.
   withBoth = genNative // {
@@ -149,7 +149,8 @@ in
 
   # ★★ THE TWO-LEVEL RELATION, AND ITS FOUR FAILURES ARE CONJUNCTS OF ONE EXPECTED VALUE — two of
   # them read as success on their own. A relation matching on `.name` alone answers `merged` to both
-  # foreign pairings, silently adopting a partner whose fold is not this one's. A relation refusing
+  # foreign pairings, silently adopting a partner whose fold is not this one's and dropping its
+  # check; gen's fold MET with the partner (`meets`) keeps it. A relation refusing
   # every same-named partner refuses `attrs` against ITSELF, which breaks the ordinary case every
   # consumer hits and which no other cell in this suite would see. And collapsing the name mismatch
   # into the foldless branch reports "a partner named `attrs'" about a partner named `string' — which
@@ -169,8 +170,8 @@ in
       ];
     };
     expected = {
-      vsCompletedLeaf = "`attrs' and a partner named `attrs' that states no fold of its own";
-      vsForeign = "`attrs' and a partner named `attrs' that states no fold of its own";
+      vsCompletedLeaf = "met";
+      vsForeign = "met";
       vsSelf = "merged";
       controlStr = "`attrs' and `string'";
       controlInt = "`attrs' and `int'";

@@ -1511,7 +1511,9 @@ let
       # which is right for a name this library alone mints. This is not one of those, so a name-only
       # relation would answer `merged` to any same-named partner and silently adopt a fold that is not
       # this one's. The second level asks the DISCRIMINATING FACT — did the partner bring a fold of its
-      # own? — through `mergeDefs`, the same presence test the engine's own dispatch asks.
+      # own? — through `mergeDefs`, the same presence test the engine's own dispatch asks. A partner
+      # with no fold of its own is joined to this fold and MET (`nullaryRel`'s convention for a raw
+      # foreign partner), so its `check` is kept and its fold is not adopted, as nixpkgs' own twin does.
       #
       # ★ THREE ANSWERS, AND THE THIRD IS WHY THERE ARE NOT TWO. Collapsing the name mismatch and the
       # foldless same-name case into one `else` reports "a partner named `attrs'" about a partner named
@@ -1524,7 +1526,10 @@ let
         else if other ? mergeDefs then
           { merged = attrs; }
         else
-          { refused = "`attrs' and a partner named `attrs' that states no fold of its own"; };
+          {
+            merged = attrs;
+            meets = true;
+          };
       # THE FOLD IS TOTAL OVER ITS INPUT IN BOTH DIRECTIONS, and each refusal is a catchable throw
       # naming the option, this type, and the files that wrote the definitions at fault.
       #

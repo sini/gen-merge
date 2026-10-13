@@ -1,9 +1,11 @@
-# A FOREIGN JOIN THAT DROPS AN OPERAND'S CHECK REFUSES (`lib/interface.nix`, the witness).
+# A FOREIGN JOIN THAT DROPS AN OPERAND'S CHECK IS MET (`lib/interface.nix`, `importedMerge`).
 #
 # nixpkgs' `addCheck` keeps its base's `functor` and `typeMerge`, so redeclaring `port`, `u8` or
-# `ints.between` joins to bare `int` and the check is gone: nixpkgs accepts 70000 for a `port`. The
-# witness takes a foreign join only where it keeps each operand's stated name at every depth the
-# operand wraps a type, and refuses otherwise; a pair that is one shared value keeps the operand.
+# `ints.between` joins to bare `int` and the check is gone: nixpkgs accepts 70000 for a `port`. Gen's
+# engine takes that join as the step's carrier and meets it with every operand (ADR-0039, the meet),
+# so the merged option accepts a value only if every declared check does. The witness still decides
+# where it keeps each operand's stated name, and a record imported through `mkOptionType` merges on
+# `foreignRel`, whose witness still refuses the renaming join.
 #
 # Each row declares one option over the listed types, defines one value, and reads the merged type's
 # name and whether the value was accepted. The control cell pins what the witness must NOT refuse,
@@ -128,10 +130,12 @@ in
 {
   flake.tests.check-family-merge = {
 
-    test-a-renaming-check-family-pair-refuses = {
+    test-a-renaming-check-family-pair-is-met = {
       expr = {
         r01 = ev [ (t.ints.between 0 10) (t.ints.between 100 200) ] 5;
         r04 = ev [ t.port t.int ] 70000;
+        r04-good = ev [ t.port t.int ] 8080;
+        r06-good = ev [ t.ints.u8 t.ints.u16 ] 200;
         r05 = ev [ t.int t.port ] 70000;
         r06 = ev [ t.ints.u8 t.ints.u16 ] 300;
         r14 = ev [ t.ints.unsigned t.ints.positive ] 0;
@@ -143,27 +147,30 @@ in
         r24 = ev [ (tagOf "a" t.int) (tagOf "a" t.port) ] { a = 70000; };
       };
       expected = {
-        r01 = "REFUSED";
-        r04 = "REFUSED";
-        r05 = "REFUSED";
-        r06 = "REFUSED";
-        r14 = "REFUSED";
-        r16 = "REFUSED";
-        r17 = "REFUSED";
-        r23 = "REFUSED";
-        r24 = "REFUSED";
+        r01 = "MERGED int / REJECTED";
+        r04 = "MERGED int / REJECTED";
+        r04-good = "MERGED int / ACCEPTED";
+        r05 = "MERGED int / REJECTED";
+        r06 = "MERGED int / REJECTED";
+        r06-good = "MERGED int / ACCEPTED";
+        r14 = "MERGED int / REJECTED";
+        r16 = "MERGED either / REJECTED";
+        r17 = "MERGED str / REJECTED";
+        r23 = "MERGED attrTag / REJECTED";
+        r24 = "MERGED attrTag / REJECTED";
       };
     };
 
-    # two calls build two values, so the twin is not one reified value and does not keep its operand
-    test-a-constructed-check-family-twin-refuses = {
+    # two calls build two values, so the twin is not one reified value and does not keep its operand;
+    # the join is met, so each value's own check still rejects
+    test-a-constructed-check-family-twin-is-met = {
       expr = {
         r08 = ev [ (t.ints.between 0 1) (t.ints.between 0 1) ] 5;
         r22 = ev [ (t.ints.between 0 1) (t.ints.between 0 1) (t.ints.between 0 1) ] 5;
       };
       expected = {
-        r08 = "REFUSED";
-        r22 = "REFUSED";
+        r08 = "MERGED int / REJECTED";
+        r22 = "MERGED int / REJECTED";
       };
     };
 
@@ -178,14 +185,14 @@ in
       };
     };
 
-    test-the-refusal-reaches-under-a-container = {
+    test-the-meet-reaches-under-a-container = {
       expr = {
         r20 = ev [ (t.listOf (t.ints.between 0 1)) (t.listOf (t.ints.between 0 1)) ] [ 5 ];
         r21 = ev [ (gt.listOf (t.ints.between 0 1)) (gt.listOf (t.ints.between 0 1)) ] [ 5 ];
       };
       expected = {
-        r20 = "REFUSED";
-        r21 = "REFUSED";
+        r20 = "MERGED listOf / REJECTED";
+        r21 = "MERGED listOf / REJECTED";
       };
     };
 

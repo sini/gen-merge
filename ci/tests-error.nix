@@ -1683,40 +1683,25 @@ in
         };
       };
       # THE NAME COLLISION, END TO END, IN BOTH ORDERS. A redeclaration step asks the EARLIER
-      # declaration's gen-native relation first (a veto no later relation overrules) and otherwise
-      # lets the LATER one decide, so gen's `attrs` refuses its foldless partner whichever module
-      # declares it: first (the veto) or second (it decides). The reverse-order cells below pin
-      # the second.
-      #
-      # The reason names the DISCRIMINATING FACT rather than the pair, because the pair is the same
-      # name twice and would tell the reader nothing: both partners below really are called `attrs`.
-      test-attrs-redeclared-against-the-shadowed-predicate-refuses = {
+      # declaration's gen-native relation first and otherwise lets the LATER one decide, so gen's
+      # `attrs` answers its foldless partner whichever module declares it: first (the veto arm meets
+      # both operands) or second (`mergeTypesBy` meets the partner). The answer is gen's `attrs` fold
+      # met with the partner's check, `nullaryRel`'s convention for a raw foreign partner (G11).
+      test-attrs-redeclared-against-the-shadowed-predicate-merges = {
         expr = declaredTwice t.attrs attrsCompletedLeaf;
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
-        };
+        expected = "attrs";
       };
-      test-attrs-redeclared-against-the-foreign-spelling-refuses = {
+      test-attrs-redeclared-against-the-foreign-spelling-merges = {
         expr = declaredTwice t.attrs nixpkgsLib.types.attrs;
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
-        };
+        expected = "attrs";
       };
-      test-attrs-redeclared-after-the-foreign-spelling-refuses = {
+      test-attrs-redeclared-after-the-foreign-spelling-merges = {
         expr = declaredTwice nixpkgsLib.types.attrs t.attrs;
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
-        };
+        expected = "attrs";
       };
-      test-attrs-redeclared-after-the-shadowed-predicate-refuses = {
+      test-attrs-redeclared-after-the-shadowed-predicate-merges = {
         expr = declaredTwice attrsCompletedLeaf t.attrs;
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: option `x' is declared with types that do not merge \\(`attrs' and a partner named `attrs' that states no fold of its own\\); declared in a\\.nix, b\\.nix$";
-        };
+        expected = "attrs";
       };
       # e07bf: a refusal the DECIDING relation words is that relation's text, deciding type first.
       test-a-relation-worded-refusal-names-the-deciding-type-first = {
@@ -5813,9 +5798,12 @@ in
             )).functor;
           expectedError = thrown "^gen-merge: the type `<a name of type int>' carries the role `zz', ";
         };
+        # Declared raw, the renaming join is the step's carrier and the meet owes both operands, so the
+        # pair merges (G11); imported through `mkOptionType` it merges on `foreignRel`, whose witness
+        # still names the join, and that is where the name type is rendered.
         test-renaming-foreign-join-names-the-operand-name-type = {
-          expr = declaredTwice (renamingJoin "b") (renamingJoin bad);
-          expectedError = refuses "`<a name of type int>' and `b', which their own relation joins to `j', a type that states neither declaration's own check";
+          expr = declaredTwice (gm.mkOptionType (renamingJoin "b")) (gm.mkOptionType (renamingJoin bad));
+          expectedError = refuses "`b' and `<a name of type int>', which the first type's own `functor' joins to `j', a type that states neither declaration's own check";
         };
         test-carrier-refusal-names-its-name-type = {
           expr = gm.mkOptionType {
@@ -8714,8 +8702,9 @@ in
     # laziness only, so what it does not admit keeps its carrying spelling read: the same poison on
     # a `listOf`/`attrsOf` fires, and a hand-built container whose payload states `modules` beside a
     # static gen nesting element, stating no `getSubModules`, keeps both ruled refusals (n6dh7
-    # OQ11 (d)'s nesting-element refusal, and the witness's dropped check). Each has its
-    # `staticModules` twin, which refuses alike. The undeclared control refuses naming the full path
+    # OQ11 (d)'s nesting-element refusal). Its renaming join is met rather than refused (G11): the
+    # type's fold never applies its element, so every declared check accepts `[ 70000 ]` and nixpkgs
+    # serves it too. Each has its `staticModules` twin. The undeclared control refuses naming the full path
     # as nixpkgs does, from the joined evaluation rather than one operand's.
     flake.testsError.submodule-laziness =
       let
@@ -8764,10 +8753,6 @@ in
         nestingRefusal = {
           type = "ThrownError";
           msg = "^gen-merge: `evalModuleTree' at option `s': the option type `fakeList' declares a gen nesting type as an element \\(its `nestedTypes\\.elemType'\\), and it cannot thread the evaluation to that nested tree here\\..*$";
-        };
-        droppedCheck = {
-          type = "ThrownError";
-          msg = "^gen-merge: option `s' is declared with types that do not merge \\(`fakeList' and `fakeList', which their own relation joins to `fakeList', a type that states the check `fakeList' declares but not the check `fakeList' declares\\); declared in <unknown-file>, <unknown-file>$";
         };
       in
       {
@@ -8822,17 +8807,17 @@ in
           });
           expectedError = nestingRefusal;
         };
-        test-a-payload-stating-modules-keeps-the-dropped-check-refusal = {
+        test-a-payload-stating-modules-meets-the-renaming-join = {
           expr = at (redeclared {
             modules = [ ];
           });
-          expectedError = droppedCheck;
+          expected = null;
         };
-        test-a-payload-stating-static-modules-keeps-the-dropped-check-refusal = {
+        test-a-payload-stating-static-modules-meets-the-renaming-join = {
           expr = at (redeclared {
             staticModules = [ ];
           });
-          expectedError = droppedCheck;
+          expected = null;
         };
         test-an-undeclared-key-names-the-joined-path = {
           expr = at [

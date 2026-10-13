@@ -193,15 +193,15 @@ in
           ref = table np.evalModules np.mkOption;
           # the gen-native veto across a fold step it is not adjacent to by position
           gen-first-int-Fint-str = read evalRequest mkOption [ t.int Fint np.types.str ] n;
-          # the one departure, by refusing: `Fx`'s relation answers `int` for `str`, which keeps
-          # neither operand's name (nixpkgs answers `int`)
+          # `Fx`'s relation answers `int` for `str`, which keeps neither operand's name: gen takes
+          # nixpkgs' `int` as the step's carrier and meets it with every declared check
           renaming-int-str-Fx = read evalRequest mkOption [ np.types.int np.types.str Fx ] n;
         };
         expected = {
           gm = expected;
           ref = expected;
           gen-first-int-Fint-str = "REFUSE";
-          renaming-int-str-Fx = "REFUSE";
+          renaming-int-str-Fx = "int";
         };
       };
     # e07bf, the FREEFORM twin: the winner list folds the same way, `[A, fo, B]` included (A's
@@ -579,9 +579,9 @@ in
     # decides the record at every container level (`interface.joinCarriedInStatedRelation`), so no
     # gen record survives into the declared type. `sig` reads whose record each level of the merged
     # spine is, through `nestedTypes`; `ref` is the same table with the gen side replaced by its
-    # nixpkgs twin, live. `u8` pins the refusal the rule must not widen: a join that drops a wrapper's
-    # check is not taken (ADR-0025 item 1): gen's engine refuses `u8` beside `int` natively, so the mixed
-    # pair refuses too, and a rule that dropped the witness would serve it. `lazyList` is a raw foreign
+    # nixpkgs twin, live. `u8`: a join that drops a wrapper's check is never served unmet (ADR-0025
+    # item 1). Gen's engine meets the nixpkgs pair, so `u8`'s check is owed again; the mixed pair still
+    # refuses at the carried relation's witness, which the meet's routing does not reach. `lazyList` is a raw foreign
     # container named like gen's `listOf` whose payload names MORE than the element (`attrsWith`'s
     # shape): gen does not read it whole, so the pair is not joined and answers as it did before the
     # rule, in both orders under both engines. Its removal serves the gen-first gm pair.
@@ -764,7 +764,7 @@ in
             gm-o21 = "REFUSED";
           };
           u8 = {
-            ref = "REFUSED";
+            ref = "N(N())";
             mixed = "REFUSED";
           };
         };
