@@ -496,7 +496,7 @@ let
                   names = core.interface.carrierTolerated;
                 in
                 if
-                  checkedTypes.stampOk (
+                  core.interface.stampOk (
                     builtins.removeAttrs t names
                     // builtins.intersectAttrs (builtins.listToAttrs (
                       map (n: {

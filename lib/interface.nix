@@ -6009,7 +6009,14 @@ let
   # refuses an unminted pair by name). Nothing is refused at import. The published `mkOptionType`
   # returns a copy departing within its carrier before it reaches this boundary (`carriedCopy`,
   # den-hoag-r23mj). A vocabulary publishing no `stampOk` stamps nothing.
-  stampOk = types.stampOk or (_: true);
+  # the declaration slot a door writes (`carriedCopy`) is the door's, as a door projection's witness is: the stamp
+  # compares the functor without it, every other cell by the pointer `//` kept
+  stampOk =
+    t:
+    if isAttrs t && t ? functor && isAttrs t.functor && t.functor ? __declared then
+      (types.stampOk or (_: true)) (t // { functor = builtins.removeAttrs t.functor [ "__declared" ]; })
+    else
+      (types.stampOk or (_: true)) t;
   # whether `t` agrees with its completion at the fields `reads` holds, and nowhere else: ONE `stampOk` over
   # the two projections, each carrying one shared completion witness, so only the domain's cells are forced
   # and a field present on one side only changes the projection's name set (den-hoag-6foy1)
@@ -6236,6 +6243,11 @@ let
                 rebuildClosed.rebuilt x.verify (metWith r [ s ])
               else
                 metWith r [ s ];
+            # the functor names this copy as the declaration (`__declared`) beside its completion's `type`: nixpkgs hands
+            # a redeclaration's relation only the partner's functor; `type` stays the completion
+            ${if replacesVerify x && x ? functor then "functor" else null} = x.functor // {
+              __declared = s;
+            };
           }
           // (if replacesVerify x && x ? carries then rebuildClosed.carried x.verify x else { });
       in
@@ -7149,34 +7161,60 @@ let
         # retention site above says it in words: what the author called this type is the merge
         # identity the foreign engine keys on. One law, now read on both arms.
         typeMerge =
-          t.retainedRelation.typeMerge or (
+          let
+            # the partner's DECLARATION, as nixpkgs hands it: the slot a door copy states (`carriedCopy`), else the
+            # partner its functor recovers; a declaration stating `verify` over a module set below it is closed on
+            # the join's merged value as the door closes its own join (`carriedCopy`'s `typeMerge`)
+            meet =
+              j: os: d:
+              let
+                m = metWith j os;
+              in
+              if isAttrs d && d ? verify && d ? carries && isList (d.getSubModules or null) then
+                rebuildClosed.rebuilt d.verify m
+              else
+                m;
+          in
+          if t ? retainedRelation.typeMerge then
             f:
             let
-              partner = importedPartner f;
+              j = t.retainedRelation.typeMerge f;
             in
-            if (f.name or null) != functor.name then
-              null
-            else if partner == null then
-              null
-            # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
-            else if !(importedDecidable t && importedDecidable partner) then
-              null
-            else
-              (
-                let
-                  answer = t.typeMergeRel partner;
-                in
-                # a foreign engine hands gen a FUNCTOR: a wrapper's check on the record it holds is
-                # invisible here, so a join the twin refuses (`twinRefuses`) is refused as the twin does
-                if answer ? merged && !(answer.twinRefuses or false) then
-                  metWith answer.merged [
-                    exported
-                    partner
-                  ]
-                else
-                  null
-              )
-          );
+            if j == null || !(isAttrs f && f ? __declared) then j else meet j [ f.__declared ] f.__declared
+          else
+            (
+              f:
+              let
+                partner = importedPartner f;
+              in
+              if (f.name or null) != functor.name then
+                null
+              else if partner == null then
+                null
+              # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
+              else if !(importedDecidable t && importedDecidable partner) then
+                null
+              else
+                (
+                  let
+                    answer = t.typeMergeRel partner;
+                  in
+                  # a foreign engine hands gen a FUNCTOR: a wrapper's check on the record it holds is
+                  # invisible here, so a join the twin refuses (`twinRefuses`) is refused as the twin does
+                  if answer ? merged && !(answer.twinRefuses or false) then
+                    (
+                      let
+                        d = if isAttrs f && f ? __declared then f.__declared else partner;
+                      in
+                      meet answer.merged [
+                        exported
+                        d
+                      ] d
+                    )
+                  else
+                    null
+                )
+            );
 
         # Not a fifteenth protocol field: gen's own record of whether the fold published above is
         # the type's or this boundary's. It exists BECAUSE the boundary exists — the export half
@@ -7275,6 +7313,7 @@ in
     importedWrapped
     isOptionType
     rewritesCheck
+    stampOk
     keepStamp
     carriedCopy
     rebuildClosed

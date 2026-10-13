@@ -141,9 +141,14 @@ acquires these only by being exported. The published `types.defineType` and `mkO
 and departs at `check` or `verify`, elsewhere only at fields the door does not compare
 (`interface.doorUnread`, none of which it forces) as it is (`interface.carriedCopy`, den-hoag-5kzqp), re-deriving only `check` (its
 declared domain, a witnessed rewrite) and `typeMerge` (its completion's relation met with the copy);
-under nixpkgs' engine such a copy declared first beside a partner is dropped as the raw copy is, by
-nixpkgs' later-operand rule. A foreign record (stating no `typeMergeRel`) is returned by
-`types.defineType` as itself, and a foreign module set comes back closed under its own rebuilds
+its functor names the copy as the declaration (`functor.__declared`) beside its completion's `type`,
+which stays the completion, and the stamp compares the functor without that slot (`interface.stampOk`).
+Under nixpkgs' engine such a copy declared first is met by a later gen relation (an export's
+`typeMerge`, derived or retained, meets the join with the declaration and closes a module-set
+declaration's `verify` on the merged value, den-hoag-s1um3); beside a later nixpkgs relation it is
+dropped as the raw copy is, by nixpkgs' later-operand rule. A foreign record (stating no
+`typeMergeRel`) is returned by `types.defineType` as itself, and a foreign module set comes back
+closed under its own rebuilds
 (`interface.rebuildClosed`), its checks carried through `substSubModules` and `typeMerge`. A
 completion a door returns as itself that states `verify` over a module set below it (gen-schema's
 `refined` over a container) faces nixpkgs' evaluation (`interface.rebuildClosed.door`,

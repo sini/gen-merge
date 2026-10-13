@@ -1256,12 +1256,18 @@ Two rules that look like details and are not:
   too (see "A `//` copy's `verify` is read inside a foreign container", and "… inside a nixpkgs
   submodule" for its open defects there), except under
   `nullOr`, `either` and `uniq` over a copy whose `verify` admits what its base's `check` rejects,
-  where the door serves and the raw copy is refused by the container's own `check`, its base's. Gen's
-  engine drops at no door; under nixpkgs' `evalModules` a
-  copy declared FIRST beside a partner is dropped where the raw copy is, because nixpkgs asks the
-  later declaration's `typeMerge` and hands it only the copy's functor, so the copy's check is
-  unreachable even when that declaration is gen's. That is nixpkgs' own later-operand rule, which it
-  applies to its own `addCheck` copies too. **A record gen did not complete comes back closed under
+  where the door serves and the raw copy is refused by the container's own `check`, its base's.
+  Gen's engine drops at no door. Under nixpkgs' `evalModules`, nixpkgs merges two declarations by
+  asking the later one's `typeMerge` and handing it only the earlier one's functor.
+  A door copy's functor therefore names the copy as the declaration (`functor.__declared`) beside
+  its completion's `type`, which stays the completion, and where the later relation is gen's (an
+  exported `typeMerge`, derived or retained) it meets the join with that declaration, closing a
+  module-set declaration's `verify` on the merged value as the door closes its own join. Where the
+  later relation is nixpkgs' own, a copy declared FIRST is dropped where the raw copy is: that is
+  nixpkgs' later-operand rule, which it applies to its own `addCheck` copies too. So is a copy that
+  leaves the door stale-stamped rather than carried (an `addCheck` over a gen container copied with
+  `// { verify }`): it states no declaration. Some copies of a gen `either` declared first are dropped
+  too. **A record gen did not complete comes back closed under
   its own rebuilds**: every completion states a type-merge relation, so a foreign-protocol record
   stating none (a nixpkgs `int`, `addCheck np.int p`, an `np.submodule M`, an `addCheck` or
   `// { verify }` copy of either) is not completed, and the engine imports it where it is declared,
@@ -2893,8 +2899,9 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   that joins module sets carries what the join does not.
 
   Not covered: in nixpkgs' engine, a wrapper over a module set (nixpkgs' rebuild erases it), and a
-  check on a gen type declared first (nixpkgs asks only the later relation) or hidden behind a functor
-  gen is handed. Nor such a check on a submodule-typed option declared inside a stock nixpkgs
+  check on a gen type declared first that leaves the door stating no declaration, or whose later
+  relation is nixpkgs' own (nixpkgs asks only the later relation), or hidden behind a functor gen is
+  handed. Nor such a check on a submodule-typed option declared inside a stock nixpkgs
   submodule, or as an `attrTag`'s tag: that option is merged by nixpkgs' own evaluation of the
   enclosing type, which erases it and serves, as nixpkgs does. Nor a drop under a
   key `nestedTypes` states that names no role this boundary carries (`freeformType`,
