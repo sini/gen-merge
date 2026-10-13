@@ -1806,9 +1806,19 @@ let
     else if replacesVerify t then
       guardedVerify o.loc (t.verify (t.merge o.loc defs)) v
     # an owed copy, a module set or an `either` on the frontier: the option folded again over nixpkgs' final
-    # definitions by its type completed along that frontier (`frontierCompleted`), then its `apply`
+    # definitions by its type completed along that frontier (`frontierCompleted`), then its `apply`. That fold
+    # reads no option-level `check`, so an ad-hoc override (`adHocChecked`) is first judged as gen's root judges
+    # the same declared type: enforced per definition where the root re-homes it (`homedAt`'s own test), else
+    # refused by name (`importedFold`). Inline: a binding costs every load a thunk
     else if frontierAt owesAtFrontier t then
-      guardedOwed o.loc t defs (if o ? apply then o.apply else (x: x)) v
+      (
+        if !(adHocChecked t) then
+          guardedOwed o.loc t defs (if o ? apply then o.apply else (x: x)) v
+        else if importedRehomeAt "evalModuleTree" o.loc t != null && (canNest t || owedCopyBelow t) then
+          checkedFold t (l: ds: guardedOwed l t ds (if o ? apply then o.apply else (x: x)) v) o.loc defs
+        else
+          adHocFold t o.loc defs
+      )
     else
       v;
   owesAtFrontier = x: replacesVerify x || isStockSubmodule x || isEither x;

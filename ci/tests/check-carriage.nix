@@ -655,5 +655,36 @@ in
         statedCheckOverOfferedTree = false;
       };
     };
+    # An ad-hoc `// { check }` on a stock submodule's own option is judged as gen's root judges the same declared
+    # type (den-hoag-spb8r): where the root re-homes it, over a gen submodule member or a member owing a `verify`,
+    # an admitted value is served, and it is the root's value (`../tests-error.nix` holds the refusals).
+    test-an-ad-hoc-check-in-a-stock-host-serves-what-the-root-serves =
+      let
+        adHoc = T: T // { check = v: T.check v && v != { a = 7; }; };
+        host = T: np.submodule { options.y = nixpkgsLib.mkOption { type = T; }; };
+        owedCopy = np.attrsOf np.int // {
+          verify = v: if v ? a && v.a == 7 then "rejected by the copy" else null;
+        };
+        both = T: {
+          root = opt T { a = 1; };
+          host = (opt (host T) { y.a = 1; }).y;
+        };
+      in
+      {
+        expr = {
+          genSubmodule = both (adHoc (np.either sub np.str));
+          owedCopy = both (adHoc (np.either owedCopy np.str));
+        };
+        expected = {
+          genSubmodule = {
+            root.a = 1;
+            host.a = 1;
+          };
+          owedCopy = {
+            root.a = 1;
+            host.a = 1;
+          };
+        };
+      };
   };
 }

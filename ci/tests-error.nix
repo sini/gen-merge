@@ -8035,7 +8035,12 @@ in
           msg = "^gen-merge: a definition for option `${loc}' is not of type `${phrase ref}', in `def[.]nix'$";
         };
         carried = carriedAt "s";
-        adHoc = T: T // { check = v: T.check v && v != { a = 7; }; };
+        adHoc = T: T // { check = v: T.check v && v != { a = 7; } && v != 7; };
+        hosted = T: V: opt (np.submodule { options.y = nixpkgsLib.mkOption { type = T; }; }) { y = V; };
+        adHocAt = ref: {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `s[.]y' has a type `${phrase ref}' that uses an ad-hoc `type // [{] check = [.][.][.]; [}]' override, which the v2 merge protocol refuses; state the check with `addCheck' instead$";
+        };
         oneOfSub = np.oneOf [
           sub
           np.str
@@ -8150,6 +8155,36 @@ in
             type = "ThrownError";
             msg = "^gen-merge: a definition for option `s[.]y' is not of the expected type: rejected by the copy$";
           };
+        };
+        # An ad-hoc `// { check }` on a stock submodule's own option is judged as gen's root judges the same
+        # declared type (den-hoag-spb8r; `../tests/check-carriage.nix` holds the values it serves): where the root
+        # re-homes it the check is enforced per definition, and elsewhere it is refused by name, the admitted value
+        # too. The frontier refold reads no option-level `check`, so either way the override is read before it.
+        test-an-ad-hoc-check-over-a-nixpkgs-either-in-a-stock-host-is-refused-by-name = {
+          expr = hosted (adHoc (np.either npSub np.str)) { a = 7; };
+          expectedError = adHocAt (np.either npSub np.str);
+        };
+        test-an-ad-hoc-check-over-a-nixpkgs-either-in-a-stock-host-refuses-what-it-admits = {
+          expr = hosted (adHoc (np.either npSub np.str)) { a = 1; };
+          expectedError = adHocAt (np.either npSub np.str);
+        };
+        # `canNest` alone would re-home neither of these: the root's own test is asked, so a `coercedTo` (never
+        # re-homed) is refused by name over a gen submodule too, and an either of leaves is refused as well.
+        test-an-ad-hoc-check-over-a-coercedTo-of-an-either-in-a-stock-host-is-refused-by-name = {
+          expr = hosted (adHoc (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str))) { a = 7; };
+          expectedError = adHocAt (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str));
+        };
+        test-an-ad-hoc-check-over-a-coercedTo-of-a-gen-either-in-a-stock-host-refuses-what-it-admits = {
+          expr = hosted (adHoc (np.coercedTo np.int (_: { a = 1; }) (np.either sub np.str))) { a = 1; };
+          expectedError = adHocAt (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str));
+        };
+        test-an-ad-hoc-check-over-an-either-of-leaves-in-a-stock-host-is-refused-by-name = {
+          expr = hosted (adHoc (np.either np.int np.str)) 7;
+          expectedError = adHocAt (np.either np.int np.str);
+        };
+        test-an-ad-hoc-check-over-a-gen-either-in-a-stock-host-refuses-what-it-rejects = {
+          expr = hosted (adHoc (np.either sub np.str)) { a = 7; };
+          expectedError = carriedAt "s[.]y" (np.either npSub np.str);
         };
       };
 
