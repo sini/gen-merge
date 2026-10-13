@@ -2285,7 +2285,7 @@ let
                 "lazyAttrsOf"
               ])
             )
-            || ((t.name or null) == "attrsOf" && mayBeContainer t.carries.element)
+            || ((t.name or null) == "attrsOf" && t ? carries.element && mayBeContainer t.carries.element)
             || (t ? carries.element && (fuel <= 0 || go (fuel - 1) t.carries.element))
           else
             let

@@ -3478,18 +3478,23 @@ let
     !(t ? choose || t ? __threadedForeign)
     && (
       (t.name or null) == "lazyAttrsOf"
-      || ((t.name or null) == "attrsOf" && !(keyedOverMemberAt loc t.carries.element))
+      || (
+        (t.name or null) == "attrsOf" && t ? carries.element && !(keyedOverMemberAt loc t.carries.element)
+      )
     );
   # Would this element key over-approximately (`keyedOverAt`), looked through `nullOr`, which adds no
   # step? Over any other element an `attrsOf` keys over-approximately itself: an element that is a
   # container is then a node in the over-approximating regime, one per inner element, read by the
   # fold through the element's own mark (`interface.mayFoldNested`), so no lazy unit is minted twice.
+  # Here and in `containerAt`, `keyWalk` and `unionKeys`, a container is told by what it CARRIES: a
+  # record NAMED `nullOr` or `attrsOf` stating no `carries.element` (a foreign one re-homing does not
+  # recognise) reads as any foreign record does (den-hoag-i3kma).
   keyedOverMemberAt =
     loc: t0:
     let
       m = interface.homedAt "evalModuleTree" loc t0;
     in
-    if isAttrs m && (m.name or null) == "nullOr" then
+    if isAttrs m && (m.name or null) == "nullOr" && m ? carries.element then
       keyedOverMemberAt loc m.carries.element
     else
       keyedOverAt loc m;
@@ -3670,14 +3675,14 @@ let
       if t ? choose then
         any (containerMemberAt loc) (t.carries.alternatives or [ ])
       else
-        (t.name or null) != "nullOr" && t ? split
+        !((t.name or null) == "nullOr" && t ? carries.element) && t ? split
     );
   containerMemberAt =
     loc: t0:
     let
       m = interface.homedAt "evalModuleTree" loc t0;
     in
-    if isAttrs m && (m.name or null) == "nullOr" then
+    if isAttrs m && (m.name or null) == "nullOr" && m ? carries.element then
       containerMemberAt loc m.carries.element
     else
       containerAt loc m;
@@ -3855,7 +3860,7 @@ let
       [ ]
     else if under != null then
       (
-        if (t.name or null) == "nullOr" then
+        if (t.name or null) == "nullOr" && t ? carries.element then
           keyWalk under group (interface.homedAt "evalModuleTree" loc t.carries.element) pos loc (
             filter (d: d.value != null) defs
           )
@@ -3935,7 +3940,7 @@ let
         unionKeys under group u pos loc defs mt
       else if !(mt ? split) then
         [ ]
-      else if (mt.name or null) == "nullOr" then
+      else if (mt.name or null) == "nullOr" && mt ? carries.element then
         unionKeys under group u pos loc (if under == null then filter (d: d.value != null) defs else defs) {
           carries.alternatives = [ mt.carries.element ];
         }
