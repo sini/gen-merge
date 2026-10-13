@@ -1219,7 +1219,7 @@ Two rules that look like details and are not:
   it was completed with (`mergeDefs.completed`), and no door re-ties a fold it did not complete, so a
   `//` copy that takes another container's fold (`split`, `mergeDefs`, `merge`) keeps its own `check`
   over a fold whose witness is not its own, and that check is owed: a definition it rejects is refused
-  by name, naming the copy's type (den-hoag-u5jwx). A copy departing only at fields a door does not read (a
+  by name, naming the copy's type. A copy departing only at fields a door does not read (a
   `description` or a caller field at `defineType`; the import door also reads the protocol fields it
   translates) keeps its completion's identity there. Neither door's copy test (the import door's
   `copy`, `types.defineType`'s `stale`) asks a field that is an output of the record's own evaluation
@@ -2867,7 +2867,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 
   - one shared value declared twice, `[port, port]`, which answers `port` where nixpkgs answers `int`;
   - a renaming pair imported through `mkOptionType` (`[imp port, imp int]`), which refuses at
-    `foreignRel`'s witness where the bare nixpkgs pair serves: an open defect (ADR-0039 parity rule 1);
+    `foreignRel`'s witness where the bare nixpkgs pair serves: an open parity defect;
   - one shared record imported through `mkOptionType` and declared twice, which refuses where the bare
     twin keeps its operand: the imported record meets the engine's own import of its partner, and
     Nix `==` does not survive that path.
