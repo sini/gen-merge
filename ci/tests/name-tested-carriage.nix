@@ -40,6 +40,15 @@ let
         name = "renamed";
       };
     };
+  # `b` with `x`'s fold: gen's `split` and `mergeDefs` and nixpkgs' `merge`, as far as `x` states them.
+  foldOf =
+    b: x:
+    b
+    // builtins.intersectAttrs {
+      split = null;
+      mergeDefs = null;
+      merge = null;
+    } x;
   # `x`'s value under gen's engine, and under nixpkgs' engine over the twin.
   gen =
     ty: v:
@@ -161,5 +170,84 @@ in
     test-a-renamed-gen-nullor-under-lazy-attrs-serves-the-twin = cell (
       s: k: k.lazyAttrsOf (k.nullOr s // { name = "renamedNullOr"; })
     ) one;
+    # Neither a name nor a stated step decides it: gen's `attrsOf` renamed `nullOr` is a container (it was refused
+    # by name at c3b4d83, nixpkgs serves it), and gen's `attrsOf` stating `substructure.forward = null` is a
+    # container still.
+    test-an-attrs-renamed-nullor-under-lazy-attrs-serves-the-twin = cell (
+      s: k: k.lazyAttrsOf (k.attrsOf s // { name = "nullOr"; })
+    ) two;
+    test-an-attrs-stating-no-step-under-lazy-attrs-serves-the-twin = cell (
+      s: k:
+      k.lazyAttrsOf (
+        k.attrsOf s
+        // {
+          substructure = (k.attrsOf s).substructure or { } // {
+            forward = null;
+          };
+        }
+      )
+    ) two;
+    # `modules.keyedOverAt` reads the constructor that BUILT the record, never its `name`: gen's `listOf` renamed
+    # `attrsOf` or `lazyAttrsOf` keys its indices as a list does, and gen's `attrsOf` renamed `nullOr` is a
+    # container at a union member. Each was an uncatchable abort at 6bacad6 (`expected a set but found a list`,
+    # `'builtins.head' called on an empty list`), where nixpkgs serves.
+    test-a-list-renamed-attrs-under-gen-attrs-serves-the-twin = cell (
+      s: k: k.attrsOf (k.listOf s // { name = "attrsOf"; })
+    ) { k = [ { a = 1; } ]; };
+    test-a-list-renamed-lazy-attrs-under-gen-attrs-serves-the-twin = cell (
+      s: k: k.attrsOf (k.listOf s // { name = "lazyAttrsOf"; })
+    ) { k = [ { a = 1; } ]; };
+    test-a-list-renamed-lazy-attrs-under-gen-list-serves-the-twin = cell (
+      s: k: k.listOf (k.listOf s // { name = "lazyAttrsOf"; })
+    ) [ [ { a = 1; } ] ];
+    test-an-attrs-renamed-nullor-as-a-union-member-serves-the-twin = cell (
+      s: k: nt.either (k.attrsOf s // { name = "nullOr"; }) nt.int
+    ) one;
+    # Container status is read off the FOLD (`mergeDefs.container`), which a `//` copy carries with the fold it
+    # takes: gen's `nullOr` whose fold is rewritten to `attrsOf`'s or `lazyAttrsOf`'s (`split`, `mergeDefs`,
+    # nixpkgs' `merge`), keeping its own name, is the container its fold is. At 6bacad6 the first aborted
+    # (`'builtins.head' called on an empty list`) and the second was refused, where nixpkgs serves; the third,
+    # renamed as its fold, served at 6bacad6 and aborted under a reading of the payload's constructor.
+    test-a-nullor-with-attrs-fold-as-a-union-member-serves-the-twin =
+      cell (s: k: nt.either (foldOf (k.nullOr s) (k.attrsOf s)) nt.int)
+        {
+          j = {
+            a = 1;
+          };
+        };
+    test-a-nullor-with-lazy-attrs-fold-as-a-union-member-serves-the-twin =
+      cell (s: k: nt.either (foldOf (k.nullOr s) (k.lazyAttrsOf s)) nt.int)
+        {
+          j = {
+            a = 1;
+          };
+        };
+    # ADR-0039 (b′)'s VALUE oracle (den-hoag-u5jwx): a copy whose fold is rewritten, given a value its own `check`
+    # admits, serves its fold's value, the value the fold's own constructor gives. nixpkgs refuses this cell (its
+    # rebuild declares the base's options under the copy's merge), so the law, not the twin, is the reference.
+    test-an-attrs-with-a-nullor-fold-serves-the-nullor-value = {
+      expr = gen (foldOf (t.attrsOf sub) (t.nullOr sub)) { a = 1; };
+      expected = {
+        a = 1;
+        b = 0;
+      };
+    };
+    # A derivation keeps its base's fold as its own: the fold's witness is re-tied to the record the door completes.
+    test-a-derivation-of-gen-attrs-serves-its-value = {
+      expr = gen (gm.deriveType { } "name-tested-carriage" (t.attrsOf sub)) { j.a = 1; };
+      expected = {
+        j = {
+          a = 1;
+          b = 0;
+        };
+      };
+    };
+    test-a-nullor-with-attrs-fold-and-name-as-a-union-member-serves-the-twin =
+      cell (s: k: nt.either (foldOf (k.nullOr s) (k.attrsOf s) // { name = "attrsOf"; }) nt.int)
+        {
+          j = {
+            a = 1;
+          };
+        };
   };
 }

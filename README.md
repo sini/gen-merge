@@ -1215,7 +1215,11 @@ Two rules that look like details and are not:
   published `types.defineType` and `mkOptionType` never re-tie the check witness over a `check` they
   did not derive, and `types.defineType` keeps the stale stamp of a copy whose distinguishing content
   changed, so a re-completed `addCheck T p` is enforced alone and beside `T` and its identity is
-  refused by name, as the raw copy's is. A copy departing only at fields a door does not read (a
+  refused by name, as the raw copy's is. The FOLD keeps one too: a container's fold holds the record
+  it was completed with (`mergeDefs.completed`), and no door re-ties a fold it did not complete, so a
+  `//` copy that takes another container's fold (`split`, `mergeDefs`, `merge`) keeps its own `check`
+  over a fold whose witness is not its own, and that check is owed: a definition it rejects is refused
+  by name, naming the copy's type (den-hoag-u5jwx). A copy departing only at fields a door does not read (a
   `description` or a caller field at `defineType`; the import door also reads the protocol fields it
   translates) keeps its completion's identity there. Neither door's copy test (the import door's
   `copy`, `types.defineType`'s `stale`) asks a field that is an output of the record's own evaluation

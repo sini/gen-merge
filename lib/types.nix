@@ -504,7 +504,7 @@ let
       # A witnessed rewrite of the base's `check` is its STATED domain, not this boundary's output
       # (the export keeps it as it keeps its own, den-hoag-59gnz C1): the pair crosses the cut.
       stated =
-        if interface.rewritesCheck gen then
+        if interface.rewritesCheck gen || gen ? _checkWitness && (gen ? split || gen ? choose) then
           [
             "check"
             "_checkWitness"
@@ -1216,6 +1216,7 @@ let
         # `threaded` folds the same elements through the engine's threaded twin (den-hoag-n6dh7 item 5).
         mergeDefs = {
           __functor = _: called;
+          container = "listOf";
           threaded = ev: refusingOutside "listOf" admits (loc: defs: map (thread ev) (split loc defs));
         };
       }
@@ -1434,6 +1435,7 @@ let
         # its option folds through the threaded twin, which reads the split.
         mergeDefs = {
           __functor = _: called;
+          container = tyName;
           inherit threaded;
         };
       }
@@ -1786,6 +1788,7 @@ let
         # null), null beside a value is refused, and a set with no null is the element's to judge.
         mergeDefs = {
           __functor = _: called;
+          container = "nullOr";
           threaded = ev: foldWith (threadElement ev);
           headJudge =
             loc: defs:

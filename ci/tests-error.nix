@@ -7539,9 +7539,9 @@ in
       };
 
     flake.testsError.nesting-keys = {
-      # den-hoag-t1j4z Case B: a container record renamed `nullOr` after it is built is keyed by the
-      # walk as the nested tree inside it, while its fold is still a container's. The fold refuses by
-      # name rather than read a container's value off a tree's record.
+      # den-hoag-t1j4z Case B: a container record copied to state a nested tree's `nests` is keyed by the
+      # walk as a nested tree, while its fold is still a container's. The fold refuses by name rather than
+      # read a container's value off a tree's record. (A RENAME reads as its fold: `name-tested-carriage`.)
       test-a-container-the-walk-keyed-as-a-tree-is-refused-by-name = {
         expr =
           force
@@ -7550,7 +7550,10 @@ in
                 options.o = gm.mkOption {
                   type =
                     t.lazyAttrsOf (
-                      t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; }) // { name = "nullOr"; }
+                      t.attrsOf (t.submodule { options.x = gm.mkOption { type = t.int; }; })
+                      // {
+                        inherit (t.submodule { options.x = gm.mkOption { type = t.int; }; }) nests;
+                      }
                     )
                     // {
                       name = "overRoot";
@@ -7566,7 +7569,7 @@ in
             ]).config.o.foo.k.x;
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: `evalModuleTree': option `o[.]foo': its type `attrsOf' folds as a container, but the key walk keyed this position as a nested tree, so the two read the type's structure differently; a type record whose `name' is rewritten after it is built reads as another type to the walk[.] Build the type through its own constructor rather than renaming one$";
+          msg = "^gen-merge: `evalModuleTree': option `o[.]foo': its type `attrsOf' folds as a container, but the key walk keyed this position as a nested tree, so the two read the type's structure differently; a type record copied with `//' to state a nested tree [(]`nests'[)] over a container's fold reads as a nested tree to the walk[.] Build the type through the constructor of the fold it states$";
         };
       };
       # den-hoag-t1j4z Case B: a consumer's stepped container whose fold narrows the site its
@@ -10882,6 +10885,120 @@ in
             };
           in
           refused (gen (once (t.defineType (t.mkType crate))) 1) "crate" "carries";
+      };
+
+    # den-hoag-u5jwx: a `//` copy of a gen container that takes another container's FOLD (`split`, `mergeDefs`,
+    # nixpkgs' `merge`) keeps its own `check` and witness, and its fold keeps the witness of the record it was
+    # completed with, so the two disagree and the copy's own `check` is owed (`modules.nix` `ownFold`,
+    # `threadedAs`, `interface.importedFold`). Each cell served the definition at 67c98f5, where nixpkgs' twin
+    # refuses it (its `mergeDefinitions` reads the copy's `check` per definition).
+    flake.testsError.fold-rewrite-check =
+      let
+        sub = t.submodule {
+          key = "fold-rewrite-check-sub";
+          options.a = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        foldOf =
+          b: x:
+          b
+          // builtins.intersectAttrs {
+            split = null;
+            mergeDefs = null;
+            merge = null;
+          } x;
+        gen =
+          ty: v:
+          force
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = ty; }; }
+              { x = v; }
+            ]).config.x;
+        refused = expr: at: name: {
+          inherit expr;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `${at}' is not of type `${name}', in `<unknown-file>'$";
+          };
+        };
+        attrsAsList = foldOf (t.attrsOf sub) (t.listOf sub);
+        strsOverListFold = {
+          name = "strs";
+          admits = v: builtins.isList v && builtins.all builtins.isString v;
+        }
+        // builtins.intersectAttrs {
+          split = null;
+          mergeDefs = null;
+          carries = null;
+          substructure = null;
+          recarry = null;
+          whenEmpty = null;
+        } (t.listOf t.int);
+      in
+      {
+        test-an-attrs-with-a-list-fold-is-refused-by-its-own-check = refused (gen attrsAsList [
+          { a = 1; }
+        ]) "x" "attribute set of \\(submodule\\)";
+        test-an-attrs-with-a-list-fold-through-mk-option-type-is-refused-by-its-own-check = refused (gen
+          (gm.mkOptionType attrsAsList)
+          [ { a = 1; } ]
+        ) "x" "attribute set of \\(submodule\\)";
+        test-an-attrs-with-a-list-fold-through-derive-type-is-refused-by-its-own-check = refused (gen (
+          gm.deriveType
+            { }
+            "fold-rewrite-check"
+            attrsAsList
+        ) [ { a = 1; } ]) "x" "attribute set of \\(submodule\\)";
+        test-an-attrs-with-a-list-fold-under-gen-attrs-is-refused-by-its-own-check = refused (gen
+          (t.attrsOf attrsAsList)
+          { k = [ { a = 1; } ]; }
+        ) "x[.]k" "attribute set of \\(submodule\\)";
+        test-a-nullor-with-a-list-fold-is-refused-by-its-own-check = refused (gen (foldOf (t.nullOr sub) (
+          t.listOf sub
+        )) [ { a = 1; } ]) "x" "null or \\(submodule\\)";
+        test-a-list-with-an-attrs-fold-is-refused-by-its-own-check = refused (gen (foldOf (t.listOf sub) (
+          t.attrsOf sub
+        )) { j.a = 1; }) "x" "list of \\(submodule\\)";
+        # A container's fold stating no witness (a hand-written fold, gen `attrs`' bare fold) owes the check too.
+        test-an-attrs-with-a-hand-written-fold-is-refused-by-its-own-check = refused (gen (
+          t.attrsOf sub // { mergeDefs = _loc: defs: map (d: d.value) defs; }
+        ) [ 1 ]) "x" "attribute set of \\(submodule\\)";
+        test-an-attrs-with-a-hand-written-threaded-fold-through-define-type-is-refused-by-its-own-check =
+          refused
+            (gen (t.defineType (
+              t.attrsOf sub
+              // {
+                mergeDefs = {
+                  __functor =
+                    _: _loc: defs:
+                    map (d: d.value) defs;
+                  threaded =
+                    _ev: _loc: defs:
+                    map (d: d.value) defs;
+                };
+              }
+            )) [ 1 ])
+            "x"
+            "attribute set of \\(submodule\\)";
+        test-a-list-with-the-attrs-fold-is-refused-by-its-own-check = refused (gen (
+          t.listOf sub // { inherit (t.attrs) mergeDefs; }
+        ) { a = 1; }) "x" "list of \\(submodule\\)";
+        # ADR-0039 (b′)'s CHECK oracle over a copy served beyond nixpkgs: `null` is inside the `nullOr` fold's
+        # domain and outside the copy's own `check`, so only that check can refuse it.
+        test-an-attrs-with-a-nullor-fold-refuses-null-by-its-own-check =
+          refused (gen (foldOf (t.attrsOf sub) (t.nullOr sub)) null) "x"
+            "attribute set of \\(submodule\\)";
+        # A record that never held a witness, assembled around a stock container's COMPLETED fold, did not
+        # complete that fold: no door re-ties it, so the record's own `check` is owed (`admits`, a list of
+        # strings, rejects the `[ 1 ]` the `listOf int` fold accepts).
+        test-a-witness-less-record-around-a-completed-fold-through-define-type-is-refused-by-its-own-check =
+          refused (gen (t.defineType strsOverListFold) [ 1 ]) "x"
+            "strs";
+        test-a-witness-less-record-around-a-completed-fold-through-mk-option-type-is-refused-by-its-own-check =
+          refused (gen (gm.mkOptionType strsOverListFold) [ 1 ]) "x"
+            "strs";
       };
   };
 }

@@ -685,7 +685,14 @@ let
     # a met record over a v2 join judges its own definitions (`meetOf`)
     if t ? __meetJoin && isV2 t then
       v2Fold t
-    else if t ? _checkWitness && t ? check && t.check != t._checkWitness then
+    else if
+      t ? _checkWitness
+      && t ? check
+      && (
+        t.check != t._checkWitness
+        || (t ? split || t ? choose) && (t.mergeDefs.completed._checkWitness or null) != t._checkWitness
+      )
+    then
       (
         if t.check ? __verifyProjection then
           checkedFold (t // { check = t.check.__verifyProjection; }) (t.mergeDefs or leafFold)
@@ -2336,13 +2343,17 @@ let
             t ? choose
             || (
               t ? split
-              && !((t.name or null) == "nullOr" && t ? carries.element)
-              && !(builtins.elem (t.name or null) [
+              && !((t.mergeDefs.container or null) == "nullOr" && t ? carries.element)
+              && !(builtins.elem (t.mergeDefs.container or null) [
                 "attrsOf"
                 "lazyAttrsOf"
               ])
             )
-            || ((t.name or null) == "attrsOf" && t ? carries.element && mayBeContainer t.carries.element)
+            || (
+              (t.mergeDefs.container or null) == "attrsOf"
+              && t ? carries.element
+              && mayBeContainer t.carries.element
+            )
             || (t ? carries.element && (fuel <= 0 || go (fuel - 1) t.carries.element))
           else
             let
@@ -2373,7 +2384,7 @@ let
         && canNest e
         && (
           if e ? carries then
-            (e ? split && !((e.name or null) == "nullOr" && e ? carries.element))
+            (e ? split && !((e.mergeDefs.container or null) == "nullOr" && e ? carries.element))
             || (e ? carries.element && (fuel <= 0 || go (fuel - 1) e.carries.element))
           else
             true

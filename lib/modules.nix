@@ -2745,7 +2745,17 @@ let
     # restated inline for cost: a call here is an environment on every fold. The construction door
     # holds this spelling to the protocol (`lib/default.nix`).
     else if
-      type ? mergeDefs && !(type ? _checkWitness && type ? check && type.check != type._checkWitness)
+      type ? mergeDefs
+      && !(
+        type ? _checkWitness
+        && type ? check
+        && (
+          type.check != type._checkWitness
+          ||
+            (type ? split || type ? choose)
+            && (type.mergeDefs.completed._checkWitness or null) != type._checkWitness
+        )
+      )
     then
       type.mergeDefs
     else
@@ -3401,7 +3411,16 @@ let
           # record is re-bound to the fields below, which do not include it (den-hoag-4ifgb).
           # gen-types' `rewritesCheck`, restated inline for cost; the construction door holds the
           # spelling to the protocol (`lib/default.nix`).
-          else if type ? _checkWitness && type ? check && type.check != type._checkWitness then
+          else if
+            type ? _checkWitness
+            && type ? check
+            && (
+              type.check != type._checkWitness
+              ||
+                (type ? split || type ? choose)
+                && (type.mergeDefs.completed._checkWitness or null) != type._checkWitness
+            )
+          then
             (
               if type.check ? __verifyProjection then
                 interface.checkedFold (type // { check = type.check.__verifyProjection; }) (
@@ -3477,9 +3496,11 @@ let
     loc: t:
     !(t ? choose || t ? __threadedForeign)
     && (
-      ((t.name or null) == "lazyAttrsOf" && t ? carries.element)
+      ((t.mergeDefs.container or null) == "lazyAttrsOf" && t ? carries.element)
       || (
-        (t.name or null) == "attrsOf" && t ? carries.element && !(keyedOverMemberAt loc t.carries.element)
+        (t.mergeDefs.container or null) == "attrsOf"
+        && t ? carries.element
+        && !(keyedOverMemberAt loc t.carries.element)
       )
     );
   # Would this element key over-approximately (`keyedOverAt`), looked through `nullOr`, which adds no
@@ -3494,7 +3515,7 @@ let
     let
       m = interface.homedAt "evalModuleTree" loc t0;
     in
-    if isAttrs m && (m.name or null) == "nullOr" && m ? carries.element then
+    if isAttrs m && (m.mergeDefs.container or null) == "nullOr" && m ? carries.element then
       keyedOverMemberAt loc m.carries.element
     else
       keyedOverAt loc m;
@@ -3504,8 +3525,9 @@ let
   # (`containerNodeAt`, den-hoag-o3oz5), never re-decided from this record. So every container built
   # through the door reads its node at its own threaded entry, below the walk's own root, wherever
   # the walk minted one, whoever calls its fold: a consumer's fold threads the accessor it was given,
-  # extended by its step, and needs nothing else. A record rewritten after it was built
-  # (`// { name = … }`) reads as another type to the walk, and the fold reads what the walk minted.
+  # extended by its step, and needs nothing else. The walk reads a record's container status off its
+  # fold (`mergeDefs.container`), which a `//` copy carries with the fold it takes, so a renamed record
+  # and a record whose fold is rewritten read to the walk as the fold the guard's `self` runs.
   # A nested tree and a leaf are never nodes, so their folds are not wrapped; the guard reads
   # attribute presence only, because every type built pays it.
   readsMintedNode =
@@ -3516,6 +3538,26 @@ let
       t
       // {
         mergeDefs = t.mergeDefs // {
+          # THE FOLD CARRIES THE WITNESS OF THE RECORD IT WAS COMPLETED WITH (den-hoag-u5jwx): a record's
+          # `check` is its own exactly when its constructor's fold enforces the domain the check is derived
+          # from, so the witness that licenses skipping the check is the fold's as much as the check's. Tied
+          # here, at the door, to the record this door completes; a fold arriving under another record's
+          # witness, or completed already under a record that is not this one (a `//` copy that took a
+          # fold, with or without a witness of its own), keeps what it states, so no door re-ties a fold it
+          # did not complete. A record arriving with no witness over a fold that states none (a
+          # constructor's, a derivation's cut) is the fold's own. The fold holds that record itself, a
+          # variable and not a thunk, under a name decided as the fold record is built, and readers read
+          # `mergeDefs.completed._checkWitness`; so a deep force of a fold record forces its type.
+          ${
+            if
+              t ? _checkWitness && (t.mergeDefs.completed._checkWitness or null) != t._checkWitness
+              || !(t ? _checkWitness) && t.mergeDefs ? completed
+            then
+              null
+            else
+              "completed"
+          } =
+            self;
           threaded =
             ev:
             if (ev.containerNodes or false) && ev.position != [ ] then
@@ -3543,13 +3585,13 @@ let
       inherit (ev) position;
       __genMergeMinted = true;
     };
-  # The fold's type is a container, and the walk keyed its position as a nested tree: the walk read
-  # the type as another (a record whose `name` was rewritten after it was built). Refused by name
+  # The fold's type is a container, and the walk keyed its position as a nested tree: the record states
+  # a nested tree's `nests` over a container's fold, which no constructor builds. Refused by name
   # where reading a container's value off a tree's record would abort uncatchably (ADR-0025 item 1,
   # den-hoag-4zvc9).
   containerReadAsTreeRefusal =
     loc: t:
-    "gen-merge: `evalModuleTree': option `${showOption loc}': its type `${t.name or "<container>"}' folds as a container, but the key walk keyed this position as a nested tree, so the two read the type's structure differently; a type record whose `name' is rewritten after it is built reads as another type to the walk. Build the type through its own constructor rather than renaming one";
+    "gen-merge: `evalModuleTree': option `${showOption loc}': its type `${t.name or "<container>"}' folds as a container, but the key walk keyed this position as a nested tree, so the two read the type's structure differently; a type record copied with `//' to state a nested tree (`nests') over a container's fold reads as a nested tree to the walk. Build the type through the constructor of the fold it states";
   # The accessor a container's fold was handed does not answer what the walk minted (`containerNodeAt`
   # read neither `null` nor a bool): a consumer container's threaded fold rebuilt or narrowed the site
   # record its element's accessor passes to `child`. Refused by name where reading the answer would
@@ -3675,14 +3717,14 @@ let
       if t ? choose then
         any (containerMemberAt loc) (t.carries.alternatives or [ ])
       else
-        !((t.name or null) == "nullOr" && t ? carries.element) && t ? split
+        !((t.mergeDefs.container or null) == "nullOr" && t ? carries.element) && t ? split
     );
   containerMemberAt =
     loc: t0:
     let
       m = interface.homedAt "evalModuleTree" loc t0;
     in
-    if isAttrs m && (m.name or null) == "nullOr" && m ? carries.element then
+    if isAttrs m && (m.mergeDefs.container or null) == "nullOr" && m ? carries.element then
       containerMemberAt loc m.carries.element
     else
       containerAt loc m;
@@ -3860,7 +3902,7 @@ let
       [ ]
     else if under != null then
       (
-        if (t.name or null) == "nullOr" && t ? carries.element then
+        if (t.mergeDefs.container or null) == "nullOr" && t ? carries.element then
           keyWalk under group (interface.homedAt "evalModuleTree" loc t.carries.element) pos loc (
             filter (d: d.value != null) defs
           )
@@ -3940,7 +3982,7 @@ let
         unionKeys under group u pos loc defs mt
       else if !(mt ? split) then
         [ ]
-      else if (mt.name or null) == "nullOr" && mt ? carries.element then
+      else if (mt.mergeDefs.container or null) == "nullOr" && mt ? carries.element then
         unionKeys under group u pos loc (if under == null then filter (d: d.value != null) defs else defs) {
           carries.alternatives = [ mt.carries.element ];
         }
