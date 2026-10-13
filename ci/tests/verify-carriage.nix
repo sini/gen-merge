@@ -7,6 +7,7 @@
 # members, `carryBy`, `carriedAtDepth`, `carriedCopy`, `eitherChosen`, the gen containers' element rebuild).
 {
   genMerge,
+  interface,
   nixpkgsLib,
   ...
 }:
@@ -98,6 +99,18 @@ let
     gt.defineType (npSubAB // { verify = notTwo; })
   );
   # an ad-hoc check override of a v2 type that is not a module set, through the door
+  # a v2 type's `merge.v2` over one definition
+  at = v: {
+    loc = [ "x" ];
+    defs = [
+      {
+        file = "def.nix";
+        value = v;
+      }
+    ];
+  };
+  headErrorOf = t: v: (t.merge.v2 (at v)).headError;
+  notA2 = v: !(isAttrs v) || (v.a or 0) != 2;
   shortList = gt.defineType (
     np.listOf np.int
     // {
@@ -329,5 +342,57 @@ in
         npOkLL.y = [ 1 ];
       };
     };
+    # D: the check `mkOptionType` carries over a re-homed nixpkgs container is stated in its `merge.v2`'s `headError`,
+    # the only part of it nixpkgs' fold reads, beside the definition the check admits (den-hoag-qb4hj)
+    test-a-check-carried-over-a-rehomed-container-is-stated-in-its-head-error =
+      let
+        either = gm.mkOptionType (np.addCheck (np.either gSub np.str) notA2);
+        nullOr = gm.mkOptionType (np.addCheck (np.nullOr gSub) notA2);
+      in
+      {
+        expr = {
+          eitherBad = headErrorOf either { a = 2; } != null;
+          eitherOk = headErrorOf either { a = 1; };
+          nullOrBad = headErrorOf nullOr { a = 2; } != null;
+          nullOrOk = headErrorOf nullOr { a = 1; };
+          npBad = run "np" [ either ] [ { a = 2; } ];
+          npOk = run "np" [ either ] [ { a = 1; } ];
+        };
+        expected = {
+          eitherBad = true;
+          eitherOk = null;
+          nullOrBad = true;
+          nullOrOk = null;
+          npBad = "REFUSED";
+          npOk = {
+            a = 1;
+            b = null;
+          };
+        };
+      };
+    # `lifted` over a v2 merge states the base's `headError` first and its check only where the base states none, as
+    # nixpkgs' `addCheck` does: on a definition both reject the base's own is stated, equal to it
+    test-a-lifted-v2-merge-states-the-base-head-error-before-its-check =
+      let
+        m = (gt.nullOr gt.int).merge;
+        c0 = v: v == null || (isInt v && v < 10);
+        l = interface.rebuildClosed.verifiedMerge.lifted c0 m;
+      in
+      {
+        expr = {
+          bothBase = headErrorOf { merge = m; } "s" != null;
+          bothLifted = headErrorOf { merge = l; } "s" == headErrorOf { merge = m; } "s";
+          checkBase = headErrorOf { merge = m; } 20;
+          checkLifted = headErrorOf { merge = l; } 20 != null;
+          admitted = l.v2 (at 5);
+        };
+        expected = {
+          bothBase = true;
+          bothLifted = true;
+          checkBase = null;
+          checkLifted = true;
+          admitted = m.v2 (at 5);
+        };
+      };
   };
 }

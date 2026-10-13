@@ -1723,7 +1723,15 @@ let
           # record's check is carried on every re-home, and gen's own fold applies it as a
           # rewritten check (`checkedFold`). One that reaches the nested tree reads the tree's
           # `check`, its module-value domain (den-hoag-f8mgj arm Q).
-          rebuilt // { inherit (t) check; }
+          # Stated where a fold asks it too: nixpkgs' fold reads `merge.v2`'s `headError`, never `check`, so the
+          # check rides there as nixpkgs' `addCheck` places it, after the rebuild's own (`verifiedMerge.lifted`)
+          rebuilt
+          // {
+            inherit (t) check;
+          }
+          // (
+            if isV2 rebuilt then { merge = rebuildClosed.verifiedMerge.lifted t.check rebuilt.merge; } else { }
+          )
         )
       else if declaresNestingAt door loc t then
         threadedForeign door loc t
@@ -3099,29 +3107,42 @@ let
         isV2MergeCoherent = true;
         __verifyProjection = own;
       };
-      # a non-v2 merge `m` stated in the v2 protocol: `c0` on every definition is its `headError`, as nixpkgs' own v2
-      # constructors state their check (`checkDefsForError`, naming the definitions it rejects), and its value is `m`'s
+      # `m` with `c0` stated in the v2 protocol as nixpkgs' `addCheck` states its check: on every definition, in
+      # `headError` after `m`'s own where `m` is v2 (`checkDefsForError`, naming the definitions it rejects), and its
+      # value is `m`'s. A non-v2 `m` states no `headError` of its own, so `c0` is its whole one
       lifted = c0: m: {
         __functor = _: m;
-        v2 = args: {
-          headError =
-            # the rejected definitions are listed only on a rejection; `modules.nix`'s `showDefs` line, spelled here:
-            # taking it as an argument costs the library's load
-            if builtins.all (d: c0 d.value) args.defs then
-              null
-            else
-              {
-                message = "Definition values:${
-                  concatStringsSep "" (
-                    map (d: "\n- In `${toString (d.file or "<unknown-file>")}': ${prelude.renderValue d.value}") (
-                      filter (d: !(c0 d.value)) args.defs
+        v2 =
+          args:
+          let
+            r =
+              if m ? v2 then
+                m.v2 args
+              else
+                {
+                  headError = null;
+                  value = m args.loc args.defs;
+                  valueMeta = { };
+                };
+          in
+          r
+          // {
+            headError =
+              # the rejected definitions are listed only on a rejection; `modules.nix`'s `showDefs` line, spelled here:
+              # taking it as an argument costs the library's load
+              if r.headError != null || builtins.all (d: c0 d.value) args.defs then
+                r.headError
+              else
+                {
+                  message = "Definition values:${
+                    concatStringsSep "" (
+                      map (d: "\n- In `${toString (d.file or "<unknown-file>")}': ${prelude.renderValue d.value}") (
+                        filter (d: !(c0 d.value)) args.defs
+                      )
                     )
-                  )
-                }";
-              };
-          value = m args.loc args.defs;
-          valueMeta = { };
-        };
+                  }";
+                };
+          };
       };
     };
   };
