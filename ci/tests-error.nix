@@ -10722,5 +10722,43 @@ in
           };
         };
       };
+    # A non-v2 copy crossing a door is lifted into the v2 protocol (`interface.rebuildClosed.verifiedMerge.lifted`,
+    # den-hoag-dw8d3): its check is read on every definition as its `headError`, and the refusal names the
+    # definitions it rejects, as nixpkgs' `checkDefsForError` does (`../tests/verify-carriage.nix` holds the values).
+    flake.testsError.verify-carriage =
+      let
+        Xn = t.defineType (
+          nixpkgsLib.types.attrs
+          // {
+            verify = v: if (v.a or 0) < 10 then null else "rejected";
+          }
+        );
+        defs = [
+          {
+            _file = "def.nix";
+            x = 5;
+          }
+        ];
+        msg = "^A definition for option `x' is not of type `attribute set'\\. TypeError: Definition values:[^-]+- In `def\\.nix': 5$";
+      in
+      {
+        test-a-lifted-copy-refusal-names-the-definitions-its-check-rejects-in-nixpkgs = {
+          expr =
+            (nixpkgsLib.evalModules {
+              modules = [ { options.x = nixpkgsLib.mkOption { type = Xn; }; } ] ++ defs;
+            }).config.x;
+          expectedError = {
+            type = "ThrownError";
+            inherit msg;
+          };
+        };
+        test-a-lifted-copy-refusal-names-the-definitions-its-check-rejects-in-gen = {
+          expr = (gm.evalModuleTree { } ([ { options.x = gm.mkOption { type = Xn; }; } ] ++ defs)).config.x;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of type `attribute set'\\. TypeError: Definition values:[^-]+- In `def\\.nix': 5$";
+          };
+        };
+      };
   };
 }

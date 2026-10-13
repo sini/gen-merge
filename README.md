@@ -1244,14 +1244,23 @@ Two rules that look like details and are not:
   copy declared FIRST beside a partner is dropped where the raw copy is, because nixpkgs asks the
   later declaration's `typeMerge` and hands it only the copy's functor, so the copy's check is
   unreachable even when that declaration is gen's. That is nixpkgs' own later-operand rule, which it
-  applies to its own `addCheck` copies too. **A record gen did not complete is returned
-  as itself**: every completion states a type-merge relation, so a foreign-protocol
-  record stating none (a nixpkgs `int`, `addCheck np.int p`) passes the published `types.defineType`
-  unchanged, and the engine imports it where it is declared, enforcing its own `check`. A foreign
-  module set (`np.submodule M`, an `addCheck` or `// { verify }` copy of one) comes back closed under its
-  own rebuilds: its `substSubModules` and `typeMerge` answer with its checks carried, so it keeps its
-  checks where nixpkgs rebuilds it, declared inside a nixpkgs submodule too, and its `verify` is read on
-  the merged value.
+  applies to its own `addCheck` copies too. **A record gen did not complete comes back closed under
+  its own rebuilds**: every completion states a type-merge relation, so a foreign-protocol record
+  stating none (a nixpkgs `int`, `addCheck np.int p`, an `np.submodule M`, an `addCheck` or
+  `// { verify }` copy of either) is not completed, and the engine imports it where it is declared,
+  enforcing its own `check`. Its `typeMerge`, and a module set's `substSubModules`, answer with its
+  checks carried, so it keeps them where nixpkgs rebuilds it (a redeclaration, a stock submodule's
+  fixup, a freeform plane), and an ad-hoc `// { check }` override is carried as a check there. A
+  constant constructor's own record (`np.int`) has nothing to carry and crosses as itself. Its
+  `verify` is read on the merged value and stated where a fold asks membership: in a v2 merge's
+  `headError`, after its base's, as nixpkgs' `addCheck` states its check, so `np.either` / `np.oneOf`
+  moves on to a member that admits the definitions; a non-v2 record is lifted into the v2 protocol,
+  its own check read on every definition and naming the ones it rejects, as nixpkgs'
+  `checkDefsForError` does. **The limit:** a raw outer `K // { verify }` mounted in nixpkgs'
+  `lib.evalModules` without a door is nixpkgs' drop, not gen's: nixpkgs never reads the field, and no
+  gen code receives the overlay. The one place that leaves a gen record inside nixpkgs weaker than
+  nixpkgs' own twin is `np.either` declared once, where the `addCheck` twin refuses rejected values
+  that the raw copy serves; declare it through a door (`types.defineType`), or use `addCheck`.
 - **A completed parametric leaf merges only the SAME type, or two `enum`s.** Sameness is
   decided first, by gen-types' `typeEq`: its identity is minted over its construction, so two
   textually-identical constructions merge, and a type with a SEALED component (a `typedef`'s predicate,

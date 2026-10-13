@@ -1763,19 +1763,26 @@ let
     else
       v;
   owesAtFrontier = x: replacesVerify x || isStockSubmodule x || isEither x;
-  # the member nixpkgs' `either` merge folds these definitions by: the left one where it admits every definition,
-  # else the right one; `null` where neither admits them all (nixpkgs' own refusal) or the member is itself an `either`
-  # whose choice it makes in turn
+  # the member nixpkgs' `either` merge folds these definitions by: the left one where it admits them, else the right
+  # one, each asked as nixpkgs asks it (a v2 member by its merge's `headError`, which states a carried `verify`
+  # (`verifiedMerge`), any other by its `check` on every definition); `null` where neither admits them (nixpkgs' own
+  # refusal) or the member is itself an `either` whose choice it makes in turn
   eitherChosen =
-    t: defs:
+    loc: t: defs:
     let
       l = t.nestedTypes.left;
       r = t.nestedTypes.right;
+      admits =
+        m:
+        if isV2 m then
+          (m.merge.v2 { inherit loc defs; }).headError == null
+        else
+          prelude.all (d: m.check d.value) defs;
     in
-    if prelude.all (d: l.check d.value) defs then
-      (if isEither l then eitherChosen l defs else l)
-    else if prelude.all (d: r.check d.value) defs then
-      (if isEither r then eitherChosen r defs else r)
+    if admits l then
+      (if isEither l then eitherChosen loc l defs else l)
+    else if admits r then
+      (if isEither r then eitherChosen loc r defs else r)
     else
       null;
   isEither = x: isAttrs x && x.name or null == "either" && x ? nestedTypes.left && !(x ? carries);
@@ -2106,7 +2113,12 @@ let
     else if isEither e then
       (
         let
-          c = eitherChosen e [ { value = v; } ];
+          c = eitherChosen [ "<definition>" ] e [
+            {
+              file = "<definition>";
+              value = v;
+            }
+          ];
         in
         if c == null then null else judged c v
       )
@@ -2139,7 +2151,12 @@ let
     else if isEither e then
       (
         let
-          c = eitherChosen e [ { value = v; } ];
+          c = eitherChosen l e [
+            {
+              file = "<definition>";
+              value = v;
+            }
+          ];
         in
         if c == null then v else guardedJudged l c v
       )
@@ -2184,7 +2201,7 @@ let
             r = t.merge.v2 args;
           in
           let
-            c = if isEither t then eitherChosen t args.defs else null;
+            c = if isEither t then eitherChosen args.loc t args.defs else null;
           in
           r
           // {
@@ -2520,50 +2537,49 @@ let
     let
       holds = o.check.__verifyProjection or o.check;
     in
-    if adHocChecked o then
-      # a root keeps the override's own `check`, which routes the mount to the fold (`homedRootFixed`); an
-      # element keeps its coherent one, so a foreign container's fold reaches the merge. Its rebuild is
-      # refused the same way, so a later rebuild (the mount's, over the fixup's) does not erase it.
-      r
-      // {
-        merge = {
-          __functor =
-            _: loc: defs:
-            adHocFold o loc defs;
-          v2 = args: adHocFold o args.loc args.defs;
-        };
-      }
-      // (
-        if r ? substSubModules then { substSubModules = m: carryBy top o (r.substSubModules m); } else { }
-      )
-      // (if top then { inherit (o) check; } else { })
-    else
-      r
-      // {
-        check = {
-          # a FOREIGN carrier's own check is asked elsewhere: a declaration list's root is mounted, and
-          # the mount meets its rebuild's (`homedRootFixed`); a v2 element's merge computes its own
-          # `headError`. A gen carrier and a v1 element are asked it here.
-          __functor = if r ? typeMergeRel || !top && !(isV2 r) then _: x: r.check x && holds x else _: holds;
-          isV2MergeCoherent = true;
-        };
-      }
-      # an element's v2 merge judges its own definitions inside a foreign container's fold, which reads
-      # no `check`, so the owed checks ride on its `headError` too, as nixpkgs' `addCheck` places its
-      # own; a root's `check` is what gen's checked fold reads (`importedFold`), and it pays no merge
-      # wrapper
-      // (
-        if !top && isV2 r then
-          {
-            merge = {
-              __functor =
-                self: loc: defs:
-                (self.v2 { inherit loc defs; }).value;
-              v2 =
-                args:
-                let
-                  v = r.merge.v2 args;
-                  c =
+    (
+      if adHocChecked o then
+        # a root keeps the override's own `check`, which routes the mount to the fold (`homedRootFixed`); an
+        # element keeps its coherent one, so a foreign container's fold reaches the merge. Its rebuild is
+        # refused the same way, so a later rebuild (the mount's, over the fixup's) does not erase it.
+        r
+        // {
+          merge = {
+            __functor =
+              _: loc: defs:
+              adHocFold o loc defs;
+            v2 = args: adHocFold o args.loc args.defs;
+          };
+        }
+        // (if top then { inherit (o) check; } else { })
+      else
+        r
+        // {
+          check = {
+            # a FOREIGN carrier's own check is asked elsewhere: a declaration list's root is mounted, and
+            # the mount meets its rebuild's (`homedRootFixed`); a v2 element's merge computes its own
+            # `headError`. A gen carrier and a v1 element are asked it here.
+            __functor = if r ? typeMergeRel || !top && !(isV2 r) then _: x: r.check x && holds x else _: holds;
+            isV2MergeCoherent = true;
+          };
+        }
+        # an element's v2 merge judges its own definitions inside a foreign container's fold, which reads
+        # no `check`, so the owed checks ride on its `headError` too, as nixpkgs' `addCheck` places its
+        # own; a root's `check` is what gen's checked fold reads (`importedFold`), and it pays no merge
+        # wrapper
+        // (
+          if !top && isV2 r then
+            (
+              let
+                m = {
+                  __functor =
+                    self: loc: defs:
+                    (self.v2 { inherit loc defs; }).value;
+                  v2 =
+                    args:
+                    let
+                      v = r.merge.v2 args;
+                    in
                     if v.headError != null || builtins.all holds (builtins.catAttrs "value" args.defs) then
                       v
                     else
@@ -2571,23 +2587,32 @@ let
                       // {
                         headError.message = "a definition is rejected by the check of a declaration of this option";
                       };
-                in
-                # an owed `verify` is read once, on the merged value, where the fold reads the value
-                if o ? verify then c // { value = guardedVerify args.loc (o.verify c.value) c.value; } else c;
-            };
-          }
-        else if !top && o ? verify && r ? merge then
-          {
-            merge =
-              loc: defs:
-              let
-                v = r.merge loc defs;
+                };
               in
-              guardedVerify loc (o.verify v) v;
-          }
-        else
-          { }
-      );
+              # an owed `verify` is read once, on the merged value, in the same `headError`
+              {
+                merge = if o ? verify then rebuildClosed.verifiedMerge o.verify m else m;
+              }
+            )
+          else if !top && o ? verify && r ? merge then
+            { merge = rebuildClosed.verifiedMerge o.verify r.merge; }
+          else
+            { }
+        )
+    )
+    // (
+      if r ? substSubModules then
+        {
+          substSubModules =
+            m:
+            let
+              x = r.substSubModules m;
+            in
+            if isAttrs x then carryBy top o x else x;
+        }
+      else
+        { }
+    );
   # THE SAME CARRIAGE OVER A DECLARATION LIST AND AT EVERY DEPTH (den-hoag-8ip0d). `carriedAtDepth true ts
   # r` is the rebuild `r` restricted by every check in `ts` (the records it was rebuilt from) that it
   # cannot carry, its element rebuilt over the same carriage of their elements; `carriedAtDepth false t
@@ -2773,7 +2798,7 @@ let
               let
                 vf = v: builtins.foldl' (e: o: if e != null || !(o ? verify) then e else o.verify v) null owed;
               in
-              x // { verify = vf; }
+              rebuildClosed.verify top vf x
           )
             (
               if owedC == [ ] then
@@ -2831,60 +2856,242 @@ let
     in
     top: if top then go true importedTypeWalkFuel else rebuild importedTypeWalkFuel;
 
-  # ── A FOREIGN MODULE SET CROSSING THE PUBLISHED `defineType`, CLOSED UNDER ITS OWN REBUILDS (den-hoag-ukitj M2) ──
-  # The foreign protocol re-derives a module set from its rebuilds: `substSubModules` at a declaration's fixup and
-  # `typeMerge` at a redeclaration, each the constructor's own, and neither carries a check or a `verify` the record
-  # states beyond the constructor. So the record is returned as itself, every check it states kept, its rebuilds
-  # answering it again with the same carriage gen's engine gives a declaration list (`carryBy` over the record,
-  # `carriedAtDepth` for its elements): the carried record states its own check, conjoined, never overwritten.
-  # A `verify` is read on the merged value, as gen's own fold reads one (`checked`) and as the stock-host guard reads
-  # one (`guardedOption`): a definition alone is not the value it refines. A record stating no module set has no
-  # rebuild and is returned as itself.
-  rebuildClosed =
-    t:
-    if !(isList (t.getSubModules or null)) then
-      t
-    else
-      let
-        # a merge whose merged value is refused by `verify`, by name, in both the called and the v2 form
-        verifiedMerge =
-          vf: m:
-          if m ? v2 then
-            {
-              __functor =
-                self: loc: defs:
-                (self.v2 { inherit loc defs; }).value;
-              v2 =
-                args:
+  # ── A FOREIGN RECORD CROSSING THE PUBLISHED `defineType`, CLOSED UNDER ITS OWN REBUILDS (den-hoag-ukitj M2, dw8d3) ──
+  # The foreign protocol re-derives a type from its rebuilds: `substSubModules` at a declaration's fixup and `typeMerge`
+  # at a redeclaration, each the constructor's own, and neither carries a check or a `verify` the record states beyond
+  # the constructor. So the record is returned with every check it states kept, its rebuilds answering it again with
+  # the same carriage gen's engine gives a declaration list (`carryBy` over the record, `carriedAtDepth` for a module
+  # set's elements): the carried record states its own check, conjoined, never overwritten. A record stating no module
+  # set is closed under `typeMerge`, its rebuild carrying only its own check and `verify`; a rebuild that IS the record
+  # (`kept`) carries nothing, and a constant constructor's own record crosses as itself. A `verify` is read on the merged
+  # value, as gen's own fold reads one (`checked`) and as the stock-host guard reads one (`guardedOption`): a definition
+  # alone is not the value it refines, and it is stated where a fold asks membership (`verifiedMerge`).
+  rebuildClosed = {
+    __functor =
+      self: t:
+      if !(isAttrs t) || !(t ? typeMerge) then
+        t
+      # a record whose functor's type IS it (a constant constructor's own record, which its rebuild returns) has nothing
+      # to carry, so it crosses as itself
+      else if
+        !(isList (t.getSubModules or null))
+        && !(t ? verify)
+        && isAttrs (t.functor.type or null)
+        && self.kept t == self.kept t.functor.type
+      then
+        t
+      else
+        let
+          # a rebuild carries an ad-hoc override's check as a check: nixpkgs' own rebuild drops the override, so the
+          # rebuilt value is nixpkgs' with the check enforced; the record declared alone is answered as nixpkgs answers it
+          o =
+            if adHocChecked t then
+              t
+              // {
+                check = {
+                  __functor = _: t.check;
+                  isV2MergeCoherent = true;
+                };
+              }
+            else
+              t;
+          moduleSet = isList (t.getSubModules or null);
+          close =
+            top: r:
+            let
+              c = if moduleSet || !top then carryBy false o r else r;
+            in
+            c
+            // (
+              if !(t ? verify) then
+                { }
+              else if isV2 c then
+                {
+                  inherit (t) verify;
+                  # `carryBy` carries the record's `verify` with its check wherever it runs
+                  merge = if moduleSet || !top then c.merge else rebuildClosed.verifiedMerge t.verify c.merge;
+                }
+              else
+                # a non-v2 merge states no `headError`, and a union asks it by `check` per definition, which a merged-value
+                # judgement is not: the record is lifted into the v2 protocol, its own check per definition, then `verify`
+                {
+                  inherit (t) verify;
+                  check = {
+                    __functor = _: c.check;
+                    isV2MergeCoherent = true;
+                  };
+                  merge = rebuildClosed.verifiedMerge t.verify (
+                    rebuildClosed.verifiedMerge.lifted c.check (c.merge.__verifiedMerge or c.merge)
+                  );
+                }
+            )
+            // (
+              if isList (r.getSubModules or null) then
+                { substSubModules = m: close false (carriedAtDepth false r m); }
+              else
+                { }
+            )
+            // {
+              typeMerge =
+                f:
                 let
-                  v = m.v2 args;
+                  j = r.typeMerge f;
                 in
-                v // { value = guardedVerify args.loc (vf v.value) v.value; };
-            }
-          else
-            loc: defs:
+                if j == null || !moduleSet && !(t ? verify) && self.kept t == self.kept j then
+                  j
+                else
+                  close false (if moduleSet then carriedAtDepth true [ r ] j else j);
+            };
+        in
+        close true t;
+    # WHETHER A REBUILD DROPS NOTHING THE RECORD STATES (den-hoag-dw8d3 F2): `kept t == kept j`, the rebuild `j` IS the
+    # record `t` at every field a fold reads, `check`, `merge`, `nestedTypes` and `typeMerge` each one value with the
+    # record's by the pointer of its slot (as `verifySlice` compares one, so every evaluator answers alike). No function
+    # is compared; a rebuild that is not provably the record is carried
+    kept = builtins.intersectAttrs {
+      check = null;
+      merge = null;
+      nestedTypes = null;
+      typeMerge = null;
+    };
+    # an owed `verify` carried on `r`, closed under `r`'s own rebuild as `carryBy` is: below the root it is read on the
+    # merged value (`verifiedMerge`), a non-v2 merge's projected into its `check`; the root states it for gen's fold
+    verify =
+      top: vf: r:
+      r
+      // {
+        verify = vf;
+      }
+      // (
+        if top || !(r ? merge) then
+          { }
+        else
+          (
+            if isV2 r then
+              { merge = rebuildClosed.verifiedMerge vf r.merge; }
+            else
+              # lifted, as `rebuildClosed`'s own non-v2 record is
+              {
+                check = {
+                  __functor = _: r.check;
+                  isV2MergeCoherent = true;
+                };
+                merge = rebuildClosed.verifiedMerge vf (
+                  rebuildClosed.verifiedMerge.lifted r.check (r.merge.__verifiedMerge or r.merge)
+                );
+              }
+          )
+      )
+      // (
+        if r ? substSubModules then
+          {
+            substSubModules =
+              m:
+              let
+                x = r.substSubModules m;
+              in
+              if isAttrs x then rebuildClosed.verify top vf x else x;
+          }
+        else
+          { }
+      );
+    # a gen container's element `r` rebuilt over its declared element `e`: the `verify` `e` states beyond its rebuild
+    # carried on it (a `// { verify }` copy's rebuild is its base's)
+    element = e: r: if e ? verify && isAttrs r then rebuildClosed.verify false e.verify r else r;
+    # ★ A `verify` STATED WHERE A FOLD ASKS MEMBERSHIP (den-hoag-dw8d3). `verifiedMerge vf m` is `m` with `vf` read once on
+    # its merged value: a v2 merge states a rejection where nixpkgs' `addCheck` states its check, in `headError` after its
+    # base's, so a union choosing its member by `headError` moves on to the next one, and its value refuses by name for a
+    # reader that takes the value past the `headError` (gen's called forms do); a wrapper over one reads its `headError`
+    # first, so never that value. The called form, which states no `headError`, refuses by name; `__verifiedMerge` is the
+    # base, for a reader that judges a definition set itself (`importedHeadJudge`). `verifiedMerge.lifted` states a
+    # non-v2 merge in the v2 protocol, which is the only one with a channel for a merged-value judgement.
+    # `verifiedMerge.projection own vf base` is the check a reader asking membership per definition is given (nixpkgs'
+    # union over a non-v2 member, den-hoag-d74w0 arm (ii)): `own`, then `vf` on `base`'s merge of the definition alone
+    # (a refusal there is `false`); gen's folds read `own` (`__verifyProjection`) and the merged value's `verify`.
+    # A member of `rebuildClosed`, so the library's load pays nothing for it.
+    verifiedMerge = {
+      __functor =
+        _: vf: m:
+        {
+          __verifiedMerge = m;
+          __functor =
+            _: loc: defs:
             let
               v = m loc defs;
             in
             guardedVerify loc (vf v) v;
-        close =
-          r:
-          let
-            c = carryBy false t r;
-          in
-          c
-          // (if t ? verify then { merge = verifiedMerge t.verify c.merge; } else { })
-          // {
-            substSubModules = m: close (carriedAtDepth false r m);
-            typeMerge =
-              f:
-              let
-                j = r.typeMerge f;
-              in
-              if j == null then null else close (carriedAtDepth true [ r ] j);
-          };
-      in
-      close t;
+        }
+        // (
+          if m ? v2 then
+            {
+              v2 =
+                args:
+                let
+                  r = m.v2 args;
+                  e = if r.headError == null then vf r.value else null;
+                in
+                if e == null then
+                  r
+                else
+                  r
+                  // {
+                    headError.message = e;
+                    value = guardedVerify args.loc e r.value;
+                  };
+            }
+          else
+            { }
+        );
+      projection = own: vf: base: {
+        __functor =
+          _: v:
+          own v
+          && (
+            let
+              r = builtins.tryEval (
+                vf (
+                  base
+                    [ "<definition>" ]
+                    [
+                      {
+                        file = "<definition>";
+                        value = v;
+                      }
+                    ]
+                ) == null
+              );
+            in
+            r.success && r.value
+          );
+        isV2MergeCoherent = true;
+        __verifyProjection = own;
+      };
+      # a non-v2 merge `m` stated in the v2 protocol: `c0` on every definition is its `headError`, as nixpkgs' own v2
+      # constructors state their check (`checkDefsForError`, naming the definitions it rejects), and its value is `m`'s
+      lifted = c0: m: {
+        __functor = _: m;
+        v2 = args: {
+          headError =
+            # the rejected definitions are listed only on a rejection; `modules.nix`'s `showDefs` line, spelled here:
+            # taking it as an argument costs the library's load
+            if builtins.all (d: c0 d.value) args.defs then
+              null
+            else
+              {
+                message = "Definition values:${
+                  concatStringsSep "" (
+                    map (d: "\n- In `${toString (d.file or "<unknown-file>")}': ${prelude.renderValue d.value}") (
+                      filter (d: !(c0 d.value)) args.defs
+                    )
+                  )
+                }";
+              };
+          value = m args.loc args.defs;
+          valueMeta = { };
+        };
+      };
+    };
+  };
 
   rootRebuildRefusal =
     door: loc: t:
@@ -5773,30 +5980,7 @@ let
         # written for members reads a member (the base's fold supplies the defaults), never a raw definition; a refusal
         # inside that merge or the `verify`'s reads is `false`, and a foreign union takes its next alternative
         base = x.merge.__verifiedMerge or x.merge;
-        projection = {
-          __functor =
-            _: v:
-            own v
-            && (
-              let
-                r = builtins.tryEval (
-                  x.verify (
-                    base
-                      [ "<definition>" ]
-                      [
-                        {
-                          file = "<definition>";
-                          value = v;
-                        }
-                      ]
-                  ) == null
-                );
-              in
-              r.success && r.value
-            );
-          isV2MergeCoherent = true;
-          __verifyProjection = own;
-        };
+        projection = rebuildClosed.verifiedMerge.projection own x.verify base;
         s = x // {
           # a record that carries a role publishes the one-definition projection for a FOREIGN reader; where its own
           # check is its witness the projection is its witness too, so gen's readers fold it unrewritten and judge its
@@ -5814,38 +5998,8 @@ let
             projection;
           # gen's placement of the `verify` for a reader that folds through the protocol: on the merged value, a base
           # `v2` merge keeping its protocol with the `verify` on its `headError`
-          ${if replacesVerify x && x ? carries then "merge" else null} = {
-            __verifiedMerge = base;
-            __functor =
-              _: loc: defs:
-              let
-                v = base loc defs;
-              in
-              guardedVerify loc (x.verify v) v;
-          }
-          // (
-            if base ? v2 then
-              {
-                v2 =
-                  args:
-                  let
-                    r = base.v2 args;
-                    e = if r.headError == null then x.verify r.value else null;
-                  in
-                  r
-                  // {
-                    headError =
-                      if r.headError != null then
-                        r.headError
-                      else if e == null then
-                        null
-                      else
-                        { message = e; };
-                  };
-              }
-            else
-              { }
-          );
+          ${if replacesVerify x && x ? carries then "merge" else null} =
+            rebuildClosed.verifiedMerge x.verify base;
           # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
           # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
           # stating none (gen-types' own records) gets none

@@ -1157,7 +1157,19 @@ let
           modules = interface.spineModules interface.importedTypeWalkFuel element;
           declares =
             prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "*" ]);
-          rebuild = m: listOf (if carriesSub element then (subOf element).rebuild m else element);
+          rebuild =
+            m:
+            listOf (
+              if carriesSub element then
+                (
+                  if element ? verify then
+                    interface.rebuildClosed.element element ((subOf element).rebuild m)
+                  else
+                    (subOf element).rebuild m
+                )
+              else
+                element
+            );
         };
         # A position whose every definition was discharged is DROPPED, as nixpkgs' `listOf` drops it.
         # The index is taken BEFORE the drop, as nixpkgs indexes inside its `filter`, so a survivor's
@@ -1347,7 +1359,19 @@ let
           modules = interface.spineModules interface.importedTypeWalkFuel element;
           declares =
             prefix: interface.spineDeclares interface.importedTypeWalkFuel element (prefix ++ [ "<name>" ]);
-          rebuild = m: attrsOfWith tyName (if carriesSub element then (subOf element).rebuild m else element);
+          rebuild =
+            m:
+            attrsOfWith tyName (
+              if carriesSub element then
+                (
+                  if element ? verify then
+                    interface.rebuildClosed.element element ((subOf element).rebuild m)
+                  else
+                    (subOf element).rebuild m
+                )
+              else
+                element
+            );
         };
         inherit split;
         # `attrsOf`'s fold is the split's elements, each folded through the element type and placed at
@@ -1679,7 +1703,19 @@ let
           forward = null;
           modules = interface.spineModules interface.importedTypeWalkFuel element;
           declares = interface.spineDeclares interface.importedTypeWalkFuel element;
-          rebuild = m: nullOr (if carriesSub element then (subOf element).rebuild m else element);
+          rebuild =
+            m:
+            nullOr (
+              if carriesSub element then
+                (
+                  if element ? verify then
+                    interface.rebuildClosed.element element ((subOf element).rebuild m)
+                  else
+                    (subOf element).rebuild m
+                )
+              else
+                element
+            );
         };
         admits = v: v == null || isValid element v;
         inherit split;
@@ -2054,9 +2090,9 @@ in
   # states one; the export refuses a record without it), so it is the foreign engine's record, not this
   # crossing's to complete: it is returned as itself, and the engine imports it where it is declared, as it
   # imports every foreign record. Completing it would publish a `check` derived from a gen datum it does
-  # not state, over its own (den-hoag-ukitj). A foreign MODULE SET comes back closed under its own rebuilds
+  # not state, over its own (den-hoag-ukitj). A foreign record comes back closed under its own rebuilds
   # (`interface.rebuildClosed`): its `substSubModules` and `typeMerge` answer with its checks carried, so a
-  # nixpkgs evaluation that rebuilds it keeps them.
+  # nixpkgs evaluation that rebuilds it keeps them; a constant constructor's own record comes back as itself.
   # A `//` copy of a completed record departing only where its carrier still reads it as that completion is
   # returned as it is (`interface.carriedCopy`, den-hoag-5kzqp); its `verify` presence test is restated here so
   # a record stating none (gen-aspects' per-instance submodule copies) pays one attribute test and no call,
