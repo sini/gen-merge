@@ -925,7 +925,9 @@ absorbs it into its base. A foreign base (a nixpkgs type) crosses the import bou
 **Refusals, each by name:** a base that is not a completed option type (a constructor, a `mkType`
 record, an option descriptor); `fields` setting anything but metadata — a type whose behaviour or
 relation differs is a new type (`mkOptionType`); no string `id`; a `key` holding an option type,
-which Nix `==` cannot compare totally (key a derivation by plain data).
+which Nix `==` cannot compare totally (key a derivation by plain data); a base carrying a parameter
+under its author's own relation (a foreign container or module set), naming `defineType`, which
+serves it (argued under costs and residues).
 
 **Identity.** A derivation never inherits its base's mint. With no `mint` it is minted per
 component through gen-types' identity half: the `id` and the `key` inert, the base by its mark (or
@@ -950,9 +952,20 @@ one a type constructor over a TYPE, and neither is reachable where the other is.
 - One completion per lift: a merge, a `recarry` or a rebuild of a derivation re-completes it, so N
   derivation levels pay N completions and N relation frames, as gen-schema's `refined` does. The
   hub perf-bench constructs no derivation, so it says nothing about this cost.
-- A foreign CONTAINER base (`lib.types.listOf …`) crosses the import boundary with no constructor to
-  rebuild it over, and the vocabulary refuses it by name — the inherited round-trip residue. A
-  foreign leaf derives.
+- **A base carrying a parameter under its author's own relation is refused by name, and the refusal
+  names `defineType`, which serves it.** A foreign container or module set the import keeps as itself
+  (`lib.types.listOf lib.types.int`, `lib.types.submodule …`) states its author's relation and no
+  `recarry`, so the import hands up no rebuild for it. A derivation is its base's join and rebuild derived again, so it needs both from this
+  library: a join that keeps every check either declaration states (a redeclared option accepts a
+  definition only if every declared check does), and a rebuild over another payload. The author's
+  relation is the foreign protocol's later-operand join, which keeps one operand's check. Threaded
+  carriage does not supply the missing join. It serves the base itself through `defineType`, and this
+  library's evaluation meets two such declarations at the option, reading each one's check there. A
+  derivation needs the meet as a TYPE, because its relation answers a type. One built over the carried
+  base, joining through `mergeTypes`, served a value one copy's `verify` rejects when declared twice,
+  where the raw base refuses it. So the refusal stands until a join of two foreign records carries every
+  check and `verify` either states, and serving it then moves no refused cell to silent. It is an open defect, not a stated limit. A foreign leaf derives,
+  and so does a stock container over a gen nesting element, which the import re-homes as gen's own.
 - A derivation OF a consumer type whose relation keys on an inherited marker field is absorbed by
   that type: gen-schema's `refined` decides by `partner ? __schema`, which a derivation of a
   refined type inherits, so `mergeTypes R (deriveType { … } "id" R)` and the foreign `R.typeMerge` answer
@@ -2734,14 +2747,14 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   through the door once, `mkOptionType (let r = np.either np.int (np.listOf r); in r)`, which
   serves nixpkgs' value. Through `deriveType` the same knot serves too, but only because the walk
   answers "may nest" at its fuel's exhaustion and so re-homes a cyclic container; an acyclic
-  foreign container there is the vocabulary's named refusal. A cycle through a container outside
+  foreign container there is `deriveType`'s named refusal, argued under its costs and residues. A cycle through a container outside
   the six is then the walk's named refusal at its fuel, with its three remedies.
   `ci/tests-process-cells.nix` pins both deaths and the way out. The exception is
   argued, not merely declared: a record whose key set does not wait on the walk is a fixed shape,
   and both fixed shapes change answers given today. Crossing every stock container as itself
   stops re-homing one that nests and refuses `deriveType` over it; crossing every one as gen's
   container drops an override on one that nests nothing and admits `deriveType` over a foreign
-  container, which the vocabulary refuses.
+  container, a base `deriveType` refuses by name.
 
 - `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
   `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict

@@ -8959,11 +8959,25 @@ in
           expr = declared (derive t.str (tagged // { key = 1; })) (derive t.str (tagged // { key = 2; }));
           expectedError = refusal "^gen-merge: option `o' is declared with types that do not merge \\(the derivation `tagged' of `string' and the derivation `tagged' of `string', whose keys differ\\); declared in <unknown-file>, <unknown-file>$";
         };
-        # A foreign container crosses the import boundary with no constructor to rebuild it over, and
-        # the vocabulary refuses it by name (the inherited round-trip residue, den-hoag-un50q).
-        test-a-foreign-container-base-is-refused-by-the-vocabulary = {
+        # A base carrying a parameter under its author's own relation (a foreign container or module
+        # set) states no `recarry` and has no join that keeps every check, so `deriveType` refuses it by name,
+        # naming the door that serves it (den-hoag-mym0d, arm (a)): a container and a module set.
+        test-a-foreign-container-base-is-refused-naming-define-type = {
           expr = force (derive (nixpkgsLib.types.listOf t.str) tagged).name;
-          expectedError = refusal "^gen-merge: the structural type `listOf' carries a parameter but does not supply `recarry'; a type that carries something answers for it rather than inheriting a leaf's answers$";
+          expectedError = refusal "^gen-merge: `deriveType' over `listOf' as `tagged': the base carries a parameter under its author's own relation \\(a foreign container or module set\\) and states no `recarry'; a derivation answers its base's join and rebuild derived again, and this library has no join of two such bases that keeps every check a declaration states\\. `defineType' serves the base as itself$";
+        };
+        test-a-foreign-module-set-base-is-refused-naming-define-type = {
+          expr = force (derive (nixpkgsLib.types.submodule { }) tagged).name;
+          expectedError = refusal "^gen-merge: `deriveType' over `submodule' as `tagged': the base carries a parameter under its author's own relation \\(a foreign container or module set\\) and states no `recarry'; a derivation answers its base's join and rebuild derived again, and this library has no join of two such bases that keeps every check a declaration states\\. `defineType' serves the base as itself$";
+        };
+        # LIVE CONTROL, same run: the door the refusal names serves the same foreign base.
+        test-control-define-type-serves-the-refused-foreign-base = {
+          expr =
+            (gm.evalModuleTree { } [
+              { options.o = gm.mkOption { type = t.defineType (nixpkgsLib.types.listOf t.str); }; }
+              { o = [ "a" ]; }
+            ]).config.o;
+          expected = [ "a" ];
         };
         # LIVE CONTROL, same run: the same declaration of one derivation twice evaluates.
         test-control-one-derivation-declared-twice-evaluates = {

@@ -370,6 +370,7 @@ process cells `one-eval-*` and `candidate-modules*` (`ci/tests-process.nix`).
 - **A single-caller helper lives in a `let` bound over its caller's lambda** (`f = let h = …; in x: h x;`),
   because every file-level binding costs one thunk at every load, forced or not; a `let` inside the
   lambda body instead costs one per call.
+
 - **The root mount's measured out** (`homedRootAt`; den-hoag-gijly). Against nixpkgs on the same
   workload, stock submodule roots, nix/Determinate/Lix at 359a36f, the full mount costs +4.8% thunks
   and +2.5–3.7% bytes; arm (b), wt-unifiedR (skip the rebuild for a recognised intact v2 record), is
@@ -379,6 +380,13 @@ process cells `one-eval-*` and `candidate-modules*` (`ci/tests-process.nix`).
   `getSubModules` / functor payload, AND a stock-part `//` override
   (`ySub // intersectAttrs { substSubModules = null; } donor` reads as intact). Measurement:
   den-ag-design `reports/den-hoag-gijly-oq2-mount-cost-scout-v0.md`.
+
+- **`deriveType` over a foreign carrying base is refused by name, and the refusal names `defineType`**
+  (den-hoag-mym0d G5, landed under the owner's D1 (b′) fallback (a) and ADR-0039 parity-defect rule (2):
+  0 cells move). The class stays an OPEN defect under rule (1), not a price, carried by den-hoag-akz1n.
+  Re-arm: the shared verify-carriage join landing and the carried-base prototype then passing the
+  planted-override test ×3 with 0 R→S. Spec: den-ag-design
+  `specs/2026-10-13-gen-merge-derivetype-foreign-base-spec.md`.
 
 ## Theory
 

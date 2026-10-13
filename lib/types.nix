@@ -582,6 +582,11 @@ let
       throw "gen-merge: ${named}: the base ${defect}"
     else if !(builtins.isString id) then
       throw "gen-merge: ${named} states no string `id'; a derivation's merge identity is the string it names"
+    # A base carrying a parameter under its author's own relation (`retainedRelation`: a foreign container or module
+    # set the import keeps as itself) states no `recarry`, and a derivation's join and rebuild are lifts of its base's
+    # own, so it is refused by name, naming the door that serves it (README, `deriveType`, costs and residues).
+    else if gen ? carries && !(gen ? recarry) then
+      throw "gen-merge: ${named} as `${id}': the base carries a parameter under its author's own relation (a foreign container or module set) and states no `recarry'; a derivation answers its base's join and rebuild derived again, and this library has no join of two such bases that keeps every check a declaration states. `defineType' serves the base as itself"
     else if notMetadata != [ ] then
       throw "gen-merge: ${named} as `${id}': `fields' sets ${
         concatStringsSep ", " (map (n: "`${n}'") notMetadata)
