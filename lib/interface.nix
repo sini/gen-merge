@@ -1605,15 +1605,14 @@ let
       # stating a module set through its own `substSubModules` (`fixupOptionType`, and every stock container's
       # rebuild below it), which erases an override the rebuild does not forward. A record stating a module
       # set whose rebuild forwards the override is therefore not one of the six: it threads
-      # (`threadedForeign`) and its own merge folds it, as nixpkgs' does. Asked only past the functor-name
-      # test, and the rebuild only of a record already found overridden. NOT DETECTED, OPEN DEFECTS, each
-      # re-homed and losing its override silently: an override spelled in `merge.v2` (the record states a
-      # `v2`, as the stock one does); any override on a lib whose constructors mark no check coherent (nixpkgs
-      # 25.05); and an `either` or `oneOf`, which states no module set and so cannot thread (den-hoag-p06j3):
-      # unrecognised, it would refuse the override that preserves the value (`t // { merge = loc: defs:
-      # t.merge loc defs; }`) where re-homing serves it.
-      # Inline, and asked only of a record otherwise recognised: a binding costs every load a thunk, and
-      # reading `merge` of a record the payload test refuses costs the threaded channel's rebuilds
+      # (`threadedForeign`) and its own merge folds it, as nixpkgs' does. Asked inline, last, and only of a
+      # record the payload test recognises (a binding costs every load a thunk, and asked earlier it cost the
+      # threaded registry two); the rebuild only of a record already found overridden. NOT DETECTED, OPEN
+      # DEFECTS, each re-homed and losing its override silently: an override spelled in `merge.v2` (the
+      # record states a `v2`, as the stock one does); any override on a lib whose constructors mark no check
+      # coherent (nixpkgs 25.05); and an `either` or `oneOf`, which states no module set and so cannot thread
+      # (den-hoag-p06j3): unrecognised, it would refuse the override that preserves the value
+      # (`t // { merge = loc: defs: t.merge loc defs; }`) where re-homing serves it.
       if
         name == "attrsWith"
         &&
