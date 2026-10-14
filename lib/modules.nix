@@ -228,10 +228,10 @@ let
   # A STRUCTURAL FOLD IS TOTAL OVER ITS INPUT: a definition outside the type's stated domain is
   # refused catchably, naming the option, the type and the files, BEFORE the fold runs — otherwise
   # it reaches `imap0`/`//`/`?` and the interpreter aborts with a raw type error naming neither, or
-  # (`deferredModule`) is accepted here and fails wherever it is imported. The engine's post-fold
-  # check reads `verify`, never `admits`, so each structural constructor applies this to its own
-  # fold, passing the SAME binding it states as `admits`; its domain check therefore cannot disagree
-  # with the `check` it exports. It tests the surviving definitions (after discharge, priority and
+  # (`deferredModule`) is accepted here and fails wherever it is imported. The engine reads a record's
+  # `admits` only where the fold it runs carries no witness of a guard of it (`checked`), so each
+  # structural constructor applies this to its own fold, passing the SAME binding it states as
+  # `admits`; its domain check therefore cannot disagree with the `check` it exports. It tests the surviving definitions (after discharge, priority and
   # order), where nixpkgs' `checkedAndMerged` tests `defsFinal`, and forces each only to WHNF, which
   # the engine's discharge has already done. The refusal list is built only on refusal. The
   # quantifier is spelled inline rather than read from `admitsAll`: this door sits on every
@@ -2831,7 +2831,9 @@ let
         )
       )
     then
-      type.mergeDefs
+      # a fold record carrying the record it guards (`attrs`, `deferredModule`, `optionType`) is run through
+      # its `fold`: calling the record through `__functor` copies it into a fresh value on every fold
+      type.mergeDefs.fold or type.mergeDefs
     else
       interface.importedFold type;
 
@@ -2932,6 +2934,27 @@ let
             else
               throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
           )
+        # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
+        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx: a container's, tied at
+        # its completion, and the fold `attrs`, `deferredModule` and `optionType` build), not the import's checked
+        # fold (`unchecked` beside it), and not a check a wrapper rewrote (`importedFold` checks that one per
+        # definition) (den-hoag-gxybe)
+        else if
+          type != null
+          && type ? admits
+          && !(type ? mergeDefs.unchecked)
+          && !(
+            type ? _checkWitness
+            && (
+              type.check != type._checkWitness
+              || type ? split
+              || type ? choose
+              || (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+            )
+          )
+          && !(all (d: type.admits d.value) typeDefs)
+        then
+          refusingOutside (interface.nameOf type) type.admits null loc typeDefs
         else
           result;
     in
@@ -3007,6 +3030,27 @@ let
             else
               throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
           )
+        # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
+        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx: a container's, tied at
+        # its completion, and the fold `attrs`, `deferredModule` and `optionType` build), not the import's checked
+        # fold (`unchecked` beside it), and not a check a wrapper rewrote (`importedFold` checks that one per
+        # definition) (den-hoag-gxybe)
+        else if
+          type != null
+          && type ? admits
+          && !(type ? mergeDefs.unchecked)
+          && !(
+            type ? _checkWitness
+            && (
+              type.check != type._checkWitness
+              || type ? split
+              || type ? choose
+              || (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+            )
+          )
+          && !(all (d: type.admits d.value) typeDefs)
+        then
+          refusingOutside (interface.nameOf type) type.admits null loc typeDefs
         else
           result;
     in
@@ -3120,6 +3164,27 @@ let
             else
               throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
           )
+        # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
+        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx: a container's, tied at
+        # its completion, and the fold `attrs`, `deferredModule` and `optionType` build), not the import's checked
+        # fold (`unchecked` beside it), and not a check a wrapper rewrote (`importedFold` checks that one per
+        # definition) (den-hoag-gxybe)
+        else if
+          type != null
+          && type ? admits
+          && !(type ? mergeDefs.unchecked)
+          && !(
+            type ? _checkWitness
+            && (
+              type.check != type._checkWitness
+              || type ? split
+              || type ? choose
+              || (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+            )
+          )
+          && !(all (d: type.admits d.value) typeDefs)
+        then
+          refusingOutside (interface.nameOf type) type.admits null loc typeDefs
         else
           result;
       prov =

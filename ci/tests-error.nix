@@ -10933,6 +10933,74 @@ in
     # completed with, so the two disagree and the copy's own `check` is owed (`modules.nix` `ownFold`,
     # `threadedAs`, `interface.importedFold`). Each cell served the definition at 67c98f5, where nixpkgs' twin
     # refuses it (its `mergeDefinitions` reads the copy's `check` per definition).
+    # A RECORD'S `admits` IS REFUSED OUTSIDE WHEREVER THE FOLD THE ENGINE RUNS GUARDS NONE OF IT (den-hoag-gxybe). A record
+    # stating gen's `admits` and no `verify` is refused by name where its fold carries no guard of that `admits`: through
+    # each door, as a `//` copy taking a fold of its own over a completed record and re-entered through a door, as a raw
+    # record spelling `_type`, and as a copy of gen's `attrs` taking a fold. Each refusal sits beside its served twin.
+    flake.testsError.caller-admits =
+      let
+        even = v: builtins.isInt v && nixpkgsLib.mod v 2 == 0;
+        fold = loc: defs: nixpkgsLib.mergeEqualOption loc defs;
+        rec0 = {
+          name = "evenT";
+          admits = even;
+        };
+        copy = t.defineType rec0 // {
+          mergeDefs = fold;
+        };
+        read =
+          ty: v:
+          (cfg {
+            modules = [
+              { options.x = gm.mkOption { type = ty; }; }
+              {
+                _file = "a.nix";
+                x = v;
+              }
+            ];
+          }).x;
+        refused = ty: v: name: {
+          expr = builtins.deepSeq (read ty v) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x' has definitions `${name}' cannot consume \\(a\\.nix\\)$";
+          };
+        };
+        served = ty: v: {
+          expr = read ty v;
+          expected = v;
+        };
+        cases = {
+          mkType = t.mkType rec0;
+          defineType = t.defineType rec0;
+          mkOptionType = gm.mkOptionType rec0;
+          raw = rec0;
+          rawFold = rec0 // {
+            mergeDefs = fold;
+          };
+          copy = copy;
+          redoorDefineType = t.defineType copy;
+          redoorMkType = t.mkType copy;
+          forgedType = rec0 // {
+            _type = "option-type";
+            mergeDefs = fold;
+          };
+        };
+        attrsCopy = t.attrs // {
+          mergeDefs = fold;
+        };
+      in
+      nixpkgsLib.mapAttrs' (
+        k: ty: nixpkgsLib.nameValuePair "test-${k}-refuses-outside" (refused ty 3 "evenT")
+      ) cases
+      // nixpkgsLib.mapAttrs' (
+        k: ty: nixpkgsLib.nameValuePair "test-${k}-serves-inside" (served ty 4)
+      ) cases
+      // {
+        test-attrs-fold-copy-refuses-outside = refused attrsCopy 1 "attrs";
+        test-attrs-fold-copy-serves-inside = served attrsCopy { a = 1; };
+      };
+
     flake.testsError.fold-rewrite-check =
       let
         sub = t.submodule {

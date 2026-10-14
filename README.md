@@ -1285,8 +1285,8 @@ Two rules that look like details and are not:
   over a completion or over a door's return, or a `// { check }` copy) is closed over that check by
   the door that completes it again, before the completion, so a later declaration's join and a module
   set's fixup keep it; a copy departing only elsewhere (a `// { description }`) is completed as it is.
-  A `//` copy of a completed gen `listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr` or `either` that
-  rewrites its `admits` states a domain its fold never closed over, so it is the check rewrite it
+  A `//` copy of a completed gen `listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr`, `either`, `attrs`,
+  `deferredModule` or `optionType` that rewrites its `admits` states a domain its fold never closed over, so it is the check rewrite it
   states: the door closes it over its check and its new `admits` together, as `addCheck` conjoins
   them, and a value the new `admits` drops is refused by name in gen's evaluation and in nixpkgs',
   while a value it keeps is served as the plain container serves it. A copy removing `admits` states
@@ -1402,7 +1402,8 @@ unable to refuse anything, and its merge then hands a definition to a member tha
 See "`either` — a union's merge is total" below.
 
 **Each structural fold refuses a definition outside its `admits`, by name and catchably**, before
-the fold runs. The engine's `mergeDefs` reads `verify` and never `admits`, so a definition reaching
+the fold runs. The engine's `mergeDefs` reads `admits` only where the fold carries no witness of a
+guard of it (below), so a definition reaching
 a gen structural type's merge without passing a union used to reach `imap0` or `//` and abort with
 a raw builtin error (`expected a set but found a list`), or, for `deferredModule`, be accepted and
 fail wherever it was imported. `listOf`, `attrsOf`, `lazyAttrsOf`, `attrs`, `deferredModule` and
@@ -1412,6 +1413,29 @@ export. It tests the surviving definitions, where nixpkgs' `checkedAndMerged` te
 refuses `` gen-merge: option `<loc>' has definitions `<type>' cannot consume (<files>) ``
 (`ci/tests-error.nix` `structural-domain`). The tree type states no `admits` and keeps the module
 reader's refusal.
+
+**A record's `admits` is refused outside wherever the fold the engine runs carries no witness of a
+guard of it.** A record stating `admits` and no `verify` (a caller's, through any door or none, or a
+`//` copy taking a fold of its own) is refused with the text above, before its fold's value is read,
+unless the fold it runs carries such a witness. Three folds do:
+
+- a fold completed under the record's own `_checkWitness` (`mergeDefs.completed`, the record the fold
+  was completed with): a container's, tied where the door completes it, and the fold `attrs`,
+  `deferredModule` and `optionType` build around `refusingOutside`, which the engine runs directly;
+- the import's checked fold (`mergeDefs.unchecked` beside it);
+- the fold of a record whose `check` a wrapper rewrote, which the import checks per definition.
+
+A `//` copy that swaps the fold takes a fold without the witness, so its `admits` is read
+(`ci/tests-error.nix` `caller-admits`). Because `mergeDefs.completed` is the record its fold was
+completed with, a door's return and its fold's completion hold one `admits` slot, so the doors'
+admits-rewrite test above is false on every return and fires only where a `//` copy restated
+`admits`: `types.defineType` and `mkOptionType` refuse that copy, and the engine reads `admits`
+wherever the fold carries no witness. Two copies are still served against their `admits`. One
+keeps a witnessed fold and restates `admits` without passing either door (raw, or through
+`types.mkType`), which the containers, `attrs`, `deferredModule` and `optionType` serve as their
+fold serves. The other borrows another import's checked fold
+(`mkOptionType { check = …; } // { inherit (other) mergeDefs; }`): the import's fold carries no
+witness and is trusted by its presence.
 
 **A foreign type's `check` is applied to every definition before its fold**, as nixpkgs'
 `mergeDefinitions` does (`checkedAndMerged`). A type whose domain is stated in the foreign protocol —

@@ -1526,9 +1526,9 @@ let
   attrs =
     let
       # The domain stays the predicate's. What this type does with a definition OUTSIDE that domain
-      # is stated by its fold because the engine does not state it: the post-fold check reads
-      # `verify`, and a structural type carries `admits`, so the engine never consults `admits` on
-      # the option-fold path. Bound once, for `admits` and for the fold's domain check alike.
+      # is stated by its fold, which carries this record as the witness that it guards it, so the
+      # engine reads `admits` no second time on the option-fold path. Bound once, for `admits` and for
+      # the fold's domain check alike.
       admits = isAttrs;
     in
     defineType {
@@ -1579,25 +1579,35 @@ let
       # ★ DECIDED PER KEY, WHERE THE KEY IS READ. The key set is the union's, forced as before; each
       # shared key's comparison sits inside its own value, so reading one key never forces another's
       # `==` — the strictness nixpkgs does not have stays confined to the key that is read.
-      mergeDefs = refusingOutside "attrs" admits (
-        loc: defs:
-        let
-          merged = foldl' (res: d: res // d.value) { } defs;
-          filesAt =
-            k: concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: d.value ? ${k}) defs));
-          refusal =
-            k: vs:
-            let
-              cells = map (v: [ v ]) vs;
-              other = head (head (filter (c: c != head cells) cells));
-            in
-            if prelude.isFunction (head vs) && prelude.isFunction other then
-              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to a function, and Nix compares functions only by identity, so these cannot be shown to agree (${filesAt k})"
-            else
-              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to different values (${filesAt k})";
-        in
-        if length defs < 2 then merged else core.unionAgreeing refusal defs
-      );
+      #
+      # ★ THE FOLD CARRIES THE RECORD IT GUARDS (den-hoag-gxybe). `refusingOutside` refuses outside
+      # `admits` before the fold runs, and `completed` is the witness the engine reads against the
+      # record's `_checkWitness` (den-hoag-u5jwx's slot), so it owes this `admits` no second read. A `//`
+      # copy taking a fold of its own takes no witness, and the engine reads its `admits`. The engine runs
+      # `fold` directly (`ownFold`); `deferredModule` and `optionType` build theirs the same way.
+      mergeDefs = {
+        __functor = self: self.fold;
+        completed = attrs;
+        fold = refusingOutside "attrs" admits (
+          loc: defs:
+          let
+            merged = foldl' (res: d: res // d.value) { } defs;
+            filesAt =
+              k: concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: d.value ? ${k}) defs));
+            refusal =
+              k: vs:
+              let
+                cells = map (v: [ v ]) vs;
+                other = head (head (filter (c: c != head cells) cells));
+              in
+              if prelude.isFunction (head vs) && prelude.isFunction other then
+                "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to a function, and Nix compares functions only by identity, so these cannot be shown to agree (${filesAt k})"
+              else
+                "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to different values (${filesAt k})";
+          in
+          if length defs < 2 then merged else core.unionAgreeing refusal defs
+        );
+      };
     };
 
   # deferredModule (spec §1 item 7) — collect defs into ONE module (via imports), located; NEVER
@@ -1684,13 +1694,18 @@ let
           {
             refused = "`deferredModule' and a same-named partner that states no relation this type embeds in";
           };
-      mergeDefs = refusingOutside "deferredModule" admits (
-        loc: defs: {
-          imports = map (
-            d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
-          ) defs;
-        }
-      );
+      # the fold carries the record it guards, as `attrs`' does
+      mergeDefs = {
+        __functor = self: self.fold;
+        completed = deferredModule;
+        fold = refusingOutside "deferredModule" admits (
+          loc: defs: {
+            imports = map (
+              d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
+            ) defs;
+          }
+        );
+      };
     };
 
   # Membership predicate for union dispatch. gen-types leaf checkers expose `verify` (v → null|err);
@@ -2153,13 +2168,18 @@ let
     defineType {
       name = "optionType";
       inherit admits;
-      mergeDefs = refusingOutside "optionType" admits (
-        loc: defs:
-        # a type's merge is handed its definitions last module first; the fold reads them authored
-        mergeTypeDefs "the option `${showOption loc}'" (
-          prelude.genList (i: elemAt defs (length defs - 1 - i)) (length defs)
-        )
-      );
+      # the fold carries the record it guards, as `attrs`' does
+      mergeDefs = {
+        __functor = self: self.fold;
+        completed = optionType;
+        fold = refusingOutside "optionType" admits (
+          loc: defs:
+          # a type's merge is handed its definitions last module first; the fold reads them authored
+          mergeTypeDefs "the option `${showOption loc}'" (
+            prelude.genList (i: elemAt defs (length defs - 1 - i)) (length defs)
+          )
+        );
+      };
     };
 in
 {
