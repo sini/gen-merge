@@ -772,10 +772,18 @@ let
     in
     if bad == [ ] then
       fold loc defs
-    # a record stating `verify` names its own reason for the first rejected definition, where it states one
-    # (read on the refusal path only, so a fold that holds pays nothing)
-    else if t ? verify && t.verify (head bad).value != null then
-      throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${t.verify (head bad).value}"
+    # a met record names its gen join's reason for the first rejected definition, where the join states one
+    # and its check is still its verify's witness; any other record's `verify` is read only past its check,
+    # so a value the check rejected never reaches it (read on the refusal path only, so a fold that holds
+    # pays nothing)
+    else if
+      t ? __meetJoin
+      && t.__meetJoin ? verify
+      && t.__meetJoin ? _checkWitness
+      && t.__meetJoin.check == t.__meetJoin._checkWitness
+      && t.__meetJoin.verify (head bad).value != null
+    then
+      throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${t.__meetJoin.verify (head bad).value}"
     else
       throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe t}', in ${
         concatStringsSep ", " (map (d: "`${d.file}'") bad)
