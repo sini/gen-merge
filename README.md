@@ -2343,8 +2343,12 @@ are the same when their `check` and `merge` are the same closures, as a stock co
 two separate constructions of one shape differ; so two trees, a tree and a type folding by another
 `merge`, and a tree stated with its `check` rewritten against the tree offered are each refused. Every one of these messages names the door (`mkOptionType`, or `evalModuleTree` with the
 option), the type, what declared the element, and the ways out, the opt-out above among them.
-**The prices, stated:** a stock container whose `merge` was overridden (`attrsOf t // { merge = …; }`)
-cannot be told from the stock one and is re-homed silently, losing the override; and a foreign type
+A stock container whose `//` override of `merge` nixpkgs' own mount keeps (it states no module set, or
+its `substSubModules` rebuild forwards the override) is folded by that `merge`: it threads, and an
+`either`/`oneOf` is refused by name. An override nixpkgs' mount erases is erased here too. **Open
+defect:** an override spelled in `merge.v2`, or on a nixpkgs whose constructors mark no `check`
+coherent (25.05), cannot be told from the stock record and is re-homed silently, losing the override.
+**The price, stated:** a foreign type
 that forwards to a gen nesting type it does NOT declare evaluates that tree standalone through the
 exported `merge`. A stock `either`/`oneOf`/`nullOr` re-homed over the gen module tree carries an
 `addCheck` on that container: the tree's `check` is its module-value domain, so the stock check reads
