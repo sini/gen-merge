@@ -2214,11 +2214,28 @@ in
       let
         c = interface.carriedCopy t;
       in
-      if c != null then c else interface.rebuildClosed.door (defineType (interface.keepStamp t))
+      if c != null then
+        c
+      else
+        interface.rebuildClosed.door (
+          defineType (
+            interface.keepStamp (
+              if
+                (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+                && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
+              then
+                interface.rebuildClosed.own t t
+              else
+                t
+            )
+          )
+        )
     # a gen record whose check a caller rewrote since its completion (its check departs from its witness, and from its
     # completion's; `rewritesCheck` restated inline, so a record stating no rewrite pays attribute tests and no call) is
-    # closed over that check before it is completed (`interface.rebuildClosed.own`, den-hoag-1b55t; the `verify` arm
-    # above answers first, so a checked `// { verify }` copy is not closed here, residue den-hoag-jyisy)
+    # closed over that check before it is completed (`interface.rebuildClosed.own`, den-hoag-1b55t). The `verify` arm
+    # above answers first and closes a checked `// { verify }` copy the same way at its re-completion exit, and
+    # `carriedCopy` closes the one it returns as itself (den-hoag-jyisy). Still residue there: a caller's check on a
+    # gen verify copy declared once in nixpkgs' engine drops the copy's own `verify` (den-hoag-fzbap)
     else if
       (t ? _checkWitness && t ? check && t.check != t._checkWitness)
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
@@ -2263,7 +2280,20 @@ in
       if c != null then
         c
       else
-        interface.rebuildClosed.imported t (interface.rebuildClosed.door (mkOptionType t))
+        interface.rebuildClosed.imported t (
+          interface.rebuildClosed.door (
+            mkOptionType (
+              if
+                t ? typeMergeRel
+                && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+                && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
+              then
+                interface.rebuildClosed.own t t
+              else
+                t
+            )
+          )
+        )
     # a gen record whose check a caller rewrote since its completion is closed over it first, as `defineType` closes one
     else if
       t ? typeMergeRel

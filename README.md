@@ -1291,9 +1291,12 @@ Two rules that look like details and are not:
   them, and a value the new `admits` drops is refused by name in gen's evaluation and in nixpkgs',
   while a value it keeps is served as the plain container serves it. A copy removing `admits` states
   no domain and is completed as it is.
-  Two such records still drop the caller's check under nixpkgs' evaluation: a `// { verify }` copy the
-  caller checked, and `types.defineType` over a gen `nullOr` of a keyed nixpkgs submodule the caller
-  checked, declared twice. **The limit:** a raw outer `K // { verify }` mounted in nixpkgs'
+  A `// { verify }` copy the caller checked is closed the same way, whether the door completes it again
+  or returns it as itself, and a checked record nixpkgs' join carries at a root states its check on
+  the `merge.v2` `headError` nixpkgs reads, so `types.defineType` over a checked gen `nullOr` of a
+  keyed nixpkgs submodule keeps its check declared twice. One such record can still drop a check under
+  nixpkgs' evaluation: a `// { verify }` copy the caller checked, declared once, keeps the caller's
+  check and can drop the copy's own `verify`. **The limit:** a raw outer `K // { verify }` mounted in nixpkgs'
   `lib.evalModules` without a door is nixpkgs' drop, not gen's: nixpkgs never reads the field, and no
   gen code receives the overlay. The one place that leaves a gen record inside nixpkgs weaker than
   nixpkgs' own twin is `np.either` declared once, where the `addCheck` twin refuses rejected values

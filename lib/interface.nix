@@ -2628,12 +2628,13 @@ let
             isV2MergeCoherent = true;
           };
         }
-        # an element's v2 merge judges its own definitions inside a foreign container's fold, which reads
-        # no `check`, so the owed checks ride on its `headError` too, as nixpkgs' `addCheck` places its
-        # own; a root's `check` is what gen's checked fold reads (`importedFold`), and it pays no merge
-        # wrapper
+        # a v2 record's `merge` judges its own definitions where nixpkgs reads it, inside a foreign container's fold
+        # and at a root alike (`mergeDefinitions` reads only `merge.v2`'s `headError`, never `check`), so the owed checks
+        # ride on its `headError` too, as nixpkgs' `addCheck` places its own: the `check` above is marked coherent, and
+        # the mark is true only where the `headError` judges it (den-hoag-jyisy). An owed `verify` is the element's to
+        # read on its merged value; a root states it for gen's fold (`rebuildClosed.verify`)
         // (
-          if !top && isV2 r then
+          if isV2 r then
             (
               let
                 m = {
@@ -2656,7 +2657,7 @@ let
               in
               # an owed `verify` is read once, on the merged value, in the same `headError`
               {
-                merge = if o ? verify then rebuildClosed.verifiedMerge o.verify m else m;
+                merge = if !top && o ? verify then rebuildClosed.verifiedMerge o.verify m else m;
               }
             )
           else if !top && o ? verify && r ? merge then
@@ -3107,17 +3108,25 @@ let
     # in place of a gen record `t` whose check departs from its witness and from its completion's
     # (`departsOnlyOutside { check = null; }`: a copy departing elsewhere, a `// { description }`, is not closed again).
     # The closure runs BEFORE the completion, so the stamp the completion ties is tied over the closed record, and none
-    # is forged (ADR-0034). NOT CLOSED, the residue den-hoag-jyisy owns: a caller's check on a `// { verify }` copy of a
-    # gen record, which the doors' `verify` arm answers before this test is asked; and `defineType` over a gen `nullOr`
-    # of a KEYED nixpkgs submodule a caller checked, declared twice, whose stage is not located.
+    # is forged (ADR-0034). The doors' `verify` arm, which answers before that test, hands a checked `// { verify }`
+    # copy it re-completes `own t t` too, and `own` re-carries a gen record's `verify` its rebuilds carried
+    # (den-hoag-jyisy); a checked gen `nullOr` of a keyed nixpkgs submodule declared twice keeps its check through
+    # `carryBy`'s root carriage. Still residue: a caller's check on a gen verify copy declared once in nixpkgs' engine
+    # drops the copy's own `verify` (den-hoag-fzbap); and `deriveType` over a checked verify copy of a gen `nullOr` of a
+    # keyed nixpkgs submodule, in gen's engine, drops the laid check declared twice (den-hoag-grkfk).
     own =
       t: r:
       let
-        # `t`'s check alone, a coherent check: an ad-hoc override's is carried as nixpkgs' `addCheck` carries one,
-        # judging each definition, never refused for its spelling
-        o.check = {
-          __functor = _: t.check;
-          isV2MergeCoherent = true;
+        # `t`'s check, a coherent check: an ad-hoc override's is carried as nixpkgs' `addCheck` carries one, judging each
+        # definition, never refused for its spelling; and a gen record's `verify`, which the completion's rebuilds this
+        # closure replaces carried, so the closure carries it again, read on the merged value (`carryBy`, den-hoag-jyisy);
+        # a foreign record's `verify` is the door's to place (`door`)
+        o = {
+          check = {
+            __functor = _: t.check;
+            isV2MergeCoherent = true;
+          };
+          ${if t ? verify && t ? typeMergeRel then "verify" else null} = t.verify;
         };
         b =
           let
@@ -6530,7 +6539,16 @@ let
         # inside that merge or the `verify`'s reads is `false`, and a foreign union takes its next alternative
         base = x.merge.__verifiedMerge or x.merge;
         projection = rebuildClosed.verifiedMerge.projection own x.verify base;
+        # a copy whose check a caller rewrote since its completion, over a module set: the fixup's rebuild carries that
+        # check as the relation below carries it (den-hoag-jyisy)
         s =
+          if
+            isList (x.getSubModules or null) && rewritesCheck x && !(departsOnlyOutside { check = null; } x)
+          then
+            s0 // { inherit (rebuildClosed.own x s0) substSubModules; }
+          else
+            s0;
+        s0 =
           x
           // {
             # a record that carries a role publishes the one-definition projection for a FOREIGN reader; where its own
