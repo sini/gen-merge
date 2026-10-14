@@ -258,7 +258,7 @@ let
             else
               { refused = "`${nameOf t}' and `${nameOf other}'"; };
       in
-      t // { typeMergeRel = nullaryRel; };
+      t // { typeMergeRel = { exact = true; __functor = _: nullaryRel; }; };
 
   # The gen record alone, answering with itself. This is the substrate vocabulary with nothing of the
   # foreign protocol on it, and it is what the boundary is handed.
@@ -397,7 +397,7 @@ let
       exported = defineType (
         imported
         // {
-          typeMergeRel = imported.typeMergeRel or (sealedRel exported);
+          typeMergeRel = imported.typeMergeRel or { exact = true; __functor = _: sealedRel exported; };
           # the import door strips the check-witness pair as protocol names; a rewriting descriptor's
           # pair is carried past it, so the completion re-ties no witness it did not derive (den-hoag-59gnz C1)
           ${if interface.rewritesCheck descriptor then "check" else null} = descriptor.check;
@@ -646,7 +646,7 @@ let
                 else
                   gen;
             };
-            typeMergeRel = relation;
+            typeMergeRel = { exact = true; __functor = _: relation; };
           }
           // (
             let
@@ -1013,7 +1013,7 @@ let
                   + "together in `types.mkType'"
                 )
             );
-          typeMergeRel =
+          typeMergeRel = { exact = true; __functor = _: (
             other:
             if !(isAttrs other) || (keyOf other) != "submodule" then
               { refused = "`submodule' and `${nameOf other}'"; }
@@ -1089,7 +1089,7 @@ let
               # the union nixpkgs builds. Pinned by
               # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
               else
-                { merged = mkSubmodule partial ctor (args // partnerArgs) (partnerMods ++ mods); };
+                { merged = mkSubmodule partial ctor (args // partnerArgs) (partnerMods ++ mods); }); };
           substructure = {
             # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
             #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
@@ -1206,7 +1206,7 @@ let
                 + "together in `types.mkType'"
               )
           );
-        typeMergeRel = elementRel "listOf" listOf element;
+        typeMergeRel = { exact = true; __functor = _: (elementRel "listOf" listOf element); };
         # Descend to the element type under the positional placeholder segment. A container's module
         # set IS its element's, and substituting one rebuilds the container over the substituted
         # element.
@@ -1427,7 +1427,7 @@ let
         # constructor's payload, so it is published under that constructor and joins a same-named
         # foreign partner in that partner's relation (`interface.embeddings`, through `elementRel`). The
         # rebuild keeps THIS container's name, so the distinction survives substitution.
-        typeMergeRel = rel tyName (attrsOfWith tyName) element;
+        typeMergeRel = { exact = true; __functor = _: (rel tyName (attrsOfWith tyName) element); };
         # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
         # registry exposes its INSTANCE option surface to an introspecting consumer.
         substructure = {
@@ -1567,7 +1567,7 @@ let
       # foldless same-name case into one `else` reports "a partner named `attrs'" about a partner named
       # `string', and reaches the refusal shape this file's discipline forbids — the same name on both
       # sides of the pair, which tells the reader nothing they did not already have.
-      typeMergeRel =
+      typeMergeRel = { exact = true; __functor = _: (
         other:
         if !(isAttrs other) || (keyOf other) != "attrs" then
           { refused = "`attrs' and `${nameOf other}'"; }
@@ -1577,7 +1577,7 @@ let
           {
             merged = attrs;
             meets = true;
-          };
+          }); };
       # THE FOLD IS TOTAL OVER ITS INPUT IN BOTH DIRECTIONS, and each refusal is a catchable throw
       # naming the option, this type, and the files that wrote the definitions at fault.
       #
@@ -1672,7 +1672,7 @@ let
       # Every same-named partner, gen's own included, is joined in its stated relation over this type's
       # embedding (`interface.joinCarriedInStatedRelation`), so a foreign partner's static modules
       # survive the join rather than being dropped by a nullary answer of `self`.
-      typeMergeRel =
+      typeMergeRel = { exact = true; __functor = _: (
         other:
         let
           sameName = isAttrs other && (keyOf other) == "deferredModule";
@@ -1695,7 +1695,7 @@ let
         else
           {
             refused = "`deferredModule' and a same-named partner that states no relation this type embeds in";
-          };
+          }); };
       mergeDefs = {
         __functor = _: fold;
         completed = deferredModule;
@@ -1800,7 +1800,7 @@ let
                 + "together in `types.mkType'"
               )
           );
-        typeMergeRel = elementRel "nullOr" nullOr element;
+        typeMergeRel = { exact = true; __functor = _: (elementRel "nullOr" nullOr element); };
         # Pass straight through to the element, adding NO path segment. A nullable introduces no path
         # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
         # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`. A nullable
@@ -1982,7 +1982,7 @@ let
         # `typeMerge` and not its functor): the partner rebuilt from its published functor decides
         # (`interface.joinInRebuiltPartner`), as `elementRel`'s carve-out does for a container. The
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
-        typeMergeRel =
+        typeMergeRel = { exact = true; __functor = _: (
           other:
           if !(isAttrs other) || (keyOf other) != "either" then
             { refused = "`either' and `${nameOf other}'"; }
@@ -2001,7 +2001,7 @@ let
                 meets = true;
               }
             else
-              eitherMemberwise a b other;
+              eitherMemberwise a b other); };
         substructure = {
           # A union's members introduce no path level, so it declares nothing of its own — stated
           # rather than inherited, because the pair lives in `carries` and this does not read it.
