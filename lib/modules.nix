@@ -5820,7 +5820,17 @@ let
               inherit specialArgs prefix;
               modules = modList;
             }
-            // (if class == null then { } else { inherit class; })
+            // (
+              if class == null then
+                { }
+              else
+                {
+                  specialArgs = {
+                    _class = class;
+                  }
+                  // specialArgs;
+                }
+            )
           );
         in
         if s ? flat then
@@ -6561,17 +6571,7 @@ let
                         prefix = if e ? prefix then prefix else prefix0;
                         inherit check coreShortCircuit;
                       }
-                      // (
-                        if class == null then
-                          { }
-                        else
-                          {
-                            specialArgs = {
-                              _class = class;
-                            }
-                            // specialArgs;
-                          }
-                      )
+                      // (if class == null then { } else { inherit class; })
                     );
                 specialArgs0 = specialArgs;
                 prefix0 = prefix;
