@@ -5552,6 +5552,16 @@ let
       # The arguments every stratum applies modules to: nixpkgs' `_class` beside the caller's
       # specialArgs, which outrank it there too (`{ _class = class; … } // specialArgs`).
       argsIn = { _class = class; } // specialArgs;
+      # nixpkgs' `checkModule`, over the collection: a stated `_class` other than the requested one.
+      classHeld = all (
+        e:
+        let
+          c = e.content._class or null;
+        in
+        c == null
+        || c == class
+        || throw "gen-merge: The module `${e._file}` (class: ${builtins.toJSON c}) cannot be imported into a module evaluation that expects class ${builtins.toJSON class}."
+      );
       # nixpkgs' `extendModules`: the same request re-evaluated with modules appended, specialArgs
       # merged and the prefix replaced when stated. A re-evaluation, as nixpkgs' is; warm fields are
       # not carried.
@@ -5952,10 +5962,14 @@ let
           # reads it, and the minted `modules` family pairs it with the identity-keyed closure after
           # `alignedGraph` has checked every node.
           flat =
-            if declarationGuard ? flat then
-              declarationGuard.flat
-            else
-              builtins.seq declarationGuard (moduleClosure callM modList);
+            let
+              f =
+                if declarationGuard ? flat then
+                  declarationGuard.flat
+                else
+                  builtins.seq declarationGuard (moduleClosure callM modList);
+            in
+            if class == null then f else builtins.seq (classHeld f) f;
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
           # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
@@ -7135,17 +7149,6 @@ let
           # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the closure the family `nta.modules` mints
           # from, one node per entry, and only when the family is read (`knotModules`).
           _flat = flat;
-          _classHeld =
-            class == null
-            || all (
-              e:
-              let
-                c = e.content._class or null;
-              in
-              c == null
-              || c == class
-              || throw "gen-merge: The module `${e._file}` (class: ${builtins.toJSON c}) cannot be imported into a module evaluation that expects class ${builtins.toJSON class}."
-            ) flat;
           _modList = modList;
           _callM = callM;
           _nested =
@@ -7192,19 +7195,19 @@ let
         # reach it, and every consumer of a warm re-compose goes through this attribute.
         #
         # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
-        config = builtins.seq result._classHeld (builtins.seq result.identityHeld result.config);
+        config = builtins.seq result._flat (builtins.seq result.identityHeld result.config);
         _type = "configuration";
         inherit class extendModules;
         # nixpkgs' `graph`: the import TREE (not the closure), one node per occurrence. A module set
         # stating `disabledModules` is refused by the declaration guard first, so `disabled` is false.
         graph = builtins.seq declarationGuard (
-          builtins.seq result._classHeld (moduleGraph "<unknown-file>" "" (moduleTop result._callM modList).roots)
+          builtins.seq result._flat (moduleGraph "<unknown-file>" "" (moduleTop result._callM modList).roots)
         );
         options =
           let
             entries = prelude.imap0 declEntry result._flat;
           in
-          builtins.seq result._classHeld moduleOwn.serve prefix result.optionDefs.moduleOwn (
+          builtins.seq result._flat moduleOwn.serve prefix result.optionDefs.moduleOwn (
             serveOptions (declaringSitesAt (length prefix) entries) [ ] prefix result.provenance
               result.optionDefs.defs
               (builtins.seq result.identityHeld result.optionDefs.values)
