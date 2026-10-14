@@ -575,10 +575,10 @@ in
         };
       };
     };
-    # ★ THE STATED PRICE, asserted as the value it produces (owner, 2026-09-25, den-hoag-n6dh7): a
-    # stock container whose `merge` was overridden is re-homed silently and loses the override. A
-    # build that detected overrides would red this cell and send the price back to the owner. Over
-    # no nesting element nothing is re-homed, so there the override stands (*defaulted, reversible*).
+    # A `merge`-only override over a module set is erased by nixpkgs' own mount (`fixupOptionType`
+    # rebuilds the root through the stock `substSubModules`), so the re-homed container serves the
+    # stock fold nixpkgs serves. Over no nesting element nothing is re-homed, so there the override
+    # stands (*defaulted, reversible*).
     test-a-re-homed-container-loses-its-override = {
       expr = {
         np-attrs-override = opt (np.attrsOf sub // { merge = _: _: "overridden"; }) { a.x = 1; };
@@ -589,6 +589,63 @@ in
         flat-override = "overridden";
       };
     };
+    # An override nixpkgs' mount keeps (its rebuild forwards it) is the record's own fold, not gen's
+    # container: it threads and serves what nixpkgs serves (den-hoag-e12ro), a swapped key, a reversed
+    # list, and a definition conditional on the key the override moves; an `either` cannot thread
+    # and is refused by name.
+    test-an-override-nixpkgs-mount-keeps-is-the-record-s-own-fold =
+      let
+        kept =
+          h: a:
+          a
+          // {
+            merge = loc: defs: h (a.merge loc defs);
+            substSubModules = m: kept h (a.substSubModules m);
+          };
+        swap =
+          r:
+          r
+          // {
+            foo = r.bar;
+            bar = r.foo;
+          };
+        two =
+          type: d1: d2:
+          cfg [
+            { options.h = gm.mkOption { inherit type; }; }
+            { config.h = d1; }
+            (c: { config.h = d2 c; })
+          ];
+      in
+      {
+        expr = {
+          swapped =
+            (two (kept swap (np.lazyAttrsOf (t.attrsOf sub))) { foo.k.x = 1; } (_: {
+              bar.k.x = 2;
+            })).h.foo.k.x;
+          reversed =
+            map (e: e.k.x)
+              (two (kept nixpkgsLib.reverseList (np.listOf (t.attrsOf sub))) [ { k.x = 1; } ] (_: [
+                { k.x = 2; }
+              ])).h;
+          selfConditional =
+            (two (kept swap (np.lazyAttrsOf (t.attrsOf sub))) { foo.k.x = 1; } (
+              { config, ... }: { bar = gm.mkIf (config.h.bar.k.x > 0) { k.x = 2; }; }
+            )).h.bar.k.x;
+          either = refused (
+            opt (np.either (t.attrsOf sub) np.str // { merge = _: _: "overridden"; }) { a.x = 1; }
+          );
+        };
+        expected = {
+          swapped = 2;
+          reversed = [
+            1
+            2
+          ];
+          selfConditional = 1;
+          either = true;
+        };
+      };
     test-a-record-crossing-whole-is-re-homed-where-it-may-nest = {
       expr =
         let
