@@ -5,8 +5,10 @@
 # so they stated no `verify`, and nixpkgs' evaluation served what the `verify` rejects. Each cell is one composition
 # in nixpkgs' `lib.evalModules`; every refusal stands beside a definition the `verify` admits, and every row is also read
 # through the published `defineType`, which closes the same record under its rebuilds with its `verify` carried.
-# Red at gen-merge main 81cbdd9: `redeclared`, `fixup`. `union` is green at main and the control that the carriage is
-# stated where a union reads it (red where the `verify` is carried on the merge alone: J7's arm, den-hoag-jyisy spec v0).
+# Red at gen-merge main 81cbdd9: `redeclared`, `fixup`, `gen-record`. `union` is green at main and the control that the
+# carriage is stated where a union reads it (red where the `verify` is carried on the merge alone: J7's arm,
+# den-hoag-jyisy spec v0). `gen-record` is also red where the carriage is stated for foreign records alone and a gen
+# record keeps its `verify` on the merge (PF, den-hoag-xj4tw spec gate v0): one carriage states every record's `verify`.
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -14,16 +16,21 @@ let
   nl = nixpkgsLib;
   np = nl.types;
   inherit (builtins) isAttrs;
-  run =
-    ts: v:
+  runIn =
+    engine: ts: v:
     let
+      mods = map (t: { options.x = (if engine == "gen" then gm else nl).mkOption { type = t; }; }) ts ++ [
+        { x = v; }
+      ];
       c =
-        (nl.evalModules {
-          modules = map (t: { options.x = nl.mkOption { type = t; }; }) ts ++ [ { x = v; } ];
-        }).config;
+        if engine == "gen" then
+          (gm.evalModuleTree { } mods).config
+        else
+          (nl.evalModules { modules = mods; }).config;
       o = builtins.tryEval (builtins.deepSeq c.x c.x);
     in
     if o.success then o.value else "REFUSED";
+  run = runIn "np";
   # a nixpkgs submodule with a `key`, so a redeclaration names one module and evaluates
   npSub = np.submodule {
     key = "foreign-verify-mk-option-type";
@@ -128,6 +135,61 @@ in
           int = 20;
           sub = {
             a = 2;
+          };
+        };
+      in
+      {
+        expr = both f;
+        expected = {
+          mk = x;
+          def = x;
+        };
+      };
+    # a GEN record's checked `verify` copy (`np.addCheck (gt.either gSub gt.str) pSub // { verify }`), declared after
+    # its uncopied base and defined by a submodule function, which the check admits and only the merged value shows:
+    # the rebuild the join asks for states the `verify` as a gen record's rebuild states it below the root
+    test-a-gen-verify-copy-redeclared-keeps-its-verify-on-the-merged-value =
+      let
+        gSub = gt.submodule {
+          key = "foreign-verify-mk-option-type-gen";
+          options.a = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
+          options.b = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
+        };
+        pSub = v: !(isAttrs v) || !(v ? a) || !(builtins.isInt v.a) || v.a != 2;
+        base = gt.either gSub gt.str;
+        copy = np.addCheck base pSub // {
+          verify = v: if pSub v then null else "a = 2";
+        };
+        bad = { ... }: { a = 2; };
+        ok = { ... }: { a = 1; };
+        f = door: {
+          gen-root-bad = runIn "gen" [ base (door copy) ] bad;
+          gen-root-ok = runIn "gen" [ base (door copy) ] ok;
+          gen-elem-bad = runIn "gen" [ (gt.attrsOf base) (gt.attrsOf (door copy)) ] { k = bad; };
+          np-root-bad = run [ base (door copy) ] bad;
+          np-elem-bad = run [ (gt.attrsOf base) (gt.attrsOf (door copy)) ] { k = bad; };
+          np-elem-ok = run [ (gt.attrsOf base) (gt.attrsOf (door copy)) ] { k = ok; };
+        };
+        x = {
+          gen-root-bad = "REFUSED";
+          gen-root-ok = {
+            a = 1;
+            b = 0;
+          };
+          gen-elem-bad = "REFUSED";
+          np-root-bad = "REFUSED";
+          np-elem-bad = "REFUSED";
+          np-elem-ok = {
+            k = {
+              a = 1;
+              b = 0;
+            };
           };
         };
       in
