@@ -7260,7 +7260,7 @@ let
         # reach it, and every consumer of a warm re-compose goes through this attribute.
         #
         # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
-        config = builtins.seq result._flat (builtins.seq result.identityHeld result.config);
+        config = builtins.seq result.identityHeld result.config;
         _type = "configuration";
         inherit class;
         extendModules = result.moduleConfig._module.args.extendModules;
@@ -7291,7 +7291,7 @@ let
           let
             entries = prelude.imap0 declEntry result._flat;
           in
-          builtins.seq result._flat moduleOwn.serve prefix result.optionDefs.moduleOwn (
+          moduleOwn.serve prefix result.optionDefs.moduleOwn (
             serveOptions (declaringSitesAt (length prefix) entries) [ ] prefix result.provenance
               result.optionDefs.defs
               (builtins.seq result.identityHeld result.optionDefs.values)
