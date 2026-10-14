@@ -190,80 +190,80 @@ let
         #    (ADR-0039's serve half).
         # A declined embedding join is REFUSED, never `self`: the partner's own check would be dropped
         # unsaid (ADR-0025 item 1), so the table cannot widen the same-key fallback's reach.
-        nullaryRel =
-          other:
-          if isAttrs other && other ? typeMergeRel then
-            if (keyOf other) == name then
-              { merged = self; }
+        nullaryRel = {
+          exact = true;
+          __functor =
+            _: other:
+            if isAttrs other && other ? typeMergeRel then
+              if (keyOf other) == name then
+                { merged = self; }
+              else
+                { refused = "`${nameOf t}' and `${nameOf other}'"; }
             else
-              { refused = "`${nameOf t}' and `${nameOf other}'"; }
-          else
-            let
-              # the row this type's constructor stated, never one its name collides with
-              e = row;
-              embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
-              sameKey = isAttrs other && (keyOf other) == name;
-              carriedJoin = interface.joinCarriedInStatedRelation {
-                inherit name self;
-                embedding = e;
-                role = null;
-                carried = null;
-              } other;
-              leafJoin = interface.joinLeafInStatedRelation {
-                inherit name self;
-                embedding = e;
-              } other;
-              # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
-              meet = j: {
-                merged = j;
-                meets = true;
-              };
-              ownJoin = interface.joinInPartnerRelation self other;
-            in
-            # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
-            # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
-            # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
-            if embedKey && e ? members then
               let
-                unionJoin = interface.joinInRebuiltPartner {
-                  role = "alternatives";
-                  inherit self;
+                # the row this type's constructor stated, never one its name collides with
+                e = row;
+                embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
+                sameKey = isAttrs other && (keyOf other) == name;
+                carriedJoin = interface.joinCarriedInStatedRelation {
+                  inherit name self;
+                  embedding = e;
+                  role = null;
+                  carried = null;
                 } other;
+                leafJoin = interface.joinLeafInStatedRelation {
+                  inherit name self;
+                  embedding = e;
+                } other;
+                # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
+                meet = j: {
+                  merged = j;
+                  meets = true;
+                };
+                ownJoin = interface.joinInPartnerRelation self other;
               in
-              if unionJoin != null then
-                meet unionJoin
-              else
+              # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
+              # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
+              # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
+              if embedKey && e ? members then
+                let
+                  unionJoin = interface.joinInRebuiltPartner {
+                    role = "alternatives";
+                    inherit self;
+                  } other;
+                in
+                if unionJoin != null then
+                  meet unionJoin
+                else
+                  {
+                    refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
+                  }
+              else if embedKey && e ? params then
+                if carriedJoin != null then
+                  meet carriedJoin
+                else
+                  { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
+              else if embedKey && !sameKey then
+                if leafJoin != null then
+                  meet leafJoin
+                else
+                  { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+              else if sameKey && interface.statesPayload other && ownJoin != null then
+                meet ownJoin // { twinRefuses = true; }
+              else if sameKey && interface.statesPayload other then
                 {
-                  refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
+                  refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
+                  vetoes = false;
                 }
-            else if embedKey && e ? params then
-              if carriedJoin != null then
-                meet carriedJoin
+              else if sameKey then
+                meet (if leafJoin == null then self else leafJoin)
               else
-                { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-            else if embedKey && !sameKey then
-              if leafJoin != null then
-                meet leafJoin
-              else
-                { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
-            else if sameKey && interface.statesPayload other && ownJoin != null then
-              meet ownJoin // { twinRefuses = true; }
-            else if sameKey && interface.statesPayload other then
-              {
-                refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
-                vetoes = false;
-              }
-            else if sameKey then
-              meet (if leafJoin == null then self else leafJoin)
-            else
-              { refused = "`${nameOf t}' and `${nameOf other}'"; };
+                { refused = "`${nameOf t}' and `${nameOf other}'"; };
+        };
       in
       t
       // {
-        typeMergeRel = {
-          exact = true;
-          __functor = _: nullaryRel;
-        };
+        typeMergeRel = nullaryRel;
       };
 
   # The gen record alone, answering with itself. This is the substrate vocabulary with nothing of the
@@ -566,30 +566,33 @@ let
           interface.typeDefect base;
       named = "`deriveType' over `${nameOf base}'";
       lift = b: deriveTypeCore b spec;
-      relation =
-        other:
-        let
-          theirs = other.__derivation;
-          partner =
-            if isAttrs other && other ? __derivation then
-              "the derivation `${theirs.id}' of `${nameOf theirs.base}'"
-            else
-              "`${nameOf other}'";
-          pair = "the derivation `${id}' of `${nameOf base}' and ${partner}";
-        in
-        if !(isAttrs other) || keyOf other != "derivation:${id}" then
-          { refused = pair; }
-        else if theirs.key != key then
-          { refused = "${pair}, whose keys differ"; }
-        else
+      relation = {
+        exact = true;
+        __functor =
+          _: other:
           let
-            joined = core.mergeTypesWithin base theirs.base;
-            cause = core.mergeTypesReasonWithin base theirs.base;
+            theirs = other.__derivation;
+            partner =
+              if isAttrs other && other ? __derivation then
+                "the derivation `${theirs.id}' of `${nameOf theirs.base}'"
+              else
+                "`${nameOf other}'";
+            pair = "the derivation `${id}' of `${nameOf base}' and ${partner}";
           in
-          if joined == null then
-            { refused = "${pair}, whose bases do not merge${if cause == null then "" else ": ${cause}"}"; }
+          if !(isAttrs other) || keyOf other != "derivation:${id}" then
+            { refused = pair; }
+          else if theirs.key != key then
+            { refused = "${pair}, whose keys differ"; }
           else
-            { merged = lift joined; };
+            let
+              joined = core.mergeTypesWithin base theirs.base;
+              cause = core.mergeTypesReasonWithin base theirs.base;
+            in
+            if joined == null then
+              { refused = "${pair}, whose bases do not merge${if cause == null then "" else ": ${cause}"}"; }
+            else
+              { merged = lift joined; };
+      };
       sealed = {
         unmintable = {
           ctor = id;
@@ -656,10 +659,7 @@ let
                 else
                   gen;
             };
-            typeMergeRel = {
-              exact = true;
-              __functor = _: relation;
-            };
+            typeMergeRel = relation;
           }
           // (
             let
