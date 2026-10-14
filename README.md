@@ -2883,10 +2883,10 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   - an author type imported through `mkOptionType` and declared BEFORE its partner, whose stated
     relation answers a renaming join: gen's engine asks the earlier relation too and meets its answer,
     so it serves what every declaration accepts, where nixpkgs asks only the later operand and refuses
-    the pair (ADR-0039's bounded serving-beyond);
+    the pair. gen serves beyond nixpkgs here only within the meet's bounds;
   - an author relation whose join renames neither operand and drops the author's check (an author type
     named `int` answering plain `int`, completed through `mkOptionType`) is read as an exact gen join, so
-    the dropped value is served (den-hoag-hnd82).
+    the dropped value is served. A lossy author relation trusted as exact is a known open case.
 
 - **A redeclared option rejects what any declaration's check rejects, even where nixpkgs serves it**
   ("A redeclared option accepts a definition only if every declared check does"). Measured members,
