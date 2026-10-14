@@ -5772,6 +5772,34 @@ let
   # `nullaryRel`).
   statesPayload = t: ((t.functor or { }).payload or null) != null;
 
+  # ── THE MEET'S IDENTITY (den-hoag-hnd82 Q1, owner-ruled 2026-10-14: mint the meet) ────────────
+  # A met record is a gen-merge CONSTRUCTION, `gen-merge.meet`, over its join and the operands it owes,
+  # so its identity is structural through the one mint (ADR-0034), as a composite's is (`lib/types.nix`
+  # `identified`): one tag per member, a member sealed where its own identity is, `__sealed` beside the
+  # mark. The inert remainder of what the record does enters the arguments: which operands are owed
+  # relativised (`__stockCheck`, read by `meetOf`), and `extra` (`holds`, a foreign `verify`). Each of
+  # the three producers (`meetOf`'s record, its foreign-`verify` record, `metWith`'s held record) lays
+  # the fields into the record it already builds, each a selection, rather than copying that record once
+  # more (ADR-0032: one `//` per met record is its measured marginal). The record is completed there
+  # (`retied`'s stamp), and it declares its completion and no check witness: its `_checkWitness` is the
+  # join's, which is how every later step reads it as owed (`metWith`), so the pair states the meet's
+  # debt and not what its mark was minted over.
+  metMints = types ? mkIdentity;
+  metWitness = {
+    completion = "__typeSelf";
+  };
+  metIdentity =
+    j: os: extra: self:
+    types.mkIdentity "gen-merge.meet" ([ j ] ++ os) (
+      tags:
+      {
+        join = head tags;
+        owed = builtins.tail tags;
+        relativised = map (o: o ? __stockCheck) os;
+      }
+      // extra
+    ) [ ] (self.name or "meet");
+
   # ── THE MEET (den-hoag-l1j4q, owner-ruled 2026-10-06) ──────────────────────────────────────────
   # A redeclared option accepts a definition only where EVERY declared check accepts it. `meetOf j os`
   # is the join `j` (the carrier: its fold, name, functor) restricted by each check in `os`, published as
@@ -5890,8 +5918,16 @@ let
               r = if asked.success then asked.value else null;
             in
             if r == null then null else metWith false r [ met ];
+          ${if metMints then "__mint" else null} = ids.__mint;
+          ${if metMints then "__payload" else null} = ids.__payload;
+          ${if metMints then "__sealed" else null} = ids.__sealed;
+          ${if metMints then "__okAt" else null} = ids.__okAt;
+          ${if metMints then "__typeSelf" else null} = _: met;
+          ${if metMints then "__witness" else null} = metWitness;
+          ${if metMints then "__stampReads" else null} = stampReads;
         }
         // (if fold == null then { } else { mergeDefs = fold; });
+      ids = metIdentity j os { } met;
       # a foreign operand's `verify`, read once on the met record's merged value: the first rejection
       vf =
         v:
@@ -5902,29 +5938,39 @@ let
     if !(builtins.any (o: o ? verify && !(o ? typeMergeRel)) os) then
       met
     else
-      met
-      // {
-        verify = vf;
-        merge =
-          if met.merge ? v2 then
-            {
-              __functor =
-                self: loc: defs:
-                (self.v2 { inherit loc defs; }).value;
-              v2 =
-                args:
-                let
-                  m = met.merge.v2 args;
-                in
-                m // { value = guardedVerify args.loc (vf m.value) m.value; };
-            }
-          else
-            loc: defs:
-            let
-              m = met.merge loc defs;
-            in
-            guardedVerify loc (vf m) m;
-      };
+      let
+        verified = met // {
+          verify = vf;
+          merge =
+            if met.merge ? v2 then
+              {
+                __functor =
+                  self: loc: defs:
+                  (self.v2 { inherit loc defs; }).value;
+                v2 =
+                  args:
+                  let
+                    m = met.merge.v2 args;
+                  in
+                  m // { value = guardedVerify args.loc (vf m.value) m.value; };
+              }
+            else
+              loc: defs:
+              let
+                m = met.merge loc defs;
+              in
+              guardedVerify loc (vf m) m;
+          ${if metMints then "__mint" else null} = vids.__mint;
+          ${if metMints then "__payload" else null} = vids.__payload;
+          ${if metMints then "__sealed" else null} = vids.__sealed;
+          ${if metMints then "__okAt" else null} = vids.__okAt;
+          ${if metMints then "__typeSelf" else null} = _: verified;
+          ${if metMints then "__witness" else null} = metWitness;
+          ${if metMints then "__stampReads" else null} = stampReads;
+        };
+        vids = metIdentity j os { verify = true; } verified;
+      in
+      verified;
   # The answer of every type merge: `m` met with each operand whose check it does not carry.
   #  - A gen relation's answer over a gen operand stating its own check carries it (gen x gen relations
   #    are exact), so only a foreign operand, a witnessed rewrite (a wrapper's check, or a met record), or
@@ -6107,6 +6153,13 @@ let
             met
             // {
               holds = true;
+              ${if metMints then "__mint" else null} = hids.__mint;
+              ${if metMints then "__payload" else null} = hids.__payload;
+              ${if metMints then "__sealed" else null} = hids.__sealed;
+              ${if metMints then "__okAt" else null} = hids.__okAt;
+              ${if metMints then "__typeSelf" else null} = _: h;
+              ${if metMints then "__witness" else null} = metWitness;
+              ${if metMints then "__stampReads" else null} = stampReads;
               typeMerge =
                 f:
                 let
@@ -6143,6 +6196,7 @@ let
                   };
                 }
             );
+          hids = metIdentity m once { holds = true; } h;
         in
         if kept == [ ] then met else h
       else
