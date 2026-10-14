@@ -1891,7 +1891,12 @@ let
     else if
       isAttrs m && m ? _type && !(m._type == "module" || m._type == "if" || m._type == "override" || m._type == "merge")
     then
-      throw "gen-merge: Expected a module, but found a value of type ${builtins.toJSON m._type}, while trying to load a module into `${e._file}'. A module is an attribute set, a function returning one, or a path to either."
+      throw "gen-merge: Expected a module, but found a value of type ${builtins.toJSON m._type}, while trying to load a module into `${e._file}'. A module is an attribute set, a function returning one, or a path to either.${
+        if m._type == "configuration" then
+          " If you really mean to import this configuration, instead please only import the modules that make up the configuration."
+        else
+          ""
+      }"
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
     else if (m ? __keyEq || (e.m0.__keyEq or null) != null) && !(m ? key) then
@@ -7188,6 +7193,7 @@ let
         #
         # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
         config = builtins.seq result._classHeld (builtins.seq result.identityHeld result.config);
+        _type = "configuration";
         inherit class extendModules;
         # nixpkgs' `graph`: the import TREE (not the closure), one node per occurrence. A module set
         # stating `disabledModules` is refused by the declaration guard first, so `disabled` is false.
