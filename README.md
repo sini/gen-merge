@@ -859,6 +859,9 @@ translation*.
 ### `defineType` — the crossing site, and there is one of it
 
 `lib/types.nix` builds every type through `defineType`, which is `exportType` over the gen record.
+A descriptor handed to the published `types.defineType` that states the foreign `check` beside gen's
+words has that `check` read where every foreign word is read, in the import half, and conjoined with
+what it states in gen's words, so the crossing drops no predicate it was handed.
 The same value therefore carries both vocabularies, and that is **forced rather than convenient**:
 the published `types` namespace is the drop-in a foreign module system mounts, and the type a
 consumer writes there is handed to this library's own fold as readily as to a foreign one. What the
@@ -1381,10 +1384,11 @@ survivor keeps its source position. An option `default` is a definition (at
 
 `check` is nixpkgs' definition-level predicate, and gen-merge never states it directly: a leaf brings
 a `verify` (`v -> null | err`, gen-types' contract) and a structural type brings an `admits`
-(`v -> bool`, its own domain), and the boundary derives `check` from whichever it finds, in that
-order. A leaf's own `check` is CURRIED and must never be applied as `v -> bool`, which is why
-`verify` is preferred rather than merely tried first. A type stating neither gets `_: true`, the
-nixpkgs `anything` posture.
+(`v -> bool`, its own domain), and the boundary derives `check` from what it finds: their conjunction
+where a record states both, and otherwise whichever it states. A leaf's own `check` is CURRIED and must
+never be applied as `v -> bool`, which is why `verify` is read in place of it; that reason never bore on
+an `admits` stated beside the `verify`, so a record's per-definition domain is every predicate it
+states. A type stating neither gets `_: true`, the nixpkgs `anything` posture.
 
 That default is correct for a type whose merge really does accept any value. **`deferredModule`'s does
 not.** Its merge wraps each def into an `imports` list, and the engine's `callM` can apply only a path,
