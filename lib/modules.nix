@@ -5540,184 +5540,6 @@ let
       # freeform descendants when the freeform plane re-merges; at an `isOptLeaf` loc the prev value is
       # declared-only (freeform never wins a declared leaf), so leaf-granularity splicing is sound —
       # untyped declared groups recurse and splice THEIR leaves.
-      mergeTree =
-        warm: loc: opts: rawDefs:
-        let
-          # Push config-node properties down one level (nixpkgs pushes at EACH descent, so a nested
-          # `a.b = mkIf c { … }' distributes into `b's keys), yielding plain attrsets per module.
-          # `modIndex` (the originating module instance, threaded from `topDefs`) rides every def so
-          # unmatched keys can be coalesced per module at the root — see `coalesceUnmatched`.
-          pushed = map (d: {
-            inherit (d) file modIndex;
-            attrs = pushDownProperties d.value;
-          }) rawDefs;
-          # The DECLARED keys' definitions, grouped once per level (nixpkgs `mergeModules'`'s
-          # `pushedDownDefinitionsByName`), so each key is answered by a lookup rather than a scan of
-          # `pushed`. Only the declared keys are grouped (`intersectAttrs opts`): the undeclared ones
-          # are grouped by `ownUnmatched` into their own records, so no definition is recorded twice.
-          # Each list keeps `pushed`'s order, the module-union order the merge reads (den-hoag-z75vj).
-          defsByKey = builtins.zipAttrsWith (_: vs: vs) (
-            map (
-              p:
-              mapAttrs (_: value: {
-                inherit (p) file modIndex;
-                inherit value;
-              }) (builtins.intersectAttrs opts p.attrs)
-            ) pushed
-          );
-          subDefs = k: defsByKey.${k} or [ ];
-
-          # Each declared name yields BOTH its merged value and its provenance sub-tree from one
-          # descent, as a pair `{ name; m; group? }` carrying the merge record whole: a declared LEAF →
-          # `m` = the rich option merge `{ value; prov; undeclared }` (prov = the record); a declared
-          # GROUP → `m` = the recursive subtree `{ value; prov; unmatched; reported }` (prov = the
-          # sub-tree), marked `group = true`. The pair projects nothing; every reader below projects
-          # through `x.m`. Both trees are assembled at this level by the SAME `listToAttrs` pattern, so
-          # provenance mirrors config's loc structure attribute-for-attribute.
-          declaredPairs = map (
-            k:
-            let
-              lk = loc ++ [ k ];
-              abs = prefix ++ lk;
-            in
-            if isOptLeaf opts.${k} then
-              # A root `_module` leaf never splices: prev's returned `config` is `_module`-free.
-              if warm.active && head lk != "_module" && warm.isClean (builtins.toJSON lk) then
-                # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
-                # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
-                # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
-                # (both the decl set and the def set at this loc come only from CLEAN modules).
-                # The decision and both splices take the RELATIVE `lk`: the footprint `isClean` decides
-                # over (`declLeafPaths`/`moduleDefFootprint`) and prev's `config`/`provenance` are all
-                # rooted at `[ ]` whatever the `prefix`. `abs` names nothing in them.
-                {
-                  name = k;
-                  m = {
-                    value = getAttrByPath lk warm.prevConfig;
-                    prov = getAttrByPath lk warm.prevProv;
-                    typeDefs = getAttrByPath lk warm.prevDefs;
-                    # The reused leaf's findings are the PRIOR eval's report records at and below `abs`,
-                    # passed through unchanged: both are in the absolute frame. The same §2 predicate
-                    # (decls and defs here come only from clean modules) makes that report the cold
-                    # merge's, so reuse survives and nothing is re-merged. The prior report holds entries
-                    # at or below `abs` only from this leaf's own channel (an undeclared key elsewhere is
-                    # captured above a declared leaf, never below one). Read only through the walk's
-                    # declaration guard below, like the cold record's `undeclared`.
-                    undeclared =
-                      let
-                        n = length abs;
-                      in
-                      filter (u: length u.path >= n && take n u.path == abs) warm.prevUndeclared;
-                  };
-                }
-              else
-                {
-                  name = k;
-                  m = warm.mergeOption abs opts.${k} (subDefs k);
-                }
-            else
-              {
-                name = k;
-                group = true;
-                m = mergeTree warm lk opts.${k} (subDefs k);
-              }
-          ) (attrNames opts);
-
-          # Undeclared config keys at THIS level → unmatched defs carrying their full path + value
-          # (+ the originating `modIndex`, for per-module coalescing at the root). Grouped once per
-          # level, like `defsByKey`, over each entry's undeclared keys (its keys less the declared
-          # ones it defines). `attrValues` of the grouping is key order and each group keeps `pushed`'s
-          # order, so the list is key-major; the report and the orphan refusal read that order.
-          # A level whose every definition key is declared groups nothing: the test quantifies over
-          # every key of every definition, so it takes `[ ]` exactly where the grouping would build
-          # it, and it forces each `p.attrs` in `pushed` order as the grouping does. On a level WITH
-          # an undeclared key (a freeform level) the test is paid in front of the grouping, about 8 B
-          # per key (den-hoag-r8y89 c3; den-hoag-c7jkw.3).
-          ownUnmatched =
-            if all ({ attrs, ... }: all (k: opts ? ${k}) (attrNames attrs)) pushed then
-              [ ]
-            else
-              concatLists (
-                builtins.attrValues (
-                  builtins.zipAttrsWith (_: us: us) (
-                    map (
-                      p:
-                      mapAttrs (k: value: {
-                        inherit (p) file modIndex;
-                        path = loc ++ [ k ];
-                        inherit value;
-                      }) (builtins.removeAttrs p.attrs (attrNames (builtins.intersectAttrs opts p.attrs)))
-                    ) pushed
-                  )
-                )
-              );
-        in
-        {
-          value = listToAttrs (
-            map (x: {
-              inherit (x) name;
-              value = x.m.value;
-            }) declaredPairs
-          );
-          prov = listToAttrs (
-            map (x: {
-              inherit (x) name;
-              value = x.m.prov;
-            }) declaredPairs
-          );
-          typeDefs = listToAttrs (
-            map (x: {
-              inherit (x) name;
-              value = x.m.typeDefs;
-            }) declaredPairs
-          );
-          # TWO CHANNELS, ONE PER KIND OF RECORD, each in exactly one frame.
-          # `unmatched` holds DEFINITIONS this level must dispose of, `{ file; modIndex; path; value; }`
-          # with paths RELATIVE to `prefix`: this level's own and a group's. A leaf contributes none.
-          # `reported` holds FINDINGS a nested tree already settled, `{ path; file; }` with paths
-          # ABSOLUTE (the nested eval ran at `prefix = abs`). A finding carries no `modIndex` (it indexes
-          # the PARENT's `topDefs`, and the finding came from the nested tree's modules) and no `value`
-          # (so reading the report forces no nested definition value), so no definition-kind reader
-          # (`coalesceUnmatched`, `freeformProvCold`) may ever meet one, and none can.
-          #
-          # A leaf's findings are decided from the DECLARATION, `opts.<k> ? type.mergeDefs.reported`,
-          # and only where this evaluation's report is `carried`. Without one, a nested tree's leaf
-          # folds strictly (`mergeDefsRichWith`'s `mode.carried`), refusing its own level's findings
-          # when that level is read, so a cold leaf's `undeclared` is `[ ]` already, and a
-          # warm-reused leaf's is only because an unreported eval is a nested one, which is always
-          # cold. The guard states that here, where the walk decides, rather than borrowing it. Decided
-          # inside this walk: every ordinary leaf type contributes `[ ]` without its merge record being
-          # touched, so no definition is forced to learn it. One reader walks `reported`'s spine, the
-          # `undeclared` report (no refusal reads it; see `_orphanCheck`), and a walk that read
-          # `x.m.undeclared` for every leaf would force EVERY leaf's merge through it — against this engine's own
-          # contract ("undefined+no-default throws only on access"). The decision lives here, and not
-          # as a field on the pair, because the walk is already the point that forces it: a per-pair
-          # field is a thunk and a record slot on every leaf, and deciding at pair construction would
-          # force every declared type whenever `listToAttrs` forces the pairs. `group = true` records
-          # the pair's kind where the group/leaf branch was taken, so the walk reads a marker rather
-          # than re-deriving leafness.
-          unmatched = ownUnmatched ++ concatMap (x: if x ? group then x.m.unmatched else [ ]) declaredPairs;
-          # ROUTED-LEAVES EXPOSURE (den-hoag-n6dh7 L5c, "one routing"): `declaredPairs`, `subDefs`,
-          # `opts` and `loc` are the descent this walk already ran to route each def to its declared
-          # name. Exposing them by `inherit` binds an attribute directly to the existing thunk (no
-          # new allocation); `realizedLeaves` reads them to derive `_nested`'s leaf list instead of
-          # re-running `pushDownProperties` and the key walk a second time.
-          inherit
-            declaredPairs
-            subDefs
-            opts
-            loc
-            ;
-          reported = concatMap (
-            x:
-            if x ? group then
-              x.m.reported
-            else if carried && opts.${x.name} ? type.mergeDefs.reported then
-              x.m.undeclared
-            else
-              [ ]
-          ) declaredPairs;
-        };
 
       # ── THE DECLARATION GUARD ─────────────────────────────────────────────────────────────────
       # ADR-0033's stratification, enforced rather than arranged. `declarationSpine` applies this
@@ -5780,7 +5602,7 @@ let
           builtins.seq (stagedDeclarations knot.positioned {
             inherit specialArgs prefix;
             modules = modList;
-          } s) s;
+          } s) (builtins.removeAttrs s [ "options" ]);
 
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
@@ -6188,13 +6010,201 @@ let
           # `_module.check` is an option of this evaluation's own `_module` group (`bool`, default
           # `true`), so a module's definition merges with priorities and a conflicting pair is refused
           # by `bool`'s merge. A passed door enters as one `mkDefault` definition after the modules'.
+          # `spine` is this level of the declaration guard's spine (`declarationSpine`'s type-free tree): at
+          # the root, the guard record itself, whose `options` it is (absent where the guard's spine did not
+          # resolve); below, the spine group at `loc`.
+          mergeTree =
+            loc: spine: opts: rawDefs:
+            let
+              # Push config-node properties down one level (nixpkgs pushes at EACH descent, so a nested
+              # `a.b = mkIf c { … }' distributes into `b's keys), yielding plain attrsets per module.
+              # `modIndex` (the originating module instance, threaded from `topDefs`) rides every def so
+              # unmatched keys can be coalesced per module at the root — see `coalesceUnmatched`.
+              pushed = map (d: {
+                inherit (d) file modIndex;
+                attrs = pushDownProperties d.value;
+              }) rawDefs;
+              # The DECLARED keys' definitions, grouped once per level (nixpkgs `mergeModules'`'s
+              # `pushedDownDefinitionsByName`), so each key is answered by a lookup rather than a scan of
+              # `pushed`. Only the declared keys are grouped (`intersectAttrs opts`): the undeclared ones
+              # are grouped by `ownUnmatched` into their own records, so no definition is recorded twice.
+              # Each list keeps `pushed`'s order, the module-union order the merge reads (den-hoag-z75vj).
+              defsByKey = builtins.zipAttrsWith (_: vs: vs) (
+                map (
+                  p:
+                  mapAttrs (_: value: {
+                    inherit (p) file modIndex;
+                    inherit value;
+                  }) (builtins.intersectAttrs opts p.attrs)
+                ) pushed
+              );
+              subDefs = k: defsByKey.${k} or [ ];
+
+              # Each declared name yields BOTH its merged value and its provenance sub-tree from one
+              # descent, as a pair `{ name; m; group? }` carrying the merge record whole: a declared LEAF →
+              # `m` = the rich option merge `{ value; prov; undeclared }` (prov = the record); a declared
+              # GROUP → `m` = the recursive subtree `{ value; prov; unmatched; reported }` (prov = the
+              # sub-tree), marked `group = true`. The pair projects nothing; every reader below projects
+              # through `x.m`. Both trees are assembled at this level by the SAME `listToAttrs` pattern, so
+              # provenance mirrors config's loc structure attribute-for-attribute.
+              declaredPairs = map (
+                k:
+                let
+                  lk = loc ++ [ k ];
+                  abs = prefix ++ lk;
+                in
+                # Leafness is a fact of the DECLARATIONS (stratum 1), read off the spine, so a redeclared
+                # leaf's merged record (whose type merge may refuse) is forced only by the read that reaches
+                # it, as nixpkgs' `mergeOptionDecls` is. A key the spine does not hold (the engine's own
+                # `_module` keys, or a guard that published no spine) is decided off the merged tree.
+                if isOptLeaf ((if loc == [ ] then spine.options or { } else spine).${k} or opts.${k}) then
+                  # A root `_module` leaf never splices: prev's returned `config` is `_module`-free.
+                  if warmCtx.active && head lk != "_module" && warmCtx.isClean (builtins.toJSON lk) then
+                    # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
+                    # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
+                    # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
+                    # (both the decl set and the def set at this loc come only from CLEAN modules).
+                    # The decision and both splices take the RELATIVE `lk`: the footprint `isClean` decides
+                    # over (`declLeafPaths`/`moduleDefFootprint`) and prev's `config`/`provenance` are all
+                    # rooted at `[ ]` whatever the `prefix`. `abs` names nothing in them.
+                    {
+                      name = k;
+                      m = {
+                        value = getAttrByPath lk warmCtx.prevConfig;
+                        prov = getAttrByPath lk warmCtx.prevProv;
+                        typeDefs = getAttrByPath lk warmCtx.prevDefs;
+                        # The reused leaf's findings are the PRIOR eval's report records at and below `abs`,
+                        # passed through unchanged: both are in the absolute frame. The same §2 predicate
+                        # (decls and defs here come only from clean modules) makes that report the cold
+                        # merge's, so reuse survives and nothing is re-merged. The prior report holds entries
+                        # at or below `abs` only from this leaf's own channel (an undeclared key elsewhere is
+                        # captured above a declared leaf, never below one). Read only through the walk's
+                        # declaration guard below, like the cold record's `undeclared`.
+                        undeclared =
+                          let
+                            n = length abs;
+                          in
+                          filter (u: length u.path >= n && take n u.path == abs) warmCtx.prevUndeclared;
+                      };
+                    }
+                  else
+                    {
+                      name = k;
+                      m = warmCtx.mergeOption abs opts.${k} (subDefs k);
+                    }
+                else
+                  {
+                    name = k;
+                    group = true;
+                    m = mergeTree lk ((if loc == [ ] then spine.options or { } else spine).${k} or { }) opts.${k} (
+                      subDefs k
+                    );
+                  }
+              ) (attrNames opts);
+
+              # Undeclared config keys at THIS level → unmatched defs carrying their full path + value
+              # (+ the originating `modIndex`, for per-module coalescing at the root). Grouped once per
+              # level, like `defsByKey`, over each entry's undeclared keys (its keys less the declared
+              # ones it defines). `attrValues` of the grouping is key order and each group keeps `pushed`'s
+              # order, so the list is key-major; the report and the orphan refusal read that order.
+              # A level whose every definition key is declared groups nothing: the test quantifies over
+              # every key of every definition, so it takes `[ ]` exactly where the grouping would build
+              # it, and it forces each `p.attrs` in `pushed` order as the grouping does. On a level WITH
+              # an undeclared key (a freeform level) the test is paid in front of the grouping, about 8 B
+              # per key (den-hoag-r8y89 c3; den-hoag-c7jkw.3).
+              ownUnmatched =
+                if all ({ attrs, ... }: all (k: opts ? ${k}) (attrNames attrs)) pushed then
+                  [ ]
+                else
+                  concatLists (
+                    builtins.attrValues (
+                      builtins.zipAttrsWith (_: us: us) (
+                        map (
+                          p:
+                          mapAttrs (k: value: {
+                            inherit (p) file modIndex;
+                            path = loc ++ [ k ];
+                            inherit value;
+                          }) (builtins.removeAttrs p.attrs (attrNames (builtins.intersectAttrs opts p.attrs)))
+                        ) pushed
+                      )
+                    )
+                  );
+            in
+            {
+              value = listToAttrs (
+                map (x: {
+                  inherit (x) name;
+                  value = x.m.value;
+                }) declaredPairs
+              );
+              prov = listToAttrs (
+                map (x: {
+                  inherit (x) name;
+                  value = x.m.prov;
+                }) declaredPairs
+              );
+              typeDefs = listToAttrs (
+                map (x: {
+                  inherit (x) name;
+                  value = x.m.typeDefs;
+                }) declaredPairs
+              );
+              # TWO CHANNELS, ONE PER KIND OF RECORD, each in exactly one frame.
+              # `unmatched` holds DEFINITIONS this level must dispose of, `{ file; modIndex; path; value; }`
+              # with paths RELATIVE to `prefix`: this level's own and a group's. A leaf contributes none.
+              # `reported` holds FINDINGS a nested tree already settled, `{ path; file; }` with paths
+              # ABSOLUTE (the nested eval ran at `prefix = abs`). A finding carries no `modIndex` (it indexes
+              # the PARENT's `topDefs`, and the finding came from the nested tree's modules) and no `value`
+              # (so reading the report forces no nested definition value), so no definition-kind reader
+              # (`coalesceUnmatched`, `freeformProvCold`) may ever meet one, and none can.
+              #
+              # A leaf's findings are decided from the DECLARATION, `opts.<k> ? type.mergeDefs.reported`,
+              # and only where this evaluation's report is `carried`. Without one, a nested tree's leaf
+              # folds strictly (`mergeDefsRichWith`'s `mode.carried`), refusing its own level's findings
+              # when that level is read, so a cold leaf's `undeclared` is `[ ]` already, and a
+              # warm-reused leaf's is only because an unreported eval is a nested one, which is always
+              # cold. The guard states that here, where the walk decides, rather than borrowing it. Decided
+              # inside this walk: every ordinary leaf type contributes `[ ]` without its merge record being
+              # touched, so no definition is forced to learn it. One reader walks `reported`'s spine, the
+              # `undeclared` report (no refusal reads it; see `_orphanCheck`), and a walk that read
+              # `x.m.undeclared` for every leaf would force EVERY leaf's merge through it — against this engine's own
+              # contract ("undefined+no-default throws only on access"). The decision lives here, and not
+              # as a field on the pair, because the walk is already the point that forces it: a per-pair
+              # field is a thunk and a record slot on every leaf, and deciding at pair construction would
+              # force every declared type whenever `listToAttrs` forces the pairs. `group = true` records
+              # the pair's kind where the group/leaf branch was taken, so the walk reads a marker rather
+              # than re-deriving leafness.
+              unmatched = ownUnmatched ++ concatMap (x: if x ? group then x.m.unmatched else [ ]) declaredPairs;
+              # ROUTED-LEAVES EXPOSURE (den-hoag-n6dh7 L5c, "one routing"): `declaredPairs`, `subDefs`,
+              # `opts` and `loc` are the descent this walk already ran to route each def to its declared
+              # name. Exposing them by `inherit` binds an attribute directly to the existing thunk (no
+              # new allocation); `realizedLeaves` reads them to derive `_nested`'s leaf list instead of
+              # re-running `pushDownProperties` and the key walk a second time.
+              inherit
+                declaredPairs
+                subDefs
+                opts
+                loc
+                ;
+              reported = concatMap (
+                x:
+                if x ? group then
+                  x.m.reported
+                else if carried && opts.${x.name} ? type.mergeDefs.reported then
+                  x.m.undeclared
+                else
+                  [ ]
+              ) declaredPairs;
+            };
+
           realized =
             (
               if check == null then
-                mergeTree warmCtx [ ]
+                mergeTree [ ] declarationGuard
               else
                 o: d:
-                mergeTree warmCtx [ ] o (
+                mergeTree [ ] declarationGuard o (
                   d
                   ++ [
                     {
