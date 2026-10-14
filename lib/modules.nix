@@ -6527,15 +6527,28 @@ let
                     specialArgs ? { },
                     prefix ? [ ],
                   }:
-                  evalModuleTreeWith (if knot.positioned then knotRootPositioned else knotRoot) true false (
-                    {
-                      modules = modList ++ modules;
-                      specialArgs = specialArgs0 // specialArgs;
-                      prefix = if e ? prefix then prefix else prefix0;
-                      inherit check coreShortCircuit;
-                    }
-                    // (if class == null then { } else { inherit class; })
-                  );
+                  # A positioned evaluation re-evaluates positioned at its own prefix. At a stated prefix the
+                  # position no longer names it, so its `name` rides as a module of the list, as nixpkgs' child
+                  # evaluation carries it.
+                  evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
+                    false
+                    (
+                      {
+                        modules =
+                          modList
+                          ++ (
+                            if knot.positioned && e ? prefix then
+                              [ { _module.args.name = moduleConfig._module.args.name; } ]
+                            else
+                              [ ]
+                          )
+                          ++ modules;
+                        specialArgs = specialArgs0 // specialArgs;
+                        prefix = if e ? prefix then prefix else prefix0;
+                        inherit check coreShortCircuit;
+                      }
+                      // (if class == null then { } else { inherit class; })
+                    );
                 specialArgs0 = specialArgs;
                 prefix0 = prefix;
                 # nixpkgs' `_module.args` is `lazyAttrsOf raw`: a module's own `extendModules` beside the engine's is
