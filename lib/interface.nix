@@ -3093,155 +3093,167 @@ let
     # (den-hoag-dyagb): a door that completes `r` again derives its exported `typeMerge` from the gen data
     # `exportClasses` names (`typeMergeRel`, or `retainedRelation`) and its `substSubModules` from `substructure`, so
     # those data are closed as the exported fields are, and a completion derives the closed rebuild again. A gen record,
-    # and a descriptor that is no option type, is returned as it is. The bindings reuse names the library already
-    # interns (`imported`, `joined`, `rebuild`), so its load pays no symbol for them. A member of `rebuildClosed`.
+    # and a descriptor that is no option type, is returned as it is; a gen record a caller checked is closed by the
+    # published door before its completion (`own`). The bindings reuse names the library already interns (`imported`,
+    # `own`, `joined`, `rebuild`), so its load pays no symbol for them. A member of `rebuildClosed`.
     imported =
+      t: r: if t ? typeMergeRel || !(isOptionType t) || !(isAttrs r) then r else rebuildClosed.own t r;
+    # ★ A GEN RECORD A CALLER CHECKED, CLOSED BEFORE A DOOR COMPLETES IT (den-hoag-1b55t): `imported`'s closure with no
+    # guard, `r`'s rebuilds and gen data closed over `t`'s check, relative to `t`'s base. A caller's check laid on a gen
+    # record (nixpkgs' `addCheck`, or `// { check }`) is a `//` copy, so the record's rebuilds and gen data ride into it
+    # closed over its earlier checks only; a door completing it derives every exported field from those data, and
+    # nixpkgs' join (`typeMerge`, declared twice) and fixup (`substSubModules`, a module set declared once) dropped the
+    # caller's check. So each published door (`defineType`, `mkOptionType`, `deriveType`) hands its completion `own t t`
+    # in place of a gen record `t` whose check departs from its witness and from its completion's
+    # (`departsOnlyOutside { check = null; }`: a copy departing elsewhere, a `// { description }`, is not closed again).
+    # The closure runs BEFORE the completion, so the stamp the completion ties is tied over the closed record, and none
+    # is forged (ADR-0034). NOT CLOSED, the residue den-hoag-jyisy owns: a caller's check on a `// { verify }` copy of a
+    # gen record, which the doors' `verify` arm answers before this test is asked; and `defineType` over a gen `nullOr`
+    # of a KEYED nixpkgs submodule a caller checked, declared twice, whose stage is not located.
+    own =
       t: r:
-      if t ? typeMergeRel || !(isOptionType t) || !(isAttrs r) then
-        r
-      else
-        let
-          # `t`'s check alone, a coherent check: an ad-hoc override's is carried as nixpkgs' `addCheck` carries one,
-          # judging each definition, never refused for its spelling
-          o.check = {
-            __functor = _: t.check;
-            isV2MergeCoherent = true;
-          };
-          b =
-            let
-              p = importedPartner (t.functor or null);
-            in
-            if isAttrs p && !(p ? typeMergeRel) && p ? typeMerge && p ? functor then
-              p.typeMerge p.functor
-            else if t ? typeMerge && t ? functor then
-              t.typeMerge t.functor
-            else
-              null;
-          joined =
-            if !(isAttrs b) || !(b ? check) then
-              o
-            else
-              o
-              // {
-                check = {
-                  # membership in the base judged at every depth: `b`'s own merge of the value as one definition, forced
-                  __functor =
-                    _: v:
-                    let
-                      member =
-                        b.check v
-                        && (
-                          let
-                            r = builtins.tryEval (
-                              builtins.deepSeq (b.merge
-                                [ "<base>" ]
-                                [
-                                  {
-                                    file = "<base>";
-                                    value = v;
-                                  }
-                                ]
-                              ) true
-                            );
-                          in
-                          r.success && r.value
-                        );
-                    in
-                    !member || t.check v;
-                  isV2MergeCoherent = true;
-                };
+      let
+        # `t`'s check alone, a coherent check: an ad-hoc override's is carried as nixpkgs' `addCheck` carries one,
+        # judging each definition, never refused for its spelling
+        o.check = {
+          __functor = _: t.check;
+          isV2MergeCoherent = true;
+        };
+        b =
+          let
+            p = importedPartner (t.functor or null);
+          in
+          if isAttrs p && !(p ? typeMergeRel) && p ? typeMerge && p ? functor then
+            p.typeMerge p.functor
+          else if t ? typeMerge && t ? functor then
+            t.typeMerge t.functor
+          else
+            null;
+        joined =
+          if !(isAttrs b) || !(b ? check) then
+            o
+          else
+            o
+            // {
+              check = {
+                # membership in the base judged at every depth: `b`'s own merge of the value as one definition, forced
+                __functor =
+                  _: v:
+                  let
+                    member =
+                      b.check v
+                      && (
+                        let
+                          r = builtins.tryEval (
+                            builtins.deepSeq (b.merge
+                              [ "<base>" ]
+                              [
+                                {
+                                  file = "<base>";
+                                  value = v;
+                                }
+                              ]
+                            ) true
+                          );
+                        in
+                        r.success && r.value
+                      );
+                  in
+                  !member || t.check v;
+                isV2MergeCoherent = true;
               };
-          close =
-            oc: x:
-            if isAttrs x then
-              (
-                let
-                  c = carryBy false oc x;
-                in
-                c // rebuild oc c
-              )
-            else
-              x;
-          rebuild =
-            oc: x:
+            };
+        close =
+          oc: x:
+          if isAttrs x then
             (
-              if x ? typeMerge then
-                {
+              let
+                c = carryBy false oc x;
+              in
+              c // rebuild oc c
+            )
+          else
+            x;
+        rebuild =
+          oc: x:
+          (
+            if x ? typeMerge then
+              {
+                typeMerge =
+                  f:
+                  let
+                    j = x.typeMerge f;
+                  in
+                  if j == null then null else close joined j;
+              }
+            else
+              { }
+          )
+          # the gen data a completion derives `typeMerge` from again (`exportClasses`), closed as `typeMerge` is
+          // (
+            if x ? typeMergeRel then
+              {
+                typeMergeRel =
+                  f:
+                  let
+                    j = x.typeMergeRel f;
+                  in
+                  if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
+              }
+            else
+              { }
+          )
+          // (
+            if x ? retainedRelation.typeMerge then
+              {
+                retainedRelation = x.retainedRelation // {
                   typeMerge =
                     f:
                     let
-                      j = x.typeMerge f;
+                      j = x.retainedRelation.typeMerge f;
                     in
                     if j == null then null else close joined j;
-                }
-              else
-                { }
-            )
-            # the gen data a completion derives `typeMerge` from again (`exportClasses`), closed as `typeMerge` is
-            // (
-              if x ? typeMergeRel then
-                {
-                  typeMergeRel =
-                    f:
-                    let
-                      j = x.typeMergeRel f;
-                    in
-                    if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
-                }
-              else
-                { }
-            )
-            // (
-              if x ? retainedRelation.typeMerge then
-                {
-                  retainedRelation = x.retainedRelation // {
-                    typeMerge =
-                      f:
-                      let
-                        j = x.retainedRelation.typeMerge f;
-                      in
-                      if j == null then null else close joined j;
-                  };
-                }
-              else
-                { }
-            )
-            // (
-              if isList (x.getSubModules or null) && x ? substSubModules then
-                let
-                  sub = m: close oc (x.substSubModules m);
-                in
-                {
-                  substSubModules = sub;
-                }
-                // (
-                  if x ? substructure then
-                    {
-                      substructure = x.substructure // {
-                        rebuild = sub;
-                      };
-                    }
-                  else
-                    { }
-                )
-              else
-                { }
-            );
-        in
-        r
-        // rebuild o r
-        # a return that publishes `t`'s own `merge` (a re-home returning `t` as itself) states `t`'s check where nixpkgs'
-        # fold reads it (den-hoag-v4cw1); told by the slot as `kept` tells a rebuild that IS the record, an `==` over the
-        # `merge` slot that is equal by its pointer, so a spurious equal only states the check again
-        // {
-          ${if r ? merge then "merge" else null} =
-            if
-              isV2 r && builtins.intersectAttrs { merge = null; } r == builtins.intersectAttrs { merge = null; } t
-            then
-              rebuildClosed.verifiedMerge.lifted o.check r.merge
+                };
+              }
             else
-              r.merge;
-        };
+              { }
+          )
+          // (
+            if isList (x.getSubModules or null) && x ? substSubModules then
+              let
+                sub = m: close oc (x.substSubModules m);
+              in
+              {
+                substSubModules = sub;
+              }
+              // (
+                if x ? substructure then
+                  {
+                    substructure = x.substructure // {
+                      rebuild = sub;
+                    };
+                  }
+                else
+                  { }
+              )
+            else
+              { }
+          );
+      in
+      r
+      // rebuild o r
+      # a return that publishes `t`'s own `merge` (a re-home returning `t` as itself) states `t`'s check where nixpkgs'
+      # fold reads it (den-hoag-v4cw1); told by the slot as `kept` tells a rebuild that IS the record, an `==` over the
+      # `merge` slot that is equal by its pointer, so a spurious equal only states the check again
+      // {
+        ${if r ? merge then "merge" else null} =
+          if
+            isV2 r && builtins.intersectAttrs { merge = null; } r == builtins.intersectAttrs { merge = null; } t
+          then
+            rebuildClosed.verifiedMerge.lifted o.check r.merge
+          else
+            r.merge;
+      };
     # ★ A STAMPED NESTING RECORD A PUBLISHED DOOR RETURNS AS ITSELF, FACING NIXPKGS' EVALUATION (den-hoag-olrmz). A
     # record the doors return with no `carriedCopy` admission, stating a `verify` over a module set below it, publishes
     # the foreign half `carriedCopy` publishes: the one-definition projection as its union-dispatch `check`, the `verify`

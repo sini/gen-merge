@@ -1281,7 +1281,13 @@ Two rules that look like details and are not:
   `headError`, after its base's, as nixpkgs' `addCheck` states its check, so `np.either` / `np.oneOf`
   moves on to a member that admits the definitions; a non-v2 record is lifted into the v2 protocol,
   its own check read on every definition and naming the ones it rejects, as nixpkgs'
-  `checkDefsForError` does. **The limit:** a raw outer `K // { verify }` mounted in nixpkgs'
+  `checkDefsForError` does. A gen record a caller checked since its completion (nixpkgs' `addCheck`
+  over a completion or over a door's return, or a `// { check }` copy) is closed over that check by
+  the door that completes it again, before the completion, so a later declaration's join and a module
+  set's fixup keep it; a copy departing only elsewhere (a `// { description }`) is completed as it is.
+  Two such records still drop the caller's check under nixpkgs' evaluation: a `// { verify }` copy the
+  caller checked, and `types.defineType` over a gen `nullOr` of a keyed nixpkgs submodule the caller
+  checked, declared twice. **The limit:** a raw outer `K // { verify }` mounted in nixpkgs'
   `lib.evalModules` without a door is nixpkgs' drop, not gen's: nixpkgs never reads the field, and no
   gen code receives the overlay. The one place that leaves a gen record inside nixpkgs weaker than
   nixpkgs' own twin is `np.either` declared once, where the `addCheck` twin refuses rejected values

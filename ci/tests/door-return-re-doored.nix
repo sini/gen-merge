@@ -202,11 +202,10 @@ let
         };
       };
     };
-  # ★ den-hoag-1b55t's BOUNDARY, PINNED: a caller's check laid ON a door's return and then re-doored
-  # (`mkOptionType (addCheck (mkOptionType (addCheck int p)) q)`, declared twice) serves 5, which `q`
-  # rejects (a silent value), while the same `q` on a gen constructor record behind one door refuses it.
-  # The closure reaches the checks a door was handed, not one a caller lays on its return. The landing
-  # that settles den-hoag-1b55t flips `laid-on-the-return-bad`.
+  # A caller's check laid ON a door's return and then re-doored
+  # (`mkOptionType (addCheck (mkOptionType (addCheck int p)) q)`, declared twice) refuses 5, which `q`
+  # rejects, as the same `q` on a gen constructor record behind one door does: the second door closes the
+  # record over the check it states before completing it (den-hoag-1b55t, `ci/tests/caller-check-re-doored.nix`).
   laidOn =
     let
       q = x: x != 5;
@@ -221,13 +220,13 @@ let
       };
       expected = {
         laid-on-the-return = 3;
-        laid-on-the-return-bad = 5;
+        laid-on-the-return-bad = "REFUSED";
         gen-bad = "REFUSED";
       };
     };
 in
 {
   flake.tests.door-return-re-doored = listToAttrs (map cell cells) // {
-    test-a-check-laid-on-a-door-s-return-then-re-doored-is-pinned = laidOn;
+    test-a-check-laid-on-a-door-s-return-then-re-doored-is-refused = laidOn;
   };
 }

@@ -481,7 +481,22 @@ let
       (
         o: id: base:
         interface.rebuildClosed.imported base (
-          interface.rebuildClosed.door (deriveTypeCore base (o // { inherit id; }))
+          interface.rebuildClosed.door (
+            # a gen record whose check a caller rewrote since its completion is closed over it before it is derived from
+            # (`interface.rebuildClosed.own`), as `defineType` closes one
+            deriveTypeCore (
+              if
+                base ? typeMergeRel
+                && (base ? _checkWitness && base ? check && base.check != base._checkWitness)
+                && !(
+                  builtins.isFunction (base.__typeSelf or null) && interface.departsOnlyOutside { check = null; } base
+                )
+              then
+                interface.rebuildClosed.own base base
+              else
+                base
+            ) (o // { inherit id; })
+          )
         )
       );
   deriveTypeCore =
@@ -2200,6 +2215,15 @@ in
         c = interface.carriedCopy t;
       in
       if c != null then c else interface.rebuildClosed.door (defineType (interface.keepStamp t))
+    # a gen record whose check a caller rewrote since its completion (its check departs from its witness, and from its
+    # completion's; `rewritesCheck` restated inline, so a record stating no rewrite pays attribute tests and no call) is
+    # closed over that check before it is completed (`interface.rebuildClosed.own`, den-hoag-1b55t; the `verify` arm
+    # above answers first, so a checked `// { verify }` copy is not closed here, residue den-hoag-jyisy)
+    else if
+      (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+      && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
+    then
+      defineType (interface.keepStamp (interface.rebuildClosed.own t t))
     else
       defineType (interface.keepStamp t);
   completeType = defineType;
@@ -2219,6 +2243,13 @@ in
         c
       else
         interface.rebuildClosed.imported t (interface.rebuildClosed.door (mkOptionType t))
+    # a gen record whose check a caller rewrote since its completion is closed over it first, as `defineType` closes one
+    else if
+      t ? typeMergeRel
+      && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+      && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
+    then
+      mkOptionType (interface.rebuildClosed.own t t)
     # a gen record, and a descriptor stating no `_type`, pays attribute tests and no call
     else if t ? typeMergeRel || !(t ? _type) || !(interface.isOptionType t) then
       mkOptionType t
