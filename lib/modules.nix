@@ -365,8 +365,8 @@ let
       if !(isOptLeaf v) then
         serveOptions sitesAt (rel ++ [ k ]) lk prov.${k} defs.${k} cfg.${k} v
       # a redeclaration whose types do not merge (`redeclareDecl`): its record IS the refusal
-      else if v ? refused then
-        v.refused
+      else if v ? _refused then
+        v._refused
       else
         let
           # the reference's declaration order: its module list reversed once, as its definitions are
@@ -419,8 +419,8 @@ let
       in
       if !(isOptLeaf v) then
         stampOptions sitesAt lk v
-      else if v ? refused then
-        v.refused
+      else if v ? _refused then
+        v._refused
       else
         v
         // unansweredOptionKeys
@@ -1205,7 +1205,7 @@ let
                 concatStringsSep ", " (map (s: s.file) sites)
               }";
             in
-            mapAttrs (k: f: if k == "_type" then f else refusal) merged // { refused = refusal; }
+            mapAttrs (k: f: if k == "_type" then f else refusal) merged // { _refused = refusal; }
           else
             merged
             // {
