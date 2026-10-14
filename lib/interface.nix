@@ -2934,17 +2934,20 @@ let
   rebuildClosed = {
     __functor =
       self: t:
-      if !(isAttrs t) || !(t ? typeMerge) then
+      if !(isAttrs t) then
         t
+      # a record stating no relation crosses as itself, its check stated where nixpkgs' fold reads it (den-hoag-v4cw1)
+      else if !(t ? typeMerge) then
+        if isV2 t then t // { merge = self.verifiedMerge.lifted t.check t.merge; } else t
       # a record whose functor's type IS it (a constant constructor's own record, which its rebuild returns) has nothing
-      # to carry, so it crosses as itself
+      # to carry, so it crosses as itself, its check stated where nixpkgs' fold reads it (den-hoag-v4cw1)
       else if
         !(isList (t.getSubModules or null))
         && !(t ? verify)
         && isAttrs (t.functor.type or null)
         && self.kept t == self.kept t.functor.type
       then
-        t
+        if isV2 t then t // { merge = self.verifiedMerge.lifted t.check t.merge; } else t
       else
         let
           # a rebuild carries an ad-hoc override's check as a check: nixpkgs' own rebuild drops the override, so the
@@ -2964,7 +2967,15 @@ let
           close =
             top: r:
             let
-              c = if moduleSet || !top then carryBy false o r else r;
+              c =
+                if moduleSet || !top then
+                  carryBy false o r
+                # a top record stating no module set is the caller's, its check stated where nixpkgs' fold reads it
+                # (den-hoag-v4cw1)
+                else if isV2 r then
+                  r // { merge = rebuildClosed.verifiedMerge.lifted t.check r.merge; }
+                else
+                  r;
             in
             c
             // (
@@ -3217,7 +3228,20 @@ let
                 { }
             );
         in
-        r // rebuild o r;
+        r
+        // rebuild o r
+        # a return that publishes `t`'s own `merge` (a re-home returning `t` as itself) states `t`'s check where nixpkgs'
+        # fold reads it (den-hoag-v4cw1); told by the slot as `kept` tells a rebuild that IS the record, an `==` over the
+        # `merge` slot that is equal by its pointer, so a spurious equal only states the check again
+        // {
+          ${if r ? merge then "merge" else null} =
+            if
+              isV2 r && builtins.intersectAttrs { merge = null; } r == builtins.intersectAttrs { merge = null; } t
+            then
+              rebuildClosed.verifiedMerge.lifted o.check r.merge
+            else
+              r.merge;
+        };
     # ★ A STAMPED NESTING RECORD A PUBLISHED DOOR RETURNS AS ITSELF, FACING NIXPKGS' EVALUATION (den-hoag-olrmz). A
     # record the doors return with no `carriedCopy` admission, stating a `verify` over a module set below it, publishes
     # the foreign half `carriedCopy` publishes: the one-definition projection as its union-dispatch `check`, the `verify`
@@ -6512,9 +6536,11 @@ let
             ${if replacesVerify x && x ? carries && own == x._checkWitness then "_checkWitness" else null} =
               projection;
             # gen's placement of the `verify` for a reader that folds through the protocol: on the merged value, a base
-            # `v2` merge keeping its protocol with the `verify` on its `headError`
+            # `v2` merge keeping its protocol with the `verify` on its `headError`, and stating the copy's own check
+            # there first (den-hoag-v4cw1)
             ${if replacesVerify x && x ? carries then "merge" else null} =
-              rebuildClosed.verifiedMerge x.verify base;
+              rebuildClosed.verifiedMerge x.verify
+                (if base ? v2 then rebuildClosed.verifiedMerge.lifted own base else base);
             # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
             # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
             # stating none (gen-types' own records) gets none
@@ -6695,7 +6721,13 @@ let
         if t ? carries && t ? __typeSelf then
           (
             let
-              rehomed = restamp t t;
+              # the caller's record as itself, its check stated where nixpkgs' fold reads it (den-hoag-v4cw1)
+              rehomed = restamp t (
+                t
+                // {
+                  merge = if isV2 t then rebuildClosed.verifiedMerge.lifted t.check t.merge else t.merge;
+                }
+              );
             in
             {
               imported = rehomed;
@@ -6708,7 +6740,13 @@ let
     else if t ? carries && t ? __typeSelf && isNesting t && rewritesCheck t then
       (
         let
-          rehomed = restamp t t;
+          # the caller's record as itself, its check stated where nixpkgs' fold reads it (den-hoag-v4cw1)
+          rehomed = restamp t (
+            t
+            // {
+              merge = if isV2 t then rebuildClosed.verifiedMerge.lifted t.check t.merge else t.merge;
+            }
+          );
         in
         {
           imported = rehomed;
