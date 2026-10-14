@@ -318,9 +318,13 @@ in
     # relation), through `mkOptionType`, declared after `int`. 4 is served; 3, which the author
     # rejects, is not. `keep*` answers a join keeping the author's name and dropping its check.
     #
-    # ★ den-hoag-hnd82's BOUNDARY, PINNED: an author NAMED `int` (check: even) whose completed
-    # answer renames neither operand is read as an exact gen join, so 3 is served (a silent value).
-    # The landing that settles den-hoag-hnd82 flips `shared-completed-bad`.
+    # `shared-completed-bad`: an author NAMED `int` (check: even) whose completed answer renames
+    # neither operand is read as an exact gen join, and the join is the author's own gen data. The
+    # door's return closes that data (`typeMergeRel`'s merged record, den-hoag-dyagb), so the join
+    # carries the author's check and 3 is refused, as the meet owes (ADR-0039).
+    # ★ den-hoag-hnd82's BOUNDARY is now the author declared through no door, in nixpkgs' engine:
+    # its answer is still trusted as exact (hnd82's `lossy.nix`: six `bare` rows stand, the seventh
+    # is this cell's, closed here).
     test-an-author-relation-s-renaming-join-is-met =
       let
         keep = imp {
@@ -344,7 +348,7 @@ in
           completed = "MERGED int / ACCEPTED";
           completed-bad = "MERGED int / REJECTED";
           keep-completed-bad = "MERGED even / REJECTED";
-          shared-completed-bad = "MERGED int / ACCEPTED";
+          shared-completed-bad = "MERGED int / REJECTED";
         };
       };
 

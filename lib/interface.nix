@@ -3064,18 +3064,26 @@ let
     # carried on it (a `// { verify }` copy's rebuild is its base's)
     element = e: r: if e ? verify && isAttrs r then rebuildClosed.verify false e.verify r else r;
     # ★ A DOOR'S RETURN FOR A CALLER'S FOREIGN RECORD, CLOSED UNDER ITS REBUILDS (den-hoag-d61ws). A door that imports,
-    # re-homes or derives from a foreign record `t` returns gen's record `r` carrying `t`'s check, and nixpkgs re-derives
-    # a declared type through `r`'s rebuilds (`substSubModules` at the fixup, the later declaration's `typeMerge` at a
-    # redeclaration, and gen's `substructure.rebuild` below a gen container), each its constructor's, carrying none of
-    # it. So each of `r`'s OWN rebuilds is answered carrying `t`'s check again (`carryBy`), and so are its rebuilds in
-    # turn: a rebuild that already carries something (an element's `verify`) keeps it, as the check is laid on top. The
-    # check is `t`'s own, never `r`'s: `t`'s `verify` is not a check, it is read on the merged value where a rebuild owes
-    # it (`door`), never on a definition alone. At a join the check is owed RELATIVE TO `t`'s OWN PARAMETERS (ADR-0039,
-    # enum extension stays a union): a value outside `t`'s base, its constructor's join of `t` with itself, is not `t`'s
-    # to judge (`joined`). Membership in the base is judged at every depth: its `check`, which reads a container at its
-    # own depth only, and its own merge of the value as one definition, forced. A gen record, and
-    # a descriptor that is no option type, is returned as it is. The bindings reuse names the library already interns
-    # (`imported`, `joined`, `rebuild`), so its load pays no symbol for them. A member of `rebuildClosed`.
+    # re-homes or derives from a foreign record `t` returns gen's record `r` carrying `t`'s check, and nixpkgs
+    # re-derives a declared type through `r`'s rebuilds (`substSubModules` at the fixup, the later declaration's
+    # `typeMerge` at a redeclaration, and gen's `substructure.rebuild` below a gen container), each its constructor's,
+    # carrying none of it. So each of `r`'s OWN rebuilds is answered carrying `t`'s check again (`carryBy`), and so are
+    # its rebuilds in turn: a rebuild that already carries something (an element's `verify`) keeps it, as the check is
+    # laid on top. The check is `t`'s own, never `r`'s: `t`'s `verify` is not a check, it is read on the merged value
+    # where a rebuild owes it (`door`), never on a definition alone. At a join the check is owed RELATIVE TO `t`'s OWN
+    # PARAMETERS (ADR-0039, enum extension stays a union): a value outside `t`'s base, its constructor at its own
+    # parameters, is not `t`'s to judge (`joined`). The base is the constructor `t`'s functor names (`importedPartner`),
+    # the one field no closure rewrites, joined with itself as that constructor joins: never `t`'s own join, which for a
+    # door's return (`defineType`'s) is closed, the check already standing in it, so a check laid relative to it judged
+    # nothing (den-hoag-dyagb). A functor naming a gen record (a descriptor whose functor names the door's own return)
+    # names no foreign constructor, and there the base is `t`'s own join, the author's relation. Membership in the base
+    # is judged at every depth: its `check`, which reads a container at its own depth only, and its own merge of the
+    # value as one definition, forced. A RETURN RE-ENTERED THROUGH A SECOND DOOR stays closed by construction
+    # (den-hoag-dyagb): a door that completes `r` again derives its exported `typeMerge` from the gen data
+    # `exportClasses` names (`typeMergeRel`, or `retainedRelation`) and its `substSubModules` from `substructure`, so
+    # those data are closed as the exported fields are, and a completion derives the closed rebuild again. A gen record,
+    # and a descriptor that is no option type, is returned as it is. The bindings reuse names the library already
+    # interns (`imported`, `joined`, `rebuild`), so its load pays no symbol for them. A member of `rebuildClosed`.
     imported =
       t: r:
       if t ? typeMergeRel || !(isOptionType t) || !(isAttrs r) then
@@ -3088,7 +3096,16 @@ let
             __functor = _: t.check;
             isV2MergeCoherent = true;
           };
-          b = if t ? typeMerge && t ? functor then t.typeMerge t.functor else null;
+          b =
+            let
+              p = importedPartner (t.functor or null);
+            in
+            if isAttrs p && !(p ? typeMergeRel) && p ? typeMerge && p ? functor then
+              p.typeMerge p.functor
+            else if t ? typeMerge && t ? functor then
+              t.typeMerge t.functor
+            else
+              null;
           joined =
             if !(isAttrs b) || !(b ? check) then
               o
@@ -3145,6 +3162,35 @@ let
                       j = x.typeMerge f;
                     in
                     if j == null then null else close joined j;
+                }
+              else
+                { }
+            )
+            # the gen data a completion derives `typeMerge` from again (`exportClasses`), closed as `typeMerge` is
+            // (
+              if x ? typeMergeRel then
+                {
+                  typeMergeRel =
+                    f:
+                    let
+                      j = x.typeMergeRel f;
+                    in
+                    if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
+                }
+              else
+                { }
+            )
+            // (
+              if x ? retainedRelation.typeMerge then
+                {
+                  retainedRelation = x.retainedRelation // {
+                    typeMerge =
+                      f:
+                      let
+                        j = x.retainedRelation.typeMerge f;
+                      in
+                      if j == null then null else close joined j;
+                  };
                 }
               else
                 { }
