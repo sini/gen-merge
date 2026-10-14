@@ -789,7 +789,13 @@ let
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer over two gen operands stating their own checks carries both: nothing is
       # owed, and nothing is allocated (`metWith`'s first test, inline)
-      if m ? typeMergeRel && (!(a ? check || a ? admits) || isAttrs (a.typeMergeRel or null) && a.typeMergeRel ? exact) && (!(b ? check || b ? admits) || isAttrs (b.typeMergeRel or null) && b.typeMergeRel ? exact) && !(a ? holds) && !(b ? holds) then
+      if
+        m ? typeMergeRel
+        && (!(a ? check || a ? admits) || isAttrs (a.typeMergeRel or null) && a.typeMergeRel ? exact)
+        && (!(b ? check || b ? admits) || isAttrs (b.typeMergeRel or null) && b.typeMergeRel ? exact)
+        && !(a ? holds)
+        && !(b ? holds)
+      then
         m
       else
         interface.metWith false m [
@@ -7283,48 +7289,54 @@ let
                     + "together in `types.mkType'"
                   )
               );
-            typeMergeRel = { exact = true; __functor = _: (
-              other:
-              let
-                pm = interface.importedOffered "moduleSet" other;
-                partnerArgs = other.specialArgs or { };
-              in
-              if (other.name or null) != "submodule" then
-                { refused = "`submodule' and `${interface.nameOf other}'"; }
-              else if pm == null then
-                let
-                  joined = interface.joinInStatedRelation {
-                    name = "submodule";
-                    payload = interface.moduleSetPayload {
-                      modules = modList;
-                      inherit specialArgs;
-                      shorthandOnlyDefinesConfig = false;
-                    };
-                  } other;
-                in
-                if joined == null then
-                  {
-                    refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
-                  }
-                else
-                  { merged = joined; }
-              # The one datum two `submodule' declarations must agree on beside the name, and the
-              # reason names it, since the names agree.
-              else if (other.shorthandOnlyDefinesConfig or null) != false then
-                {
-                  refused = "`submodule' reading every definition as a module, and a `submodule' reading an attribute-set definition as config";
-                }
-              else if builtins.intersectAttrs specialArgs partnerArgs != { } then
-                { refused = "two `submodule' declarations stating the same specialArgs"; }
-              else
-                {
-                  merged =
-                    (evalModuleTreeUnchecked {
-                      modules = pm ++ modList;
-                      specialArgs = specialArgs // partnerArgs;
-                      inherit check coreShortCircuit;
-                    }).type;
-                }); };
+            typeMergeRel = {
+              exact = true;
+              __functor =
+                _:
+                (
+                  other:
+                  let
+                    pm = interface.importedOffered "moduleSet" other;
+                    partnerArgs = other.specialArgs or { };
+                  in
+                  if (other.name or null) != "submodule" then
+                    { refused = "`submodule' and `${interface.nameOf other}'"; }
+                  else if pm == null then
+                    let
+                      joined = interface.joinInStatedRelation {
+                        name = "submodule";
+                        payload = interface.moduleSetPayload {
+                          modules = modList;
+                          inherit specialArgs;
+                          shorthandOnlyDefinesConfig = false;
+                        };
+                      } other;
+                    in
+                    if joined == null then
+                      {
+                        refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                      }
+                    else
+                      { merged = joined; }
+                  # The one datum two `submodule' declarations must agree on beside the name, and the
+                  # reason names it, since the names agree.
+                  else if (other.shorthandOnlyDefinesConfig or null) != false then
+                    {
+                      refused = "`submodule' reading every definition as a module, and a `submodule' reading an attribute-set definition as config";
+                    }
+                  else if builtins.intersectAttrs specialArgs partnerArgs != { } then
+                    { refused = "two `submodule' declarations stating the same specialArgs"; }
+                  else
+                    {
+                      merged =
+                        (evalModuleTreeUnchecked {
+                          modules = pm ++ modList;
+                          specialArgs = specialArgs // partnerArgs;
+                          inherit check coreShortCircuit;
+                        }).type;
+                    }
+                );
+            };
             substructure = {
               modules = modList;
               declares =

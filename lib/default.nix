@@ -602,9 +602,25 @@ let
               refuseUnreconciledMint base other pa pb;
         exported =
           if row == null then
-            strategies.completeType (base // { typeMergeRel = { exact = true; __functor = _: rel exported; }; })
+            strategies.completeType (
+              base
+              // {
+                typeMergeRel = {
+                  exact = true;
+                  __functor = _: rel exported;
+                };
+              }
+            )
           else
-            strategies.defineEmbedded row (base // { typeMergeRel = { exact = true; __functor = _: rel exported; }; });
+            strategies.defineEmbedded row (
+              base
+              // {
+                typeMergeRel = {
+                  exact = true;
+                  __functor = _: rel exported;
+                };
+              }
+            );
       in
       exported
     else
