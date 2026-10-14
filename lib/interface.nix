@@ -3088,7 +3088,7 @@ let
     # never reads it on the merged value; `rebuildClosed.door` answers minted records only. So the return states `t`'s
     # own check per definition and `t`'s `verify` on the merged value, a non-v2 fold lifted, as `rebuildClosed.verify`
     # states one below the root
-    rooted =
+    root =
       t: r:
       if
         !(t ? verify && t ? check && t ? merge && isAttrs r && r ? merge && r ? check)
@@ -5935,13 +5935,13 @@ let
       # a `verify` no completion's check states (a foreign operand's, or a gen `//` copy's that replaced its
       # completion's: `replacesVerify`), read once on the met record's merged value: the first rejection. A
       # definition alone is not the value it refines (den-hoag-5f99v)
-      owesVerify = o: o ? verify && (!(o ? typeMergeRel) || replacesVerify o);
+      owes = o: o ? verify && (!(o ? typeMergeRel) || replacesVerify o);
       # relative to the operand's own parameters where a join widened them (`stockOf`), as its check is owed
       vf =
         v:
         builtins.foldl' (
           e: o:
-          if e != null || !(owesVerify o) then
+          if e != null || !(owes o) then
             e
           else
             (
@@ -5952,7 +5952,7 @@ let
             )
         ) null os;
     in
-    if !(builtins.any owesVerify os) then
+    if !(builtins.any owes os) then
       met
     else
       met

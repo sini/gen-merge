@@ -2280,7 +2280,7 @@ in
         (t ? _checkWitness && t ? check && t.check != t._checkWitness)
         && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
       then
-        interface.rebuildClosed.rooted t (
+        interface.rebuildClosed.root t (
           interface.rebuildClosed.door (
             defineType (
               interface.keepStamp ((s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t))
@@ -2289,7 +2289,7 @@ in
         )
       # no caller check: the re-completion states `t`'s `verify` on its merged value (den-hoag-5f99v)
       else
-        interface.rebuildClosed.rooted t (interface.rebuildClosed.door (defineType (interface.keepStamp t)))
+        interface.rebuildClosed.root t (interface.rebuildClosed.door (defineType (interface.keepStamp t)))
     # a gen record whose check a caller rewrote since its completion (its check departs from its witness, and from its
     # completion's; `rewritesCheck` restated inline, so a record stating no rewrite pays attribute tests and no call) is
     # closed over that check before it is completed (`interface.rebuildClosed.own`, den-hoag-1b55t). The `verify` arm
@@ -2350,7 +2350,7 @@ in
         && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
       then
         interface.rebuildClosed.imported t (
-          interface.rebuildClosed.rooted t (
+          interface.rebuildClosed.root t (
             interface.rebuildClosed.door (
               mkOptionType ((s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t))
             )
@@ -2359,7 +2359,7 @@ in
       # no caller check: the re-completion states `t`'s `verify` on its merged value (den-hoag-5f99v)
       else
         interface.rebuildClosed.imported t (
-          interface.rebuildClosed.rooted t (interface.rebuildClosed.door (mkOptionType t))
+          interface.rebuildClosed.root t (interface.rebuildClosed.door (mkOptionType t))
         )
     # a gen record whose check a caller rewrote since its completion is closed over it first, as `defineType` closes one
     else if
