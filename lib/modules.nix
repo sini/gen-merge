@@ -789,7 +789,7 @@ let
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer over two gen operands stating their own checks carries both: nothing is
       # owed, and nothing is allocated (`metWith`'s first test, inline)
-      if m ? typeMergeRel && a ? typeMergeRel && b ? typeMergeRel && !(a ? holds) && !(b ? holds) then
+      if m ? typeMergeRel && (!(a ? check || a ? admits) || isAttrs (a.typeMergeRel or null) && a.typeMergeRel ? exact) && (!(b ? check || b ? admits) || isAttrs (b.typeMergeRel or null) && b.typeMergeRel ? exact) && !(a ? holds) && !(b ? holds) then
         m
       else
         interface.metWith false m [
@@ -7283,7 +7283,7 @@ let
                     + "together in `types.mkType'"
                   )
               );
-            typeMergeRel =
+            typeMergeRel = { exact = true; __functor = _: (
               other:
               let
                 pm = interface.importedOffered "moduleSet" other;
@@ -7324,7 +7324,7 @@ let
                       specialArgs = specialArgs // partnerArgs;
                       inherit check coreShortCircuit;
                     }).type;
-                };
+                }); };
             substructure = {
               modules = modList;
               declares =

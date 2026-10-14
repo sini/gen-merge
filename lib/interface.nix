@@ -2721,7 +2721,7 @@ let
         o:
         isAttrs o
         && (
-          !(o ? typeMergeRel)
+          !(!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
           || o ? verify && isList (o.getSubModules or null)
@@ -2732,7 +2732,7 @@ let
         fuel: o:
         isAttrs o
         && (
-          !(o ? typeMergeRel)
+          !(!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
           || o ? verify && isList (o.getSubModules or null)
@@ -3210,11 +3210,15 @@ let
             if x ? typeMergeRel then
               {
                 typeMergeRel =
-                  f:
                   let
-                    j = x.typeMergeRel f;
+                    r =
+                      f:
+                      let
+                        j = x.typeMergeRel f;
+                      in
+                      if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
                   in
-                  if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
+                  if isAttrs x.typeMergeRel && x.typeMergeRel ? exact then { exact = true; __functor = _: r; } else r;
               }
             else
               { }
@@ -5754,7 +5758,7 @@ let
       dom =
         o:
         let
-          c = direct (o.check.__verifyProjection or o.check);
+          c = direct (o.check.__verifyProjection or (o.check or o.admits));
         in
         if !(o ? verify) || !(o ? typeMergeRel) then
           c
@@ -5931,7 +5935,7 @@ let
       meets == false
       && m ? typeMergeRel
       && builtins.all (
-        o: o ? typeMergeRel && !(rewritesCheck o) && !(replacesVerify o) && !(o ? holds)
+        o: (!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact) && !(rewritesCheck o) && !(replacesVerify o) && !(o ? holds)
       ) os
     then
       m
@@ -5939,7 +5943,7 @@ let
       let
         mayOwe =
           o:
-          !(o ? typeMergeRel)
+          !(!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
           || !(m ? typeMergeRel)
           || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
           || replacesVerify o
