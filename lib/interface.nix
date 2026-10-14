@@ -6012,10 +6012,13 @@ let
         # the parameter TREE: each constructor's name and payload less its roles, and its elements' trees
         # (an element's parameters are its container's: `nullOr (enum [a])` is parameterised by `[a]`).
         # Past the walk's fuel a tree states nothing more, so a change that deep is owed whole.
+        # a record declaring the record it `wraps` (a wrapper owed whole, gen-schema `refined`) is parameterised by
+        # that record: its constructor and parameters are the wrapped record's, its own check stays owed
+        under = t: if isAttrs (t.wraps or null) then under t.wraps else t;
         shapeOf =
           fuel: t:
           let
-            f = t.functor or { };
+            f = (under t).functor or { };
             p = f.payload or null;
           in
           {
@@ -6054,7 +6057,7 @@ let
         relativised =
           o:
           let
-            s = importedPartner (o.functor or null);
+            s = importedPartner ((under o).functor or null);
           in
           if isAttrs s && s ? check then o // { __stockCheck = s.check; } else o;
         owed = map (o: if fresh && widens o then relativised o else o) notM;
