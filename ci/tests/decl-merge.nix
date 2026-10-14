@@ -3990,19 +3990,31 @@ in
               { options, ... }:
               {
                 options.seen = mkOption {
-                  default = builtins.mapAttrs (_: shape) (builtins.removeAttrs options [ "seen" ]);
+                  default = builtins.mapAttrs (_: shape) (
+                    builtins.removeAttrs options [
+                      "seen"
+                      "_module"
+                    ]
+                  );
                 };
               }
             )
           ];
         in
         {
-          options = builtins.mapAttrs (_: shape) (builtins.removeAttrs r.options [ "seen" ]);
-          door = builtins.mapAttrs (_: shape) (genMerge.declaredOptions { } [ { options = decls; } ]);
+          options = builtins.mapAttrs (_: shape) (
+            builtins.removeAttrs r.options [
+              "seen"
+              "_module"
+            ]
+          );
+          door = builtins.mapAttrs (_: shape) (
+            builtins.removeAttrs (genMerge.declaredOptions { } [ { options = decls; } ]) [ "_module" ]
+          );
           argument = r.config.seen;
-          nixpkgs =
-            builtins.mapAttrs (_: shape)
-              (np.evalModules { modules = [ { options = decls; } ]; }).options;
+          nixpkgs = builtins.mapAttrs (_: shape) (
+            builtins.removeAttrs (np.evalModules { modules = [ { options = decls; } ]; }).options [ "_module" ]
+          );
         };
       expected =
         let
