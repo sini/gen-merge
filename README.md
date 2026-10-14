@@ -1846,7 +1846,17 @@ the wrapper first or second, under a gen parametric (`union [ int ]`), under a c
 (`listOf (addCheck int p)` beside `listOf int`), in a longer list, and in gen's engine for a foreign
 operand too (`addCheck lib.types.int p` beside `lib.types.int`, and a nixpkgs partner of any check).
 The join still decides the record (its fold, name and functor, nixpkgs' later operand); the meet
-decides acceptance, a lower bound by induction over the fold. A gen x gen step owes nothing and is
+decides acceptance, a lower bound by induction over the fold. **An operand is exact, and owes
+nothing, only where gen-merge constructed its relation**: every relation this library builds carries a
+construction witness (`typeMergeRel.exact`), and an operand stating neither `check` nor `admits` owes
+none. A `typeMergeRel` an author states is author vocabulary and no witness, so an author type whose
+relation answers a join keeping every name still owes its own check. **`wraps` is the meet's
+declared-base surface**: a record naming the record whose constructor and parameters its own are; its
+own check stays owed. The meet reads an operand's parameters (`shapeOf`) and the stock it is owed
+relative to (`relativised`) off the innermost declared base, so gen-schema's `refined B rs`, whose
+functor is its own (`refined<B>`), widens and is relativised as `B` is and still owes its refinements. A
+met record's refusal names its gen join's `verify` reason where the join's check is still that
+`verify`'s witness; any other record's `verify` is read only past its check. A gen x gen step owes nothing and is
 answered before the meet is built, except to a `//` copy whose `verify` no completion vouches for
 (`interface.replacesVerify`: it replaced its completion's `verify`, or states one with no completion
 stamp). Its `check`, witness and relation are still its base's, so no relation carries that `verify`, and
@@ -2953,10 +2963,7 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   - an author type imported through `mkOptionType` and declared BEFORE its partner, whose stated
     relation answers a renaming join: gen's engine asks the earlier relation too and meets its answer,
     so it serves what every declaration accepts, where nixpkgs asks only the later operand and refuses
-    the pair. gen serves beyond nixpkgs here only within the meet's bounds;
-  - an author relation whose join renames neither operand and drops the author's check (an author type
-    named `int` answering plain `int`, completed through `mkOptionType`) is read as an exact gen join, so
-    the dropped value is served. A lossy author relation trusted as exact is a known open case.
+    the pair. gen serves beyond nixpkgs here only within the meet's bounds.
 
 - **A redeclared option rejects what any declaration's check rejects, even where nixpkgs serves it**
   ("A redeclared option accepts a definition only if every declared check does"). Measured members,
@@ -2964,7 +2971,10 @@ engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
   `listOf` and in a three-declaration list; two separately written `addCheck int p`; a nixpkgs
   partner of any check beside a gen type, in gen's engine, in any order and any number of
   declarations. In gen's engine a pure-nixpkgs pair is met too, so it rejects what nixpkgs serves with a
-  check dropped. One shared wrapped value declared twice merges and keeps its check.
+  check dropped. One shared wrapped value declared twice merges and keeps its check. An author relation whose join
+  renames neither operand and drops the author's check (an author type named `int` answering plain
+  `int`, completed through `mkOptionType`) is not read as exact, because gen-merge did not construct it,
+  so the author's check stays owed and the dropped value is refused.
 
   In gen's engine this reaches a module set: nixpkgs' `addCheck` over a submodule, alone or beside
   another submodule declaration, gen or nixpkgs, at the top or as a container's element at any depth
