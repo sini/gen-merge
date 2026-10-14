@@ -288,7 +288,12 @@ The refusal fires where a type is HOMED (`interface.homedAt`): at a declared opt
 (`evalModuleTree`, naming the option) and at `mkOptionType` (`importType`). One of the six stock
 containers whose element may nest (`canNest`) is re-homed as gen-merge's own, recognised by its
 functor and rebuilt over the element its carrying spellings (`nestedTypes`, a top-level `elemType`)
-state, never its functor payload's. Its stated price: an overridden `merge` on it is lost silently. A
+state, never its functor payload's. A record whose `//` override of `merge` nixpkgs' mount keeps is
+not one of the six (`interface.importedRehomeAt`, den-hoag-e12ro), whatever its `check`: it threads.
+An override spelled in `merge.v2`, one on a release whose constructor states no `v2` (every container
+on nixpkgs 25.05, `nullOr` on nixos-25.11 and 26.05), and one on an `either` or `oneOf` (which cannot
+thread, den-hoag-p06j3) are not detected and are lost silently, open defects owed to den-hoag-1as3r
+(iii), which retires the re-home of an overridden container. A
 type outside the six that declares a nesting element threads at a declared option through its own
 `substSubModules` rebuild (`threadedForeign`, arm (T)) where that rebuild threads (`threadsAt`,
 judged on the original record position by position, at any depth), and is refused by name where it

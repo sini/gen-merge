@@ -575,10 +575,10 @@ in
         };
       };
     };
-    # ★ THE STATED PRICE, asserted as the value it produces (owner, 2026-09-25, den-hoag-n6dh7): a
-    # stock container whose `merge` was overridden is re-homed silently and loses the override. A
-    # build that detected overrides would red this cell and send the price back to the owner. Over
-    # no nesting element nothing is re-homed, so there the override stands (*defaulted, reversible*).
+    # A `merge`-only override over a module set is erased by nixpkgs' own mount (`fixupOptionType`
+    # rebuilds the root through the stock `substSubModules`), so the re-homed container serves the
+    # stock fold nixpkgs serves. Over no nesting element nothing is re-homed, so there the override
+    # stands (*defaulted, reversible*).
     test-a-re-homed-container-loses-its-override = {
       expr = {
         np-attrs-override = opt (np.attrsOf sub // { merge = _: _: "overridden"; }) { a.x = 1; };
@@ -589,6 +589,119 @@ in
         flat-override = "overridden";
       };
     };
+    # An override nixpkgs' mount keeps (its rebuild forwards it) is the record's own fold, not gen's
+    # container: it threads and serves what nixpkgs serves (den-hoag-e12ro), a swapped key, a reversed
+    # list, a definition conditional on the key the override moves, and the same override under an
+    # `addCheck`, whose check is not the one the stock constructor shipped. An `either` states no module
+    # set and cannot thread, so it is re-homed and loses the override, served rather than refused: an
+    # open defect (den-hoag-p06j3), asserted as the value it produces so a build serving nixpkgs'
+    # value reds it.
+    test-an-override-nixpkgs-mount-keeps-is-the-record-s-own-fold =
+      let
+        kept =
+          h: a:
+          a
+          // {
+            merge = loc: defs: h (a.merge loc defs);
+            substSubModules = m: kept h (a.substSubModules m);
+          };
+        swap =
+          r:
+          r
+          // {
+            foo = r.bar;
+            bar = r.foo;
+          };
+        two =
+          type: d1: d2:
+          cfg [
+            { options.h = gm.mkOption { inherit type; }; }
+            { config.h = d1; }
+            (c: { config.h = d2 c; })
+          ];
+      in
+      {
+        expr = {
+          swapped =
+            (two (kept swap (np.lazyAttrsOf (t.attrsOf sub))) { foo.k.x = 1; } (_: {
+              bar.k.x = 2;
+            })).h.foo.k.x;
+          reversed =
+            map (e: e.k.x)
+              (two (kept nixpkgsLib.reverseList (np.listOf (t.attrsOf sub))) [ { k.x = 1; } ] (_: [
+                { k.x = 2; }
+              ])).h;
+          selfConditional =
+            (two (kept swap (np.lazyAttrsOf (t.attrsOf sub))) { foo.k.x = 1; } (
+              { config, ... }: { bar = gm.mkIf (config.h.bar.k.x > 0) { k.x = 2; }; }
+            )).h.bar.k.x;
+          addChecked =
+            (two (np.addCheck (kept swap (np.lazyAttrsOf (t.attrsOf sub))) (_: true)) { foo.k.x = 1; } (_: {
+              bar.k.x = 2;
+            })).h.foo.k.x;
+          either = refused (
+            opt (np.either (t.attrsOf sub) np.str // { merge = _: _: "overridden"; }) { a.x = 1; }
+          );
+        };
+        expected = {
+          swapped = 2;
+          reversed = [
+            1
+            2
+          ];
+          selfConditional = 1;
+          addChecked = 2;
+          either = false;
+        };
+      };
+    # An identity override nixpkgs' mount keeps threads as well, and serves the stock value. Its
+    # definitions are then built by the foreign merge, which states no declaring position, so a
+    # `declAt` read is refused by name, never served empty: the price den-hoag-1as3r (iii) rules
+    # (owner, 2026-10-09: `declAt` kept → refused). The unoverridden record keeps its addresses.
+    # The refusal's text is `ci/tests-error.nix`'s `nesting-threaded`.
+    test-an-identity-override-nixpkgs-mount-keeps-refuses-its-addresses =
+      let
+        ids =
+          a:
+          a
+          // {
+            merge = loc: defs: a.merge loc defs;
+            substSubModules = m: ids (a.substSubModules m);
+          };
+        s0 = t.submodule {
+          options.x = gm.mkOption { type = t.int; };
+          options.seen = gm.mkOption {
+            type = t.listOf t.anything;
+            default = [ ];
+          };
+        };
+        recording = t.defineType (
+          s0
+          // {
+            nests = s0.nests // {
+              entry = d: {
+                imports = [ (s0.nests.entry { inherit (d) file value; }) ];
+                config.seen = [ (d.declAt or null) ];
+              };
+              declAt = true;
+            };
+          }
+        );
+        overridden = opt (ids (np.attrsOf recording)) { k.x = 1; };
+        stock = opt (np.attrsOf recording) { k.x = 1; };
+      in
+      {
+        expr = {
+          served = overridden.k.x;
+          refused = refused overridden.k.seen;
+          stockKept = stock.k.seen != [ ] && builtins.all (a: a != null) stock.k.seen;
+        };
+        expected = {
+          served = 1;
+          refused = true;
+          stockKept = true;
+        };
+      };
     test-a-record-crossing-whole-is-re-homed-where-it-may-nest = {
       expr =
         let

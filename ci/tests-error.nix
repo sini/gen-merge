@@ -7592,6 +7592,45 @@ in
             msg = "^gen-merge: option `s[.]t[.]bogus' is not declared by the nested tree that owns it$";
           };
         };
+        # den-hoag-e12ro: an identity override nixpkgs' mount keeps threads, so its definitions are built
+        # by the foreign merge and a `declAt` read is refused BY NAME, never served empty (den-hoag-1as3r
+        # (iii)'s price). The served value and the stock control are `ci/tests/nesting-threaded.nix`.
+        test-an-identity-override-nixpkgs-mount-keeps-refuses-its-addresses-by-name = {
+          expr =
+            let
+              ids =
+                a:
+                a
+                // {
+                  merge = loc: defs: a.merge loc defs;
+                  substSubModules = m: ids (a.substSubModules m);
+                };
+              s0 = t.submodule {
+                options.x = gm.mkOption { type = t.int; };
+                options.seen = gm.mkOption {
+                  type = t.listOf t.anything;
+                  default = [ ];
+                };
+              };
+              recording = t.defineType (
+                s0
+                // {
+                  nests = s0.nests // {
+                    entry = d: {
+                      imports = [ (s0.nests.entry { inherit (d) file value; }) ];
+                      config.seen = [ (d.declAt or null) ];
+                    };
+                    declAt = true;
+                  };
+                }
+              );
+            in
+            opt (ids (np.attrsOf recording)) { k.x = 1; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `declAt': option `h': the definition at `h[.]k' was built by the foreign merge of `attrsOf', which hands each definition only `[{] file; value; [}]' and states no declaring position, so it has no declaration address$";
+          };
+        };
       };
 
     flake.testsError.nesting-keys = {
