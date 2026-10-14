@@ -1285,6 +1285,12 @@ Two rules that look like details and are not:
   over a completion or over a door's return, or a `// { check }` copy) is closed over that check by
   the door that completes it again, before the completion, so a later declaration's join and a module
   set's fixup keep it; a copy departing only elsewhere (a `// { description }`) is completed as it is.
+  A `//` copy of a completed gen `listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr` or `either` that
+  rewrites its `admits` states a domain its fold never closed over, so it is the check rewrite it
+  states: the door closes it over its check and its new `admits` together, as `addCheck` conjoins
+  them, and a value the new `admits` drops is refused by name in gen's evaluation and in nixpkgs',
+  while a value it keeps is served as the plain container serves it. A copy removing `admits` states
+  no domain and is completed as it is.
   Two such records still drop the caller's check under nixpkgs' evaluation: a `// { verify }` copy the
   caller checked, and `types.defineType` over a gen `nullOr` of a keyed nixpkgs submodule the caller
   checked, declared twice. **The limit:** a raw outer `K // { verify }` mounted in nixpkgs'
