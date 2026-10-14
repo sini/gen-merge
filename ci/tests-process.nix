@@ -233,7 +233,9 @@
           # den-hoag-hnd82 (ADR-0032): the cost of a met record, as thunks per option between n = 100 and
           # 200, n options each declared twice and defined. The bounds are the landed figures, in THUNKS: they
           # read the same on Nix, Determinate and Lix, while allocated bytes move with the loading route. An
-          # optimization lowers its bound in the same change; a rise needs an owner reading.
+          # optimization lowers its bound in the same change. This row was above its nixpkgs reference at the
+          # anchor, so under ADR-0032 a rise is authorized only after a minimality attempt, and is re-anchored
+          # in the landing commit that makes it.
           for bound in val:350 box:730 s2:880 s3:474; do
             mode=''${bound%%:*} max=''${bound#*:}
             thunksOf "met-cost-$mode-100"
@@ -242,7 +244,7 @@
             thunksOf "met-cost-$mode-200"
             [ "$val" = "200" ] || die "met-cost-$mode-200" "expected value 200, got '$val'"
             per=$(((thunks - t100) / 100))
-            [ "$per" -le "$max" ] || die "met-cost-$mode-200" "a met record ($mode) costs $per thunks per option, over its bound $max"
+            [ "$per" -le "$max" ] || die "met-cost-$mode-200" "a met record ($mode) costs $per thunks per option, over its bound $max; ADR-0032: this row is above its reference, so a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
             echo "met-cost $mode: $per thunks per option (bound $max)"
           done
 
