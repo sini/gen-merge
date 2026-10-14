@@ -2041,6 +2041,18 @@ construction. A record stating `carries` without the completion stamp asks the d
 and keeps the import refusal. Pinned by `ci/tests/gen-container-door.nix` and `ci/tests-error.nix`
 (`gen-container-door.*`).
 
+**A door's return taken as itself states its check where nixpkgs reads it.** nixpkgs' v2 protocol
+reads a type's rejection from `merge.v2`'s `headError` alone, and a `check` marked
+`isV2MergeCoherent` promises that it is stated there; a `//` copy can keep such a mark beside a merge
+that does not state it. So every return that publishes the caller's own `merge` states the caller's
+whole `check` in its `headError`, as nixpkgs' `addCheck` does: a completed container or nesting
+record re-homed as itself, a foreign record stating no relation or that is its own constructor's
+record, a foreign record stating no module set, a carried `verify` copy's base merge, and a re-home
+that returns the caller's record. For a coherent record this is the identity. Its price is that the
+check runs again on each definition under a nixpkgs fold, because the door cannot tell a truthful
+mark from a forged one without comparing functions. Pinned by
+`ci/tests/door-as-itself-states-check.nix`.
+
 **A `//` copy's `verify` is read inside a foreign container.** A copy whose `verify` no completion
 vouches for (`interface.replacesVerify`) still publishes its base's `check`, and a nixpkgs container's
 fold reads an element's `check` alone, so declared alone under one the value its `verify` rejects was
