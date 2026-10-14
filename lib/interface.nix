@@ -1333,6 +1333,10 @@ let
   # also the gen relation's at each of its entries (`lib/modules.nix` `relationMerge`,
   # `exportType`'s `typeMerge` and `binOp`), and the spine (`spineModules`, `spineDeclares`).
   importedTypeWalkFuel = 32;
+  # a record declaring the record it `wraps` (a wrapper owed whole, gen-schema `refined`) is parameterised by
+  # that record: its constructor and parameters are the wrapped record's, its own check stays owed. Bound
+  # once here, not per meet, so a meet allocates nothing for it.
+  wrappedBase = t: if t ? wraps && isAttrs t.wraps then wrappedBase t.wraps else t;
 
   importedDecidable =
     let
@@ -2733,7 +2737,7 @@ let
         o:
         isAttrs o
         && (
-          !(!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
+          !(!(o ? check || o ? admits) || o ? typeMergeRel.exact)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
           || o ? verify && isList (o.getSubModules or null)
@@ -2744,7 +2748,7 @@ let
         fuel: o:
         isAttrs o
         && (
-          !(!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
+          !(!(o ? check || o ? admits) || o ? typeMergeRel.exact)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
           || o ? verify && isList (o.getSubModules or null)
@@ -3253,24 +3257,28 @@ let
           )
           # the gen data a completion derives `typeMerge` from again (`exportClasses`), closed as `typeMerge` is
           // (
-            if x ? typeMergeRel then
+            # the witness rides on the rebuilt relation; each arm states its relation in place, so a rebuild
+            # binds nothing beside it
+            if x ? typeMergeRel.exact then
+              {
+                typeMergeRel = {
+                  exact = true;
+                  __functor =
+                    _: f:
+                    let
+                      j = x.typeMergeRel f;
+                    in
+                    if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
+                };
+              }
+            else if x ? typeMergeRel then
               {
                 typeMergeRel =
+                  f:
                   let
-                    r =
-                      f:
-                      let
-                        j = x.typeMergeRel f;
-                      in
-                      if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
+                    j = x.typeMergeRel f;
                   in
-                  if isAttrs x.typeMergeRel && x.typeMergeRel ? exact then
-                    {
-                      exact = true;
-                      __functor = _: r;
-                    }
-                  else
-                    r;
+                  if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
               }
             else
               { }
@@ -6035,7 +6043,7 @@ let
       && m ? typeMergeRel
       && builtins.all (
         o:
-        (!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
+        (!(o ? check || o ? admits) || o ? typeMergeRel.exact)
         && !(rewritesCheck o)
         && !(replacesVerify o)
         && !(o ? holds)
@@ -6046,7 +6054,7 @@ let
       let
         mayOwe =
           o:
-          !(!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
+          !(!(o ? check || o ? admits) || o ? typeMergeRel.exact)
           || !(m ? typeMergeRel)
           || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
           || replacesVerify o
@@ -6069,13 +6077,11 @@ let
         # the parameter TREE: each constructor's name and payload less its roles, and its elements' trees
         # (an element's parameters are its container's: `nullOr (enum [a])` is parameterised by `[a]`).
         # Past the walk's fuel a tree states nothing more, so a change that deep is owed whole.
-        # a record declaring the record it `wraps` (a wrapper owed whole, gen-schema `refined`) is parameterised by
-        # that record: its constructor and parameters are the wrapped record's, its own check stays owed
-        under = t: if isAttrs (t.wraps or null) then under t.wraps else t;
+        # a record declaring the record it `wraps` is parameterised by that record (`wrappedBase`)
         shapeOf =
           fuel: t:
           let
-            f = (under t).functor or { };
+            f = (wrappedBase t).functor or { };
             p = f.payload or null;
           in
           {
@@ -6114,7 +6120,7 @@ let
         relativised =
           o:
           let
-            s = importedPartner ((under o).functor or null);
+            s = importedPartner ((wrappedBase o).functor or null);
           in
           if isAttrs s && s ? check then o // { __stockCheck = s.check; } else o;
         owed = map (o: if fresh && widens o then relativised o else o) notM;

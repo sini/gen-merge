@@ -791,8 +791,8 @@ let
       # owed, and nothing is allocated (`metWith`'s first test, inline)
       if
         m ? typeMergeRel
-        && (!(a ? check || a ? admits) || isAttrs (a.typeMergeRel or null) && a.typeMergeRel ? exact)
-        && (!(b ? check || b ? admits) || isAttrs (b.typeMergeRel or null) && b.typeMergeRel ? exact)
+        && (!(a ? check || a ? admits) || a ? typeMergeRel.exact)
+        && (!(b ? check || b ? admits) || b ? typeMergeRel.exact)
         && !(a ? holds)
         && !(b ? holds)
       then
