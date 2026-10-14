@@ -3092,7 +3092,9 @@ let
       t: r:
       if
         !(t ? verify && t ? check && t ? merge && isAttrs r && r ? merge && r ? check)
-        || builtins.isFunction (r.__typeSelf or null)
+        # a completion stamp is tested for presence only: its value is the record's mint, which for a self-referential
+        # type is this door's own result
+        || r ? __typeSelf
       then
         r
       else
