@@ -248,9 +248,23 @@
             echo "met-cost $mode: $per thunks per option (bound $max)"
           done
 
+          # den-hoag-y4w78 (ADR-0032): the spine's cost over a chain of `listOf` over a submodule, as the thunks to read
+          # its module set at depth 30 over depth 1. A gen container answers its own `getSubModules = null` once the rest
+          # of its chain bottoms out, and for a container stating none of its own that field is its own walk of the rest,
+          # so the cost is quadratic in the depth and bounded by the walk's fuel (32). The bound is the landed figure, in
+          # THUNKS; an optimization lowers it in the same change, and a rise needs an owner reading.
+          thunksOf spine-cost-1
+          [ "$val" = "1" ] || die spine-cost-1 "expected value 1, got '$val'"
+          t1=$thunks
+          thunksOf spine-cost-30
+          [ "$val" = "1" ] || die spine-cost-30 "expected value 1, got '$val'"
+          per=$((thunks - t1))
+          [ "$per" -le "4466" ] || die spine-cost-30 "the spine costs $per thunks from depth 1 to 30, over its bound 4466"
+          echo "spine-cost: $per thunks from depth 1 to 30 (bound 4466)"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "41" ] || die runner "expected 41 evaluations, ran $ran"
-          echo "tests-process: 41 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "43" ] || die runner "expected 43 evaluations, ran $ran"
+          echo "tests-process: 43 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

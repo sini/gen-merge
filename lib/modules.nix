@@ -968,11 +968,12 @@ let
       own =
         s:
         let
-          m = (interface.importedSubstructure s.decl.type).modules;
+          m = interface.sameValue.modules s.decl.type;
         in
         if m == null then [ ] else map (setDefaultModuleLocation s.file) m;
     in
-    if sub.modules == null then
+    # a type whose carried substructure states no module set states none (`sameValue.modules`), so it is asked first
+    if sub.modules == null || interface.sameValue.modules r.upTo.merged == null then
       r.upTo.merged
     else
       interface.carriedAtDepth true r.declaredTypes (sub.rebuild (concatMap own r.prior));

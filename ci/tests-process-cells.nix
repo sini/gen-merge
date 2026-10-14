@@ -167,6 +167,16 @@ let
   # each defined; the served values are forced. `mode` picks the met record's producer: `val`, meetOf's
   # record over a foreign `addCheck`; `box`, a `listOf` over it; `s2`, meetOf's foreign-`verify` record;
   # `s3`, metWith's held record. The runner reads the process's thunks at n = 100 and 200.
+  # A chain of `d` gen `listOf` over a submodule, its module set read off the outer type: the spine walks the chain,
+  # and each gen container on it answers its own `getSubModules` once the rest of the chain is shown to bottom out
+  # (den-hoag-y4w78), so the walk is quadratic in the depth (`tests-process.nix` holds the bound).
+  spineCost =
+    d:
+    let
+      sub = m.types.submodule { options.a = m.mkOption { type = m.types.int; }; };
+      nest = k: if k == 0 then sub else m.types.listOf (nest (k - 1));
+    in
+    builtins.length (nest d).getSubModules;
   metCost =
     mode: n:
     let
@@ -339,6 +349,10 @@ let
     met-cost-s2-200 = metCost "s2" 200;
     met-cost-s3-100 = metCost "s3" 100;
     met-cost-s3-200 = metCost "s3" 200;
+    # den-hoag-y4w78: the spine's cost on a chain of `listOf` over a submodule, read by the runner as thunks between
+    # depth 1 and 30.
+    spine-cost-1 = spineCost 1;
+    spine-cost-30 = spineCost 30;
     # THE OUTER FIXPOINT (den-hoag-xzchx, C3). A PLAIN attrset — no formals, no `imports`, no
     # `__functor` — whose option KEY SET under `a` reads the evaluation's own `options` through
     # the lexical binding `r`. That is ADR-0033's in-flight clause read literally, reached through

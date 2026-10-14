@@ -490,24 +490,36 @@ let
       }
       (
         o: id: base:
-        interface.rebuildClosed.imported base (
-          interface.rebuildClosed.door (
-            # a gen record whose check a caller rewrote since its completion is closed over it before it is derived from
-            # (`interface.rebuildClosed.own`), as `defineType` closes one
-            deriveTypeCore (
-              if
-                base ? typeMergeRel
-                && (base ? _checkWitness && base ? check && base.check != base._checkWitness)
-                && !(
-                  builtins.isFunction (base.__typeSelf or null) && interface.departsOnlyOutside { check = null; } base
-                )
-              then
-                interface.rebuildClosed.own base base
-              else
-                base
-            ) (o // { inherit id; })
-          )
+        (
+          if
+            base ? substructure.modules
+            && (base ? substructure.forward || interface.sameValue.modules base == null)
+            || !(base ? substructure) && interface.isOptionType base
+          then
+            interface.sameValue.dropped base
+          else
+            (r: r)
         )
+          (
+            interface.rebuildClosed.imported base (
+              interface.rebuildClosed.door (
+                # a gen record whose check a caller rewrote since its completion is closed over it before it is derived from
+                # (`interface.rebuildClosed.own`), as `defineType` closes one
+                deriveTypeCore (
+                  if
+                    base ? typeMergeRel
+                    && (base ? _checkWitness && base ? check && base.check != base._checkWitness)
+                    && !(
+                      builtins.isFunction (base.__typeSelf or null) && interface.departsOnlyOutside { check = null; } base
+                    )
+                  then
+                    interface.rebuildClosed.own base base
+                  else
+                    base
+                ) (o // { inherit id; })
+              )
+            )
+          )
       );
   deriveTypeCore =
     base: spec:
@@ -2373,6 +2385,10 @@ in
           };
         }
       )
+    else if
+      t ? substructure.modules && (t ? substructure.forward || interface.sameValue.modules t == null)
+    then
+      interface.sameValue.dropped t (defineType (interface.keepStamp t))
     else
       defineType (interface.keepStamp t);
   completeType = defineType;
@@ -2435,8 +2451,14 @@ in
         }
       )
     # a gen record, and a descriptor stating no `_type`, pays attribute tests and no call
+    else if
+      t ? substructure.modules && (t ? substructure.forward || interface.sameValue.modules t == null)
+    then
+      interface.sameValue.dropped t (mkOptionType t)
     else if t ? typeMergeRel || !(t ? _type) || !(interface.isOptionType t) then
       mkOptionType t
+    else if interface.isOptionType t && !(t ? substructure) then
+      interface.sameValue.dropped t (interface.rebuildClosed.imported t (mkOptionType t))
     else
       interface.rebuildClosed.imported t (mkOptionType t);
 }

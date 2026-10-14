@@ -317,6 +317,42 @@ let
   # rebuild) where the two phrases differ (owner-ruled 2026-10-12, den-hoag-olrmz F1). Each phrase field is read
   # lazily, so the merge step never forces one. The two share one binding, so the library's load pays for one.
   sameValue = {
+    # ★ THE MODULE SET A DECLARATION STATES (den-hoag-y4w78). nixpkgs reads a declaration's module set off its
+    # `getSubModules` alone (`mergeOptionDecls` collects a declaration's set only where it is not `null`, and
+    # `fixupOptionType` mounts a type stating `null` as it is), so a declaration stating `null` contributes no module
+    # to its option. A `//` copy that nulls a record's module set (`// { getSubModules = null; }`) carries its base's
+    # `substructure`, which still states the set, so the four readers of a declaration's contribution to its option
+    # (`modules.nix` `fixupModuleSets`' own sets and mount test, `spineModules`, `sameValue.kept`, the published
+    # doors) read the statement, not the carried substructure. A copy stating another list is not read here.
+    # `modules` and `dropped` are members of `sameValue` under names the library already interns, so the library's
+    # load pays nothing for them; an evaluation pays their two members where it first asks one.
+    modules =
+      t:
+      if isAttrs t && t ? getSubModules && t.getSubModules == null then
+        null
+      else
+        (importedSubstructure t).modules;
+    # A door's return states no module set where its input states none (den-hoag-y4w78): a door re-derives every
+    # protocol field from the record's gen data, and the module set it re-derives is the substructure the input's copy
+    # carried, not the `null` it states. The return is the same departure, stated over the door's record.
+    # A record forwarding its module set to an element (a container) is answered LAZILY: its `getSubModules` is its
+    # element's, and a type whose element is the door's own return (`s = defineType (listOf s)`) would read the return
+    # while it is being built. Any other record states its set itself, read at the door.
+    dropped =
+      t: r:
+      if !(isAttrs t && isAttrs r && t ? getSubModules && r ? substructure) then
+        r
+      # a gen container states that it forwards (`forwardStep`'s gen arm, read without building the step)
+      else if
+        (
+          if t ? substructure then t.substructure ? forward && t ? carries.element else forwardStep t != null
+        )
+      then
+        r // { getSubModules = if t.getSubModules == null then null else r.getSubModules; }
+      else if t.getSubModules == null && isList (r.getSubModules or null) then
+        r // { getSubModules = null; }
+      else
+        r;
     __functor =
       _: x: y:
       closuresFirst [ x ] (
@@ -340,6 +376,10 @@ let
       m: a: b:
       a
       // {
+        # nixpkgs' join is its functor's rebuild, which states the constructor's module set: a kept operand stating
+        # none (a nulled copy) publishes the join's (den-hoag-y4w78)
+        ${if a ? getSubModules then "getSubModules" else null} =
+          if a.getSubModules == null then m.getSubModules or null else a.getSubModules;
         ${if a ? description then "description" else null} =
           if a.description == b.description or null then a.description else m.description or a.description;
         ${if a ? descriptionClass then "descriptionClass" else null} =
@@ -1092,11 +1132,16 @@ let
       st = forwardStep e;
     in
     if st == null then
-      (importedSubstructure e).modules
+      # the module set the record states (`sameValue.modules`, spelled in place)
+      (if e ? getSubModules && e.getSubModules == null then null else (importedSubstructure e).modules)
     else if fuel <= 0 then
       throw (forwardSpentRefusal "getSubModules" st.name)
     else if e ? substructure then
-      spineModules (fuel - 1) st.element
+      # a gen container answers its own `getSubModules = null` (a nulled copy), asked once the rest of its chain is
+      # shown to bottom out, as a stock container's override is
+      (rest: if rest != null && e ? getSubModules && e.getSubModules == null then null else rest) (
+        spineModules (fuel - 1) st.element
+      )
     else
       builtins.seq (spineEnds "getSubModules" (fuel - 1) st.element) (importedSubstructure e).modules;
   spineDeclares =

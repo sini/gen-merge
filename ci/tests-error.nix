@@ -4641,6 +4641,10 @@ in
     flake.testsError.cyclic-types =
       let
         spine = gm.types.nullOr (gm.types.listOf spine);
+        # the same cycle through a copy stating no module set (den-hoag-y4w78): the spine asks a container's own
+        # `getSubModules = null` only once the rest of its chain is shown to bottom out, so the cycle still spends the
+        # fuel and refuses by name; asking it first would re-enter the record's own walk, uncatchably
+        spineNulled = gm.types.nullOr (gm.types.listOf spineNulled // { getSubModules = null; });
         json = gm.types.nullOr (
           gm.types.oneOf [
             gm.types.int
@@ -4659,6 +4663,13 @@ in
       {
         test-a-container-only-cycle-refuses-getSubModules-by-name = {
           expr = spine.getSubModules;
+          expectedError = {
+            type = "ThrownError";
+            msg = spent "getSubModules";
+          };
+        };
+        test-a-container-only-cycle-through-a-nulled-copy-refuses-getSubModules-by-name = {
+          expr = spineNulled.getSubModules;
           expectedError = {
             type = "ThrownError";
             msg = spent "getSubModules";
