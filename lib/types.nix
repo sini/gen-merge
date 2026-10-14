@@ -1727,8 +1727,10 @@ let
     if t ? verify && (!(t ? typeMergeRel || t ? __typeSelf) || t ? carries) then
       (t.check.__verifyProjection or t.check) v
     else if t ? verify then
-      # a leaf's `verify` is its per-value domain (a record that carries a role took the arm above)
+      # a leaf's `verify` is its per-value domain (a record that carries a role took the arm above), and an `admits`
+      # stated beside it is domain too (den-hoag-zdp46)
       t.verify v == null
+      && (!(t ? admits) || t.admits v)
       && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
     else if t ? admits then
       t.admits v
@@ -2235,6 +2237,39 @@ in
     t:
     if !(t ? typeMergeRel) && interface.isOptionType t then
       interface.rebuildClosed t
+    # a descriptor not yet completed stating the foreign protocol's `check` beside gen's words is imported, as the
+    # import door imports a `check` (as `admits`, its fold checked), and completed under this door's relation
+    # (den-hoag-zdp46): the export derives `check` from gen's words alone, so completing it as stated dropped it. A
+    # gen-types leaf's own curried `check` beside its `verify` and completion stamp is no foreign check
+    # (`interface.checksDefs`'s `verify` limb, restated inline, so a descriptor stating no `check` pays one attribute
+    # test and no call); a record stating `_type` or a check witness is a completed record or its copy, which the arms
+    # around this one read.
+    # One carrying a v2 fold (a stock container's) is not imported whole: the import reads a `check` beside a v2 fold
+    # that is not the fold's own coherent one as an ad-hoc override, and refuses it. The fold is completed as gen's own,
+    # as the `verify` arm below completes one, with the stated `check` removed and the domain the import reads
+    # (`interface.importedAdmits`) restated in gen's per-value word, conjoined with a stated `verify`, as `deriveTypeCore`
+    # re-imports a record without its `verify` overlay and restates the overlay on it (den-hoag-mym0d D3). Inline, as
+    # every arm here is: a named helper is a binding every evaluation of the library pays for.
+    else if t ? check && !(t ? _type) && !(t ? _checkWitness) && !(t ? verify && t ? __typeSelf) then
+      if (t.merge or { }) ? v2 then
+        (
+          d:
+          (c: if c != null then c else interface.rebuildClosed.door (defineType (interface.keepStamp d))) (
+            interface.carriedCopy d
+          )
+        )
+          (
+            removeAttrs t [ "check" ]
+            // {
+              verify =
+                v:
+                if interface.importedAdmits t v then (t.verify or (_: null)) v else "the type's `check' rejects it";
+            }
+          )
+      else
+        (a: if a ? refused then throw a.refused else defineType (interface.keepStamp a.imported)) (
+          interface.importDescriptor t
+        )
     else if t ? verify then
       let
         c = interface.carriedCopy t;

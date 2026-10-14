@@ -11318,5 +11318,96 @@ in
           ) (names doors)
         ) (names containers)
       );
+    # den-hoag-zdp46: a descriptor handed to the published `defineType` stating the foreign protocol's `check` beside
+    # gen's words has that check imported, as the import door imports one, so the value only the check rejects (3) is
+    # refused by the descriptor's name, in gen's engine and in nixpkgs' `evalModules`, declared once and twice. At
+    # 5a3977a every cell served it: the export derived `check` from `verify | admits` alone, and fell back to `_: true`.
+    # The values every predicate admits are `ci/tests/foreign-check-define-type.nix`'s.
+    flake.testsError.foreign-check-define-type =
+      let
+        fields = {
+          check = v: builtins.isInt v && v != 3;
+          admits = v: builtins.isInt v && v != 5;
+          verify = v: if builtins.isInt v && v != 7 then null else "not an int other than 7";
+          mergeDefs = loc: defs: nixpkgsLib.mergeEqualOption loc defs;
+        };
+        descriptors = builtins.listToAttrs (
+          map
+            (ks: {
+              name = builtins.concatStringsSep "-" ks;
+              value = {
+                name = "evenT";
+              }
+              // nixpkgsLib.getAttrs ks fields;
+            })
+            (
+              map (s: [ "check" ] ++ s) [
+                [ ]
+                [ "admits" ]
+                [ "verify" ]
+                [ "mergeDefs" ]
+                [
+                  "admits"
+                  "verify"
+                ]
+                [
+                  "admits"
+                  "mergeDefs"
+                ]
+                [
+                  "verify"
+                  "mergeDefs"
+                ]
+                [
+                  "admits"
+                  "verify"
+                  "mergeDefs"
+                ]
+              ]
+            )
+        );
+        engines = {
+          gen = {
+            read = mods: (gm.evalModuleTree { } mods).config.x;
+            inherit (gm) mkOption;
+            msg = "^gen-merge: a definition for option `x' is not of type `evenT', in `<unknown-file>'$";
+          };
+          nixpkgs = {
+            read = mods: (nixpkgsLib.evalModules { modules = mods; }).config.x;
+            inherit (nixpkgsLib) mkOption;
+            msg = "^A definition for option `x' is not of type `evenT'\\.";
+          };
+        };
+        times = {
+          once = 1;
+          twice = 2;
+        };
+        cell =
+          dn: en: tn:
+          let
+            E = engines.${en};
+            T = t.defineType descriptors.${dn};
+          in
+          {
+            name = "test-a-foreign-check-on-${dn}-through-define-type-declared-${tn}-in-${en}-refuses-by-name";
+            value = {
+              expr = force (
+                E.read (
+                  builtins.genList (_: { options.x = E.mkOption { type = T; }; }) times.${tn} ++ [ { x = 3; } ]
+                )
+              );
+              expectedError = {
+                type = "ThrownError";
+                msg = E.msg;
+              };
+            };
+          };
+        names = builtins.attrNames;
+      in
+      builtins.listToAttrs (
+        builtins.concatMap (dn: builtins.concatMap (en: map (cell dn en) (names times)) (names engines)) (
+          names descriptors
+        )
+      );
   };
 }

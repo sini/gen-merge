@@ -708,8 +708,12 @@ let
       adHocFold t
     else if isV2 t && (t.getSubModules or null) == null then
       v2Fold t
+    # a foreign `check` beside a stated `admits` judges each definition with it, as the import's domain conjoins them
+    # (`importedAdmits`, den-hoag-zdp46)
     else if checksDefs t then
-      checkedFold t (importedRawFold t)
+      (if t ? admits then checkedFold (t // { check = v: t.check v && t.admits v; }) else checkedFold t) (
+        importedRawFold t
+      )
     else
       importedRawFold t;
 
@@ -845,12 +849,15 @@ let
 
   # The value predicate, as a gen-shaped one. A gen leaf's own `check` is CURRIED and must never be
   # applied as `v -> bool`, which is why `verify` is preferred rather than merely tried first.
+  # A foreign `check` is the domain, conjoined with an `admits` the record states beside it (den-hoag-zdp46); a gen
+  # leaf's curried `check` (beside `verify` and gen's witness or stamp, `checksDefs` restated inline) is not, and its
+  # `verify` is.
   importedAdmits =
     t:
-    if t ? verify then
+    if t ? check && !(t ? verify && (t ? _checkWitness || t ? __typeSelf)) then
+      if t ? admits then (v: t.check v && t.admits v) else t.check
+    else if t ? verify then
       (v: t.verify v == null)
-    else if t ? check then
-      t.check
     else
       null;
 
@@ -6847,7 +6854,12 @@ let
                 importedOwnSubstructure t;
           }
           // (if t ? verify then { inherit (t) verify; } else { })
-          // (if admits == null || t ? verify then { } else { inherit admits; })
+          // (
+            if admits == null || t ? verify && (!(t ? check) || t ? _checkWitness || t ? __typeSelf) then
+              { }
+            else
+              { inherit admits; }
+          )
           // (
             if fold == null then
               { }
@@ -7275,7 +7287,9 @@ let
           t.check
         else
           witnessRecord (
-            if t ? verify then
+            if t ? verify && t ? admits then
+              (v: t.verify v == null && t.admits v)
+            else if t ? verify then
               (v: t.verify v == null)
             else if t ? admits then
               t.admits
