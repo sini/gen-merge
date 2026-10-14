@@ -3082,6 +3082,46 @@ let
     # a gen container's element `r` rebuilt over its declared element `e`: the `verify` `e` states beyond its rebuild
     # carried on it (a `// { verify }` copy's rebuild is its base's)
     element = e: r: if e ? verify && isAttrs r then rebuildClosed.verify false e.verify r else r;
+    # A DOOR'S RETURN FOR A RECORD NO MINT VOUCHES FOR, ITS `verify` ON THE MERGED VALUE (den-hoag-5f99v): a door
+    # re-completing a record stating `verify` with no completion stamp (a nixpkgs record's `// { verify }` copy, or a
+    # copy of a door's import) returns an export whose `check` is that `verify` read per definition and whose fold
+    # never reads it on the merged value; `rebuildClosed.door` answers minted records only. So the return states `t`'s
+    # own check per definition and `t`'s `verify` on the merged value, a non-v2 fold lifted, as `rebuildClosed.verify`
+    # states one below the root
+    rooted =
+      t: r:
+      if
+        !(t ? verify && t ? check && t ? merge && isAttrs r && r ? merge && r ? check)
+        || builtins.isFunction (r.__typeSelf or null)
+      then
+        r
+      else
+        r
+        // {
+          check = {
+            __functor = _: t.check;
+            isV2MergeCoherent = true;
+          };
+          merge = rebuildClosed.verifiedMerge t.verify (
+            rebuildClosed.verifiedMerge.lifted t.check (t.merge.__verifiedMerge or t.merge)
+          );
+        }
+        # and its rebuilds, which nixpkgs re-derives the declared type through (the fixup's `substSubModules`, a
+        # redeclaration's `typeMerge`), each carrying the `verify` on its merged value as `rebuildClosed.door`'s do
+        // rebuildClosed.carried t.verify r
+        // (
+          if r ? typeMerge then
+            {
+              typeMerge =
+                f:
+                let
+                  j = r.typeMerge f;
+                in
+                if j == null then null else rebuildClosed.rebuilt t.verify j;
+            }
+          else
+            { }
+        );
     # ★ A DOOR'S RETURN FOR A CALLER'S FOREIGN RECORD, CLOSED UNDER ITS REBUILDS (den-hoag-d61ws). A door that imports,
     # re-homes or derives from a foreign record `t` returns gen's record `r` carrying `t`'s check, and nixpkgs
     # re-derives a declared type through `r`'s rebuilds (`substSubModules` at the fixup, the later declaration's
@@ -5784,7 +5824,7 @@ let
         let
           c = direct (o.check.__verifyProjection or o.check);
         in
-        if !(o ? verify) || !(o ? typeMergeRel) then
+        if !(o ? verify) || !(o ? typeMergeRel) || replacesVerify o then
           c
         else if o ? _checkWitness && o.check == o._checkWitness then
           (v: o.verify v == null)
@@ -5809,7 +5849,13 @@ let
       # a gen operand whose published check is its own domain: its `verify`, read inline
       o1 = head os;
       ov =
-        if o1 ? verify && !(o1 ? __stockCheck) && o1 ? _checkWitness && o1.check == o1._checkWitness then
+        if
+          o1 ? verify
+          && !(o1 ? __stockCheck)
+          && o1 ? _checkWitness
+          && o1.check == o1._checkWitness
+          && !(replacesVerify o1)
+        then
           o1.verify
         else
           null;
@@ -5886,39 +5932,48 @@ let
             if r == null then null else metWith false r [ met ];
         }
         // (if fold == null then { } else { mergeDefs = fold; });
-      # a foreign operand's `verify`, read once on the met record's merged value: the first rejection
+      # a `verify` no completion's check states (a foreign operand's, or a gen `//` copy's that replaced its
+      # completion's: `replacesVerify`), read once on the met record's merged value: the first rejection. A
+      # definition alone is not the value it refines (den-hoag-5f99v)
+      owesVerify = o: o ? verify && (!(o ? typeMergeRel) || replacesVerify o);
+      # relative to the operand's own parameters where a join widened them (`stockOf`), as its check is owed
       vf =
         v:
         builtins.foldl' (
-          e: o: if e != null || !(o ? verify) || o ? typeMergeRel then e else o.verify v
+          e: o:
+          if e != null || !(owesVerify o) then
+            e
+          else
+            (
+              let
+                s = stockOf o;
+              in
+              if s != null && !(s v) then null else o.verify v
+            )
         ) null os;
     in
-    if !(builtins.any (o: o ? verify && !(o ? typeMergeRel)) os) then
+    if !(builtins.any owesVerify os) then
       met
     else
       met
       // {
         verify = vf;
-        merge =
-          if met.merge ? v2 then
-            {
-              __functor =
-                self: loc: defs:
-                (self.v2 { inherit loc defs; }).value;
-              v2 =
-                args:
-                let
-                  m = met.merge.v2 args;
-                in
-                m // { value = guardedVerify args.loc (vf m.value) m.value; };
-            }
-          else
-            loc: defs:
-            let
-              m = met.merge loc defs;
-            in
-            guardedVerify loc (vf m) m;
-      };
+      }
+      # stated where a fold asks membership: a v2 merge's rejection in `headError`, so a union choosing its member by it
+      # moves on to the next one; a non-v2 join is lifted, its own check per definition, as `rebuildClosed.verify` lifts
+      # one (den-hoag-5f99v)
+      // (
+        if met.merge ? v2 then
+          { merge = rebuildClosed.verifiedMerge vf met.merge; }
+        else
+          {
+            check = {
+              __functor = _: met.check;
+              isV2MergeCoherent = true;
+            };
+            merge = rebuildClosed.verifiedMerge vf (rebuildClosed.verifiedMerge.lifted met.check met.merge);
+          }
+      );
   # The answer of every type merge: `m` met with each operand whose check it does not carry.
   #  - A gen relation's answer over a gen operand stating its own check carries it (gen x gen relations
   #    are exact), so only a foreign operand, a witnessed rewrite (a wrapper's check, or a met record), or
