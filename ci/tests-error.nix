@@ -4979,7 +4979,8 @@ in
         # A `verify` written for the values its record's check admits is never handed one the check
         # rejected: the string is refused with the base's message, declared once and beside its base,
         # where calling that `verify` would abort uncatchably (`cannot compare`). The last cell is its
-        # domain's control: a value the check admits and the `verify` rejects names the `verify`'s reason.
+        # domain's controls: a value the check admits and the `verify` rejects names the `verify`'s reason,
+        # declared once and beside its base.
         // (
           let
             vInt = np.int // {
@@ -5008,6 +5009,13 @@ in
             };
             test-a-verify-copy-beside-its-base-names-its-reason-in-its-domain = {
               expr = beside vInt (bad 5);
+              expectedError = {
+                type = "ThrownError";
+                msg = "^gen-merge: a definition for option `p' is not of the expected type: greater than 3$";
+              };
+            };
+            test-a-verify-copy-names-its-reason-in-its-domain = {
+              expr = read vInt (bad 5);
               expectedError = {
                 type = "ThrownError";
                 msg = "^gen-merge: a definition for option `p' is not of the expected type: greater than 3$";
