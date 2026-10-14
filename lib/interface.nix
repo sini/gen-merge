@@ -1590,6 +1590,14 @@ let
       !(isAttrs t)
       || t ? carries
       || !(name == "attrsWith" || name == "listOf" || name == "nullOr" || name == "either")
+    then
+      null
+    else
+      let
+        payload = t.functor.payload or null;
+        keys = if isAttrs payload then attrNames payload else [ ];
+        roles = statedRoles t;
+      in
       # ★ AN OVERRIDE NIXPKGS' MOUNT KEEPS IS THE RECORD'S OWN FOLD (den-hoag-e12ro; ADR-0039's serve half,
       # ADR-0025 item 1). nixpkgs folds a record by `merge.v2` where it states one and by its `merge`
       # otherwise, and a v2 constructor ships its `check` marked coherent, so a coherent check over a merge
@@ -1604,20 +1612,8 @@ let
       # 25.05); and an `either` or `oneOf`, which states no module set and so cannot thread (den-hoag-p06j3):
       # unrecognised, it would refuse the override that preserves the value (`t // { merge = loc: defs:
       # t.merge loc defs; }`) where re-homing serves it.
-      # Inline: a binding costs every load a thunk
-      ||
-        !(isV2 t)
-        && (t.check.isV2MergeCoherent or false)
-        && isList (t.getSubModules or null)
-        && !(isV2 (t.substSubModules t.getSubModules))
-    then
-      null
-    else
-      let
-        payload = t.functor.payload or null;
-        keys = if isAttrs payload then attrNames payload else [ ];
-        roles = statedRoles t;
-      in
+      # Inline, and asked only of a record otherwise recognised: a binding costs every load a thunk, and
+      # reading `merge` of a record the payload test refuses costs the threaded channel's rebuilds
       if
         name == "attrsWith"
         &&
@@ -1628,12 +1624,28 @@ let
           ]
         && payload.placeholder == "name"
         && roles ? element
+        && !(
+          !(isV2 t)
+          && (t.check.isV2MergeCoherent or false)
+          && isList (t.getSubModules or null)
+          && !(isV2 (t.substSubModules t.getSubModules))
+        )
       then
         rehomeAgreed door loc t {
           container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
           inherit (roles) element;
         }
-      else if (name == "listOf" || name == "nullOr") && keys == [ "elemType" ] && roles ? element then
+      else if
+        (name == "listOf" || name == "nullOr")
+        && keys == [ "elemType" ]
+        && roles ? element
+        && !(
+          !(isV2 t)
+          && (t.check.isV2MergeCoherent or false)
+          && isList (t.getSubModules or null)
+          && !(isV2 (t.substSubModules t.getSubModules))
+        )
+      then
         rehomeAgreed door loc t {
           container = name;
           inherit (roles) element;
