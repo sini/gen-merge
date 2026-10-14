@@ -480,7 +480,9 @@ let
       }
       (
         o: id: base:
-        interface.rebuildClosed.door (deriveTypeCore base (o // { inherit id; }))
+        interface.rebuildClosed.imported base (
+          interface.rebuildClosed.door (deriveTypeCore base (o // { inherit id; }))
+        )
       );
   deriveTypeCore =
     base: spec:
@@ -2202,7 +2204,13 @@ in
       let
         c = interface.carriedCopy t;
       in
-      if c != null then c else interface.rebuildClosed.door (mkOptionType t)
+      if c != null then
+        c
+      else
+        interface.rebuildClosed.imported t (interface.rebuildClosed.door (mkOptionType t))
+    # a gen record, and a descriptor stating no `_type`, pays attribute tests and no call
+    else if t ? typeMergeRel || !(t ? _type) || !(interface.isOptionType t) then
+      mkOptionType t
     else
-      mkOptionType t;
+      interface.rebuildClosed.imported t (mkOptionType t);
 }
