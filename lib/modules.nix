@@ -383,7 +383,12 @@ let
           type =
             if !(v ? type) then
               strategies.unspecified
-            else if length sites == 1 then
+            else if
+              length sites == 1
+              &&
+                (if v.type ? substructure then v.type.substructure.modules else v.type.getSubModules or null)
+                != null
+            then
               fixupModuleSets {
                 upTo.merged = v.type;
                 declaredTypes = [ v.type ];
@@ -4808,7 +4813,6 @@ let
       specialArgs ? { },
       prefix ? [ ],
       optionsView ? null,
-      class ? null,
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -4913,7 +4917,7 @@ let
               extra = mapAttrs (
                 name: _:
                 declArgs.${name}
-                  or (if name == "_class" then class else inadmissible "config" "read the module argument `${name}'")
+                  or (if name == "_class" then null else inadmissible "config" "read the module argument `${name}'")
               ) formals;
             in
             # `callM`'s elision: every formal in `declArgs` means `extra // declArgs` IS `declArgs`.
@@ -5829,7 +5833,17 @@ let
               inherit specialArgs prefix;
               modules = modList;
             }
-            // (if class == null then { } else { inherit class; })
+            // (
+              if class == null then
+                { }
+              else
+                {
+                  specialArgs = {
+                    _class = class;
+                  }
+                  // specialArgs;
+                }
+            )
           ) s) s;
 
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
@@ -6547,7 +6561,17 @@ let
                         prefix = if e ? prefix then prefix else prefix0;
                         inherit check coreShortCircuit;
                       }
-                      // (if class == null then { } else { inherit class; })
+                      // (
+                        if class == null then
+                          { }
+                        else
+                          {
+                            specialArgs = {
+                              _class = class;
+                            }
+                            // specialArgs;
+                          }
+                      )
                     );
                 specialArgs0 = specialArgs;
                 prefix0 = prefix;
