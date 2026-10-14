@@ -3106,6 +3106,28 @@ let
     # `own`, `joined`, `rebuild`), so its load pays no symbol for them. A member of `rebuildClosed`.
     imported =
       t: r: if t ? typeMergeRel || !(isOptionType t) || !(isAttrs r) then r else rebuildClosed.own t r;
+    # ★ A CALLER-CHECKED VERIFY COPY STATES ITS `verify` IN ITS CHECK BEFORE ITS CLOSURE (den-hoag-fzbap): the doors'
+    # `verify` arm re-completes a checked `// { verify }` copy `carriedCopy` cannot return as itself (a door's import of
+    # a nixpkgs record, which has no mint; a gen record whose `merge` nixpkgs' `addCheck` replaced), and the completion
+    # publishes the caller's check as its witnessed rewrite, where nixpkgs reads it per definition with the copy's
+    # `verify` in neither it nor `merge`. So `t`'s check is replaced by the domain `carriedCopy` publishes for such a
+    # copy: the one-definition projection where `t` carries a role, `copyDomain` otherwise. It stays a rewrite, never a
+    # witness, so `own` closes over it as over any caller's check and the export reads the copy as a rewrite.
+    stated =
+      t:
+      t
+      // {
+        check =
+          if t ? carries then
+            rebuildClosed.verifiedMerge.projection (t.check.__verifyProjection or t.check) t.verify (
+              t.merge.__verifiedMerge or t.merge
+            )
+          else
+            {
+              __functor = _: copyDomain t;
+              isV2MergeCoherent = true;
+            };
+      };
     # ★ A GEN RECORD A CALLER CHECKED, CLOSED BEFORE A DOOR COMPLETES IT (den-hoag-1b55t): `imported`'s closure with no
     # guard, `r`'s rebuilds and gen data closed over `t`'s check, relative to `t`'s base. A caller's check laid on a gen
     # record (nixpkgs' `addCheck`, or `// { check }`) is a `//` copy, so the record's rebuilds and gen data ride into it
@@ -3116,11 +3138,10 @@ let
     # (`departsOnlyOutside { check = null; }`: a copy departing elsewhere, a `// { description }`, is not closed again).
     # The closure runs BEFORE the completion, so the stamp the completion ties is tied over the closed record, and none
     # is forged (ADR-0034). The doors' `verify` arm, which answers before that test, hands a checked `// { verify }`
-    # copy it re-completes `own t t` too, and `own` states the record's `verify` on every rebuild it answers
+    # copy it re-completes to `own` too, over its `stated` check, and `own` states the record's `verify` on every rebuild it answers
     # (den-hoag-jyisy, den-hoag-xj4tw); a checked gen `nullOr` of a keyed nixpkgs submodule declared twice keeps its
-    # check through `carryBy`'s root carriage. Still residue: a caller's check on a gen verify copy declared once in nixpkgs' engine
-    # drops the copy's own `verify` (den-hoag-fzbap); and `deriveType` over a checked verify copy of a gen `nullOr` of a
-    # keyed nixpkgs submodule, in gen's engine, drops the laid check declared twice (den-hoag-grkfk).
+    # check through `carryBy`'s root carriage. Still residue: `deriveType` over a checked verify copy of a gen `nullOr` of
+    # a keyed nixpkgs submodule, in gen's engine, drops the laid check declared twice (den-hoag-grkfk).
     own =
       t: r:
       let

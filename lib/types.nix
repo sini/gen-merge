@@ -2284,7 +2284,7 @@ in
                 (t ? _checkWitness && t ? check && t.check != t._checkWitness)
                 && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
               then
-                interface.rebuildClosed.own t t
+                (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
               else
                 t
             )
@@ -2294,8 +2294,8 @@ in
     # completion's; `rewritesCheck` restated inline, so a record stating no rewrite pays attribute tests and no call) is
     # closed over that check before it is completed (`interface.rebuildClosed.own`, den-hoag-1b55t). The `verify` arm
     # above answers first and closes a checked `// { verify }` copy the same way at its re-completion exit, and
-    # `carriedCopy` closes the one it returns as itself (den-hoag-jyisy). Still residue there: a caller's check on a
-    # gen verify copy declared once in nixpkgs' engine drops the copy's own `verify` (den-hoag-fzbap)
+    # `carriedCopy` closes the one it returns as itself (den-hoag-jyisy); the copy's own `verify` is stated in its check
+    # first (`interface.rebuildClosed.stated`, den-hoag-fzbap)
     else if
       (t ? _checkWitness && t ? check && t.check != t._checkWitness)
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
@@ -2353,7 +2353,7 @@ in
                 && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
                 && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
               then
-                interface.rebuildClosed.own t t
+                (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
               else
                 t
             )
