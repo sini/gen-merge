@@ -1591,8 +1591,12 @@ let
       || t ? carries
       || !(name == "attrsWith" || name == "listOf" || name == "nullOr" || name == "either")
       # a record whose check is the coherent one a v2 constructor ships and whose merge states no `v2` is a `//`
-      # override of that constructor's fold: nixpkgs folds it by its own `merge`, so it is not gen's container
-      || (t.check.isV2MergeCoherent or false) && !(isV2 t)
+      # override of that constructor's fold; where nixpkgs' mount keeps it (no module set to rebuild over, or a
+      # rebuild that forwards it), nixpkgs folds it by its own `merge`, so it is not gen's container
+      ||
+        (t.check.isV2MergeCoherent or false)
+        && !(isV2 t)
+        && (!(isList (t.getSubModules or null)) || !(isV2 (t.substSubModules t.getSubModules)))
     then
       null
     else
