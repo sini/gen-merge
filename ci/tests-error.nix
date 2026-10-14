@@ -4976,6 +4976,45 @@ in
             expectedError = refusedAt "p.k" np.attrs;
           };
         }
+        # A `verify` written for the values its record's check admits is never handed one the check
+        # rejected: the string is refused with the base's message, declared once and beside its base,
+        # where calling that `verify` would abort uncatchably (`cannot compare`). The last cell is its
+        # domain's control: a value the check admits and the `verify` rejects names the `verify`'s reason.
+        // (
+          let
+            vInt = np.int // {
+              verify = v: if v > 3 then "greater than 3" else null;
+            };
+            beside =
+              T: defs:
+              builtins.deepSeq
+                (gm.evalModuleTree { } (
+                  [
+                    { options.p = gm.mkOption { type = T; }; }
+                    { options.p = gm.mkOption { type = np.int; }; }
+                  ]
+                  ++ defs
+                )).config.p
+                null;
+          in
+          {
+            test-a-verify-copy-is-not-read-on-a-value-its-check-rejects = {
+              expr = read vInt (bad "x");
+              expectedError = refusedAt "p" np.int;
+            };
+            test-a-verify-copy-beside-its-base-is-not-read-on-a-value-its-check-rejects = {
+              expr = beside vInt (bad "x");
+              expectedError = refusedAt "p" np.int;
+            };
+            test-a-verify-copy-beside-its-base-names-its-reason-in-its-domain = {
+              expr = beside vInt (bad 5);
+              expectedError = {
+                type = "ThrownError";
+                msg = "^gen-merge: a definition for option `p' is not of the expected type: greater than 3$";
+              };
+            };
+          }
+        )
       );
 
     # THE MODULE READER IS THE REFERENCE'S `unifyModuleSyntax`. A structured module (one carrying
