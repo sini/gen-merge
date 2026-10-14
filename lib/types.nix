@@ -498,7 +498,18 @@ let
           let
             answer = interface.importType base;
           in
-          if answer ? refused then throw answer.refused else answer.imported;
+          if answer ? refused then
+            throw answer.refused
+          # The import re-homes a stock container and hands a `verify` overlay back unhomed, so the
+          # definition would be served unevaluated: the overlay rides on the re-home of the record under
+          # it, as the record's `check` does (den-hoag-mym0d D3)
+          else if answer ? rehomed && !(answer.imported ? typeMergeRel) && base ? verify then
+            (interface.importType (builtins.removeAttrs base [ "verify" ])).imported
+            // {
+              inherit (base) verify;
+            }
+          else
+            answer.imported;
       delta = fields gen;
       # Cut from the source: everything but its behaviour. A delta may restate only the name-carried.
       cut = classes.derived ++ classes.tied ++ classes.identity ++ classes.datum;
