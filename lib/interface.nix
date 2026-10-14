@@ -5783,8 +5783,9 @@ let
   # more (ADR-0032: one `//` per met record is its measured marginal). The record is completed there
   # (`retied`'s stamp), and it declares its completion and no check witness: its `_checkWitness` is the
   # join's, which is how every later step reads it as owed (`metWith`), so the pair states the meet's
-  # debt and not what its mark was minted over.
-  metMints = types ? mkIdentity;
+  # debt and not what its mark was minted over. Each field is guarded inline by `types ? mkIdentity`, as
+  # `identified` is: a binding for the guard would cost every load a thunk. The witness IS bound once, a
+  # trade: +1 load thunk for -1 thunk on every met record.
   metWitness = {
     completion = "__typeSelf";
   };
@@ -5918,13 +5919,13 @@ let
               r = if asked.success then asked.value else null;
             in
             if r == null then null else metWith false r [ met ];
-          ${if metMints then "__mint" else null} = ids.__mint;
-          ${if metMints then "__payload" else null} = ids.__payload;
-          ${if metMints then "__sealed" else null} = ids.__sealed;
-          ${if metMints then "__okAt" else null} = ids.__okAt;
-          ${if metMints then "__typeSelf" else null} = _: met;
-          ${if metMints then "__witness" else null} = metWitness;
-          ${if metMints then "__stampReads" else null} = stampReads;
+          ${if types ? mkIdentity then "__mint" else null} = ids.__mint;
+          ${if types ? mkIdentity then "__payload" else null} = ids.__payload;
+          ${if types ? mkIdentity then "__sealed" else null} = ids.__sealed;
+          ${if types ? mkIdentity then "__okAt" else null} = ids.__okAt;
+          ${if types ? mkIdentity then "__typeSelf" else null} = _: met;
+          ${if types ? mkIdentity then "__witness" else null} = metWitness;
+          ${if types ? mkIdentity then "__stampReads" else null} = stampReads;
         }
         // (if fold == null then { } else { mergeDefs = fold; });
       ids = metIdentity j os { } met;
@@ -5960,13 +5961,13 @@ let
                 m = met.merge loc defs;
               in
               guardedVerify loc (vf m) m;
-          ${if metMints then "__mint" else null} = vids.__mint;
-          ${if metMints then "__payload" else null} = vids.__payload;
-          ${if metMints then "__sealed" else null} = vids.__sealed;
-          ${if metMints then "__okAt" else null} = vids.__okAt;
-          ${if metMints then "__typeSelf" else null} = _: verified;
-          ${if metMints then "__witness" else null} = metWitness;
-          ${if metMints then "__stampReads" else null} = stampReads;
+          ${if types ? mkIdentity then "__mint" else null} = vids.__mint;
+          ${if types ? mkIdentity then "__payload" else null} = vids.__payload;
+          ${if types ? mkIdentity then "__sealed" else null} = vids.__sealed;
+          ${if types ? mkIdentity then "__okAt" else null} = vids.__okAt;
+          ${if types ? mkIdentity then "__typeSelf" else null} = _: verified;
+          ${if types ? mkIdentity then "__witness" else null} = metWitness;
+          ${if types ? mkIdentity then "__stampReads" else null} = stampReads;
         };
         vids = metIdentity j os { verify = true; } verified;
       in
@@ -6153,13 +6154,13 @@ let
             met
             // {
               holds = true;
-              ${if metMints then "__mint" else null} = hids.__mint;
-              ${if metMints then "__payload" else null} = hids.__payload;
-              ${if metMints then "__sealed" else null} = hids.__sealed;
-              ${if metMints then "__okAt" else null} = hids.__okAt;
-              ${if metMints then "__typeSelf" else null} = _: h;
-              ${if metMints then "__witness" else null} = metWitness;
-              ${if metMints then "__stampReads" else null} = stampReads;
+              ${if types ? mkIdentity then "__mint" else null} = hids.__mint;
+              ${if types ? mkIdentity then "__payload" else null} = hids.__payload;
+              ${if types ? mkIdentity then "__sealed" else null} = hids.__sealed;
+              ${if types ? mkIdentity then "__okAt" else null} = hids.__okAt;
+              ${if types ? mkIdentity then "__typeSelf" else null} = _: h;
+              ${if types ? mkIdentity then "__witness" else null} = metWitness;
+              ${if types ? mkIdentity then "__stampReads" else null} = stampReads;
               typeMerge =
                 f:
                 let
