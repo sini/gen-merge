@@ -383,12 +383,7 @@ let
           type =
             if !(v ? type) then
               strategies.unspecified
-            else if
-              length sites == 1
-              &&
-                (if v.type ? substructure then v.type.substructure.modules else v.type.getSubModules or null)
-                != null
-            then
+            else if length sites == 1 && (interface.importedSubstructure v.type).modules != null then
               fixupModuleSets {
                 upTo.merged = v.type;
                 declaredTypes = [ v.type ];
