@@ -364,8 +364,7 @@ let
       in
       if !(isOptLeaf v) then
         serveOptions sitesAt (rel ++ [ k ]) lk prov.${k} defs.${k} cfg.${k} v
-      # a redeclaration whose types do not merge: its evaluated record IS the refusal, as nixpkgs'
-      # merged declaration is, while its siblings and its leafness stay answerable
+      # a redeclaration whose types do not merge (`redeclareDecl`): its record IS the refusal
       else if v ? _refused then
         v._refused
       else
@@ -1122,9 +1121,6 @@ let
       # once per declaring module
       typed = filter (s: s.decl ? type) sites;
       lastTypedIdx = if typed == [ ] then -1 else (prelude.last typed).idx;
-      # the deciding step's answer, bound once per loc: the step that decides reads it, and so does
-      # the fold's end, which turns a refused list into a refusing record
-      decided = through lastTypedIdx;
       # the declared-type list through module index `i`: every typed site at or before it, and the
       # list's answer. Bound once per loc and applied per step, so a step that is not the last typed
       # one allocates the one `type` thunk that reads it, and nothing else.
@@ -1197,13 +1193,24 @@ let
           kept
         # the LAST typed declaration decides the whole list; an earlier step's prefix is provisional
         else if modIndex >= lastTypedIdx then
-          if decided.upTo ? refused then
-            merged // { overridden = chain; }
+          let
+            r = through modIndex;
+          in
+          # A refusal of THIS option, never of the tree it sits in (nixpkgs' `mergeOptionDecls` throws
+          # when the option is read): the record stays a leaf, so a key walk deciding leafness reads
+          # `_type` and passes, and every other field, the published record included, is the refusal.
+          if r.upTo ? refused then
+            let
+              refusal = throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${declaredRefusalText r.upTo}); declared in ${
+                concatStringsSep ", " (map (s: s.file) sites)
+              }";
+            in
+            mapAttrs (k: f: if k == "_type" then f else refusal) merged // { _refused = refusal; }
           else
             merged
             // {
               overridden = chain;
-              type = typeOf decided;
+              type = typeOf r;
             }
         else
           merged
@@ -1216,25 +1223,13 @@ let
     # WHNF as it is made (a lazy accumulator would be forced from the outside, to depth k); `j` is the
     # position of the step's later operand in the loc's list
     ys:
-    let
-      v =
-        (foldl' (
-          acc: j:
-          let
-            v = step j acc.v (prelude.elemAt ys j);
-          in
-          builtins.seq v { inherit v; }
-        ) { v = head ys; } (prelude.genList (j: j + 1) (length ys - 1))).v;
-    in
-    if length typed > 1 && decided.upTo ? refused then
+    (foldl' (
+      acc: j:
       let
-        refusal = throw "gen-merge: option `${showOption lk}' is declared with types that do not merge (${declaredRefusalText decided.upTo}); declared in ${
-          concatStringsSep ", " (map (s: s.file) sites)
-        }";
+        v = step j acc.v (prelude.elemAt ys j);
       in
-      mapAttrs (k: f: if k == "_type" then f else refusal) v // { _refused = refusal; }
-    else
-      v;
+      builtins.seq v { inherit v; }
+    ) { v = head ys; } (prelude.genList (j: j + 1) (length ys - 1))).v;
 
   # mergeOptionDecls — combine two option-decl TREES (nixpkgs mergeModules' descent, byte-mode).
   # This is what lets `options.a.b.c = mkOption {…}` build a NESTED tree rather than the old

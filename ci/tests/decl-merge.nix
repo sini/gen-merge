@@ -3943,6 +3943,22 @@ in
         ]).options.q.type.name;
       expected = "string";
     };
+    # ... and its value: nixpkgs merges a redeclaration's types when that option is read, so the
+    # value fold's key walk decides `p` a leaf from its declarations and never reads its type.
+    test-a-type-clash-leaves-an-unrelated-options-value-readable = {
+      expr =
+        (evalModuleTree { } [
+          { options.p = mkOption { type = t.str; }; }
+          { options.p = mkOption { type = t.int; }; }
+          {
+            options.q = mkOption {
+              type = t.str;
+              default = "x";
+            };
+          }
+        ]).config.q;
+      expected = "x";
+    };
     # `overridden` in authored order when the LAST declaration shadows nothing: `p2` shadows `p1`'s
     # type, `p3` adds a field, `p4` shadows `p3`'s description and `p5` only adds `apply`. The list is
     # published at the last step, which here records no entry of its own.
