@@ -5586,6 +5586,12 @@ let
       # When the spine does not resolve, the guard takes `stagedDeclarations`: the unresolved nodes are
       # re-tried against the declarations of strictly earlier passes, and only what no pass resolves
       # refuses. The guard still returns `s` either way, so the staged passes decide admission only.
+      #
+      # The value walk (`mergeTree`) reads each declared key's LEAFNESS off the returned `options`, the
+      # spine, rather than off the merged record, so a redeclared leaf whose types do not merge refuses
+      # only the read that reaches it (nixpkgs' `mergeOptionDecls`). Where the staged passes ran, the
+      # spine holds a node that did not resolve, so the guard returns `s` without its `options` and the
+      # walk decides off its own merged tree.
       # A closed set (`s ? flat`) has no module that reads `options`, so every pass would equal the
       # first and the staged path could only re-raise its error: the spine is forced outright there,
       # with no `tryEval` record.
