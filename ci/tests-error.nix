@@ -1372,28 +1372,29 @@ in
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
         };
       };
-      # f010k's control: the declaration guard no longer merges a redeclared leaf, so the refusal
-      # surfaces from the value fold, whose key walk reaches every leaf. Reading only an unrelated
-      # option's VALUE still refuses with the same text; reading its descriptor does not
-      # (`decl-merge.test-a-type-clash-leaves-an-unrelated-options-type-readable`).
-      test-unmergeable-redeclaration-refuses-a-read-of-an-unrelated-value = {
+      # The refusal belongs to the option, as nixpkgs' `mergeOptionDecls` throw does: its record
+      # refuses at WHNF, and an unrelated option's value serves
+      # (`decl-merge.test-a-type-clash-leaves-an-unrelated-options-value-readable`).
+      test-unmergeable-redeclaration-refuses-a-read-of-its-option-record = {
         expr =
-          (gm.evalModuleTree { } [
-            {
-              _file = "a.nix";
-              options.x = gm.mkOption { type = t.str; };
-            }
-            {
-              _file = "b.nix";
-              options.x = gm.mkOption { type = t.int; };
-            }
-            {
-              options.q = gm.mkOption {
-                type = t.str;
-                default = "q";
-              };
-            }
-          ]).config.q;
+          builtins.seq
+            (gm.evalModuleTree { } [
+              {
+                _file = "a.nix";
+                options.x = gm.mkOption { type = t.str; };
+              }
+              {
+                _file = "b.nix";
+                options.x = gm.mkOption { type = t.int; };
+              }
+              {
+                options.q = gm.mkOption {
+                  type = t.str;
+                  default = "q";
+                };
+              }
+            ]).options.x
+            null;
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(`string' and `int'\\); declared in a\\.nix, b\\.nix$";
