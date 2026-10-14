@@ -6542,10 +6542,14 @@ let
                 # two definitions, refused
                 withExt =
                   a:
-                  if a ? extendModules then
-                    throw "gen-merge: the module argument `extendModules' is defined by a module and by the module system; nixpkgs' `_module.args' takes one definition per argument"
-                  else
-                    a // { extendModules = ext; };
+                  a
+                  // {
+                    extendModules =
+                      if a ? extendModules then
+                        throw "gen-merge: the module argument `extendModules' is defined by a module and by the module system; `_module.args' takes one definition per argument"
+                      else
+                        ext;
+                  };
               in
               (
                 if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
@@ -7057,7 +7061,18 @@ let
               let
                 # GATE PROBE: the four values off their own bindings, never through `moduleConfig`
                 m = {
-                  args = moduleConfig._module.args;
+                  # the module-defined set, read off its own binding, beside the engine's `extendModules`
+                  # (a thunk until read, so a module gating on this record's keys does not reach `config`)
+                  args =
+                    (
+                      if allOptions ? _module || !knot.positioned then
+                        moduleArgs
+                      else
+                        moduleArgs // { name = positionNameOf prefix moduleArgs pushed; }
+                    )
+                    // {
+                      inherit (moduleConfig._module.args) extendModules;
+                    };
                   check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                   freeformType = freeform;
                   specialArgs =
