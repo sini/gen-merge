@@ -6527,48 +6527,43 @@ let
           moduleConfig = uncheckedConfig // {
             _module =
               let
-                ext =
-                  e@{
-                    modules ? [ ],
-                    specialArgs ? { },
-                    prefix ? [ ],
-                  }:
-                  # A positioned evaluation re-evaluates positioned at its own prefix. At a stated prefix the
-                  # position no longer names it, so its `name` rides as a module of the list, as nixpkgs' child
-                  # evaluation carries it.
-                  evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
-                    false
-                    (
-                      {
-                        modules =
-                          modList
-                          ++ (
-                            if knot.positioned && e ? prefix then
-                              [ { _module.args.name = moduleConfig._module.args.name; } ]
-                            else
-                              [ ]
-                          )
-                          ++ modules;
-                        specialArgs = specialArgs0 // specialArgs;
-                        prefix = if e ? prefix then prefix else prefix0;
-                        inherit check coreShortCircuit;
-                      }
-                      // (if class == null then { } else { inherit class; })
-                    );
-                specialArgs0 = specialArgs;
-                prefix0 = prefix;
-                # nixpkgs' `_module.args` is `lazyAttrsOf raw`: a module's own `extendModules` beside the engine's is
-                # two definitions, refused
-                withExt =
-                  a:
-                  a
-                  // {
-                    extendModules =
-                      if a ? extendModules then
-                        throw "gen-merge: the module argument `extendModules' is defined by a module and by the module system; `_module.args' takes one definition per argument"
-                      else
-                        ext;
-                  };
+                # the engine's own `extendModules` argument (nixpkgs' `internalModule`); a module defining it too is
+                # two definitions of one `lazyAttrsOf raw` argument, refused on that argument only
+                extArg =
+                  if moduleArgs ? extendModules then
+                    throw "gen-merge: the module argument `extendModules' is defined by a module and by the module system; `_module.args' takes one definition per argument"
+                  else
+                    let
+                      s0 = specialArgs;
+                      p0 = prefix;
+                    in
+                    e@{
+                      modules ? [ ],
+                      specialArgs ? { },
+                      prefix ? [ ],
+                    }:
+                    # A positioned evaluation re-evaluates positioned at its own prefix. At a stated prefix the
+                    # position no longer names it, so its `name` rides as a module of the list, as nixpkgs' child
+                    # evaluation carries it.
+                    evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
+                      false
+                      (
+                        {
+                          modules =
+                            modList
+                            ++ (
+                              if knot.positioned && e ? prefix then
+                                [ { _module.args.name = moduleConfig._module.args.name; } ]
+                              else
+                                [ ]
+                            )
+                            ++ modules;
+                          specialArgs = s0 // specialArgs;
+                          prefix = if e ? prefix then prefix else p0;
+                          inherit check coreShortCircuit;
+                        }
+                        // (if class == null then { } else { inherit class; })
+                      );
               in
               (
                 if !(declaredConfig ? _module) && !(freeformConfig ? _module) then
@@ -6579,7 +6574,9 @@ let
               // (
                 if allOptions ? _module then
                   {
-                    args = withExt moduleArgs;
+                    args = moduleArgs // {
+                      extendModules = extArg;
+                    };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
                     specialArgs = moduleOwnSpecialArgs (
@@ -6592,7 +6589,8 @@ let
                   }
                 else if knot.positioned then
                   {
-                    args = withExt moduleArgs // {
+                    args = moduleArgs // {
+                      extendModules = extArg;
                       name = positionNameOf prefix moduleArgs pushed;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
@@ -6601,7 +6599,9 @@ let
                   }
                 else
                   {
-                    args = withExt moduleArgs;
+                    args = moduleArgs // {
+                      extendModules = extArg;
+                    };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
                     freeformType = freeform;
