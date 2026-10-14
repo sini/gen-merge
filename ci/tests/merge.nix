@@ -1420,7 +1420,10 @@ in
             {
               options.seen = mkOption {
                 type = t.attrsOf t.str;
-                default = config._module.args;
+                default = removeAttrs config._module.args [
+                  "extendModules"
+                  "moduleType"
+                ];
               };
             }
           )

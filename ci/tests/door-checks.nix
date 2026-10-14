@@ -43,6 +43,7 @@ let
         "coreShortCircuit"
         "warmFrom"
         "editedModules"
+        "class"
       ];
       apply = f: f [ declaresA ];
       observe = r: r.options.a.loc;

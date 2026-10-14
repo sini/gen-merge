@@ -1902,7 +1902,9 @@ let
     else if e.reserved or null != null && isAttrs m && reservedHits e != [ ] then
       throw "${e.reserved.names.${head (reservedHits e)}} (module `${e._file}')"
     else if
-      isAttrs m && m ? _type && !(m._type == "module" || m._type == "if" || m._type == "override" || m._type == "merge")
+      isAttrs m
+      && m ? _type
+      && !(m._type == "module" || m._type == "if" || m._type == "override" || m._type == "merge")
     then
       throw "gen-merge: Expected a module, but found a value of type ${builtins.toJSON m._type}, while trying to load a module into `${e._file}'. A module is an attribute set, a function returning one, or a path to either.${
         if m._type == "configuration" then
@@ -2200,7 +2202,12 @@ let
         m = callM m0;
         self = {
           key = moduleKeyOf importer i m0 m;
-          inherit importer i m0 m;
+          inherit
+            importer
+            i
+            m0
+            m
+            ;
           next = moduleLevel callM self (importsOf m);
         };
       in
@@ -2215,7 +2222,9 @@ let
       let
         isP = builtins.isPath n.m0 || isPathString n.m0;
         file = toString (n.m._file or (if isP then n.m0 else parentFile));
-        key = toString (n.m.key or (if isP then toString n.m0 else "${parentKey}:anon-${toString (n.i + 1)}"));
+        key = toString (
+          n.m.key or (if isP then toString n.m0 else "${parentKey}:anon-${toString (n.i + 1)}")
+        );
       in
       {
         inherit key file;
@@ -5452,7 +5461,7 @@ let
               ) p.defs;
             prefix = p.loc;
             inherit (n) specialArgs check coreShortCircuit;
-              class = n.class or null;
+            class = n.class or null;
           }
         else
           (
@@ -5567,7 +5576,10 @@ let
       modList = if isList modules then modules else [ modules ];
       # The arguments every stratum applies modules to: nixpkgs' `_class` beside the caller's
       # specialArgs, which outrank it there too (`{ _class = class; … } // specialArgs`).
-      argsIn = { _class = class; } // specialArgs;
+      argsIn = {
+        _class = class;
+      }
+      // specialArgs;
       # nixpkgs' `checkModule`, over the collection: a stated `_class` other than the requested one.
       classHeld = all (
         e:
@@ -5598,7 +5610,12 @@ let
       moduleType =
         (evalModuleTreeUnchecked {
           modules = modList;
-          inherit specialArgs check coreShortCircuit class;
+          inherit
+            specialArgs
+            check
+            coreShortCircuit
+            class
+            ;
         }).type;
 
       # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
@@ -7340,7 +7357,12 @@ let
             # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
             nests = {
               modules = modList;
-              inherit specialArgs check coreShortCircuit class;
+              inherit
+                specialArgs
+                check
+                coreShortCircuit
+                class
+                ;
               entry = d: head (defsAsModules false [ d ]);
               empty = {
                 prefix = [ ];
@@ -7360,7 +7382,12 @@ let
               ms:
               (evalModuleTreeUnchecked {
                 modules = ms;
-                inherit specialArgs check coreShortCircuit class;
+                inherit
+                  specialArgs
+                  check
+                  coreShortCircuit
+                  class
+                  ;
               }).type;
             freeform = resolvedFreeform (
               map topFreeformEntry (filter hasTopFreeform result._flat)
@@ -7439,7 +7466,12 @@ let
                 prefix:
                 (evalModuleTreeUnchecked {
                   modules = modList ++ [ namePlaceholder ];
-                  inherit prefix specialArgs check class;
+                  inherit
+                    prefix
+                    specialArgs
+                    check
+                    class
+                    ;
                 }).options;
               rebuild = over;
             };

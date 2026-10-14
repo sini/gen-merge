@@ -592,8 +592,25 @@ let
               }).options
           );
       # every record forces whole, catchably, but for the one key it refuses by name
+      # `args` holds the engine's `moduleType`, a gen `submodule` type, whose called empty fold refuses
+      # by name when forced (den-hoag-n6dh7 item 1), so the record is forced without those two values.
       wholeRecords = map (
-        k: (builtins.tryEval (builtins.deepSeq (removeAttrs pub._module.${k} [ "valueMeta" ]) true)).success
+        k:
+        let
+          r = removeAttrs pub._module.${k} [ "valueMeta" ];
+          r' =
+            if k == "args" then
+              r
+              // {
+                value = removeAttrs r.value [
+                  "extendModules"
+                  "moduleType"
+                ];
+              }
+            else
+              r;
+        in
+        (builtins.tryEval (builtins.deepSeq r' true)).success
       ) ownKeys;
       # the stated departures, each side read
       noArgs =

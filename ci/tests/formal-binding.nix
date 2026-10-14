@@ -96,6 +96,7 @@ in
     test-options-and-config-formals-see-the-base-key-set = {
       expr = baseFormals.seen.base.keys;
       expected = [
+        "_class"
         "config"
         "foo"
         "options"
@@ -109,6 +110,7 @@ in
     test-a-special-arg-formal-sees-the-base-key-set = {
       expr = special.seen.special.keys;
       expected = [
+        "_class"
         "config"
         "foo"
         "options"
@@ -127,6 +129,7 @@ in
     test-a-module-args-formal-adds-its-own-key = {
       expr = moduleArg.seen.moduleArg.keys;
       expected = [
+        "_class"
         "bar"
         "config"
         "foo"

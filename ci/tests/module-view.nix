@@ -213,7 +213,18 @@ in
       expected = "S";
     };
     test-control-args-read-is-unchanged = {
-      expr = rootRead { } (c: c._module.args) [ { config._module.args.pkgs = "P"; } ];
+      expr =
+        rootRead { }
+          (
+            c:
+            removeAttrs c._module.args [
+              "extendModules"
+              "moduleType"
+            ]
+          )
+          [
+            { config._module.args.pkgs = "P"; }
+          ];
       expected = {
         pkgs = "P";
       };

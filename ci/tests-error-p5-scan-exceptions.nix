@@ -7,7 +7,7 @@
 # reds until it is removed here. An entry naming no generated cell is refused by
 # `p5-scan.test-every-exception-names-a-generated-cell`.
 #
-# The population: 150 cells, by class list 52, assertion 45, set 30, json 9, call 8, unprefixed 5, string 1.
+# The population: 149 cells, by class list 52, assertion 45, set 30, json 9, call 8, unprefixed 4, string 1.
 let
   class = {
     list = "the operation takes its argument as a list and indexes or folds it without asking its domain first, so a non-list reaches the interpreter: `expected a list but found …`, naming neither the operation nor the input. The class `refusingOutside` closed for the structural containers. Disposition: den-hoag-jmwbf.";
@@ -53,7 +53,6 @@ in
   "test-fold-of-int-oneOf-on-null" = class.list;
   "test-fold-of-int-oneOf-on-str" = class.list;
   "test-fold-of-int-strict-on-attrs" = class.list;
-  "test-fold-of-int-submodule-on-attrs" = class.unprefixed;
   "test-fold-of-int-tuple-on-attrs" = class.assertion;
   "test-fold-of-int-tuple-on-bool" = class.assertion;
   "test-fold-of-int-tuple-on-float" = class.assertion;
