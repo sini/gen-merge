@@ -1832,9 +1832,9 @@ let
   # evaluation is positioned, as nixpkgs' `submoduleWith` defines it there, and then mapped by an
   # accepted `apply` (`moduleOwnApply`). So the `name` its modules receive is the applied set's.
   moduleOwnArgs =
-    positioned: prefix: sites: pushed:
+    positioned: prefix: sites: argSets: pushed:
     let
-      stated = builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed);
+      stated = builtins.zipAttrsWith mergeModuleArg argSets;
     in
     moduleOwnApply sites (
       if positioned then stated // { name = positionNameOf prefix stated pushed; } else stated
@@ -1888,6 +1888,10 @@ let
       throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
     else if e.reserved or null != null && isAttrs m && reservedHits e != [ ] then
       throw "${e.reserved.names.${head (reservedHits e)}} (module `${e._file}')"
+    else if
+      isAttrs m && m ? _type && !(m._type == "module" || m._type == "if" || m._type == "override" || m._type == "merge")
+    then
+      throw "gen-merge: Expected a module, but found a value of type ${builtins.toJSON m._type}, while trying to load a module into `${e._file}'. A module is an attribute set, a function returning one, or a path to either."
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
     else if (m ? __keyEq || (e.m0.__keyEq or null) != null) && !(m ? key) then
@@ -2178,12 +2182,29 @@ let
         m = callM m0;
         self = {
           key = moduleKeyOf importer i m0 m;
-          inherit importer i m0;
+          inherit importer i m0 m;
           next = moduleLevel callM self (importsOf m);
         };
       in
       self
     ) mods;
+  # nixpkgs' `toGraph` over `collectStructuredModules`: key and file as its `unifyModuleSyntax` gives
+  # them (a path's own string, else `${parentKey}:anon-<n>`; `_file`, else the path, else the parent's).
+  moduleGraph =
+    parentFile: parentKey: nodes:
+    map (
+      n:
+      let
+        isP = builtins.isPath n.m0 || isPathString n.m0;
+        file = toString (n.m._file or (if isP then n.m0 else parentFile));
+        key = toString (n.m.key or (if isP then toString n.m0 else "${parentKey}:anon-${toString (n.i + 1)}"));
+      in
+      {
+        inherit key file;
+        imports = moduleGraph file key n.next;
+        disabled = false;
+      }
+    ) nodes;
   # A tree's closure's top: the tree as importer, holding the tree's own module list (`roots`, its
   # import edges, a module named twice included).
   moduleTop =
@@ -3543,6 +3564,7 @@ let
       modules = site.nests.modules ++ map site.nests.entry site.defs;
       prefix = site.loc;
       inherit (site.nests) specialArgs check coreShortCircuit;
+      class = site.nests.class or null;
     };
   # The door's EMPTY VALUE: the tree over no definitions at no position, named by the placeholder,
   # as nixpkgs' `emptyValue` is `base.config`.
@@ -3551,6 +3573,7 @@ let
     evalModuleTreeWith knotRoot m.carried m.inherited {
       modules = site.nests.modules ++ [ namePlaceholder ];
       inherit (site.nests) coreShortCircuit;
+      class = site.nests.class or null;
       inherit (site.nests.empty) prefix specialArgs check;
     };
 
@@ -5515,9 +5538,37 @@ let
       # top eval); the nested moduleTree-as-type merge stays COLD (a boundary, like provenance's).
       warmFrom ? null,
       editedModules ? [ ],
+      # nixpkgs' `class`: a nominal type for modules. Non-null, every collected module whose `_class`
+      # is stated and differs is refused; the value is every module's `_class` argument either way.
+      class ? null,
     }:
     let
       modList = if isList modules then modules else [ modules ];
+      # The arguments every stratum applies modules to: nixpkgs' `_class` beside the caller's
+      # specialArgs, which outrank it there too (`{ _class = class; … } // specialArgs`).
+      argsIn = { _class = class; } // specialArgs;
+      # nixpkgs' `extendModules`: the same request re-evaluated with modules appended, specialArgs
+      # merged and the prefix replaced when stated. A re-evaluation, as nixpkgs' is; warm fields are
+      # not carried.
+      extendModules = prelude.door {
+        name = "gen-merge.extendModules";
+        optional = [
+          "modules"
+          "specialArgs"
+          "prefix"
+        ];
+      } (e: evalModuleTreeUnchecked {
+        modules = modList ++ (e.modules or [ ]);
+        specialArgs = specialArgs // (e.specialArgs or { });
+        prefix = e.prefix or prefix;
+        inherit check coreShortCircuit class;
+      });
+      # nixpkgs' `moduleType`: the evaluation's module set as a type (`submoduleWith`).
+      moduleType =
+        (evalModuleTreeUnchecked {
+          modules = modList;
+          inherit specialArgs check coreShortCircuit class;
+        }).type;
 
       # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
       # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
@@ -5768,7 +5819,8 @@ let
         in
         let
           s = (if knot.positioned then declarationSpinePositioned else declarationSpine) {
-            inherit specialArgs prefix;
+            specialArgs = argsIn;
+            inherit prefix;
             modules = modList;
           };
         in
@@ -5778,7 +5830,8 @@ let
           s
         else
           builtins.seq (stagedDeclarations knot.positioned {
-            inherit specialArgs prefix;
+            specialArgs = argsIn;
+            inherit prefix;
             modules = modList;
           } s) s;
 
@@ -5791,7 +5844,7 @@ let
           baseArgs =
             (
               if !(specialArgs ? config || specialArgs ? options || specialArgs ? prefix) then
-                specialArgs
+                argsIn
               else
                 let
                   stated = filter (k: specialArgs ? ${k}) [
@@ -6123,9 +6176,22 @@ let
           # tree that declares no `options._module` allocates nothing for it.
           moduleArgs =
             if allOptions ? _module then
-              moduleOwnArgs knot.positioned prefix (moduleOwnSites sitesAt prefix allOptions null "args") pushed
+              moduleOwnArgs knot.positioned prefix (moduleOwnSites sitesAt prefix allOptions null "args") (
+                moduleArgSetsOf pushed ++ [ engineArgs ]
+              ) pushed
             else
-              builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed);
+              builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed ++ [ engineArgs ]);
+          # nixpkgs' `internalModule` defines these two in every evaluation, last in its module list.
+          engineArgs = {
+            extendModules = {
+              _file = "lib/modules.nix";
+              value = extendModules;
+            };
+            moduleType = {
+              _file = "lib/modules.nix";
+              value = moduleType;
+            };
+          };
           # freeformType is priority-resolved (nixpkgs treats it as an option): a top-level
           # `freeformType` (bare, prio 100) beats a `_module.freeformType = mkDefault …` (prio 1000)
           # — this is how strict.nix's throw-on-unknown default yields to a kind's own freeform.
@@ -7064,6 +7130,17 @@ let
           # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the closure the family `nta.modules` mints
           # from, one node per entry, and only when the family is read (`knotModules`).
           _flat = flat;
+          _classHeld =
+            class == null
+            || all (
+              e:
+              let
+                c = e.content._class or null;
+              in
+              c == null
+              || c == class
+              || throw "gen-merge: The module `${e._file}` (class: ${builtins.toJSON c}) cannot be imported into a module evaluation that expects class ${builtins.toJSON class}."
+            ) flat;
           _modList = modList;
           _callM = callM;
           _nested =
@@ -7110,12 +7187,18 @@ let
         # reach it, and every consumer of a warm re-compose goes through this attribute.
         #
         # Cold costs nothing: `identityHeld` is `[ ]` without touching either config.
-        config = builtins.seq result.identityHeld result.config;
+        config = builtins.seq result._classHeld (builtins.seq result.identityHeld result.config);
+        inherit class extendModules;
+        # nixpkgs' `graph`: the import TREE (not the closure), one node per occurrence. A module set
+        # stating `disabledModules` is refused by the declaration guard first, so `disabled` is false.
+        graph = builtins.seq declarationGuard (
+          builtins.seq result._classHeld (moduleGraph "<unknown-file>" "" (moduleTop result._callM modList).roots)
+        );
         options =
           let
             entries = prelude.imap0 declEntry result._flat;
           in
-          moduleOwn.serve prefix result.optionDefs.moduleOwn (
+          builtins.seq result._classHeld moduleOwn.serve prefix result.optionDefs.moduleOwn (
             serveOptions (declaringSitesAt (length prefix) entries) [ ] prefix result.provenance
               result.optionDefs.defs
               (builtins.seq result.identityHeld result.optionDefs.values)
@@ -7232,7 +7315,7 @@ let
             # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
             nests = {
               modules = modList;
-              inherit specialArgs check coreShortCircuit;
+              inherit specialArgs check coreShortCircuit class;
               entry = d: head (defsAsModules false [ d ]);
               empty = {
                 prefix = [ ];
@@ -7252,7 +7335,7 @@ let
               ms:
               (evalModuleTreeUnchecked {
                 modules = ms;
-                inherit specialArgs check coreShortCircuit;
+                inherit specialArgs check coreShortCircuit class;
               }).type;
             freeform = resolvedFreeform (
               map topFreeformEntry (filter hasTopFreeform result._flat)
@@ -7331,7 +7414,7 @@ let
                 prefix:
                 (evalModuleTreeUnchecked {
                   modules = modList ++ [ namePlaceholder ];
-                  inherit prefix specialArgs check;
+                  inherit prefix specialArgs check class;
                 }).options;
               rebuild = over;
             };
@@ -7359,6 +7442,7 @@ let
     "coreShortCircuit"
     "warmFrom"
     "editedModules"
+    "class"
   ];
   evalModuleTree = prelude.door {
     name = "gen-merge.evalModuleTree";
