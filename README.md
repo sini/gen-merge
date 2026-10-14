@@ -965,7 +965,9 @@ one a type constructor over a TYPE, and neither is reachable where the other is.
   base, joining through `mergeTypes`, served a value one copy's `verify` rejects when declared twice,
   where the raw base refuses it. So the refusal stands until a join of two foreign records carries every
   check and `verify` either states, and serving it then moves no refused cell to silent. It is an open defect, not a stated limit. A foreign leaf derives,
-  and so does a stock container over a gen nesting element, which the import re-homes as gen's own.
+  and so does a stock container over a gen nesting element, which the import re-homes as gen's own. A
+  `verify` a copy of such a container states rides on that re-home, as the copy's `check` does, so the
+  derivation evaluates the definition before judging it (`derive-type-container-verify-copy`).
 - A derivation OF a consumer type whose relation keys on an inherited marker field is absorbed by
   that type: gen-schema's `refined` decides by `partner ? __schema`, which a derivation of a
   refined type inherits, so `mergeTypes R (deriveType { … } "id" R)` and the foreign `R.typeMerge` answer
