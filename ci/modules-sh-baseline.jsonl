@@ -56,7 +56,7 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .nested\\.right\\.left. is not of type .signed integer.","config.nested.right.left","./types-attrTag.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .nullableValue\\.mixed. is not of type .*\\. TypeError: The option .nullableValue\\.mixed. is defined both null and not null, in .* and .*\\.","config.nullableValue.mixed","./types.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: option `nullableValue.mixed' is defined both null and not null"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .viaOptionDefault. is not of type .boolean.*","config.viaOptionDefault","./mkDefinition.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: a definition for option `viaOptionDefault' is not of type"]}
-{"key":{"kind":"checkConfigError","env":"","argv":["A submoduleWith option is declared multiple times with conflicting class values \"darwin\" and \"nixos\".","config.sub.mergeFail.config","./class-check.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["A submoduleWith option is declared multiple times with conflicting class values \"darwin\" and \"nixos\".","config.sub.mergeFail.config","./class-check.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Cannot merge definitions.*\\n\\s*- In .file.*\\n\\s*- In .other.*","config.conflict","./mkDefinition.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .bar., .baz. or .foo.\\?","config","./error-typo-multiple-suggestions.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .enable., .ebe. or .enabled.\\?","config","./error-typo-large-attrset.nix"]},"verdict":"PASS"}
@@ -64,9 +64,9 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .services\\.nginx\\.virtualHosts\\.\"example\\.com\"\\.ssl\\.certificate. or .services\\.nginx\\.virtualHosts\\.\"example\\.com\"\\.ssl\\.certificateKey.\\?","config.services.nginx.virtualHosts.\"example.com\"","./error-typo-deeply-nested.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .set.\\?","config","./error-typo-outside-with-nested.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .set\\.enable.\\?","config.set","./error-typo-nested.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["Expected a module, but found a value of type .*\"configuration\".*, while trying to load a module into .*/import-configuration.nix.","config","./import-configuration.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: module `","/import-configuration.nix' has an unsupported attribute `deprecations'"]}
-{"key":{"kind":"checkConfigError","env":"","argv":["Expected a module, but found a value of type .*\"flake\".*, while trying to load a module into .*/module-imports-_type-check.nix","config.ok.config","./module-imports-_type-check.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigError","env":"","argv":["Expected a module, but found a value of type \"configuration\", while trying to load a module into .*/import-error-submodule.nix, while trying to load a module into .*foo.*\\.","config.foo","./import-error-submodule.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["Expected a module, but found a value of type .*\"configuration\".*, while trying to load a module into .*/import-configuration.nix.","config","./import-configuration.nix"]},"verdict":"PASS","class":["gen-merge: module `","/import-configuration.nix' has an unsupported attribute `deprecations'"]}
+{"key":{"kind":"checkConfigError","env":"","argv":["Expected a module, but found a value of type .*\"flake\".*, while trying to load a module into .*/module-imports-_type-check.nix","config.ok.config","./module-imports-_type-check.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigError","env":"","argv":["Expected a module, but found a value of type \"configuration\", while trying to load a module into .*/import-error-submodule.nix, while trying to load a module into .*foo.*\\.","config.foo","./import-error-submodule.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["In `the-file-that-contains-the-bad-config.nix, via option default': \"bogus\"","config.nodes.foo.bottom","./deferred-module.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["In attrTag, each tag value must be an option, but tag int was a bare type, not wrapped in mkOption.","config.opt.int","./types-attrTag-wrong-decl.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["In module .*/options-type-error-configuration.nix: expected an option declaration at option path .result. but got an attribute set with type configuration","config.result","./options-type-error-configuration.nix"]},"verdict":"FAIL"}
@@ -79,9 +79,9 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["It seems as if you.re trying to declare an option by placing it into .config. rather than .options.","config.wrong1","./error-mkOption-in-config.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Module ..*disable-module-bad-key.nix. contains a disabledModules item that is an attribute set, presumably a module, that does not have a .key. attribute. .*","config.enable","./disable-module-bad-key.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Please use.*lib.types.addCheck.*instead","config.adhocFail.foo","./v2-check-coherence.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["The module `.*/module-class-is-darwin.nix`.*?expects class \"nixos\".","config.fail.config","./class-check.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigError","env":"","argv":["The module `.*/module-class-is-darwin.nix`.*?expects class \"nixos\".","config.sub.nixosFail.config","./class-check.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigError","env":"","argv":["The module `foo.nix#darwinModules.default`.*?expects class \"nixos\".","config.fail-anon.config","./class-check.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["The module `.*/module-class-is-darwin.nix`.*?expects class \"nixos\".","config.fail.config","./class-check.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigError","env":"","argv":["The module `.*/module-class-is-darwin.nix`.*?expects class \"nixos\".","config.sub.nixosFail.config","./class-check.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigError","env":"","argv":["The module `foo.nix#darwinModules.default`.*?expects class \"nixos\".","config.fail-anon.config","./class-check.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*","config.enable","./declare-enable.nix","./define-enable.nix","./define-attrsOfSub-foo.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*","config.enable","./define-enable-throw.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*: true","config.enable","./define-enable.nix"]},"verdict":"PASS"}
@@ -118,8 +118,8 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* .* not found","config.attrsOfSub.bar.enable","./declare-attrsOfSub-any-enable.nix","./define-attrsOfSub-foo.nix","./define-attrsOfSub-bar-enable.nix","./define-attrsOfSub-force-foo-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* .* not found","config.attrsOfSub.bar.enable","./declare-attrsOfSub-any-enable.nix","./define-attrsOfSub-foo.nix","./define-attrsOfSub-bar-enable.nix","./define-force-attrsOfSub-foo-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* .* not found","config.attrsOfSub.bar.enable","./declare-attrsOfSub-any-enable.nix","./define-attrsOfSub-foo.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* not found","config.conditionalImportAsNixos.config.bar","./specialArgs-class.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* not found","config.sub.conditionalImportAsNixos.bar","./specialArgs-class.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* not found","config.conditionalImportAsNixos.config.bar","./specialArgs-class.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* not found","config.sub.conditionalImportAsNixos.bar","./specialArgs-class.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*enable.* in selection path .*config.enable.* not found","config.enable","./define-enable.nix","./declare-enable.nix","./disable-define-enable.nix","./disable-declare-enable.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*enable.* in selection path .*config.enable.* not found","config.enable","./define-enable.nix","./declare-enable.nix","./disable-enable-modules.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* .* not found","config.attrsOfSub.foo.enable","./declare-attrsOfSub-any-enable.nix"]},"verdict":"PASS"}
@@ -127,12 +127,12 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* .* not found","config.attrsOfSub.foo.enable","./declare-enable.nix","./declare-attrsOfSub-any-enable.nix","./define-attrsOfSub-if-foo-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* .* not found","config.attrsOfSub.foo.enable","./declare-enable.nix","./declare-attrsOfSub-any-enable.nix","./define-if-attrsOfSub-foo-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* .* not found","config.attrsOfSub.foo.enable","./declare-enable.nix","./declare-attrsOfSub-any-enable.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* not found","config.conditionalImportAsDarwin.config.foo","./specialArgs-class.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* not found","config.sub.conditionalImportAsDarwin.foo","./specialArgs-class.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* not found","config.conditionalImportAsDarwin.config.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* not found","config.sub.conditionalImportAsDarwin.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["infinite recursion encountered","config.nonLazyResult","./lazy-attrsWith.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigError","env":"","argv":["is not lazy","config.isLazy","./declare-attrsOf.nix","./attrsOf-lazy-check.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["is not of type `boolean","config.submodule.config","./declare-submoduleWith-shorthand.nix","./define-submoduleWith-noshorthand.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["please only import the modules that make up the configuration","config","./import-configuration.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: module `","/import-configuration.nix' has an unsupported attribute `deprecations'"]}
+{"key":{"kind":"checkConfigError","env":"","argv":["please only import the modules that make up the configuration","config","./import-configuration.nix"]},"verdict":"PASS","class":["gen-merge: module `","/import-configuration.nix' has an unsupported attribute `deprecations'"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["the-defs-file\\.nix","config.argv","./attrList-valueMeta-definitions-file-diagnostic-forwarding.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigError","env":"","argv":["toInt: Could not convert .* to int","config.value","./declare-coerced-value-unsound.nix","./define-value-string-arbitrary.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["while evaluating a definition from `.*/define-enable-abort.nix","config.enable","./define-enable-abort.nix"]},"verdict":"PASS"}
@@ -152,7 +152,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/declaration-positions.nix\"$","config.submoduleLine38.submodDeclLine45.0.file","./declaration-positions.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/declaration-positions.nix\"$","options.generated.line22.declarationPositions.0.file","./declaration-positions.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/declaration-positions.nix\"$","options.imported.line14.declarationPositions.0.file","./declaration-positions.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["/freeform-submodules.nix\"$","config.fooDeclarations.0","./freeform-submodules.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["/freeform-submodules.nix\"$","config.fooDeclarations.0","./freeform-submodules.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["10","config.processedToplevel","./raw.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["2","config.listOfResult","./types-valueMeta.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["42","config.listResult","./composed-types-valueMeta.nix"]},"verdict":"FAIL"}
@@ -178,14 +178,14 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"\"","config.pathNotInStore.ok4","./pathWith.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"abc\"","config.value","./importApply-disabling.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"abc\"","config.value","./importApply.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"bar\"","config.conditionalImportAsNixos.config.foo","./specialArgs-class.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"bar\"","config.sub.conditionalImportAsNixos.foo","./specialArgs-class.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"bar\"","config.conditionalImportAsNixos.config.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"bar\"","config.sub.conditionalImportAsNixos.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"beta\"","config.nodes.foo.settingsDict.c","./deferred-module.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"foo\"","config.conditionalImportAsDarwin.config.bar","./specialArgs-class.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"foo\"","config.sub.conditionalImportAsDarwin.bar","./specialArgs-class.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"nixos\"","config.nixos.config.foo","./specialArgs-class.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"nixos\"","config.ok.class","./class-check.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"nixos\"","config.sub.nixos.foo","./specialArgs-class.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"foo\"","config.conditionalImportAsDarwin.config.bar","./specialArgs-class.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"foo\"","config.sub.conditionalImportAsDarwin.bar","./specialArgs-class.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"nixos\"","config.nixos.config.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"nixos\"","config.ok.class","./class-check.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"nixos\"","config.sub.nixos.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"ok\"","config.assertions","./declare-attrList.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"ok\"","config.assertions","./types.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"ok\"","config.assertionsResult","./pathWith.nix"]},"verdict":"FAIL"}
@@ -361,7 +361,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkForce","./mkDefinition.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkMerge","./mkDefinition.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.nullableValue.bool","./types.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.okChecks","./types-attrTag.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.okChecks","./types-attrTag.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.positive.enable","./disable-module-with-key.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.positive.enable","./disable-module-with-toString-key.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.result","./doRename-condition.nix","./doRename-condition-enable.nix"]},"verdict":"PASS"}
@@ -388,8 +388,8 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.viaConfig","./mkDefinition.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","options._module.args.value.result","./freeform-attrsOf.nix","./define-freeform-keywords-shorthand.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config","./freeform-attrsOf.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config.ok.config","./class-check.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config.sub.nixosOk","./class-check.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config.ok.config","./class-check.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config.sub.nixosOk","./class-check.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config.value.mkiftrue","./types-anything/mk-mods.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^{}$","config.value.mkmerge","./types-anything/mk-mods.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["bar","config.priorities","./raw.nix"]},"verdict":"PASS"}
