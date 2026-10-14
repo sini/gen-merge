@@ -99,6 +99,17 @@
             [ -n "$calls" ] || die "$1" "the evaluator wrote no nrFunctionCalls to $TMPDIR/stats: cannot measure"
           }
 
+          # thunksOf <arm>: as callsOf, leaving the process's own nrThunks in `thunks`.
+          thunksOf() {
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            rm -f "$TMPDIR/stats"
+            evalArm "$1"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die "$1" "expected exit 0, got $rc"
+            thunks=$(tr -d ' \n' < "$TMPDIR/stats" | grep -o '"nrThunks":[0-9]*' | cut -d: -f2 || true)
+            [ -n "$thunks" ] || die "$1" "the evaluator wrote no nrThunks to $TMPDIR/stats: cannot measure"
+          }
+
           # den-hoag-xzchx C3 — the outer fixpoint reading the evaluation's own `options` from a
           # plain attrset DIVERGES: non-zero exit, the infinite-recursion channel, no value. An
           # admission that skips the declaration guard for a formal-free module answers here.
@@ -219,9 +230,25 @@
           done
           [ $((kw1600 - kw400)) -lt $((5 * (kw400 - kw100))) ] || die key-walk-wide-1600 "function calls grow faster than linear in the definitions: $kw100 / $kw400 / $kw1600"
 
+          # den-hoag-hnd82 (ADR-0032): the cost of a met record, as thunks per option between n = 100 and
+          # 200, n options each declared twice and defined. The bounds are the landed figures, in THUNKS: they
+          # read the same on Nix, Determinate and Lix, while allocated bytes move with the loading route. An
+          # optimization lowers its bound in the same change; a rise needs an owner reading.
+          for bound in val:350 box:730 s2:880 s3:474; do
+            mode=''${bound%%:*} max=''${bound#*:}
+            thunksOf "met-cost-$mode-100"
+            [ "$val" = "100" ] || die "met-cost-$mode-100" "expected value 100, got '$val'"
+            t100=$thunks
+            thunksOf "met-cost-$mode-200"
+            [ "$val" = "200" ] || die "met-cost-$mode-200" "expected value 200, got '$val'"
+            per=$(((thunks - t100) / 100))
+            [ "$per" -le "$max" ] || die "met-cost-$mode-200" "a met record ($mode) costs $per thunks per option, over its bound $max"
+            echo "met-cost $mode: $per thunks per option (bound $max)"
+          done
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "33" ] || die runner "expected 33 evaluations, ran $ran"
-          echo "tests-process: 33 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "41" ] || die runner "expected 41 evaluations, ran $ran"
+          echo "tests-process: 41 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

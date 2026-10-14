@@ -163,6 +163,97 @@ let
         )).config.o;
     in
     builtins.deepSeq c (builtins.length (builtins.attrNames c.a));
+  # den-hoag-hnd82: n options, each declared twice so that its type is a MET record (one per option), and
+  # each defined; the served values are forced. `mode` picks the met record's producer: `val`, meetOf's
+  # record over a foreign `addCheck`; `box`, a `listOf` over it; `s2`, meetOf's foreign-`verify` record;
+  # `s3`, metWith's held record. The runner reads the process's thunks at n = 100 and 200.
+  metCost =
+    mode: n:
+    let
+      nl = import "${nixpkgsSrc}/lib";
+      np = nl.types;
+      t = m.types;
+      even = v: builtins.bitAnd v 1 == 0;
+      attrsInt = np.attrsOf np.int;
+      evenFold = m.mkOptionType (
+        let
+          self = nl.mkOptionType {
+            name = "evenFold";
+            check = {
+              __functor = _: builtins.isInt;
+              isV2MergeCoherent = true;
+            };
+            merge =
+              loc: defs:
+              let
+                v = nl.mergeEqualOption loc defs;
+              in
+              if even v then v else throw "odd";
+            functor = np.defaultFunctor "evenFold" // {
+              type = _: self;
+              payload = { };
+              binOp = _a: _b: { };
+            };
+            typeMerge = f: if f.name == "int" || f.name == "evenFold" then np.int else null;
+          };
+        in
+        self
+      );
+      decl = {
+        val = [
+          (np.addCheck t.int even)
+          t.int
+        ];
+        box = [
+          (t.listOf (np.addCheck t.int even))
+          (t.listOf t.int)
+        ];
+        s2 = [
+          (
+            attrsInt
+            // {
+              verify = v: if builtins.all (x: x < 10) (builtins.attrValues v) then null else "rejected";
+            }
+          )
+          attrsInt
+        ];
+        s3 = [
+          evenFold
+          t.int
+        ];
+      };
+      v =
+        {
+          val = 2;
+          box = [ 2 ];
+          s2.a = 2;
+          s3 = 2;
+        }
+        .${mode};
+      names = builtins.genList (i: "o${toString i}") n;
+      e = eval (
+        map (ty: {
+          options = builtins.listToAttrs (
+            map (k: {
+              name = k;
+              value = m.mkOption { type = ty; };
+            }) names
+          );
+        }) decl.${mode}
+        ++ [
+          {
+            config = builtins.listToAttrs (
+              map (k: {
+                name = k;
+                value = v;
+              }) names
+            );
+          }
+        ]
+      );
+      vals = map (k: e.config.${k}) names;
+    in
+    builtins.deepSeq vals (builtins.length vals);
   childResult =
     r: key:
     (r._evaluation.get (scope.mintNtaId {
@@ -239,6 +330,15 @@ let
     key-walk-wide-100 = keyWalkWide 100;
     key-walk-wide-400 = keyWalkWide 400;
     key-walk-wide-1600 = keyWalkWide 1600;
+    # den-hoag-hnd82: a met record's cost, read by the runner as thunks per option.
+    met-cost-val-100 = metCost "val" 100;
+    met-cost-val-200 = metCost "val" 200;
+    met-cost-box-100 = metCost "box" 100;
+    met-cost-box-200 = metCost "box" 200;
+    met-cost-s2-100 = metCost "s2" 100;
+    met-cost-s2-200 = metCost "s2" 200;
+    met-cost-s3-100 = metCost "s3" 100;
+    met-cost-s3-200 = metCost "s3" 200;
     # THE OUTER FIXPOINT (den-hoag-xzchx, C3). A PLAIN attrset — no formals, no `imports`, no
     # `__functor` — whose option KEY SET under `a` reads the evaluation's own `options` through
     # the lexical binding `r`. That is ADR-0033's in-flight clause read literally, reached through
