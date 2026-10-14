@@ -3089,8 +3089,8 @@ let
     # carrying none of it. So each of `r`'s OWN rebuilds is answered carrying `t`'s check again (`carryBy`), and so are
     # its rebuilds in turn: a rebuild that already carries something (an element's `verify`) keeps it, as the check is
     # laid on top. The check is `t`'s own, never `r`'s: `t`'s `verify` is not a check, it is read on the merged value
-    # where a rebuild owes it (`door`), never on a definition alone. At a join the check is owed RELATIVE TO `t`'s OWN
-    # PARAMETERS (ADR-0039, enum extension stays a union): a value outside `t`'s base, its constructor at its own
+    # of each rebuild that answers it (`own`), never on a definition alone. At a join the check is owed RELATIVE TO
+    # `t`'s OWN PARAMETERS (ADR-0039, enum extension stays a union): a value outside `t`'s base, its constructor at its own
     # parameters, is not `t`'s to judge (`joined`). The base is the constructor `t`'s functor names (`importedPartner`),
     # the one field no closure rewrites, joined with itself as that constructor joins: never `t`'s own join, which for a
     # door's return (`defineType`'s) is closed, the check already standing in it, so a check laid relative to it judged
@@ -3116,24 +3116,21 @@ let
     # (`departsOnlyOutside { check = null; }`: a copy departing elsewhere, a `// { description }`, is not closed again).
     # The closure runs BEFORE the completion, so the stamp the completion ties is tied over the closed record, and none
     # is forged (ADR-0034). The doors' `verify` arm, which answers before that test, hands a checked `// { verify }`
-    # copy it re-completes `own t t` too, and `own` re-carries a gen record's `verify` its rebuilds carried
-    # (den-hoag-jyisy); a checked gen `nullOr` of a keyed nixpkgs submodule declared twice keeps its check through
-    # `carryBy`'s root carriage. Still residue: a caller's check on a gen verify copy declared once in nixpkgs' engine
+    # copy it re-completes `own t t` too, and `own` states the record's `verify` on every rebuild it answers
+    # (den-hoag-jyisy, den-hoag-xj4tw); a checked gen `nullOr` of a keyed nixpkgs submodule declared twice keeps its
+    # check through `carryBy`'s root carriage. Still residue: a caller's check on a gen verify copy declared once in nixpkgs' engine
     # drops the copy's own `verify` (den-hoag-fzbap); and `deriveType` over a checked verify copy of a gen `nullOr` of a
     # keyed nixpkgs submodule, in gen's engine, drops the laid check declared twice (den-hoag-grkfk).
     own =
       t: r:
       let
         # `t`'s check, a coherent check: an ad-hoc override's is carried as nixpkgs' `addCheck` carries one, judging each
-        # definition, never refused for its spelling; and a gen record's `verify`, which the completion's rebuilds this
-        # closure replaces carried, so the closure carries it again, read on the merged value (`carryBy`, den-hoag-jyisy);
-        # a foreign record's `verify` is the door's to place (`door`)
+        # definition, never refused for its spelling
         o = {
           check = {
             __functor = _: t.check;
             isV2MergeCoherent = true;
           };
-          ${if t ? verify && t ? typeMergeRel then "verify" else null} = t.verify;
         };
         b =
           let
@@ -3179,6 +3176,22 @@ let
                 isV2MergeCoherent = true;
               };
             };
+        # `t`'s `verify`, stated on each rebuild this closure answers as `rebuildClosed`'s own closure states it
+        # below the root (`rebuildClosed.verify`: a v2 merge reads it on the merged value in `headError`, where a
+        # union choosing its member reads a rejection; a non-v2 one is lifted, its own check per definition).
+        # Neither a foreign constructor's rebuild nor a gen completion's, which this closure replaces, states a
+        # `verify` the record states beyond it (den-hoag-jyisy, den-hoag-xj4tw)
+        owed =
+          if t ? verify then
+            x:
+            x
+            // builtins.intersectAttrs {
+              verify = null;
+              check = null;
+              merge = null;
+            } (rebuildClosed.verify false t.verify x)
+          else
+            x: x;
         close =
           oc: x:
           if isAttrs x then
@@ -3186,7 +3199,7 @@ let
               let
                 c = carryBy false oc x;
               in
-              c // rebuild oc c
+              owed (c // rebuild oc c)
             )
           else
             x;
