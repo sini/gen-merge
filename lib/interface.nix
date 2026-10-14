@@ -1632,18 +1632,20 @@ let
   # item 1). nixpkgs folds a record by `merge.v2` where it states one and by its `merge` otherwise, and a v2
   # constructor ships its `check` marked coherent, so a coherent check over a merge stating no `v2` is a `//` override
   # of that constructor's fold. nixpkgs' mount rebuilds a record stating a module set through its own
-  # `substSubModules` (`fixupOptionType`), which erases an override the rebuild does not forward, so the override
-  # stands where the record states no module set or its rebuild forwards it too. Such a record is not one of the six:
-  # it threads (`threadedForeign`), and an `either` or `oneOf`, which states no module set, is refused by name in
-  # `homedAt`, since its rebuild is a call nixpkgs never makes. Asked only past the functor-name test, and the rebuild
-  # only of a record already found overridden. NOT DETECTED, AN OPEN DEFECT: an override spelled in `merge.v2` (the
-  # record states a `v2`, as the stock one does), and any override on a lib whose constructors mark no check coherent
-  # (nixpkgs 25.05).
+  # `substSubModules` (`fixupOptionType`, and every stock container's rebuild below it), which erases an override the
+  # rebuild does not forward. A record stating a module set whose rebuild forwards the override is therefore not one
+  # of the six: it threads (`threadedForeign`) and its own merge folds it, as nixpkgs' does. Asked only past the
+  # functor-name test, and the rebuild only of a record already found overridden. NOT DETECTED, OPEN DEFECTS, each
+  # re-homed and losing its override silently: an override spelled in `merge.v2` (the record states a `v2`, as the
+  # stock one does); any override on a lib whose constructors mark no check coherent (nixpkgs 25.05); and an `either`
+  # or `oneOf`, which states no module set and so cannot thread (den-hoag-p06j3): unrecognised, it would refuse the
+  # override that preserves the value (`t // { merge = loc: defs: t.merge loc defs; }`) where re-homing serves it.
   foldsOwnMerge =
     t:
     (t.check.isV2MergeCoherent or false)
     && !(isV2 t)
-    && (!(isList (t.getSubModules or null)) || !(isV2 (t.substSubModules t.getSubModules)));
+    && isList (t.getSubModules or null)
+    && !(isV2 (t.substSubModules t.getSubModules));
 
   # THE RECOGNITION DOOR: asked through it, `importedRehomeAt` answers its recognition and never
   # judges the payload's offer (`rehomeAgreed`), so it refuses nothing. The type-time mark
@@ -1768,8 +1770,6 @@ let
               if isV2 rebuilt then rebuildClosed.verifiedMerge.lifted t.check rebuilt.merge else rebuilt.merge;
           }
         )
-      else if r == null && isEither t && canNest t && foldsOwnMerge t then
-        throw (nestingImportRefusal door loc t)
       else if declaresNestingAt door loc t then
         threadedForeign door loc t
       else if

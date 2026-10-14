@@ -591,8 +591,10 @@ in
     };
     # An override nixpkgs' mount keeps (its rebuild forwards it) is the record's own fold, not gen's
     # container: it threads and serves what nixpkgs serves (den-hoag-e12ro), a swapped key, a reversed
-    # list, and a definition conditional on the key the override moves; an `either` cannot thread
-    # and is refused by name.
+    # list, and a definition conditional on the key the override moves. An `either` states no module
+    # set and cannot thread, so it is re-homed and loses the override, served rather than refused: an
+    # open defect (den-hoag-p06j3), asserted as the value it produces so a build serving nixpkgs'
+    # value reds it.
     test-an-override-nixpkgs-mount-keeps-is-the-record-s-own-fold =
       let
         kept =
@@ -643,7 +645,7 @@ in
             2
           ];
           selfConditional = 1;
-          either = true;
+          either = false;
         };
       };
     test-a-record-crossing-whole-is-re-homed-where-it-may-nest = {
