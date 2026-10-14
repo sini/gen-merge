@@ -3943,6 +3943,82 @@ in
         ]).options.q.type.name;
       expected = "string";
     };
+    # ... and its value: nixpkgs merges a redeclaration's types when that option is read, so the
+    # value fold's key walk decides `p` a leaf from its declarations and never reads its type.
+    test-a-type-clash-leaves-an-unrelated-options-value-readable = {
+      expr =
+        (evalModuleTree { } [
+          { options.p = mkOption { type = t.str; }; }
+          { options.p = mkOption { type = t.int; }; }
+          {
+            options.q = mkOption {
+              type = t.str;
+              default = "x";
+            };
+          }
+        ]).config.q;
+      expected = "x";
+    };
+    # No descriptor field is read as engine state: a declaration carrying a field spelled like a refused
+    # leaf's marker (`_refused`, `refused`), built by `mkOption` or raw, is served as the record it is at
+    # every surface that publishes one (the result's `options`, the stratum-1 door, a module's own
+    # `options` argument), as nixpkgs serves it. A redeclaration's refusal is carried by the
+    # declarations, never by a field of the record, so this cell reds on any carrier that is.
+    test-a-descriptor-field-spelled-like-a-refusal-marker-is-served-as-the-record = {
+      expr =
+        let
+          decls = {
+            under = mkOption {
+              _refused = "boo";
+              default = 1;
+            };
+            bare = mkOption {
+              refused = "boo";
+              default = 1;
+            };
+            raw = {
+              _type = "option";
+              _refused = "boo";
+              refused = "boo";
+              default = 1;
+            };
+          };
+          shape = x: if builtins.isAttrs x then x.default else x;
+          r = evalModuleTree { } [
+            { options = decls; }
+            (
+              { options, ... }:
+              {
+                options.seen = mkOption {
+                  default = builtins.mapAttrs (_: shape) (builtins.removeAttrs options [ "seen" ]);
+                };
+              }
+            )
+          ];
+        in
+        {
+          options = builtins.mapAttrs (_: shape) (builtins.removeAttrs r.options [ "seen" ]);
+          door = builtins.mapAttrs (_: shape) (genMerge.declaredOptions { } [ { options = decls; } ]);
+          argument = r.config.seen;
+          nixpkgs =
+            builtins.mapAttrs (_: shape)
+              (np.evalModules { modules = [ { options = decls; } ]; }).options;
+        };
+      expected =
+        let
+          one = {
+            under = 1;
+            bare = 1;
+            raw = 1;
+          };
+        in
+        {
+          options = one;
+          door = one;
+          argument = one;
+          nixpkgs = one;
+        };
+    };
     # `overridden` in authored order when the LAST declaration shadows nothing: `p2` shadows `p1`'s
     # type, `p3` adds a field, `p4` shadows `p3`'s description and `p5` only adds `apply`. The list is
     # published at the last step, which here records no entry of its own.

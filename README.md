@@ -1753,7 +1753,7 @@ decision. The freeform plane reads its winner list through the same fold.
 expansion of every level, deciding leaf or group per declaring module, and never merges a
 redeclared leaf: a declared `type` is a descriptor field. So with `p` declared `str` in one module
 and `int` in another, `config.p` and `options.p` refuse with the type-merge text, while
-`options.q.type.name` of an unrelated `q` reads its answer. Which declarations are admitted does not
+`config.q` and `options.q.type.name` of an unrelated `q` read their answers. Which declarations are admitted does not
 depend on how many modules declare an option: a `type` read from a `_module.args` argument is
 admitted whether one module declares the option or several. **The cyclic case aborts uncatchably,
 a declared exception to the rule that every refusal is catchable**: where that argument's own value
