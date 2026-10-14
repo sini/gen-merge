@@ -8343,6 +8343,7 @@ in
           "coreShortCircuit"
           "warmFrom"
           "editedModules"
+          "class"
         ];
         # A field the cell does not name: rendered at a sentinel, which then stands for `[^']+`.
         anyField = "zz7jltkfield";
