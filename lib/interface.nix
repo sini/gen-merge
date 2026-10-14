@@ -3121,6 +3121,21 @@ let
     # `carryBy`'s root carriage. Still residue: a caller's check on a gen verify copy declared once in nixpkgs' engine
     # drops the copy's own `verify` (den-hoag-fzbap); and `deriveType` over a checked verify copy of a gen `nullOr` of a
     # keyed nixpkgs submodule, in gen's engine, drops the laid check declared twice (den-hoag-grkfk).
+    stated =
+      t:
+      t
+      // {
+        check =
+          if t ? carries then
+            rebuildClosed.verifiedMerge.projection (t.check.__verifyProjection or t.check) t.verify (
+              t.merge.__verifiedMerge or t.merge
+            )
+          else
+            {
+              __functor = _: v: t.check v && t.verify v == null;
+              isV2MergeCoherent = true;
+            };
+      };
     own =
       t: r:
       let

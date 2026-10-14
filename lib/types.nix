@@ -2284,7 +2284,7 @@ in
                 (t ? _checkWitness && t ? check && t.check != t._checkWitness)
                 && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
               then
-                interface.rebuildClosed.own t t
+                (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
               else
                 t
             )
@@ -2353,7 +2353,7 @@ in
                 && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
                 && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
               then
-                interface.rebuildClosed.own t t
+                (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
               else
                 t
             )
