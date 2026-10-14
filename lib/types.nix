@@ -1526,9 +1526,9 @@ let
   attrs =
     let
       # The domain stays the predicate's. What this type does with a definition OUTSIDE that domain
-      # is stated by its fold because the engine does not state it: the post-fold check reads
-      # `verify`, and a structural type carries `admits`, so the engine never consults `admits` on
-      # the option-fold path. Bound once, for `admits` and for the fold's domain check alike.
+      # is stated by its fold, which every caller of the fold runs; the engine's option site reads
+      # `admits` as well, because the fold carries no witness of guarding it (`checked`). Bound once,
+      # for `admits` and for the fold's domain check alike.
       admits = isAttrs;
     in
     defineType {

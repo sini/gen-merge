@@ -1402,7 +1402,8 @@ unable to refuse anything, and its merge then hands a definition to a member tha
 See "`either` — a union's merge is total" below.
 
 **Each structural fold refuses a definition outside its `admits`, by name and catchably**, before
-the fold runs. The engine's `mergeDefs` reads `verify` and never `admits`, so a definition reaching
+the fold runs. The engine's `mergeDefs` reads `admits` only where the fold carries no witness of a
+guard of it (below), and a fold is called from more places than that, so a definition reaching
 a gen structural type's merge without passing a union used to reach `imap0` or `//` and abort with
 a raw builtin error (`expected a set but found a list`), or, for `deferredModule`, be accepted and
 fail wherever it was imported. `listOf`, `attrsOf`, `lazyAttrsOf`, `attrs`, `deferredModule` and
@@ -1412,6 +1413,30 @@ export. It tests the surviving definitions, where nixpkgs' `checkedAndMerged` te
 refuses `` gen-merge: option `<loc>' has definitions `<type>' cannot consume (<files>) ``
 (`ci/tests-error.nix` `structural-domain`). The tree type states no `admits` and keeps the module
 reader's refusal.
+
+**A record's `admits` is refused outside wherever the fold the engine runs carries no witness of a
+guard of it.** A record stating `admits` and no `verify` (a caller's, through any door or none, or a
+`//` copy taking a fold of its own) is refused with the text above, before its fold's value is read,
+unless the fold it runs carries such a witness. Three folds do:
+
+- a fold completed under the record's own `_checkWitness` (`mergeDefs.completed`, the record the fold
+  was completed with), which a container's fold carries, tied where the door completes it;
+- the import's checked fold (`mergeDefs.unchecked` beside it);
+- the fold of a record whose `check` a wrapper rewrote, which the import checks per definition.
+
+A `//` copy that swaps the fold takes a fold without the witness, so its `admits` is read
+(`ci/tests-error.nix` `caller-admits`). Because `mergeDefs.completed` is the record its fold was
+completed with, a door's return and its fold's completion hold one `admits` slot, so the doors'
+admits-rewrite test above is false on every return and fires only where a `//` copy restated
+`admits`: `types.defineType` and `mkOptionType` refuse that copy, and the engine reads `admits`
+wherever the fold carries no witness. `attrs`, `deferredModule` and `optionType` guard their folds
+with `refusingOutside` but carry no witness, so the engine reads their `admits` a second time, to
+the same verdict and text; a fold record carrying the witness would cost each of those types
+constant work at every evaluation that uses it. Two copies are still served against their `admits`:
+a container's `//` copy that keeps its fold and restates `admits` without passing either door (raw,
+or through `types.mkType`), which is served as its fold serves; and a copy that borrows another
+import's checked fold (`mkOptionType { check = …; } // { inherit (other) mergeDefs; }`), because
+the import's fold carries no witness and is trusted by its presence.
 
 **A foreign type's `check` is applied to every definition before its fold**, as nixpkgs'
 `mergeDefinitions` does (`checkedAndMerged`). A type whose domain is stated in the foreign protocol —
