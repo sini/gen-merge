@@ -1606,8 +1606,8 @@ let
       # t.merge loc defs; }`) where re-homing serves it.
       # Inline: a binding costs every load a thunk
       ||
-        (t.check.isV2MergeCoherent or false)
-        && !(isV2 t)
+        !(isV2 t)
+        && (t.check.isV2MergeCoherent or false)
         && isList (t.getSubModules or null)
         && !(isV2 (t.substSubModules t.getSubModules))
     then
