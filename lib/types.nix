@@ -2224,6 +2224,27 @@ in
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
     then
       defineType (interface.keepStamp (interface.rebuildClosed.own t t))
+    # a `//` copy of a completed record whose `admits` is not the slot its fold was completed with (the fold's
+    # completion record, `mergeDefs.completed`, compared by the slot's pointer) states a domain its fold never closed
+    # over: it is the check rewrite it states, `check && admits` as `addCheck` conjoins, and is closed over that check
+    # as the arm above closes one (den-hoag-56u5o); a copy removing `admits` states no domain and is not one
+    else if
+      t ? _type
+      && t ? admits
+      && t ? mergeDefs.completed
+      &&
+        builtins.intersectAttrs { admits = null; } t
+        != builtins.intersectAttrs { admits = null; } t.mergeDefs.completed
+    then
+      (c: defineType (interface.keepStamp (interface.rebuildClosed.own c c))) (
+        t
+        // {
+          check = {
+            __functor = _: v: t.check v && t.admits v;
+            isV2MergeCoherent = true;
+          };
+        }
+      )
     else
       defineType (interface.keepStamp t);
   completeType = defineType;
@@ -2250,6 +2271,24 @@ in
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
     then
       mkOptionType (interface.rebuildClosed.own t t)
+    # a `//` copy of a completed record restating its `admits` is the check rewrite it states, as `defineType` reads it
+    else if
+      t ? _type
+      && t ? admits
+      && t ? mergeDefs.completed
+      &&
+        builtins.intersectAttrs { admits = null; } t
+        != builtins.intersectAttrs { admits = null; } t.mergeDefs.completed
+    then
+      (c: mkOptionType (interface.rebuildClosed.own c c)) (
+        t
+        // {
+          check = {
+            __functor = _: v: t.check v && t.admits v;
+            isV2MergeCoherent = true;
+          };
+        }
+      )
     # a gen record, and a descriptor stating no `_type`, pays attribute tests and no call
     else if t ? typeMergeRel || !(t ? _type) || !(interface.isOptionType t) then
       mkOptionType t

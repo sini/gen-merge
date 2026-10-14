@@ -11063,5 +11063,104 @@ in
           };
         };
       };
+    # den-hoag-56u5o: a `//` copy of a completed gen container that rewrites its `admits` states a domain its fold
+    # never closed over, and the published doors hand it on as the check rewrite it states (`check && admits`, as
+    # nixpkgs' `addCheck` conjoins). A value inside the container's own domain and outside the new `admits` is refused
+    # by the container's name, in gen's engine and in nixpkgs' `evalModules`, declared once and twice. At a9b46ce
+    # every gen cell and every `mkOptionType` cell served the value, and so did `defineType` declared twice in
+    # nixpkgs' engine; only `defineType` declared once in nixpkgs' engine refused it (nixpkgs reads the door's
+    # published `check`). The inside values these copies serve are `ci/tests/admits-rewrite-door.nix`'s.
+    flake.testsError.admits-rewrite-door =
+      let
+        noB = v: builtins.isAttrs v && !(v ? b);
+        containers = {
+          listOf = {
+            t = t.listOf t.int;
+            n = v: builtins.isList v && builtins.length v <= 1;
+            out = [
+              1
+              2
+            ];
+          };
+          attrsOf = {
+            t = t.attrsOf t.int;
+            n = noB;
+            out = {
+              a = 1;
+              b = 2;
+            };
+          };
+          lazyAttrsOf = {
+            t = t.lazyAttrsOf t.int;
+            n = noB;
+            out = {
+              a = 1;
+              b = 2;
+            };
+          };
+          nullOr = {
+            t = t.nullOr t.int;
+            n = v: v == null || (builtins.isInt v && v < 5);
+            out = 7;
+          };
+          either = {
+            t = t.either t.int t.str;
+            n = builtins.isInt;
+            out = "s";
+          };
+        };
+        doors = {
+          define-type = t.defineType;
+          mk-option-type = gm.mkOptionType;
+        };
+        engines = {
+          gen = {
+            read = mods: (gm.evalModuleTree { } mods).config.x;
+            inherit (gm) mkOption;
+            msg =
+              T:
+              "^gen-merge: a definition for option `x' is not of type `${nixpkgsLib.escapeRegex T.description}', in `<unknown-file>'$";
+          };
+          nixpkgs = {
+            read = mods: (nixpkgsLib.evalModules { modules = mods; }).config.x;
+            inherit (nixpkgsLib) mkOption;
+            msg = T: "^A definition for option `x' is not of type `${nixpkgsLib.escapeRegex T.description}'\\.";
+          };
+        };
+        times = {
+          once = 1;
+          twice = 2;
+        };
+        cell =
+          cn: dn: en: tn:
+          let
+            C = containers.${cn};
+            E = engines.${en};
+            T = doors.${dn} (C.t // { admits = C.n; });
+          in
+          {
+            name = "test-an-admits-rewrite-of-${cn}-through-${dn}-declared-${tn}-in-${en}-refuses-by-name";
+            value = {
+              expr = force (
+                E.read (
+                  builtins.genList (_: { options.x = E.mkOption { type = T; }; }) times.${tn} ++ [ { x = C.out; } ]
+                )
+              );
+              expectedError = {
+                type = "ThrownError";
+                msg = E.msg C.t;
+              };
+            };
+          };
+        names = builtins.attrNames;
+      in
+      builtins.listToAttrs (
+        builtins.concatMap (
+          cn:
+          builtins.concatMap (
+            dn: builtins.concatMap (en: map (cell cn dn en) (names times)) (names engines)
+          ) (names doors)
+        ) (names containers)
+      );
   };
 }
