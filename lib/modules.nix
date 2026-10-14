@@ -5433,20 +5433,22 @@ let
           let
             declAts = seedDeclAts.seedsOf ra self id p;
           in
-          evalModuleTreeWith knotChildPositioned m.carried m.inherited {
-            modules =
-              n.modules
-              ++ prelude.imap0 (
-                k: d:
-                n.entry {
-                  inherit (d) file value;
-                  declAt = builtins.elemAt declAts k;
-                }
-              ) p.defs;
-            prefix = p.loc;
-            inherit (n) specialArgs check coreShortCircuit;
-          }
-          // (if (n.class or null) == null then { } else { inherit (n) class; })
+          evalModuleTreeWith knotChildPositioned m.carried m.inherited (
+            {
+              modules =
+                n.modules
+                ++ prelude.imap0 (
+                  k: d:
+                  n.entry {
+                    inherit (d) file value;
+                    declAt = builtins.elemAt declAts k;
+                  }
+                ) p.defs;
+              prefix = p.loc;
+              inherit (n) specialArgs check coreShortCircuit;
+            }
+            // (if (n.class or null) == null then { } else { inherit (n) class; })
+          )
         else
           (
             if n.partial or false then
@@ -5456,12 +5458,14 @@ let
           )
             m.carried
             m.inherited
-            {
-              modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
-              prefix = p.loc;
-              inherit (n) specialArgs check coreShortCircuit;
-            }
-          // (if (n.class or null) == null then { } else { inherit (n) class; })
+            (
+              {
+                modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
+                prefix = p.loc;
+                inherit (n) specialArgs check coreShortCircuit;
+              }
+              // (if (n.class or null) == null then { } else { inherit (n) class; })
+            )
       )
         self
         (self.get id knotAttr);
