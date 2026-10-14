@@ -1526,10 +1526,30 @@ let
   attrs =
     let
       # The domain stays the predicate's. What this type does with a definition OUTSIDE that domain
-      # is stated by its fold, which every caller of the fold runs; the engine's option site reads
-      # `admits` as well, because the fold carries no witness of guarding it (`checked`). Bound once,
-      # for `admits` and for the fold's domain check alike.
+      # is stated by its fold, which every caller of the fold runs. Bound once, for `admits` and for the
+      # fold's domain check alike; the fold is published stating the record it was completed with, this
+      # constant (`mergeDefs.completed`, den-hoag-2632d), so the engine's option site reads `admits` only
+      # on a copy whose `admits` or fold departs from it (`checked`).
       admits = isAttrs;
+      fold = refusingOutside "attrs" admits (
+        loc: defs:
+        let
+          merged = foldl' (res: d: res // d.value) { } defs;
+          filesAt =
+            k: concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: d.value ? ${k}) defs));
+          refusal =
+            k: vs:
+            let
+              cells = map (v: [ v ]) vs;
+              other = head (head (filter (c: c != head cells) cells));
+            in
+            if prelude.isFunction (head vs) && prelude.isFunction other then
+              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to a function, and Nix compares functions only by identity, so these cannot be shown to agree (${filesAt k})"
+            else
+              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to different values (${filesAt k})";
+        in
+        if length defs < 2 then merged else core.unionAgreeing refusal defs
+      );
     in
     defineType {
       name = "attrs";
@@ -1579,25 +1599,10 @@ let
       # ★ DECIDED PER KEY, WHERE THE KEY IS READ. The key set is the union's, forced as before; each
       # shared key's comparison sits inside its own value, so reading one key never forces another's
       # `==` — the strictness nixpkgs does not have stays confined to the key that is read.
-      mergeDefs = refusingOutside "attrs" admits (
-        loc: defs:
-        let
-          merged = foldl' (res: d: res // d.value) { } defs;
-          filesAt =
-            k: concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: d.value ? ${k}) defs));
-          refusal =
-            k: vs:
-            let
-              cells = map (v: [ v ]) vs;
-              other = head (head (filter (c: c != head cells) cells));
-            in
-            if prelude.isFunction (head vs) && prelude.isFunction other then
-              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to a function, and Nix compares functions only by identity, so these cannot be shown to agree (${filesAt k})"
-            else
-              "gen-merge: option `${showOption loc}' has `attrs' definitions that set `${k}' to different values (${filesAt k})";
-        in
-        if length defs < 2 then merged else core.unionAgreeing refusal defs
-      );
+      mergeDefs = {
+        __functor = _: fold;
+        completed = attrs;
+      };
     };
 
   # deferredModule (spec §1 item 7) — collect defs into ONE module (via imports), located; NEVER
@@ -1617,6 +1622,13 @@ let
       # whose `path` predicate admits a STRING beginning with `/` as well as a path; `callM` imports
       # both.
       admits = isModuleValue;
+      fold = refusingOutside "deferredModule" admits (
+        loc: defs: {
+          imports = map (
+            d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
+          ) defs;
+        }
+      );
     in
     defineEmbedded interface.embeddings.deferredModule {
       name = "deferredModule";
@@ -1684,13 +1696,10 @@ let
           {
             refused = "`deferredModule' and a same-named partner that states no relation this type embeds in";
           };
-      mergeDefs = refusingOutside "deferredModule" admits (
-        loc: defs: {
-          imports = map (
-            d: setDefaultModuleLocation "${toString (d.file or "<def>")}, via option ${showOption loc}" d.value
-          ) defs;
-        }
-      );
+      mergeDefs = {
+        __functor = _: fold;
+        completed = deferredModule;
+      };
     };
 
   # Membership predicate for union dispatch. gen-types leaf checkers expose `verify` (v → null|err);
@@ -2131,9 +2140,16 @@ let
         )
     else
       mergeLeaf loc defs;
+  # A library constant is completed once, so the record its fold was completed with is the constant itself:
+  # `anything`, `unspecified`, `attrs`, `deferredModule` and `optionType` each publish their fold as a record
+  # stating it (`mergeDefs.completed`), the witness a door and the engine read a `//` copy's `admits` against
+  # (den-hoag-2632d). `anything` and `unspecified` fold totally and state no `admits`, so a copy stating one departs.
   anything = defineType {
     name = "anything";
-    mergeDefs = mergeAnythingDefs;
+    mergeDefs = {
+      __functor = _: mergeAnythingDefs;
+      completed = anything;
+    };
   };
 
   # unspecified — the type a declaration stating none has (nixpkgs' `fixupOptionType`). It admits
@@ -2141,7 +2157,12 @@ let
   # its own value.
   unspecified = defineType {
     name = "unspecified";
-    mergeDefs = loc: defs: if length defs == 1 then (head defs).value else mergeUntyped loc defs;
+    mergeDefs = {
+      __functor =
+        _: loc: defs:
+        if length defs == 1 then (head defs).value else mergeUntyped loc defs;
+      completed = unspecified;
+    };
   };
 
   # optionType — a type whose values are types, gen's own records or foreign ones (`_module.freeformType`
@@ -2149,17 +2170,21 @@ let
   optionType =
     let
       admits = v: isAttrs v && (interface.isOptionType v || v ? typeMergeRel);
-    in
-    defineType {
-      name = "optionType";
-      inherit admits;
-      mergeDefs = refusingOutside "optionType" admits (
+      fold = refusingOutside "optionType" admits (
         loc: defs:
         # a type's merge is handed its definitions last module first; the fold reads them authored
         mergeTypeDefs "the option `${showOption loc}'" (
           prelude.genList (i: elemAt defs (length defs - 1 - i)) (length defs)
         )
       );
+    in
+    defineType {
+      name = "optionType";
+      inherit admits;
+      mergeDefs = {
+        __functor = _: fold;
+        completed = optionType;
+      };
     };
 in
 {
@@ -2244,14 +2269,19 @@ in
     # a `//` copy of a completed record whose `admits` is not the slot its fold was completed with (the fold's
     # completion record, `mergeDefs.completed`, compared by the slot's pointer) states a domain its fold never closed
     # over: it is the check rewrite it states, `check && admits` as `addCheck` conjoins, and is closed over that check
-    # as the arm above closes one (den-hoag-56u5o); a copy removing `admits` states no domain and is not one
+    # as the arm above closes one (den-hoag-56u5o); a copy removing `admits` states no domain and is not one. A
+    # record with no fold of its own (`raw`, which the engine's leaf fold folds, closing over no domain) and no
+    # `verify` that states `admits` states one no fold closed over, and is one too (den-hoag-2632d)
     else if
       t ? _type
       && t ? admits
-      && t ? mergeDefs.completed
-      &&
-        builtins.intersectAttrs { admits = null; } t
-        != builtins.intersectAttrs { admits = null; } t.mergeDefs.completed
+      && (
+        t ? mergeDefs.completed
+        &&
+          builtins.intersectAttrs { admits = null; } t
+          != builtins.intersectAttrs { admits = null; } t.mergeDefs.completed
+        || !(t ? mergeDefs) && !(t ? verify)
+      )
     then
       (c: defineType (interface.keepStamp (interface.rebuildClosed.own c c))) (
         t
@@ -2301,14 +2331,18 @@ in
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
     then
       mkOptionType (interface.rebuildClosed.own t t)
-    # a `//` copy of a completed record restating its `admits` is the check rewrite it states, as `defineType` reads it
+    # a `//` copy of a completed record restating its `admits`, or a foldless one stating it, is the check rewrite it
+    # states, as `defineType` reads it
     else if
       t ? _type
       && t ? admits
-      && t ? mergeDefs.completed
-      &&
-        builtins.intersectAttrs { admits = null; } t
-        != builtins.intersectAttrs { admits = null; } t.mergeDefs.completed
+      && (
+        t ? mergeDefs.completed
+        &&
+          builtins.intersectAttrs { admits = null; } t
+          != builtins.intersectAttrs { admits = null; } t.mergeDefs.completed
+        || !(t ? mergeDefs) && !(t ? verify)
+      )
     then
       (c: mkOptionType (interface.rebuildClosed.own c c)) (
         t

@@ -2934,11 +2934,13 @@ let
               throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
           )
         # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
-        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx), not the import's checked
-        # fold (`unchecked` beside it), and not a check a wrapper rewrote (`importedFold` checks that one per
-        # definition) (den-hoag-gxybe). `attrs`, `deferredModule` and `optionType` guard their folds with
-        # `refusingOutside` and carry no witness of it, so their `admits` is read twice, to the same verdict and text:
-        # a fold record carrying one costs each of those types constant thunks the hub bench's load gates refuse.
+        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
+        # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+        # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
+        # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
+        # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
+        # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
+        # `admits` is read once.
         else if
           type != null
           && type ? admits
@@ -2949,7 +2951,16 @@ let
               type.check != type._checkWitness
               || type ? split
               || type ? choose
-              || (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+              ||
+                (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+                &&
+                  builtins.intersectAttrs {
+                    admits = null;
+                    mergeDefs = null;
+                  } type == builtins.intersectAttrs {
+                    admits = null;
+                    mergeDefs = null;
+                  } type.mergeDefs.completed
             )
           )
           && !(all (d: type.admits d.value) typeDefs)
@@ -3031,11 +3042,13 @@ let
               throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
           )
         # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
-        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx), not the import's checked
-        # fold (`unchecked` beside it), and not a check a wrapper rewrote (`importedFold` checks that one per
-        # definition) (den-hoag-gxybe). `attrs`, `deferredModule` and `optionType` guard their folds with
-        # `refusingOutside` and carry no witness of it, so their `admits` is read twice, to the same verdict and text:
-        # a fold record carrying one costs each of those types constant thunks the hub bench's load gates refuse.
+        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
+        # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+        # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
+        # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
+        # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
+        # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
+        # `admits` is read once.
         else if
           type != null
           && type ? admits
@@ -3046,7 +3059,16 @@ let
               type.check != type._checkWitness
               || type ? split
               || type ? choose
-              || (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+              ||
+                (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+                &&
+                  builtins.intersectAttrs {
+                    admits = null;
+                    mergeDefs = null;
+                  } type == builtins.intersectAttrs {
+                    admits = null;
+                    mergeDefs = null;
+                  } type.mergeDefs.completed
             )
           )
           && !(all (d: type.admits d.value) typeDefs)
@@ -3166,11 +3188,13 @@ let
               throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
           )
         # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
-        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx), not the import's checked
-        # fold (`unchecked` beside it), and not a check a wrapper rewrote (`importedFold` checks that one per
-        # definition) (den-hoag-gxybe). `attrs`, `deferredModule` and `optionType` guard their folds with
-        # `refusingOutside` and carry no witness of it, so their `admits` is read twice, to the same verdict and text:
-        # a fold record carrying one costs each of those types constant thunks the hub bench's load gates refuse.
+        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
+        # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+        # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
+        # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
+        # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
+        # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
+        # `admits` is read once.
         else if
           type != null
           && type ? admits
@@ -3181,7 +3205,16 @@ let
               type.check != type._checkWitness
               || type ? split
               || type ? choose
-              || (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+              ||
+                (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+                &&
+                  builtins.intersectAttrs {
+                    admits = null;
+                    mergeDefs = null;
+                  } type == builtins.intersectAttrs {
+                    admits = null;
+                    mergeDefs = null;
+                  } type.mergeDefs.completed
             )
           )
           && !(all (d: type.admits d.value) typeDefs)
@@ -3670,11 +3703,28 @@ let
   # extended by its step, and needs nothing else. The walk reads a record's container status off its
   # fold (`mergeDefs.container`), which a `//` copy carries with the fold it takes, so a renamed record
   # and a record whose fold is rewritten read to the walk as the fold the guard's `self` runs.
-  # A nested tree and a leaf are never nodes, so their folds are not wrapped; the guard reads
+  # A nested tree and a leaf are never nodes, so their folds are not wrapped: a nested tree's fold
+  # gains only the record it was completed with (below), and a leaf has none. The guard reads
   # attribute presence only, because every type built pays it.
   readsMintedNode =
     self: t:
-    if !(isAttrs t) || !(t ? split || t ? choose) || t ? nests || !(t ? mergeDefs.threaded) then
+    if !(isAttrs t) || !(t ? mergeDefs.threaded) then
+      t
+    # A NESTING FOLD IS TIED ONCE, by the door that completes its constructor's record (den-hoag-2632d): a
+    # submodule's fold closes over the `admits` its record states, so it carries the record it was completed
+    # with as a container's does. A nesting fold holding a completion already keeps it, and is never re-tied:
+    # a fresh fold record per door would let `==` of two doored copies walk the cycle through `completed`.
+    else if t ? nests then
+      if t ? split || t ? choose || t.mergeDefs ? completed then
+        t
+      else
+        t
+        // {
+          mergeDefs = t.mergeDefs // {
+            completed = self;
+          };
+        }
+    else if !(t ? split || t ? choose) then
       t
     else
       t

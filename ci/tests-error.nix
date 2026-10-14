@@ -10989,6 +10989,33 @@ in
         attrsCopy = t.attrs // {
           mergeDefs = fold;
         };
+        # den-hoag-2632d: a library constant's fold is a record stating its completion, so a copy rewriting only the
+        # fold's function keeps `completed`; the engine compares the fold slot too, raw and through `defineType`
+        foldExtend = {
+          attrs = t.attrs;
+          optionType = t.optionType;
+          deferredModule = t.deferredModule;
+        };
+        fnCopy =
+          c:
+          c
+          // {
+            mergeDefs = c.mergeDefs // {
+              __functor =
+                _: loc: defs:
+                (nixpkgsLib.last defs).value;
+            };
+          };
+        fnDoors = {
+          raw = c: c;
+          defineType = t.defineType;
+        };
+        fnCells = nixpkgsLib.concatMapAttrs (
+          k: c:
+          nixpkgsLib.concatMapAttrs (dn: door: {
+            "test-${k}-fold-function-copy-${dn}-refuses-outside" = refused (door (fnCopy c)) "s" k;
+          }) fnDoors
+        ) foldExtend;
       in
       nixpkgsLib.mapAttrs' (
         k: ty: nixpkgsLib.nameValuePair "test-${k}-refuses-outside" (refused ty 3 "evenT")
@@ -10999,7 +11026,9 @@ in
       // {
         test-attrs-fold-copy-refuses-outside = refused attrsCopy 1 "attrs";
         test-attrs-fold-copy-serves-inside = served attrsCopy { a = 1; };
-      };
+        test-attrs-fold-function-copy-serves-inside = served (fnCopy t.attrs) { a = 1; };
+      }
+      // fnCells;
 
     flake.testsError.fold-rewrite-check =
       let
@@ -11176,6 +11205,65 @@ in
             n = builtins.isInt;
             out = "s";
           };
+          # den-hoag-2632d: the completed records whose fold carried no completion record until it was tied at their
+          # constructor (the five constants and `deferredModule`) or at the door that completes them (`submodule`),
+          # and `raw`, whose fold is the engine's leaf fold and closes over no domain
+          submodule = {
+            t = t.submodule {
+              options.a = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+              options.b = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+            };
+            n = noB;
+            out = {
+              a = 1;
+              b = 2;
+            };
+          };
+          # a `deferredModule` copy declared twice through `defineType` is refused at its declarations, before any
+          # value, as nixpkgs' `addCheck` of it is through the same door
+          deferredModule = {
+            t = t.deferredModule;
+            n = builtins.isAttrs;
+            out = "/nonexistent.nix";
+            declaredTwice.define-type = {
+              gen = "^gen-merge: option `x' is declared with types that do not merge \\(`deferredModule' and a same-named partner that states no relation this type embeds in\\); declared in <unknown-file>, <unknown-file>$";
+              nixpkgs = "^The option `x' in `<unknown-file>' is already declared in `<unknown-file>'\\.$";
+            };
+          };
+          attrs = {
+            t = t.attrs;
+            n = noB;
+            out = {
+              a = 1;
+              b = 2;
+            };
+          };
+          anything = {
+            t = t.anything;
+            n = builtins.isInt;
+            out = "s";
+          };
+          raw = {
+            t = t.raw;
+            n = builtins.isInt;
+            out = "s";
+          };
+          unspecified = {
+            t = t.unspecified;
+            n = builtins.isInt;
+            out = "s";
+          };
+          optionType = {
+            t = t.optionType;
+            n = v: (v.name or null) == t.int.name;
+            out = t.str;
+          };
         };
         doors = {
           define-type = t.defineType;
@@ -11216,7 +11304,7 @@ in
               );
               expectedError = {
                 type = "ThrownError";
-                msg = E.msg C.t;
+                msg = if tn == "twice" then C.declaredTwice.${dn}.${en} or (E.msg C.t) else E.msg C.t;
               };
             };
           };

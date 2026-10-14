@@ -54,6 +54,59 @@ let
       ok = 1;
     };
   };
+  # den-hoag-2632d: the completed records whose fold carries its completion record from its constructor (the five
+  # constants and `deferredModule`) or from the door that completed it (`submodule`), and `raw`, a leaf
+  records = {
+    submodule = {
+      t = gt.submodule {
+        options.a = gm.mkOption {
+          type = gt.int;
+          default = 0;
+        };
+        options.b = gm.mkOption {
+          type = gt.int;
+          default = 0;
+        };
+      };
+      n = noB;
+      ok = {
+        a = 1;
+      };
+    };
+    deferredModule = {
+      t = gt.deferredModule;
+      n = builtins.isAttrs;
+      ok = { };
+    };
+    attrs = {
+      t = gt.attrs;
+      n = noB;
+      ok = {
+        a = 1;
+      };
+    };
+    anything = {
+      t = gt.anything;
+      n = builtins.isInt;
+      ok = 1;
+    };
+    raw = {
+      t = gt.raw;
+      n = builtins.isInt;
+      ok = 1;
+    };
+    unspecified = {
+      t = gt.unspecified;
+      n = builtins.isInt;
+      ok = 1;
+    };
+    optionType = {
+      t = gt.optionType;
+      n = v: (v.name or null) == gt.int.name;
+      ok = gt.int;
+      view = v: v.name;
+    };
+  };
   doors = {
     defineType = gt.defineType;
     mkOptionType = gm.mkOptionType;
@@ -75,6 +128,82 @@ in
   flake.tests.admits-rewrite-door = {
     # the value the narrowed `admits` keeps is served as the plain container serves it (red where the rewrite is
     # refused outright, or where its check judges a value the copy keeps)
+    # the same for the records whose fold carries its completion from its constructor or its first door, and for `raw`;
+    # read against nixpkgs' `addCheck` of the record through the same door (the copy's twin), since a `deferredModule`
+    # copy declared twice is refused through `defineType` as its twin is
+    test-the-value-an-admits-rewrite-of-a-record-keeps-is-served-as-its-add-check-twin-serves-it = {
+      expr = grid records (
+        C: door: eng: k:
+        (C.view or (v: v)) (run eng k (door (C.t // { admits = C.n; })) C.ok)
+      );
+      expected = grid records (
+        C: door: eng: k:
+        (C.view or (v: v)) (run eng k (door (nl.types.addCheck C.t C.n)) C.ok)
+      );
+    };
+    # a door ties a nesting fold once: a doored `//` copy of a submodule keeps the fold of the record its constructor
+    # completed, so its `admits` is judged against that record's, and two doored copies share one fold record, which
+    # `==` reads without walking the cycle through `completed` (a door re-tying the fold on every copy hands each copy a
+    # fresh fold record whose other fields are the constructor's, and a structural `==` of two such copies overflows the
+    # stack, uncatchably)
+    test-a-door-keeps-the-completion-a-nesting-fold-already-holds = {
+      expr =
+        let
+          s = records.submodule.t;
+        in
+        {
+          constructor = s.mergeDefs.completed ? z;
+          doored = (gt.defineType (s // { z = 1; })).mergeDefs.completed ? z;
+          imported =
+            let
+              r = gm.mkOptionType (s // { z = 1; });
+            in
+            r.mergeDefs ? completed && r.mergeDefs.completed ? z;
+        };
+      expected = {
+        constructor = false;
+        doored = false;
+        imported = false;
+      };
+    };
+    # a self-referential submodule copy narrowing its `admits` is enforced at its own nested position, and the plain
+    # one reads as before (a door reading the completion stamp of a nesting record forces what it is still building)
+    test-a-self-referential-submodule-admits-copy-is-enforced-where-it-nests = {
+      expr =
+        let
+          sub =
+            copy:
+            let
+              s = gt.defineType (
+                gt.submodule {
+                  options.n = gm.mkOption {
+                    type = gt.nullOr s;
+                    default = null;
+                  };
+                  options.k = gm.mkOption {
+                    type = gt.int;
+                    default = 0;
+                  };
+                }
+                // (if copy then { admits = v: builtins.isAttrs v && !(v ? k && v.k == 9); } else { })
+              );
+            in
+            s;
+        in
+        nl.genAttrs [ "gen" "np" ] (
+          eng: nl.genAttrs [ "plain" "copy" ] (c: run eng 1 (sub (c == "copy")) { n.k = 9; })
+        );
+      expected = nl.genAttrs [ "gen" "np" ] (_: {
+        plain = {
+          k = 0;
+          n = {
+            k = 9;
+            n = null;
+          };
+        };
+        copy = "REFUSED";
+      });
+    };
     test-the-value-an-admits-rewrite-keeps-is-served-as-the-plain-container-serves-it = {
       expr = grid containers (
         C: door: eng: k:

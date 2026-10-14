@@ -1218,7 +1218,10 @@ Two rules that look like details and are not:
   did not derive, and `types.defineType` keeps the stale stamp of a copy whose distinguishing content
   changed, so a re-completed `addCheck T p` is enforced alone and beside `T` and its identity is
   refused by name, as the raw copy's is. The FOLD keeps one too: a container's fold holds the record
-  it was completed with (`mergeDefs.completed`), and no door re-ties a fold it did not complete, so a
+  it was completed with (`mergeDefs.completed`), so does a submodule's (tied once, by the door that
+  completes its constructor's record) and a library constant's (`attrs`, `deferredModule`,
+  `optionType`, `anything`, `unspecified`: the constant itself, completed once), and no door re-ties
+  a fold it did not complete, so a
   `//` copy that takes another container's fold (`split`, `mergeDefs`, `merge`) keeps its own `check`
   over a fold whose witness is not its own, and that check is owed: a definition it rejects is refused
   by name, naming the copy's type. A copy departing only at fields a door does not read (a
@@ -1285,12 +1288,16 @@ Two rules that look like details and are not:
   over a completion or over a door's return, or a `// { check }` copy) is closed over that check by
   the door that completes it again, before the completion, so a later declaration's join and a module
   set's fixup keep it; a copy departing only elsewhere (a `// { description }`) is completed as it is.
-  A `//` copy of a completed gen `listOf`, `attrsOf`, `lazyAttrsOf`, `nullOr` or `either` that
-  rewrites its `admits` states a domain its fold never closed over, so it is the check rewrite it
-  states: the door closes it over its check and its new `admits` together, as `addCheck` conjoins
-  them, and a value the new `admits` drops is refused by name in gen's evaluation and in nixpkgs',
-  while a value it keeps is served as the plain container serves it. A copy removing `admits` states
-  no domain and is completed as it is.
+  A `//` copy of a completed gen record (a container, `submodule`, `deferredModule`, `attrs`,
+  `optionType`, `anything`, `unspecified` or `raw`) that rewrites its `admits` states a domain its
+  fold never closed over, so it is the check rewrite it states: the door closes it over its check and
+  its new `admits` together, as `addCheck` conjoins them, and a value the new `admits` drops is
+  refused by name in gen's evaluation and in nixpkgs', while a value it keeps is served as the plain
+  record serves it. `anything` and `unspecified` fold totally and state no `admits`, so a copy stating
+  one departs from its completion. `raw` has no fold of its own (the engine's leaf fold folds it, and
+  closes over no domain), so a foldless record stating `admits` and no `verify` is read the same way;
+  on a foldless import (`mkOptionType gt.raw`, whose `admits` is its `check`'s view) the conjunction
+  is idempotent. A copy removing `admits` states no domain and is completed as it is.
   A `// { verify }` copy the caller checked is closed the same way, whether the door completes it again
   or returns it as itself, and a checked record nixpkgs' join carries at a root states its check on
   the `merge.v2` `headError` nixpkgs reads, so `types.defineType` over a checked gen `nullOr` of a
@@ -1423,7 +1430,9 @@ guard of it.** A record stating `admits` and no `verify` (a caller's, through an
 unless the fold it runs carries such a witness. Three folds do:
 
 - a fold completed under the record's own `_checkWitness` (`mergeDefs.completed`, the record the fold
-  was completed with), which a container's fold carries, tied where the door completes it;
+  was completed with) whose completion holds the record's own `admits` and fold record, which a
+  container's and a submodule's fold carry, tied where the door completes them, and a library
+  constant's carries, stating the constant;
 - the import's checked fold (`mergeDefs.unchecked` beside it);
 - the fold of a record whose `check` a wrapper rewrote, which the import checks per definition.
 
@@ -1432,10 +1441,13 @@ A `//` copy that swaps the fold takes a fold without the witness, so its `admits
 completed with, a door's return and its fold's completion hold one `admits` slot, so the doors'
 admits-rewrite test above is false on every return and fires only where a `//` copy restated
 `admits`: `types.defineType` and `mkOptionType` refuse that copy, and the engine reads `admits`
-wherever the fold carries no witness. `attrs`, `deferredModule` and `optionType` guard their folds
-with `refusingOutside` but carry no witness, so the engine reads their `admits` a second time, to
-the same verdict and text; a fold record carrying the witness would cost each of those types
-constant work at every evaluation that uses it. Two copies are still served against their `admits`:
+wherever the fold carries no witness. Both slots are compared because a constant's fold is a record:
+a `//` copy that restates `admits`, or rewrites only the fold's function
+(`t.attrs // { mergeDefs = t.attrs.mergeDefs // { __functor = …; }; }`), keeps `completed` while
+its fold no longer closes over what it states, so its `admits` is read. The witness costs a call
+through the fold record (one value per fold of a constant), and on `attrs`, `deferredModule` and
+`optionType` the slot comparison costs more per option than the second `admits` read it replaces.
+Two copies are still served against their `admits`:
 a container's `//` copy that keeps its fold and restates `admits` without passing either door (raw,
 or through `types.mkType`), which is served as its fold serves; and a copy that borrows another
 import's checked fold (`mkOptionType { check = …; } // { inherit (other) mergeDefs; }`), because
