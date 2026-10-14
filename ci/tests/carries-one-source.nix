@@ -382,7 +382,8 @@ in
     };
 
     # A STATED NESTED ROLE CROSSES: a container stating its element only in `nestedTypes` is legible,
-    # and a redeclaration whose join drops an element's check is seen
+    # and a redeclaration whose join drops an element's check is seen: the join is met at the element,
+    # so the value `port` rejects is rejected
     test-a-stated-nested-role-crosses = {
       expr = {
         nestedTypes = keysOf (bobbin t.str).nestedTypes;
@@ -393,7 +394,7 @@ in
       expected = {
         nestedTypes = [ "elemType" ];
         carries = [ "element" ];
-        drop = "REFUSED";
+        drop = "MERGED bobbin / REJECTED";
         ctlTwin = "MERGED bobbin / ACCEPTED";
       };
     };

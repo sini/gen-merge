@@ -4900,9 +4900,28 @@ let
       (
         let
           j = a.typeMerge b.functor;
-          k = joinKeepingOperands a b j;
+          # a join the step can apply states the check and the fold an operand states; any other answer is
+          # no join (the test is inline, so the pair pays no binding for it)
+          k =
+            if
+              isAttrs j && (j ? check || !(a ? check || b ? check)) && (j ? merge || !(a ? merge || b ? merge))
+            then
+              joinKeepingOperands a b j
+            else
+              null;
         in
-        if k != null then k else j
+        if k != null then
+          { merged = k; }
+        else if
+          isAttrs j && (j ? check || !(a ? check || b ? check)) && (j ? merge || !(a ? merge || b ? merge))
+        then
+          # taken PAST the witness (it renames an operand): the answer says so, and the step holds each fold
+          {
+            merged = j;
+            holds = true;
+          }
+        else
+          null
       )
     else
       null;
@@ -4919,9 +4938,9 @@ let
   # int → int` is an upper bound; read as the meet, which is the ruled reading, it drops `port`'s
   # check. A join this witness takes is met at the step (`lib/modules.nix` `mergeTypesBy`, through
   # `metWith`), and a relation's `meets` answer at `declaredPair` is met by the same function. A join
-  # that renames past an operand is still refused here: the meet's carrier is the join, and a join that
-  # is not the operand's constructor is not met by this boundary, so the refusal stands, sound under
-  # the meet (it serves nothing an operand rejects). The witness compares the relation's ANSWER with
+  # that renames past an operand is not taken here: the caller answers it as the step's carrier
+  # (`importedMerge`, `foreignRel`'s `meets`) and the step meets it at every role and at the top, so
+  # the witness decides only where a join is taken as is. The witness compares the relation's ANSWER with
   # each operand's own name, never one operand with the other, so it keys no identity (ADR-0034 is
   # scoped to IDENTITY).
   #
@@ -5121,7 +5140,14 @@ let
         else
           "the check `${nameOf a}' declares but not the check `${nameOf b}' declares";
     in
-    if dropsA || dropsB then
+    if
+      j != null
+      && !(
+        isAttrs j && (j ? check || !(a ? check || b ? check)) && (j ? merge || !(a ? merge || b ? merge))
+      )
+    then
+      "`${nameOf a}' and `${nameOf b}', which their own relation joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states"
+    else if dropsA || dropsB then
       "`${nameOf a}' and `${nameOf b}', which their own relation joins to `${nameOf j}', a type that states ${dropped}"
     else
       null;
@@ -5130,7 +5156,7 @@ let
   # reified value itself" under Nix `==`: `port ∥ port` from one shared `types.port` answers `port`,
   # check intact. The clause is live on the `importedMerge` path only. On `foreignRel` the caller's raw
   # record meets the engine's imported partner and pointer identity does not survive the import, so a
-  # shared imported twin refuses (README, Known byte-mode boundaries).
+  # shared imported twin takes the renaming join as the carrier, met with both operands.
   joinKeepingOperands =
     a: b: j:
     if j == null then
@@ -5731,7 +5757,7 @@ let
               asked = builtins.tryEval (callerTypeMerge j f);
               r = if asked.success then asked.value else null;
             in
-            if r == null then null else metWith r [ met ];
+            if r == null then null else metWith false r [ met ];
         }
         // (if fold == null then { } else { mergeDefs = fold; });
       # a foreign operand's `verify`, read once on the met record's merged value: the first rejection
@@ -5799,11 +5825,16 @@ let
   #    alternatives): a member the meet does not meet is never released by the tree.
   #  - One value declared twice owes its check once.
   # Every binding is local, so the library's load pays for this one lambda alone.
+  # `meets`: the relation that answered `m` said `meets` (its answer is the step's carrier, not the meet), so
+  # every operand is owed and the exactness test is not asked: a relation's own word outranks a field's presence
   metWith =
-    m: os:
+    meets: m: os:
     if
-      m ? typeMergeRel
-      && builtins.all (o: o ? typeMergeRel && !(rewritesCheck o) && !(replacesVerify o)) os
+      meets == false
+      && m ? typeMergeRel
+      && builtins.all (
+        o: o ? typeMergeRel && !(rewritesCheck o) && !(replacesVerify o) && !(o ? holds)
+      ) os
     then
       m
     else
@@ -5813,7 +5844,8 @@ let
           !(o ? typeMergeRel)
           || !(m ? typeMergeRel)
           || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
-          || replacesVerify o;
+          || replacesVerify o
+          || o ? holds;
         # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
         # alternatives; any other `elemType` states no element of the tree
         elementsOf =
@@ -5866,7 +5898,7 @@ let
             so = shapeOf importedTypeWalkFuel o;
           in
           so != sm && widensAt so sm;
-        maybe = filter mayOwe os;
+        maybe = if meets == false then filter mayOwe os else os;
         # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
         # compared inline so the meet binds nothing for it
         notM = filter (o: closuresFirst [ m ] m != closuresFirst [ o ] o) maybe;
@@ -5893,6 +5925,94 @@ let
         carriedAtDepth true os m
       else if owed == [ ] then
         m
+      # a held operand (a record met holding, `holds`) is held again wherever it is met
+      else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+        # The join was taken PAST the witness (it renames an operand: the carrier is not that operand's own
+        # constructor), so the carrier's fold is not that operand's. A declaration's admission is its `check` AND
+        # its `merge` (nixpkgs' containers judge their elements in `merge`; a fold may refuse what its check
+        # accepts), so each operand's own fold runs beside the carrier's over the same definitions, and its value
+        # is demanded position by position as the served value is: an attribute or list element of the served value
+        # forces the same position of each operand's value, and a leaf forces it whole. The met value is served
+        # exactly where every declaration alone would serve it, as lazily as the carrier's (den-hoag-wsnn0 v1).
+        let
+          met = meetOf m once;
+          kept = filter (o: o ? merge) once;
+          walk =
+            v: vs:
+            builtins.foldl' (acc: ov: builtins.seq ov acc) (
+              if isAttrs v && !(v ? __functor) then
+                builtins.mapAttrs (
+                  k: x: walk x (builtins.concatMap (ov: if isAttrs ov && ov ? ${k} then [ ov.${k} ] else [ ]) vs)
+                ) v
+              else if isList v then
+                builtins.genList (
+                  i:
+                  walk (elemAt v i) (
+                    builtins.concatMap (ov: if isList ov && i < length ov then [ (elemAt ov i) ] else [ ]) vs
+                  )
+                ) (length v)
+              else
+                v
+            ) vs;
+          own =
+            loc: defs: o:
+            if o.merge ? v2 then
+              (
+                let
+                  r = o.merge.v2 { inherit loc defs; };
+                in
+                if r.headError or null != null then throw r.headError.message else r.value
+              )
+            else
+              o.merge loc defs;
+          demand =
+            loc: defs: v:
+            walk v (map (own loc defs) kept);
+          fold = met.mergeDefs or null;
+          # the held record, named so its exported `typeMerge` meets a later join with IT (and so holds again), not
+          # with the unheld `met` that `meetOf`'s own `typeMerge` names
+          h =
+            met
+            // {
+              holds = true;
+              typeMerge =
+                f:
+                let
+                  asked = builtins.tryEval (callerTypeMerge m f);
+                  r = if asked.success then asked.value else null;
+                in
+                if r == null then null else metWith false r [ h ];
+              merge =
+                if met.merge ? v2 then
+                  met.merge
+                  // {
+                    __functor =
+                      self: loc: defs:
+                      (self.v2 { inherit loc defs; }).value;
+                    v2 =
+                      args:
+                      let
+                        r = met.merge.v2 args;
+                      in
+                      r // { value = demand args.loc args.defs r.value; };
+                  }
+                else
+                  (loc: defs: demand loc defs (met.merge loc defs));
+            }
+            // (
+              if fold == null then
+                { }
+              else
+                {
+                  mergeDefs = (if isAttrs fold then fold else { }) // {
+                    __functor =
+                      _: loc: defs:
+                      demand loc defs (fold loc defs);
+                  };
+                }
+            );
+        in
+        if kept == [ ] then met else h
       else
         meetOf m once;
   # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
@@ -6049,33 +6169,35 @@ let
   # foreignRel — the caller's stated relation, expressed as gen's own row-free relation so the engine
   # reads the AUTHOR's answer rather than the vocabulary's nullary one. The refusal names the
   # discriminating fact: it is the author's own `functor' that declined to reconcile the pair, not
-  # this boundary's inability to read it. An author's answer is held to the same witness as an
-  # inherited one, and a join the witness declines is named as that, not as a declined reconciliation.
+  # this boundary's inability to read it. A join the witness takes is the answer. A join it declines
+  # (it renames an operand) is answered `meets`: a stated relation supplies the join, never a
+  # certificate that the join keeps each operand's check, so the step meets it with every operand, at
+  # every role and at the top (`lib/modules.nix` `relationMergeWithin`, `declaredPair`), as
+  # `importedMerge`'s raw join is met. A join that is not a type the step can apply is named.
   foreignRel =
     t: other:
     let
       f = if isAttrs other then other.functor or null else null;
       joined = if f == null then null else callerTypeMerge t f;
-      answer = joinKeepingOperands t other joined;
-      tName = nameOf t;
-      otherName = nameOf other;
+      # a join the step can apply states the check and the fold an operand states; any other answer is
+      # named, never applied
+      whole =
+        isAttrs joined
+        && (joined ? check || !(t ? check || other ? check))
+        && (joined ? merge || !(t ? merge || other ? merge));
+      answer = if whole then joinKeepingOperands t other joined else null;
       functorNames = functorNamesOf t other;
-      pair = "`${tName}' and `${otherName}'";
-      # Same asymmetry `importedMergeReason` names above: `t` and `other` are asked separately, and
-      # "neither" is said only when the join renamed past both.
-      dropsT = joined != null && joinRenames joined t;
-      dropsOther = joined != null && isAttrs other && joinRenames joined other;
-      dropped =
-        if dropsT && dropsOther then
-          "neither declaration's own check"
-        else if dropsT then
-          "the check `${otherName}' declares but not the check `${tName}' declares"
-        else
-          "the check `${tName}' declares but not the check `${otherName}' declares";
+      pair = "`${nameOf t}' and `${nameOf other}'";
     in
-    if answer == null && joined != null then
+    if answer == null && whole then
       {
-        refused = "${pair}, which the first type's own `functor' joins to `${nameOf joined}', a type that states ${dropped}";
+        merged = joined;
+        meets = true;
+        holds = true;
+      }
+    else if joined != null && !whole then
+      {
+        refused = "${pair}, which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
       }
     else if answer == null && functorNames != null then
       {
@@ -6359,9 +6481,9 @@ let
                 null
               # a module set's join is rebuilt again by the fixup, so the join carries the verify on its merged value
               else if replacesVerify x && x ? carries && isList (x.getSubModules or null) then
-                rebuildClosed.rebuilt x.verify (metWith r [ s ])
+                rebuildClosed.rebuilt x.verify (metWith false r [ s ])
               else
-                metWith r [ s ];
+                metWith false r [ s ];
             # the functor names this copy as the declaration (`__declared`) beside its completion's `type`: nixpkgs hands
             # a redeclaration's relation only the partner's functor; `type` stays the completion
             ${if replacesVerify x && x ? functor then "functor" else null} = x.functor // {
@@ -7285,9 +7407,9 @@ let
             # partner its functor recovers; a declaration stating `verify` over a module set below it is closed on
             # the join's merged value as the door closes its own join (`carriedCopy`'s `typeMerge`)
             meet =
-              j: os: d:
+              meets: j: os: d:
               let
-                m = metWith j os;
+                m = metWith meets j os;
               in
               if isAttrs d && d ? verify && d ? carries && isList (d.getSubModules or null) then
                 rebuildClosed.rebuilt d.verify m
@@ -7299,7 +7421,10 @@ let
             let
               j = t.retainedRelation.typeMerge f;
             in
-            if j == null || !(isAttrs f && f ? __declared) then j else meet j [ f.__declared ] f.__declared
+            if j == null || !(isAttrs f && f ? __declared) then
+              j
+            else
+              meet false j [ f.__declared ] f.__declared
           else
             (
               f:
@@ -7325,7 +7450,7 @@ let
                       let
                         d = if isAttrs f && f ? __declared then f.__declared else partner;
                       in
-                      meet answer.merged [
+                      meet (if answer.holds or false then "holds" else answer.meets or false) answer.merged [
                         exported
                         d
                       ] d

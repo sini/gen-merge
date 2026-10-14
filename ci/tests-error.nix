@@ -5672,6 +5672,15 @@ in
               { options.x = gm.mkOption { type = b; }; }
             ];
           };
+        definedTwice =
+          a: b:
+          realize {
+            modules = [
+              { options.x = gm.mkOption { type = a; }; }
+              { options.x = gm.mkOption { type = b; }; }
+              { x = "v"; }
+            ];
+          };
         refuses = pair: {
           type = "ThrownError";
           msg = "^gen-merge: option `x' is declared with types that do not merge \\(${pair}\\); declared in <unknown-file>, <unknown-file>$";
@@ -5692,8 +5701,8 @@ in
           payload = null;
           binOp = _: _: null;
         };
-        # Two raw records with no gen relation, whose own `typeMerge' joins to a type named `j' —
-        # a join that keeps neither operand's name, so the witness names it.
+        # Two raw records with no gen relation, whose own `typeMerge' joins to a record named `j' that
+        # states no `merge', which each operand states: not a type the step can apply, so it is named.
         renamingJoin = name: {
           inherit name;
           check = _: true;
@@ -5798,12 +5807,12 @@ in
             )).functor;
           expectedError = thrown "^gen-merge: the type `<a name of type int>' carries the role `zz', ";
         };
-        # Declared raw, the renaming join is the step's carrier and the meet owes both operands, so the
-        # pair merges (G11); imported through `mkOptionType` it merges on `foreignRel`, whose witness
-        # still names the join, and that is where the name type is rendered.
+        # Imported through `mkOptionType` the pair merges on `foreignRel`, which names a join it cannot
+        # apply, and that refusal renders the operands' names. The option is DEFINED, so the cell reads
+        # the refusal where the value is merged, not an unused declaration.
         test-renaming-foreign-join-names-the-operand-name-type = {
-          expr = declaredTwice (gm.mkOptionType (renamingJoin "b")) (gm.mkOptionType (renamingJoin bad));
-          expectedError = refuses "`b' and `<a name of type int>', which the first type's own `functor' joins to `j', a type that states neither declaration's own check";
+          expr = definedTwice (gm.mkOptionType (renamingJoin "b")) (gm.mkOptionType (renamingJoin bad));
+          expectedError = refuses "`b' and `<a name of type int>', which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
         };
         test-carrier-refusal-names-its-name-type = {
           expr = gm.mkOptionType {
@@ -5833,14 +5842,26 @@ in
           };
           expectedError = thrown "^gen-merge: the option type `<a name of type int>' states a merge relation in `functor\\.binOp' ";
         };
-        test-stated-relation-join-names-the-join-name-type = {
-          expr = declaredTwice (gm.mkOptionType {
+        # The join's own name is no longer rendered: a stated relation's join that is not a type is
+        # named as that, so a non-string name on it cannot reach the text. DEFINED, as above.
+        test-stated-relation-join-that-is-not-a-type-is-named = {
+          expr = definedTwice (gm.mkOptionType {
             name = "fr";
             check = _: true;
             functor = noRelation;
             typeMerge = _: { name = bad; };
           }) t.str;
-          expectedError = refuses "`fr' and `string', which the first type's own `functor' joins to `<a name of type int>', a type that states neither declaration's own check";
+          expectedError = refuses "`fr' and `string', which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
+        };
+        # The raw path names the same join (`importedMergeReason`), in both orders: declared raw, the
+        # first operand's own `typeMerge' decides.
+        test-raw-join-that-is-not-a-type-is-named = {
+          expr = definedTwice (renamingJoin "b") (renamingJoin "c");
+          expectedError = refuses "`c' and `b', which their own relation joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
+        };
+        test-raw-join-that-is-not-a-type-is-named-reversed = {
+          expr = definedTwice (renamingJoin "c") (renamingJoin "b");
+          expectedError = refuses "`b' and `c', which their own relation joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
         };
         test-rebuilt-type-without-a-relation-names-its-name-type = {
           expr =

@@ -4,8 +4,10 @@
 # `ints.between` joins to bare `int` and the check is gone: nixpkgs accepts 70000 for a `port`. Gen's
 # engine takes that join as the step's carrier and meets it with every operand (ADR-0039, the meet),
 # so the merged option accepts a value only if every declared check does. The witness still decides
-# where it keeps each operand's stated name, and a record imported through `mkOptionType` merges on
-# `foreignRel`, whose witness still refuses the renaming join.
+# where it keeps each operand's stated name. A record imported through `mkOptionType` merges on
+# `foreignRel`, which answers the renaming join as the carrier (`meets`), and the step meets that
+# join the same way, at every role and at the top. A join that is not a type the step can apply is
+# refused by name on both paths.
 #
 # Each row declares one option over the listed types, defines one value, and reads the merged type's
 # name and whether the value was accepted. The control cell pins what the witness must NOT refuse,
@@ -107,6 +109,54 @@ let
         type = rootWith;
       };
     };
+  # an author type (int, and even) stating a relation that answers `answer` beside `int`: a renaming
+  # join that drops the author's own check
+  even =
+    name: answer:
+    let
+      self = nixpkgsLib.mkOptionType {
+        inherit name;
+        description = "even integer";
+        check = v: builtins.isInt v && nixpkgsLib.mod v 2 == 0;
+        merge = nixpkgsLib.mergeEqualOption;
+        functor = t.defaultFunctor name // {
+          type = _: self;
+          payload = { };
+          binOp = _a: _b: { };
+        };
+        typeMerge = f: if f.name == "int" || f.name == name then answer else null;
+      };
+    in
+    self;
+  # nixpkgs' own engine over the same declarations, for the cell that says where gen serves beyond it
+  evNixpkgs =
+    tys: val:
+    let
+      r =
+        (nixpkgsLib.evalModules {
+          modules = map (ty: { options.p = nixpkgsLib.mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
+        }).config.p;
+      v = tryEval (deepSeq r r);
+    in
+    if v.success then "SERVED" else "REFUSED";
+
+  # a type whose own relation answers a join stating no `merge`, which it states: not a type the step
+  # can apply, so the pair is refused by name rather than aborting where the value is merged
+  notAType = imp {
+    name = "nt";
+    check = _: true;
+    merge = _loc: defs: (builtins.head defs).value;
+    functor = {
+      name = "nt";
+      type = null;
+      payload = null;
+      binOp = _a: _b: null;
+    };
+    typeMerge = _: {
+      name = "j";
+      check = _: true;
+    };
+  };
   # a carried role (`payload.elemType`) whose relation answers `int` whatever it is asked: the
   # operand read in the join's vocabulary still states its element, so the drop stays visible
   intWrap =
@@ -196,43 +246,132 @@ in
       };
     };
 
-    # a record imported through `mkOptionType` states `functor.binOp`, so it merges on `foreignRel`
-    test-an-imported-check-family-pair-refuses = {
+    # a record imported through `mkOptionType` states `functor.binOp`, so it merges on `foreignRel`:
+    # the renaming join is the carrier and the step meets it with both operands, so each pair serves
+    # what every declaration accepts and rejects what one rejects
+    test-an-imported-check-family-pair-is-met = {
       expr = {
         between-twin = ev [ (imp (t.ints.between 0 1)) (imp (t.ints.between 0 1)) ] 0;
+        between-twin-bad = ev [ (imp (t.ints.between 0 1)) (imp (t.ints.between 0 1)) ] 2;
+        between-diff = ev [ (imp (t.ints.between 0 10)) (imp (t.ints.between 5 20)) ] 7;
+        between-diff-bad = ev [ (imp (t.ints.between 0 10)) (imp (t.ints.between 5 20)) ] 3;
         port-int = ev [ (imp t.port) (imp t.int) ] 8080;
+        port-int-bad = ev [ (imp t.port) (imp t.int) ] 70000;
         int-port = ev [ (imp t.int) (imp t.port) ] 8080;
+        int-port-bad = ev [ (imp t.int) (imp t.port) ] 70000;
         ctl-int-twin = ev [ (imp t.int) (imp t.int) ] 1;
       };
       expected = {
-        between-twin = "REFUSED";
-        port-int = "REFUSED";
-        int-port = "REFUSED";
+        between-twin = "MERGED int / ACCEPTED";
+        between-twin-bad = "MERGED int / REJECTED";
+        between-diff = "MERGED int / ACCEPTED";
+        between-diff-bad = "MERGED int / REJECTED";
+        port-int = "MERGED int / ACCEPTED";
+        port-int-bad = "MERGED int / REJECTED";
+        int-port = "MERGED int / ACCEPTED";
+        int-port-bad = "MERGED int / REJECTED";
         ctl-int-twin = "MERGED int / ACCEPTED";
       };
     };
 
-    # ★ A KNOWN BOUNDARY, PINNED: the sealed-limb twin clause is dead on `foreignRel`, because
-    # pointer identity does not survive the import, so ONE shared imported record declared twice
-    # refuses where the bare twin keeps its operand. A landing that makes the clause live flips this.
-    test-a-shared-imported-twin-refuses = {
+    # ONE shared imported record declared twice: pointer identity does not survive the import, so the
+    # sealed-limb twin clause is not what serves it; the renaming join is met with both operands, so
+    # it serves what `port` accepts and rejects what `port` rejects, as the bare twin does
+    test-a-shared-imported-twin-is-met = {
       expr =
         let
           impPort = imp t.port;
         in
         {
           imported = ev [ impPort impPort ] 8080;
+          imported-bad = ev [ impPort impPort ] 70000;
           bare = ev [ t.port t.port ] 8080;
         };
       expected = {
-        imported = "REFUSED";
+        imported = "MERGED int / ACCEPTED";
+        imported-bad = "MERGED int / REJECTED";
         bare = "MERGED unsignedInt16 / ACCEPTED";
+      };
+    };
+
+    # A RENAMING CONTAINER JOIN IS MET AT ITS ELEMENT: `listOf (between 0 1)` imported through
+    # `mkOptionType` beside `listOf (between 0 10)` joins to `listOf int`, and the element's check lives
+    # in the container's merge, not its `check`, so a meet at the top alone would serve `[ 3 ]`, which the
+    # narrower declaration rejects. Later (`relationMergeWithin`) and earlier (`declaredPair`'s veto).
+    test-an-imported-container-join-is-met-at-its-element = {
+      expr = {
+        later = ev [ (t.listOf (t.ints.between 0 10)) (imp (t.listOf (t.ints.between 0 1))) ] [ 3 ];
+        later-good = ev [ (t.listOf (t.ints.between 0 10)) (imp (t.listOf (t.ints.between 0 1))) ] [ 1 ];
+        earlier = ev [ (imp (t.listOf (t.ints.between 0 1))) (t.listOf (t.ints.between 0 10)) ] [ 3 ];
+        both = ev [ (imp (t.listOf (t.ints.between 0 10))) (imp (t.listOf (t.ints.between 0 1))) ] [ 3 ];
+      };
+      expected = {
+        later = "MERGED listOf / REJECTED";
+        later-good = "MERGED listOf / ACCEPTED";
+        earlier = "MERGED listOf / REJECTED";
+        both = "MERGED listOf / REJECTED";
+      };
+    };
+
+    # AN AUTHOR RELATION'S RENAMING JOIN IS THE CARRIER, MET AT THE STEP: an author type (even)
+    # answers plain `int` beside `int`, raw (`t.int`) or completed (`imp t.int`, which carries a gen
+    # relation), through `mkOptionType`, declared after `int`. 4 is served; 3, which the author
+    # rejects, is not. `keep*` answers a join keeping the author's name and dropping its check.
+    #
+    # ★ den-hoag-hnd82's BOUNDARY, PINNED: an author NAMED `int` (check: even) whose completed
+    # answer renames neither operand is read as an exact gen join, so 3 is served (a silent value).
+    # The landing that settles den-hoag-hnd82 flips `shared-completed-bad`.
+    test-an-author-relation-s-renaming-join-is-met =
+      let
+        keep = imp {
+          name = "even";
+          check = builtins.isInt;
+          merge = nixpkgsLib.mergeEqualOption;
+        };
+      in
+      {
+        expr = {
+          raw = ev [ t.int (imp (even "even" t.int)) ] 4;
+          raw-bad = ev [ t.int (imp (even "even" t.int)) ] 3;
+          completed = ev [ t.int (imp (even "even" (imp t.int))) ] 4;
+          completed-bad = ev [ t.int (imp (even "even" (imp t.int))) ] 3;
+          keep-completed-bad = ev [ t.int (imp (even "even" keep)) ] 3;
+          shared-completed-bad = ev [ t.int (imp (even "int" (imp t.int))) ] 3;
+        };
+        expected = {
+          raw = "MERGED int / ACCEPTED";
+          raw-bad = "MERGED int / REJECTED";
+          completed = "MERGED int / ACCEPTED";
+          completed-bad = "MERGED int / REJECTED";
+          keep-completed-bad = "MERGED even / REJECTED";
+          shared-completed-bad = "MERGED int / ACCEPTED";
+        };
+      };
+
+    # SERVING BEYOND NIXPKGS, BOUNDED (ADR-0039): the author type declared BEFORE `int`. nixpkgs asks
+    # only the later operand, whose relation refuses the pair; gen's engine asks the earlier relation
+    # as well (`declaredPair`'s veto), whose `meets` answer is met. The served value is the meet's (4,
+    # every declaration accepts it: the value oracle) and 3 is refused (the author rejects it: the
+    # check oracle).
+    test-an-author-relation-declared-first-is-met-beyond-nixpkgs = {
+      expr = {
+        gen = ev [ (imp (even "even" t.int)) t.int ] 4;
+        gen-bad = ev [ (imp (even "even" t.int)) t.int ] 3;
+        nixpkgs = evNixpkgs [ (imp (even "even" t.int)) t.int ] 4;
+      };
+      expected = {
+        gen = "MERGED int / ACCEPTED";
+        gen-bad = "MERGED int / REJECTED";
+        nixpkgs = "REFUSED";
       };
     };
 
     # A TYPE REDECLARED AS ITSELF DROPS NOTHING. Each operand is built separately, so no identity
     # carries it; the join is a gen record and the operand is read in its vocabulary. The planted
-    # rows keep refusing: a different base, a different element, and a carried role renamed.
+    # rows keep refusing: a different element, and a join that is not a type. A refinement whose base
+    # differs is met, so it serves what both bases accept and rejects what one rejects; a carried role
+    # renamed is met too, and `intWrap`'s merge reads no element, so each declaration alone serves
+    # 70000 there, and so does the pair.
     test-a-self-redeclaration-through-a-gen-join-merges = {
       expr = {
         refined-listOf = ev [ (refinedLike (t.listOf t.str)) (refinedLike (t.listOf t.str)) ] [ "a" ];
@@ -258,10 +397,13 @@ in
           ev
             [ (refinedLike (t.listOf t.str)) (refinedLike (t.listOf t.int)) ]
             [ "a" ];
-        planted-refined-check = ev [ (refinedLike (t.listOf t.port)) (refinedLike (t.listOf t.int)) ] [ 1 ];
-        planted-carried-rename = ev [ (intWrap t.port) (intWrap t.port) ] [ 70000 ];
-        # the refusal is the witness's, not a malformed fixture's
-        planted-carried-rename-reason = ((intWrap t.port).typeMergeRel (intWrap t.port)).refused or null;
+        refined-check = ev [ (refinedLike (t.listOf t.port)) (refinedLike (t.listOf t.int)) ] [ 1 ];
+        refined-check-bad = ev [ (refinedLike (t.listOf t.port)) (refinedLike (t.listOf t.int)) ] [ 70000 ];
+        carried-rename = ev [ (intWrap t.port) (intWrap t.port) ] [ 70000 ];
+        carried-rename-alone = ev [ (intWrap t.port) ] [ 70000 ];
+        planted-join-not-a-type = ev [ notAType notAType ] 1;
+        # the refusal is the relation's, naming a join the step cannot apply
+        planted-join-not-a-type-reason = (notAType.typeMergeRel notAType).refused or null;
       };
       expected = {
         refined-listOf = "MERGED listOf / ACCEPTED";
@@ -272,18 +414,28 @@ in
         root-three = "MERGED root / ACCEPTED";
         imported-listOf = "MERGED listOf / ACCEPTED";
         planted-refined-element = "REFUSED";
-        planted-refined-check = "REFUSED";
-        planted-carried-rename = "REFUSED";
-        planted-carried-rename-reason = "`wrap' and `wrap', which the first type's own `functor' joins to `wrap', a type that states neither declaration's own check";
+        refined-check = "MERGED listOf / ACCEPTED";
+        refined-check-bad = "MERGED listOf / REJECTED";
+        carried-rename = "MERGED wrap / ACCEPTED";
+        carried-rename-alone = "MERGED wrap / ACCEPTED";
+        planted-join-not-a-type = "REFUSED";
+        planted-join-not-a-type-reason = "`nt' and `nt', which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
       };
     };
 
     # A ROLE STATED IN `nestedTypes` IS CARRIED, so a gen join is judged over it: `rootWith`'s relation
-    # asks the element's own foreign `typeMerge`, which joins `port ∥ int` to `int`, and the witness now
-    # sees the element's check dropped.
-    test-a-drop-under-a-stated-nested-role-is-seen = {
-      expr = ev [ (rootWith t.port) (rootWith t.int) ] { a = 70000; };
-      expected = "REFUSED";
+    # asks the element's own foreign `typeMerge`, which joins `port ∥ int` to `int`. That join is the
+    # carrier, met with both operands; `rootWith`'s merge reads no element, so each declaration alone
+    # serves 70000 under `a`, and the pair serves what each serves.
+    test-a-stated-nested-role-is-met = {
+      expr = {
+        pair = ev [ (rootWith t.port) (rootWith t.int) ] { a = 70000; };
+        alone = ev [ (rootWith t.port) ] { a = 70000; };
+      };
+      expected = {
+        pair = "MERGED root / ACCEPTED";
+        alone = "MERGED root / ACCEPTED";
+      };
     };
 
     # D2: the text is false whenever the join keeps ONE operand's own name — `int ∥ port` joins to
@@ -297,16 +449,18 @@ in
         in
         {
           inherit reason reasonBothDrop;
-          imported = ((imp t.int).typeMergeRel (imp t.port)).refused or null;
+          # imported through `mkOptionType`, the relation answers the renaming join as the carrier
+          # (`meets`), so it refuses nothing and names nothing
+          imported = ((imp t.int).typeMergeRel (imp t.port)).meets or false;
           importedBothDrop =
-            ((imp (t.ints.between 0 10)).typeMergeRel (imp (t.ints.between 100 200))).refused or null;
+            ((imp (t.ints.between 0 10)).typeMergeRel (imp (t.ints.between 100 200))).meets or false;
           ctl = genMergeCore.mergeTypesReason t.int t.int;
         };
       expected = {
         reason = "`int' and `unsignedInt16', which their own relation joins to `int', a type that states the check `int' declares but not the check `unsignedInt16' declares";
         reasonBothDrop = "`intBetween' and `intBetween', which their own relation joins to `int', a type that states neither declaration's own check";
-        imported = "`int' and `unsignedInt16', which the first type's own `functor' joins to `int', a type that states the check `int' declares but not the check `unsignedInt16' declares";
-        importedBothDrop = "`intBetween' and `intBetween', which the first type's own `functor' joins to `int', a type that states neither declaration's own check";
+        imported = true;
+        importedBothDrop = true;
         ctl = null;
       };
     };

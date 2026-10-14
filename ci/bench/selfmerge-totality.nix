@@ -108,14 +108,14 @@ let
 in
 if arm == "guarded-json" then
   # THE CLAIM: the shipped boundary declines the call and answers its documented "not mergeable".
-  read (interface.importedMerge undecidable undecidable)
+  read ((interface.importedMerge undecidable undecidable).merged or null)
 else if arm == "unguarded-json" then
   # THE CONTROL, and it reproduces the WHOLE prior state. The same fixture through the same
   # boundary with the pre-check removed: no JSON to read, the exit code is the whole reading.
   read (preImportedMerge undecidable undecidable)
 else if arm == "tryguard-json" then
   # CONTAINMENT: a consumer CAN defend against the shipped answer, because there is an answer.
-  catch (interface.importedMerge undecidable undecidable)
+  catch ((interface.importedMerge undecidable undecidable).merged or null)
 else if arm == "tryunguarded-json" then
   # THE POINT OF THE WHOLE FILE. The identical `tryEval` over the pre-guard merge does NOT contain
   # it — the abort escapes the wrapper and takes the process. Without this arm the guard would be
@@ -125,7 +125,7 @@ else if arm == "guarded-number" then
   # POSITIVE CONTROL: a decidable foreign pair still reaches nixpkgs' own `typeMerge` and comes
   # back with a real merged type. Without it, `guarded-json`'s `NULL` is equally consistent with a
   # boundary that stopped merging anything.
-  read (interface.importedMerge decidable decidable)
+  read ((interface.importedMerge decidable decidable).merged or null)
 else if arm == "unguarded-number" then
   # The pre-guard construction is not merely broken — on a pair whose structure bottoms out it
   # returns, and returns what the shipped boundary returns. Without this, `unguarded-json`'s

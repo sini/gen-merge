@@ -562,12 +562,58 @@ let
       let
         answer = a.typeMergeRel b;
       in
-      if answer ? merged then answer.merged else null
+      # a `meets` answer is the carrier: met at every role it carries and at the top. A join carrying no role
+      # (no element, no alternatives, no payload to hold an option) is met at the top alone, so it pays no
+      # `rolesMet`, which would read nothing of it
+      if answer.meets or false then
+        (
+          let
+            r = answer.merged;
+          in
+          # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
+          # call, so a meet that does not hold allocates nothing for it
+          if answer.holds or false then
+            interface.metWith "holds"
+              (
+                if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
+                  r
+                else
+                  rolesMet r a b
+              )
+              [
+                a
+                b
+              ]
+          else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
+            interface.metWith true r [
+              a
+              b
+            ]
+          else
+            interface.metWith true (rolesMet r a b) [
+              a
+              b
+            ]
+        )
+      else if answer ? merged then
+        answer.merged
+      else
+        null
     else
       let
         r = interface.importedMerge a b;
       in
-      if r == null then null else rolesMet r a b;
+      if r == null then
+        null
+      # a join taken past the witness (it renames an operand, `importedMerge`'s answer `holds`) is met here
+      # holding every operand's fold
+      else if r.holds or false then
+        interface.metWith "holds" (rolesMet r.merged a b) [
+          a
+          b
+        ]
+      else
+        rolesMet r.merged a b;
   # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
   # records carry (an element; a union's two members) its own carried type is met with the operands'
   # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
@@ -594,7 +640,7 @@ let
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         r': a': b':
-        interface.metWith (rolesMet r' a' b') [
+        interface.metWith false (rolesMet r' a' b') [
           a'
           b'
         ];
@@ -737,20 +783,22 @@ let
     in
     if m == null then
       null
+    else if m ? holds then
+      m
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer over two gen operands stating their own checks carries both: nothing is
       # owed, and nothing is allocated (`metWith`'s first test, inline)
-      if m ? typeMergeRel && a ? typeMergeRel && b ? typeMergeRel then
+      if m ? typeMergeRel && a ? typeMergeRel && b ? typeMergeRel && !(a ? holds) && !(b ? holds) then
         m
       else
-        interface.metWith m [
+        interface.metWith false m [
           a
           b
         ]
     else if interface.sameValue a b then
       interface.sameValue.kept m a b
     else
-      interface.metWith m [
+      interface.metWith false m [
         a
         b
       ];
@@ -855,10 +903,35 @@ let
     in
     if veto.meets or false then
       {
-        merged = interface.metWith veto.merged [
-          earlier
-          later
-        ];
+        # met as `relationMergeWithin` meets a `meets` answer: a roleless join at the top alone
+        merged =
+          let
+            r = veto.merged;
+          in
+          # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
+          # call, so a meet that does not hold allocates nothing for it
+          if veto.holds or false then
+            interface.metWith "holds"
+              (
+                if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
+                  r
+                else
+                  rolesMet r earlier later
+              )
+              [
+                earlier
+                later
+              ]
+          else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
+            interface.metWith true r [
+              earlier
+              later
+            ]
+          else
+            interface.metWith true (rolesMet r earlier later) [
+              earlier
+              later
+            ];
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
