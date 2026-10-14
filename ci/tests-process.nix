@@ -235,8 +235,9 @@
           # read the same on Nix, Determinate and Lix, while allocated bytes move with the loading route. An
           # optimization lowers its bound in the same change. This row was above its nixpkgs reference at the
           # anchor, so under ADR-0032 a rise is authorized only after a minimality attempt, and is re-anchored
-          # in the landing commit that makes it.
-          for bound in val:350 box:730 s2:880 s3:474; do
+          # in the landing commit that makes it. den-hoag-5f99v re-anchored +3 / +4 / +1 / +3: the meet reading a gen
+          # copy's replaced `verify` once on the merged value (ADR-0039's converse), after its minimality attempt.
+          for bound in val:353 box:734 s2:881 s3:477; do
             mode=''${bound%%:*} max=''${bound#*:}
             thunksOf "met-cost-$mode-100"
             [ "$val" = "100" ] || die "met-cost-$mode-100" "expected value 100, got '$val'"
