@@ -289,7 +289,7 @@ The refusal fires where a type is HOMED (`interface.homedAt`): at a declared opt
 containers whose element may nest (`canNest`) is re-homed as gen-merge's own, recognised by its
 functor and rebuilt over the element its carrying spellings (`nestedTypes`, a top-level `elemType`)
 state, never its functor payload's. A record whose `//` override of `merge` nixpkgs' mount keeps is
-not one of the six (`interface.foldsOwnMerge`, den-hoag-e12ro): it threads. An override spelled in
+not one of the six (`interface.importedRehomeAt`, den-hoag-e12ro): it threads. An override spelled in
 `merge.v2`, one on a lib that marks no check coherent, and one on an `either` or `oneOf` (which cannot
 thread, den-hoag-p06j3) are not detected and are lost silently, open defects. A
 type outside the six that declares a nesting element threads at a declared option through its own

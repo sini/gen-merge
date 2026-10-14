@@ -1569,9 +1569,9 @@ let
   # live above this unit, so this answers the recognition and the rebuild over gen's own
   # constructor happens where they are in scope.
   #
-  # ★ A STOCK CONTAINER WHOSE OVERRIDE NIXPKGS' MOUNT KEEPS IS NOT RECOGNISED (`foldsOwnMerge`, den-hoag-e12ro).
+  # ★ A STOCK CONTAINER WHOSE OVERRIDE NIXPKGS' MOUNT KEEPS IS NOT RECOGNISED (below, den-hoag-e12ro).
   # den-hoag-n6dh7's stated price (owner, 2026-09-25: an overridden `merge` cannot be told from the stock one, and is
-  # re-homed silently) stands only where no witness tells it: an override `foldsOwnMerge` does not detect is
+  # re-homed silently) stands only where no witness tells it: an override the test below does not detect is
   # re-homed and loses the override, silently, an open defect.
   #
   # ★ A RECOGNISED RECORD WHOSE PAYLOAD OFFERS A DIFFERENT ELEMENT THAN IT STATES IS REFUSED BY NAME
@@ -1590,7 +1590,26 @@ let
       !(isAttrs t)
       || t ? carries
       || !(name == "attrsWith" || name == "listOf" || name == "nullOr" || name == "either")
-      || foldsOwnMerge t
+      # ★ AN OVERRIDE NIXPKGS' MOUNT KEEPS IS THE RECORD'S OWN FOLD (den-hoag-e12ro; ADR-0039's serve half,
+      # ADR-0025 item 1). nixpkgs folds a record by `merge.v2` where it states one and by its `merge`
+      # otherwise, and a v2 constructor ships its `check` marked coherent, so a coherent check over a merge
+      # stating no `v2` is a `//` override of that constructor's fold. nixpkgs' mount rebuilds a record
+      # stating a module set through its own `substSubModules` (`fixupOptionType`, and every stock container's
+      # rebuild below it), which erases an override the rebuild does not forward. A record stating a module
+      # set whose rebuild forwards the override is therefore not one of the six: it threads
+      # (`threadedForeign`) and its own merge folds it, as nixpkgs' does. Asked only past the functor-name
+      # test, and the rebuild only of a record already found overridden. NOT DETECTED, OPEN DEFECTS, each
+      # re-homed and losing its override silently: an override spelled in `merge.v2` (the record states a
+      # `v2`, as the stock one does); any override on a lib whose constructors mark no check coherent (nixpkgs
+      # 25.05); and an `either` or `oneOf`, which states no module set and so cannot thread (den-hoag-p06j3):
+      # unrecognised, it would refuse the override that preserves the value (`t // { merge = loc: defs:
+      # t.merge loc defs; }`) where re-homing serves it.
+      # Inline: a binding costs every load a thunk
+      ||
+        (t.check.isV2MergeCoherent or false)
+        && !(isV2 t)
+        && isList (t.getSubModules or null)
+        && !(isV2 (t.substSubModules t.getSubModules))
     then
       null
     else
@@ -1627,25 +1646,6 @@ let
       else
         null;
   importedRehome = importedRehomeAt null null;
-
-  # ★ AN OVERRIDE NIXPKGS' MOUNT KEEPS IS THE RECORD'S OWN FOLD (den-hoag-e12ro; ADR-0039's serve half, ADR-0025
-  # item 1). nixpkgs folds a record by `merge.v2` where it states one and by its `merge` otherwise, and a v2
-  # constructor ships its `check` marked coherent, so a coherent check over a merge stating no `v2` is a `//` override
-  # of that constructor's fold. nixpkgs' mount rebuilds a record stating a module set through its own
-  # `substSubModules` (`fixupOptionType`, and every stock container's rebuild below it), which erases an override the
-  # rebuild does not forward. A record stating a module set whose rebuild forwards the override is therefore not one
-  # of the six: it threads (`threadedForeign`) and its own merge folds it, as nixpkgs' does. Asked only past the
-  # functor-name test, and the rebuild only of a record already found overridden. NOT DETECTED, OPEN DEFECTS, each
-  # re-homed and losing its override silently: an override spelled in `merge.v2` (the record states a `v2`, as the
-  # stock one does); any override on a lib whose constructors mark no check coherent (nixpkgs 25.05); and an `either`
-  # or `oneOf`, which states no module set and so cannot thread (den-hoag-p06j3): unrecognised, it would refuse the
-  # override that preserves the value (`t // { merge = loc: defs: t.merge loc defs; }`) where re-homing serves it.
-  foldsOwnMerge =
-    t:
-    (t.check.isV2MergeCoherent or false)
-    && !(isV2 t)
-    && isList (t.getSubModules or null)
-    && !(isV2 (t.substSubModules t.getSubModules));
 
   # THE RECOGNITION DOOR: asked through it, `importedRehomeAt` answers its recognition and never
   # judges the payload's offer (`rehomeAgreed`), so it refuses nothing. The type-time mark
