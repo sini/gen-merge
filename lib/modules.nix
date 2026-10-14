@@ -5411,6 +5411,7 @@ let
         {
           modules = n.modules ++ [ namePlaceholder ];
           inherit (n) coreShortCircuit;
+          class = n.class or null;
           inherit (n.empty) prefix specialArgs check;
         }
         self
@@ -5438,6 +5439,7 @@ let
               ) p.defs;
             prefix = p.loc;
             inherit (n) specialArgs check coreShortCircuit;
+              class = n.class or null;
           }
         else
           (
@@ -5452,6 +5454,7 @@ let
               modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
               prefix = p.loc;
               inherit (n) specialArgs check coreShortCircuit;
+              class = n.class or null;
             }
       )
         self
@@ -5565,19 +5568,19 @@ let
       # nixpkgs' `extendModules`: the same request re-evaluated with modules appended, specialArgs
       # merged and the prefix replaced when stated. A re-evaluation, as nixpkgs' is; warm fields are
       # not carried.
-      extendModules = prelude.door {
-        name = "gen-merge.extendModules";
-        optional = [
-          "modules"
-          "specialArgs"
-          "prefix"
-        ];
-      } (e: evalModuleTreeUnchecked {
-        modules = modList ++ (e.modules or [ ]);
-        specialArgs = specialArgs // (e.specialArgs or { });
-        prefix = e.prefix or prefix;
-        inherit check coreShortCircuit class;
-      });
+      extendModules =
+        e@{
+          modules ? [ ],
+          specialArgs ? { },
+          prefix ? [ ],
+        }:
+        evalModuleTreeUnchecked {
+          modules = modList ++ modules;
+          specialArgs = argsOf.specialArgs // specialArgs;
+          prefix = e.prefix or argsOf.prefix;
+          inherit check coreShortCircuit class;
+        };
+      argsOf = { inherit specialArgs prefix; };
       # nixpkgs' `moduleType`: the evaluation's module set as a type (`submoduleWith`).
       moduleType =
         (evalModuleTreeUnchecked {
