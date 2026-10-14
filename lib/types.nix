@@ -258,7 +258,13 @@ let
             else
               { refused = "`${nameOf t}' and `${nameOf other}'"; };
       in
-      t // { typeMergeRel = { exact = true; __functor = _: nullaryRel; }; };
+      t
+      // {
+        typeMergeRel = {
+          exact = true;
+          __functor = _: nullaryRel;
+        };
+      };
 
   # The gen record alone, answering with itself. This is the substrate vocabulary with nothing of the
   # foreign protocol on it, and it is what the boundary is handed.
@@ -397,7 +403,11 @@ let
       exported = defineType (
         imported
         // {
-          typeMergeRel = imported.typeMergeRel or { exact = true; __functor = _: sealedRel exported; };
+          typeMergeRel =
+            imported.typeMergeRel or {
+              exact = true;
+              __functor = _: sealedRel exported;
+            };
           # the import door strips the check-witness pair as protocol names; a rewriting descriptor's
           # pair is carried past it, so the completion re-ties no witness it did not derive (den-hoag-59gnz C1)
           ${if interface.rewritesCheck descriptor then "check" else null} = descriptor.check;
@@ -646,7 +656,10 @@ let
                 else
                   gen;
             };
-            typeMergeRel = { exact = true; __functor = _: relation; };
+            typeMergeRel = {
+              exact = true;
+              __functor = _: relation;
+            };
           }
           // (
             let
@@ -1013,83 +1026,89 @@ let
                   + "together in `types.mkType'"
                 )
             );
-          typeMergeRel = { exact = true; __functor = _: (
-            other:
-            if !(isAttrs other) || (keyOf other) != "submodule" then
-              { refused = "`submodule' and `${nameOf other}'"; }
-            # One name, two folds: a partial tree's value is definitions and a full one's is data, so a
-            # mixed redeclaration has no union, and the later declaration would decide which it serves.
-            else if (other.nests.partial or false) != partial then
-              {
-                refused = "`${ctor}' and `${if partial then "submodule" else "partialSubmodule"}'";
-              }
-            # The one datum two `submodule' declarations must agree on beside the name: whether an
-            # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
-            # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
-            else if (other.shorthandOnlyDefinesConfig or true) != true then
-              {
-                refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
-              }
-            else
-              let
-                partnerMods = interface.importedOffered "moduleSet" other;
-                # A partner's base module args are read off the descriptor attribute directly, for the
-                # reason stated above: it is an ordinary attribute and survives export.
-                #
-                # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
-                # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
-                # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
-                # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
-                # with themselves: no conflict can be seen there and the left declaration's args win
-                # silently. That path is not reachable with a gen partner anyway — `importedCarried`
-                # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
-                # its own parameters beside it, so the arm below hands that pair to the partner's
-                # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
-                partnerArgs = other.specialArgs or { };
-                # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
-                # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
-                # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
-                # its WHNF on every evaluator, where comparing two selections walked the whole value
-                # on Nix and Determinate. A key only one declaration states never conflicts.
-                slots = builtins.zipAttrsWith (_: vs: vs) [
-                  args
-                  partnerArgs
-                ];
-                conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
-              in
-              if partnerMods == null then
-                let
-                  joined = interface.joinInStatedRelation {
-                    name = "submodule";
-                    payload = interface.moduleSetPayload {
-                      modules = mods;
-                      specialArgs = args;
-                      shorthandOnlyDefinesConfig = true;
-                    };
-                  } other;
-                in
-                if joined == null then
+          typeMergeRel = {
+            exact = true;
+            __functor =
+              _:
+              (
+                other:
+                if !(isAttrs other) || (keyOf other) != "submodule" then
+                  { refused = "`submodule' and `${nameOf other}'"; }
+                # One name, two folds: a partial tree's value is definitions and a full one's is data, so a
+                # mixed redeclaration has no union, and the later declaration would decide which it serves.
+                else if (other.nests.partial or false) != partial then
                   {
-                    refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                    refused = "`${ctor}' and `${if partial then "submodule" else "partialSubmodule"}'";
+                  }
+                # The one datum two `submodule' declarations must agree on beside the name: whether an
+                # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
+                # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
+                else if (other.shorthandOnlyDefinesConfig or true) != true then
+                  {
+                    refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
                   }
                 else
-                  { merged = joined; }
-              # The module sets UNION, so the args must too — and two declarations that disagree about
-              # what a base module argument IS are a conflict this library names rather than resolves by
-              # declaration order.
-              else if conflicting != [ ] then
-                {
-                  refused =
-                    "two `submodule' declarations stating different values for the base module argument"
-                    + (if length conflicting == 1 then " " else "s ")
-                    + concatStringsSep ", " (map (k: "`${k}'") conflicting);
-                }
-              # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
-              # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
-              # the union nixpkgs builds. Pinned by
-              # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
-              else
-                { merged = mkSubmodule partial ctor (args // partnerArgs) (partnerMods ++ mods); }); };
+                  let
+                    partnerMods = interface.importedOffered "moduleSet" other;
+                    # A partner's base module args are read off the descriptor attribute directly, for the
+                    # reason stated above: it is an ordinary attribute and survives export.
+                    #
+                    # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
+                    # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
+                    # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
+                    # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
+                    # with themselves: no conflict can be seen there and the left declaration's args win
+                    # silently. That path is not reachable with a gen partner anyway — `importedCarried`
+                    # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
+                    # its own parameters beside it, so the arm below hands that pair to the partner's
+                    # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
+                    partnerArgs = other.specialArgs or { };
+                    # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
+                    # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
+                    # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
+                    # its WHNF on every evaluator, where comparing two selections walked the whole value
+                    # on Nix and Determinate. A key only one declaration states never conflicts.
+                    slots = builtins.zipAttrsWith (_: vs: vs) [
+                      args
+                      partnerArgs
+                    ];
+                    conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
+                  in
+                  if partnerMods == null then
+                    let
+                      joined = interface.joinInStatedRelation {
+                        name = "submodule";
+                        payload = interface.moduleSetPayload {
+                          modules = mods;
+                          specialArgs = args;
+                          shorthandOnlyDefinesConfig = true;
+                        };
+                      } other;
+                    in
+                    if joined == null then
+                      {
+                        refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                      }
+                    else
+                      { merged = joined; }
+                  # The module sets UNION, so the args must too — and two declarations that disagree about
+                  # what a base module argument IS are a conflict this library names rather than resolves by
+                  # declaration order.
+                  else if conflicting != [ ] then
+                    {
+                      refused =
+                        "two `submodule' declarations stating different values for the base module argument"
+                        + (if length conflicting == 1 then " " else "s ")
+                        + concatStringsSep ", " (map (k: "`${k}'") conflicting);
+                    }
+                  # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
+                  # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
+                  # the union nixpkgs builds. Pinned by
+                  # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
+                  else
+                    { merged = mkSubmodule partial ctor (args // partnerArgs) (partnerMods ++ mods); }
+              );
+          };
           substructure = {
             # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
             #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
@@ -1206,7 +1225,10 @@ let
                 + "together in `types.mkType'"
               )
           );
-        typeMergeRel = { exact = true; __functor = _: (elementRel "listOf" listOf element); };
+        typeMergeRel = {
+          exact = true;
+          __functor = _: (elementRel "listOf" listOf element);
+        };
         # Descend to the element type under the positional placeholder segment. A container's module
         # set IS its element's, and substituting one rebuilds the container over the substituted
         # element.
@@ -1427,7 +1449,10 @@ let
         # constructor's payload, so it is published under that constructor and joins a same-named
         # foreign partner in that partner's relation (`interface.embeddings`, through `elementRel`). The
         # rebuild keeps THIS container's name, so the distinction survives substitution.
-        typeMergeRel = { exact = true; __functor = _: (rel tyName (attrsOfWith tyName) element); };
+        typeMergeRel = {
+          exact = true;
+          __functor = _: (rel tyName (attrsOfWith tyName) element);
+        };
         # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
         # registry exposes its INSTANCE option surface to an introspecting consumer.
         substructure = {
@@ -1567,17 +1592,23 @@ let
       # foldless same-name case into one `else` reports "a partner named `attrs'" about a partner named
       # `string', and reaches the refusal shape this file's discipline forbids — the same name on both
       # sides of the pair, which tells the reader nothing they did not already have.
-      typeMergeRel = { exact = true; __functor = _: (
-        other:
-        if !(isAttrs other) || (keyOf other) != "attrs" then
-          { refused = "`attrs' and `${nameOf other}'"; }
-        else if other ? mergeDefs then
-          { merged = attrs; }
-        else
-          {
-            merged = attrs;
-            meets = true;
-          }); };
+      typeMergeRel = {
+        exact = true;
+        __functor =
+          _:
+          (
+            other:
+            if !(isAttrs other) || (keyOf other) != "attrs" then
+              { refused = "`attrs' and `${nameOf other}'"; }
+            else if other ? mergeDefs then
+              { merged = attrs; }
+            else
+              {
+                merged = attrs;
+                meets = true;
+              }
+          );
+      };
       # THE FOLD IS TOTAL OVER ITS INPUT IN BOTH DIRECTIONS, and each refusal is a catchable throw
       # naming the option, this type, and the files that wrote the definitions at fault.
       #
@@ -1672,30 +1703,36 @@ let
       # Every same-named partner, gen's own included, is joined in its stated relation over this type's
       # embedding (`interface.joinCarriedInStatedRelation`), so a foreign partner's static modules
       # survive the join rather than being dropped by a nullary answer of `self`.
-      typeMergeRel = { exact = true; __functor = _: (
-        other:
-        let
-          sameName = isAttrs other && (keyOf other) == "deferredModule";
-          joined =
-            if sameName then
-              interface.joinCarriedInStatedRelation {
-                name = "deferredModule";
-                embedding = interface.embeddings.deferredModule;
-                role = null;
-                carried = null;
-                self = deferredModule;
-              } other
+      typeMergeRel = {
+        exact = true;
+        __functor =
+          _:
+          (
+            other:
+            let
+              sameName = isAttrs other && (keyOf other) == "deferredModule";
+              joined =
+                if sameName then
+                  interface.joinCarriedInStatedRelation {
+                    name = "deferredModule";
+                    embedding = interface.embeddings.deferredModule;
+                    role = null;
+                    carried = null;
+                    self = deferredModule;
+                  } other
+                else
+                  null;
+            in
+            if joined != null then
+              { merged = joined; }
+            else if !sameName then
+              { refused = "`deferredModule' and `${nameOf other}'"; }
             else
-              null;
-        in
-        if joined != null then
-          { merged = joined; }
-        else if !sameName then
-          { refused = "`deferredModule' and `${nameOf other}'"; }
-        else
-          {
-            refused = "`deferredModule' and a same-named partner that states no relation this type embeds in";
-          }); };
+              {
+                refused = "`deferredModule' and a same-named partner that states no relation this type embeds in";
+              }
+          );
+      };
       mergeDefs = {
         __functor = _: fold;
         completed = deferredModule;
@@ -1800,7 +1837,10 @@ let
                 + "together in `types.mkType'"
               )
           );
-        typeMergeRel = { exact = true; __functor = _: (elementRel "nullOr" nullOr element); };
+        typeMergeRel = {
+          exact = true;
+          __functor = _: (elementRel "nullOr" nullOr element);
+        };
         # Pass straight through to the element, adding NO path segment. A nullable introduces no path
         # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
         # location — which is why this differs from `attrsOf`'s `<name>` and `listOf`'s `*`. A nullable
@@ -1982,26 +2022,32 @@ let
         # `typeMerge` and not its functor): the partner rebuilt from its published functor decides
         # (`interface.joinInRebuiltPartner`), as `elementRel`'s carve-out does for a container. The
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
-        typeMergeRel = { exact = true; __functor = _: (
-          other:
-          if !(isAttrs other) || (keyOf other) != "either" then
-            { refused = "`either' and `${nameOf other}'"; }
-          else if other ? carries then
-            eitherMemberwise a b other
-          else
-            let
-              foreignJoin = interface.joinInRebuiltPartner {
-                role = "alternatives";
-                self = either a b;
-              } other;
-            in
-            if foreignJoin != null then
-              {
-                merged = foreignJoin;
-                meets = true;
-              }
-            else
-              eitherMemberwise a b other); };
+        typeMergeRel = {
+          exact = true;
+          __functor =
+            _:
+            (
+              other:
+              if !(isAttrs other) || (keyOf other) != "either" then
+                { refused = "`either' and `${nameOf other}'"; }
+              else if other ? carries then
+                eitherMemberwise a b other
+              else
+                let
+                  foreignJoin = interface.joinInRebuiltPartner {
+                    role = "alternatives";
+                    self = either a b;
+                  } other;
+                in
+                if foreignJoin != null then
+                  {
+                    merged = foreignJoin;
+                    meets = true;
+                  }
+                else
+                  eitherMemberwise a b other
+            );
+        };
         substructure = {
           # A union's members introduce no path level, so it declares nothing of its own — stated
           # rather than inherited, because the pair lives in `carries` and this does not read it.

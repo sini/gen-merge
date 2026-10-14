@@ -3252,7 +3252,13 @@ let
                       in
                       if isAttrs (j.merged or null) then j // { merged = close joined j.merged; } else j;
                   in
-                  if isAttrs x.typeMergeRel && x.typeMergeRel ? exact then { exact = true; __functor = _: r; } else r;
+                  if isAttrs x.typeMergeRel && x.typeMergeRel ? exact then
+                    {
+                      exact = true;
+                      __functor = _: r;
+                    }
+                  else
+                    r;
               }
             else
               { }
@@ -6016,7 +6022,11 @@ let
       meets == false
       && m ? typeMergeRel
       && builtins.all (
-        o: (!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact) && !(rewritesCheck o) && !(replacesVerify o) && !(o ? holds)
+        o:
+        (!(o ? check || o ? admits) || isAttrs (o.typeMergeRel or null) && o.typeMergeRel ? exact)
+        && !(rewritesCheck o)
+        && !(replacesVerify o)
+        && !(o ? holds)
       ) os
     then
       m
