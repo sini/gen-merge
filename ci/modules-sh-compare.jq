@@ -4,7 +4,14 @@
 # there a FAIL whose evaluation refused (non-zero exit) with every literal of `class` in its stderr is
 # PASS-CLASS — the refusal nixpkgs makes, in gen-merge's words (the owner's criterion is refusal CLASS,
 # not text). A class names gen-merge's BY-NAME refusal, so one literal opens `gen-merge: `, and none
-# carries a store path (the tree's path moves with every gen-merge revision).
+# carries a store path (the tree's path moves with every gen-merge revision). ONE class is the
+# evaluator's, not gen-merge's: `["infinite recursion encountered"]`, the evaluator's own refusal of a
+# cycle, which no engine raises by name. It is valid only on a row run with modules.sh's
+# `REQUIRE_INFINITE_RECURSION_HINT` (env `RIRH`): there nixpkgs aborts on that cycle too, and the
+# assertion also asks for nixpkgs' words around it (the context nixpkgs wraps its `config` argument
+# in), which are text, not class. Since no `gen-merge: ` prefix marks it, it is matched as the
+# evaluation's FINAL error line exactly, never as a substring: a named refusal quoting those words,
+# or any other abort, stays FAIL.
 #
 # PASS-CLASS is SOUND, NOT COMPLETE: a same-class refusal gen-merge raises in nixpkgs' words, or with a
 # degraded field (`<unknown-file>`), cannot be pinned and stays FAIL. The bar undercounts, never over.
@@ -34,6 +41,10 @@ def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
         base: $b,
         got: (
           if $r.verdict == "PASS" then "PASS"
+          elif ($b.class // null) == ["infinite recursion encountered"] then
+            (if $r.rc != 0 and ($r.err | split("\n") | map(select(test("^ *error:"))) | last // "" | sub("^ +"; ""))
+                == "error: infinite recursion encountered"
+             then "PASS-CLASS" else "FAIL" end)
           elif ($b.class // null) != null and $r.rc != 0 and ($b.class | all(. as $c | $r.err | contains($c))) then "PASS-CLASS"
           else "FAIL" end
         )
@@ -51,7 +62,10 @@ def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
       [ $dups[] | "DUPLICATE record \(.)" ]
       + [ $baseDups[] | "DUPLICATE baseline \(.)" ]
       + [ $base[] | select(.class != null)
-          | select((.class | type) != "array" or (.class | any(.[]; startswith("gen-merge: ")) | not)
+          | select((.class | type) != "array"
+              or ((.class | any(.[]; startswith("gen-merge: ")))
+                or (.class == ["infinite recursion encountered"] and (.key.env | split(" ") | any(. == "RIRH")))
+                | not)
               or (.class | any(.[]; contains("/nix/store/"))))
           | "INVALID-CLASS \(.key | id)" ]
       + [ $base[] | select(.class != null) | . as $b
