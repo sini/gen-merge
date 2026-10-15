@@ -384,7 +384,16 @@ let
           type =
             if !(v ? type) then
               strategies.unspecified
-            else if (interface.importedSubstructure v.type).modules != null && length sites == 1 then
+            # presence first, so a gen type pays no call
+            else if
+              (
+                if v.type ? substructure then
+                  v.type.substructure.modules
+                else
+                  (interface.importedSubstructure v.type).modules
+              ) != null
+              && length sites == 1
+            then
               fixupModuleSets {
                 upTo.merged = v.type;
                 declaredTypes = [ v.type ];
