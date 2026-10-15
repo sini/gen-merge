@@ -3176,14 +3176,34 @@ let
         if w ? orderStated then
           {
             # one thunk, as `inherit (w) file` was: the sentinel test is inside it
-            file = if w.file == "<default>" then (defaultNamed mode loc w).file else w.file;
+            file =
+              if w.file == "<default>" then
+                (
+                  let
+                    own = length loc > length mode.prefix && prelude.elemAt loc (length mode.prefix) == "_module";
+                    ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                  in
+                  if ss == [ ] then "<default>" else (prelude.last ss).file
+                )
+              else
+                w.file;
             inherit (w) value;
             priority = w.orderPriority;
           }
         else
           {
             # one thunk, as `inherit (w) file` was: the sentinel test is inside it
-            file = if w.file == "<default>" then (defaultNamed mode loc w).file else w.file;
+            file =
+              if w.file == "<default>" then
+                (
+                  let
+                    own = length loc > length mode.prefix && prelude.elemAt loc (length mode.prefix) == "_module";
+                    ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                  in
+                  if ss == [ ] then "<default>" else (prelude.last ss).file
+                )
+              else
+                w.file;
             inherit (w) value;
           }
       ) sorted;
@@ -3220,7 +3240,24 @@ let
         # its own value under both folds, so the single-definition case stays on the leaf fold's
         # fast path and pays one length test.
         else if type == null && length sorted > 1 then
-          mergeUntyped loc (map (defaultNamed mode loc) sorted)
+          mergeUntyped loc (
+            map (
+              d:
+              if d.file == "<default>" then
+                d
+                // {
+                  file = (
+                    let
+                      own = length loc > length mode.prefix && prelude.elemAt loc (length mode.prefix) == "_module";
+                      ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                    in
+                    if ss == [ ] then "<default>" else (prelude.last ss).file
+                  );
+                }
+              else
+                d
+            ) sorted
+          )
         # A declared type that brought no fold and no `verify` is where a value that is not a type
         # lands, and the leaf fold would return the definition unchecked. It is judged HERE, on this
         # arm alone: the gen-typed path has already answered, and pays nothing for the question.
@@ -3230,7 +3267,24 @@ let
           if length sorted == 1 then
             (head sorted).value
           else
-            mergeLeaf loc (map (defaultNamed mode loc) sorted)
+            mergeLeaf loc (
+              map (
+                d:
+                if d.file == "<default>" then
+                  d
+                  // {
+                    file = (
+                      let
+                        own = length loc > length mode.prefix && prelude.elemAt loc (length mode.prefix) == "_module";
+                        ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                      in
+                      if ss == [ ] then "<default>" else (prelude.last ss).file
+                    );
+                  }
+                else
+                  d
+              ) sorted
+            )
         else
           throw (declaredTypeRefusal loc type);
       checked =
@@ -4628,16 +4682,6 @@ let
   # which provenance's `defaulted` reads; it is renamed where definitions leave the fold for a reader
   # that shows them. An evaluation states its `sitesAt` in `mode`; the public `mergeOption` has no
   # declaring module, and keeps the sentinel.
-  defaultNamed =
-    mode: loc: d:
-    let
-      # `_module.*` is declared first by the engine itself (nixpkgs' `internalModule`), which no
-      # entry of `sitesAt` is: its default is named where its record is built (`moduleOwn.file`)
-      own = length loc > length mode.prefix && prelude.elemAt loc (length mode.prefix) == "_module";
-      sites = if d.file == "<default>" && mode ? sitesAt && !own then mode.sitesAt loc else [ ];
-    in
-    if sites == [ ] then d else d // { file = (prelude.last sites).file; };
-
   withDeclaredDefault =
     opt: defs:
     if opt ? default then
