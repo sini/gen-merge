@@ -4382,7 +4382,8 @@ in
     # (`ci/tests/renamed-option-module.nix`). What no pass resolves refuses at the end, the spine-first
     # of the groups and the residue: a group at pass 0, so a presence that moves with `options` reads
     # the poison, and a residue node at the last pass, so a cycle bottoms out in the poison while a
-    # node whose read resolved reports its own error rather than a read it did not make.
+    # node whose read resolved reports its own error rather than a read it did not make. A node whose
+    # hops outrun the passes refuses by name too, by the read the last pass could not make.
     flake.testsError.renamed-option-module =
       let
         lib = nixpkgsLib;
@@ -4476,8 +4477,8 @@ in
         };
         # An option whose PRESENCE reads a module argument stays refused though another module
         # defines it: only an earlier pass's declarations, as a later pass reads them, carry the
-        # arguments, and the pass that tries a node binds none. The rename chain keeps the passes
-        # running past the one where the argument is readable.
+        # arguments, and the pass that tries a node binds none. The rename chain beside it resolves
+        # one link per pass.
         test-a-presence-reading-a-module-argument-refuses-by-name = {
           expr = refused [
             base
@@ -4493,6 +4494,34 @@ in
             {
               c = 1;
               v = 5;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read the module argument `u' while its own declarations were being folded.*";
+          };
+        };
+        # A rename whose target's type is read down a list argument longer than the passes: element i
+        # reads element i - 1, and the last pass still reads the argument from a pass that binds none.
+        test-a-rename-deeper-than-the-passes-refuses-by-name = {
+          expr = refused [
+            base
+            (
+              { u, ... }:
+              {
+                options.v = mkOption { type = builtins.elemAt u 400; };
+              }
+            )
+            (
+              { u, ... }:
+              {
+                _module.args.u = lib.genList (i: if i == 0 then types.int else builtins.elemAt u (i - 1)) 401;
+              }
+            )
+            (lib.mkRenamedOptionModule [ "w" ] [ "v" ])
+            {
+              a = 1;
+              w = 5;
             }
           ];
           expectedError = {

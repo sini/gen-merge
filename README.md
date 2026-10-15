@@ -1772,9 +1772,14 @@ resolves one link per pass, in any module order. The previous pass's declaration
 arguments their own modules define (`_module.args`), so an alias whose target's `type` reads an
 argument (nixpkgs' `systemd.nix` under `with utils;`) resolves once a pass reads them; the pass that
 tries a node binds no argument, so an option of its own whose declaration or presence reads one still
-refuses by the argument's name. The passes stop at the first that resolves no node, so a read that
-needs a pass resolving nothing visible (an argument becoming readable) is served only while other
-nodes keep the passes running. What no pass resolves refuses at the end, the
+refuses by the argument's name. The unresolved nodes are tried once, at pass 300, and a pass is
+built only when a later pass reads it: a node costs the passes its reads reach, so a read that needs
+a pass resolving nothing visible (an argument becoming readable, an element of one argument read
+from the one before it) is served however many such hops it takes below 300. No count of the
+tree's leaves or arguments bounds those hops, and a cycle reads down every pass, so the depth is a
+constant under the evaluator's call depth: a cycle refuses by name rather than overflowing the
+stack, and a node whose hops outrun the passes refuses by the read the last pass could not make.
+What no pass resolves refuses at the end, the
 spine-first unresolved node: a rename cycle and an option whose **presence** reads `options` refuse
 with the `options` poison's text, and a node whose read resolved reports its own error. The passes
 decide admission only; every value still comes from the value side. Two prices are stated, both
@@ -1785,7 +1790,7 @@ side, where it reaches Nix's recursion abort. The second is the guard's standing
 that catches its refusal, a cycle with nothing to detect it, reached now at any pass rather than
 only at the first. Each pass
 re-folds the whole module set, so a set holding renames pays about one extra declaration fold per
-rename depth.
+pass its reads reach, and a cycle pays all 300.
 
 **An earlier gen-native relation's refusal is never overruled.** Each fold step first asks the
 earlier operand's `typeMergeRel`, if it has one, about the type every later declaration jointly

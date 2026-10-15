@@ -265,6 +265,21 @@
           [ "$per" -le "4466" ] || die spine-cost-30 "the spine costs $per thunks from depth 1 to 30, over its bound 4466"
           echo "spine-cost: $per thunks from depth 1 to 30 (bound 4466)"
 
+          # den-hoag-8tmd5 (ADR-0032): the staged declaration passes' cost, as the thunks a rename's alias adds over
+          # the same option defined directly. The passes are tried once at a constant depth and an earlier pass is
+          # built only when a later pass reads it, so the cost does not grow with that depth: a pass that forced the
+          # pass below it would add a constant per pass, nearly three times this bound at the landed depth. The bound
+          # is the landed figure under the evaluator reading highest (Lix), in THUNKS; an optimization lowers it in the
+          # same change.
+          thunksOf staged-cost-plain
+          [ "$val" = "3" ] || die staged-cost-plain "expected value 3, got '$val'"
+          t0=$thunks
+          thunksOf staged-cost-rename
+          [ "$val" = "3" ] || die staged-cost-rename "expected value 3, got '$val'"
+          per=$((thunks - t0))
+          [ "$per" -le "1406" ] || die staged-cost-rename "a rename adds $per thunks over a direct definition, over its bound 1406; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
+          echo "staged-cost: $per thunks for a rename over a direct definition (bound 1406)"
+
           # den-hoag-7o7i9 (ADR-0032): a module graph read, as thunks per module between n = 100 and 400, every
           # node's `disabled` forced. With no removal the bound is the figure before removal existed (gen-merge
           # e3e1305), so a per-node re-walk of the closure (x92 at n = 400) reds it; with one removal the marking
@@ -283,8 +298,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "47" ] || die runner "expected 47 evaluations, ran $ran"
-          echo "tests-process: 47 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "49" ] || die runner "expected 49 evaluations, ran $ran"
+          echo "tests-process: 49 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

@@ -191,6 +191,25 @@ let
       ++ [ (if removal then { disabledModules = [ { key = ":anon-2"; } ]; } else { }) ];
     in
     builtins.length (builtins.filter (g: g.disabled) (m.evalModuleTree { } mods).graph);
+  # One option defined through a stock nixpkgs rename, whose alias leaf runs the staged declaration
+  # passes, or defined directly, which runs none.
+  stagedCost =
+    renamed:
+    let
+      nl = import "${nixpkgsSrc}/lib";
+    in
+    (eval (
+      [ { options.new = m.mkOption { type = m.types.int; }; } ]
+      ++ (
+        if renamed then
+          [
+            (nl.mkRenamedOptionModule [ "old" ] [ "new" ])
+            { old = 3; }
+          ]
+        else
+          [ { new = 3; } ]
+      )
+    )).config.new;
   metCost =
     mode: n:
     let
@@ -363,6 +382,10 @@ let
     met-cost-s2-200 = metCost "s2" 200;
     met-cost-s3-100 = metCost "s3" 100;
     met-cost-s3-200 = metCost "s3" 200;
+    # den-hoag-8tmd5: the staged declaration passes' cost, read by the runner as the thunks the rename
+    # adds over the direct definition.
+    staged-cost-plain = stagedCost false;
+    staged-cost-rename = stagedCost true;
     # den-hoag-y4w78: the spine's cost on a chain of `listOf` over a submodule, read by the runner as thunks between
     # depth 1 and 30.
     spine-cost-1 = spineCost 1;

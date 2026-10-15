@@ -3845,10 +3845,14 @@ let
   # descriptors their own arguments build (nixpkgs' `doRename` copying a target type that reads
   # `utils`). Every value a fold reads is still a strictly earlier pass's. Pass 0's view fold binds no
   # argument, and it differs from `s0` only by publishing the arguments it defines.
-  # The passes run until nothing is pending or a pass resolves nothing, and then the spine-first of the
-  # groups and the residue (a node whose WHNF throws at every pass) is forced outside `tryEval`: a
-  # group at pass 0, where its own demand reads the poison, and a residue node at the last pass, so a
-  # read that resolved does not hide the node's own error and a cycle still bottoms out in the poison.
+  # The pending nodes are tried once, at a constant pass G, and a pass's view fold is built only when a
+  # later pass reads it: a node costs the passes its reads reach, so G is free on a node resolving
+  # earlier. No count of the tree's leaves or arguments bounds the passes a resolvable node needs (the
+  # hops can run through the elements of one argument), and a cycle reads down all G passes, so G stays
+  # under the evaluator's call depth: a cycle refuses by name rather than overflowing the stack. Then the
+  # spine-first of the groups and the residue (a node whose WHNF throws at pass G) is forced outside
+  # `tryEval`: a group at pass 0, where its own demand reads the poison, and a residue node at pass G, so
+  # a read that resolved does not hide the node's own error and a cycle still bottoms out in the poison.
   # The root's key set is forced outside `tryEval` too: a module whose option key set or `imports`
   # read a refused argument refuses there, as the guard's spine always did. A module that catches a
   # stamped-view refusal can take another shape on the value side, where it reaches Nix's recursion
@@ -3880,62 +3884,55 @@ let
         builtins.seq (isOptLeaf (getAttrByPath p t.options)) (
           throw "gen-merge: the declaration of `${showOption (prefix ++ p)}' resolved in no pass"
         );
+      # Pass n's view: `options` stamped from pass n-1's view fold, and the module arguments that fold
+      # publishes (pass 0's view fold binds no argument and reads the poison).
       go =
-        prev: pending: groups:
-        let
-          options = stampOptions prev.sitesAt prefix prev.options;
-          sk = stratum (
-            args
-            // {
-              optionsView = {
-                inherit options;
-                args = null;
-              };
-            }
-          );
-          tried = map (p: {
-            inherit p;
-            w = builtins.tryEval (
-              let
-                v = getAttrByPath p sk.options;
-              in
-              !(isAttrs v) || (v._type or null) == "option"
-            );
-          }) pending;
-          grouped = groups ++ map (x: x.p) (filter (x: x.w.success && !x.w.value) tried);
-          left = map (x: x.p) (filter (x: !x.w.success) tried);
-          first = head (filter (p: builtins.elem p grouped || builtins.elem p left) pending0);
-        in
-        if left != [ ] && length left < length pending then
-          go (stratum (
-            args
-            // {
-              optionsView = {
-                inherit options;
-                args = prev;
-              };
-            }
-          )) left grouped
-        else if grouped == [ ] && left == [ ] then
-          true
-        else if builtins.elem first left then
-          refuse sk first
+        n:
+        if n == 0 then
+          {
+            options = null;
+            args.moduleArgs = { };
+          }
         else
-          refuse s0 first;
+          let
+            prev = stratum (args // { optionsView = go (n - 1); });
+          in
+          {
+            options = stampOptions prev.sitesAt prefix prev.options;
+            args = prev;
+          };
+      # G = 300: a cycle reads down every pass at about thirteen call frames each, so it refuses by name
+      # well inside the evaluators' default call depth of 10000.
+      sk = stratum (
+        args
+        // {
+          optionsView = {
+            inherit (go 300) options;
+          };
+        }
+      );
+      tried = map (p: {
+        inherit p;
+        w = builtins.tryEval (
+          let
+            v = getAttrByPath p sk.options;
+          in
+          !(isAttrs v) || (v._type or null) == "option"
+        );
+      }) pending0;
+      grouped = map (x: x.p) (filter (x: x.w.success && !x.w.value) tried);
+      left = map (x: x.p) (filter (x: !x.w.success) tried);
+      first = head (filter (p: builtins.elem p grouped || builtins.elem p left) pending0);
       pending0 = pendingIn [ ] s0.options;
     in
     if pending0 == [ ] then
       throw "gen-merge: the declaration guard's spine did not resolve, and no declaration node is unresolved"
+    else if grouped == [ ] && left == [ ] then
+      true
+    else if builtins.elem first left then
+      refuse sk first
     else
-      go (stratum (
-        args
-        // {
-          optionsView = {
-            options = null;
-            args.moduleArgs = { };
-          };
-        }
-      )) pending0 [ ];
+      refuse s0 first;
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
@@ -5211,9 +5208,9 @@ let
   #
   # `optionsView`: a staged pass's view (`stagedDeclarations`), `null` everywhere else. Its `options`
   # is what the `options` argument binds, the earlier pass's declarations, or `null` at pass 0, where
-  # `options` stays refused. Its `args` is `null` on a pass's admission fold, and on a view fold it is
+  # `options` stays refused. Its `args` is absent on a pass's admission fold, and on a view fold it is
   # the earlier view fold's record, whose `moduleArgs` binds a formal outside `declArgs` that it holds;
-  # the record and not its `moduleArgs`, so telling it from `null` forces no argument. A view fold's
+  # the two are told apart by the key, so neither the earlier fold nor its arguments is forced. A view fold's
   # record publishes the `_module.args` its own modules define, merged as the value stratum merges
   # them, for the next pass; a set that declares `options._module` publishes none, so its arguments
   # stay refused rather than read without the `apply` the value stratum runs. One argument and not a
@@ -5343,7 +5340,7 @@ let
                     null
                   else if
                     optionsView != null
-                    && optionsView.args != null
+                    && optionsView ? args
                     && (builtins.tryEval (optionsView.args.moduleArgs ? ${name})).value
                   then
                     optionsView.args.moduleArgs.${name}
@@ -5374,7 +5371,7 @@ let
       # traced back to it, so guarding the producer here covers all five tags at any nesting depth
       # on both the `.options` and `.config` planes. The view fold's record is spelled apart, so a
       # record no staged pass reads carries no `moduleArgs` slot.
-      if optionsView == null || optionsView.args == null then
+      if optionsView == null || !(optionsView ? args) then
         {
           inherit declEntries sitesAt;
           options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
