@@ -57,7 +57,7 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .nullableValue\\.mixed. is not of type .*\\. TypeError: The option .nullableValue\\.mixed. is defined both null and not null, in .* and .*\\.","config.nullableValue.mixed","./types.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: option `nullableValue.mixed' is defined both null and not null"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .viaOptionDefault. is not of type .boolean.*","config.viaOptionDefault","./mkDefinition.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: a definition for option `viaOptionDefault' is not of type"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["A submoduleWith option is declared multiple times with conflicting class values \"darwin\" and \"nixos\".","config.sub.mergeFail.config","./class-check.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["Cannot merge definitions.*\\n\\s*- In .file.*\\n\\s*- In .other.*","config.conflict","./mkDefinition.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["Cannot merge definitions.*\\n\\s*- In .file.*\\n\\s*- In .other.*","config.conflict","./mkDefinition.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: the option `conflict' has conflicting definitions:","- In `file': 1","- In `other': 42"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .bar., .baz. or .foo.\\?","config","./error-typo-multiple-suggestions.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .enable., .ebe. or .enabled.\\?","config","./error-typo-large-attrset.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Did you mean .services\\.myservice\\.port. or .services\\.myservice\\.enable.\\?","config.services.myservice","./error-typo-submodule.nix"]},"verdict":"PASS"}
@@ -152,7 +152,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/declaration-positions.nix\"$","config.submoduleLine38.submodDeclLine45.0.file","./declaration-positions.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/declaration-positions.nix\"$","options.generated.line22.declarationPositions.0.file","./declaration-positions.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/declaration-positions.nix\"$","options.imported.line14.declarationPositions.0.file","./declaration-positions.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["/freeform-submodules.nix\"$","config.fooDeclarations.0","./freeform-submodules.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["/freeform-submodules.nix\"$","config.fooDeclarations.0","./freeform-submodules.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["10","config.processedToplevel","./raw.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["2","config.listOfResult","./types-valueMeta.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["42","config.listResult","./composed-types-valueMeta.nix"]},"verdict":"FAIL"}
@@ -361,7 +361,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkForce","./mkDefinition.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.mkMerge","./mkDefinition.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.nullableValue.bool","./types.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.okChecks","./types-attrTag.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.okChecks","./types-attrTag.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.positive.enable","./disable-module-with-key.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.positive.enable","./disable-module-with-toString-key.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.result","./doRename-condition.nix","./doRename-condition-enable.nix"]},"verdict":"PASS"}
