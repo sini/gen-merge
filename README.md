@@ -1861,8 +1861,8 @@ answered before the meet is built, except to a `//` copy whose `verify` no compl
 (`interface.replacesVerify`: it replaced its completion's `verify`, or states one with no completion
 stamp). Its `check`, witness and relation are still its base's, so no relation carries that `verify`, and
 the step owes the copy its `check` per definition, any it rewrote included, and its `verify` once, on the
-merged value, as a foreign operand's is owed: a definition alone is not the value it refines
-(den-hoag-5f99v). That `verify` is stated where a fold asks membership, a v2 merge's `headError`, so a union
+merged value, as a foreign operand's is owed: a definition alone is not the value it refines.
+That `verify` is stated where a fold asks membership, a v2 merge's `headError`, so a union
 choosing its member by it moves on to the next one; a non-v2 join is lifted into that protocol. The
 carrier (`interface.joinRenames`) reads such a copy, and one departing only at its name, its description
 or its `typeMerge` (`interface.carrierTolerated`), as its completion, so beside nixpkgs' `enum` its
