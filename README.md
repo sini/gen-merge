@@ -2004,8 +2004,11 @@ own merged value), `isDefined`, `definitions`, `definitionsWithLocations`, `file
 project gen's fold, which puts a declared default first among the definitions, as nixpkgs' does.
 `valueMeta`, nixpkgs' v2-merge metadata, is nixpkgs' own where the type is foreign and gen folds it by
 that type's own merge (a v2 merge's `valueMeta` with `_internal.type`, `{ }` for a merge stating no `v2`),
-and refused by name, never absent, at every other type: a gen type, or a foreign one holding a module set
-or a gen type. So a deep force of a published `.options` tree refuses for a tree holding any gen type
+and refused by name, never absent, at every other type: a gen type, or a foreign one holding a gen type.
+Below a module set it is the metadata of the call gen's fold folds by, and each `configuration` in it is
+that call's own merged value, served only where the value is and guarded as the value is (a `verify` copy
+inside the submodule, an `addCheck` over it), as are `attrListOf`'s `attrListValue` and `definitions`;
+`lib.modules.mapAttrsOfSubmodule` reads it as nixpkgs'. So a deep force of a published `.options` tree refuses for a tree holding any gen type
 (`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which folds
 no value, refuses the other eight by name and answers `options` as `[ ]`.
 

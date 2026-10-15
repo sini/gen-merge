@@ -812,11 +812,13 @@ let
   # FOREIGN v2 type that `importedFold` folds by this same `merge.v2` call over the fold's own definitions
   # (filed as nixpkgs files them: a default under its declaration), with nothing below it that gen's fold
   # judges beyond that call (`throughout`). Like nixpkgs' it is pre-`apply`. An ad-hoc `check` refuses here
-  # as its fold does (`adHocFold`). Everywhere else it is refused by name (den-hoag-xroc7: open defects under
-  # ADR-0039's parity-defect rule): a record gen constructed (`genOwn`) states no such metadata, and below a
-  # module set or a gen record the metadata's configurations and merged values would be a second evaluation,
-  # without the checks gen's fold enforces there (a met record's, a foreign `addCheck` carried over a module
-  # set, a `verify` copy inside a stock submodule).
+  # as its fold does (`adHocFold`). Below a module set (`sets`) it is the metadata of the call the option's fold
+  # folds by, over the type as that fold homes it, its definitions checked as the fold checks them; each
+  # configuration in it is the merged value the same call returned, behind the guard gen's fold puts on that
+  # value. Everywhere else it is refused by name (den-hoag-xroc7: open defects under ADR-0039's parity-defect
+  # rule): a record gen constructed (`genOwn`) states no such metadata, below a gen record the metadata's merged
+  # values would be a second evaluation without the checks gen's fold enforces there, and so would a module set
+  # below an option of a configuration, whose value gen's guard folds again (`guardedAt`).
   foreignValueMeta =
     sets: t: loc: defs:
     let
