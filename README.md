@@ -1768,7 +1768,13 @@ family.** `mkRenamedOptionModule`, `mkRenamedOptionModuleWith`, `mkAliasOptionMo
 guard's poisoned fold cannot resolve it. The guard then runs **staged passes**: each unresolved node
 is re-tried with `options` bound to the previous pass's declarations, stamped as `declaredOptions`
 stamps them, so a pass reads only what strictly earlier passes settled and a chain of renames
-resolves one link per pass, in any module order. What no pass resolves refuses at the end, the
+resolves one link per pass, in any module order. The previous pass's declarations carry the module
+arguments their own modules define (`_module.args`), so an alias whose target's `type` reads an
+argument (nixpkgs' `systemd.nix` under `with utils;`) resolves once a pass reads them; the pass that
+tries a node binds no argument, so an option of its own whose declaration or presence reads one still
+refuses by the argument's name. The passes stop at the first that resolves no node, so a read that
+needs a pass resolving nothing visible (an argument becoming readable) is served only while other
+nodes keep the passes running. What no pass resolves refuses at the end, the
 spine-first unresolved node: a rename cycle and an option whose **presence** reads `options` refuse
 with the `options` poison's text, and a node whose read resolved reports its own error. The passes
 decide admission only; every value still comes from the value side. Two prices are stated, both

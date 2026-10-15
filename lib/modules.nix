@@ -3471,6 +3471,13 @@ let
   # `declaredOptions` stamps them, so a pass reads only the settled output of strictly earlier passes
   # (ADR-0016 ruling 7, ADR-0033) and a node resolves at the least pass its reads allow. A pending node
   # must resolve to a LEAF: one resolving to a group is an option's presence moving with `options`.
+  # A pass folds twice. The ADMISSION fold, where the pending nodes are tried and the residue refuses,
+  # binds `options` alone, so a module's own declaration that reads a module argument still refuses. The
+  # VIEW fold, which the next pass reads, binds the module arguments too, to the `_module.args` that the
+  # previous view fold's modules define, so a later pass reads an earlier pass's declarations with the
+  # descriptors their own arguments build (nixpkgs' `doRename` copying a target type that reads
+  # `utils`). Every value a fold reads is still a strictly earlier pass's. Pass 0's view fold binds no
+  # argument, and it differs from `s0` only by publishing the arguments it defines.
   # The passes run until nothing is pending or a pass resolves nothing, and then the spine-first of the
   # groups and the residue (a node whose WHNF throws at every pass) is forced outside `tryEval`: a
   # group at pass 0, where its own demand reads the poison, and a residue node at the last pass, so a
@@ -3509,7 +3516,16 @@ let
       go =
         prev: pending: groups:
         let
-          sk = stratum (args // { optionsView = stampOptions prev.sitesAt prefix prev.options; });
+          options = stampOptions prev.sitesAt prefix prev.options;
+          sk = stratum (
+            args
+            // {
+              optionsView = {
+                inherit options;
+                args = null;
+              };
+            }
+          );
           tried = map (p: {
             inherit p;
             w = builtins.tryEval (
@@ -3524,7 +3540,15 @@ let
           first = head (filter (p: builtins.elem p grouped || builtins.elem p left) pending0);
         in
         if left != [ ] && length left < length pending then
-          go sk left grouped
+          go (stratum (
+            args
+            // {
+              optionsView = {
+                inherit options;
+                args = prev;
+              };
+            }
+          )) left grouped
         else if grouped == [ ] && left == [ ] then
           true
         else if builtins.elem first left then
@@ -3536,7 +3560,15 @@ let
     if pending0 == [ ] then
       throw "gen-merge: the declaration guard's spine did not resolve, and no declaration node is unresolved"
     else
-      go s0 pending0 [ ];
+      go (stratum (
+        args
+        // {
+          optionsView = {
+            options = null;
+            args.moduleArgs = { };
+          };
+        }
+      )) pending0 [ ];
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
@@ -4802,6 +4834,16 @@ let
   # `declarationStratumPositioned` pass `redeclareDecl`; the guard's `declarationSpine` and
   # `declarationSpinePositioned` pass `spineRedeclare`, which keeps the later operand and merges no
   # type. The four bindings sit beside `namePlaceholder`.
+  #
+  # `optionsView`: a staged pass's view (`stagedDeclarations`), `null` everywhere else. Its `options`
+  # is what the `options` argument binds, the earlier pass's declarations, or `null` at pass 0, where
+  # `options` stays refused. Its `args` is `null` on a pass's admission fold, and on a view fold it is
+  # the earlier view fold's record, whose `moduleArgs` binds a formal outside `declArgs` that it holds;
+  # the record and not its `moduleArgs`, so telling it from `null` forces no argument. A view fold's
+  # record publishes the `_module.args` its own modules define, merged as the value stratum merges
+  # them, for the next pass; a set that declares `options._module` publishes none, so its arguments
+  # stay refused rather than read without the `apply` the value stratum runs. One argument and not a
+  # second key or a curried flag: every nested evaluation's guard pays for either.
   declarationStratumWith =
     positioned: onRedeclare:
     {
@@ -4879,21 +4921,31 @@ let
             if positioned then
               {
                 config = inadmissible "config" "read `config'";
-                options = if optionsView == null then inadmissible "options" "read `options'" else optionsView;
+                options =
+                  if optionsView == null || optionsView.options == null then
+                    inadmissible "options" "read `options'"
+                  else
+                    optionsView.options;
                 inherit prefix;
                 name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
               }
             else
               {
                 config = inadmissible "config" "read `config'";
-                options = if optionsView == null then inadmissible "options" "read `options'" else optionsView;
+                options =
+                  if optionsView == null || optionsView.options == null then
+                    inadmissible "options" "read `options'"
+                  else
+                    optionsView.options;
                 inherit prefix;
               }
           );
 
         # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
         # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
-        # it refuses with the same reason rather than resolving to a different one.
+        # it refuses with the same reason rather than resolving to a different one, unless a staged
+        # view fold's `optionsView.args` holds it. Its key set is read under `tryEval`, so a set whose keys
+        # read a refusal leaves the argument refused by its own name.
         #
         # `declArgs` is the RIGHT operand for `callM`'s reason: a formal it holds (specialArgs, the
         # refusing `config`/`options`, `prefix`) binds `declArgs`' OWN attribute, so every declaring
@@ -4912,8 +4964,18 @@ let
                 if m ? __functor then m.__functionArgs or (functionArgs (m.__functor m)) else functionArgs m;
               extra = mapAttrs (
                 name: _:
-                declArgs.${name}
-                  or (if name == "_class" then null else inadmissible "config" "read the module argument `${name}'")
+                declArgs.${name} or (
+                  if name == "_class" then
+                    null
+                  else if
+                    optionsView != null
+                    && optionsView.args != null
+                    && (builtins.tryEval (optionsView.args.moduleArgs ? ${name})).value
+                  then
+                    optionsView.args.moduleArgs.${name}
+                  else
+                    inadmissible "config" "read the module argument `${name}'"
+                )
               ) formals;
             in
             # `callM`'s elision: every formal in `declArgs` means `extra // declArgs` IS `declArgs`.
@@ -4933,16 +4995,32 @@ let
         }) flat;
         sitesAt = declaringSitesAt (length prefix) declEntries;
       in
-      {
-        inherit declEntries sitesAt;
-        # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
-        # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
-        # traced back to it, so guarding the producer here covers all five tags at any nesting depth
-        # on both the `.options` and `.config` planes.
-        options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
-          map (e: validateDeclSubtree prefix e.options) declEntries
-        );
-      };
+      # ONE door for the whole engine: every downstream reader (`mergeTree`'s `declaredPairs`,
+      # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
+      # traced back to it, so guarding the producer here covers all five tags at any nesting depth
+      # on both the `.options` and `.config` planes. The view fold's record is spelled apart, so a
+      # record no staged pass reads carries no `moduleArgs` slot.
+      if optionsView == null || optionsView.args == null then
+        {
+          inherit declEntries sitesAt;
+          options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
+            map (e: validateDeclSubtree prefix e.options) declEntries
+          );
+        }
+      else
+        let
+          options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
+            map (e: validateDeclSubtree prefix e.options) declEntries
+          );
+        in
+        {
+          inherit declEntries sitesAt options;
+          moduleArgs =
+            if options ? _module then
+              { }
+            else
+              builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf (map pushedEntry flat));
+        };
 
   # THE STRATUM-1 ENTRY, published beside `evalModuleTree`. A consumer wanting DECLARATIONS without
   # values gets a door that drives no fixpoint at all — the two `.options`-only readers in this

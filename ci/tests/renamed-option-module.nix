@@ -149,6 +149,30 @@ in
         b = 5;
       })
     ];
+    # The target's type reads a module argument that another module defines (nixpkgs' `systemd.nix`
+    # under `with utils;`), so the alias resolves once an earlier pass's declarations carry the
+    # arguments their own modules define. The chain c → b → a resolves one link per pass, and the
+    # passes it keeps running reach the one where that argument is readable.
+    test-a-rename-onto-a-type-read-from-a-module-argument = cell (c: c.v) [
+      base
+      (
+        { u, ... }:
+        {
+          options.v = mkOption { type = u.t; };
+        }
+      )
+      {
+        _file = "args.nix";
+        _module.args.u.t = types.int;
+      }
+      (R [ "w" ] [ "v" ])
+      (named "c-to-b.nix" (R [ "c" ] [ "b" ]))
+      (R [ "b" ] [ "a" ])
+      (def {
+        c = 1;
+        w = 5;
+      })
+    ];
     # Two renames redeclare one group, and one of its members is named `type`: the group's
     # declaration trees are told apart from empty ones by their key sets, never by comparing them,
     # which would read the alias's `type` and so its target's.
