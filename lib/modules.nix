@@ -6214,7 +6214,7 @@ let
                 else
                   mergeTree [ ] {
                     options = mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
-                      map (e: validateDeclSubtree prefix e.options) declEntries
+                      builtins.catAttrs "options" declEntries
                     );
                   }
               else
@@ -6225,7 +6225,7 @@ let
                   else
                     mergeTree [ ] {
                       options = mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
-                        map (e: validateDeclSubtree prefix e.options) declEntries
+                        builtins.catAttrs "options" declEntries
                       );
                     }
                 )
