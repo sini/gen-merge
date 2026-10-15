@@ -1804,13 +1804,16 @@ answers `int`, as nixpkgs does, and rejects what `str` rejects.
 census (8,338 words), gen-merge agreed with nixpkgs on every all-foreign list whose joins keep their
 operands' names, on both the declaration and the freeform planes. It departs where a fold step's
 gen-native relation refuses, and then by refusing: an earlier gen relation vetoing a later foreign
-relation that answers another type, and a refinement under a gen container against its bare element.
+relation that answers another type.
 Gen `attrs` against foreign `attrs` merges in both orders, directly or under a gen container, to gen's
 fold met with the partner's check. Where a merge drops a check (a foreign join that renames an
 operand, or the check a wrapper added to a gen record) the join is met, so the value differs only where
 a dropped check rejects it, and a pair that is one shared value keeps that value. They are listed under
 [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A refined type redeclared against
-its bare base refuses in both orders, directly or under a gen container.
+its bare base meets it in both orders, directly or under a gen container: a record that declares the
+record it `wraps` answers beside a bare record of that record's key (`interface.wrapsKeyOf`), at gen's
+relation dispatch, its veto and the exported `typeMerge` a foreign engine asks, so the merged type is
+the refinement and serves what both declarations accept.
 
 **A foreign join that drops an operand's check is met.** nixpkgs' `addCheck` is
 `elemType // { check = …; }`, so it keeps its base's `functor` and `typeMerge`: `port ∥ int`,
@@ -2994,9 +2997,7 @@ same modules.
   that declare one option with a type, in thunks and calls ("Redeclaring an option", **Cost**). Measured members:
 
   - an earlier gen relation vetoing a later foreign relation that answers another type
-    (`[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`, and a refined type before `Fx`);
-  - a refinement under a gen container against its bare element (`[listOf R, listOf int, listOf int]`,
-    where nixpkgs accepts `listOf` and drops the refinement).
+    (`[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`, and a refined type before `Fx`).
 
 - **A foreign join that drops a name an operand states is met** ("A foreign join that drops an
   operand's check is met"). A check family whose join renames it (`port ∥ int`, `u8 ∥ u16`, two

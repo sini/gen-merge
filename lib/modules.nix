@@ -585,7 +585,9 @@ let
   # `typeMerge` and `binOp` (`lib/interface.nix`), which a foreign engine calls.
   relationMergeWithin =
     a: b:
-    if a ? typeMergeRel then
+    if b ? wraps && interface.wrapsKeyOf b a then
+      relationMergeWithin b a
+    else if a ? typeMergeRel then
       let
         answer = a.typeMergeRel b;
       in
@@ -919,7 +921,13 @@ let
     let
       # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
       decidable = interface.importedDecidable earlier && interface.importedDecidable later;
-      veto = if earlier ? typeMergeRel && decidable then earlier.typeMergeRel later else { };
+      veto =
+        if
+          earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
+        then
+          earlier.typeMergeRel later
+        else
+          { };
       # read only where the veto did not end the step, so a refusal seen here is one that defers
       m =
         if !decidable then
