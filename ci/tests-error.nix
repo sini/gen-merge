@@ -1396,16 +1396,21 @@ in
             ]).options.x.valueMeta;
           expectedError = refusal "x";
         };
-        # a foreign type folded by its own merge answers; below it, a module set or a gen type is refused
-        test-a-foreign-module-set = {
+        # a foreign type folded by its own merge answers, a module set below it included; a gen type below it is
+        # refused, as is a module set below an option of a configuration, which gen-merge's guard folds again
+        test-a-module-set-inside-a-configuration = {
           expr =
             (gm.evalModuleTree { } [
               {
-                options.x = nl.mkOption { type = nl.types.attrsOf (nl.types.submodule { }); };
-                config.x.a = { };
+                options.x = nl.mkOption {
+                  type = nl.types.submodule {
+                    options.inner = nl.mkOption { type = nl.types.attrsOf (nl.types.submodule { }); };
+                  };
+                };
+                config.x.inner.a = { };
               }
-            ]).options.x.valueMeta;
-          expectedError = below "x";
+            ]).options.x.valueMeta.configuration.options.inner.valueMeta;
+          expectedError = below "x.inner";
         };
         test-a-gen-type-below-a-foreign-container = {
           expr =

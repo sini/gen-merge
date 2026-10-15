@@ -5,8 +5,8 @@
 #   top  : `(evalModuleTree …).options.<o>`         grp  : `….options.g.<o>`
 #   arg  : a module's own `options` argument         sub  : the same inside a submodule
 #   gatt : the same under `attrsOf (submodule …)`    gso  : `….options.s.type.getSubOptions [ ]`
-# Every cell runs ONE fixture through both engines and compares. `valueMeta` answers only at a foreign type
-# (its cells below) and is refused by name at a gen type (`ci/tests-error.nix`, `option-record-keys`); `loc`
+# Every cell runs ONE fixture through both engines and compares. `valueMeta` answers only at a foreign type,
+# a module set below it included (its cells below), and is refused by name at a gen type (`ci/tests-error.nix`, `option-record-keys`); `loc`
 # and `declarations` are same-read controls. A key
 # is read through `o ? k`, so an ABSENT key is a failed cell and never an abort.
 #
@@ -777,6 +777,22 @@ let
         options.y = nl.mkOption { type = ty; };
       }
     );
+  # ── a module set below the foreign type: each configuration the fold's own, behind its guard ──
+  vmCopySub = T.submodule { options.y = nl.mkOption { type = vmCopy; }; };
+  vmSubRead = m: {
+    keys = builtins.attrNames m.configuration;
+    config = m.configuration.config;
+    bar = m.configuration.options.bar.value;
+    prio = m.configuration.options.bar.highestPrio;
+  };
+  vmNestedCopy = y: [
+    {
+      options.x = nl.mkOption {
+        type = T.submodule { options.inner = nl.mkOption { type = T.attrsOf vmCopySub; }; };
+      };
+      config.x.inner.a.y = y;
+    }
+  ];
 in
 {
   flake.tests.option-record-keys = {
@@ -969,5 +985,104 @@ in
     test-valueMeta-guard-verify-overlay = vmGuard (vmOne vmOverlay [ { a = 7; } ]) (
       e: e.options.x.valueMeta.attrListValue
     );
+
+    # ── a module set below a foreign type: nixpkgs' metadata, each configuration the fold's own ──
+    test-valueMeta-attrsOf-submodule = vmBoth (vmOne (T.attrsOf vmSub) {
+      a.bar = 2;
+      b = { };
+    }) (e: builtins.mapAttrs (_: vmSubRead) e.options.x.valueMeta.attrs);
+    test-valueMeta-attrsOf-submodule-declared-twice = vmBoth (vmTwo (T.attrsOf vmSub) (T.attrsOf vmSub)
+      {
+        a.bar = 2;
+      }
+    ) (e: builtins.mapAttrs (_: vmSubRead) e.options.x.valueMeta.attrs);
+    test-valueMeta-listOf-submodule = vmBoth (vmOne (T.listOf vmSub) [
+      { bar = 2; }
+      { }
+    ]) (e: map vmSubRead e.options.x.valueMeta.list);
+    test-valueMeta-submodule = vmBoth (vmOne vmSub { bar = 2; }) (e: vmSubRead e.options.x.valueMeta);
+    test-valueMeta-nullOr-submodule = vmBoth (vmOne (T.nullOr vmSub) { bar = 2; }) (
+      e: vmSubRead e.options.x.valueMeta
+    );
+    test-valueMeta-either-submodule = vmBoth (vmOne (T.either T.int vmSub) { bar = 2; }) (
+      e: vmSubRead e.options.x.valueMeta
+    );
+    test-valueMeta-attrListOf-submodule = vmBoth (vmOne (T.attrListOf vmSub) [ { a.bar = 2; } ]) (e: {
+      list = map vmSubRead e.options.x.valueMeta.attrList;
+      values = e.options.x.valueMeta.attrListValue;
+      definitions = map (d: d.value.content) e.options.x.valueMeta.definitions;
+    });
+    # the metadata is pre-`apply`, as nixpkgs'
+    test-valueMeta-submodule-before-apply = vmBoth [
+      {
+        options.x = nl.mkOption {
+          type = T.listOf vmSub;
+          apply = builtins.foldl' (a: b: [ b ] ++ a) [ ];
+        };
+        config.x = [
+          { bar = 2; }
+          { bar = 3; }
+        ];
+      }
+    ] (e: map vmSubRead e.options.x.valueMeta.list);
+    test-valueMeta-mapAttrsOfSubmodule =
+      vmBoth
+        (vmOne (T.lazyAttrsOf vmSub) {
+          a.bar = nl.mkDefault 2;
+          b = { };
+        })
+        (
+          e:
+          nl.modules.mapAttrsOfSubmodule (n: { cfg, opt }: {
+            inherit n cfg;
+            p = opt.bar.highestPrio;
+          }) e.options.x
+        );
+    # an option inside a configuration serves its own metadata where no module set is below it
+    test-valueMeta-inside-a-configuration = vmBoth (vmOne (T.submodule {
+      options.l = nl.mkOption { type = T.attrsOf T.int; };
+    }) { l.k = 1; }) (e: rend 6 e.options.x.valueMeta.configuration.options.l.valueMeta);
+
+    # ── … and no value gen-merge's `config` refuses is served through a configuration ──
+    test-valueMeta-guard-checked-element = vmGuard (vmOne (T.attrsOf vmChecked) { a.bar = -1; }) (
+      e: e.options.x.valueMeta.attrs.a.configuration.config
+    );
+    test-valueMeta-guard-checked-element-option = vmGuard (vmOne (T.attrsOf vmChecked) {
+      a.bar = -1;
+    }) (e: e.options.x.valueMeta.attrs.a.configuration.options.bar.value);
+    test-valueMeta-guard-copy-in-attrsOf-submodule = vmGuard (vmOne (T.attrsOf vmCopySub) {
+      a.y = 7;
+    }) (e: e.options.x.valueMeta.attrs.a.configuration.config);
+    test-valueMeta-guard-copy-in-attrsOf-submodule-option = vmGuard (vmOne (T.attrsOf vmCopySub) {
+      a.y = 7;
+    }) (e: e.options.x.valueMeta.attrs.a.configuration.options.y.value);
+    test-valueMeta-guard-copy-in-attrListOf-submodule = vmGuard (vmOne (T.attrListOf vmCopySub) [
+      { a.y = 7; }
+    ]) (e: (builtins.head e.options.x.valueMeta.attrList).configuration.config);
+    test-valueMeta-guard-copy-in-attrListOf-submodule-values = vmGuard (vmOne (T.attrListOf vmCopySub) [
+      { a.y = 7; }
+    ]) (e: e.options.x.valueMeta.attrListValue);
+    test-valueMeta-guard-copy-in-attrListOf-submodule-definitions = vmGuard (vmOne
+      (T.attrListOf vmCopySub)
+      [
+        { a.y = 7; }
+      ]
+    ) (e: map (d: d.value.content) e.options.x.valueMeta.definitions);
+    test-valueMeta-guard-copy-in-a-configuration-module-set = vmGuard (vmNestedCopy 7) (
+      e: e.options.x.valueMeta.configuration.options.inner.valueMeta.attrs.a.configuration.config
+    );
+    test-valueMeta-guard-copy-in-a-configuration-module-set-value = vmGuard (vmNestedCopy 7) (
+      e: e.options.x.valueMeta.configuration.options.inner.value
+    );
+    # the copy's control: a value it admits is served through the same reads
+    test-valueMeta-copy-in-attrsOf-submodule-admitted = {
+      expr =
+        vmTry
+          (gm.evalModuleTree { } (vmOne (T.attrsOf vmCopySub) { a.y = 3; }))
+          .options.x.valueMeta.attrs.a.configuration.config;
+      expected = {
+        y = 3;
+      };
+    };
   };
 }

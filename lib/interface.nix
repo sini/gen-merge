@@ -887,7 +887,12 @@ let
                     let
                       d = elemAt m.definitions i;
                     in
-                    d // { value = d.value // { content = at i d.value.content; }; }
+                    d
+                    // {
+                      value = d.value // {
+                        content = at i d.value.content;
+                      };
+                    }
                   ) n;
                 }
               )
@@ -914,10 +919,12 @@ let
           checkedFold h (
             l: d:
             let
-              r = v2Result (h.merge.v2 {
-                loc = l;
-                defs = d;
-              });
+              r = v2Result (
+                h.merge.v2 {
+                  loc = l;
+                  defs = d;
+                }
+              );
             in
             if r.headError != null then
               throw "gen-merge: a definition for option `${showOption l}' is not of type `${describe h}'. TypeError: ${r.headError.message}"
