@@ -1420,7 +1420,8 @@ in
             {
               options.seen = mkOption {
                 type = t.attrsOf t.str;
-                default = config._module.args;
+                # less the engine's own `extendModules` (nixpkgs' `internalModule`), a function and no string
+                default = removeAttrs config._module.args [ "extendModules" ];
               };
             }
           )

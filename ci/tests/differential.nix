@@ -487,15 +487,15 @@ let
     in
     {
       genProvenance = r ? provenance;
-      nixpkgsExtendModules = r ? extendModules;
+      nixpkgsModule = r ? _module;
     };
   nixpkgsFingerprint = {
     genProvenance = false;
-    nixpkgsExtendModules = true;
+    nixpkgsModule = true;
   };
   genFingerprint = {
     genProvenance = true;
-    nixpkgsExtendModules = false;
+    nixpkgsModule = false;
   };
 
   # ── THE TEETH ─────────────────────────────────────────────────────────────────────────────────

@@ -213,7 +213,11 @@ in
       expected = "S";
     };
     test-control-args-read-is-unchanged = {
-      expr = rootRead { } (c: c._module.args) [ { config._module.args.pkgs = "P"; } ];
+      # `extendModules` is the engine's own argument (nixpkgs' `internalModule`), a function, which
+      # nix-unit cannot compare; the cell reads the arguments the modules define.
+      expr = rootRead { } (c: removeAttrs c._module.args [ "extendModules" ]) [
+        { config._module.args.pkgs = "P"; }
+      ];
       expected = {
         pkgs = "P";
       };
