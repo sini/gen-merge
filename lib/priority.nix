@@ -337,42 +337,60 @@ let
   # `config = mkIf c { a = 1; }` must behave as `{ a = mkIf c 1; }` (nixpkgs pushDownProperties):
   # the property is pushed to each key BEFORE per-option def collection. Returns a plain attrset
   # keyed by option name, each value possibly still property-wrapped (resolved later by discharge).
+  # A property wrapping something that is not an attrset (`mkIf c true`) has no keys to distribute
+  # into, so that value is returned as it stands (nixpkgs' `mapAttrsIfAttrs`), with any of its
+  # conditions dropped, and the reader that expected definitions refuses it by name, naming the
+  # module and the option path (`lib/modules.nix`, `mergeTree`). The pushed content is bound once and
+  # read twice, so the test costs no evaluation the distribution did not already pay for.
   pushDownProperties =
     v:
     if isProperty v then
       if v._type == "merge" then
         foldl' mergeConfigAttrs { } (map pushDownProperties v.contents)
-      else if v._type == "if" then
-        mapAttrs (_: val: mkIf v.condition val) (pushDownProperties v.content)
-      else if v._type == "override" then
-        mapAttrs (_: val: mkOverride v.priority val) (pushDownProperties v.content)
+      else if v._type == "if" || v._type == "override" then
+        let
+          c = pushDownProperties v.content;
+        in
+        if !(isAttrs c) then
+          c
+        else if v._type == "if" then
+          mapAttrs (_: val: mkIf v.condition val) c
+        else
+          mapAttrs (_: val: mkOverride v.priority val) c
       else
         v
     else
       v;
 
-  # Combine two config attrsets; a key present in both becomes an mkMerge of the two.
+  # Combine two config attrsets; a key present in both becomes an mkMerge of the two. An operand that
+  # is not an attrset is the join's result as it stands (the first one met), for the reader that
+  # expected definitions to refuse by name.
   mergeConfigAttrs =
     a: b:
-    a
-    // (
-      let
-        bNames = attrNames b;
-      in
-      builtins.listToAttrs (
-        map (k: {
-          name = k;
-          value =
-            if a ? ${k} then
-              mkMerge [
-                a.${k}
-                b.${k}
-              ]
-            else
-              b.${k};
-        }) bNames
-      )
-    );
+    if !(isAttrs a) then
+      a
+    else if !(isAttrs b) then
+      b
+    else
+      a
+      // (
+        let
+          bNames = attrNames b;
+        in
+        builtins.listToAttrs (
+          map (k: {
+            name = k;
+            value =
+              if a ? ${k} then
+                mkMerge [
+                  a.${k}
+                  b.${k}
+                ]
+              else
+                b.${k};
+          }) bNames
+        )
+      );
 
   # ── THE BAND A CONTRIBUTOR'S OWN EVALUATION RESOLVED A LEAF AT (den-hoag-zakjg U1, ADR-0029) ──
   # Contributor-local resolution: each contributor resolves its own leaves, and a leaf MOVES only

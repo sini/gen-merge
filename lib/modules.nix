@@ -458,13 +458,15 @@ let
   # as a raw, pathless, `tryEval`-UNCATCHABLE Nix type error (`expected a set but found a string:
   # "merge"`). ADR-0025 item 1 rules that every operation returns a value or a NAMED refusal.
   #
-  # The misplaceable tag set is CLOSED at six, enumerable from this library's own source
+  # The misplaceable tag set is CLOSED at seven, enumerable from this library's own source
   # (`grep -rhoP '_type\s*=\s*"\K[a-zA-Z-]+' lib/`): `merge`, `if`, `order`, `override` and
-  # `definition` are DEFINITION-plane combinators (`lib/priority.nix`), and the type tag belongs to a TYPE object
+  # `definition` are DEFINITION-plane combinators (`lib/priority.nix`), the type tag belongs to a TYPE object
   # (`lib/interface.nix`, asked through `interface.isOptionType` because that literal is private to
-  # that unit); `option` is the legitimate leaf. They carry TWO diagnoses, not one message repeated —
-  # a combinator on the wrong plane and a type where a declaration belongs have different remedies,
-  # and one shared string would misdiagnose a member while satisfying the enumeration.
+  # that unit), and `configuration` is an evaluation's own result (`evalModuleTree`); `option` is the
+  # legitimate leaf. They carry THREE diagnoses, not one message repeated — a combinator on the wrong
+  # plane, a type where a declaration belongs and an evaluated configuration where a declaration
+  # belongs have different remedies, and one shared string would misdiagnose a member while satisfying
+  # the enumeration.
   declPlaneMisuseTag =
     v:
     if !(isAttrs v) then
@@ -477,6 +479,8 @@ let
       in
       if tag == "merge" || tag == "if" || tag == "order" || tag == "override" || tag == "definition" then
         "combinator"
+      else if tag == "configuration" then
+        "configuration"
       else
         null;
 
@@ -490,6 +494,10 @@ let
     if tag == "bare-type" then
       "gen-merge: ${at} is declared as a bare type (`${interface.nameOf v}'), not a declaration; "
       + "wrap it: `mkOption { type = <that type>; }'"
+    else if tag == "configuration" then
+      "gen-merge: ${at} is declared as an evaluated configuration (an evaluation's result), not a "
+      + "declaration; declare an option whose type is a submodule of the modules that make up the "
+      + "configuration, or import those modules"
     else
       "gen-merge: ${at} is declared as the `${v._type}' combinator "
       + "(mkMerge/mkIf/mkOrder/mkBefore/mkAfter/mkForce/mkOverride/mkDefinition build DEFINITIONS, not "
@@ -6564,13 +6572,29 @@ let
               # `pushed`. Only the declared keys are grouped (`intersectAttrs opts`): the undeclared ones
               # are grouped by `ownUnmatched` into their own records, so no definition is recorded twice.
               # Each list keeps `pushed`'s order, the module-union order the merge reads (den-hoag-z75vj).
+              # A definition here is a tree of definitions, so one that is not an attrset once pushed
+              # (`config = mkIf c true`, `group = 5` at a declared group) is refused by name, catchable,
+              # as nixpkgs' `mergeModules'` refuses it (`checkedConfigs`). The refusal is raised here,
+              # and the other reader of `pushed` (the undeclared-key test below) forces this grouping
+              # where it meets one, so whichever a read forces first refuses alike.
               defsByKey = builtins.zipAttrsWith (_: vs: vs) (
                 map (
-                  p:
-                  mapAttrs (_: value: {
-                    inherit (p) file modIndex;
-                    inherit value;
-                  }) (builtins.intersectAttrs opts p.attrs)
+                  {
+                    attrs,
+                    file,
+                    modIndex,
+                  }:
+                  if isAttrs attrs then
+                    mapAttrs (_: value: {
+                      inherit file modIndex value;
+                    }) (builtins.intersectAttrs opts attrs)
+                  else
+                    throw "gen-merge: module `${file}' defines ${
+                      if prefix ++ loc == [ ] then
+                        "its configuration"
+                      else
+                        "the option group `${showOption (prefix ++ loc)}'"
+                    } as a value of type `${builtins.typeOf attrs}', not an attribute set of definitions; a property there (mkIf, mkMerge, mkOverride) wraps an attribute set, and a plain value defines only a declared option"
                 ) pushed
               );
               subDefs = k: defsByKey.${k} or [ ];
@@ -6648,7 +6672,12 @@ let
               # an undeclared key (a freeform level) the test is paid in front of the grouping, about 8 B
               # per key (den-hoag-r8y89 c3; den-hoag-c7jkw.3).
               ownUnmatched =
-                if all ({ attrs, ... }: all (k: opts ? ${k}) (attrNames attrs)) pushed then
+                if
+                  all (
+                    { attrs, ... }:
+                    if isAttrs attrs then all (k: opts ? ${k}) (attrNames attrs) else builtins.seq defsByKey false
+                  ) pushed
+                then
                   [ ]
                 else
                   concatLists (

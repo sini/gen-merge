@@ -4110,13 +4110,13 @@ in
     # binary, so the misplaced value was recursed into as though its own internals were
     # sub-declarations. ADR-0025 item 1: every operation returns a value or a NAMED refusal.
     #
-    # ★ THE MISPLACEABLE TAG SET IS CLOSED AT FIVE and enumerable from the library's own source
-    # (`grep -rhoP '_type\s*=\s*"\K[a-zA-Z-]+' lib/` ⇒ merge · if · order · override · option-type,
-    # plus `option`, the legitimate leaf), so this group quantifies over the whole class rather than
-    # over the one tag that was reported.
+    # ★ THE MISPLACEABLE TAG SET IS CLOSED AT SEVEN and enumerable from the library's own source
+    # (`grep -rhoP '_type\s*=\s*"\K[a-zA-Z-]+' lib/` ⇒ merge · if · order · override · definition ·
+    # option-type · configuration, plus `option`, the legitimate leaf), so this group quantifies over
+    # the whole class rather than over the one tag that was reported.
     #
-    # ★★ AND THE FIVE CARRY **TWO** DIAGNOSES, WHICH IS WHAT THE LAST TWO CELLS FENCE. An
-    # implementation emitting ONE shared message for all five would satisfy the enumeration while
+    # ★★ AND THE SEVEN CARRY **THREE** DIAGNOSES, WHICH IS WHAT THE LAST CELLS FENCE. An
+    # implementation emitting ONE shared message for all seven would satisfy the enumeration while
     # giving `option-type` the wrong remedy — telling an author to move a TYPE under `imports`. The
     # `option-type` cell asserts the `mkOption` wrap SPECIFICALLY, and its regex matches none of the
     # four above it, so a shared-string implementation fails here while passing the combinator cells.
@@ -4176,8 +4176,18 @@ in
             + "wrap it: `mkOption \\{ type = <that type>; \\}'$";
         };
       };
+      # A THIRD DIAGNOSIS: an evaluated configuration (nixpkgs modules.sh
+      # `options-type-error-configuration.nix`). Before the tag joined the set, the walk descended into
+      # the result and aborted uncatchably on whatever its fields forced first.
+      test-configuration-refusal-names-the-option = {
+        expr = misdeclare (gm.evalModuleTree { } [ ]);
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `a' is declared as an evaluated configuration \\(an evaluation's result\\), not a declaration; ";
+        };
+      };
       # LIVE CONTROL, same run: the same option path, declared correctly, still realizes. Without it
-      # the five cells above are consistent with a door that refuses every declaration.
+      # the cells above are consistent with a door that refuses every declaration.
       test-legitimate-mkoption-leaf-control = {
         expr = cfg { modules = [ { options.a = declLeaf; } ]; };
         expected = {
@@ -4218,6 +4228,45 @@ in
           }
         ];
         expected = [ "other" ];
+      };
+    };
+
+    # ── A DEFINITION WHERE A TREE OF DEFINITIONS BELONGS ──────────────────────────────────────
+    # A module's `config`, or a value at a declared group, that is not an attrset once its properties
+    # are pushed down (nixpkgs modules.sh `test-push-down-non-attrs.nix`: `config = mkIf true true`)
+    # used to abort uncatchably (`expected a set but found a Boolean`); nixpkgs refuses it by name.
+    flake.testsError.definition-tree = {
+      test-config-root-property-over-a-non-attrset-refuses-by-name = {
+        expr = realize {
+          modules = [
+            {
+              _file = "m";
+              config = gm.mkIf true true;
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: module `m' defines its configuration as a value of type `bool', not an attribute set of definitions; ";
+        };
+      };
+      test-declared-group-defined-as-a-value-refuses-by-name = {
+        expr = realize {
+          modules = [
+            {
+              _file = "m";
+              options.g.b = declLeaf;
+              config.g = gm.mkMerge [
+                { }
+                5
+              ];
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: module `m' defines the option group `g' as a value of type `int', not an attribute set of definitions; ";
+        };
       };
     };
 
