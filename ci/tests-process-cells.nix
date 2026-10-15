@@ -177,6 +177,20 @@ let
       nest = k: if k == 0 then sub else m.types.listOf (nest (k - 1));
     in
     builtins.length (nest d).getSubModules;
+  graphCost =
+    removal: n:
+    let
+      decl.options.x = m.mkOption {
+        type = m.types.listOf m.types.str;
+        default = [ ];
+      };
+      mods = [
+        decl
+      ]
+      ++ builtins.genList (i: { x = [ "m${toString i}" ]; }) n
+      ++ [ (if removal then { disabledModules = [ { key = ":anon-2"; } ]; } else { }) ];
+    in
+    builtins.length (builtins.filter (g: g.disabled) (m.evalModuleTree { } mods).graph);
   metCost =
     mode: n:
     let
@@ -353,6 +367,13 @@ let
     # depth 1 and 30.
     spine-cost-1 = spineCost 1;
     spine-cost-30 = spineCost 30;
+    # den-hoag-7o7i9: a module graph read over n anonymous modules, every node's `disabled` forced,
+    # read by the runner as thunks per module: with no removal the key set is bound once per read, so
+    # a node costs what it did before removal existed; with one, the marking is one walk.
+    graph-cost-100 = graphCost false 100;
+    graph-cost-400 = graphCost false 400;
+    graph-cost-removal-100 = graphCost true 100;
+    graph-cost-removal-400 = graphCost true 400;
     # THE OUTER FIXPOINT (den-hoag-xzchx, C3). A PLAIN attrset — no formals, no `imports`, no
     # `__functor` — whose option KEY SET under `a` reads the evaluation's own `options` through
     # the lexical binding `r`. That is ADR-0033's in-flight clause read literally, reached through

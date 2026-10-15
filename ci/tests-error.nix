@@ -337,8 +337,8 @@ let
   # ── the module reader: module syntax refused by name, through every reader path ─────────────
   # `readerDecl` declares `a` and `foo`; `readerBad` is a structured module carrying a surplus key.
   # Each refusal cell first forces its LIVE CONTROL through the same path — C0 `{ config.a = 2; }`
-  # must read 2, or C1 `{ foo = 1; }` must read 1 for the `disabledModules` shapes — and throws a
-  # different message when it does not, so a reader that refused everything fails the match.
+  # must read 2 — and throws a different message when it does not, so a reader that refused
+  # everything fails the match.
   readerDecl = {
     options.a = gm.mkOption {
       type = t.int;
@@ -430,7 +430,7 @@ let
     options.c = readerInt0;
   };
   readerDeclares = m: builtins.attrNames ((t.submodule m).substructure.declares [ "s" ]);
-  # Module B declares `x`, keyed so a `disabledModules` entry can name it.
+  # Module B declares `x`, keyed so a `disabledModules` item can name it.
   readerKeyed = {
     key = "B";
     options.x = readerInt0;
@@ -463,9 +463,6 @@ let
   fnResultMsg =
     file: type:
     "^gen-merge: module `${file}' is a function whose result is ${type}, not an attribute set\\. A module function is applied once, to the module arguments, and must return the module itself; .* is not a module\\.$";
-  disabledMsg =
-    file:
-    "^gen-merge: module `${file}' sets `disabledModules'\\. gen-merge does not implement module removal \\(it is deferred work\\): the modules it names would stay enabled here, where the reference module system removes them\\. Remove the key; it is refused by presence, an empty list included\\.$";
   # A module reading the `pkgs` argument into `x`, and a module defining it from `file`.
   moduleArgsReader = [
     (
@@ -5150,8 +5147,9 @@ in
     # `config` or `options`) with any other key outside the module keys is refused BY NAME, naming
     # the key and the file, on each door's first read of a module — every config read, every
     # declaration-only read, and every reader that treats a value as a module: top level,
-    # `check = false`, `types.submodule`, `types.deferredModule` and `lint`. `disabledModules` is
-    # refused by presence in both module forms, and before the surplus test. The reference's third
+    # `check = false`, `types.submodule`, `types.deferredModule` and `lint`. `disabledModules` is a
+    # module key in both module forms, read by the collection (the `disabled-modules` group, and
+    # `./tests/disabled-modules.nix`). The reference's third
     # arm, a module FUNCTION whose result is not an attribute set, is refused at the same reads
     # EXCEPT `lint`: lint never applies a function module (it is function-opaque by design), so no
     # function result reaches it.
@@ -5245,37 +5243,53 @@ in
           msg = "^gen-merge: module `/real/L\\.nix' has an unsupported attribute `bogus'\\. .*";
         };
       };
-      # S5, shorthand: `foo = 1` beside `disabledModules` was read as structured and `foo` dropped.
-      test-disabled-modules-refused-on-a-shorthand-module = {
-        expr = withControl (viaTop { foo = 1; }).foo 1 (
-          builtins.deepSeq (viaTop {
-            _file = "/real/DM.nix";
-            foo = 1;
-            disabledModules = [ ];
-          }) null
-        );
-        expectedError = {
-          type = "ThrownError";
-          msg = disabledMsg "/real/DM\\.nix";
+      # S5, shorthand: `foo = 1` beside `disabledModules` was once read as structured and `foo`
+      # dropped. It stays config, and the module's removal applies beside it: `R`'s `a` is gone.
+      test-disabled-modules-on-a-shorthand-module-is-a-module-key = {
+        expr = cfg {
+          modules = [
+            readerDecl
+            {
+              key = "R";
+              config.a = 5;
+            }
+            {
+              _file = "/real/DM.nix";
+              foo = 1;
+              disabledModules = [ { key = "R"; } ];
+            }
+          ];
+        };
+        expected = {
+          a = 0;
+          foo = 1;
         };
       };
-      # S5b, structured: the key was admitted and ignored on the cold path.
-      test-disabled-modules-refused-on-a-structured-module = {
-        expr = withControl (viaTop readerC0).a 2 (
-          builtins.deepSeq (viaTop {
-            _file = "/real/DS.nix";
-            config.a = 2;
-            disabledModules = [ ];
-          }) null
-        );
-        expectedError = {
-          type = "ThrownError";
-          msg = disabledMsg "/real/DS\\.nix";
+      # S5b, structured: the key was once admitted and ignored on the cold path. Its config and its
+      # removal both apply.
+      test-disabled-modules-on-a-structured-module-is-a-module-key = {
+        expr = cfg {
+          modules = [
+            readerDecl
+            {
+              key = "R";
+              config.a = 5;
+            }
+            {
+              _file = "/real/DS.nix";
+              config.foo = 2;
+              disabledModules = [ { key = "R"; } ];
+            }
+          ];
+        };
+        expected = {
+          a = 0;
+          foo = 2;
         };
       };
-      # ORDER: a module carrying both a surplus key and `disabledModules` gets the `disabledModules`
-      # refusal, not the surplus one.
-      test-disabled-modules-refused-before-the-surplus-key = {
+      # ORDER: `disabledModules` is a structured module's key, as in the reference, so a module
+      # carrying it beside a surplus key gets the surplus refusal, naming that key.
+      test-disabled-modules-beside-a-surplus-key-gets-the-surplus-refusal = {
         expr = withControl (viaTop readerC0).a 2 (
           builtins.deepSeq (viaTop {
             _file = "/real/DO.nix";
@@ -5286,19 +5300,22 @@ in
         );
         expectedError = {
           type = "ThrownError";
-          msg = disabledMsg "/real/DO\\.nix";
+          msg = surplusMsg "/real/DO\\.nix";
         };
       };
-      # `lint` refuses `disabledModules` at its own first read, the empty list included: without its
-      # site, lint called this module portable (`[ ]`).
-      test-disabled-modules-refused-by-lint = {
-        expr = withControl (viaLint readerC0) [ ] (viaLint {
-          config.a = 2;
-          disabledModules = [ ];
-        });
-        expectedError = {
-          type = "ThrownError";
-          msg = disabledMsg "/real/L\\.nix";
+      # `lint` reads `disabledModules` as the module key it is, the empty list included: the module
+      # is portable (`[ ]`), as its control is.
+      test-disabled-modules-is-a-module-key-to-lint = {
+        expr = {
+          control = viaLint readerC0;
+          stated = viaLint {
+            config.a = 2;
+            disabledModules = [ ];
+          };
+        };
+        expected = {
+          control = [ ];
+          stated = [ ];
         };
       };
 
@@ -5340,11 +5357,12 @@ in
           msg = surplusKeyMsg "/real/T\\.nix" "option";
         };
       };
-      # Where the reference REMOVES `x` (`[ "_module" ]`), the declaration read answered `[ "x" ]`:
-      # a changed meaning on a module set the reference accepts. It is refused by name instead.
-      test-declaration-only-read-of-disabled-modules-refused-by-name = {
-        expr = withControl (builtins.attrNames (gm.declaredOptions { } [ readerKeyed ])) [ "_module" "x" ] (
-          builtins.attrNames (
+      # The declaration read once answered `[ "x" ]` where the reference REMOVES `x`. It omits the
+      # removed module's declarations, as the config read does and the reference does.
+      test-declaration-only-read-omits-a-removed-module = {
+        expr = {
+          control = builtins.attrNames (gm.declaredOptions { } [ readerKeyed ]);
+          removed = builtins.attrNames (
             gm.declaredOptions { } [
               readerKeyed
               {
@@ -5352,14 +5370,195 @@ in
                 disabledModules = [ { key = "B"; } ];
               }
             ]
-          )
-        );
-        expectedError = {
-          type = "ThrownError";
-          msg = disabledMsg "/real/DK\\.nix";
+          );
+        };
+        expected = {
+          control = [
+            "_module"
+            "x"
+          ];
+          removed = [ "_module" ];
         };
       };
     };
+
+    # MODULE REMOVAL'S REFUSALS (`disabledModules`, den-hoag-7o7i9; `lib/modules.nix` `removal`). The
+    # three item refusals carry the reference's sentences after `gen-merge: `; a removed module, and
+    # a module that loses its key to another, are loaded as the reference loads them, so their
+    # surplus-key and class refusals fire though nothing reads them. The reference refuses every
+    # shape here too (`./tests/disabled-modules.nix`,
+    # `test-the-reference-refuses-the-error-plane-shapes`), except `readsconfig`, where it recurses
+    # infinitely, and `notlist`, whose list type error is no `throw` to catch.
+    #
+    # RED, evaluated at gen-merge e3e1305: the item cells refuse with the presence refusal;
+    # `dedup-surplus` and `dedup-class` serve `[ "k1" ]`. `removed-surplus` and `removed-class`
+    # serve `[ ]` against a removal that skips the load checks.
+    flake.testsError.disabled-modules =
+      let
+        fx = ./tests/_fixtures/disabled-modules;
+        b = fx + "/b.nix";
+        decl = {
+          options.x = gm.mkOption {
+            type = t.listOf t.str;
+            default = [ ];
+          };
+        };
+        x =
+          args: ms:
+          (gm.evalModuleTree (
+            {
+              specialArgs.modulesPath = fx;
+            }
+            // args
+          ) ([ decl ] ++ ms)).config.x;
+        itemMsg = "^gen-merge: Module `<unknown-file>` contains a disabledModules item that is ";
+        classMsg =
+          file:
+          "^gen-merge: The module `${file}` \\(class: \"darwin\"\\) cannot be imported into a module evaluation that expects class \"nixos\"\\.$";
+      in
+      {
+        test-a-removed-module-is-loaded-so-its-surplus-key-refuses = {
+          expr = x { } [
+            (fx + "/bad.nix")
+            { disabledModules = [ (fx + "/bad.nix") ]; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = surplusKeyMsg ".*/bad\\.nix" "foo";
+          };
+        };
+        test-a-removed-module-is-loaded-so-its-class-refuses = {
+          expr = x { class = "nixos"; } [
+            (fx + "/cls.nix")
+            { disabledModules = [ (fx + "/cls.nix") ]; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = classMsg ".*/cls\\.nix";
+          };
+        };
+        # the control: the same module kept
+        test-a-kept-module-of-another-class-refuses = {
+          expr = x { class = "nixos"; } [ (fx + "/cls.nix") ];
+          expectedError = {
+            type = "ThrownError";
+            msg = classMsg ".*/cls\\.nix";
+          };
+        };
+        test-a-module-losing-its-key-is-loaded-so-its-surplus-key-refuses = {
+          expr = x { } [
+            {
+              key = "K";
+              x = [ "k1" ];
+            }
+            {
+              key = "K";
+              config = { };
+              foo = 1;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = surplusKeyMsg "<unknown-file>" "foo";
+          };
+        };
+        test-a-module-losing-its-key-is-loaded-so-its-class-refuses = {
+          expr = x { class = "nixos"; } [
+            {
+              key = "K";
+              x = [ "k1" ];
+            }
+            {
+              key = "K";
+              _class = "darwin";
+              x = [ "k2" ];
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = classMsg "<unknown-file>";
+          };
+        };
+        # the control: the same module under its own key
+        test-a-module-under-its-own-key-with-a-surplus-key-refuses = {
+          expr = x { } [
+            {
+              key = "K";
+              x = [ "k1" ];
+            }
+            {
+              key = "K2";
+              config = { };
+              foo = 1;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = surplusKeyMsg "<unknown-file>" "foo";
+          };
+        };
+        test-an-item-of-an-unsupported-type-refuses = {
+          expr = x { } [
+            b
+            { disabledModules = [ (v: v) ]; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: Each disabledModules item must be a path, string, or a attribute set with a key attribute, or a value supported by toString\\. However, one of the disabledModules items in `<unknown-file>` is none of that, but is of type lambda\\.$";
+          };
+        };
+        test-a-convertible-item-whose-key-differs-refuses = {
+          expr = x { } [
+            b
+            {
+              disabledModules = [
+                {
+                  outPath = b;
+                  key = "other";
+                }
+              ];
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg =
+              itemMsg
+              + "an attribute set that can be converted to a string \\(.*/b\\.nix\\) but also has a `\\.key` attribute \\(other\\) with a different value\\. This makes it ambiguous which module should be disabled\\.$";
+          };
+        };
+        test-an-unkeyed-set-item-refuses = {
+          expr = x { } [
+            b
+            { disabledModules = [ { y = 1; } ]; }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = itemMsg + "an attribute set, presumably a module, that does not have a `key` attribute\\. .*";
+          };
+        };
+        test-a-list-that-is-not-a-list-refuses = {
+          expr = x { } [
+            b
+            { disabledModules = b; }
+          ];
+          expectedError = {
+            type = "TypeError";
+            msg = "expected a list but found a path";
+          };
+        };
+        # The list is read where `imports` is expanded, so reading `config` refuses as an `imports`
+        # that reads it does (the reference recurses infinitely).
+        test-a-list-reading-config-refuses-by-name = {
+          expr = x { } [
+            b
+            ({ config, ... }: { disabledModules = if config.x == [ ] then [ ] else [ b ]; })
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read `config' while its own declarations were being folded.*";
+          };
+        };
+      };
 
     # EACH NESTING TYPE READS A DEFINITION AS ITS REFERENCE DOES (`defsAsModules`, nixpkgs'
     # `allModules` flag for flag), and a value that is not a module is refused by name. The values

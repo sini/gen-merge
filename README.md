@@ -64,7 +64,9 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 5. **`imports` as graph edges** — each tree's modules are nodes keyed by nixpkgs' key rule; a diamond or
    a repeated key is one node (`ci/tests/module-graph.nix`). A merge collects them by a breadth-first
    level walk that keys only keyed and path modules. The identity-keyed `genericClosure` is the graph's,
-   built only when the graph is read, and checked node by node against the merge's list first.
+   built only when the graph is read, and checked node by node against the merge's list first. A module
+   may name others in `disabledModules`, and the collection drops every occurrence of a named module
+   with its imports, as nixpkgs' `collectModules` does ([Module removal](#module-removal-disabledmodules)).
 6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`. A
    descriptor stating `name` and no fold takes nixpkgs' constructor default (see
    [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-exported-beside-mergeleaf)).
@@ -270,7 +272,7 @@ in
   result.config                     # ⇒ { name = "pinned"; }
 ```
 
-`evalModuleTree { specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; class ? null } modules → { config; options; type; provenance; undeclared; deprecations; _type; class; extendModules; graph }`. `class` is nixpkgs' nominal module class: every module reads it as its `_class` argument, and a requested class refuses a collected module stating another. `extendModules` re-evaluates with modules appended (also a module argument), `graph` is nixpkgs' import tree, and `_type` is `"configuration"`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
+`evalModuleTree { specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; class ? null } modules → { config; options; type; provenance; undeclared; deprecations; _type; class; extendModules; graph }`. `class` is nixpkgs' nominal module class: every module reads it as its `_class` argument, and a requested class refuses a loaded module stating another (a removed module and one that loses its key to another included, as nixpkgs loads both). `extendModules` re-evaluates with modules appended (also a module argument), `graph` is nixpkgs' import tree (`disabled` marks a removed node), and `_type` is `"configuration"`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
 recursion) — and it is an option type named `submodule`, which a real nixpkgs `lib.evalModules`
 mounts (see below);
@@ -592,12 +594,11 @@ over the tree's top-level elements, never a caller count, since `imports` expans
 config-dependent): they are the nodes the edited roots reach, paired with the merge's list after a
 node-by-node agreement check. A list that imports nothing keeps its edited entries as its tail. The closure is breadth-first, so an appended module's imports are no tail of the full closure,
 and the entries are partitioned by ORIGIN. Warm is REFUSED (cold fallback, `reason = "an edited module reaches a module node the base also reaches (warm refused)"`) when a node is reached from both a base
-root and an edited root, since it has no single origin. Warm is also REFUSED (cold fallback, stated in the
-trace) when any edited entry carries `disabledModules` (it would disable a clean base module invisibly
-to the footprint) — defence only; unreachable through `evalModuleTree` while module removal is
-refused, since the module reader refuses `disabledModules` by presence on its first read, before any
-warm decision (see
-[Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate)). Warm is also REFUSED (cold
+root and an edited root, since it has no single origin. Warm is also REFUSED (cold fallback,
+`reason = "disabledModules names a module to remove (warm refused)"`) when the evaluation's
+`disabledModules` name any module, in the base or the edit: a removal moves which base nodes exist,
+which the footprint cannot see. An edited entry stating an empty or non-matching list keeps its own
+refusal (`"disabledModules on an edited module (warm refused)"`) for the same reason. Warm is also REFUSED (cold
 fallback, `reason = "check differs from warmFrom's (warm refused)"`) when `warmFrom` was evaluated under
 a different effective strictness, or records none, as a result from an evaluator that predates the
 `strict` field does: every reused leaf reads the prior's `config`, whose refusals are the prior's
@@ -623,8 +624,7 @@ Each declared-leaf location is keyed by the injective `builtins.toJSON path` id 
 name collides — `["a.b"]."c"` and `["a"]."b.c"` both read `"a.b.c"`). gen-merge hands this relation to
 **gen-memo** (`memo.warmDecision`, the incremental plane's one reuse DECISION for the whole gen
 ecosystem — gen-merge decides only ADMISSION (whether warm participates at all: the
-`disabledModules` refusal above — defence only; unreachable through `evalModuleTree` while module
-removal is refused —, the regime key above, which keeps a prior of a different effective strictness
+`disabledModules` refusals above, the regime key above, which keeps a prior of a different effective strictness
 cold, and the freeform reuse gate below), never the per-location REUSE
 verdict, which is gen-memo's `isClean` alone; otherwise gen-merge only reports what an entry can
 perturb). A declared
@@ -694,7 +694,7 @@ plain compose):
 {
   mode     = "warm" | "cold";                     # ADMISSION: cold = the fallback fired (reason stated)
   inert    = <bool>;                              # warm admitted, but no non-edited module is clean ⇒ reuses nothing
-  reason   = <string|null>;                       # why cold (no warmFrom / check differs from warmFrom's / disabledModules refusal — defence only; unreachable through evalModuleTree while module removal is refused)
+  reason   = <string|null>;                       # why cold (no warmFrom / check differs from warmFrom's / disabledModules names a module / disabledModules on an edited module / an edited module reaches a base node)
   strict   = <bool>;                              # the effective strictness this result was evaluated under; the next warm admission reads it
   reused   = [ <loc-string> … ];                  # the spliced declared leaves (dot-joined)
   remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
@@ -2553,6 +2553,34 @@ deferred mode. The per-option combine is a **swappable kernel**: byte-mode passe
 nixpkgs-faithful kernel; the structural mode later swaps a confluent-join kernel without changing the
 engine skeleton (see `2026-07-02-structural-identity-dedup-spike.md`).
 
+## Module removal (`disabledModules`)
+
+A module may state `disabledModules`, a list naming other modules, and the collection removes every
+occurrence of each named module, with its imports, before anything is merged: nixpkgs'
+`collectModules`, in gen-merge's one collection, so every reader (`.config`, `.options`,
+`declaredOptions`, `substructure.declares`, the staged declaration passes and nested trees) sees the
+same modules.
+
+- **An item names a key**, as nixpkgs' `moduleKey` resolves it: a string is absolute as is, or
+  relative to `specialArgs.modulesPath`; a value `toString` converts (a path, say) is its string, and
+  refused where it is a set whose `key` differs; a set with `key` is that key. Any other item is
+  refused, with nixpkgs' sentence after `gen-merge: `.
+- **A module's key** is its path's string (its own `key` where the file states one), a set's `key`, or
+  `<importer's key>:anon-<n>` for an anonymous module (1-based, the top level's importer `""`): the
+  coordinates the module graph already identifies it by, spelled over keys, so a comparison mints
+  nothing. Matching is string equality, so an item whose key is not a string names nothing.
+- **Every occurrence is read.** nixpkgs gathers the lists from every occurrence of the import tree,
+  so a list on a module that loses its key to an earlier one, or under it, is read, and each such
+  module is loaded: its syntax and class checks fire, as they do on a removed module. An occurrence of
+  a file is that file; a keyed set is one per key, importer and position, so a keyed import cycle
+  closes where nixpkgs overflows.
+- **A list reading `config`** or a module argument that is not special refuses by name, as an
+  `imports` that reads it does (nixpkgs recurses infinitely).
+- **Cost.** A module list with no path and no module stating `imports`, `require`, `key` or
+  `disabledModules` is its own collection, as before. Any other list is walked as before and then read
+  once for a list; only a list that names modules pays for the removal. A `graph` read binds the key
+  set once.
+
 ## Known byte-mode boundaries (deliberate)
 
 - **An explicit `key` spelled like an anonymous module's never meets it.** Module imports are graph
@@ -3117,15 +3145,10 @@ unsupported attribute (structured) or a configuration key (shorthand). Such a mo
 A top-level `_module` beside `config`/`options` is refused by name as an unsupported attribute, as
 nixpkgs refuses it. Its departures:
 
-- `_class` is stripped in both forms and never checked. gen-merge has no `class` parameter, which is
-  nixpkgs with `class = null`.
-- `disabledModules` is **refused by presence**, in both module forms and before the surplus check:
-  gen-merge does not implement module removal, so the modules it names would stay enabled. The empty
-  list is refused too, which over-refuses relative to nixpkgs (it accepts `[ ]`); refusing on
-  presence never forces the list. *Defaulted, reversible.* Implementing module removal is deferred
-  work, re-armed by a consumer that needs it. Its reach is every door below, so a declaration-only
-  read — `.options`, `declaredOptions`, `substructure.declares` — refuses the empty list too, which
-  nixpkgs accepts on those reads as on any other.
+- `_class` is stripped in both forms. It is checked against the evaluation's `class` when one is
+  requested, on every module nixpkgs loads; with `class = null` it is never checked, as in nixpkgs.
+- `disabledModules` is a module key in both forms, as in nixpkgs, and is read by the collection
+  ([Module removal](#module-removal-disabledmodules)).
 - **The refusals above fire on each door's first read of a module**, as nixpkgs' `unifyModuleSyntax`
   does. That read is the declaration stratum's, which every `evalModuleTree` read forces before any
   config, and which `declaredOptions` and `substructure.declares` read directly, at any nesting; `lint`
@@ -3133,7 +3156,7 @@ nixpkgs refuses it. Its departures:
   the typo `{ options.b = mkOption …; option.c = mkOption …; }` both `.options` and `declaredOptions`
   refuse by name, where they once answered `[ "b" ]` silently. A warm trace over an edited module the
   reader refuses is refused with it: `warmDecision.mode` on a surplus-key edit is refused where it
-  once read `"warm"`, and on a `disabledModules` edit where it once read `"cold"`.
+  once read `"warm"`.
 - **A value that is not a module is refused by name**, where nixpkgs aborts. A module is a path, a
   string naming an absolute path (imported, as nixpkgs does), a function or an attrset; anything else
   — an `imports` element, a top-level module, or a nesting type's definition read as a module, such

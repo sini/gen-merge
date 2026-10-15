@@ -82,15 +82,28 @@ in
             config.a = 2;
           }
         ];
+        removal = same [
+          decl
+          {
+            key = "X";
+            config.a = 1;
+          }
+          {
+            config.foo = 2;
+            disabledModules = [ { key = "X"; } ];
+          }
+        ];
       };
       expected = {
         plain = true;
         nested = true;
         dupKey = true;
+        removal = true;
       };
     };
     # Refused sets: the declaration-plane refusals the guard alone forces refuse on both arms, so
-    # sharing the guard's collection keeps them eager.
+    # sharing the guard's collection keeps them eager. `disabled` is a removed module the reference
+    # still loads, so its surplus key refuses though nothing reads it.
     test-declaration-refusals-refuse-shared-and-unshared = {
       expr = builtins.mapAttrs (_: parity) {
         typo = [
@@ -113,9 +126,11 @@ in
           decl
           {
             _file = "/real/X.nix";
-            disabledModules = [ ];
+            key = "X";
             config.a = 1;
+            bogus = 2;
           }
+          { disabledModules = [ { key = "X"; } ]; }
         ];
         keylessKeyEq = [
           decl

@@ -3,7 +3,7 @@
 # TWO layers, TWO commits:
 #   • 2a (this file's first block) — the pure DECISION layer (`warmDecide` + `collectModules`), reached
 #     through the internal `genMergeCore` seam (the classify-suite precedent): footprint contents, the
-#     coarse freeform-reuse flag (both conditions), the disabledModules refusal, and the EDITED-tail
+#     coarse freeform-reuse flag (both conditions), the edited-entry disabledModules refusal, and the EDITED-tail
 #     identity (the engine flattens `editedModules` itself; tail-k of the full flatten == the edited
 #     flatten, imports included). No splicing yet — these assert the decision, not the merge.
 #   • 2b (the byte-oracle block) — `evalModuleTree { warmFrom; editedModules; }` splice execution: warm
@@ -578,8 +578,10 @@ in
       expected = false;
     };
 
-    # disabledModules on an EDITED entry ⇒ refuse warm (cold fallback). A non-edited disabledModules
-    # does NOT refuse (only the edit can disable a clean base module invisibly to the footprint).
+    # disabledModules on an EDITED entry ⇒ refuse warm (cold fallback). `warmDecide` reads the edited
+    # entries only, so a base entry's list does not set the flag; an evaluation that removes anything,
+    # base or edit, is declined before `warmDecide` is consulted (`removal.removes`, the
+    # `test-disabled-modules-*-takes-the-cold-fallback` cells).
     test-disabled-modules-edited-refuses = {
       expr =
         (warmDecide {
@@ -635,7 +637,7 @@ in
               config.c = 3;
             }
           ];
-          files = ms: map (e: e._file) (moduleClosure idCallM ms);
+          files = ms: map (e: e._file) (moduleClosure { } idCallM ms);
         in
         {
           full = files (base ++ edited);
@@ -1084,11 +1086,11 @@ in
         };
       };
 
-    # 6 — disabledModules on an EDITED entry: the module reader refuses it by presence on its first
-    # read, before any warm decision, so the trace is refused with `.config` — warm and the full cold
-    # eval alike. The warm refusal (`disabledRefusal`) is defence only. Before, the trace answered
-    # mode `cold` about an evaluation whose every value read refuses.
-    test-disabled-modules-edit-refuses-the-trace =
+    # 6 — disabledModules on an EDITED entry: the evaluation names a module to remove, so warm is
+    # declined (cold fallback) with the reason stated, and the result is the cold evaluation's. The
+    # trace once answered mode `cold` about an evaluation whose every value read refused; every read
+    # here is a value.
+    test-disabled-modules-edit-takes-the-cold-fallback =
       let
         base = [
           {
@@ -1109,23 +1111,64 @@ in
         w = warmOf base edited;
       in
       {
-        expr =
-          let
-            ok = v: (builtins.tryEval (builtins.deepSeq v null)).success;
-          in
-          {
-            warmConfig = ok w.config;
-            coldConfig = ok (coldOf (base ++ edited)).config;
-            mode = ok w.warmDecision.mode;
-            reason = ok w.warmDecision.reason;
-            reused = ok w.warmDecision.reused;
-          };
+        expr = {
+          config = w.config;
+          cold = jsonEq w.config (coldOf (base ++ edited)).config;
+          inherit (w.warmDecision) mode reason reused;
+        };
         expected = {
-          warmConfig = false;
-          coldConfig = false;
-          mode = false;
-          reason = false;
-          reused = false;
+          config.a = "ea";
+          cold = true;
+          mode = "cold";
+          reason = "disabledModules names a module to remove (warm refused)";
+          reused = [ ];
+        };
+      };
+    # 6b — the removal in the BASE, the edit stating none: the base's removal moves which base nodes
+    # exist, so warm is declined with the same reason, and the trace reads without refusing.
+    test-disabled-modules-base-takes-the-cold-fallback =
+      let
+        base = [
+          {
+            options.a = mkOption {
+              type = t.listOf t.str;
+              default = [ ];
+            };
+          }
+          {
+            key = "B";
+            a = [ "b" ];
+          }
+          {
+            _file = "ca";
+            a = [ "a" ];
+          }
+          { disabledModules = [ { key = "B"; } ]; }
+        ];
+        edited = [
+          {
+            _file = "edit";
+            a = [ "e" ];
+          }
+        ];
+        w = warmOf base edited;
+      in
+      {
+        expr = {
+          config = w.config;
+          cold = jsonEq w.config (coldOf (base ++ edited)).config;
+          inherit (w.warmDecision) mode reason;
+          modules = builtins.length w.warmDecision.modules.edited;
+        };
+        expected = {
+          config.a = [
+            "e"
+            "a"
+          ];
+          cold = true;
+          mode = "cold";
+          reason = "disabledModules names a module to remove (warm refused)";
+          modules = 1;
         };
       };
 

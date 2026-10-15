@@ -77,7 +77,7 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["In pathWith, inStore means the path must be absolute","config.impossiblePathOptionType","./pathWith.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["It seems as if you.re trying to declare an option by placing it into .config. rather than .options.","config.nest.wrong2","./error-mkOption-in-config.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["It seems as if you.re trying to declare an option by placing it into .config. rather than .options.","config.wrong1","./error-mkOption-in-config.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["Module ..*disable-module-bad-key.nix. contains a disabledModules item that is an attribute set, presumably a module, that does not have a .key. attribute. .*","config.enable","./disable-module-bad-key.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["Module ..*disable-module-bad-key.nix. contains a disabledModules item that is an attribute set, presumably a module, that does not have a .key. attribute. .*","config.enable","./disable-module-bad-key.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["Please use.*lib.types.addCheck.*instead","config.adhocFail.foo","./v2-check-coherence.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The module `.*/module-class-is-darwin.nix`.*?expects class \"nixos\".","config.fail.config","./class-check.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The module `.*/module-class-is-darwin.nix`.*?expects class \"nixos\".","config.sub.nixosFail.config","./class-check.nix"]},"verdict":"PASS"}
@@ -85,10 +85,10 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*","config.enable","./declare-enable.nix","./define-enable.nix","./define-attrsOfSub-foo.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*","config.enable","./define-enable-throw.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*: true","config.enable","./define-enable.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*: true","config.enable","./disable-recursive/main.nix","./disable-recursive/disable-foo.nix","./disable-recursive/disable-bar.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["The option .* does not exist. Definition values:\\n\\s*- In .*: true","config.enable","./disable-recursive/main.nix","./disable-recursive/disable-foo.nix","./disable-recursive/disable-bar.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* has conflicting definition values","config.value","./types-anything/lists.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .* was accessed but has no value defined. Try setting the option.","config.foo","./freeform-lazyAttrsOf.nix","./freeform-unstr-dep-str.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["The option .*enable.* does not exist. Definition values:\\n\\s*- In .*: true","config.enable","./define-enable.nix","./declare-enable.nix","./disable-declare-enable.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["The option .*enable.* does not exist. Definition values:\\n\\s*- In .*: true","config.enable","./define-enable.nix","./declare-enable.nix","./disable-declare-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .bare-submodule.deep. in .*/declare-bare-submodule-deep-option.nix. is already declared in .*/declare-bare-submodule-deep-option-duplicate.nix","config.bare-submodule.deep","./declare-bare-submodule.nix","./declare-bare-submodule-deep-option.nix","./declare-bare-submodule-deep-option-duplicate.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .conflictingPathOptionType. in .*/pathWith.nix. is already declared in .*/pathWith.nix","config.conflictingPathOptionType","./pathWith.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: option `conflictingPathOptionType' is declared with types that do not merge"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["The option .examples\\.merged. is defined multiple times while it.s expected to be unique","config.examples.merged.a","./types-unique.nix"]},"verdict":"PASS"}
@@ -120,8 +120,8 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* .* not found","config.attrsOfSub.bar.enable","./declare-attrsOfSub-any-enable.nix","./define-attrsOfSub-foo.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* not found","config.conditionalImportAsNixos.config.bar","./specialArgs-class.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*bar.* not found","config.sub.conditionalImportAsNixos.bar","./specialArgs-class.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*enable.* in selection path .*config.enable.* not found","config.enable","./define-enable.nix","./declare-enable.nix","./disable-define-enable.nix","./disable-declare-enable.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*enable.* in selection path .*config.enable.* not found","config.enable","./define-enable.nix","./declare-enable.nix","./disable-enable-modules.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*enable.* in selection path .*config.enable.* not found","config.enable","./define-enable.nix","./declare-enable.nix","./disable-define-enable.nix","./disable-declare-enable.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigError","env":"","argv":["attribute .*enable.* in selection path .*config.enable.* not found","config.enable","./define-enable.nix","./declare-enable.nix","./disable-enable-modules.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* .* not found","config.attrsOfSub.foo.enable","./declare-attrsOfSub-any-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* .* not found","config.attrsOfSub.foo.enable","./declare-enable.nix","./declare-attrsOfSub-any-enable.nix","./define-attrsOfSub-foo-if-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["attribute .*foo.* .* not found","config.attrsOfSub.foo.enable","./declare-enable.nix","./declare-attrsOfSub-any-enable.nix","./define-attrsOfSub-if-foo-enable.nix"]},"verdict":"PASS"}
@@ -176,7 +176,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"/this/is/absolute\"","config.absolutePathNotInStore.ok1","./pathWith.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"/this/is/absolute\"","config.anyPath.ok1","./pathWith.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"\"","config.pathNotInStore.ok4","./pathWith.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\"abc\"","config.value","./importApply-disabling.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\"abc\"","config.value","./importApply-disabling.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"abc\"","config.value","./importApply.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"bar\"","config.conditionalImportAsNixos.config.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\"bar\"","config.sub.conditionalImportAsNixos.foo","./specialArgs-class.nix"]},"verdict":"PASS"}
@@ -314,8 +314,8 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./declare-enable.nix","./define-enable.nix","./define-enable-force.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./declare-enable.nix","./define-enable.nix","./define-force-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./declare-enable.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./define-enable.nix","./declare-enable.nix","./disable-define-enable-string-path.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./define-enable.nix","./declare-enable.nix","./disable-define-enable.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./define-enable.nix","./declare-enable.nix","./disable-define-enable-string-path.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./define-enable.nix","./declare-enable.nix","./disable-define-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enable","./freeform-attrsOf.nix","./define-value-string.nix","./declare-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.enableAlias","./alias-with-priority-can-override.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^false$","config.negative.enable","./disable-module-with-key.nix"]},"verdict":"PASS"}
@@ -351,8 +351,8 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./declare-enable.nix","./define-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./define-enable.nix","./declare-enable.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./define-option-dependently.nix","./declare-enable.nix","./declare-int-positive-value.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./disable-recursive/main.nix","./disable-recursive/disable-bar.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./disable-recursive/main.nix","./disable-recursive/disable-foo.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./disable-recursive/main.nix","./disable-recursive/disable-bar.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./disable-recursive/main.nix","./disable-recursive/disable-foo.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./disable-recursive/main.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enable","./import-from-store.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^true$","config.enableAlias","./alias-with-priority.nix"]},"verdict":"PASS"}
@@ -407,4 +407,4 @@
 {"key":{"kind":"checkConfigOutput","env":"ABORT_ON_WARN","argv":["^42$","config.number.int","./freeform-attrsof-either.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"STRICT_EVAL","argv":["^\\[\\{\"bar\":\\[1\\]\\}\\]$","config.nullableValue.list","./types.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"STRICT_EVAL","argv":["^\\{\"foo\":1\\}$","config.nullableValue.attrs","./types.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkExpression","env":"","argv":["./graph/test.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkExpression","env":"","argv":["./graph/test.nix"]},"verdict":"PASS"}

@@ -1416,12 +1416,8 @@ let
   # The deliberate departures, each listed under README "Known byte-mode boundaries":
   #   * `_class` is stripped and never checked — this engine has no `class` parameter, which is the
   #     reference's `class = null`.
-  #   * `disabledModules` is REFUSED BY PRESENCE, before the surplus test, in both forms — an empty
-  #     list included, which the reference accepts. This engine does not implement module removal
-  #     (deferred work, re-armed by a consumer that needs it): the modules named would stay enabled.
-  #     Refusing by presence never forces the list. The key stays in both lists so they are verbatim.
-  #     A declaration read refuses it too, so `.options`, `declaredOptions` and
-  #     `substructure.declares` refuse the empty list as well as a config read does.
+  #   * `disabledModules` is a module key in both forms, as in the reference, and never config: the
+  #     collection reads it (`removal`, beside `moduleClosure`).
   #   * THE REFUSALS FIRE ON EACH DOOR'S FIRST READ OF A MODULE, as the reference's
   #     `unifyModuleSyntax` does. Both throws live in `moduleSyntaxChecked`, in this order, and it is
   #     read at exactly two sites: `declarationStratum`'s entries and `lint`'s `rootPushed`. The first
@@ -1429,8 +1425,8 @@ let
   #     `declarationGuard` before any config, and `declaredOptions` and `substructure.declares` read it
   #     directly. So a declaration-only read refuses exactly as a config read does, and a warm trace
   #     over a refused module set refuses with it. `configOf` only classifies. A reserved name in a
-  #     scoped module (`reservedHits`) refuses after `disabledModules` and before the surplus test,
-  #     so a structured module gets the owner's text rather than the generic surplus remedy.
+  #     scoped module (`reservedHits`) refuses before the surplus test, so a structured module gets
+  #     the owner's text rather than the generic surplus remedy.
   #
   # COST. The clean path pays one call per entry: `moduleSyntaxChecked` returns the ENTRY it was handed,
   # the predicate is `?` tests written inline (not a call to `isStructured`), `e._file` and the key
@@ -1898,9 +1894,7 @@ let
     let
       m = e.content;
     in
-    if m ? disabledModules then
-      throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
-    else if e.reserved or null != null && isAttrs m && reservedHits e != [ ] then
+    if e.reserved or null != null && isAttrs m && reservedHits e != [ ] then
       throw "${e.reserved.names.${head (reservedHits e)}} (module `${e._file}')"
     else if
       m ? _type
@@ -2240,8 +2234,9 @@ let
   # importer is expanded once. So the only occurrences that can lose are keyed and path ones, and
   # the merge path spells a node key for those alone (`nodeKeyOf`, the key group of `moduleKeyOf`),
   # strictly, where a level holds one. A level with none keeps every entry. A PLAIN LIST, with no
-  # path and no module naming `imports`, `require` or `key`, is its own closure, and most trees are
-  # one (a submodule's own module and its definitions): it is collected as its entries alone.
+  # path and no module naming `imports`, `require`, `key` or `disabledModules`, is its own closure,
+  # and most trees are one (a submodule's own module and its definitions): it is collected as its
+  # entries alone. Any other list is walked, and then filtered by `removal`.
   #
   # `_file` is an INHERITED attribute along the import edge that reached the node FIRST (Knuth 1968):
   # the importer's resolved file flows down, and a node's own attribution overrides it. Precedence,
@@ -2328,17 +2323,19 @@ let
   # file, so they keep nixpkgs' rule and neither content is read; two different path files sharing an
   # in-file key, or a path sharing its key with a content module, are decided like any other pair. The key is read off the node key, because a path's content
   # need carry no `key`. Bound here, never per level: `moduleLevels` runs once per level of every tree.
+  # Every other dropped occurrence is a different module, which the reference loads before it drops it,
+  # so it is decided by `removal.walk.lost`.
   isPathModule = m0: builtins.isPath m0 || isPathString m0;
   keqOf = e: e.content.__keyEq or (e.m0.__keyEq or null);
   keyedDrop =
-    w: x:
+    specialArgs: callM: w: x:
     let
       key = builtins.substring 1 (builtins.stringLength x.k) x.k;
     in
     if isPathModule x.e.m0 && isPathModule w.e.m0 && toString x.e.m0 == toString w.e.m0 then
       false
     else if keqOf w.e == null && keqOf x.e == null then
-      false
+      removal.walk.lost specialArgs callM x.e
     else if keqOf w.e == null || keqOf x.e == null then
       throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}', and only `${
         if keqOf w.e != null then w.e._file else x.e._file
@@ -2348,13 +2345,13 @@ let
         same = (keqOf w.e).decide (keqOf w.e).subject (keqOf x.e).subject;
       in
       if same == true then
-        false
+        removal.walk.lost specialArgs callM x.e
       else if same == false then
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
   moduleLevels =
-    callM: seen: level:
+    specialArgs: callM: seen: level:
     if level == [ ] then
       [ ]
     else
@@ -2386,7 +2383,10 @@ let
                 x:
                 x.k == null
                 || (
-                  if seen ? ${x.k} || first.${x.k}.p != x.p then keyedDrop (seen.${x.k} or first.${x.k}) x else true
+                  if seen ? ${x.k} || first.${x.k}.p != x.p then
+                    keyedDrop specialArgs callM (seen.${x.k} or first.${x.k}) x
+                  else
+                    true
                 )
               ) at
             )
@@ -2394,21 +2394,264 @@ let
             level;
       in
       kept
-      ++ moduleLevels callM (if keyed then seen // first else seen) (
-        concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content)) kept
+      ++ moduleLevels specialArgs callM (if keyed then seen // first else seen) (
+        concatMap (
+          { content, ... }@e:
+          if e ? dis then
+            removal.walk.keptEntries e.dis callM e (importsOf content)
+          else
+            moduleEntries callM e (importsOf content)
+        ) kept
       );
   moduleClosure =
-    callM: mods:
+    specialArgs: callM: mods:
     let
       plain = moduleEntries callM null mods;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
-      && all (e: !(e.content ? imports || e.content ? require || e.content ? key)) plain
+      && all (
+        e: !(e.content ? imports || e.content ? require || e.content ? key || e.content ? disabledModules)
+      ) plain
     then
       plain
     else
-      moduleLevels callM { } plain;
+      removal.closure specialArgs callM plain;
+
+  # ── MODULE REMOVAL (`disabledModules`): the reference's `collectModules`, in the one collection ──────
+  # The reference loads every OCCURRENCE of the import tree (`collectStructuredModules`, no dedup),
+  # gathers every occurrence's `disabledModules`, resolves each item to a module key, and then closes
+  # the tree with each occurrence whose key is named dropped, its imports with it (`filterModules`).
+  # Here the first-occurrence walk (`moduleLevels`) is the collection, and removal is one more
+  # predicate on its levels:
+  #   - the walk's result `u` is the collection unless one of its modules states `disabledModules`;
+  #   - otherwise the occurrences are walked (`occurrences`), every one is load-checked as the
+  #     reference loads it (`checked`), the key set is gathered from all of them (`keysOf`), and the
+  #     levels are walked again over the entries whose key is not named (`keptEntries`).
+  # A LOSING occurrence that is not the same file is a different module, so the clean walk decides it
+  # in `lost`: it is load-checked with its imports, and where one of them states `disabledModules` it
+  # stays in `u`, so `u` states it and the collection is walked again, where it loses.
+  #
+  # THE NAME COMPARISON MINTS NOTHING (ADR-0034). A module's reference key is the spelling this engine
+  # already identifies it by: a path's string (its own `key` where it states one) or a set's `key` is
+  # `moduleKeyOf`'s key group with its `k` stripped, and an anonymous module is
+  # `<importer's key>:anon-<n>` (1-based, the top importer `""`), the coordinates `moduleCoords` mints
+  # from, spelled over keys rather than ids. So a name compares two spellings of one coordinate. The
+  # one point where two modules share a spelling, an explicit key written `:anon-<n>` beside anonymous
+  # module n, is one module in the reference too, and it is decided here as the reference decides it.
+  # Matching is string equality on the context-free spelling, so an item whose key is not a string
+  # names nothing (the reference's `elem 123 [ "123" ]`).
+  #
+  # The removal's entries carry `nk` (their reference key) and `dis` (the key set), so a reader that
+  # pairs the collection with the identity-keyed closure filters it by the same set (`closeKept`), and
+  # a clean collection is told apart by its head alone. ONE top-level binding (one load thunk); the
+  # first collection that walks forces its seven attributes, and the walk's own helpers are one of
+  # them (`walk`), built only where a module states `disabledModules` or loses its key.
+  removal = rec {
+    # the reference's `checkModule`, in its words
+    classOk =
+      class: e:
+      class == null
+      || (e.content._class or null) == null
+      || e.content._class == class
+      || throw "gen-merge: The module `${e._file}` (class: ${builtins.toJSON e.content._class}) cannot be imported into a module evaluation that expects class ${builtins.toJSON class}.";
+    # The collection of a module list whose top level is `plain`. Every argument of a call here is a
+    # variable, `none` and `statesNone` included, since a literal there is a thunk per call: the
+    # walk's result is the one binding the clean path pays.
+    none = { };
+    statesNone = e: !(e.content ? disabledModules);
+    closure =
+      specialArgs: callM: plain:
+      let
+        u = moduleLevels specialArgs callM none plain;
+      in
+      if all statesNone u then
+        u
+      else
+        let
+          mods = map (e: e.m0) plain;
+          occ = walk.occurrences callM (walk.occurrenceLevel callM null mods);
+          dis = walk.keysOf (specialArgs.modulesPath or "") occ;
+        in
+        builtins.seq (walk.checked specialArgs occ) (
+          moduleLevels specialArgs callM { } (walk.keptEntries dis callM null mods)
+        );
+    # Whether a collection removed anything: every module of a non-empty tree removed, or a removal's
+    # entries carrying a non-empty key set.
+    removes = flat: mods: if flat == [ ] then mods != [ ] else (head flat).dis or { } != { };
+    # The identity-keyed closure from `startSet`, filtered by the key set `flat` was collected with.
+    closeKept =
+      flat: startSet:
+      if flat == [ ] then
+        [ ]
+      else if (head flat).dis or { } == { } then
+        closeModules startSet
+      else
+        let
+          dis = (head flat).dis;
+          nk =
+            g:
+            if builtins.substring 0 1 g.key == "k" then
+              builtins.substring 1 (builtins.stringLength g.key) g.key
+            else
+              "${if g.importer.key == "" then "" else nk g.importer}:anon-${toString (g.i + 1)}";
+          keep = filter (g: !(dis ? ${nk g}));
+        in
+        builtins.genericClosure {
+          startSet = keep startSet;
+          operator = g: keep g.next;
+        };
+    # The removal's own walk, read only where a module states `disabledModules` or loses its key to a
+    # different module: one attribute, so a clean collection builds none of it.
+    walk = rec {
+      # an item's key, the reference's `isDisabled`'s `moduleKey`, verbatim
+      disabledKeyOf =
+        modulesPath: file: m:
+        if builtins.isString m then
+          (if builtins.substring 0 1 m == "/" then m else toString modulesPath + "/" + m)
+        else if isConvertible m then
+          (
+            if m ? key && m.key != toString m then
+              throw "gen-merge: Module `${file}` contains a disabledModules item that is an attribute set that can be converted to a string (${toString m}) but also has a `.key` attribute (${m.key}) with a different value. This makes it ambiguous which module should be disabled."
+            else
+              toString m
+          )
+        else if isAttrs m && m ? key then
+          m.key
+        else if isAttrs m then
+          throw "gen-merge: Module `${file}` contains a disabledModules item that is an attribute set, presumably a module, that does not have a `key` attribute. This means that the module system doesn't have any means to identify the module that should be disabled. Make sure that you've put the correct value in disabledModules: a string path relative to modulesPath, a path value, or an attribute set with a `key` attribute."
+        else
+          throw "gen-merge: Each disabledModules item must be a path, string, or a attribute set with a key attribute, or a value supported by toString. However, one of the disabledModules items in `${file}` is none of that, but is of type ${builtins.typeOf m}.";
+      # the reference's `isConvertibleWithToString`
+      isConvertible =
+        x:
+        builtins.isString x
+        || builtins.isPath x
+        || (isAttrs x && (x ? __toString || x ? outPath))
+        || builtins.elem (builtins.typeOf x) [
+          "null"
+          "int"
+          "float"
+          "bool"
+        ]
+        || (isList x && all isConvertible x);
+      # The key set the occurrences name, `modulesPath` resolving a relative string.
+      keysOf =
+        modulesPath: occ:
+        listToAttrs (
+          concatMap (
+            e:
+            if e.content ? disabledModules then
+              concatMap (
+                item:
+                let
+                  k = disabledKeyOf modulesPath e._file item;
+                in
+                if builtins.isString k then
+                  [
+                    {
+                      name = builtins.unsafeDiscardStringContext k;
+                      value = true;
+                    }
+                  ]
+                else
+                  [ ]
+              ) e.content.disabledModules
+            else
+              [ ]
+          ) occ
+        );
+      # THE OCCURRENCES the reference loads, from a start set: one entry per occurrence, up to two
+      # spellings of one module. An occurrence of a file is that file (`f<path>`), whose imports are the
+      # same wherever it is reached; a keyed set is one per key, importer and position
+      # (`s<key>@<importer>:<i>`), its importer spelled by node (a file, else its key, else its
+      # occurrence), so a keyed import cycle closes, where the reference overflows; an anonymous module
+      # is its importer's occurrence and its position.
+      occurrences =
+        callM: start:
+        builtins.genericClosure {
+          startSet = start;
+          operator = e: occurrenceLevel callM e (importsOf e.content);
+        };
+      occurrenceLevel =
+        callM: importer: mods:
+        let
+          ik = if importer == null then "" else importer.key;
+          node =
+            if importer == null then
+              ""
+            else if isPathModule importer.m0 then
+              importer.key
+            else if isAttrs importer.content && importer.content ? key then
+              "s" + builtins.unsafeDiscardStringContext (toString importer.content.key)
+            else
+              importer.key;
+        in
+        prelude.imap0 (
+          i: e:
+          e
+          // {
+            key =
+              if isPathModule e.m0 then
+                "f" + builtins.unsafeDiscardStringContext (toString e.m0)
+              else if isAttrs e.content && e.content ? key then
+                "s" + builtins.unsafeDiscardStringContext (toString e.content.key) + "@${node}:${toString i}"
+              else
+                "a${ik}:${toString i}";
+          }
+        ) (moduleEntries callM importer mods);
+      # The reference's load-time checks over occurrences: `unifyModuleSyntax`'s (`moduleSyntaxChecked`)
+      # and `checkModule`'s class, the class read as the module argument `_class` the guard supplies.
+      checked =
+        specialArgs: occ:
+        all (e: isAttrs (moduleSyntaxChecked e) && classOk (specialArgs._class or null) e) occ;
+      # A losing occurrence `e` of the clean walk: loaded with its imports, and kept where one of them
+      # states `disabledModules` (see above). The removal's walk (whose entries carry `dis`) has loaded
+      # every occurrence already, and drops it.
+      lost =
+        specialArgs: callM: e:
+        if e ? dis then
+          false
+        else
+          let
+            occ = occurrences callM [ (e // { key = "l"; }) ];
+          in
+          builtins.seq (checked specialArgs occ) (any (o: o.content ? disabledModules) occ);
+      # An entry's reference key, its importer's given (`""` at the top).
+      nixKeyOf =
+        pk: i: e:
+        if isPathModule e.m0 then
+          builtins.unsafeDiscardStringContext (toString (e.content.key or e.m0))
+        else if isAttrs e.content && e.content ? key then
+          builtins.unsafeDiscardStringContext (toString e.content.key)
+        else
+          "${pk}:anon-${toString (i + 1)}";
+      # `moduleEntries`, without the entries whose key `dis` names.
+      keptEntries =
+        dis: callM: importer: mods:
+        let
+          pk = if importer == null then "" else importer.nk;
+        in
+        concatLists (
+          prelude.imap0 (
+            i: e:
+            let
+              nk = nixKeyOf pk i e;
+            in
+            if dis ? ${nk} then [ ] else [ (e // { inherit nk dis; }) ]
+          ) (moduleEntries callM importer mods)
+        );
+      # The key set an evaluation removed by, off its collection, its modules and its arguments.
+      keysOfTree =
+        specialArgs: callM: flat: mods:
+        if flat != [ ] then
+          (head flat).dis or { }
+        else if mods == [ ] then
+          { }
+        else
+          keysOf (specialArgs.modulesPath or "") (occurrences callM (occurrenceLevel callM null mods));
+    };
+  };
   # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
   srcClassOf = e: e.srcClass or (classifyModule e.m0);
 
@@ -2459,7 +2702,7 @@ let
   moduleFamily =
     treeId: defIndex: flat: top:
     let
-      graph = alignedGraph "the module family of `${treeId}'" flat (closeModules top.roots);
+      graph = alignedGraph "the module family of `${treeId}'" flat (removal.closeKept flat top.roots);
       n = length flat;
       indexed = prelude.genList (
         i:
@@ -2638,12 +2881,9 @@ let
   # module invisibly to the footprint — the same failure shape). Each footprint record keeps a `reason`
   # for the decision trace (spec §4).
   #
-  # `disabledRefusal` IS DEFENCE ONLY while module removal is refused: `moduleSyntaxChecked` refuses
-  # any entry carrying `disabledModules` by presence, and `flat` is forced through `declarationGuard`
-  # first, so this refusal is unreachable through `evalModuleTree` (a warm eval over such an edit
-  # refuses its trace and its `.config` alike). It is kept because it becomes live again,
-  # unchanged, the moment module removal is implemented, and the unit cells that build `flat` by hand
-  # still reach it.
+  # An evaluation whose `disabledModules` name any module is declined before this is consulted
+  # (`removal.removes`, at `warmActive`), base or edit, so through `evalModuleTree` this refusal is
+  # reached by an edited list that names nothing (empty, or no item a string).
   warmDecide =
     {
       flat,
@@ -4865,7 +5105,7 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = moduleClosure (m: m) modules;
+        flat = moduleClosure specialArgs (m: m) modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -4987,7 +5227,7 @@ let
           else
             notAModule m;
 
-        flat = moduleClosure callD modules;
+        flat = moduleClosure specialArgs callD modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5352,7 +5592,7 @@ let
             else
               tree ++ [ { module = i; } ];
           graph = alignedGraph "the declaration anchors" flat (
-            closeModules (moduleTop r._callM r._modList).roots
+            removal.closeKept flat (moduleTop r._callM r._modList).roots
           );
           anch =
             g:
@@ -5367,11 +5607,13 @@ let
                 g.i
               ];
           # The closure keeps every unkeyed top-level module, in order, ahead of every import
-          # (`moduleLevels`), so where no top-level module is keyed a top-level module's anchor is read
-          # off its index, with no closure walk.
-          topPlain = all (e: nodeKeyOf e == null) (
-            prelude.genList (builtins.elemAt flat) (if nTop < nFlat then nTop else nFlat)
-          );
+          # (`moduleLevels`), so where no top-level module is keyed and none is removed a top-level
+          # module's anchor is read off its index, with no closure walk.
+          topPlain =
+            !(removal.removes flat r._modList)
+            && all (e: nodeKeyOf e == null) (
+              prelude.genList (builtins.elemAt flat) (if nTop < nFlat then nTop else nFlat)
+            );
         in
         mi:
         if mi == null then
@@ -5853,7 +6095,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (moduleClosure callM modList)
+                  builtins.seq declarationGuard (moduleClosure specialArgs callM modList)
               )
             else
               let
@@ -5861,18 +6103,11 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (moduleClosure callM modList);
+                    builtins.seq declarationGuard (moduleClosure specialArgs callM modList);
               in
-              # nixpkgs' `checkModule`, in its words
-              builtins.seq (all (
-                e:
-                let
-                  c = e.content._class or null;
-                in
-                c == null
-                || c == class
-                || throw "gen-merge: The module `${e._file}` (class: ${builtins.toJSON c}) cannot be imported into a module evaluation that expects class ${builtins.toJSON class}."
-              ) f) f;
+              # nixpkgs' `checkModule` over the collection; a removed or losing module is checked where
+              # the guard collects (`removal.walk.checked`)
+              builtins.seq (all (removal.classOk class) f) f;
 
           # Option DECLARATIONS merge across modules into a nested TREE (nixpkgs mergeOptionDecls):
           # a second module's `options.a.b.d` recurses beside the first's `options.a.b.c` instead of
@@ -5925,9 +6160,11 @@ let
           # (`warmActive` short-circuits on the null check), so no classification/footprint runs. (An
           # explicit read of `.warmDecision.modules` on a cold result DOES force classification — the
           # trace is data on demand, consistent with the `reused`/`remerged` cost note below.) Warm is
-          # REFUSED (cold fallback) when an edited entry carries `disabledModules` (§2 guard) — defence
-          # only; unreachable through `evalModuleTree` while module removal is refused
-          # (`moduleSyntaxChecked`).
+          # REFUSED (cold fallback) when the evaluation's `disabledModules` name any module, base or
+          # edit (`removal.removes`): a removal moves which base nodes exist, which the footprint
+          # cannot see, and the origin split reads the collection's own filtered closure
+          # (`removal.closeKept`). It is also refused when an edited entry carries `disabledModules`
+          # (§2 guard).
           # Warm is also REFUSED (cold fallback, reason stated) when `warmFrom` was evaluated under a
           # different effective strictness, or records none (a result from an evaluator that predates
           # `warmDecision.strict` reads `null`). Every reused leaf is `getAttrByPath` of the prior's
@@ -5944,16 +6181,16 @@ let
               baseLen = length modList - length editedModules;
               # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
               top = moduleTop callM modList;
-              graph = closeModules top.roots;
+              graph = removal.closeKept flat top.roots;
               roots = top.roots;
               aligned = alignedGraph "the warm origin split" flat graph;
               keyAt = i: (builtins.elemAt aligned i).key;
-              editKeys = map (e: e.key) (closeModules (drop baseLen roots));
+              editKeys = map (e: e.key) (removal.closeKept flat (drop baseLen roots));
               baseKeys = listToAttrs (
                 map (e: {
                   name = e.key;
                   value = true;
-                }) (closeModules (take baseLen roots))
+                }) (removal.closeKept flat (take baseLen roots))
               );
               editSet = listToAttrs (
                 map (k: {
@@ -6001,6 +6238,7 @@ let
           warmActive =
             warmFrom != null
             && warmFrom.warmDecision.strict or null == strict
+            && !(removal.removes flat modList)
             && !decision.disabledRefusal
             && !origin.collision;
           warmCtx =
@@ -6967,7 +7205,7 @@ let
           # (classification only);
           # `reused`/`remerged` are O(declared-locs) SPINE-forcing when read (they enumerate the loc
           # partition — never leaf values). Cold (`warmFrom == null`, a prior whose `strict` is not
-          # this evaluation's, or a disabledModules refusal) ⇒ nothing spliced ⇒ `reused = [ ]`,
+          # this evaluation's, a removal, or a disabledModules refusal) ⇒ nothing spliced ⇒ `reused = [ ]`,
           # `remerged = { }`, with the cold `reason` stated. `strict` is the door-keyed strictness this
           # result was evaluated under, which the next warm admission reads (the effective check can differ).
           # `uncheckedConfig` is the config before its refusal, which a warm evaluation reads for a reused
@@ -7003,6 +7241,8 @@ let
                   "no warmFrom (cold)"
                 else if warmFrom.warmDecision.strict or null != strict then
                   "check differs from warmFrom's (warm refused)"
+                else if removal.removes flat modList then
+                  "disabledModules names a module to remove (warm refused)"
                 else if decision.disabledRefusal then
                   "disabledModules on an edited module (warm refused)"
                 else if origin.collision then
@@ -7473,10 +7713,18 @@ let
         extendModules = result.moduleConfig._module.args.extendModules;
         # nixpkgs' `graph`: `toGraph` over `collectStructuredModules`, the import TREE (one node per occurrence), over
         # this tree's identity-keyed import levels. key: a path's string, else `key`, else `<parent>:anon-<n>`; file:
-        # `_file`, else the path, else the parent's. A set stating `disabledModules` is refused by the declaration guard
-        # before this is read, so `disabled` is `false`.
+        # `_file`, else the path, else the parent's. `disabled`: the key is in the set the collection removed by
+        # (`removal.walk.keysOfTree`), bound once, and a tree that removed nothing is built with `false`.
         graph =
           let
+            dis = removal.walk.keysOfTree specialArgs result._callM result._flat modList;
+            mark =
+              n:
+              n
+              // {
+                disabled = dis ? ${builtins.unsafeDiscardStringContext n.key};
+                imports = map mark n.imports;
+              };
             go =
               parent: n:
               let
@@ -7494,10 +7742,12 @@ let
               };
           in
           builtins.seq result._flat (
-            map (go {
-              file = "<unknown-file>";
-              key = "";
-            }) (moduleTop result._callM modList).roots
+            (if dis == { } then (x: x) else map mark) (
+              map (go {
+                file = "<unknown-file>";
+                key = "";
+              }) (moduleTop result._callM modList).roots
+            )
           );
         options =
           let
