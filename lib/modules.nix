@@ -378,7 +378,20 @@ let
         v
         // {
           # nixpkgs' `fixupOptionType`: a declaration stating no type is `unspecified` (den-hoag-pm14k)
-          type = v.type or strategies.unspecified;
+          # and, declared once with a module set, that set located at the declaring file, as nixpkgs'
+          # `mergeOptionDecls` hands every declaration's sub-modules to `substSubModules`, and as a
+          # redeclared option's is (`fixupModuleSets`)
+          type =
+            if !(v ? type) then
+              strategies.unspecified
+            else if length sites == 1 && (interface.importedSubstructure v.type).modules != null then
+              fixupModuleSets {
+                upTo.merged = v.type;
+                declaredTypes = [ v.type ];
+                prior = sites;
+              }
+            else
+              v.type;
           loc = lk;
           declarations = map (s: s.file) sites;
           __toString = _: showOption lk;
