@@ -270,7 +270,7 @@ in
   result.config                     # ⇒ { name = "pinned"; }
 ```
 
-`evalModuleTree { specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? [] } modules → { config; options; type; provenance; undeclared; deprecations }`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
+`evalModuleTree { specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; class ? null } modules → { config; options; type; provenance; undeclared; deprecations; _type; class; extendModules; graph }`. `class` is nixpkgs' nominal module class: every module reads it as its `_class` argument, and a requested class refuses a collected module stating another. `extendModules` re-evaluates with modules appended (also a module argument), `graph` is nixpkgs' import tree, and `_type` is `"configuration"`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
 recursion) — and it is an option type named `submodule`, which a real nixpkgs `lib.evalModules`
 mounts (see below);
