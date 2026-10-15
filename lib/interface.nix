@@ -846,6 +846,37 @@ let
           # the type the option's fold folds by: a module set's root mounted as its rebuild, its stock submodules
           # guarded (`homedRootAt`, as `modules.mergeOptionWith` homes it at a declared option)
           h = homedRootAt "evalModuleTree" loc { reader = null; } t;
+          # each configuration behind the guard gen's fold puts on its value (`guardedMeta`): its `config` guarded at
+          # each option's own read, and each option serving that guarded value and, where no module set or gen
+          # record is below it, its own metadata
+          guarded =
+            m:
+            if m ? configuration then
+              m
+              // {
+                configuration = m.configuration // {
+                  config = guardedConfig (m.configuration.options or { }) m.configuration.config;
+                  options = options m.configuration.options;
+                };
+              }
+            else if m ? attrs then
+              m // { attrs = builtins.mapAttrs (_: guarded) m.attrs; }
+            else if m ? list then
+              m // { list = map guarded m.list; }
+            else if m ? attrList then
+              m // { attrList = map guarded m.attrList; }
+            else
+              m;
+          options =
+            o:
+            if o._type or null == "option" then
+              o
+              // {
+                value = guardedAt o o.value;
+                valueMeta = foreignValueMeta false o.type o.loc o.definitionsWithLocations;
+              }
+            else
+              builtins.mapAttrs (n: if n == "_module" then (x: x) else options) o;
         in
         if
           sets
@@ -865,7 +896,7 @@ let
             if r.headError != null then
               throw "gen-merge: a definition for option `${showOption l}' is not of type `${describe h}'. TypeError: ${r.headError.message}"
             else
-              r.valueMeta
+              guarded r.valueMeta
           ) loc defs
           // {
             _internal = {
@@ -1956,44 +1987,8 @@ let
             args:
             let
               v = t.merge.v2 args;
-              value = guardedConfig (v.valueMeta.configuration.options or { }) v.value;
             in
-            v
-            // {
-              inherit value;
-              # its metadata behind the same guard: a definition its merge rejects refuses the configuration, whose
-              # `config` is the guarded value and whose options each serve their guarded value, and metadata only
-              # where no module set or gen record is below (`foreignValueMeta`)
-              valueMeta =
-                let
-                  c = v.valueMeta.configuration;
-                  opts =
-                    o:
-                    if o._type or null == "option" then
-                      o
-                      // {
-                        value = guardedAt o o.value;
-                        valueMeta = foreignValueMeta false o.type o.loc o.definitionsWithLocations;
-                      }
-                    else
-                      builtins.mapAttrs (n: if n == "_module" then (x: x) else opts) o;
-                in
-                if !(v.valueMeta ? configuration) then
-                  v.valueMeta
-                else
-                  v.valueMeta
-                  // {
-                    configuration =
-                      if v.headError != null then
-                        throw "gen-merge: the option `${showOption args.loc}' does not answer `valueMeta': a definition is not of type `${describe t}'. TypeError: ${v.headError.message}"
-                      else
-                        c
-                        // {
-                          config = value;
-                          options = opts c.options;
-                        };
-                  };
-            };
+            v // { value = guardedConfig (v.valueMeta.configuration.options or { }) v.value; };
         };
       };
   # an evaluated configuration's value, each option guarded at its own read; `_module` and a freeform value are
