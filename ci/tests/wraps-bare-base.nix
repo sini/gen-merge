@@ -18,7 +18,14 @@ let
     // {
       name = "int";
       description = "an integer above 3";
-      verify = v: if !(base.check v) then "not an int" else if v > 3 then null else "must be above 3";
+      verify =
+        v:
+        if !(base.check v) then
+          "not an int"
+        else if v > 3 then
+          null
+        else
+          "must be above 3";
       functor = {
         name = "above3<int>";
         type = _: wrapper;
@@ -47,7 +54,11 @@ let
       eval = mods: nixpkgsLib.evalModules { modules = mods; };
     };
   };
-  declare = e: map (ty: { options.x = engines.${e}.mkOption { type = ty; }; });
+  declare =
+    e:
+    map (ty: {
+      options.x = engines.${e}.mkOption { type = ty; };
+    });
   attempt =
     x:
     let
@@ -67,12 +78,24 @@ let
   # both engines, both orders
   orders = f: a: b: {
     gen = [
-      (f "gen" [ a b ])
-      (f "gen" [ b a ])
+      (f "gen" [
+        a
+        b
+      ])
+      (f "gen" [
+        b
+        a
+      ])
     ];
     nixpkgs = [
-      (f "nixpkgs" [ a b ])
-      (f "nixpkgs" [ b a ])
+      (f "nixpkgs" [
+        a
+        b
+      ])
+      (f "nixpkgs" [
+        b
+        a
+      ])
     ];
   };
   both = v: {
@@ -88,22 +111,24 @@ let
   constructor = e: ts: attempt (engines.${e}.eval (declare e ts)).options.x.type.functor.name;
 in
 {
-  test-a-wrapper-beside-its-bare-base-is-the-wrapper = {
-    expr = orders constructor wrapper base;
-    expected = both "above3<int>";
-  };
-  test-a-wrapper-beside-its-bare-base-serves-what-both-accept-and-refuses-what-it-rejects = {
-    expr = orders values wrapper base;
-    expected = both "4,5,R";
-  };
-  # the deferral meets the wrapper's answer with the copy's own declaration, so the copy's `verify` is kept
-  test-a-re-doored-copy-of-the-wrapper-keeps-its-own-verify-beside-the-bare-base = {
-    expr = orders values copy base;
-    expected = both "4,R,R";
-  };
-  # a pair with no wrapper is decided as before
-  test-control-int-beside-int-is-unchanged = {
-    expr = orders values base base;
-    expected = both "4,5,3";
+  flake.tests.wraps-bare-base = {
+    test-a-wrapper-beside-its-bare-base-is-the-wrapper = {
+      expr = orders constructor wrapper base;
+      expected = both "above3<int>";
+    };
+    test-a-wrapper-beside-its-bare-base-serves-what-both-accept-and-refuses-what-it-rejects = {
+      expr = orders values wrapper base;
+      expected = both "4,5,R";
+    };
+    # the deferral meets the wrapper's answer with the copy's own declaration, so the copy's `verify` is kept
+    test-a-re-doored-copy-of-the-wrapper-keeps-its-own-verify-beside-the-bare-base = {
+      expr = orders values copy base;
+      expected = both "4,R,R";
+    };
+    # a pair with no wrapper is decided as before
+    test-control-int-beside-int-is-unchanged = {
+      expr = orders values base base;
+      expected = both "4,5,3";
+    };
   };
 }
