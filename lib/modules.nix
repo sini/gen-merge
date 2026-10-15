@@ -4658,6 +4658,7 @@ let
       prefix,
       carried,
       strict,
+      sitesAt,
       leaves,
       normalize,
       freeform,
@@ -4667,7 +4668,21 @@ let
       optionGroup = l: {
         name = builtins.toJSON l.path;
         loc = prefix ++ l.path;
-        type = l.opt.type or null;
+        # PROTO W: a once-declared gen module set, located at its declaring file
+        type =
+          if
+            (l.opt.type or null) ? substructure
+            && !(l.opt.type ? substructure.mount)
+            && l.opt.type.substructure.modules != null
+            && length (sitesAt (prefix ++ l.path)) == 1
+          then
+            fixupModuleSets {
+              upTo.merged = l.opt.type;
+              declaredTypes = [ l.opt.type ];
+              prior = sitesAt (prefix ++ l.path);
+            }
+          else
+            l.opt.type or null;
         hostMode = { inherit carried strict; };
         # ONE DISCHARGE (den-hoag-i4c0n C1; item 2, gate P2): the fold's own `typeDefs`, read off the
         # option's merge record. The first arm is where forcing `m` would meet `mergeOptionWith`'s
@@ -7792,7 +7807,7 @@ let
           _nested =
             if knot.mints then
               nestedGroups {
-                inherit prefix carried strict;
+                inherit prefix carried strict sitesAt;
                 # A child's own run is on its position record; a root counts `0` (item 4).
                 emptyRun = if knot.inner then (self.getHostAt "positions").emptyRun else 0;
                 leaves = realizedLeaves realized;
