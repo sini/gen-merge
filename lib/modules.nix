@@ -378,7 +378,29 @@ let
         v
         // {
           # nixpkgs' `fixupOptionType`: a declaration stating no type is `unspecified` (den-hoag-pm14k)
-          type = v.type or strategies.unspecified;
+          # and, declared once with a module set, that set located at the declaring file, as nixpkgs'
+          # `mergeOptionDecls` hands every declaration's sub-modules to `substSubModules`, and as a
+          # redeclared option's is (`fixupModuleSets`)
+          type =
+            if !(v ? type) then
+              strategies.unspecified
+            # presence first, so a gen type pays no call
+            else if
+              (
+                if v.type ? substructure then
+                  v.type.substructure.modules
+                else
+                  (interface.importedSubstructure v.type).modules
+              ) != null
+              && length sites == 1
+            then
+              fixupModuleSets {
+                upTo.merged = v.type;
+                declaredTypes = [ v.type ];
+                prior = sites;
+              }
+            else
+              v.type;
           loc = lk;
           declarations = map (s: s.file) sites;
           __toString = _: showOption lk;
@@ -3393,11 +3415,53 @@ let
         w:
         if w ? orderStated then
           {
-            inherit (w) file value;
+            # one thunk, as `inherit (w) file` was: the sentinel test is inside it
+            file =
+              if w.file == "<default>" then
+                (
+                  let
+                    own =
+                      length loc > length mode.prefix + 1
+                      && prelude.elemAt loc (length mode.prefix) == "_module"
+                      && moduleOwnDecls ? ${prelude.elemAt loc (length mode.prefix + 1)};
+                    ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                  in
+                  if own then
+                    moduleOwn.file
+                  else if ss == [ ] then
+                    "<default>"
+                  else
+                    (prelude.last ss).file
+                )
+              else
+                w.file;
+            inherit (w) value;
             priority = w.orderPriority;
           }
         else
-          { inherit (w) file value; }
+          {
+            # one thunk, as `inherit (w) file` was: the sentinel test is inside it
+            file =
+              if w.file == "<default>" then
+                (
+                  let
+                    own =
+                      length loc > length mode.prefix + 1
+                      && prelude.elemAt loc (length mode.prefix) == "_module"
+                      && moduleOwnDecls ? ${prelude.elemAt loc (length mode.prefix + 1)};
+                    ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                  in
+                  if own then
+                    moduleOwn.file
+                  else if ss == [ ] then
+                    "<default>"
+                  else
+                    (prelude.last ss).file
+                )
+              else
+                w.file;
+            inherit (w) value;
+          }
       ) sorted;
       # The fold dispatch, exactly as the value path reads it above — the twin stays parallel —
       # except where a report is carried and the type's fold states one (a nesting seam's
@@ -3432,12 +3496,67 @@ let
         # its own value under both folds, so the single-definition case stays on the leaf fold's
         # fast path and pays one length test.
         else if type == null && length sorted > 1 then
-          mergeUntyped loc sorted
+          mergeUntyped loc (
+            map (
+              d:
+              if d.file == "<default>" then
+                d
+                // {
+                  file = (
+                    let
+                      own =
+                        length loc > length mode.prefix + 1
+                        && prelude.elemAt loc (length mode.prefix) == "_module"
+                        && moduleOwnDecls ? ${prelude.elemAt loc (length mode.prefix + 1)};
+                      ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                    in
+                    if own then
+                      moduleOwn.file
+                    else if ss == [ ] then
+                      "<default>"
+                    else
+                      (prelude.last ss).file
+                  );
+                }
+              else
+                d
+            ) sorted
+          )
         # A declared type that brought no fold and no `verify` is where a value that is not a type
         # lands, and the leaf fold would return the definition unchecked. It is judged HERE, on this
         # arm alone: the gen-typed path has already answered, and pays nothing for the question.
+        # One winner is its own value (`mergeLeaf`'s first arm, answered here so the sole winner pays no
+        # call); several reach the leaf fold's agreement test, whose conflict names them.
         else if type == null || type ? verify || interface.typeDefect type == null then
-          mergeLeaf loc sorted
+          if length sorted == 1 then
+            (head sorted).value
+          else
+            mergeLeaf loc (
+              map (
+                d:
+                if d.file == "<default>" then
+                  d
+                  // {
+                    file = (
+                      let
+                        own =
+                          length loc > length mode.prefix + 1
+                          && prelude.elemAt loc (length mode.prefix) == "_module"
+                          && moduleOwnDecls ? ${prelude.elemAt loc (length mode.prefix + 1)};
+                        ss = if !own && mode ? sitesAt then mode.sitesAt loc else [ ];
+                      in
+                      if own then
+                        moduleOwn.file
+                      else if ss == [ ] then
+                        "<default>"
+                      else
+                        (prelude.last ss).file
+                    );
+                  }
+                else
+                  d
+              ) sorted
+            )
         else
           throw (declaredTypeRefusal loc type);
       checked =
@@ -4861,6 +4980,13 @@ let
   # that order, a nested tree's module reversal included. The one place the default joins a definition
   # list: `mergeOptionWith`'s fold, `optionGroup`'s `definitions` and `declAtsOfGroup`'s addresses, so
   # the addresses stay aligned with the definitions they name.
+  # The declared default's definition as a reader sees it: named by the file that declared the option,
+  # nixpkgs' `head opt.declarations` (`evalOptionValue`), the same file the served record's
+  # `definitionsWithLocations` names (`serveOptions`). Inside the fold it is the `<default>` sentinel,
+  # which provenance's `defaulted` reads; it is renamed where definitions leave the fold for a reader
+  # that shows them. An evaluation states its `sitesAt` in `mode`; the public `mergeOption` has no
+  # declaring module, and keeps the sentinel. The engine's own `_module.*` keys are declared by no
+  # module's site, and name `moduleOwn.file`, as nixpkgs names its `internalModule`.
   withDeclaredDefault =
     opt: defs:
     if opt ? default then
@@ -6308,7 +6434,7 @@ let
                   prefix
                   ;
                 reader = self;
-                inherit result;
+                inherit result sitesAt;
               };
           # Reuse the WHOLE prev freeform layer iff the coarse flag holds (§2, soundness-forced: a
           # single edited freeformType flips every freeform loc). Else re-merge cold. Byte-identical

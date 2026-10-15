@@ -2474,6 +2474,109 @@ in
       };
     };
 
+    # ── the declared default's definition NAMES ITS DECLARING FILE at the folds' refusals (den-hoag-5q139,
+    # den-hoag-fhggb; nixpkgs' `evalOptionValue`, `head opt.declarations`) ─────────────────────────────
+    # A default beside an `mkOptionDefault` of another value is a conflict, and its text names the file
+    # that declared the default, never the engine's `<default>` sentinel: the untyped fold, the leaf fold
+    # of a gen type that states `verify`, and the engine's own `_module.check`, which names
+    # `lib/modules.nix` as nixpkgs names its `internalModule`, redeclared or not. The type's own fold is
+    # ci/tests/declared-file.nix's. RED (each site's rename removed): `In `<default>''.
+    flake.testsError.declared-default-file =
+      let
+        conflict =
+          type:
+          realize {
+            modules = [
+              {
+                _file = "decl.nix";
+                options.o = gm.mkOption ({ default = 1; } // type);
+              }
+              {
+                _file = "def.nix";
+                o = gm.mkOptionDefault 2;
+              }
+            ];
+          };
+        check =
+          ms:
+          builtins.deepSeq
+            (evalRequest {
+              modules = ms ++ [
+                {
+                  _file = "mc.nix";
+                  config._module.check = gm.mkOptionDefault false;
+                }
+              ];
+            }).config._module.check
+            null;
+      in
+      {
+        test-untyped-default-conflict-names-the-declaring-file = {
+          expr = conflict { };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `decl\\.nix': 1\n- In `def\\.nix': 2$";
+          };
+        };
+        test-verify-leaf-default-conflict-names-the-declaring-file = {
+          expr = conflict {
+            type = genMergeVocab.defineType {
+              name = "gauge";
+              verify = v: if builtins.isInt v then null else "expected an int";
+            };
+          };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `o' has conflicting definitions:\n- In `decl\\.nix': 1\n- In `def\\.nix': 2$";
+          };
+        };
+        test-module-check-default-conflict-names-lib-modules = {
+          expr = check [ ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `_module\\.check' has conflicting definitions:\n- In `lib/modules\\.nix': true\n- In `mc\\.nix': false$";
+          };
+        };
+        # A module's own `_module.<k>` is declared by that module, not the engine: its default names the module's
+        # file, as nixpkgs names it. RED (the exclusion widened to every `_module.*` loc): `In `lib/modules.nix''.
+        test-user-module-option-default-conflict-names-the-declaring-file = {
+          expr =
+            builtins.deepSeq
+              (evalRequest {
+                modules = [
+                  {
+                    _file = "decl.nix";
+                    options._module.foo = nixpkgsLib.mkOption {
+                      type = nixpkgsLib.types.int;
+                      default = 1;
+                    };
+                  }
+                  {
+                    _file = "def.nix";
+                    config._module.foo = gm.mkOptionDefault 2;
+                  }
+                ];
+              }).options._module.foo.value
+              null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^The option `_module\\.foo' has conflicting definition values:\n- In `decl\\.nix': 1\n- In `def\\.nix': 2\nUse `lib\\.mkForce value` or `lib\\.mkDefault value` to change the priority on any of these definitions\\.\n?$";
+          };
+        };
+        test-redeclared-module-check-default-conflict-names-lib-modules = {
+          expr = check [
+            {
+              _file = "E";
+              options._module.check = nixpkgsLib.mkOption { type = nixpkgsLib.types.bool; };
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `_module\\.check' has conflicting definitions:\n- In `lib/modules\\.nix': true\n- In `mc\\.nix': false$";
+          };
+        };
+      };
+
     # A UNION merges every definition through a member that accepts it, or refuses by name. These
     # cells are the only assertion available for that refusal: the shape it replaces was an
     # INTERPRETER type error — `expected a list but found a string: "b"` — which escapes
