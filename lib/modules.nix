@@ -3175,11 +3175,17 @@ let
         w:
         if w ? orderStated then
           {
-            inherit (w) file value;
+            # one thunk, as `inherit (w) file` was: the sentinel test is inside it
+            file = if w.file == "<default>" then (defaultNamed mode loc w).file else w.file;
+            inherit (w) value;
             priority = w.orderPriority;
           }
         else
-          { inherit (w) file value; }
+          {
+            # one thunk, as `inherit (w) file` was: the sentinel test is inside it
+            file = if w.file == "<default>" then (defaultNamed mode loc w).file else w.file;
+            inherit (w) value;
+          }
       ) sorted;
       # The fold dispatch, exactly as the value path reads it above — the twin stays parallel —
       # except where a report is carried and the type's fold states one (a nesting seam's
@@ -3214,12 +3220,17 @@ let
         # its own value under both folds, so the single-definition case stays on the leaf fold's
         # fast path and pays one length test.
         else if type == null && length sorted > 1 then
-          mergeUntyped loc sorted
+          mergeUntyped loc (map (defaultNamed mode loc) sorted)
         # A declared type that brought no fold and no `verify` is where a value that is not a type
         # lands, and the leaf fold would return the definition unchecked. It is judged HERE, on this
         # arm alone: the gen-typed path has already answered, and pays nothing for the question.
+        # One winner is its own value (`mergeLeaf`'s first arm, answered here so the sole winner pays no
+        # call); several reach the leaf fold's agreement test, whose conflict names them.
         else if type == null || type ? verify || interface.typeDefect type == null then
-          mergeLeaf loc sorted
+          if length sorted == 1 then
+            (head sorted).value
+          else
+            mergeLeaf loc (map (defaultNamed mode loc) sorted)
         else
           throw (declaredTypeRefusal loc type);
       checked =
@@ -4611,6 +4622,22 @@ let
   # that order, a nested tree's module reversal included. The one place the default joins a definition
   # list: `mergeOptionWith`'s fold, `optionGroup`'s `definitions` and `declAtsOfGroup`'s addresses, so
   # the addresses stay aligned with the definitions they name.
+  # The declared default's definition as a reader sees it: named by the file that declared the option,
+  # nixpkgs' `head opt.declarations` (`evalOptionValue`), the same file the served record's
+  # `definitionsWithLocations` names (`serveOptions`). Inside the fold it is the `<default>` sentinel,
+  # which provenance's `defaulted` reads; it is renamed where definitions leave the fold for a reader
+  # that shows them. An evaluation states its `sitesAt` in `mode`; the public `mergeOption` has no
+  # declaring module, and keeps the sentinel.
+  defaultNamed =
+    mode: loc: d:
+    let
+      # `_module.*` is declared first by the engine itself (nixpkgs' `internalModule`), which no
+      # entry of `sitesAt` is: its default is named where its record is built (`moduleOwn.file`)
+      own = length loc > length mode.prefix && prelude.elemAt loc (length mode.prefix) == "_module";
+      sites = if d.file == "<default>" && mode ? sitesAt && !own then mode.sitesAt loc else [ ];
+    in
+    if sites == [ ] then d else d // { file = (prelude.last sites).file; };
+
   withDeclaredDefault =
     opt: defs:
     if opt ? default then
@@ -6014,7 +6041,7 @@ let
                   prefix
                   ;
                 reader = self;
-                inherit result;
+                inherit result sitesAt;
               };
           # Reuse the WHOLE prev freeform layer iff the coarse flag holds (§2, soundness-forced: a
           # single edited freeformType flips every freeform loc). Else re-merge cold. Byte-identical
