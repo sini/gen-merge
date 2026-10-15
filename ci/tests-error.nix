@@ -1308,7 +1308,7 @@ in
         };
         refusal = loc: {
           type = "ThrownError";
-          msg = "^gen-merge: the option `${loc}' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations$";
+          msg = "^gen-merge: the option `${loc}' does not answer `valueMeta': its type `[^']*' is gen-merge's own, which states no v2-merge metadata$";
         };
       in
       {
@@ -3343,7 +3343,7 @@ in
             ]).a.valueMeta;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `x.a' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations$";
+            msg = "^gen-merge: the option `x.a' does not answer `valueMeta': its type `[^']*' is gen-merge's own, which states no v2-merge metadata$";
           };
         };
         test-every-evaluated-option-key-is-present = {

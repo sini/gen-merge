@@ -402,7 +402,9 @@ let
               }
           ) sites;
           options = [ ];
-          valueMeta = throw "gen-merge: the option `${showOption lk}' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations";
+          # nixpkgs' v2-merge metadata, the foreign type's own (`interface.foreignValueMeta`); a declaration
+          # stating no type has nixpkgs' `fixupOptionType` default, whose merge states no `v2`, so `{ }`
+          valueMeta = if v ? type then interface.foreignValueMeta v.type lk dwl else { };
         }
       else
         serveOptions sitesAt (rel ++ [ k ]) lk prov.${k} defs.${k} cfg.${k} v

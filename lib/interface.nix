@@ -765,6 +765,54 @@ let
     else
       r.value;
 
+  # nixpkgs' v2-merge metadata for an option of type `t` over its final definitions `defs`, as nixpkgs'
+  # `mergeDefinitions` builds it (`checkedAndMerged.valueMeta`): a v2 merge's own `valueMeta` with the type
+  # beside it under `_internal`, and `{ }` for a merge stating no `v2`. It is served only where it is a
+  # projection of the fold: a FOREIGN merge stating no `v2`, whose metadata is `{ }` whatever it folds, and a
+  # FOREIGN v2 type that `importedFold` folds by this same `merge.v2` call over these same definitions, with
+  # nothing below it that gen's fold judges beyond that call (`throughout`). An ad-hoc `check`
+  # refuses here as its fold does (`adHocFold`). Everywhere else it is refused by name (den-hoag-xroc7: open
+  # defects under ADR-0039's parity-defect rule): a record gen constructed (a completion, `__typeSelf`, a met
+  # record among them; a relation, `typeMergeRel`) states no such metadata, and below a module set or a gen
+  # record the metadata's configurations and merged values would be a second evaluation, without the checks
+  # gen's fold enforces there (a met record's, a foreign `addCheck` carried over a module set, a `verify` copy
+  # inside a stock submodule).
+  foreignValueMeta =
+    t: loc: defs:
+    let
+      # every type reachable through `nestedTypes` is foreign, states no module set and no ad-hoc `check`; a
+      # walk out of fuel answers `false`
+      throughout =
+        fuel: x:
+        isAttrs x
+        && fuel > 0
+        && !(
+          x ? __typeSelf
+          || x ? typeMergeRel
+          || x ? verify
+          || x ? carries
+          || x ? _checkWitness
+          || (x.getSubModules or null) != null
+          || adHocChecked x
+        )
+        && prelude.all (throughout (fuel - 1)) (builtins.attrValues (x.nestedTypes or { }));
+    in
+    if t ? __typeSelf || t ? typeMergeRel then
+      throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' is gen-merge's own, which states no v2-merge metadata"
+    else if !(isV2 t) then
+      { }
+    else if adHocChecked t then
+      adHocFold t loc defs
+    else if !(throughout importedTypeWalkFuel t) then
+      throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' holds a module set or a gen-merge type, whose v2-merge metadata gen-merge does not serve from the evaluation it folds"
+    else
+      (v2Result (t.merge.v2 { inherit loc defs; })).valueMeta
+      // {
+        _internal = {
+          type = t;
+        };
+      };
+
   checkedFold =
     t: fold: loc: defs:
     let
@@ -7822,6 +7870,7 @@ in
     importedDeprecation
     importedElementPrefix
     importedEmpty
+    foreignValueMeta
     importedFold
     importedHeldAt
     importedMerge
