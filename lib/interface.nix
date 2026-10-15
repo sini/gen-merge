@@ -1514,6 +1514,11 @@ let
   # that record: its constructor and parameters are the wrapped record's, its own check stays owed. Bound
   # once here, not per meet, so a meet allocates nothing for it.
   wrappedBase = t: if t ? wraps && isAttrs t.wraps then wrappedBase t.wraps else t;
+  # THE MEET OF A WRAPPER WITH ITS OWN BARE BASE IS THE WRAPPER'S TO ANSWER: `w` declares the record it `wraps`,
+  # `t` declares none and is of that record's key, so `t` is the unrefined form of `w`'s parameters and its own
+  # relation knows nothing of what `w` adds. The wrapping operand's relation is asked instead, with `t` as its
+  # partner, and it asks its base's relation for the base join (gen-schema `refined`).
+  wrapsKeyOf = w: t: w ? wraps && isAttrs w.wraps && !(t ? wraps) && keyOf (wrappedBase w) == keyOf t;
 
   importedDecidable =
     let
@@ -3093,14 +3098,21 @@ let
         else
           (
             x:
-            # an owed `verify` rides on the carried record, read on the merged value as a copy's own is
-            if !(builtins.any (o: o ? verify) owed) then
-              x
-            else
-              let
-                vf = v: builtins.foldl' (e: o: if e != null || !(o ? verify) then e else o.verify v) null owed;
-              in
-              rebuildClosed.verify top vf x
+            # THE CARRIED RECORD IS A CONSTRUCTION, minted by its constructor: the join restricted by the checks it
+            # owes is the meet (`meetOf`'s), so it is identified through the one mint over that join and those owed
+            # records, never by the mark of the join it was built from (ADR-0034's regime by constructor)
+            carriedMint (below fuel ts r) owed (
+              # an owed `verify` rides on the carried record, read on the merged value as a copy's own is
+              if !(builtins.any (o: o ? verify) owed) then
+                x
+              else
+                let
+                  vf = v: builtins.foldl' (e: o: if e != null || !(o ? verify) then e else o.verify v) null owed;
+                in
+                # read on the merged value by the record's own merge at every depth: a minted record is its own
+                # completion, so no later step reads its `verify` as one owed beside its check (`replacesVerify`)
+                rebuildClosed.verify false vf x
+            )
           )
             (
               if owedC == [ ] then
@@ -3123,6 +3135,26 @@ let
                 ) (below fuel ts r)
             );
       carryElement = carryBy false;
+      carriedMint =
+        j: os: x:
+        if !(types ? mkIdentity) then
+          x
+        else
+          let
+            s = x // {
+              inherit (ids)
+                __mint
+                __payload
+                __sealed
+                __okAt
+                ;
+              __typeSelf = _: s;
+              __witness = metWitness;
+              __stampReads = stampReads;
+            };
+            ids = metIdentity j os { carried = true; } s;
+          in
+          s;
       # `t.substSubModules m`, with an owing module-set element rebuilt by the same function, carried, and the
       # container rebuilt over it by its own constructor: one rebuild per level, as nixpkgs' forwarding does.
       # An element stating no element of its own is carried directly.
@@ -7955,7 +7987,18 @@ let
                 partner = importedPartner f;
               in
               if (f.name or null) != functor.name then
-                null
+                (
+                  if wrapsKeyOf partner exported && partner ? typeMerge then
+                    (
+                      let
+                        j = partner.typeMerge functor;
+                        d = if isAttrs f && f ? __declared then f.__declared else partner;
+                      in
+                      if j == null then null else meet false j [ exported d ] d
+                    )
+                  else
+                    null
+                )
               else if partner == null then
                 null
               # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
@@ -8067,6 +8110,7 @@ in
     replacesVerify
     departsWithinCarrier
     keyOf
+    wrapsKeyOf
     nameOf
     functorNamesOf
     moduleOwnTypeAdmits
