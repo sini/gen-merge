@@ -2683,8 +2683,14 @@ let
       # the shape `mergeOptionDecls` hands a rebuild, labelled as nixpkgs labels a module that states
       # no file
       fixed = s (
+        let
+          # the declaring file, as nixpkgs' `mergeOptionDecls` locates `opt.options`; a site stating no
+          # declarations (the public `mergeOption`, the freeform group) has none
+          ss = if site ? sitesAt then site.sitesAt loc else [ ];
+          file = if ss == [ ] then "<unknown-file>" else (head ss).file;
+        in
         map (m: {
-          _file = "<unknown-file>";
+          _file = file;
           imports = [ m ];
         }) t.getSubModules
       );
