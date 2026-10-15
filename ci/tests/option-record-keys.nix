@@ -5,8 +5,9 @@
 #   top  : `(evalModuleTree …).options.<o>`         grp  : `….options.g.<o>`
 #   arg  : a module's own `options` argument         sub  : the same inside a submodule
 #   gatt : the same under `attrsOf (submodule …)`    gso  : `….options.s.type.getSubOptions [ ]`
-# Every cell runs ONE fixture through both engines and compares. `valueMeta` is the one key refused by
-# name (`ci/tests-error.nix`, `option-record-keys`); `loc` and `declarations` are same-read controls. A key
+# Every cell runs ONE fixture through both engines and compares. `valueMeta` answers only at a foreign type
+# (its cells below) and is refused by name at a gen type (`ci/tests-error.nix`, `option-record-keys`); `loc`
+# and `declarations` are same-read controls. A key
 # is read through `o ? k`, so an ABSENT key is a failed cell and never an abort.
 #
 # `options._module.*` at the module argument is outside this record (den-hoag-a67l3).
@@ -687,6 +688,95 @@ let
       inherit (ev.config) l;
       definitions = ev.config.o;
     };
+
+  # ── `valueMeta`: nixpkgs' v2-merge metadata at a foreign type, a projection of the fold (den-hoag-xroc7) ──
+  # The modules declare nixpkgs' own types and run through both engines; `expr` is gen-merge's read,
+  # `expected` nixpkgs'. A refusal reads as "REFUSED".
+  T = nl.types;
+  vmTry =
+    x:
+    let
+      r = builtins.tryEval (builtins.deepSeq x x);
+    in
+    if r.success then r.value else "REFUSED";
+  vmBoth = mods: rd: {
+    expr = vmTry (rd (gm.evalModuleTree { } mods));
+    expected = vmTry (rd (nl.evalModules { modules = mods; }));
+  };
+  vmOne = ty: v: [
+    {
+      options.x = nl.mkOption { type = ty; };
+      config.x = v;
+    }
+  ];
+  vmTwo = a: b: v: [
+    { options.x = nl.mkOption { type = a; }; }
+    {
+      options.x = nl.mkOption { type = b; };
+      config.x = v;
+    }
+  ];
+  vmMeta = e: rend 6 e.options.x.valueMeta;
+  vmSub = T.submodule {
+    options.bar = nl.mkOption {
+      type = T.int;
+      default = 1;
+    };
+  };
+  vmPos = T.addCheck T.int (v: v > 0);
+  # the same foreign declaration inside a submodule's own evaluation, read through its module argument
+  vmNested =
+    evalM: subT: mkO:
+    (evalM {
+      modules = [
+        {
+          options.s = mkO {
+            type = subT {
+              imports = [
+                { options.x = nl.mkOption { type = T.attrsOf T.int; }; }
+                (
+                  { options, ... }:
+                  {
+                    options.out = nl.mkOption { type = T.raw; };
+                    config.out = rend 6 options.x.valueMeta;
+                  }
+                )
+              ];
+            };
+          };
+          config.s.x.k = 2;
+        }
+      ];
+    }).config.s.out;
+  # THE PLANTED VIOLATIONS: gen-merge's `config` refuses each by a declared check (a met foreign check, a
+  # foreign `addCheck` over a module set, a gen `verify` copy, a `verify` overlay), and nixpkgs' metadata
+  # carries the value it refuses. The metadata's value-bearing read refuses beside it. An `apply` is not a
+  # check: the metadata is pre-`apply`, as nixpkgs'.
+  vmGuard = mods: rd: {
+    expr = {
+      value = vmTry (gm.evalModuleTree { } mods).config.x;
+      meta = vmTry (rd (gm.evalModuleTree { } mods));
+    };
+    expected = {
+      value = "REFUSED";
+      meta = "REFUSED";
+    };
+  };
+  vmChecked = T.addCheck vmSub (v: v.bar > 0);
+  # a gen `verify` copy rejecting 7, and a foreign v2 record carrying a `verify` overlay
+  vmCopy = gm.types.int // {
+    verify = v: if v == 7 then "copy rejects" else gm.types.int.verify v;
+  };
+  vmOverlay = T.attrListOf T.int // {
+    verify = v: if v == [ { a = 7; } ] then "overlay rejects" else null;
+  };
+  vmInEither =
+    ty:
+    T.either T.str (
+      T.submodule {
+        options.y = nl.mkOption { type = ty; };
+      }
+    );
 in
 {
   flake.tests.option-record-keys = {
@@ -771,5 +861,90 @@ in
       expr = dflt1500 gm;
       expected = dflt1500 nl;
     };
+
+    # ── `valueMeta` at a foreign type folded by its own merge, equal to nixpkgs' ─────────────────
+    # a merge stating no `v2`: `{ }`, whatever the type holds
+    test-valueMeta-str-undefined = vmBoth [ { options.x = nl.mkOption { type = T.str; }; } ] vmMeta;
+    test-valueMeta-str = vmBoth (vmOne T.str "s") vmMeta;
+    test-valueMeta-int = vmBoth (vmOne T.int 3) vmMeta;
+    test-valueMeta-uniq = vmBoth (vmOne (T.uniq (T.listOf T.int)) [
+      1
+      2
+    ]) vmMeta;
+    test-valueMeta-attrTag = vmBoth (vmOne (T.attrTag {
+      a = nl.mkOption { type = vmSub; };
+      b = nl.mkOption { type = T.int; };
+    }) { a.bar = 2; }) vmMeta;
+    test-valueMeta-deferredModule = vmBoth (vmOne T.deferredModule { }) vmMeta;
+    test-valueMeta-anything = vmBoth (vmOne T.anything { k = 1; }) vmMeta;
+    test-valueMeta-untyped = vmBoth [
+      {
+        options.x = nl.mkOption { };
+        config.x = 1;
+      }
+    ] vmMeta;
+    # a v2 merge: its own metadata, `_internal.type` beside it
+    test-valueMeta-attrsOf = vmBoth (vmOne (T.attrsOf T.str) {
+      foo = "a";
+      bar = "b";
+    }) vmMeta;
+    test-valueMeta-listOf = vmBoth (vmOne (T.listOf T.str) [
+      "a"
+      "b"
+    ]) vmMeta;
+    test-valueMeta-attrsOf-attrsOf = vmBoth (vmOne (T.attrsOf (T.attrsOf T.int)) { x.y = 1; }) vmMeta;
+    test-valueMeta-internal-type-is-the-record-type = vmBoth (vmOne (T.attrsOf T.str) { a = "a"; }) (
+      e: e.options.x.valueMeta._internal.type == e.options.x.type
+    );
+    test-valueMeta-group = vmBoth [
+      {
+        options.g.x = nl.mkOption { type = T.attrsOf T.int; };
+        config.g.x.a = 1;
+      }
+    ] (e: rend 6 e.options.g.x.valueMeta);
+    test-valueMeta-in-a-gen-submodule-module-argument = {
+      expr = vmTry (vmNested (r: gm.evalModuleTree { } r.modules) gm.types.submodule gm.mkOption);
+      expected = vmTry (vmNested nl.evalModules T.submodule nl.mkOption);
+    };
+    # a headError: the metadata nixpkgs serves beside it, and an ad-hoc `check`, refused at both
+    test-valueMeta-headError = vmBoth (vmOne (T.either T.int (T.attrsOf T.int)) "s") (
+      e: builtins.attrNames e.options.x.valueMeta
+    );
+    test-valueMeta-ad-hoc-check = vmBoth (vmOne (T.attrsOf T.int // { check = builtins.isAttrs; }) {
+      a = 1;
+    }) vmMeta;
+    # the values beside it, unmoved: a met foreign check passing
+    test-valueMeta-value-control = vmBoth (vmTwo (T.attrsOf vmPos) (T.attrsOf T.int) { a = 1; }) (
+      e: e.config.x
+    );
+
+    # ── no value gen-merge's `config` refuses by a declared check is served through `valueMeta` ──
+    test-valueMeta-guard-meet = vmGuard (vmTwo (T.attrsOf vmPos) (T.attrsOf T.int) { a = -1; }) (
+      e: builtins.attrNames e.options.x.valueMeta.attrs
+    );
+    test-valueMeta-guard-checked-submodule = vmGuard (vmTwo (T.attrsOf vmChecked) (T.attrsOf vmSub) {
+      a.bar = -1;
+    }) (e: e.options.x.valueMeta.attrs.a.configuration.config);
+    test-valueMeta-guard-mapAttrsOfSubmodule = vmGuard (vmTwo (T.attrsOf vmChecked) (T.attrsOf vmSub) {
+      a.bar = -1;
+    }) (e: nl.modules.mapAttrsOfSubmodule (_: { cfg, ... }: cfg) e.options.x);
+    test-valueMeta-guard-checked-submodule-top = vmGuard (vmTwo vmChecked vmSub { bar = -1; }) (
+      e: e.options.x.valueMeta.configuration.config
+    );
+    test-valueMeta-guard-nullOr = vmGuard (vmOne (T.nullOr vmChecked) { bar = -1; }) (
+      e: e.options.x.valueMeta.configuration.config
+    );
+    test-valueMeta-guard-copy-in-either = vmGuard (vmOne (vmInEither vmCopy) { y = 7; }) (
+      e: e.options.x.valueMeta.configuration.config
+    );
+    test-valueMeta-guard-copy-in-either-option = vmGuard (vmOne (vmInEither vmCopy) { y = 7; }) (
+      e: e.options.x.valueMeta.configuration.options.y.value
+    );
+    test-valueMeta-guard-copy-below-attrListOf = vmGuard (vmOne (T.attrListOf vmCopy) [ { a = 7; } ]) (
+      e: e.options.x.valueMeta.attrListValue
+    );
+    test-valueMeta-guard-verify-overlay = vmGuard (vmOne vmOverlay [ { a = 7; } ]) (
+      e: e.options.x.valueMeta.attrListValue
+    );
   };
 }

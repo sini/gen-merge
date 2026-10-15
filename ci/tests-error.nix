@@ -1296,11 +1296,13 @@ in
         };
       };
 
-    # ── `valueMeta`, REFUSED BY NAME AT EVERY POSITION gen-merge serves the record (den-hoag-ixcxl) ──
-    # The one evaluated key the record does not serve: nixpkgs' v2-merge metadata carries nixpkgs'
-    # own type objects and evaluations. The getSubOptions position is `tree-type`'s cell.
+    # ── `valueMeta` at a GEN type, REFUSED BY NAME AT EVERY POSITION gen-merge serves the record ──
+    # (den-hoag-ixcxl, den-hoag-xroc7). A gen type states no v2-merge metadata; a foreign type folded by
+    # its own merge answers nixpkgs' (`ci/tests/option-record-keys.nix`). The getSubOptions position is
+    # `tree-type`'s cell.
     flake.testsError.option-record-keys =
       let
+        nl = nixpkgsLib;
         x = gm.mkOption { type = t.str; };
         reader = {
           options.out = gm.mkOption { type = t.raw; };
@@ -1308,7 +1310,11 @@ in
         };
         refusal = loc: {
           type = "ThrownError";
-          msg = "^gen-merge: the option `${loc}' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations$";
+          msg = "^gen-merge: the option `${loc}' does not answer `valueMeta': its type `[^']*' is gen-merge's own, which states no v2-merge metadata$";
+        };
+        below = loc: {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `${loc}' does not answer `valueMeta': its type `[^']*' holds a module set or a gen-merge type, whose v2-merge metadata gen-merge does not serve from the evaluation it folds$";
         };
       in
       {
@@ -1359,6 +1365,78 @@ in
               { config.s.k = { }; }
             ]).config.s.k.out;
           expectedError = refusal "s.k.x";
+        };
+        # each half of the gen-record test alone: a relation stating no completion (`anything`), and a
+        # met record, a completion stating no relation, over a foreign leaf whose merge states no `v2`
+        test-a-relation = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.x = gm.mkOption { type = t.anything; };
+                config.x = 1;
+              }
+            ]).options.x.valueMeta;
+          expectedError = refusal "x";
+        };
+        test-a-met-record = {
+          expr =
+            (gm.evalModuleTree { } [
+              { options.x = nl.mkOption { type = nl.types.addCheck nl.types.int (v: v > 0); }; }
+              {
+                options.x = nl.mkOption { type = nl.types.int; };
+                config.x = 1;
+              }
+            ]).options.x.valueMeta;
+          expectedError = refusal "x";
+        };
+        test-a-gen-container-of-a-foreign-submodule = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.x = gm.mkOption { type = t.attrsOf (nl.types.submodule { }); };
+                config.x.a = { };
+              }
+            ]).options.x.valueMeta;
+          expectedError = refusal "x";
+        };
+        # a foreign type folded by its own merge answers; below it, a module set or a gen type is refused
+        test-a-foreign-module-set = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.x = nl.mkOption { type = nl.types.attrsOf (nl.types.submodule { }); };
+                config.x.a = { };
+              }
+            ]).options.x.valueMeta;
+          expectedError = below "x";
+        };
+        test-a-gen-type-below-a-foreign-container = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.x = nl.mkOption { type = nl.types.attrListOf t.anything; };
+                config.x = [ { a = 1; } ];
+              }
+            ]).options.x.valueMeta;
+          expectedError = below "x";
+        };
+        # an ad-hoc `check` over a v2 type is refused as its fold is
+        test-an-ad-hoc-check = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.x = nl.mkOption {
+                  type = nl.types.attrsOf nl.types.int // {
+                    check = builtins.isAttrs;
+                  };
+                };
+                config.x.a = 1;
+              }
+            ]).options.x.valueMeta;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `x' has a type `[^']*' that uses an ad-hoc `type // \\{ check = \\.\\.\\.; \\}' override, which the v2 merge protocol refuses; state the check with `addCheck' instead$";
+          };
         };
       };
 
@@ -3334,7 +3412,7 @@ in
           };
         };
         # The published option record answers nixpkgs' evaluated keys (`lib/modules.nix`
-        # `serveOptions`; `ci/tests/option-record-keys.nix`) except `valueMeta`, which it refuses BY
+        # `serveOptions`; `ci/tests/option-record-keys.nix`); `valueMeta` at a gen type it refuses BY
         # NAME, never as an absent attribute its reader could not catch. The other positions are the
         # `option-record-keys` group.
         test-valueMeta-is-refused-by-name = {
@@ -3344,7 +3422,7 @@ in
             ]).a.valueMeta;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: the option `x.a' does not answer `valueMeta': it is the reference engine's v2-merge metadata, whose records carry that engine's own type objects and evaluations$";
+            msg = "^gen-merge: the option `x.a' does not answer `valueMeta': its type `[^']*' is gen-merge's own, which states no v2-merge metadata$";
           };
         };
         test-every-evaluated-option-key-is-present = {

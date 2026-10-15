@@ -133,7 +133,7 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["is not lazy","config.isLazy","./declare-attrsOf.nix","./attrsOf-lazy-check.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["is not of type `boolean","config.submodule.config","./declare-submoduleWith-shorthand.nix","./define-submoduleWith-noshorthand.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["please only import the modules that make up the configuration","config","./import-configuration.nix"]},"verdict":"PASS","class":["gen-merge: module `","/import-configuration.nix' has an unsupported attribute `deprecations'"]}
-{"key":{"kind":"checkConfigError","env":"","argv":["the-defs-file\\.nix","config.argv","./attrList-valueMeta-definitions-file-diagnostic-forwarding.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["the-defs-file\\.nix","config.argv","./attrList-valueMeta-definitions-file-diagnostic-forwarding.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["toInt: Could not convert .* to int","config.value","./declare-coerced-value-unsound.nix","./define-value-string-arbitrary.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["while evaluating a definition from `.*/define-enable-abort.nix","config.enable","./define-enable-abort.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["while evaluating the error message for definitions for .enable., which is an option that does not exist","config.enable","./define-enable-abort.nix"]},"verdict":"PASS"}
@@ -154,12 +154,12 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/declaration-positions.nix\"$","options.imported.line14.declarationPositions.0.file","./declaration-positions.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["/freeform-submodules.nix\"$","config.fooDeclarations.0","./freeform-submodules.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["10","config.processedToplevel","./raw.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["2","config.listOfResult","./types-valueMeta.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["2","config.listOfResult","./types-valueMeta.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["42","config.listResult","./composed-types-valueMeta.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["42","config.mergedListResult","./composed-types-valueMeta.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["42","options.attrsOfModule.valueMeta.attrs.foo.configuration.options.bar.value","./composed-types-valueMeta.nix"]},"verdict":"FAIL"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["42","options.mergedAttrsOfModule.valueMeta.attrs.foo.configuration.options.bar.value","./composed-types-valueMeta.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["[\"foo\", \"bar\"]","config.attrsOfResult","./types-valueMeta.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["[\"foo\", \"bar\"]","config.attrsOfResult","./types-valueMeta.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\".*/\"","config.externalPath.ok2","./types.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\".*/foo/bar\"","config.externalPath.ok1","./types.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\".*/store/.links\"","config.pathNotInStore.ok5","./pathWith.nix"]},"verdict":"PASS"}
@@ -195,7 +195,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\\[\\]","config.list","./defaults.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\\[\\]","config.list.a","./emptyValues.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["\\[\\]","config.unique","./defaults.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["\\{\\}","options.str.valueMeta","./types-valueMeta.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["\\{\\}","options.str.valueMeta","./types-valueMeta.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^0$","config.filesetCardinal.ok1","./fileset.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^0$","config.filesetCardinal.ok5","./fileset.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^0$","config.v1CheckedPass","./add-check.nix"]},"verdict":"PASS"}

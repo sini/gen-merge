@@ -1996,8 +1996,10 @@ own merged value), `isDefined`, `definitions`, `definitionsWithLocations`, `file
 `declarationPositions` and `options` (`[ ]`, nixpkgs' value), each equal to nixpkgs', on `.options`, on
 `getSubOptions` and on a module's own `options` argument alike (`ci/tests/option-record-keys.nix`); they
 project gen's fold, which puts a declared default first among the definitions, as nixpkgs' does.
-`valueMeta`, nixpkgs' v2-merge metadata, is refused by name, never absent; so a deep force of a
-published `.options` tree refuses, for every tree
+`valueMeta`, nixpkgs' v2-merge metadata, is nixpkgs' own where the type is foreign and gen folds it by
+that type's own merge (a v2 merge's `valueMeta` with `_internal.type`, `{ }` for a merge stating no `v2`),
+and refused by name, never absent, at every other type: a gen type, or a foreign one holding a module set
+or a gen type. So a deep force of a published `.options` tree refuses for a tree holding any gen type
 (`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which folds
 no value, refuses all nine by name.
 
