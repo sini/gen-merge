@@ -1514,6 +1514,11 @@ let
   # that record: its constructor and parameters are the wrapped record's, its own check stays owed. Bound
   # once here, not per meet, so a meet allocates nothing for it.
   wrappedBase = t: if t ? wraps && isAttrs t.wraps then wrappedBase t.wraps else t;
+  # THE MEET OF A WRAPPER WITH ITS OWN BARE BASE IS THE WRAPPER'S TO ANSWER: `w` declares the record it `wraps`,
+  # `t` declares none and is of that record's key, so `t` is the unrefined form of `w`'s parameters and its own
+  # relation knows nothing of what `w` adds. The wrapping operand's relation is asked instead, with `t` as its
+  # partner, and it asks its base's relation for the base join (gen-schema `refined`).
+  wrapsKeyOf = w: t: w ? wraps && isAttrs w.wraps && !(t ? wraps) && keyOf (wrappedBase w) == keyOf t;
 
   importedDecidable =
     let
@@ -7955,7 +7960,18 @@ let
                 partner = importedPartner f;
               in
               if (f.name or null) != functor.name then
-                null
+                (
+                  if wrapsKeyOf partner exported && partner ? typeMerge then
+                    (
+                      let
+                        j = partner.typeMerge functor;
+                        d = if isAttrs f && f ? __declared then f.__declared else partner;
+                      in
+                      if j == null then null else meet false j [ exported d ] d
+                    )
+                  else
+                    null
+                )
               else if partner == null then
                 null
               # the relation's entry: its pre-flight, as `lib/modules.nix` `relationMerge` states
@@ -8067,6 +8083,7 @@ in
     replacesVerify
     departsWithinCarrier
     keyOf
+    wrapsKeyOf
     nameOf
     functorNamesOf
     moduleOwnTypeAdmits
