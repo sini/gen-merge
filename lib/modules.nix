@@ -5741,7 +5741,7 @@ let
           # THE FOLD OVER NO DEFINITIONS OF AN EVALUATION'S OWN TYPE IS THAT EVALUATION (den-hoag-8qenh):
           # its module set extended by nothing is itself, so the empty value is its own config,
           # read, never a second evaluation of it.
-          emptyTree.value = cfg;
+          emptyTree.value = nestingFold.threaded (interface.emptyAccessor interface.bridge) [ ] [ ];
         in
         let
           over =

@@ -1017,7 +1017,13 @@ let
           # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
           # would there and an undefined sub-option refuses by name. That evaluation is the child with an
           # empty seed, read through the threaded fold; called, it refuses (den-hoag-n6dh7 item 1).
-          whenEmpty.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
+          whenEmpty.value =
+            (interface.bridge.emptyChild {
+              position = [ ];
+              inherit nests;
+              loc = [ ];
+              defs = [ ];
+            }).config;
           # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
           # relation unions rather than merges: an option declared as a submodule in two modules ends up
           # declaring the union of what they declare. On a nullary relation the second declaration would
