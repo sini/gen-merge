@@ -863,8 +863,34 @@ let
               m // { attrs = builtins.mapAttrs (_: guarded) m.attrs; }
             else if m ? list then
               m // { list = map guarded m.list; }
+            # `attrListWith`: its ordered values and its definitions carry each element's merged value, guarded as the
+            # value is through the element's metadata
             else if m ? attrList then
-              m // { attrList = map guarded m.attrList; }
+              m
+              // {
+                attrList = map guarded m.attrList;
+              }
+              // (
+                let
+                  at = i: builtins.mapAttrs (_: guardedMeta (elemAt m.attrList i));
+                  n = length m.attrList;
+                in
+                (if m ? attrListValue then { attrListValue = prelude.genList (i: at i (elemAt m.attrListValue i)) n; } else { })
+                // (
+                  if m ? definitions then
+                    {
+                      definitions = prelude.genList (
+                        i:
+                        let
+                          d = elemAt m.definitions i;
+                        in
+                        d // { value = d.value // { content = at i d.value.content; }; }
+                      ) n;
+                    }
+                  else
+                    { }
+                )
+              )
             else
               m;
           options =
