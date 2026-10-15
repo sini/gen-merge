@@ -846,50 +846,50 @@ let
           # the type the option's fold folds by: a module set's root mounted as its rebuild, its stock submodules
           # guarded (`homedRootAt`, as `modules.mergeOptionWith` homes it at a declared option)
           h = homedRootAt "evalModuleTree" loc { reader = null; } t;
-          # each configuration behind the guard gen's fold puts on its value (`guardedMeta`): its `config` guarded at
-          # each option's own read, and each option serving that guarded value and, where no module set or gen
-          # record is below it, its own metadata
+          # the metadata walked beside the merged value the same call returned, as `guardedMeta` walks it: each
+          # configuration is that value's own, its `config` the value guarded at each option's own read, and it is
+          # served only once that value is (a definition the element's merge rejects, its carried `addCheck`'s
+          # among them, refuses the configuration as it refuses the value); each option serves its guarded value
+          # and, where no module set or gen record is below it, its own metadata
           guarded =
-            m:
+            m: v:
             if m ? configuration then
               m
               // {
-                configuration = m.configuration // {
-                  config = guardedConfig (m.configuration.options or { }) m.configuration.config;
-                  options = options m.configuration.options;
-                };
+                configuration = builtins.seq v (
+                  m.configuration
+                  // {
+                    config = guardedConfig (m.configuration.options or { }) v;
+                    options = options m.configuration.options;
+                  }
+                );
               }
             else if m ? attrs then
-              m // { attrs = builtins.mapAttrs (_: guarded) m.attrs; }
+              m // { attrs = builtins.mapAttrs (k: x: guarded x v.${k}) m.attrs; }
             else if m ? list then
-              m // { list = map guarded m.list; }
-            # `attrListWith`: its ordered values and its definitions carry each element's merged value, guarded as the
-            # value is through the element's metadata
+              m // { list = prelude.genList (i: guarded (elemAt m.list i) (elemAt v i)) (length m.list); }
+            # `attrListWith`: one single-key set per element in `attrListValue`, whose values, and the definitions
+            # carrying them, are each element's merged value
             else if m ? attrList then
-              m
-              // {
-                attrList = map guarded m.attrList;
-              }
-              // (
+              (
                 let
-                  at = i: builtins.mapAttrs (_: guardedMeta (elemAt m.attrList i));
                   n = length m.attrList;
+                  at = i: builtins.mapAttrs (_: guardedMeta (elemAt m.attrList i));
                 in
-                (if m ? attrListValue then { attrListValue = prelude.genList (i: at i (elemAt m.attrListValue i)) n; } else { })
-                // (
-                  if m ? definitions then
-                    {
-                      definitions = prelude.genList (
-                        i:
-                        let
-                          d = elemAt m.definitions i;
-                        in
-                        d // { value = d.value // { content = at i d.value.content; }; }
-                      ) n;
-                    }
-                  else
-                    { }
-                )
+                m
+                // {
+                  attrList = prelude.genList (
+                    i: guarded (elemAt m.attrList i) (head (builtins.attrValues (elemAt m.attrListValue i)))
+                  ) n;
+                  attrListValue = prelude.genList (i: at i (elemAt m.attrListValue i)) n;
+                  definitions = prelude.genList (
+                    i:
+                    let
+                      d = elemAt m.definitions i;
+                    in
+                    d // { value = d.value // { content = at i d.value.content; }; }
+                  ) n;
+                }
               )
             else
               m;
@@ -922,7 +922,7 @@ let
             if r.headError != null then
               throw "gen-merge: a definition for option `${showOption l}' is not of type `${describe h}'. TypeError: ${r.headError.message}"
             else
-              guarded r.valueMeta
+              guarded r.valueMeta r.value
           ) loc defs
           // {
             _internal = {
