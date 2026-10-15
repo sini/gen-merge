@@ -65,6 +65,9 @@
   nestedTreeAt,
   emptyTreeAt,
   mergeDefsThreaded,
+  # the fold a type merges by without a definition check (`lib/modules.nix` `rawFold`): the meet holds an operand by
+  # it, its check being owed already
+  rawFold,
   constructors,
   # gen-types' library, for the check-witness protocol it owns (`witnessRecord`, `rewritesCheck`):
   # this unit builds and reads the witness through it and defines neither (den-hoag-ydro3).
@@ -6326,8 +6329,14 @@ let
         carriedAtDepth true os m
       else if owed == [ ] then
         m
-      # a held operand (a record met holding, `holds`) is held again wherever it is met
-      else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+      # a held operand (a record met holding, `holds`) is held again wherever it is met, and an operand stating a
+      # relation gen did not construct (no `exact` witness) is held at a node carrying no role: its name-keeping
+      # answer certifies no fold, and a role it carries is met (or held) at that role's own depth (`rolesMet`)
+      else if
+        meets == "holds"
+        || builtins.catAttrs "holds" once != [ ]
+        || builtins.any (o: o ? typeMergeRel && !(o ? typeMergeRel.exact) && !(o ? __stockCheck) && !(o ? carries.element || o ? carries.alternatives || (o.functor.payload or null) ? elemType)) once
+      then
         # The join was taken PAST the witness (it renames an operand: the carrier is not that operand's own
         # constructor), so the carrier's fold is not that operand's. A declaration's admission is its `check` AND
         # its `merge` (nixpkgs' containers judge their elements in `merge`; a fold may refuse what its check
@@ -6337,7 +6346,7 @@ let
         # exactly where every declaration alone would serve it, as lazily as the carrier's (den-hoag-wsnn0 v1).
         let
           met = meetOf m once;
-          kept = filter (o: o ? merge) once;
+          kept = if meets == "holds" || builtins.catAttrs "holds" once != [ ] then once else filter (o: o ? typeMergeRel && !(o ? typeMergeRel.exact) && !(o ? __stockCheck) && !(o ? carries.element || o ? carries.alternatives || (o.functor.payload or null) ? elemType)) once;
           walk =
             v: vs:
             builtins.foldl' (acc: ov: builtins.seq ov acc) (
@@ -6357,15 +6366,18 @@ let
             ) vs;
           own =
             loc: defs: o:
-            if o.merge ? v2 then
+            let
+              f = rawFold o;
+            in
+            if f ? v2 then
               (
                 let
-                  r = o.merge.v2 { inherit loc defs; };
+                  r = f.v2 { inherit loc defs; };
                 in
                 if r.headError or null != null then throw r.headError.message else r.value
               )
             else
-              o.merge loc defs;
+              f loc defs;
           demand =
             loc: defs: v:
             walk v (map (own loc defs) kept);
@@ -6409,7 +6421,9 @@ let
             }
             // (
               if fold == null then
-                { }
+                # a carrier with no fold of its own (a gen leaf) is folded by the engine's leaf fold, which never
+                # reads `merge`: the hold states the carrier's alone fold, demanded as above
+                { mergeDefs = loc: defs: demand loc defs (rawFold met loc defs); }
               else
                 {
                   mergeDefs = (if isAttrs fold then fold else { }) // {

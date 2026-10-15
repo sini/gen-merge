@@ -176,6 +176,7 @@ let
       emptyTreeAt
       types
       mergeDefsThreaded
+      rawFold
       ;
     constructors = strategies;
   };
