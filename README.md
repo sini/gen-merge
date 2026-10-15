@@ -1855,12 +1855,15 @@ declared-base surface**: a record naming the record whose constructor and parame
 own check stays owed. The meet reads an operand's parameters (`shapeOf`) and the stock it is owed
 relative to (`relativised`) off the innermost declared base, so gen-schema's `refined B rs`, whose
 functor is its own (`refined<B>`), widens and is relativised as `B` is and still owes its refinements. A
-met record's refusal names its gen join's `verify` reason where the join's check is still that
-`verify`'s witness; any other record's `verify` is read only past its check. A gen x gen step owes nothing and is
+met record whose operands owe no merged-value `verify` names its gen join's `verify` reason on refusal where
+the join's check is still that `verify`'s witness; any other record's `verify` is read only past its check. A gen x gen step owes nothing and is
 answered before the meet is built, except to a `//` copy whose `verify` no completion vouches for
 (`interface.replacesVerify`: it replaced its completion's `verify`, or states one with no completion
 stamp). Its `check`, witness and relation are still its base's, so no relation carries that `verify`, and
-the step owes the copy its declared domain, its `verify` and any `check` it rewrote. The
+the step owes the copy its `check` per definition, any it rewrote included, and its `verify` once, on the
+merged value, as a foreign operand's is owed: a definition alone is not the value it refines
+(den-hoag-5f99v). That `verify` is stated where a fold asks membership, a v2 merge's `headError`, so a union
+choosing its member by it moves on to the next one; a non-v2 join is lifted into that protocol. The
 carrier (`interface.joinRenames`) reads such a copy, and one departing only at its name, its description
 or its `typeMerge` (`interface.carrierTolerated`), as its completion, so beside nixpkgs' `enum` its
 verdict is the same in both orders; a raw copy overriding `typeMerge` is therefore read

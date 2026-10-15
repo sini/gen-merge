@@ -3136,7 +3136,8 @@ let
       typeMerge = null;
     };
     # an owed `verify` carried on `r`, closed under `r`'s own rebuild as `carryBy` is: below the root it is read on the
-    # merged value (`verifiedMerge`), a non-v2 merge's projected into its `check`; the root states it for gen's fold
+    # merged value (`verifiedMerge`), a non-v2 merge lifted into the v2 protocol with its own check per definition; the
+    # root states it for gen's fold
     verify =
       top: vf: r:
       r
@@ -3179,6 +3180,48 @@ let
     # a gen container's element `r` rebuilt over its declared element `e`: the `verify` `e` states beyond its rebuild
     # carried on it (a `// { verify }` copy's rebuild is its base's)
     element = e: r: if e ? verify && isAttrs r then rebuildClosed.verify false e.verify r else r;
+    # A DOOR'S RETURN FOR A RECORD NO MINT VOUCHES FOR, ITS `verify` ON THE MERGED VALUE (den-hoag-5f99v): a door
+    # re-completing a record stating `verify` with no completion stamp (a nixpkgs record's `// { verify }` copy, or a
+    # copy of a door's import) returns an export whose `check` is that `verify` read per definition and whose fold
+    # never reads it on the merged value; `rebuildClosed.door` answers minted records only. So the return states `t`'s
+    # own check per definition and `t`'s `verify` on the merged value, a non-v2 fold lifted, as `rebuildClosed.verify`
+    # states one below the root
+    root =
+      t: r:
+      if
+        !(t ? verify && t ? check && t ? merge && isAttrs r && r ? merge && r ? check)
+        # a completion stamp is tested for presence only: its value is the record's mint, which for a self-referential
+        # type is this door's own result
+        || r ? __typeSelf
+      then
+        r
+      else
+        r
+        // {
+          check = {
+            __functor = _: t.check;
+            isV2MergeCoherent = true;
+          };
+          merge = rebuildClosed.verifiedMerge t.verify (
+            rebuildClosed.verifiedMerge.lifted t.check (t.merge.__verifiedMerge or t.merge)
+          );
+        }
+        # and its rebuilds, which nixpkgs re-derives the declared type through (the fixup's `substSubModules`, a
+        # redeclaration's `typeMerge`), each carrying the `verify` on its merged value as `rebuildClosed.door`'s do
+        // rebuildClosed.carried t.verify r
+        // (
+          if r ? typeMerge then
+            {
+              typeMerge =
+                f:
+                let
+                  j = r.typeMerge f;
+                in
+                if j == null then null else rebuildClosed.rebuilt t.verify j;
+            }
+          else
+            { }
+        );
     # ★ A DOOR'S RETURN FOR A CALLER'S FOREIGN RECORD, CLOSED UNDER ITS REBUILDS (den-hoag-d61ws). A door that imports,
     # re-homes or derives from a foreign record `t` returns gen's record `r` carrying `t`'s check, and nixpkgs
     # re-derives a declared type through `r`'s rebuilds (`substSubModules` at the fixup, the later declaration's
@@ -5925,12 +5968,14 @@ let
       # an operand's declared domain, as the engine reads one declared alone: its `check` and, for a gen
       # record, its `verify`. Where its `check` is the witness its verify published, `verify` is read
       # alone, as `ov` reads it: that saves one check call per value, and no measured verdict moves
+      # (a `verify` no completion states, `replacesVerify`, a foreign operand's or a gen copy's, is owed on
+      # the merged value, `vf`, instead: that operand's domain is its check alone, den-hoag-5f99v)
       dom =
         o:
         let
           c = direct (o.check.__verifyProjection or (o.check or o.admits));
         in
-        if !(o ? verify) || !(o ? typeMergeRel) then
+        if !(o ? verify) || !(o ? typeMergeRel) || replacesVerify o then
           c
         else if o ? _checkWitness && o.check == o._checkWitness then
           (v: o.verify v == null)
@@ -5955,7 +6000,13 @@ let
       # a gen operand whose published check is its own domain: its `verify`, read inline
       o1 = head os;
       ov =
-        if o1 ? verify && !(o1 ? __stockCheck) && o1 ? _checkWitness && o1.check == o1._checkWitness then
+        if
+          o1 ? verify
+          && !(o1 ? __stockCheck)
+          && o1 ? _checkWitness
+          && o1.check == o1._checkWitness
+          && !(replacesVerify o1)
+        then
           o1.verify
         else
           null;
@@ -6040,38 +6091,48 @@ let
         }
         // (if fold == null then { } else { mergeDefs = fold; });
       ids = metIdentity j os { } met;
-      # a foreign operand's `verify`, read once on the met record's merged value: the first rejection
-      vf =
-        v:
-        builtins.foldl' (
-          e: o: if e != null || !(o ? verify) || o ? typeMergeRel then e else o.verify v
-        ) null os;
     in
-    if !(builtins.any (o: o ? verify && !(o ? typeMergeRel)) os) then
+    # a `verify` no completion's check states: a foreign operand's, or a gen `//` copy's that replaced its completion's
+    # (`replacesVerify`). A definition alone is not the value it refines (den-hoag-5f99v). The test is spelled inline
+    # here and in `vf`, which only the verified record binds: a binding in this `let` is paid by every meet (ADR-0032)
+    if !(builtins.any (o: o ? verify && (!(o ? typeMergeRel) || replacesVerify o)) os) then
       met
     else
       let
+        # each owed `verify`, read once on the met record's merged value: the first rejection, relative to the operand's
+        # own parameters where a join widened them (`stockOf`), as its check is owed
+        vf =
+          v:
+          builtins.foldl' (
+            e: o:
+            if e != null || !(o ? verify && (!(o ? typeMergeRel) || replacesVerify o)) then
+              e
+            else
+              (
+                let
+                  s = stockOf o;
+                in
+                if s != null && !(s v) then null else o.verify v
+              )
+          ) null os;
         verified = met // {
           verify = vf;
+          # stated where a fold asks membership: a v2 merge's rejection in `headError`, so a union choosing its member by
+          # it moves on to the next one; a non-v2 join is lifted, its own check per definition, as `rebuildClosed.verify`
+          # lifts one (den-hoag-5f99v)
+          check =
+            if met.merge ? v2 then
+              met.check
+            else
+              {
+                __functor = _: met.check;
+                isV2MergeCoherent = true;
+              };
           merge =
             if met.merge ? v2 then
-              {
-                __functor =
-                  self: loc: defs:
-                  (self.v2 { inherit loc defs; }).value;
-                v2 =
-                  args:
-                  let
-                    m = met.merge.v2 args;
-                  in
-                  m // { value = guardedVerify args.loc (vf m.value) m.value; };
-              }
+              rebuildClosed.verifiedMerge vf met.merge
             else
-              loc: defs:
-              let
-                m = met.merge loc defs;
-              in
-              guardedVerify loc (vf m) m;
+              rebuildClosed.verifiedMerge vf (rebuildClosed.verifiedMerge.lifted met.check met.merge);
           ${if types ? mkIdentity then "__mint" else null} = vids.__mint;
           ${if types ? mkIdentity then "__payload" else null} = vids.__payload;
           ${if types ? mkIdentity then "__sealed" else null} = vids.__sealed;
@@ -6674,10 +6735,7 @@ let
   verifySlice = builtins.intersectAttrs { verify = null; };
   replacesVerify =
     t:
-    t ? verify
-    && !(
-      builtins.isFunction (t.__typeSelf or null) && verifySlice t == verifySlice (t.__typeSelf null)
-    );
+    t ? verify && !((t.__typeSelf or null) != null && verifySlice t == verifySlice (t.__typeSelf null));
   # Whether a completed record's `//` copy departs from its completion at a field its carrier still
   # reads as the completion's (`joinRenames`' `bare`): a name-carried one, which translates nothing, or
   # `verify`, which the meet owes (`replacesVerify`). One slice of all three, asked of a stamped record.

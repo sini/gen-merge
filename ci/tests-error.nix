@@ -4991,7 +4991,9 @@ in
         # rejected: the string is refused with the base's message, declared once and beside its base,
         # where calling that `verify` would abort uncatchably (`cannot compare`). The last cell is its
         # domain's controls: a value the check admits and the `verify` rejects names the `verify`'s reason,
-        # declared once and beside its base.
+        # declared once and beside its base. Beside its base the copy is met, and the met record states its
+        # owed `verify` where a fold asks membership, in the v2 protocol's `headError` (den-hoag-5f99v), so
+        # gen's engine names both through that protocol: the rejected definition, or the `verify`'s reason.
         // (
           let
             vInt = np.int // {
@@ -5016,13 +5018,16 @@ in
             };
             test-a-verify-copy-beside-its-base-is-not-read-on-a-value-its-check-rejects = {
               expr = beside vInt (bad "x");
-              expectedError = refusedAt "p" np.int;
+              expectedError = {
+                type = "ThrownError";
+                msg = "^gen-merge: a definition for option `p' is not of type `signed integer'[.] TypeError: Definition values:\n- In `bad[.]nix': \"x\"$";
+              };
             };
             test-a-verify-copy-beside-its-base-names-its-reason-in-its-domain = {
               expr = beside vInt (bad 5);
               expectedError = {
                 type = "ThrownError";
-                msg = "^gen-merge: a definition for option `p' is not of the expected type: greater than 3$";
+                msg = "^gen-merge: a definition for option `p' is not of type `signed integer'[.] TypeError: greater than 3$";
               };
             };
             test-a-verify-copy-names-its-reason-in-its-domain = {

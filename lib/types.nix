@@ -2334,17 +2334,20 @@ in
       in
       if c != null then
         c
+      # the re-completion states `t`'s `verify` on its merged value, caller-checked or not (den-hoag-5f99v)
       else
-        interface.rebuildClosed.door (
-          defineType (
-            interface.keepStamp (
-              if
-                (t ? _checkWitness && t ? check && t.check != t._checkWitness)
-                && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
-              then
-                (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
-              else
-                t
+        interface.rebuildClosed.root t (
+          interface.rebuildClosed.door (
+            defineType (
+              interface.keepStamp (
+                if
+                  (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+                  && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
+                then
+                  (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
+                else
+                  t
+              )
             )
           )
         )
@@ -2353,7 +2356,9 @@ in
     # closed over that check before it is completed (`interface.rebuildClosed.own`, den-hoag-1b55t). The `verify` arm
     # above answers first and closes a checked `// { verify }` copy the same way at its re-completion exit, and
     # `carriedCopy` closes the one it returns as itself (den-hoag-jyisy); the copy's own `verify` is stated in its check
-    # first (`interface.rebuildClosed.stated`, den-hoag-fzbap)
+    # first (`interface.rebuildClosed.stated`, den-hoag-fzbap), and where no completion stamp vouches for the return,
+    # `interface.rebuildClosed.root` states `t`'s own check per definition and that `verify` on the merged value
+    # instead (den-hoag-5f99v)
     else if
       (t ? _checkWitness && t ? check && t.check != t._checkWitness)
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
@@ -2406,18 +2411,21 @@ in
       in
       if c != null then
         c
+      # the re-completion states `t`'s `verify` on its merged value, caller-checked or not (den-hoag-5f99v)
       else
         interface.rebuildClosed.imported t (
-          interface.rebuildClosed.door (
-            mkOptionType (
-              if
-                t ? typeMergeRel
-                && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
-                && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
-              then
-                (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
-              else
-                t
+          interface.rebuildClosed.root t (
+            interface.rebuildClosed.door (
+              mkOptionType (
+                if
+                  t ? typeMergeRel
+                  && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+                  && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
+                then
+                  (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
+                else
+                  t
+              )
             )
           )
         )
