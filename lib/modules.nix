@@ -4658,6 +4658,7 @@ let
       prefix,
       carried,
       strict,
+      sitesAt,
       leaves,
       normalize,
       freeform,
@@ -4668,6 +4669,13 @@ let
         name = builtins.toJSON l.path;
         loc = prefix ++ l.path;
         type = l.opt.type or null;
+        # PROTO W2: the declaring file of a once-declared option, which its nested trees' own modules
+        # are located at (a redeclared option's are, by `fixupModuleSets`)
+        file =
+          let
+            ss = sitesAt (prefix ++ l.path);
+          in
+          if length ss == 1 then (head ss).file else null;
         hostMode = { inherit carried strict; };
         # ONE DISCHARGE (den-hoag-i4c0n C1; item 2, gate P2): the fold's own `typeDefs`, read off the
         # option's merge record. The first arm is where forcing `m` would meet `mergeOptionWith`'s
@@ -4722,6 +4730,7 @@ let
                   member
                   defs
                   ;
+                file = g.file or null;
                 address = map (d: {
                   attr = "definitions";
                   def = j;
@@ -5627,6 +5636,7 @@ let
               member
               defs
               ;
+            inherit (p) file;
             address = map (d: {
               attr = "definitions";
               def = 0;
@@ -5860,7 +5870,7 @@ let
         m.inherited
         (
           {
-            modules = n.modules ++ [ namePlaceholder ];
+            modules = (if p.file == null then n.modules else map (m: { _file = p.file; imports = [ m ]; }) n.modules) ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
             inherit (n.empty) prefix specialArgs check;
           }
@@ -5882,7 +5892,7 @@ let
           evalModuleTreeWith knotChildPositioned m.carried m.inherited (
             {
               modules =
-                n.modules
+                (if p.file == null then n.modules else map (m: { _file = p.file; imports = [ m ]; }) n.modules)
                 ++ prelude.imap0 (
                   k: d:
                   n.entry {
@@ -5906,7 +5916,7 @@ let
             m.inherited
             (
               {
-                modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
+                modules = (if p.file == null then n.modules else map (m: { _file = p.file; imports = [ m ]; }) n.modules) ++ map (d: n.entry { inherit (d) file value; }) p.defs;
                 prefix = p.loc;
                 inherit (n) specialArgs check coreShortCircuit;
               }
@@ -7792,7 +7802,7 @@ let
           _nested =
             if knot.mints then
               nestedGroups {
-                inherit prefix carried strict;
+                inherit prefix carried strict sitesAt;
                 # A child's own run is on its position record; a root counts `0` (item 4).
                 emptyRun = if knot.inner then (self.getHostAt "positions").emptyRun else 0;
                 leaves = realizedLeaves realized;
