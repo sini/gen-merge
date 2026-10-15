@@ -2686,8 +2686,11 @@ let
         let
           # the declaring file, as nixpkgs' `mergeOptionDecls` locates `opt.options`; a site stating no
           # declarations (the public `mergeOption`, the freeform group) has none
-          ss = if site ? sitesAt then site.sitesAt loc else [ ];
-          file = if ss == [ ] then "<unknown-file>" else (head ss).file;
+          file =
+            if site ? sitesAt then
+              (head (site.sitesAt loc ++ [ { file = "<unknown-file>"; } ])).file
+            else
+              "<unknown-file>";
         in
         map (m: {
           _file = file;
