@@ -149,5 +149,45 @@ in
         b = 5;
       })
     ];
+    # Two renames redeclare one group, and one of its members is named `type`: the group's
+    # declaration trees are told apart from empty ones by their key sets, never by comparing them,
+    # which would read the alias's `type` and so its target's.
+    test-a-renamed-member-named-type = cell (c: c.t) [
+      base
+      { options.t = mkOption { type = types.int; }; }
+      {
+        options.h = mkOption {
+          type = types.int;
+          default = 0;
+        };
+      }
+      (R [ "g" "type" ] [ "t" ])
+      (R [ "g" "host" ] [ "h" ])
+      (def {
+        a = 1;
+        g.type = 5;
+      })
+    ];
+    # The target is a submodule's sub-option named `options`, so `doRename`'s `attrByPath` stops at
+    # the declaration's own `options` field, which a stamped declaration answers as nixpkgs' does.
+    test-a-rename-onto-a-sub-option-named-options = cell (c: c.s.options) [
+      base
+      {
+        options.s = mkOption {
+          type = types.submodule {
+            options.options = mkOption {
+              type = types.int;
+              default = 0;
+            };
+          };
+          default = { };
+        };
+      }
+      (R [ "o" ] [ "s" "options" ])
+      (def {
+        a = 1;
+        o = 5;
+      })
+    ];
   };
 }

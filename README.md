@@ -2001,7 +2001,7 @@ that type's own merge (a v2 merge's `valueMeta` with `_internal.type`, `{ }` for
 and refused by name, never absent, at every other type: a gen type, or a foreign one holding a module set
 or a gen type. So a deep force of a published `.options` tree refuses for a tree holding any gen type
 (`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which folds
-no value, refuses all nine by name.
+no value, refuses the other eight by name and answers `options` as `[ ]`.
 
 **The engine's own `_module` records are served too.** nixpkgs' `internalModule` declares
 `_module.args`, `check`, `freeformType` and `specialArgs` in every evaluation, and gen-merge serves the

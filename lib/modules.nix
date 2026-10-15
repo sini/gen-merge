@@ -325,7 +325,8 @@ let
   # THE STRATUM-1 DOOR (`declaredOptions`) folds no value, so its record is the declaration and the
   # evaluated keys nixpkgs adds beside it are REFUSED BY NAME, never absent, because an absent key is
   # an uncatchable abort in the reader (ADR-0025 item 1). One shared record, so a refusal costs no
-  # thunk per option. nixpkgs has no such door.
+  # thunk per option. nixpkgs has no such door. `options` is not among them: it is `getSubModules` of
+  # the declared type, a declaration fact, so a stamped declaration answers it as `serveOptions` does.
   unansweredOptionKeys = listToAttrs (
     map
       (k: {
@@ -340,7 +341,6 @@ let
         "files"
         "highestPrio"
         "declarationPositions"
-        "options"
         "valueMeta"
       ]
   );
@@ -421,6 +421,7 @@ let
         v
         // unansweredOptionKeys
         // {
+          options = [ ];
           loc = lk;
           declarations = map (s: s.file) (reverse (sitesAt lk));
           __toString = _: showOption lk;
@@ -1288,7 +1289,9 @@ let
   mergeOptionDeclTrees =
     onRedeclare: loc: trees:
     let
-      xs = filter (v: v != { }) trees;
+      # Nix's attrset equality first tests for a derivation, reading a member named `type`, so a tree
+      # holding one is non-empty by its key set and never compared
+      xs = filter (v: v ? type || v != { }) trees;
     in
     if xs == [ ] then
       { }
@@ -1651,6 +1654,7 @@ let
               // u
               // unansweredOptionKeys
               // {
+                options = [ ];
                 loc = lk;
                 __toString = _: showOption lk;
                 declarations = [ file ] ++ (u.declarations or [ ]);

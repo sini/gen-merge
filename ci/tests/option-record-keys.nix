@@ -812,6 +812,22 @@ in
         ).a.definitions;
       expected = [ ];
     };
+    # `options` is a declaration fact, so the declaration door answers it as the evaluated record
+    # does, on a module's declaration and on the engine's own `_module` records alike.
+    test-the-declaration-door-answers-options = {
+      expr =
+        let
+          d = gm.declaredOptions { } [ { options.a = gm.mkOption { type = gm.types.str; }; } ];
+        in
+        {
+          leaf = d.a.options;
+          own = d._module.args.options;
+        };
+      expected = {
+        leaf = [ ];
+        own = [ ];
+      };
+    };
 
     # ── the module-argument idiom, each = nixpkgs ─────────────────────────────────────────────────
     test-arg-definitions = bothArg "argDefs";
