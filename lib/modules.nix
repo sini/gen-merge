@@ -1898,9 +1898,7 @@ let
     let
       m = e.content;
     in
-    if m ? disabledModules then
-      throw "gen-merge: module `${e._file}' sets `disabledModules'. gen-merge does not implement module removal (it is deferred work): the modules it names would stay enabled here, where the reference module system removes them. Remove the key; it is refused by presence, an empty list included."
-    else if e.reserved or null != null && isAttrs m && reservedHits e != [ ] then
+    if e.reserved or null != null && isAttrs m && reservedHits e != [ ] then
       throw "${e.reserved.names.${head (reservedHits e)}} (module `${e._file}')"
     else if
       m ? _type
@@ -2353,8 +2351,8 @@ let
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
-  moduleLevels =
-    callM: seen: level:
+  moduleLevelsWith =
+    expand: seen: level:
     if level == [ ] then
       [ ]
     else
@@ -2394,9 +2392,7 @@ let
             level;
       in
       kept
-      ++ moduleLevels callM (if keyed then seen // first else seen) (
-        concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content)) kept
-      );
+      ++ moduleLevelsWith expand (if keyed then seen // first else seen) (concatMap expand kept);
   moduleClosure =
     callM: mods:
     let
@@ -2408,7 +2404,130 @@ let
     then
       plain
     else
-      moduleLevels callM { } plain;
+      moduleLevelsWith (e: moduleEntries callM e (importsOf e.content)) { } plain;
+  # ── MODULE REMOVAL (`disabledModules`, den-hoag-7o7i9): nixpkgs' `collectModules` ───────────
+  # nixpkgs gathers every module's `disabledModules` over the UNFILTERED import closure, resolves each
+  # item to a key (`isDisabled`'s `moduleKey`, verbatim), and re-walks the closure dropping every
+  # occurrence whose key is named, its imports with it. A module's nixpkgs key is its `key`, a path
+  # module's path, else `<importer's key>:anon-<n>` (1-based); matching is string equality, so an
+  # item whose `key` is not a string names nothing. `null` where no module disables anything.
+  disabledKeyOf =
+    modulesPath: file: m:
+    if builtins.isString m then
+      (if builtins.substring 0 1 m == "/" then m else toString modulesPath + "/" + m)
+    else if isConvertible m then
+      (
+        if m ? key && m.key != toString m then
+          throw "gen-merge: Module `${file}` contains a disabledModules item that is an attribute set that can be converted to a string (${toString m}) but also has a `.key` attribute (${m.key}) with a different value. This makes it ambiguous which module should be disabled."
+        else
+          toString m
+      )
+    else if isAttrs m && m ? key then
+      m.key
+    else if isAttrs m then
+      throw "gen-merge: Module `${file}` contains a disabledModules item that is an attribute set, presumably a module, that does not have a `key` attribute. This means that the module system doesn't have any means to identify the module that should be disabled. Make sure that you've put the correct value in disabledModules: a string path relative to modulesPath, a path value, or an attribute set with a `key` attribute."
+    else
+      throw "gen-merge: Each disabledModules item must be a path, string, or a attribute set with a key attribute, or a value supported by toString. However, one of the disabledModules items in `${file}` is none of that, but is of type ${builtins.typeOf m}.";
+  # nixpkgs' `isConvertibleWithToString`
+  isConvertible =
+    x:
+    builtins.isString x
+    || builtins.isPath x
+    || (isAttrs x && (x ? __toString || x ? outPath))
+    || builtins.elem (builtins.typeOf x) [
+      "null"
+      "int"
+      "float"
+      "bool"
+    ]
+    || (isList x && all isConvertible x);
+  disabledSetOf =
+    modulesPath: flat:
+    let
+      items = concatMap (
+        e:
+        if isAttrs e.content && e.content ? disabledModules then
+          map (disabledKeyOf modulesPath e._file) e.content.disabledModules
+        else
+          [ ]
+      ) flat;
+    in
+    if items == [ ] then
+      null
+    else
+      listToAttrs (
+        concatMap (
+          k:
+          if builtins.isString k then
+            [
+              {
+                name = builtins.unsafeDiscardStringContext k;
+                value = true;
+              }
+            ]
+          else
+            [ ]
+        ) items
+      );
+  # An entry's nixpkgs key, its importer's given (`""` at the top).
+  nixKeyOf =
+    pk: i: e:
+    if builtins.isPath e.m0 || isPathString e.m0 then
+      builtins.unsafeDiscardStringContext (toString (e.content.key or e.m0))
+    else if isAttrs e.content && e.content ? key then
+      builtins.unsafeDiscardStringContext (toString e.content.key)
+    else
+      "${pk}:anon-${toString (i + 1)}";
+  keptEntries =
+    callM: dis: importer: mods:
+    let
+      pk = if importer == null then "" else importer.nk;
+    in
+    concatLists (
+      prelude.imap0 (
+        i: e:
+        let
+          nk = nixKeyOf pk i e;
+        in
+        if dis ? ${nk} then [ ] else [ (e // { inherit nk; }) ]
+      ) (moduleEntries callM importer mods)
+    );
+  # THE COLLECTION every evaluation folds: `moduleClosure`, or, where some module disables another,
+  # the same walk over the kept entries. A removed module is still collected and read, as nixpkgs
+  # loads it: its syntax refusals fire.
+  collectedClosure =
+    modulesPath: callM: mods:
+    let
+      u = moduleClosure callM mods;
+      dis = disabledSetOf modulesPath u;
+    in
+    if dis == null then
+      u
+    else
+      builtins.seq (all (e: isAttrs (moduleSyntaxChecked e)) u) (
+        moduleLevelsWith (e: keptEntries callM dis e (importsOf e.content)) { } (
+          keptEntries callM dis null mods
+        )
+      );
+  # The identity-keyed closure with the same removal (`null`: none).
+  closeModulesKept =
+    dis: startSet:
+    if dis == null then
+      closeModules startSet
+    else
+      let
+        nk =
+          g:
+          if builtins.substring 0 1 g.key == "k" then
+            builtins.substring 1 (builtins.stringLength g.key) g.key
+          else
+            "${if g.importer.key == "" then "" else nk g.importer}:anon-${toString (g.i + 1)}";
+        keep = filter (g: !(dis ? ${nk g}));
+      in
+      builtins.genericClosure {
+        startSet = keep startSet;
+        operator = g: keep g.next;
+      };
   # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
   srcClassOf = e: e.srcClass or (classifyModule e.m0);
 
@@ -2457,9 +2576,9 @@ let
   # discriminates the node by data (`mode = "module"`, den-hoag-9d80v) and carries what the node
   # answers, off the host's record: its entry and the ids its imports identify to.
   moduleFamily =
-    treeId: defIndex: flat: top:
+    treeId: defIndex: dis: flat: top:
     let
-      graph = alignedGraph "the module family of `${treeId}'" flat (closeModules top.roots);
+      graph = alignedGraph "the module family of `${treeId}'" flat (closeModulesKept dis top.roots);
       n = length flat;
       indexed = prelude.genList (
         i:
@@ -4823,7 +4942,7 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = moduleClosure (m: m) modules;
+        flat = collectedClosure (specialArgs.modulesPath or "") (m: m) modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -4925,7 +5044,7 @@ let
           else
             notAModule m;
 
-        flat = moduleClosure callD modules;
+        flat = collectedClosure (specialArgs.modulesPath or "") callD modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5077,7 +5196,7 @@ let
     let
       r = self.get id knotAttr;
     in
-    moduleFamily id (length r._nested.groups) r._flat (moduleTop r._callM r._modList);
+    moduleFamily id (length r._nested.groups) r._disabled r._flat (moduleTop r._callM r._modList);
   knotDefinitions =
     let
       nestedDefinitions = n: map (g: g.definitions) n.groups;
@@ -5274,7 +5393,7 @@ let
             else
               tree ++ [ { module = i; } ];
           graph = alignedGraph "the declaration anchors" flat (
-            closeModules (moduleTop r._callM r._modList).roots
+            closeModulesKept r._disabled (moduleTop r._callM r._modList).roots
           );
           anch =
             g:
@@ -5775,7 +5894,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (moduleClosure callM modList)
+                  builtins.seq declarationGuard (collectedClosure (specialArgs.modulesPath or "") callM modList)
               )
             else
               let
@@ -5783,7 +5902,7 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (moduleClosure callM modList);
+                    builtins.seq declarationGuard (collectedClosure (specialArgs.modulesPath or "") callM modList);
               in
               # nixpkgs' `checkModule`, in its words
               builtins.seq (all (
@@ -5923,6 +6042,7 @@ let
           warmActive =
             warmFrom != null
             && warmFrom.warmDecision.strict or null == strict
+            && disabledSetOf (specialArgs.modulesPath or "") (moduleClosure callM modList) == null
             && !decision.disabledRefusal
             && !origin.collision;
           warmCtx =
@@ -7343,6 +7463,7 @@ let
           # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the closure the family `nta.modules` mints
           # from, one node per entry, and only when the family is read (`knotModules`).
           _flat = flat;
+          _disabled = disabledSetOf (specialArgs.modulesPath or "") (moduleClosure callM modList);
           _modList = modList;
           _callM = callM;
           _nested =
@@ -7412,7 +7533,7 @@ let
               {
                 inherit key file;
                 imports = map (go { inherit file key; }) n.next;
-                disabled = false;
+                disabled = result._disabled != null && result._disabled ? ${builtins.unsafeDiscardStringContext key};
               };
           in
           builtins.seq result._flat (
