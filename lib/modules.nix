@@ -5525,28 +5525,6 @@ let
     let
       modList = if isList modules then modules else [ modules ];
 
-      # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
-      # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
-      # GROUP recurses; a config key with NO matching declaration is an UNMATCHED def, bubbled up
-      # with its FULL (relative) path so the ROOT freeform can absorb it or the orphan check can
-      # throw. nixpkgs is strict PER LEVEL, not only at the root — an undeclared key under an
-      # intermediate group throws too (a naive recursion that dropped it would diverge). `loc` is
-      # RELATIVE to `prefix`; a leaf's absolute option location is `prefix ++ loc ++ [ k ]`, while
-      # unmatched paths stay relative (the root reshapes them against `prefix` via `setAttrByPath`).
-      #   rawDefs :: [ { file; value } ]   (value: property-wrapped or a plain sub-attrset)
-      # Signature is `warm: loc: opts: rawDefs` — `warm` is the FIRST positional (threaded unchanged
-      # through the descent), described last here only because it is the warm-path add-on.
-      # `warm` = the warm-splice context `{ active; isClean; prevConfig; prevProv }` (or
-      # `{ active = false; }`), threaded through the descent. At a declared LEAF whose ABSOLUTE loc
-      # gen-memo's `isClean` ADMITS (ADR-0008 item 2 — the incremental plane's DECISION over the
-      # contribution-relation FACT `warmDecide` computes), warm SPLICES `getAttrByPath` of prev's
-      # `config`/`provenance` — lazy attrpath selection, never forcing the reused thunk (spec §2).
-      # SPLICE AT LEAVES ONLY: `prev.config`
-      # is `recursiveUpdate freeform declared`, so a whole untyped-GROUP splice would capture stale
-      # freeform descendants when the freeform plane re-merges; at an `isOptLeaf` loc the prev value is
-      # declared-only (freeform never wins a declared leaf), so leaf-granularity splicing is sound —
-      # untyped declared groups recurse and splice THEIR leaves.
-
       # ── THE DECLARATION GUARD ─────────────────────────────────────────────────────────────────
       # ADR-0033's stratification, enforced rather than arranged. `declarationSpine` applies this
       # module set with `config`, `options` and the module args bound to named refusals, and this
@@ -5586,12 +5564,6 @@ let
       # When the spine does not resolve, the guard takes `stagedDeclarations`: the unresolved nodes are
       # re-tried against the declarations of strictly earlier passes, and only what no pass resolves
       # refuses. The guard still returns `s` either way, so the staged passes decide admission only.
-      #
-      # The value walk (`mergeTree`) reads each declared key's LEAFNESS off the returned `options`, the
-      # spine, rather than off the merged record, so a redeclared leaf whose types do not merge refuses
-      # only the read that reaches it (nixpkgs' `mergeOptionDecls`). Where the staged passes ran, the
-      # spine holds a node that did not resolve, so the guard returns `s` without its `options` and the
-      # walk decides off its own merged tree.
       # A closed set (`s ? flat`) has no module that reads `options`, so every pass would equal the
       # first and the staged path could only re-raise its error: the spine is forced outright there,
       # with no `tryEval` record.
@@ -5614,7 +5586,7 @@ let
           builtins.seq (stagedDeclarations knot.positioned {
             inherit specialArgs prefix;
             modules = modList;
-          } s) (builtins.removeAttrs s [ "options" ]);
+          } s) s;
 
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
@@ -6019,12 +5991,29 @@ let
                 p.attrs;
           }) pushedRev;
 
-          # `_module.check` is an option of this evaluation's own `_module` group (`bool`, default
-          # `true`), so a module's definition merges with priorities and a conflicting pair is refused
-          # by `bool`'s merge. A passed door enters as one `mkDefault` definition after the modules'.
-          # `spine` is this level of the declaration guard's spine (`declarationSpine`'s type-free tree): at
-          # the root, the guard record itself, whose `options` it is (absent where the guard's spine did not
-          # resolve); below, the spine group at `loc`.
+          # Realize config against the option-decl TREE, one path at a time (nixpkgs mergeModules'):
+          # a declared LEAF merges via `mergeOption` (the existing per-option behaviour); a declared
+          # GROUP recurses; a config key with NO matching declaration is an UNMATCHED def, bubbled up
+          # with its FULL (relative) path so the ROOT freeform can absorb it or the orphan check can
+          # throw. nixpkgs is strict PER LEVEL, not only at the root — an undeclared key under an
+          # intermediate group throws too (a naive recursion that dropped it would diverge). `loc` is
+          # RELATIVE to `prefix`; a leaf's absolute option location is `prefix ++ loc ++ [ k ]`, while
+          # unmatched paths stay relative (the root reshapes them against `prefix` via `setAttrByPath`).
+          #   rawDefs :: [ { file; value } ]   (value: property-wrapped or a plain sub-attrset)
+          # Signature is `loc: spine: opts: rawDefs`. `spine` is this level of a type-free fold of the SAME
+          # validated declarations `opts` folds (`spineRedeclare`: the later operand, no type merged): at the
+          # root, a record whose `options` it is; below, the spine group at `loc`. Leafness is read off it, so a
+          # redeclared leaf's merged record, whose type merge may refuse, is forced only by the read that
+          # reaches it (nixpkgs' `mergeOptionDecls`). The warm-splice context is `warmCtx`
+          # `{ active; isClean; prevConfig; prevProv }` (or `{ active = false; }`). At a declared LEAF whose ABSOLUTE loc
+          # gen-memo's `isClean` ADMITS (ADR-0008 item 2 — the incremental plane's DECISION over the
+          # contribution-relation FACT `warmDecide` computes), warm SPLICES `getAttrByPath` of prev's
+          # `config`/`provenance` — lazy attrpath selection, never forcing the reused thunk (spec §2).
+          # SPLICE AT LEAVES ONLY: `prev.config`
+          # is `recursiveUpdate freeform declared`, so a whole untyped-GROUP splice would capture stale
+          # freeform descendants when the freeform plane re-merges; at an `isOptLeaf` loc the prev value is
+          # declared-only (freeform never wins a declared leaf), so leaf-granularity splicing is sound —
+          # untyped declared groups recurse and splice THEIR leaves.
           mergeTree =
             loc: spine: opts: rawDefs:
             let
@@ -6210,22 +6199,47 @@ let
               ) declaredPairs;
             };
 
+          # `_module.check` is an option of this evaluation's own `_module` group (`bool`, default
+          # `true`), so a module's definition merges with priorities and a conflicting pair is refused
+          # by `bool`'s merge. A passed door enters as one `mkDefault` definition after the modules'.
+          #
+          # The walk's spine folds the declarations `allOptions` folds. On a closed set those are the
+          # guard's own (`validated`), so its record is the spine; on an open set the guard applied the
+          # modules to refusing arguments, a different evaluation of them, so the spine is folded here.
           realized =
             (
               if check == null then
-                mergeTree [ ] declarationGuard
+                if declarationGuard ? flat then
+                  mergeTree [ ] declarationGuard
+                else
+                  mergeTree [ ] {
+                    options = mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
+                      map (e: validateDeclSubtree prefix e.options) declEntries
+                    );
+                  }
               else
                 o: d:
-                mergeTree [ ] declarationGuard o (
-                  d
-                  ++ [
-                    {
-                      file = "<gen-merge: evalModuleTree { check }>";
-                      modIndex = length d;
-                      value._module.check = priority.mkDefault check;
+                (
+                  if declarationGuard ? flat then
+                    mergeTree [ ] declarationGuard
+                  else
+                    mergeTree [ ] {
+                      options = mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
+                        map (e: validateDeclSubtree prefix e.options) declEntries
+                      );
                     }
-                  ]
                 )
+                  o
+                  (
+                    d
+                    ++ [
+                      {
+                        file = "<gen-merge: evalModuleTree { check }>";
+                        modIndex = length d;
+                        value._module.check = priority.mkDefault check;
+                      }
+                    ]
+                  )
             )
               (
                 if allOptions ? _module then

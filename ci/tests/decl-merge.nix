@@ -3959,6 +3959,77 @@ in
         ]).config.q;
       expected = "x";
     };
+    # ... and on an OPEN set, where the declarations are applied to the module arguments: a function
+    # module and a stock `mkRenamedOptionModule` (whose declaration reads `options`) beside the clash.
+    test-a-type-clash-leaves-an-unrelated-options-value-readable-on-an-open-set = {
+      expr =
+        (evalModuleTree { specialArgs.lib = np; } [
+          { options.p = mkOption { type = t.str; }; }
+          { options.p = mkOption { type = t.int; }; }
+          {
+            options.q = mkOption {
+              type = t.str;
+              default = "x";
+            };
+          }
+          ({ ... }: { })
+          (np.mkRenamedOptionModule [ "old" ] [ "q" ])
+        ]).config.q;
+      expected = "x";
+    };
+    # A declaration whose shape is chosen by catching a read of `options` has ONE shape in the
+    # evaluation that merges it: the walk decides its leafness from the same declarations it merges,
+    # never from the guard's application of them to refusing arguments. nixpkgs serves both.
+    test-a-declaration-shaped-by-a-caught-options-read-is-a-leaf-where-the-read-succeeds = {
+      expr =
+        let
+          r = evalModuleTree { } [
+            { options.foo = mkOption { default = true; }; }
+            (
+              { options, ... }:
+              {
+                options.x =
+                  if (builtins.tryEval options.foo).success then
+                    mkOption { default = "leaf"; }
+                  else
+                    { y = mkOption { default = "group"; }; };
+              }
+            )
+          ];
+        in
+        {
+          inherit (r.config) x foo;
+        };
+      expected = {
+        x = "leaf";
+        foo = true;
+      };
+    };
+    test-a-declaration-shaped-by-a-caught-options-read-is-a-group-where-the-read-succeeds = {
+      expr =
+        let
+          r = evalModuleTree { } [
+            { options.foo = mkOption { default = true; }; }
+            (
+              { options, ... }:
+              {
+                options.x =
+                  if (builtins.tryEval options.foo).success then
+                    { y = mkOption { default = "group"; }; }
+                  else
+                    mkOption { default = "leaf"; };
+              }
+            )
+          ];
+        in
+        {
+          inherit (r.config) x foo;
+        };
+      expected = {
+        x.y = "group";
+        foo = true;
+      };
+    };
     # No descriptor field is read as engine state: a declaration carrying a field spelled like a refused
     # leaf's marker (`_refused`, `refused`), built by `mkOption` or raw, is served as the record it is at
     # every surface that publishes one (the result's `options`, the stratum-1 door, a module's own
