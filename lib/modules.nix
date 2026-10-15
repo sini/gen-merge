@@ -2351,8 +2351,8 @@ let
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
-  moduleLevelsWith =
-    expand: seen: level:
+  moduleLevels =
+    callM: seen: level:
     if level == [ ] then
       [ ]
     else
@@ -2392,7 +2392,53 @@ let
             level;
       in
       kept
-      ++ moduleLevelsWith expand (if keyed then seen // first else seen) (concatMap expand kept);
+      ++ moduleLevels callM (if keyed then seen // first else seen) (
+        concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content)) kept
+      );
+  moduleLevelsKept =
+    callM: dis: seen: level:
+    if level == [ ] then
+      [ ]
+    else
+      let
+        keyed = any (e: nodeKeyOf e != null) level;
+        at = prelude.imap0 (p: e: {
+          inherit p e;
+          k = nodeKeyOf e;
+        }) level;
+        # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key
+        first = listToAttrs (
+          concatMap (
+            x:
+            if x.k == null then
+              [ ]
+            else
+              [
+                {
+                  name = x.k;
+                  value = x;
+                }
+              ]
+          ) at
+        );
+        kept =
+          if keyed then
+            map (x: x.e) (
+              filter (
+                x:
+                x.k == null
+                || (
+                  if seen ? ${x.k} || first.${x.k}.p != x.p then keyedDrop (seen.${x.k} or first.${x.k}) x else true
+                )
+              ) at
+            )
+          else
+            level;
+      in
+      kept
+      ++ moduleLevelsKept callM dis (if keyed then seen // first else seen) (
+        concatMap (e: keptEntries callM dis e (importsOf e.content)) kept
+      );
   moduleClosure =
     callM: mods:
     let
@@ -2404,7 +2450,7 @@ let
     then
       plain
     else
-      moduleLevelsWith (e: moduleEntries callM e (importsOf e.content)) { } plain;
+      moduleLevels callM { } plain;
   # ── MODULE REMOVAL (`disabledModules`, den-hoag-7o7i9): nixpkgs' `collectModules` ───────────
   # nixpkgs gathers every module's `disabledModules` over the UNFILTERED import closure, resolves each
   # item to a key (`isDisabled`'s `moduleKey`, verbatim), and re-walks the closure dropping every
@@ -2496,19 +2542,36 @@ let
   # the same walk over the kept entries. A removed module is still collected and read, as nixpkgs
   # loads it: its syntax refusals fire.
   collectedClosure =
-    modulesPath: callM: mods:
+    specialArgs: callM: mods:
     let
-      u = moduleClosure callM mods;
-      dis = disabledSetOf modulesPath u;
+      plain = moduleEntries callM null mods;
+    in
+    if
+      all (m0: !(builtins.isPath m0 || isPathString m0)) mods
+      && all (
+        e:
+        !(e.content ? imports || e.content ? require || e.content ? key || e.content ? disabledModules)
+      ) plain
+    then
+      plain
+    else
+      let
+        u = moduleLevels callM { } plain;
+      in
+      if all (e: !(e.content ? disabledModules)) u then u else removedClosure specialArgs callM mods u;
+  removedClosure =
+    specialArgs: callM: mods: u:
+    let
+      dis = disabledSetOf (specialArgs.modulesPath or "") u;
     in
     if dis == null then
       u
     else
       builtins.seq (all (e: isAttrs (moduleSyntaxChecked e)) u) (
-        moduleLevelsWith (e: keptEntries callM dis e (importsOf e.content)) { } (
-          keptEntries callM dis null mods
-        )
+        moduleLevelsKept callM dis { } (keptEntries callM dis null mods)
       );
+  # the removal's key set over an evaluation's unfiltered closure, for the readers off the result
+  disabledOfResult = r: disabledSetOf (r._specialArgs.modulesPath or "") (moduleClosure r._callM r._modList);
   # The identity-keyed closure with the same removal (`null`: none).
   closeModulesKept =
     dis: startSet:
@@ -4942,7 +5005,7 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = collectedClosure (specialArgs.modulesPath or "") (m: m) modules;
+        flat = collectedClosure specialArgs (m: m) modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5044,7 +5107,7 @@ let
           else
             notAModule m;
 
-        flat = collectedClosure (specialArgs.modulesPath or "") callD modules;
+        flat = collectedClosure specialArgs callD modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5196,7 +5259,7 @@ let
     let
       r = self.get id knotAttr;
     in
-    moduleFamily id (length r._nested.groups) r._disabled r._flat (moduleTop r._callM r._modList);
+    moduleFamily id (length r._nested.groups) (disabledOfResult r) r._flat (moduleTop r._callM r._modList);
   knotDefinitions =
     let
       nestedDefinitions = n: map (g: g.definitions) n.groups;
@@ -5393,7 +5456,7 @@ let
             else
               tree ++ [ { module = i; } ];
           graph = alignedGraph "the declaration anchors" flat (
-            closeModulesKept r._disabled (moduleTop r._callM r._modList).roots
+            closeModulesKept (disabledOfResult r) (moduleTop r._callM r._modList).roots
           );
           anch =
             g:
@@ -5894,7 +5957,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (collectedClosure (specialArgs.modulesPath or "") callM modList)
+                  builtins.seq declarationGuard (collectedClosure specialArgs callM modList)
               )
             else
               let
@@ -5902,7 +5965,7 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (collectedClosure (specialArgs.modulesPath or "") callM modList);
+                    builtins.seq declarationGuard (collectedClosure specialArgs callM modList);
               in
               # nixpkgs' `checkModule`, in its words
               builtins.seq (all (
@@ -7463,7 +7526,7 @@ let
           # THE MODULE GRAPH OF THIS TREE (den-hoag-470xp): the closure the family `nta.modules` mints
           # from, one node per entry, and only when the family is read (`knotModules`).
           _flat = flat;
-          _disabled = disabledSetOf (specialArgs.modulesPath or "") (moduleClosure callM modList);
+          _specialArgs = specialArgs;
           _modList = modList;
           _callM = callM;
           _nested =
@@ -7533,7 +7596,7 @@ let
               {
                 inherit key file;
                 imports = map (go { inherit file key; }) n.next;
-                disabled = result._disabled != null && result._disabled ? ${builtins.unsafeDiscardStringContext key};
+                disabled = disabledOfResult result != null && disabledOfResult result ? ${builtins.unsafeDiscardStringContext key};
               };
           in
           builtins.seq result._flat (
