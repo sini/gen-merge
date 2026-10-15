@@ -381,26 +381,7 @@ let
           # and, declared once with a module set, that set located at the declaring file, as nixpkgs'
           # `mergeOptionDecls` hands every declaration's sub-modules to `substSubModules`, and as a
           # redeclared option's is (`fixupModuleSets`)
-          type =
-            if !(v ? type) then
-              strategies.unspecified
-            # presence first, so a gen type pays no call
-            else if
-              (
-                if v.type ? substructure then
-                  v.type.substructure.modules
-                else
-                  (interface.importedSubstructure v.type).modules
-              ) != null
-              && length sites == 1
-            then
-              fixupModuleSets {
-                upTo.merged = v.type;
-                declaredTypes = [ v.type ];
-                prior = sites;
-              }
-            else
-              v.type;
+          type = if !(v ? type) then strategies.unspecified else v.type;
           loc = lk;
           declarations = map (s: s.file) sites;
           __toString = _: showOption lk;
