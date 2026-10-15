@@ -292,8 +292,8 @@ state, never its functor payload's. A record whose `//` override of `merge` nixp
 not one of the six (`interface.importedRehomeAt`, den-hoag-e12ro), whatever its `check`: it threads.
 An override spelled in `merge.v2`, one on a release whose constructor states no `v2` (every container
 on nixpkgs 25.05, `nullOr` on nixos-25.11 and 26.05), and one on an `either` or `oneOf` (which cannot
-thread, den-hoag-p06j3) are not detected and are lost silently, open defects owed to den-hoag-1as3r
-(iii), which retires the re-home of an overridden container. A
+thread, den-hoag-p06j3) are not detected and are lost silently, open defects recorded on
+den-hoag-1as3r. A
 type outside the six that declares a nesting element threads at a declared option through its own
 `substSubModules` rebuild (`threadedForeign`, arm (T)) where that rebuild threads (`threadsAt`,
 judged on the original record position by position, at any depth), and is refused by name where it

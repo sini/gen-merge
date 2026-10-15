@@ -1587,10 +1587,11 @@ let
   #
   # ★ A STOCK CONTAINER WHOSE OVERRIDE NIXPKGS' MOUNT KEEPS IS NOT RECOGNISED (below, den-hoag-e12ro).
   # den-hoag-n6dh7's stated price (owner, 2026-09-25: an overridden `merge` cannot be told from the stock
-  # one, and is re-homed silently) is RETIRED by den-hoag-1as3r arm (iii) (owner, 2026-10-09: always
-  # thread; `declAt` kept → refused). This test is a narrower step toward it (ADR-0039 rule (3)): an
-  # override it does not detect is still re-homed and loses the override silently, an open defect owed
-  # to den-hoag-1as3r. The classes are enumerated below.
+  # one, and is re-homed silently) stands only where the test below does not tell the override: there
+  # the record is still re-homed and loses the override silently, an open defect recorded on
+  # den-hoag-1as3r. A record the test does tell threads, and its `declAt` is refused by name, the price
+  # den-hoag-1as3r arm (iii) states (owner, 2026-10-09: `declAt` kept → refused). The classes are
+  # enumerated below.
   #
   # ★ A RECOGNISED RECORD WHOSE PAYLOAD OFFERS A DIFFERENT ELEMENT THAN IT STATES IS REFUSED BY NAME
   # (`rehomeDisagreementRefusal`, OQ2 arm (b), *defaulted, reversible*): it would carry one type and
@@ -1625,9 +1626,8 @@ let
       # container's rebuild below it), which erases an override the rebuild does not forward. A record
       # stating a module set whose rebuild forwards the override is therefore not one of the six: it threads
       # (`threadedForeign`) and its own merge folds it, as nixpkgs' does. Asked inline, last, and only of a
-      # record the payload test recognises (a binding costs every load a thunk, and asked earlier it cost the
-      # threaded registry two); the functor and the rebuild only of a record whose merge states no `v2`.
-      # NOT DETECTED, OPEN DEFECTS owed to den-hoag-1as3r (iii), each re-homed and losing its override
+      # record the payload test recognises; the functor and the rebuild only of a record whose merge states
+      # no `v2`. NOT DETECTED, OPEN DEFECTS recorded on den-hoag-1as3r, each re-homed and losing its override
       # silently: (1) an override spelled in `merge.v2` (the record states a `v2`, as the stock one does),
       # `addCheck`-wrapped or not; (2) any override on a release whose constructor states no `v2`: every
       # container on nixpkgs 25.05, and `nullOr` on nixos-25.11 and nixos-26.05; (3) an `either` or `oneOf`,
