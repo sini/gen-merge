@@ -1337,6 +1337,40 @@ let
             mergeOptionDeclTrees onRedeclare lk ys
       ) xs;
 
+  # PROTO D: nixpkgs' `fixupOptionType` at the declaration fold: a ONCE-declared leaf whose type
+  # states a module set is that type located at its declaring file, as a redeclared one is
+  # (`redeclareDecl`'s `typeOf`); every reader of the declaration tree reads that one type.
+  locateOnceDeclared =
+    sitesAt: loc: tree:
+    mapAttrs (
+      k: v:
+      let
+        lk = loc ++ [ k ];
+      in
+      if isOptLeaf v then
+        if
+          (
+            if v.type or null ? substructure then
+              v.type.substructure.modules != null && !(v.type ? substructure.mount)
+            else
+              isList (v.type.getSubModules or null)
+          )
+          && length (sitesAt lk) == 1
+        then
+          v
+          // {
+            type = fixupModuleSets {
+              upTo.merged = v.type;
+              declaredTypes = [ v.type ];
+              prior = sitesAt lk;
+            };
+          }
+        else
+          v
+      else
+        locateOnceDeclared sitesAt lk v
+    ) tree;
+
   # ── list/path helpers for the warm re-eval path (design spec §§1-3) ─────────
   # `drop n` / `take n` (gen-prelude ships neither) — index-based, no `++` accumulation.
   drop =
@@ -6268,12 +6302,12 @@ let
           # `declaredPairs`, `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes
           # `allOptions` or a value traced back to it, so guarding the producer here covers all
           # five tags at any nesting depth on both the `.options` and `.config` planes.
-          allOptions = mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
+          allOptions = locateOnceDeclared sitesAt prefix (mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
             if declarationGuard ? flat then
               declarationGuard.validated
             else
               map (e: validateDeclSubtree prefix e.options) declEntries
-          );
+          ));
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────
           # EDITED entries by ORIGIN, from the engine's OWN closure (imports expansion is
