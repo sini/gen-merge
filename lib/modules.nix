@@ -6001,11 +6001,12 @@ let
           # unmatched paths stay relative (the root reshapes them against `prefix` via `setAttrByPath`).
           #   rawDefs :: [ { file; value } ]   (value: property-wrapped or a plain sub-attrset)
           # Signature is `loc: spine: opts: rawDefs`. `spine` is this level of a type-free fold of the SAME
-          # validated declarations `opts` folds (`spineRedeclare`: the later operand, no type merged): at the
-          # root, a record whose `options` it is; below, the spine group at `loc`. Leafness is read off it, so a
+          # declarations `opts` folds (`spineRedeclare`: the later operand, no type merged): at the root, a
+          # record whose `options` it is; below, the spine group at `loc`. Leafness is read off it, so a
           # redeclared leaf's merged record, whose type merge may refuse, is forced only by the read that
           # reaches it (nixpkgs' `mergeOptionDecls`). The warm-splice context is `warmCtx`
-          # `{ active; isClean; prevConfig; prevProv }` (or `{ active = false; }`). At a declared LEAF whose ABSOLUTE loc
+          # `{ active; isClean; prevConfig; prevProv }` (or `{ active = false; }`). At a declared LEAF
+          # whose ABSOLUTE loc
           # gen-memo's `isClean` ADMITS (ADR-0008 item 2 — the incremental plane's DECISION over the
           # contribution-relation FACT `warmDecide` computes), warm SPLICES `getAttrByPath` of prev's
           # `config`/`provenance` — lazy attrpath selection, never forcing the reused thunk (spec §2).
@@ -6057,7 +6058,7 @@ let
                 # Leafness is a fact of the DECLARATIONS (stratum 1), read off the spine, so a redeclared
                 # leaf's merged record (whose type merge may refuse) is forced only by the read that reaches
                 # it, as nixpkgs' `mergeOptionDecls` is. A key the spine does not hold (the engine's own
-                # `_module` keys, or a guard that published no spine) is decided off the merged tree.
+                # `_module` keys) is decided off the merged tree.
                 if isOptLeaf ((if loc == [ ] then spine.options or { } else spine).${k} or opts.${k}) then
                   # A root `_module` leaf never splices: prev's returned `config` is `_module`-free.
                   if warmCtx.active && head lk != "_module" && warmCtx.isClean (builtins.toJSON lk) then
@@ -6205,7 +6206,9 @@ let
           #
           # The walk's spine folds the declarations `allOptions` folds. On a closed set those are the
           # guard's own (`validated`), so its record is the spine; on an open set the guard applied the
-          # modules to refusing arguments, a different evaluation of them, so the spine is folded here.
+          # modules to refusing arguments, a different evaluation of them, so the spine is folded here,
+          # over the same entries' option trees. `allOptions` validates those trees, which keeps every key
+          # and every leaf and refuses a misplaced tag by name, so the two folds agree on leafness.
           realized =
             (
               if check == null then
