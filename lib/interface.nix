@@ -812,10 +812,9 @@ let
   # FOREIGN v2 type that `importedFold` folds by this same `merge.v2` call over the fold's own definitions
   # (filed as nixpkgs files them: a default under its declaration), with nothing below it that gen's fold
   # judges beyond that call (`throughout`). Like nixpkgs' it is pre-`apply`. An ad-hoc `check` refuses here
-  # as its fold does (`adHocFold`). Below a module set (`sets`) it is the metadata of the call the option's fold
-  # folds by, over the type as that fold homes it, its definitions checked as the fold checks them; each
-  # configuration in it is the merged value the same call returned, behind the guard gen's fold puts on that
-  # value. Everywhere else it is refused by name (den-hoag-xroc7: open defects under ADR-0039's parity-defect
+  # as its fold does (`adHocFold`). Below a module set (`sets`) it is the same call over definitions the type's
+  # `check` admits, as `importedFold` checks a module set's (`checkedFold`), and each configuration in it is the
+  # merged value that call returned, behind the guard gen's fold puts on that value. Everywhere else it is refused by name (den-hoag-xroc7: open defects under ADR-0039's parity-defect
   # rule): a record gen constructed (`genOwn`) states no such metadata, below a gen record the metadata's merged
   # values would be a second evaluation without the checks gen's fold enforces there, and so would a module set
   # below an option of a configuration, whose value gen's guard folds again (`guardedAt`).
@@ -845,9 +844,6 @@ let
     else if !(throughout false importedTypeWalkFuel t) then
       (
         let
-          # the type the option's fold folds by: a module set's root mounted as its rebuild, its stock submodules
-          # guarded (`homedRootAt`, as `modules.mergeOptionWith` homes it at a declared option)
-          h = homedRootAt "evalModuleTree" loc { reader = null; } t;
           # the metadata walked beside the merged value the same call returned, as `guardedMeta` walks it: each
           # configuration is that value's own, its `config` the value guarded at each option's own read, and it is
           # served only once that value is (a definition the element's merge rejects, its carried `addCheck`'s
@@ -911,27 +907,18 @@ let
             else
               builtins.mapAttrs (n: if n == "_module" then (x: x) else options) o;
         in
-        if
-          sets
-          && throughout true importedTypeWalkFuel t
-          && isAttrs h
-          && isV2 h
-          && !(genOwn h || h ? __threadedForeign)
-        then
-          checkedFold h (
+        if sets && throughout true importedTypeWalkFuel t then
+          checkedFold t (
             l: d:
             let
               r = v2Result (
-                h.merge.v2 {
+                t.merge.v2 {
                   loc = l;
                   defs = d;
                 }
               );
             in
-            if r.headError != null then
-              throw "gen-merge: a definition for option `${showOption l}' is not of type `${describe h}'. TypeError: ${r.headError.message}"
-            else
-              guarded r.valueMeta r.value
+            guarded r.valueMeta r.value
           ) loc defs
           // {
             _internal = {

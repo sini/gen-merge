@@ -779,6 +779,13 @@ let
     );
   # ── a module set below the foreign type: each configuration the fold's own, behind its guard ──
   vmCopySub = T.submodule { options.y = nl.mkOption { type = vmCopy; }; };
+  vmSubKeyed = T.submodule {
+    key = "vm-sub";
+    options.bar = nl.mkOption {
+      type = T.int;
+      default = 1;
+    };
+  };
   vmSubRead = m: {
     keys = builtins.attrNames m.configuration;
     config = m.configuration.config;
@@ -991,7 +998,9 @@ in
       a.bar = 2;
       b = { };
     }) (e: builtins.mapAttrs (_: vmSubRead) e.options.x.valueMeta.attrs);
-    test-valueMeta-attrsOf-submodule-declared-twice = vmBoth (vmTwo (T.attrsOf vmSub) (T.attrsOf vmSub)
+    # keyed, so nixpkgs' twin merges the two module lists into one declaration
+    test-valueMeta-attrsOf-submodule-declared-twice = vmBoth (vmTwo (T.attrsOf vmSubKeyed)
+      (T.attrsOf vmSubKeyed)
       {
         a.bar = 2;
       }
@@ -1044,6 +1053,9 @@ in
     }) { l.k = 1; }) (e: rend 6 e.options.x.valueMeta.configuration.options.l.valueMeta);
 
     # ── … and no value gen-merge's `config` refuses is served through a configuration ──
+    test-valueMeta-guard-checked-root = vmGuard (vmOne (T.addCheck (T.attrsOf vmSub) (v: v ? a)) {
+      b = { };
+    }) (e: e.options.x.valueMeta.attrs.b.configuration.config);
     test-valueMeta-guard-checked-element = vmGuard (vmOne (T.attrsOf vmChecked) { a.bar = -1; }) (
       e: e.options.x.valueMeta.attrs.a.configuration.config
     );
