@@ -913,6 +913,13 @@ in
     test-valueMeta-ad-hoc-check = vmBoth (vmOne (T.attrsOf T.int // { check = builtins.isAttrs; }) {
       a = 1;
     }) vmMeta;
+    # an ad-hoc `check` BELOW a foreign container is refused by the container's own call, at the element only
+    test-valueMeta-nested-ad-hoc-check =
+      vmBoth (vmOne (T.attrsOf (T.attrsOf T.int // { check = builtins.isAttrs; })) { a.b = 1; })
+        (e: {
+          names = builtins.attrNames e.options.x.valueMeta.attrs;
+          element = vmTry e.options.x.valueMeta.attrs.a;
+        });
     # the values beside it, unmoved: a met foreign check passing
     test-valueMeta-value-control = vmBoth (vmTwo (T.attrsOf vmPos) (T.attrsOf T.int) { a = 1; }) (
       e: e.config.x
