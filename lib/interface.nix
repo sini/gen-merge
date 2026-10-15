@@ -812,27 +812,29 @@ let
   # FOREIGN v2 type that `importedFold` folds by this same `merge.v2` call over the fold's own definitions
   # (filed as nixpkgs files them: a default under its declaration), with nothing below it that gen's fold
   # judges beyond that call (`throughout`). Like nixpkgs' it is pre-`apply`. An ad-hoc `check` refuses here
-  # as its fold does (`adHocFold`). Everywhere else it is refused by name (den-hoag-xroc7: open defects under
-  # ADR-0039's parity-defect rule): a record gen constructed (`genOwn`) states no such metadata, and below a
-  # module set or a gen record the metadata's configurations and merged values would be a second evaluation,
-  # without the checks gen's fold enforces there (a met record's, a foreign `addCheck` carried over a module
-  # set, a `verify` copy inside a stock submodule).
+  # as its fold does (`adHocFold`). Below a module set (`sets`) it is the same call over definitions the type's
+  # `check` admits, as `importedFold` checks a module set's (`checkedFold`), and each configuration in it is the
+  # merged value that call returned, behind the guard gen's fold puts on that value. Everywhere else it is refused by name (den-hoag-xroc7: open defects under ADR-0039's parity-defect
+  # rule): a record gen constructed (`genOwn`) states no such metadata, below a gen record the metadata's merged
+  # values would be a second evaluation without the checks gen's fold enforces there, and so would a module set
+  # below an option of a configuration, whose value gen's guard folds again (`guardedAt`).
   foreignValueMeta =
-    t: loc: defs:
+    sets: t: loc: defs:
     let
       # a completion (`__typeSelf`, a met record among them) or a relation (`typeMergeRel`); every record gen
       # constructs states one of the two
       genOwn = x: x ? __typeSelf || x ? typeMergeRel;
-      # every type reachable through `nestedTypes` is foreign, carries no `verify` and states no module set; a
+      # every type reachable through `nestedTypes` is foreign and carries no `verify`, and states no module set
+      # unless `sets` admits one (its own `sets`, not the caller's: a name already interned costs no load); a
       # walk out of fuel answers `false`. A nested ad-hoc `check` is refused by the call itself, as at
       # nixpkgs. `attrTag`'s `nestedTypes` are option records, not types, so a v2 `attrTag` would be walked
       # no deeper than its tags.
       throughout =
-        fuel: x:
+        sets: fuel: x:
         isAttrs x
         && fuel > 0
-        && !(genOwn x || x ? verify || (x.getSubModules or null) != null)
-        && prelude.all (throughout (fuel - 1)) (builtins.attrValues (x.nestedTypes or { }));
+        && !(genOwn x || x ? verify || !sets && (x.getSubModules or null) != null)
+        && prelude.all (throughout sets (fuel - 1)) (builtins.attrValues (x.nestedTypes or { }));
     in
     if genOwn t then
       throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' is gen-merge's own, which states no v2-merge metadata"
@@ -840,8 +842,93 @@ let
       { }
     else if adHocChecked t then
       adHocFold t loc defs
-    else if !(throughout importedTypeWalkFuel t) then
-      throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' holds a module set or a gen-merge type, whose v2-merge metadata gen-merge does not serve from the evaluation it folds"
+    else if !(throughout false importedTypeWalkFuel t) then
+      (
+        let
+          # the metadata walked beside the merged value the same call returned, as `guardedMeta` walks it: each
+          # configuration is that value's own, its `config` the value guarded at each option's own read, and it is
+          # served only once that value is (a definition the element's merge rejects, its carried `addCheck`'s
+          # among them, refuses the configuration as it refuses the value); each option serves its guarded value
+          # and, where no module set or gen record is below it, its own metadata
+          guarded =
+            m: v:
+            if m ? configuration then
+              m
+              // {
+                configuration = builtins.seq v (
+                  m.configuration
+                  // {
+                    config = guardedConfig (m.configuration.options or { }) v;
+                    options = options m.configuration.options;
+                  }
+                );
+              }
+            else if m ? attrs then
+              m // { attrs = builtins.mapAttrs (k: x: guarded x v.${k}) m.attrs; }
+            else if m ? list then
+              m // { list = prelude.genList (i: guarded (elemAt m.list i) (elemAt v i)) (length m.list); }
+            # `attrListWith`: one single-key set per element in `attrListValue`, whose values, and the definitions
+            # carrying them, are each element's merged value
+            else if m ? attrList then
+              (
+                let
+                  n = length m.attrList;
+                  at = i: builtins.mapAttrs (_: guardedMeta (elemAt m.attrList i));
+                in
+                m
+                // {
+                  attrList = prelude.genList (
+                    i: guarded (elemAt m.attrList i) (head (builtins.attrValues (elemAt m.attrListValue i)))
+                  ) n;
+                  attrListValue = prelude.genList (i: at i (elemAt m.attrListValue i)) n;
+                  definitions = prelude.genList (
+                    i:
+                    let
+                      d = elemAt m.definitions i;
+                    in
+                    d
+                    // {
+                      value = d.value // {
+                        content = at i d.value.content;
+                      };
+                    }
+                  ) n;
+                }
+              )
+            else
+              m;
+          options =
+            o:
+            if o._type or null == "option" then
+              o
+              // {
+                value = guardedAt o o.value;
+                valueMeta = foreignValueMeta false o.type o.loc o.definitionsWithLocations;
+              }
+            else
+              builtins.mapAttrs (n: if n == "_module" then (x: x) else options) o;
+        in
+        if sets && throughout true importedTypeWalkFuel t then
+          checkedFold t (
+            l: d:
+            let
+              r = v2Result (
+                t.merge.v2 {
+                  loc = l;
+                  defs = d;
+                }
+              );
+            in
+            guarded r.valueMeta r.value
+          ) loc defs
+          // {
+            _internal = {
+              type = t;
+            };
+          }
+        else
+          throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' holds a module set or a gen-merge type, whose v2-merge metadata gen-merge does not serve from the evaluation it folds"
+      )
     else
       (v2Result (t.merge.v2 { inherit loc defs; })).valueMeta
       // {

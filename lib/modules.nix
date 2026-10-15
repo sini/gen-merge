@@ -374,14 +374,11 @@ let
           # which reads `true` here and `false` under nixpkgs for an option defined by a record.
           dwl = map (d: if d.file == "<default>" then d // { file = (head sites).file; } else d) defs.${k};
           p = prov.${k};
-        in
-        v
-        // {
           # nixpkgs' `fixupOptionType`: a declaration stating no type is `unspecified` (den-hoag-pm14k)
           # and, declared once with a module set, that set located at the declaring file, as nixpkgs'
           # `mergeOptionDecls` hands every declaration's sub-modules to `substSubModules`, and as a
           # redeclared option's is (`fixupModuleSets`)
-          type =
+          ty =
             if !(v ? type) then
               strategies.unspecified
             # presence first, so a gen type pays no call
@@ -401,6 +398,10 @@ let
               }
             else
               v.type;
+        in
+        v
+        // {
+          type = ty;
           loc = lk;
           declarations = map (s: s.file) sites;
           __toString = _: showOption lk;
@@ -425,9 +426,9 @@ let
               }
           ) sites;
           options = [ ];
-          # nixpkgs' v2-merge metadata, the foreign type's own (`interface.foreignValueMeta`); a declaration
+          # nixpkgs' v2-merge metadata of the served type (`interface.foreignValueMeta`); a declaration
           # stating no type has nixpkgs' `fixupOptionType` default, whose merge states no `v2`, so `{ }`
-          valueMeta = if v ? type then interface.foreignValueMeta v.type lk dwl else { };
+          valueMeta = if v ? type then interface.foreignValueMeta true ty lk dwl else { };
         }
       else
         serveOptions sitesAt (rel ++ [ k ]) lk prov.${k} defs.${k} cfg.${k} v
