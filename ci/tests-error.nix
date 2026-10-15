@@ -4325,6 +4325,32 @@ in
             msg = "^gen-merge: a module read `config' while its own declarations were being folded.*";
           };
         };
+        # An option whose PRESENCE reads a module argument stays refused though another module
+        # defines it: only an earlier pass's declarations, as a later pass reads them, carry the
+        # arguments, and the pass that tries a node binds none. The rename chain keeps the passes
+        # running past the one where the argument is readable.
+        test-a-presence-reading-a-module-argument-refuses-by-name = {
+          expr = refused [
+            base
+            (
+              { u, ... }:
+              {
+                options.v = if u.leaf then mkOption { type = types.int; } else { };
+              }
+            )
+            { _module.args.u.leaf = true; }
+            (lib.mkRenamedOptionModule [ "c" ] [ "b" ])
+            (lib.mkRenamedOptionModule [ "b" ] [ "a" ])
+            {
+              c = 1;
+              v = 5;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read the module argument `u' while its own declarations were being folded.*";
+          };
+        };
         # A pass's view is the stamped declaration record, so an evaluated field refuses there by the
         # record's own name, catchably, not as a missing attribute.
         test-a-declaration-reading-an-evaluated-field-refuses-with-the-record-text = {
