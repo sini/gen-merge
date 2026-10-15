@@ -818,7 +818,7 @@ let
   # without the checks gen's fold enforces there (a met record's, a foreign `addCheck` carried over a module
   # set, a `verify` copy inside a stock submodule).
   foreignValueMeta =
-    t: loc: defs:
+    sets: t: loc: defs:
     let
       # a completion (`__typeSelf`, a met record among them) or a relation (`typeMergeRel`); every record gen
       # constructs states one of the two
@@ -828,11 +828,11 @@ let
       # nixpkgs. `attrTag`'s `nestedTypes` are option records, not types, so a v2 `attrTag` would be walked
       # no deeper than its tags.
       throughout =
-        fuel: x:
+        withSets: fuel: x:
         isAttrs x
         && fuel > 0
-        && !(genOwn x || x ? verify || (x.getSubModules or null) != null)
-        && prelude.all (throughout (fuel - 1)) (builtins.attrValues (x.nestedTypes or { }));
+        && !(genOwn x || x ? verify || !withSets && (x.getSubModules or null) != null)
+        && prelude.all (throughout withSets (fuel - 1)) (builtins.attrValues (x.nestedTypes or { }));
     in
     if genOwn t then
       throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' is gen-merge's own, which states no v2-merge metadata"
@@ -840,8 +840,41 @@ let
       { }
     else if adHocChecked t then
       adHocFold t loc defs
-    else if !(throughout importedTypeWalkFuel t) then
-      throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' holds a module set or a gen-merge type, whose v2-merge metadata gen-merge does not serve from the evaluation it folds"
+    else if !(throughout false importedTypeWalkFuel t) then
+      (
+        let
+          # the type the option's fold folds by: a module set's root mounted as its rebuild, its stock submodules
+          # guarded (`homedRootAt`, as `modules.mergeOptionWith` homes it at a declared option)
+          h = homedRootAt "evalModuleTree" loc { reader = null; } t;
+        in
+        if
+          sets
+          && throughout true importedTypeWalkFuel t
+          && isAttrs h
+          && isV2 h
+          && !(genOwn h || h ? __threadedForeign)
+        then
+          checkedFold h (
+            l: d:
+            let
+              r = v2Result (h.merge.v2 {
+                loc = l;
+                defs = d;
+              });
+            in
+            if r.headError != null then
+              throw "gen-merge: a definition for option `${showOption l}' is not of type `${describe h}'. TypeError: ${r.headError.message}"
+            else
+              r.valueMeta
+          ) loc defs
+          // {
+            _internal = {
+              type = t;
+            };
+          }
+        else
+          throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' holds a module set or a gen-merge type, whose v2-merge metadata gen-merge does not serve from the evaluation it folds"
+      )
     else
       (v2Result (t.merge.v2 { inherit loc defs; })).valueMeta
       // {
@@ -1923,8 +1956,44 @@ let
             args:
             let
               v = t.merge.v2 args;
+              value = guardedConfig (v.valueMeta.configuration.options or { }) v.value;
             in
-            v // { value = guardedConfig (v.valueMeta.configuration.options or { }) v.value; };
+            v
+            // {
+              inherit value;
+              # its metadata behind the same guard: a definition its merge rejects refuses the configuration, whose
+              # `config` is the guarded value and whose options each serve their guarded value, and metadata only
+              # where no module set or gen record is below (`foreignValueMeta`)
+              valueMeta =
+                let
+                  c = v.valueMeta.configuration;
+                  opts =
+                    o:
+                    if o._type or null == "option" then
+                      o
+                      // {
+                        value = guardedAt o o.value;
+                        valueMeta = foreignValueMeta false o.type o.loc o.definitionsWithLocations;
+                      }
+                    else
+                      builtins.mapAttrs (n: if n == "_module" then (x: x) else opts) o;
+                in
+                if !(v.valueMeta ? configuration) then
+                  v.valueMeta
+                else
+                  v.valueMeta
+                  // {
+                    configuration =
+                      if v.headError != null then
+                        throw "gen-merge: the option `${showOption args.loc}' does not answer `valueMeta': a definition is not of type `${describe t}'. TypeError: ${v.headError.message}"
+                      else
+                        c
+                        // {
+                          config = value;
+                          options = opts c.options;
+                        };
+                  };
+            };
         };
       };
   # an evaluated configuration's value, each option guarded at its own read; `_module` and a freeform value are

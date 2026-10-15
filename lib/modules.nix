@@ -405,7 +405,7 @@ let
           options = [ ];
           # nixpkgs' v2-merge metadata, the foreign type's own (`interface.foreignValueMeta`); a declaration
           # stating no type has nixpkgs' `fixupOptionType` default, whose merge states no `v2`, so `{ }`
-          valueMeta = if v ? type then interface.foreignValueMeta v.type lk dwl else { };
+          valueMeta = if v ? type then interface.foreignValueMeta true v.type lk dwl else { };
         }
       else
         serveOptions sitesAt (rel ++ [ k ]) lk prov.${k} defs.${k} cfg.${k} v
