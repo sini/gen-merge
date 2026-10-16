@@ -2664,6 +2664,27 @@ in
             msg = text "ls\\.\"\\[definition 1-entry 1\\]\"\\.inner" "decl\\.nix" "nl\\.nix" "7";
           };
         };
+        # a gen container over the nixpkgs element: rebuilt over the located set, as nixpkgs' `attrsOf`
+        # forwards it (den-hoag-kjcpb). RED (the element folded by its own merge): `In `<unknown-file>''
+        test-gen-attrsOf-conflict-names-the-declaring-file = {
+          expr = conflict (c: c.ga.k.inner) [
+            {
+              _file = "decl.nix";
+              options.ga = L.mkOption {
+                type = gm.types.attrsOf (L.types.submodule inner);
+                default = { };
+              };
+            }
+            {
+              _file = "nc.nix";
+              config.ga.k.inner = L.mkOptionDefault 5;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = text "ga\\.k\\.inner" "decl\\.nix" "nc\\.nix" "5";
+          };
+        };
         test-untyped-first-conflict-names-the-typed-declaring-file = {
           expr = conflict (c: c.s.inner) [
             {

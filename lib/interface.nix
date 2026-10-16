@@ -2707,7 +2707,7 @@ let
     if
       !(isAttrs t)
       || t ? verify
-      || (t ? carries || t ? substructure) && !(crossedRoot t)
+      || (t ? carries || t ? substructure) && !(crossedRoot t || reachesForeignSet t)
       || isNesting t
       || !(isList (t.getSubModules or null))
     then
@@ -2742,6 +2742,26 @@ let
             && (t.carries.element ? substructure.mount || t.carries.element ? carries.element)
             && go (fuel - 1) t.carries.element
         );
+    in
+    go importedTypeWalkFuel;
+  # Does this gen container carry, through gen containers alone, a foreign module set (`foreignSet`)?
+  # nixpkgs' `fixupOptionType` rebuilds it through the root's forward, `substSubModules` over the
+  # declaration's located set, so the root is mounted as one carrying a crossed set is (`mountOf`), and
+  # its element's modules are located at the declaring file (den-hoag-kjcpb). Where that mount is not
+  # taken (the freeform group, a rebuild declaring a gen nesting element) the root is folded as before.
+  # Bounded by `importedTypeWalkFuel`, `false` at exhaustion, as `crossedRoot` is.
+  reachesForeignSet =
+    let
+      # a module set no gen constructor built and no door crossed: a foreign record stating `getSubModules`,
+      # its presence tests first, since a cyclic gen chain's `getSubModules` refuses when asked
+      foreignSet = e: isAttrs e && !(e ? substructure) && isList (e.getSubModules or null);
+      go =
+        fuel: t:
+        fuel > 0
+        && isAttrs t
+        && t ? recarry
+        && t ? carries.element
+        && (foreignSet t.carries.element || go (fuel - 1) t.carries.element);
     in
     go importedTypeWalkFuel;
   # Is the position an OPTION ROOT? An evaluation's option (its fold's mode states the `reader`) or
@@ -2781,6 +2801,10 @@ let
       s =
         if crossedRoot t then
           mountOf t
+        else if t ? carries && reachesForeignSet t then
+          # a gen container over a foreign set: rebuilt through its own forward, every level's owed check
+          # carried, as a foreign container is (`carriedAtDepth`)
+          carriedAtDepth false t
         else if t ? functor.payload.elemType then
           carriedAtDepth false t
         else if
@@ -2840,6 +2864,10 @@ let
     # element is mounted, an ad-hoc `check` riding on it as any `check` does
     if isOptionRoot site && mountable && !(declaresNestingAt door loc fixed) then
       mounted
+    else if t ? carries && !(crossedRoot t) then
+      # unmounted, a gen root is folded as the record it is, as one carrying no foreign set is
+      # (`modules.nix`, the presence tests before `homedRootAt`)
+      t
     else if !(statesWrapped t && declaresNestingAt door loc t) then
       # no gen nesting element: a rebuild that is not an option type is refused by name
       (
@@ -8195,6 +8223,7 @@ in
     owesThroughForeign
     homedRootAt
     crossedRoot
+    reachesForeignSet
     mayFoldNested
     bridge
     emptyAccessor
