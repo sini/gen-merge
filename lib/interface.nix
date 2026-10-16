@@ -1622,6 +1622,16 @@ let
           false
         else if isNesting t || t ? __threadedForeign then
           true
+        # A record's `carries` is what `declaredWrapped` would flatten (`importedWrapped`), so its roles are read in
+        # place: the same answer, with no list built per level.
+        else if t ? carries && isAttrs t.carries then
+          prelude.any (
+            v:
+            if isList v then
+              v != [ ] && (fuel <= 0 || prelude.any (go (fuel - 1)) v)
+            else
+              fuel <= 0 || go (fuel - 1) v
+          ) (prelude.attrValues t.carries)
         else
           let
             wrapped = declaredWrapped t;
