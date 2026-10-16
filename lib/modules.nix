@@ -3308,35 +3308,35 @@ let
     if !coreShortCircuit && all (d: !(d.value ? _type) && !(d ? priority)) rawDefs then
       foldJudged loc type rawDefs rawDefs
     else
-    let
-      coreDef = head rawDefs;
-      soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
-      normalized =
-        if coreShortCircuit then
-          map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
-        else
-          rawDefs;
-      discharged = concatMap (d: dischargeIn d.file d.value) normalized;
-      winners = filterOverrides discharged;
-      # The order pass, gated exactly as nixpkgs gates it: the overwhelming majority of locs carry no
-      # order marker, and for them the sort is the identity permutation, so the scan buys the fast
-      # path its skip. Everything after this point consumes `sorted`, never `winners`. The test is
-      # `isOrderMarker`'s body inline, at all three twins: `or null` answers a non-attrset, and the
-      # call's argument thunk per winner is not paid.
-      sorted =
-        if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
-      typeDefs = map (
-        w:
-        if w ? orderStated then
-          {
-            inherit (w) file value;
-            priority = w.orderPriority;
-          }
-        else
-          { inherit (w) file value; }
-      ) sorted;
-    in
-    if soleCore then coreDef.value.values else foldJudged loc type sorted typeDefs;
+      let
+        coreDef = head rawDefs;
+        soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
+        normalized =
+          if coreShortCircuit then
+            map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
+          else
+            rawDefs;
+        discharged = concatMap (d: dischargeIn d.file d.value) normalized;
+        winners = filterOverrides discharged;
+        # The order pass, gated exactly as nixpkgs gates it: the overwhelming majority of locs carry no
+        # order marker, and for them the sort is the identity permutation, so the scan buys the fast
+        # path its skip. Everything after this point consumes `sorted`, never `winners`. The test is
+        # `isOrderMarker`'s body inline, at all three twins: `or null` answers a non-attrset, and the
+        # call's argument thunk per winner is not paid.
+        sorted =
+          if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
+        typeDefs = map (
+          w:
+          if w ? orderStated then
+            {
+              inherit (w) file value;
+              priority = w.orderPriority;
+            }
+          else
+            { inherit (w) file value; }
+        ) sorted;
+      in
+      if soleCore then coreDef.value.values else foldJudged loc type sorted typeDefs;
 
   # The fold and judgement every definition list reaches, after the passes or without them.
   foldJudged =
@@ -3356,51 +3356,51 @@ let
         else
           throw (elementTypeRefusal loc type);
     in
-      if type != null && type ? verify then
-        (
-          let
-            e = type.verify result;
-          in
-          if e == null then
-            result
-          else
-            throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+    if type != null && type ? verify then
+      (
+        let
+          e = type.verify result;
+        in
+        if e == null then
+          result
+        else
+          throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+      )
+    # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
+    # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
+    # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+    # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
+    # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
+    # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
+    # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
+    # `admits` is read once.
+    else if
+      type != null
+      && type ? admits
+      && !(type ? mergeDefs.unchecked)
+      && !(
+        type ? _checkWitness
+        && (
+          type.check != type._checkWitness
+          || type ? split
+          || type ? choose
+          ||
+            (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+            &&
+              builtins.intersectAttrs {
+                admits = null;
+                mergeDefs = null;
+              } type == builtins.intersectAttrs {
+                admits = null;
+                mergeDefs = null;
+              } type.mergeDefs.completed
         )
-      # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
-      # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
-      # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
-      # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
-      # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
-      # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
-      # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
-      # `admits` is read once.
-      else if
-        type != null
-        && type ? admits
-        && !(type ? mergeDefs.unchecked)
-        && !(
-          type ? _checkWitness
-          && (
-            type.check != type._checkWitness
-            || type ? split
-            || type ? choose
-            ||
-              (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
-              &&
-                builtins.intersectAttrs {
-                  admits = null;
-                  mergeDefs = null;
-                } type == builtins.intersectAttrs {
-                  admits = null;
-                  mergeDefs = null;
-                } type.mergeDefs.completed
-          )
-        )
-        && !(all (d: type.admits d.value) typeDefs)
-      then
-        refusingOutside (interface.nameOf type) type.admits null loc typeDefs
-      else
-        result;
+      )
+      && !(all (d: type.admits d.value) typeDefs)
+    then
+      refusingOutside (interface.nameOf type) type.admits null loc typeDefs
+    else
+      result;
   # mergeDefsRichWith coreShortCircuit loc type rawDefs :: the RICH sibling — `{ value; prov }`, the
   # value plus the merge's PROVENANCE record (A2 spec §1). Used by the realizer path (`mergeOptionWith`)
   # for DECLARED options only. `value` is computed by the SAME discharge/priority/verify spine as
