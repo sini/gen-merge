@@ -3126,18 +3126,22 @@ let
     # A fold of its own is folded under a `check` a foreign wrapper rewrote over it, which the
     # import half answers (`interface.checkedFold`, den-hoag-4ifgb). gen-types' `rewritesCheck` is
     # restated inline for cost: a call here is an environment on every fold. The construction door
-    # holds this spelling to the protocol (`lib/default.nix`).
+    # holds this spelling to the protocol (`lib/default.nix`). A `check` on a record carrying no witness
+    # is a foreign one (`interface.checksDefs`, restated inline for cost), and the import half checks
+    # it before the record's own fold as it checks a record stating no fold (den-hoag-w68ud).
     else if
       type ? mergeDefs
       && !(
-        type ? _checkWitness
-        && type ? check
+        type ? check
         && (
-          type.check != type._checkWitness
-          ||
-            (type ? split || type ? choose)
-            && !(type ? verify)
-            && (type.mergeDefs.completed._checkWitness or null) != type._checkWitness
+          if type ? _checkWitness then
+            type.check != type._checkWitness
+            ||
+              (type ? split || type ? choose)
+              && !(type ? verify)
+              && (type.mergeDefs.completed._checkWitness or null) != type._checkWitness
+          else
+            !(type ? verify && type ? __typeSelf)
         )
       )
     then
