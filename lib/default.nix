@@ -699,6 +699,9 @@ in
   # answer, so the order is the contract; positional arity carries it, with no field to check. It is
   # the engine's own binding, the one the declaration and element strata consult.
   inherit (core) mergeTypes;
+  # The value fold, with a caller's definition records projected to the shape the spine hands a fold
+  # (`mergeDefsPublished`); the vocabulary and the engine fold through the core's own `mergeDefs`.
+  mergeDefs = core.mergeDefsPublished;
 
   # The engine + the shared fold (spec §2) + module-system helpers consumers need.
   inherit (core)
@@ -710,7 +713,6 @@ in
     # evaluating a whole tree and projecting `.options` off it, and gets a named refusal rather
     # than a divergence if the declarations it is asking about turn out to need the value stratum.
     declaredOptions
-    mergeDefs
     # A partial fold, the container whose every key folds partially (den-hoag-fjdnf), and the submodule whose
     # every declared option does (`partialSubmodule`, den-hoag-5ov3p, below): for a consumer that folds some of
     # a position's definitions now and the rest later. Outside `types`, whose every member the

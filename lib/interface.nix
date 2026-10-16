@@ -1630,6 +1630,35 @@ let
     in
     go importedTypeWalkFuel;
 
+  # Does this container's element chain end at a leaf? `canNest`'s `false`, read off the record by presence: each level
+  # carries one element and states no other role and no nesting (`nests`, `__threadedForeign`), and the last element
+  # declares nothing it wraps, read as `declaredWrapped` reads it and in its order (`carries`, then `nestedTypes` unless
+  # the record evaluates its own roles, then `elemType`). Operators only, so the option root that asks it walks
+  # nothing. Its fuel is `canNest`'s, spent the same way: a container reached with none left answers `false`, where
+  # `canNest` answers its exhaustion `true`, so a chain too deep for the walk is handed to the walk. `false` on any
+  # record it cannot read this way: the walk then answers. It reads the `element` role and refuses the two other
+  # named ones (`alternatives`, `moduleSet`); a hand-built `carries` stating a role outside the vocabulary beside
+  # `element` is read as its element chain, which is what every gen container's fold reads of it.
+  chainEndsAtLeaf =
+    let
+      go =
+        fuel: t:
+        fuel > 0
+        && t ? carries.element
+        && !(t ? nests || t ? __threadedForeign || t ? carries.alternatives || t ? carries.moduleSet)
+        && (
+          !(t.carries.element ? carries || t.carries.element ? nests || t.carries.element ? __threadedForeign)
+          && (
+            ((t.carries.element.functor or { }).payload or null) ? modules
+            && (t.carries.element.getSubModules or null) != null
+            || (t.carries.element.nestedTypes or { }) == { }
+          )
+          && !(t.carries.element ? elemType)
+          || t.carries.element ? carries.element && go (fuel - 1) t.carries.element
+        );
+    in
+    go importedTypeWalkFuel;
+
   # What a record DECLARES it wraps, read by the readers that already exist and never a new copy:
   # its roles in either vocabulary (`importedWrapped`: `carries`, else every `nestedTypes` value, so
   # `coercedTo`'s `finalType` counts), and, where it states none there, the element or members the
@@ -8160,6 +8189,7 @@ in
     keyedUnderEmbedding
     moduleSetPayload
     canNest
+    chainEndsAtLeaf
     declaresNesting
     homedAt
     owesThroughForeign

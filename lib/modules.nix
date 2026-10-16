@@ -3217,6 +3217,13 @@ let
   #     `values` as a plain def and run the normal spine (correctness over the skip). Byte-identical
   #     to a config that had supplied `values` in place of the marker.
   mergeDefs = mergeDefsWith false;
+  # The value fold as published: a caller's definition records are projected to `{ file; value; }`, the shape the
+  # spine hands a fold, before they reach it. The spine reads only those two fields of an input record, so the
+  # projection is the identity on its answer, and `mergeDefsWith`'s property-free fast path, which hands the engine's
+  # own records on whole, never hands a fold a field the caller added. The engine's own callers keep `mergeDefs`.
+  mergeDefsPublished =
+    loc: type: defs:
+    mergeDefs loc type (map (d: { inherit (d) file value; }) defs);
   # The same spine over a SUBSET of a position's definitions, whose fold the caller completes later
   # with the rest (den-hoag-fjdnf). Its result is a definition again: the merged winners under the
   # priority that selected them, so that folding it with the remaining definitions is the fold over
@@ -3317,38 +3324,55 @@ let
   # path is nixpkgs' own: a value with no property marker cannot discharge to nothing.
   isDefinedValue = v: !(v ? _type) || dischargeProperties v != [ ];
   isDefinedBy = defs: any (d: isDefinedValue d.value) defs;
+  # A list of property-free definitions is its own answer: every pass maps it to itself (a value that is no property
+  # discharges to itself at the default priority, so the override pass keeps every one, and with no order marker the
+  # sort is the identity), as `addressedDefs` answers it on the key walk's side. Such a list is folded and judged
+  # directly, so the passes' bindings are never allocated. A definition stating its own `priority` (an order the
+  # enclosing fold resolved) takes the passes, which drop the field unless this level's sort states one, so it never
+  # reaches a fold that reads its records. The records the fast path hands on whole are the engine's own; a caller's,
+  # which may carry any field, are projected where they enter (`mergeDefsPublished`).
   mergeDefsWith =
     coreShortCircuit: loc: type: rawDefs:
+    if !coreShortCircuit && all (d: !(d.value ? _type) && !(d ? priority)) rawDefs then
+      foldJudged loc type rawDefs rawDefs
+    else
+      let
+        coreDef = head rawDefs;
+        soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
+        normalized =
+          if coreShortCircuit then
+            map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
+          else
+            rawDefs;
+        discharged = concatMap (d: dischargeIn d.file d.value) normalized;
+        winners = filterOverrides discharged;
+        # The order pass, gated exactly as nixpkgs gates it: the overwhelming majority of locs carry no
+        # order marker, and for them the sort is the identity permutation, so the scan buys the fast
+        # path its skip. Everything after this point consumes `sorted`, never `winners`. The test is
+        # `isOrderMarker`'s body inline, at all three twins: `or null` answers a non-attrset, and the
+        # call's argument thunk per winner is not paid.
+        sorted =
+          if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
+        typeDefs = map (
+          w:
+          if w ? orderStated then
+            {
+              inherit (w) file value;
+              priority = w.orderPriority;
+            }
+          else
+            { inherit (w) file value; }
+        ) sorted;
+      in
+      if soleCore then coreDef.value.values else foldJudged loc type sorted typeDefs;
+
+  # The fold and judgement every definition list reaches, after the passes or without them.
+  foldJudged =
+    loc: type: sorted: typeDefs:
     let
-      coreDef = head rawDefs;
-      soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
-      normalized =
-        if coreShortCircuit then
-          map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
-        else
-          rawDefs;
-      discharged = concatMap (d: dischargeIn d.file d.value) normalized;
-      winners = filterOverrides discharged;
-      # The order pass, gated exactly as nixpkgs gates it: the overwhelming majority of locs carry no
-      # order marker, and for them the sort is the identity permutation, so the scan buys the fast
-      # path its skip. Everything after this point consumes `sorted`, never `winners`. The test is
-      # `isOrderMarker`'s body inline, at all three twins: `or null` answers a non-attrset, and the
-      # call's argument thunk per winner is not paid.
-      sorted =
-        if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
-      typeDefs = map (
-        w:
-        if w ? orderStated then
-          {
-            inherit (w) file value;
-            priority = w.orderPriority;
-          }
-        else
-          { inherit (w) file value; }
-      ) sorted;
       fold = ownFold type;
       result =
-        if winners == [ ] then
+        if sorted == [ ] then
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if fold != null then
           fold loc typeDefs
@@ -3359,55 +3383,52 @@ let
           mergeLeaf loc sorted
         else
           throw (elementTypeRefusal loc type);
-      checked =
-        if type != null && type ? verify then
-          (
-            let
-              e = type.verify result;
-            in
-            if e == null then
-              result
-            else
-              throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
-          )
-        # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
-        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
-        # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
-        # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
-        # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
-        # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
-        # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
-        # `admits` is read once.
-        else if
-          type != null
-          && type ? admits
-          && !(type ? mergeDefs.unchecked)
-          && !(
-            type ? _checkWitness
-            && (
-              type.check != type._checkWitness
-              || type ? split
-              || type ? choose
-              ||
-                (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
-                &&
-                  builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type == builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type.mergeDefs.completed
-            )
-          )
-          && !(all (d: type.admits d.value) typeDefs)
-        then
-          refusingOutside (interface.nameOf type) type.admits null loc typeDefs
-        else
-          result;
     in
-    if soleCore then coreDef.value.values else checked;
-
+    if type != null && type ? verify then
+      (
+        let
+          e = type.verify result;
+        in
+        if e == null then
+          result
+        else
+          throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+      )
+    # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
+    # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
+    # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+    # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
+    # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
+    # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
+    # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
+    # `admits` is read once.
+    else if
+      type != null
+      && type ? admits
+      && !(type ? mergeDefs.unchecked)
+      && !(
+        type ? _checkWitness
+        && (
+          type.check != type._checkWitness
+          || type ? split
+          || type ? choose
+          ||
+            (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+            &&
+              builtins.intersectAttrs {
+                admits = null;
+                mergeDefs = null;
+              } type == builtins.intersectAttrs {
+                admits = null;
+                mergeDefs = null;
+              } type.mergeDefs.completed
+        )
+      )
+      && !(all (d: type.admits d.value) typeDefs)
+    then
+      refusingOutside (interface.nameOf type) type.admits null loc typeDefs
+    else
+      result;
   # mergeDefsRichWith coreShortCircuit loc type rawDefs :: the RICH sibling — `{ value; prov }`, the
   # value plus the merge's PROVENANCE record (A2 spec §1). Used by the realizer path (`mergeOptionWith`)
   # for DECLARED options only. `value` is computed by the SAME discharge/priority/verify spine as
@@ -5137,26 +5158,29 @@ let
               throw (declaredTypeRefusal loc null)
             else if (optDecl.type or null) ? verify && !(optDecl.type ? mergeDefs.threaded) then
               optDecl.type
+            # a crossed module set, or a container carrying one, is mounted (`interface.crossedRoot`)
+            else if
+              (optDecl.type or null) ? carries
+              && !(
+                # presence first, so a gen root that crossed nothing pays no call
+                optDecl.type ? substructure.mount
+                ||
+                  (
+                    optDecl.type ? carries.element.substructure.mount
+                    || optDecl.type ? carries.element.carries.element.substructure.mount
+                    || optDecl.type ? carries.element.carries.element.carries.element
+                  )
+                  && interface.crossedRoot optDecl.type
+              )
+            then
+              # a container whose element chain ends at a leaf cannot nest, which its record says by presence
+              if optDecl.type ? carries.element && interface.chainEndsAtLeaf optDecl.type then
+                optDecl.type
+              else
+                threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) optDecl.type
             else
               threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) (
-                # a crossed module set, or a container carrying one, is mounted (`interface.crossedRoot`)
-                if
-                  (optDecl.type or null) ? carries
-                  && !(
-                    # presence first, so a gen root that crossed nothing pays no call
-                    optDecl.type ? substructure.mount
-                    ||
-                      (
-                        optDecl.type ? carries.element.substructure.mount
-                        || optDecl.type ? carries.element.carries.element.substructure.mount
-                        || optDecl.type ? carries.element.carries.element.carries.element
-                      )
-                      && interface.crossedRoot optDecl.type
-                  )
-                then
-                  optDecl.type
-                else
-                  interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)
+                interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)
               )
           ) withDefault;
     in
@@ -8242,6 +8266,7 @@ in
     # which options a module set declares.
     declaredOptions
     mergeDefs
+    mergeDefsPublished
     mergeDefsPartial
     mergeOption
     mergeOneOption
