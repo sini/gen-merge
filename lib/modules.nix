@@ -5126,26 +5126,29 @@ let
               throw (declaredTypeRefusal loc null)
             else if (optDecl.type or null) ? verify && !(optDecl.type ? mergeDefs.threaded) then
               optDecl.type
+            # a crossed module set, or a container carrying one, is mounted (`interface.crossedRoot`)
+            else if
+              (optDecl.type or null) ? carries
+              && !(
+                # presence first, so a gen root that crossed nothing pays no call
+                optDecl.type ? substructure.mount
+                ||
+                  (
+                    optDecl.type ? carries.element.substructure.mount
+                    || optDecl.type ? carries.element.carries.element.substructure.mount
+                    || optDecl.type ? carries.element.carries.element.carries.element
+                  )
+                  && interface.crossedRoot optDecl.type
+              )
+            then
+              # a container whose element chain ends at a leaf cannot nest, which its record says by presence
+              if optDecl.type ? carries.element && interface.chainEndsAtLeaf optDecl.type then
+                optDecl.type
+              else
+                threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) optDecl.type
             else
               threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) (
-                # a crossed module set, or a container carrying one, is mounted (`interface.crossedRoot`)
-                if
-                  (optDecl.type or null) ? carries
-                  && !(
-                    # presence first, so a gen root that crossed nothing pays no call
-                    optDecl.type ? substructure.mount
-                    ||
-                      (
-                        optDecl.type ? carries.element.substructure.mount
-                        || optDecl.type ? carries.element.carries.element.substructure.mount
-                        || optDecl.type ? carries.element.carries.element.carries.element
-                      )
-                      && interface.crossedRoot optDecl.type
-                  )
-                then
-                  optDecl.type
-                else
-                  interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)
+                interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)
               )
           ) withDefault;
     in
