@@ -271,6 +271,10 @@ let
       elemNullOr = once (C.nullOr sub) { } (c: c.seen);
       elemLazyAttrsOf = once (C.lazyAttrsOf sub) { k = { }; } at;
       elemTwoDeep = once (C.attrsOf (C.attrsOf sub)) { k.j = { }; } at2;
+      # three gen containers: the depth-3 presence clause sends it to the one reach walk
+      elemThreeDeep = once (C.attrsOf (C.listOf (C.attrsOf sub))) {
+        k = [ { j = { }; } ];
+      } (c: (builtins.head c.k).j.seen);
       elemForeignBetween = once (C.attrsOf (TY.attrsOf sub)) { k.j = { }; } at2;
       # a nixpkgs record stating an author relation is still no gen record: the mount reaches it
       elemAuthorRel = once (C.attrsOf (sub // { inherit (genMerge.types.submodule { }) typeMergeRel; })) {

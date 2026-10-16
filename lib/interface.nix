@@ -2707,7 +2707,7 @@ let
     if
       !(isAttrs t)
       || t ? verify
-      || (t ? carries || t ? substructure) && !(crossedRoot t || reachesForeignSet t)
+      || (t ? carries || t ? substructure) && !(reachesModuleSet t)
       || isNesting t
       || !(isList (t.getSubModules or null))
     then
@@ -2744,24 +2744,38 @@ let
         );
     in
     go importedTypeWalkFuel;
-  # Does this gen container carry, through gen containers alone, a foreign module set (`foreignSet`)?
-  # nixpkgs' `fixupOptionType` rebuilds it through the root's forward, `substSubModules` over the
-  # declaration's located set, so the root is mounted as one carrying a crossed set is (`mountOf`), and
-  # its element's modules are located at the declaring file (den-hoag-kjcpb). Where that mount is not
-  # taken (the freeform group, a rebuild declaring a gen nesting element) the root is folded as before.
-  # Bounded by `importedTypeWalkFuel`, `false` at exhaustion, as `crossedRoot` is.
-  reachesForeignSet =
+  # Is this record mounted: does it state a crossed module set (`crossedRoot`), or carry, through gen
+  # containers alone, one that crossed or a foreign one no gen constructor built and no door crossed? nixpkgs'
+  # `fixupOptionType` rebuilds a gen container over a foreign set through the root's forward,
+  # `substSubModules` over the declaration's located set, so the root is mounted as one carrying a crossed
+  # set is (`mountOf`), and its element's modules are located at the declaring file (den-hoag-kjcpb). Where
+  # that mount is not taken (the freeform group, a rebuild declaring a gen nesting element) the root is
+  # folded as before.
+  #
+  # ONE walk for both classes, so a chain of gen records pays `crossedRoot`'s walk and no second one: a
+  # level's element is a foreign set (no `substructure`, a stated `getSubModules`), or the walk descends
+  # where `crossedRoot`'s does. Every gen record states `substructure`, so the foreign test answers a gen
+  # element by presence alone; the set's own `getSubModules` is asked only after, since a cyclic gen
+  # chain's refuses when asked. Bounded by `importedTypeWalkFuel`, `false` at exhaustion, as `crossedRoot`
+  # is.
+  reachesModuleSet =
     let
-      # a module set no gen constructor built and no door crossed: a foreign record stating `getSubModules`,
-      # its presence tests first, since a cyclic gen chain's `getSubModules` refuses when asked
-      foreignSet = e: isAttrs e && !(e ? substructure) && isList (e.getSubModules or null);
       go =
         fuel: t:
-        fuel > 0
-        && isAttrs t
-        && t ? recarry
-        && t ? carries.element
-        && (foreignSet t.carries.element || go (fuel - 1) t.carries.element);
+        isAttrs t
+        && (
+          t ? substructure.mount && !(t ? verify) && isList (t.getSubModules or null)
+          ||
+            fuel > 0
+            && t ? recarry
+            && t ? carries.element
+            && (
+              !(t.carries.element ? substructure) && isList (t.carries.element.getSubModules or null)
+              ||
+                (t.carries.element ? substructure.mount || t.carries.element ? carries.element)
+                && go (fuel - 1) t.carries.element
+            )
+        );
     in
     go importedTypeWalkFuel;
   # Is the position an OPTION ROOT? An evaluation's option (its fold's mode states the `reader`) or
@@ -2801,7 +2815,7 @@ let
       s =
         if crossedRoot t then
           mountOf t
-        else if t ? carries && reachesForeignSet t then
+        else if t ? carries && reachesModuleSet t then
           # a gen container over a foreign set: rebuilt through its own forward, every level's owed check
           # carried, as a foreign container is (`carriedAtDepth`)
           carriedAtDepth false t
@@ -8223,7 +8237,7 @@ in
     owesThroughForeign
     homedRootAt
     crossedRoot
-    reachesForeignSet
+    reachesModuleSet
     mayFoldNested
     bridge
     emptyAccessor

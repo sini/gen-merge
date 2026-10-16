@@ -4824,7 +4824,7 @@ let
                         ||
                           g.type ? carries.element.carries.element && !(g.type ? carries.element.carries.element.substructure)
                       )
-                      && (interface.crossedRoot g.type || interface.reachesForeignSet g.type)
+                      && interface.reachesModuleSet g.type
                   )
                 then
                   g.type
@@ -5177,7 +5177,7 @@ let
                       optDecl.type ? carries.element.carries.element
                       && !(optDecl.type ? carries.element.carries.element.substructure)
                   )
-                  && (interface.crossedRoot optDecl.type || interface.reachesForeignSet optDecl.type)
+                  && interface.reachesModuleSet optDecl.type
               )
             then
               # a container whose element chain ends at a leaf cannot nest, which its record says by presence

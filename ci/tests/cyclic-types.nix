@@ -11,6 +11,11 @@
 # Both now take `importedTypeWalkFuel` and refuse by name at exhaustion. Which refusal fired is a
 # claim about the message and lives in `../tests-error.nix` (`cyclic-types`); this file holds the
 # booleans, the values the engine now serves, the price at its boundary, and the live controls.
+# Not every value observation serves: a cyclic MIXED chain (`mixed`, a stock nixpkgs container on
+# each lap, and its `coercedTo`, `uniq` and `functionTo` laps) declared as an option's type is a gen
+# container over a foreign module set, which the fold mounts as nixpkgs' `fixupOptionType` does
+# (`reachesModuleSet`, den-hoag-kjcpb). The mount reads the spine, so the option refuses catchably by
+# name, where nixpkgs' twin aborts uncatchably.
 {
   genMerge,
   nixpkgsLib,
@@ -151,6 +156,22 @@ in
         ];
         refusal = true;
       };
+    };
+    # A cyclic mixed chain as an option's type is mounted, and the mount reads the spine: the option
+    # refuses catchably, where an unmounted fold served `[ null [ null ] ]` (den-hoag-kjcpb).
+    test-gen-refuses-a-mixed-cycle-as-an-option-type-catchably = {
+      expr = map (r: caught (genEval r [ null ])) [
+        mixed
+        mixedCoerced
+        mixedUniq
+        mixedFunctionTo
+      ];
+      expected = [
+        true
+        true
+        true
+        true
+      ];
     };
     # The union mark's posture at exhaustion is `true`: a union below 33 nullables under an exact
     # container is still marked, so the key walk's container node is read off its node. A `false`
