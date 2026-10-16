@@ -2835,9 +2835,7 @@ let
     # never takes): at an option root, a rebuild that is an option type declaring no gen nesting
     # element is mounted, an ad-hoc `check` riding on it as any `check` does
     if isOptionRoot site && mountable && !(declaresNestingAt door loc fixed) then
-      # a gen container is its own home: its rebuild is its own constructor's (`recarry`), so it is served
-      # as rebuilt, with no re-homing and no second check (den-hoag-kjcpb)
-      (if t ? carries && !(crossedRoot t) then fixed else mounted)
+      mounted
     else if t ? carries && !(crossedRoot t) then
       # unmounted, a gen root is folded as the record it is, as one carrying no foreign set is
       # (`modules.nix`, the presence tests before `homedRootAt`)
