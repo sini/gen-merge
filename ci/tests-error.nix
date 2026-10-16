@@ -2582,6 +2582,107 @@ in
         };
       };
 
+    # ── a nested evaluation's conflict NAMES THE DECLARING FILE (den-hoag-fhggb; nixpkgs' `mergeOptionDecls`
+    # → `fixupOptionType`) ──────────────────────────────────────────────────────────────────────────────
+    # The evaluation a nixpkgs module-set type's merge runs is nixpkgs' own, so a conflict inside it is
+    # nixpkgs' text, pinned whole. Its modules are located at the file of the declaration that carries the
+    # type, an untyped declaration before it included (ci/tests/declared-file.nix). RED (the mount's
+    # constant label): `In `<unknown-file>''; RED (the first declaring site's file): `In `decl.nix'' on the
+    # untyped-first cell.
+    flake.testsError.nested-declaring-file =
+      let
+        L = nixpkgsLib;
+        inner = {
+          options.inner = L.mkOption {
+            type = L.types.int;
+            default = 3;
+          };
+        };
+        decl = f: {
+          _file = f;
+          options.s = L.mkOption {
+            type = L.types.submodule inner;
+            default = { };
+          };
+          options.at = L.mkOption {
+            type = L.types.attrsOf (L.types.submodule inner);
+            default = { };
+          };
+          options.ls = L.mkOption {
+            type = L.types.listOf (L.types.submodule inner);
+            default = [ ];
+          };
+        };
+        conflict =
+          read: ms:
+          force (
+            read (cfg {
+              modules = ms;
+            })
+          );
+        text =
+          loc: file: def: v:
+          "^The option `${loc}' has conflicting definition values:\n- In `${file}': 3\n- In `${def}': ${v}\nUse `lib\\.mkForce value` or `lib\\.mkDefault value` to change the priority on any of these definitions\\.\n?$";
+      in
+      {
+        test-submodule-conflict-names-the-declaring-file = {
+          expr = conflict (c: c.s.inner) [
+            (decl "decl.nix")
+            {
+              _file = "nc.nix";
+              config.s.inner = L.mkOptionDefault 5;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = text "s\\.inner" "decl\\.nix" "nc\\.nix" "5";
+          };
+        };
+        test-attrsOf-conflict-names-the-declaring-file = {
+          expr = conflict (c: c.at.k.inner) [
+            (decl "decl.nix")
+            {
+              _file = "na.nix";
+              config.at.k.inner = L.mkOptionDefault 6;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = text "at\\.k\\.inner" "decl\\.nix" "na\\.nix" "6";
+          };
+        };
+        test-listOf-conflict-names-the-declaring-file = {
+          expr = conflict (c: (builtins.head c.ls).inner) [
+            (decl "decl.nix")
+            {
+              _file = "nl.nix";
+              config.ls = [ { inner = L.mkOptionDefault 7; } ];
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = text "ls\\.\"\\[definition 1-entry 1\\]\"\\.inner" "decl\\.nix" "nl\\.nix" "7";
+          };
+        };
+        test-untyped-first-conflict-names-the-typed-declaring-file = {
+          expr = conflict (c: c.s.inner) [
+            {
+              _file = "decl.nix";
+              options.s = L.mkOption { description = "untyped"; };
+            }
+            (decl "decl2.nix")
+            {
+              _file = "nc.nix";
+              config.s.inner = L.mkOptionDefault 5;
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = text "s\\.inner" "decl2\\.nix" "nc\\.nix" "5";
+          };
+        };
+      };
+
     # A UNION merges every definition through a member that accepts it, or refuses by name. These
     # cells are the only assertion available for that refusal: the shape it replaces was an
     # INTERPRETER type error — `expected a list but found a string: "b"` — which escapes

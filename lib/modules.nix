@@ -375,9 +375,10 @@ let
           dwl = map (d: if d.file == "<default>" then d // { file = (head sites).file; } else d) defs.${k};
           p = prov.${k};
           # nixpkgs' `fixupOptionType`: a declaration stating no type is `unspecified` (den-hoag-pm14k)
-          # and, declared once with a module set, that set located at the declaring file, as nixpkgs'
-          # `mergeOptionDecls` hands every declaration's sub-modules to `substSubModules`, and as a
-          # redeclared option's is (`fixupModuleSets`)
+          # and, with one TYPED declaration stating a module set, that set located at that
+          # declaration's file, as nixpkgs' `mergeOptionDecls` hands each typed declaration's
+          # sub-modules to `substSubModules` (an untyped one contributes none), and as a redeclared
+          # option's is (`fixupModuleSets`)
           ty =
             if !(v ? type) then
               strategies.unspecified
@@ -389,13 +390,18 @@ let
                 else
                   (interface.importedSubstructure v.type).modules
               ) != null
-              && length sites == 1
             then
-              fixupModuleSets {
-                upTo.merged = v.type;
-                declaredTypes = [ v.type ];
-                prior = sites;
-              }
+              let
+                typed = filter (s: s.decl ? type) sites;
+              in
+              if length typed == 1 then
+                fixupModuleSets {
+                  upTo.merged = v.type;
+                  declaredTypes = [ v.type ];
+                  prior = typed;
+                }
+              else
+                v.type
             else
               v.type;
         in

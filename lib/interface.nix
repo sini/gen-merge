@@ -2772,11 +2772,21 @@ let
           carriedAtDepth false t
         else
           t.substSubModules or null;
-      # the shape `mergeOptionDecls` hands a rebuild, labelled as nixpkgs labels a module that states
-      # no file
+      # the shape `mergeOptionDecls` hands a rebuild, located at the declaring file as nixpkgs locates
+      # `opt.options`: the file of the declaration that carries a type, since only a typed declaration
+      # contributes `getSubModules`. A site stating no declarations (the public `mergeOption`, the freeform
+      # group) has none, and keeps the label nixpkgs gives a module that states no file. One binding per
+      # mount; spelled inline, `_file` would allocate one thunk per module instead.
       fixed = s (
+        let
+          file =
+            if site ? sitesAt then
+              (head (filter (x: x.decl ? type) (site.sitesAt loc) ++ [ { file = "<unknown-file>"; } ])).file
+            else
+              "<unknown-file>";
+        in
         map (m: {
-          _file = "<unknown-file>";
+          _file = file;
           imports = [ m ];
         }) t.getSubModules
       );
