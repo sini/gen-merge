@@ -3102,24 +3102,35 @@ let
           c0 = (head owedC).check.__verifyProjection or (head owedC).check;
           c1 = (elemAt owedC 1).check.__verifyProjection or (elemAt owedC 1).check;
           adHoc = filter isAdHoc owedC;
+          j = below fuel ts r;
         in
         if owed == [ ] then
-          below fuel ts r
+          j
         else
           (
             x:
-            # an owed `verify` rides on the carried record, read on the merged value as a copy's own is
-            if !(builtins.any (o: o ? verify) owed) then
-              x
-            else
-              let
-                vf = v: builtins.foldl' (e: o: if e != null || !(o ? verify) then e else o.verify v) null owed;
-              in
-              rebuildClosed.verify top vf x
+            # WHERE IT OWES ANOTHER DECLARATION'S CHECK, THE CARRIED RECORD IS A CONSTRUCTION, minted by its
+            # constructor: a gen join restricted by the checks it owes is the meet (`meetOf`'s), so it is identified
+            # through the one mint over that join and those owed records, never by the mark of the join it was built
+            # from (ADR-0034's regime by constructor). Carried over its own check alone it admits what it did, so it is
+            # re-handed (ADR-0014); over a FOREIGN join it stays COMPARED, the join's regime (`carriedMint`)
+            carriedMint ts j owed (
+              # an owed `verify` rides on the carried record, read on the merged value as a copy's own is
+              if !(builtins.any (o: o ? verify) owed) then
+                x
+              else
+                let
+                  vf = v: builtins.foldl' (e: o: if e != null || !(o ? verify) then e else o.verify v) null owed;
+                in
+                # read on the merged value by the record's own merge at every depth, minted or re-handed: a minted
+                # record is its own completion, so no later step reads its `verify` as one owed beside its check
+                # (`replacesVerify`)
+                rebuildClosed.verify false vf x
+            )
           )
             (
               if owedC == [ ] then
-                below fuel ts r
+                j
               else
                 carryBy top (
                   if adHoc != [ ] then
@@ -3135,9 +3146,41 @@ let
                         else
                           (x: builtins.all (o: (o.check.__verifyProjection or o.check) x) owedC);
                     }
-                ) (below fuel ts r)
+                ) j
             );
       carryElement = carryBy false;
+      # `x`, the join `j` restricted by the owed `os`, minted over them where the join is gen's (it states the mint's
+      # mark) and some record `ts` it was rebuilt from is not one value with the owed (`sameValue`; a record owing
+      # nothing is never one value with one that owes, so the lengths are asked first). A lone declaration, or one
+      # value declared twice, carried over its own check is re-handed (ADR-0014). A foreign join is rebuilt per
+      # evaluation, so a mint over it is no identity over a total preimage (ADR-0034's MINTED): its twins would still
+      # be refused, and nixpkgs' `valueMeta` would be refused with them (ADR-0039). It stays COMPARED, the join's
+      # regime, where `meetOf` mints a leaf meet over a foreign join (den-hoag-k4f4g). A single-record re-carry below
+      # a container is not yet minted (den-hoag-k4f4g §3b).
+      carriedMint =
+        ts: j: os: x:
+        if
+          !(types ? mkIdentity)
+          || !(j ? __mint)
+          || length os == length ts && (length ts == 1 || builtins.all (t: sameValue t (head os)) ts)
+        then
+          x
+        else
+          let
+            s = x // {
+              inherit (ids)
+                __mint
+                __payload
+                __sealed
+                __okAt
+                ;
+              __typeSelf = _: s;
+              __witness = metWitness;
+              __stampReads = stampReads;
+            };
+            ids = metIdentity j os { carried = true; } s;
+          in
+          s;
       # `t.substSubModules m`, with an owing module-set element rebuilt by the same function, carried, and the
       # container rebuilt over it by its own constructor: one rebuild per level, as nixpkgs' forwarding does.
       # An element stating no element of its own is carried directly.

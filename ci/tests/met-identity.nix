@@ -3,6 +3,9 @@
 # (ADR-0034): two constructions of one meet are one type, a different meet is not, a meet over a sealed member is
 # refused at `typeEq` rather than decided, and the meet is still enforced. A met record is completed (its own stamp),
 # so a union reads its `verify` as its domain.
+# The record a module set carries (`carriedAtDepth`) is the same construction where it owes ANOTHER declaration's
+# check (den-hoag-k4f4g, arm (a)); carried over its own check alone it is re-handed (ADR-0014), and a foreign record
+# keeps its foreign regime, so nixpkgs' `valueMeta` is still served for it (den-hoag-xroc7).
 {
   genMerge,
   genTypes,
@@ -78,6 +81,36 @@ let
     ctor = try (m.__payload.minted.ctor or null);
     self = try (t.typeEq m m);
   };
+  # a gen module set, wrapped by a foreign `addCheck`, and a foreign one (keyed, so nixpkgs merges it declared twice)
+  gSub = t.submodule {
+    options.a = gm.mkOption {
+      type = t.int;
+      default = 1;
+    };
+  };
+  npSub = np.submodule {
+    key = "k4f4g-np-sub";
+    options.a = nixpkgsLib.mkOption {
+      type = np.int;
+      default = 1;
+    };
+  };
+  carried = m: {
+    ctor = try (m.__payload.minted.ctor or null);
+    carried = try (m.__payload.minted.args.carried or false);
+    joinsMark = try (m.__mint == gSub.__mint);
+  };
+  foreign =
+    tys:
+    let
+      e = gm.evalModuleTree { } (
+        map (ty: { options.o = gm.mkOption { type = ty; }; }) tys ++ [ { o.a = 2; } ]
+      );
+    in
+    {
+      minted = e.options.o.type ? __mint;
+      valueMeta = try e.options.o.valueMeta.configuration.config;
+    };
 in
 {
   flake.tests.met-identity = {
@@ -302,5 +335,110 @@ in
           neither = "REFUSED";
         };
       };
+    # the module-set join restricted by another declaration's check: minted, one type with itself and with a second
+    # declaration of the same pair, the wrapper's check still enforced
+    test-a-module-set-carried-over-another-declarations-check-is-minted =
+      let
+        w = np.addCheck gSub (v: v.a != 3);
+      in
+      {
+        expr =
+          carried (decl [
+            w
+            gSub
+          ])
+          // {
+            twins = try (
+              t.typeEq
+                (decl [
+                  w
+                  gSub
+                ])
+                (decl [
+                  w
+                  gSub
+                ])
+            );
+            values = map (v: val [ gSub w ] { a = v; }) [
+              2
+              3
+            ];
+          };
+        expected = {
+          ctor = "gen-merge.meet";
+          carried = true;
+          joinsMark = false;
+          twins = true;
+          values = [
+            { a = 2; }
+            "REFUSED"
+          ];
+        };
+      };
+    # carried over its own check alone it admits what it did: re-handed, the declaration's own mark kept
+    test-a-module-set-carried-over-its-own-check-alone-is-re-handed =
+      let
+        w = np.addCheck gSub (v: v.a != 3);
+      in
+      {
+        expr = {
+          lone = carried (decl [ w ]);
+          twice = carried (decl [
+            w
+            w
+          ]);
+        };
+        expected = {
+          lone = {
+            ctor = "gen-merge.submodule";
+            carried = false;
+            joinsMark = true;
+          };
+          twice = {
+            ctor = "gen-merge.submodule";
+            carried = false;
+            joinsMark = true;
+          };
+        };
+      };
+    # a foreign module set declared once, or one value declared twice, keeps its foreign regime: not minted, and
+    # nixpkgs' metadata is served for it
+    test-a-foreign-module-set-carried-over-its-own-check-keeps-its-foreign-regime = {
+      expr = {
+        lone = foreign [ npSub ];
+        twice = foreign [
+          npSub
+          npSub
+        ];
+      };
+      expected = {
+        lone = {
+          minted = false;
+          valueMeta = {
+            a = 2;
+          };
+        };
+        twice = {
+          minted = false;
+          valueMeta = {
+            a = 2;
+          };
+        };
+      };
+    };
+    # a foreign join restricted by ANOTHER foreign declaration's check is carried, and still COMPARED: a mint over a
+    # join rebuilt per evaluation is no identity (its twins refused), and nixpkgs' metadata is served for it
+    test-a-foreign-join-carried-over-another-declarations-check-stays-compared = {
+      expr = foreign [
+        (np.addCheck npSub (v: v.a != 3))
+        npSub
+      ];
+      expected = {
+        minted = false;
+        valueMeta = {
+          a = 2;
+        };
+      };
+    };
   };
 }
