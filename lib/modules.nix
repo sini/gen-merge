@@ -3448,7 +3448,7 @@ let
       # Value path uses the plain (allocation-free) filterOverrides — SHARED by the prov record's
       # `winners`. The prov record's `priority` reads `filterOverridesRich`'s `highestPrio` LAZILY (only
       # when `.priority` is forced), so an unforced provenance channel never pays for the rich wrapper.
-      winners = if plain then discharged else filterOverrides discharged;
+      winners = if plain then rawDefs else filterOverrides discharged;
       # The order pass, same gate and same position as the value path's — the twin stays parallel.
       # `prov.priority` below deliberately keeps reading `discharged`/`filterOverridesRich`, i.e. the
       # OVERRIDE axis upstream of this sort: the record's `priority` field means the override number
