@@ -1464,7 +1464,12 @@ structural type sent out and brought back through `mkOptionType` — has its `ch
 boundary (`importedFold`), wrapping whichever fold the type brought, so `lib.types.str` refuses `1` at
 every position gen-merge folds and the refusal names the option, the type and the failing files
 (`ci/tests/foreign-leaf-check.nix`). As in nixpkgs, only the definitions that survive `mkIf` and
-priority are checked.
+priority are checked. A gen record carrying no check witness that states a `check` beside its own
+`mergeDefs` (a caller's record, raw or through `types.mkType`) is a foreign descriptor too: its
+`check` is tested before that fold, the threaded one of a nesting container included, and never
+swaps it for a `merge` the record also states; a union asks it when choosing a member, so
+`either <it> int` serves what the check rejects by `int`, as nixpkgs' `either` does
+(`ci/tests-error.nix` `foreign-check-beside-fold`).
 
 **A nixpkgs v2 type is merged by its own `merge.v2`**, as `mergeDefinitions` merges it: its
 `headError` decides, not the record's `check`, and an answer that is not exactly
