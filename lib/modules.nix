@@ -4765,8 +4765,11 @@ let
                         g.type ? carries.element.substructure.mount
                         || g.type ? carries.element.carries.element.substructure.mount
                         || g.type ? carries.element.carries.element.carries.element
+                        || g.type ? carries.element && !(g.type ? carries.element.typeMergeRel)
+                        ||
+                          g.type ? carries.element.carries.element && !(g.type ? carries.element.carries.element.typeMergeRel)
                       )
-                      && interface.crossedRoot g.type
+                      && (interface.crossedRoot g.type || interface.reachesForeignSet g.type)
                   )
                 then
                   g.type
@@ -5116,8 +5119,12 @@ let
                         optDecl.type ? carries.element.substructure.mount
                         || optDecl.type ? carries.element.carries.element.substructure.mount
                         || optDecl.type ? carries.element.carries.element.carries.element
+                        || optDecl.type ? carries.element && !(optDecl.type ? carries.element.typeMergeRel)
+                        ||
+                          optDecl.type ? carries.element.carries.element
+                          && !(optDecl.type ? carries.element.carries.element.typeMergeRel)
                       )
-                      && interface.crossedRoot optDecl.type
+                      && (interface.crossedRoot optDecl.type || interface.reachesForeignSet optDecl.type)
                   )
                 then
                   optDecl.type
