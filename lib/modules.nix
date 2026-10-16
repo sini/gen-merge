@@ -3298,8 +3298,16 @@ let
   # path is nixpkgs' own: a value with no property marker cannot discharge to nothing.
   isDefinedValue = v: !(v ? _type) || dischargeProperties v != [ ];
   isDefinedBy = defs: any (d: isDefinedValue d.value) defs;
+  # A list of property-free definitions is its own answer: every pass maps it to itself (a value that is no property
+  # discharges to itself at the default priority, so the override pass keeps every one, and with no order marker the
+  # sort is the identity), as `addressedDefs` answers it on the key walk's side. Such a list is folded and judged
+  # directly, so the passes' bindings are never allocated. A definition stating its own `priority` (an order the
+  # enclosing fold resolved) takes the passes, which restate it.
   mergeDefsWith =
     coreShortCircuit: loc: type: rawDefs:
+    if !coreShortCircuit && all (d: !(d.value ? _type) && !(d ? priority)) rawDefs then
+      foldJudged loc type rawDefs rawDefs
+    else
     let
       coreDef = head rawDefs;
       soleCore = coreShortCircuit && length rawDefs == 1 && isCoreValue coreDef.value;
@@ -3327,9 +3335,16 @@ let
         else
           { inherit (w) file value; }
       ) sorted;
+    in
+    if soleCore then coreDef.value.values else foldJudged loc type sorted typeDefs;
+
+  # The fold and judgement every definition list reaches, after the passes or without them.
+  foldJudged =
+    loc: type: sorted: typeDefs:
+    let
       fold = ownFold type;
       result =
-        if winners == [ ] then
+        if sorted == [ ] then
           emptyValueOr type "gen-merge: option `${showOption loc}' has no definitions after priority resolution"
         else if fold != null then
           fold loc typeDefs
@@ -3340,55 +3355,52 @@ let
           mergeLeaf loc sorted
         else
           throw (elementTypeRefusal loc type);
-      checked =
-        if type != null && type ? verify then
-          (
-            let
-              e = type.verify result;
-            in
-            if e == null then
-              result
-            else
-              throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
-          )
-        # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
-        # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
-        # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
-        # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
-        # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
-        # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
-        # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
-        # `admits` is read once.
-        else if
-          type != null
-          && type ? admits
-          && !(type ? mergeDefs.unchecked)
-          && !(
-            type ? _checkWitness
-            && (
-              type.check != type._checkWitness
-              || type ? split
-              || type ? choose
-              ||
-                (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
-                &&
-                  builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type == builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type.mergeDefs.completed
-            )
-          )
-          && !(all (d: type.admits d.value) typeDefs)
-        then
-          refusingOutside (interface.nameOf type) type.admits null loc typeDefs
-        else
-          result;
     in
-    if soleCore then coreDef.value.values else checked;
-
+      if type != null && type ? verify then
+        (
+          let
+            e = type.verify result;
+          in
+          if e == null then
+            result
+          else
+            throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${e}"
+        )
+      # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
+      # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
+      # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+      # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
+      # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
+      # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
+      # their folds with `refusingOutside` and carry that witness, the constant itself, so an intact one's
+      # `admits` is read once.
+      else if
+        type != null
+        && type ? admits
+        && !(type ? mergeDefs.unchecked)
+        && !(
+          type ? _checkWitness
+          && (
+            type.check != type._checkWitness
+            || type ? split
+            || type ? choose
+            ||
+              (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
+              &&
+                builtins.intersectAttrs {
+                  admits = null;
+                  mergeDefs = null;
+                } type == builtins.intersectAttrs {
+                  admits = null;
+                  mergeDefs = null;
+                } type.mergeDefs.completed
+          )
+        )
+        && !(all (d: type.admits d.value) typeDefs)
+      then
+        refusingOutside (interface.nameOf type) type.admits null loc typeDefs
+      else
+        result;
   # mergeDefsRichWith coreShortCircuit loc type rawDefs :: the RICH sibling — `{ value; prov }`, the
   # value plus the merge's PROVENANCE record (A2 spec §1). Used by the realizer path (`mergeOptionWith`)
   # for DECLARED options only. `value` is computed by the SAME discharge/priority/verify spine as
