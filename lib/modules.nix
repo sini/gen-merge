@@ -3436,17 +3436,28 @@ let
           map (d: if isCoreValue d.value then d // { value = d.value.values; } else d) rawDefs
         else
           rawDefs;
-      discharged = concatMap (d: dischargeIn d.file d.value) normalized;
+      plain = !mode.coreShortCircuit && all (d: !(d.value ? _type) && !(d ? priority)) rawDefs;
+      discharged =
+        if plain then
+          map (d: {
+            inherit (d) file value;
+            priority = defaultPriority;
+          }) rawDefs
+        else
+          concatMap (d: dischargeIn d.file d.value) normalized;
       # Value path uses the plain (allocation-free) filterOverrides — SHARED by the prov record's
       # `winners`. The prov record's `priority` reads `filterOverridesRich`'s `highestPrio` LAZILY (only
       # when `.priority` is forced), so an unforced provenance channel never pays for the rich wrapper.
-      winners = filterOverrides discharged;
+      winners = if plain then discharged else filterOverrides discharged;
       # The order pass, same gate and same position as the value path's — the twin stays parallel.
       # `prov.priority` below deliberately keeps reading `discharged`/`filterOverridesRich`, i.e. the
       # OVERRIDE axis upstream of this sort: the record's `priority` field means the override number
       # the filter selected, and the order axis must not be allowed to answer that question.
       sorted =
-        if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners;
+        if plain || !(any (w: (w.value._type or null) == "order") winners) then
+          winners
+        else
+          sortProperties winners;
       typeDefs = map (
         w:
         if w ? orderStated then
