@@ -2312,7 +2312,7 @@ rebuild's, a `//` override of a stock submodule's `merge` or `substSubModules`, 
 of a stock submodule (a definition completing its module set included), or a submodule given an
 `elemType` it never folds, gives nixpkgs' value at the root and under a forwarding container. A gen
 container carrying, through gen containers alone, a module set no gen constructor built
-(`reachesForeignSet`: `attrsOf`, `listOf`, `nullOr` or `lazyAttrsOf` over a nixpkgs `submodule`, a
+(`reachesModuleSet`: `attrsOf`, `listOf`, `nullOr` or `lazyAttrsOf` over a nixpkgs `submodule`, a
 deeper or mixed chain) is mounted too, rebuilt through its own forward with every level's owed check
 carried (`carriedAtDepth`), as nixpkgs' containers forward `substSubModules` to their element, so the
 element's modules name the declaring file. The record's own `check` rides on the rebuild, gen's own or foreign, so the domain is the meet of the two
