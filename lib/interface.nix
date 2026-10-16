@@ -2749,9 +2749,7 @@ let
       # same container declared twice does: its root's check alone is not its element's (den-hoag-uf3lg).
       mountOf =
         t: m:
-        # the walk's end: a crossed record, or a foreign set (`reachesForeignSet`), the one record on the walk
-        # that is no gen container
-        if t ? substructure.mount || !(t ? recarry) then
+        if t ? substructure.mount then
           let
             r = carriedAtDepth false t m;
           in
@@ -2773,8 +2771,12 @@ let
       # a foreign container is rebuilt over its element's own rebuild carrying the element's check
       # (`carriedAtDepth`); a module set's own root rebuilds as it always did
       s =
-        if crossedRoot t || t ? carries && reachesForeignSet t then
+        if crossedRoot t then
           mountOf t
+        else if t ? carries && reachesForeignSet t then
+          # a gen container over a foreign set: rebuilt through its own forward, every level's owed check
+          # carried, as a foreign container is (`carriedAtDepth`)
+          carriedAtDepth false t
         else if t ? functor.payload.elemType then
           carriedAtDepth false t
         else if
