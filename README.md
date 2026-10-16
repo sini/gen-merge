@@ -2310,8 +2310,12 @@ element, whose merge is the one served (`homedRootAt`). A root declaring a gen n
 does not thread is mounted so too. So a hand-written `mkOptionType` whose own merge is not its
 rebuild's, a `//` override of a stock submodule's `merge` or `substSubModules`, a payload-null copy
 of a stock submodule (a definition completing its module set included), or a submodule given an
-`elemType` it never folds, gives nixpkgs' value at the root and under a forwarding container. The
-record's own `check` rides on the rebuild, gen's own or foreign, so the domain is the meet of the two
+`elemType` it never folds, gives nixpkgs' value at the root and under a forwarding container. A gen
+container carrying, through gen containers alone, a module set no gen constructor built
+(`reachesForeignSet`: `attrsOf`, `listOf`, `nullOr` or `lazyAttrsOf` over a nixpkgs `submodule`, a
+deeper or mixed chain) is mounted too, rebuilt through its own forward with every level's owed check
+carried (`carriedAtDepth`), as nixpkgs' containers forward `substSubModules` to their element, so the
+element's modules name the declaring file. The record's own `check` rides on the rebuild, gen's own or foreign, so the domain is the meet of the two
 (`carriedCheck`, the re-home law): an `addCheck` over such a root refuses what it rejects, where
 nixpkgs' rebuild erases it silently. A rebuild that is no option type (null, a bare attrset, absent,
 or stating `merge` but no `check`) is refused by name (`rootRebuildRefusal`), where nixpkgs aborts, and
