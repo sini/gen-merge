@@ -1835,7 +1835,12 @@ an operand states) is refused on both paths, with a reason saying so. A declarat
 `check` AND what its `merge` admits (nixpkgs' containers judge their elements in `merge`, and a fold may
 refuse what its check accepts), so where a join is taken past the witness the step holds each
 declaration's own fold: it runs beside the join's over the same definitions, its value is demanded
-position by position as the served value is, and a v2 fold's `headError` refuses. A record met holding
+position by position as the served value is, and a v2 fold's `headError` refuses. An operand whose
+relation gen-merge did not construct (an author's `typeMergeRel`, carrying no `exact` witness) is held the
+same way where it carries no element or alternatives role, even when its join keeps every name, because
+such a join certifies no fold: an author type named `int` whose `merge` refuses an odd value, declared
+beside `int`, refuses 3 and serves 4 in both orders. The fold held is the operand's own unchecked fold
+(what it merges by without a definition check), never a refusal of how a declaration is spelled. A record met holding
 stays held when it is merged again, in gen's engine and through its exported `typeMerge`. A pair that
 holds pays each operand's fold: measured, about 19 thunks per redeclared option for `[port, int]`. A role the join gains is not a drop,
 so a freeform submodule unioned with an option-only one, or two `attrTag`s, merge as on nixpkgs. A
