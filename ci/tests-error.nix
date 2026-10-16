@@ -12103,5 +12103,125 @@ in
           names descriptors
         )
       );
+    # den-hoag-w68ud: a gen record stating the foreign protocol's `check` beside its own `mergeDefs`, and no check
+    # witness, has that check applied to each definition before its fold, as nixpkgs' `mergeDefinitions` applies a
+    # descriptor's (`checkedAndMerged`), so the value only the check rejects (3) is refused by the record's name at each
+    # position gen's engine folds it, raw and through `mkType`. Its twin, the same descriptor stated as `check` and
+    # `merge`, refuses 3 in nixpkgs' `evalModules`. A union whose next member takes 3 serves it, in both. At 03f17a6
+    # every refusal cell served 3: the fold the record brought ran unchecked.
+    flake.testsError.foreign-check-beside-fold =
+      let
+        fold = loc: defs: nixpkgsLib.mergeEqualOption loc defs;
+        fields = {
+          admits = builtins.isInt;
+          verify = v: if builtins.isInt v then null else "not an int";
+        };
+        records = builtins.listToAttrs (
+          map
+            (ks: {
+              name = builtins.concatStringsSep "-" ([ "check" ] ++ ks);
+              value = {
+                name = "evenT";
+                check = v: builtins.isInt v && v != 3;
+                mergeDefs = fold;
+              }
+              // nixpkgsLib.getAttrs ks fields;
+            })
+            [
+              [ ]
+              [ "admits" ]
+              [ "verify" ]
+              [
+                "admits"
+                "verify"
+              ]
+            ]
+        );
+        doors = {
+          raw = r: r;
+          mkType = t.mkType;
+        };
+        positions = {
+          root = {
+            ty = r: r;
+            v = x: x;
+          };
+          list-of = {
+            ty = t.listOf;
+            v = x: [ x ];
+          };
+          attrs-of = {
+            ty = t.attrsOf;
+            v = x: { a = x; };
+          };
+          submodule = {
+            ty = r: t.submodule { options.y = gm.mkOption { type = r; }; };
+            v = x: { y = x; };
+          };
+        };
+        read =
+          ty: v:
+          (gm.evalModuleTree { } [
+            { options.x = gm.mkOption { type = ty; }; }
+            { x = v; }
+          ]).config.x;
+        twin = nixpkgsLib.types.mkOptionType {
+          name = "evenT";
+          check = v: builtins.isInt v && v != 3;
+          merge = fold;
+        };
+        readN =
+          ty: v:
+          (nixpkgsLib.evalModules {
+            modules = [
+              { options.x = nixpkgsLib.mkOption { type = ty; }; }
+              { x = v; }
+            ];
+          }).config.x;
+        cell =
+          rn: dn: pn:
+          let
+            P = positions.${pn};
+            T = P.ty (doors.${dn} records.${rn});
+          in
+          {
+            "test-a-foreign-check-on-${rn}-beside-its-fold-${dn}-at-${pn}-refuses-by-name" = {
+              expr = force (read T (P.v 3));
+              expectedError = {
+                type = "ThrownError";
+                msg = "^gen-merge: a definition for option `x[^']*' is not of type `evenT', in `<unknown-file>'$";
+              };
+            };
+            "test-a-foreign-check-on-${rn}-beside-its-fold-${dn}-at-${pn}-serves-inside" = {
+              expr = read T (P.v 4);
+              expected = P.v 4;
+            };
+          };
+        union = rn: dn: {
+          "test-a-foreign-check-on-${rn}-beside-its-fold-${dn}-in-a-union-takes-the-next-member" = {
+            expr = read (t.either (doors.${dn} records.${rn}) t.int) 3;
+            expected = 3;
+          };
+        };
+        names = builtins.attrNames;
+      in
+      nixpkgsLib.foldl' (a: b: a // b) { } (
+        builtins.concatMap (
+          rn: builtins.concatMap (dn: map (cell rn dn) (names positions) ++ [ (union rn dn) ]) (names doors)
+        ) (names records)
+      )
+      // {
+        test-the-twin-refuses-in-nixpkgs = {
+          expr = force (readN twin 3);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `x' is not of type `evenT'\\.";
+          };
+        };
+        test-the-twin-takes-the-next-member-in-nixpkgs = {
+          expr = readN (nixpkgsLib.types.either twin nixpkgsLib.types.int) 3;
+          expected = 3;
+        };
+      };
   };
 }
