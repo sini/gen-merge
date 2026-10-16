@@ -2311,9 +2311,10 @@ record's own `check` rides on the rebuild, gen's own or foreign, so the domain i
 nixpkgs' rebuild erases it silently. A rebuild that is no option type (null, a bare attrset, absent,
 or stating `merge` but no `check`) is refused by name (`rootRebuildRefusal`), where nixpkgs aborts, and
 an ad-hoc `type // { check = ...; }` is such a `check`, riding on the rebuild as an `addCheck` does. A freeform type is no option's root
-and is not mounted. The fix-up item's `_file` is `<unknown-file>`, as nixpkgs labels a module stating
-no file, not the declaring file, and the module set is the merged type's, not a union per
-declaration. Refused by name. The first two are open defects, where nixpkgs serves the shape; the
+and is not mounted. The fix-up item's `_file` is the file of the declaration that carries the type, as
+nixpkgs' `mergeOptionDecls` locates `opt.options`, so the nested evaluation's own `options` argument and its
+refusals name it (an untyped declaration before it included; the served type takes the same declaration),
+and the module set is the merged type's, not a union per declaration. Refused by name. The first two are open defects, where nixpkgs serves the shape; the
 last two are not measured against nixpkgs:
 
 - a record declaring a gen nesting element that nixpkgs never rebuilds (no module set at the root,
