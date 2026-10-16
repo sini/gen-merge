@@ -1781,9 +1781,13 @@ let
       t.verify v == null
       && (!(t ? admits) || t.admits v)
       && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
+      # a `check` on a record carrying no witness is a foreign one, and its fold applies it (`modules.nix` `ownFold`,
+      # den-hoag-w68ud); a leaf's curried one rides beside its completion stamp
+      && (t ? _checkWitness || !(t ? check) || t ? __typeSelf || t.check v)
     else if t ? admits then
       t.admits v
       && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
+      && (t ? _checkWitness || !(t ? check) || t.check v)
     else
       let
         foreign = interface.importedAdmits t;

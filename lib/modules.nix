@@ -3126,7 +3126,12 @@ let
     # A fold of its own is folded under a `check` a foreign wrapper rewrote over it, which the
     # import half answers (`interface.checkedFold`, den-hoag-4ifgb). gen-types' `rewritesCheck` is
     # restated inline for cost: a call here is an environment on every fold. The construction door
-    # holds this spelling to the protocol (`lib/default.nix`).
+    # holds this spelling to the protocol (`lib/default.nix`). A `check` on a record carrying no
+    # witness is a foreign one, which judges each definition before the record's own fold, conjoined
+    # with a stated `admits`, as the import half judges a record stating none (`interface.importedFold`'s
+    # `checksDefs` arm, restated inline for cost; a gen leaf's curried one rides beside `verify` and its
+    # completion stamp, and a threaded foreign container's on the fold `interface.threadedForeign`
+    # built around it) (den-hoag-w68ud).
     else if
       type ? mergeDefs
       && !(
@@ -3141,7 +3146,21 @@ let
         )
       )
     then
-      type.mergeDefs
+      if
+        type ? _checkWitness
+        || !(type ? check)
+        || type ? verify && type ? __typeSelf
+        || type ? __threadedForeign
+      then
+        type.mergeDefs
+      else
+        (
+          if type ? admits then
+            interface.checkedFold (type // { check = v: type.check v && type.admits v; })
+          else
+            interface.checkedFold type
+        )
+          type.mergeDefs
     else
       interface.importedFold type;
 
@@ -4046,6 +4065,21 @@ let
               else
                 interface.checkedFold type (type.mergeDefs.threaded ev)
             )
+          # a `check` on a record carrying no witness is a foreign one, judged before the threaded fold as
+          # `ownFold` judges it before the called one (den-hoag-w68ud); a threaded foreign container's
+          # already rides on the fold `interface.threadedForeign` built
+          else if
+            !(type ? _checkWitness || type ? __threadedForeign)
+            && type ? check
+            && !(type ? verify && type ? __typeSelf)
+          then
+            (
+              if type ? admits then
+                interface.checkedFold (type // { check = v: type.check v && type.admits v; })
+              else
+                interface.checkedFold type
+            )
+              (type.mergeDefs.threaded ev)
           else
             type.mergeDefs.threaded ev;
         whenEmpty =
