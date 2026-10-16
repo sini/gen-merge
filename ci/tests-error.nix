@@ -12103,5 +12103,218 @@ in
           names descriptors
         )
       );
+    # den-hoag-w68ud: a gen record stating the foreign protocol's `check` beside its own `mergeDefs`, and no check
+    # witness, has that check applied to each definition before its fold, as nixpkgs' `mergeDefinitions` applies a
+    # descriptor's (`checkedAndMerged`), so the value only the check rejects (3) is refused by the record's name at each
+    # position gen's engine folds it, raw and through `mkType`. Its twin, the same descriptor stated as `check` and
+    # `merge`, refuses 3 in nixpkgs' `evalModules`. A union whose next member takes 3 serves it, in both. At 03f17a6
+    # every refusal cell served 3: the fold the record brought ran unchecked.
+    flake.testsError.foreign-check-beside-fold =
+      let
+        fold = loc: defs: nixpkgsLib.mergeEqualOption loc defs;
+        fields = {
+          admits = builtins.isInt;
+          verify = v: if builtins.isInt v then null else "not an int";
+        };
+        records = builtins.listToAttrs (
+          map
+            (ks: {
+              name = builtins.concatStringsSep "-" ([ "check" ] ++ ks);
+              value = {
+                name = "evenT";
+                check = v: builtins.isInt v && v != 3;
+                mergeDefs = fold;
+              }
+              // nixpkgsLib.getAttrs ks fields;
+            })
+            [
+              [ ]
+              [ "admits" ]
+              [ "verify" ]
+              [
+                "admits"
+                "verify"
+              ]
+            ]
+        );
+        doors = {
+          raw = r: r;
+          mkType = t.mkType;
+        };
+        positions = {
+          root = {
+            ty = r: r;
+            v = x: x;
+          };
+          list-of = {
+            ty = t.listOf;
+            v = x: [ x ];
+          };
+          attrs-of = {
+            ty = t.attrsOf;
+            v = x: { a = x; };
+          };
+          submodule = {
+            ty = r: t.submodule { options.y = gm.mkOption { type = r; }; };
+            v = x: { y = x; };
+          };
+        };
+        read =
+          ty: v:
+          (gm.evalModuleTree { } [
+            { options.x = gm.mkOption { type = ty; }; }
+            { x = v; }
+          ]).config.x;
+        twin = nixpkgsLib.types.mkOptionType {
+          name = "evenT";
+          check = v: builtins.isInt v && v != 3;
+          merge = fold;
+        };
+        readN =
+          ty: v:
+          (nixpkgsLib.evalModules {
+            modules = [
+              { options.x = nixpkgsLib.mkOption { type = ty; }; }
+              { x = v; }
+            ];
+          }).config.x;
+        cell =
+          rn: dn: pn:
+          let
+            P = positions.${pn};
+            T = P.ty (doors.${dn} records.${rn});
+          in
+          {
+            "test-a-foreign-check-on-${rn}-beside-its-fold-${dn}-at-${pn}-refuses-by-name" = {
+              expr = force (read T (P.v 3));
+              expectedError = {
+                type = "ThrownError";
+                msg = "^gen-merge: a definition for option `x[^']*' is not of type `evenT', in `<unknown-file>'$";
+              };
+            };
+            "test-a-foreign-check-on-${rn}-beside-its-fold-${dn}-at-${pn}-serves-inside" = {
+              expr = read T (P.v 4);
+              expected = P.v 4;
+            };
+          };
+        union = rn: dn: {
+          "test-a-foreign-check-on-${rn}-beside-its-fold-${dn}-in-a-union-takes-the-next-member" = {
+            expr = read (t.either (doors.${dn} records.${rn}) t.int) 3;
+            expected = 3;
+          };
+        };
+        names = builtins.attrNames;
+      in
+      nixpkgsLib.foldl' (a: b: a // b) { } (
+        builtins.concatMap (
+          rn: builtins.concatMap (dn: map (cell rn dn) (names positions) ++ [ (union rn dn) ]) (names doors)
+        ) (names records)
+      )
+      // {
+        test-the-twin-refuses-in-nixpkgs = {
+          expr = force (readN twin 3);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `x' is not of type `evenT'\\.";
+          };
+        };
+        test-the-twin-takes-the-next-member-in-nixpkgs = {
+          expr = readN (nixpkgsLib.types.either twin nixpkgsLib.types.int) 3;
+          expected = 3;
+        };
+      }
+      # The check is applied before the record's OWN fold, never by swapping in another: a record stating a `merge`
+      # beside its `mergeDefs`, or a nixpkgs v2 type given a `mergeDefs`, folds by the `mergeDefs` with a check stated
+      # as without one (at 7150ca1 the first folded by its `merge`, the second by its v2 merge or the ad-hoc refusal).
+      // (
+        let
+          hybrid = check: {
+            name = "hybT";
+            inherit check;
+            mergeDefs = loc: defs: "MD";
+            merge = loc: defs: "M";
+          };
+          v2 = nixpkgsLib.types.listOf nixpkgsLib.types.int // {
+            mergeDefs = loc: defs: [ "MD" ];
+          };
+        in
+        {
+          test-a-hybrid-record-with-an-admitting-check-folds-by-its-own-mergeDefs = {
+            expr = read (hybrid (_: true)) 1;
+            expected = "MD";
+          };
+          test-a-hybrid-record-with-an-admitting-check-folds-by-its-own-mergeDefs-in-a-list = {
+            expr = read (t.listOf (hybrid (_: true))) [ 1 ];
+            expected = [ "MD" ];
+          };
+          test-a-hybrid-record-with-a-rejecting-check-refuses-by-name = {
+            expr = force (read (hybrid (v: v != 3)) 3);
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: a definition for option `x' is not of type `hybT', in `<unknown-file>'$";
+            };
+          };
+          test-a-hybrid-record-with-a-rejecting-check-refuses-by-name-in-a-list = {
+            expr = force (read (t.listOf (hybrid (v: v != 3))) [ 3 ]);
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: a definition for option `x[^']*' is not of type `hybT', in `<unknown-file>'$";
+            };
+          };
+          test-a-v2-type-given-a-mergeDefs-folds-by-it = {
+            expr = read v2 [ 1 ];
+            expected = [ "MD" ];
+          };
+          test-a-v2-type-given-a-mergeDefs-and-an-ad-hoc-check-folds-by-it = {
+            expr = read (v2 // { check = builtins.isList; }) [ 1 ];
+            expected = [ "MD" ];
+          };
+        }
+      )
+      # The threaded position: a nesting container whose witness is gone and which states a `check` has the check
+      # applied before its threaded fold (`threadedAs`), at the root and inside a submodule; at 7150ca1 both served
+      # the rejected value.
+      // (
+        let
+          C =
+            builtins.removeAttrs (t.attrsOf (t.submodule { options.y = gm.mkOption { type = t.int; }; })) [
+              "_checkWitness"
+            ]
+            // {
+              name = "nestT";
+              description = "nestT";
+              check = v: builtins.isAttrs v && !(v ? bad);
+            };
+          inSub = t.submodule { options.z = gm.mkOption { type = C; }; };
+        in
+        {
+          test-a-witness-less-nesting-container-checks-before-its-threaded-fold = {
+            expr = force (read C { bad.y = 1; });
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: a definition for option `x' is not of type `nestT', in `<unknown-file>'$";
+            };
+          };
+          test-a-witness-less-nesting-container-checks-before-its-threaded-fold-in-a-submodule = {
+            expr = force (read inSub { z.bad.y = 1; });
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: a definition for option `x\\.z' is not of type `nestT', in `<unknown-file>'$";
+            };
+          };
+          test-a-witness-less-nesting-container-serves-inside-its-check = {
+            expr = read C { ok.y = 1; };
+            expected = {
+              ok.y = 1;
+            };
+          };
+          test-a-witness-less-nesting-container-serves-inside-its-check-in-a-submodule = {
+            expr = read inSub { z.ok.y = 1; };
+            expected = {
+              z.ok.y = 1;
+            };
+          };
+        }
+      );
   };
 }
