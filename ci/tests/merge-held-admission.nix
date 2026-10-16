@@ -168,6 +168,35 @@ let
           ]
       ) (builtins.attrNames doors)
     );
+  # an author NAMED `int` whose admission lives in its merge (refuses an odd value), stating a relation that answers an
+  # `int` partner with a join keeping every name: nixpkgs' protocol (`typeMerge`, through the door) and gen's
+  # (`typeMergeRel`); neither relation is one gen-merge constructed (den-hoag-1yqkr)
+  evenNamedInt =
+    let
+      self = nl.mkOptionType {
+        name = "int";
+        check = builtins.isInt;
+        merge = evenMerge;
+        functor = np.defaultFunctor "int" // {
+          type = _: self;
+        };
+        typeMerge = f: if f.name == "int" then np.int else null;
+      };
+    in
+    gm.mkOptionType self;
+  evenNamedIntRel = gm.mkOptionType {
+    name = "int";
+    check = builtins.isInt;
+    merge = evenMerge;
+    typeMergeRel =
+      o: if (o.name or null) == "int" then { merged = gm.types.int; } else { refused = "not an int"; };
+  };
+  evenMerge =
+    loc: defs:
+    let
+      v = nl.mergeEqualOption loc defs;
+    in
+    if nl.mod v 2 == 0 then v else throw "odd";
   pv = {
     good = {
       a = 80;
@@ -314,6 +343,85 @@ in
           three-ba-mot = "REFUSED";
         };
       };
+    };
+
+    # A JOIN KEEPING EVERY NAME CERTIFIES NO FOLD: an author named `int` beside nixpkgs' or gen's `int`, its relation not
+    # one gen-merge constructed, is held at the step, so 3 (its merge refuses it) is refused and 4 served, both orders
+    test-an-uncertified-relation-keeping-names-holds-its-fold = {
+      expr = builtins.listToAttrs (
+        builtins.concatMap
+          (
+            p:
+            builtins.concatMap
+              (o: [
+                {
+                  name = "${p.n}-${o}-three";
+                  value = ev (if o == "ab" then p.ts else nl.reverseList p.ts) 3 1;
+                }
+                {
+                  name = "${p.n}-${o}-four";
+                  value = ev (if o == "ab" then p.ts else nl.reverseList p.ts) 4 1;
+                }
+              ])
+              [
+                "ab"
+                "ba"
+              ]
+          )
+          [
+            {
+              n = "np-np";
+              ts = [
+                evenNamedInt
+                np.int
+              ];
+            }
+            {
+              n = "np-gen";
+              ts = [
+                evenNamedInt
+                gm.types.int
+              ];
+            }
+            {
+              n = "rel-np";
+              ts = [
+                evenNamedIntRel
+                np.int
+              ];
+            }
+            {
+              n = "rel-gen";
+              ts = [
+                evenNamedIntRel
+                gm.types.int
+              ];
+            }
+          ]
+      );
+      expected = builtins.listToAttrs (
+        builtins.concatMap
+          (n: [
+            {
+              name = "${n}-three";
+              value = "REFUSED";
+            }
+            {
+              name = "${n}-four";
+              value = "SERVED";
+            }
+          ])
+          [
+            "np-np-ab"
+            "np-np-ba"
+            "np-gen-ab"
+            "np-gen-ba"
+            "rel-np-ab"
+            "rel-np-ba"
+            "rel-gen-ab"
+            "rel-gen-ba"
+          ]
+      );
     };
 
     # A HELD RECORD HANDED TO NIXPKGS' ENGINE KEEPS ITS HOLD: its exported `typeMerge` meets a later join with the

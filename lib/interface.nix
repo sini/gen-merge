@@ -6315,6 +6315,15 @@ let
   # Every binding is local, so the library's load pays for this one lambda alone.
   # `meets`: the relation that answered `m` said `meets` (its answer is the step's carrier, not the meet), so
   # every operand is owed and the exactness test is not asked: a relation's own word outranks a field's presence
+  # the hold's trigger (`metWith`, below): an operand stating a relation gen did not construct (a
+  # `typeMergeRel` with no `exact` witness), not relativised to its own parameters (`__stockCheck`), carrying no
+  # element or alternatives role. Bound once here: a lambda written where it is passed is a thunk per meet.
+  uncertifiedLeaf =
+    o:
+    o ? typeMergeRel
+    && !(o ? typeMergeRel.exact)
+    && !(o ? __stockCheck)
+    && !(o ? carries.element || o ? carries.alternatives || (o.functor.payload or null) ? elemType);
   metWith =
     meets: m: os:
     if
@@ -6418,18 +6427,32 @@ let
         carriedAtDepth true os m
       else if owed == [ ] then
         m
-      # a held operand (a record met holding, `holds`) is held again wherever it is met
-      else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+      # a held operand (a record met holding, `holds`) is held again wherever it is met. So is an operand stating a
+      # relation gen did not construct (a `typeMergeRel` with no `exact` witness) and not relativised to its own
+      # parameters (`__stockCheck`), where it carries no element or alternatives role: its name-keeping answer
+      # certifies no fold, and an element or alternatives role is met (or held) at that role's own depth
+      # (`rolesMet`). Those two roles are all the test reads, so an operand whose members sit in another slot (a
+      # module set, an `attrTag`'s tags, a `coercedTo`'s final type) passes it; a module-set join is met above,
+      # before this branch
+      else if
+        meets == "holds" || builtins.catAttrs "holds" once != [ ] || builtins.any uncertifiedLeaf once
+      then
         # The join was taken PAST the witness (it renames an operand: the carrier is not that operand's own
         # constructor), so the carrier's fold is not that operand's. A declaration's admission is its `check` AND
         # its `merge` (nixpkgs' containers judge their elements in `merge`; a fold may refuse what its check
-        # accepts), so each operand's own fold runs beside the carrier's over the same definitions, and its value
-        # is demanded position by position as the served value is: an attribute or list element of the served value
-        # forces the same position of each operand's value, and a leaf forces it whole. The met value is served
-        # exactly where every declaration alone would serve it, as lazily as the carrier's (den-hoag-wsnn0 v1).
+        # accepts), so each held operand's unchecked fold runs beside the carrier's over the same definitions, and
+        # its value is demanded position by position as the served value is: an attribute or list element of the
+        # served value forces the same position of each operand's value, and a leaf forces it whole. The met value
+        # is served where every declaration's admission (its check and its own fold) accepts it, as lazily as the
+        # carrier's (den-hoag-wsnn0 v1), and never refused for a refusal of a declaration's spelling, which a
+        # served pair would move from served to refused (ADR-0039, parity rule (2)).
         let
           met = meetOf m once;
-          kept = filter (o: o ? merge) once;
+          kept =
+            if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+              once
+            else
+              filter uncertifiedLeaf once;
           walk =
             v: vs:
             builtins.foldl' (acc: ov: builtins.seq ov acc) (
@@ -6449,15 +6472,28 @@ let
             ) vs;
           own =
             loc: defs: o:
-            if o.merge ? v2 then
+            let
+              # the fold the operand merges by WITHOUT a definition check (its check is owed already):
+              # `lib/modules.nix` `rawFold`, stated over this unit's own bindings so the meet takes no formal
+              # for it (`leafFold` is `mergeLeaf` on the same definitions)
+              f =
+                if o ? mergeDefs then
+                  o.mergeDefs.unchecked or o.mergeDefs
+                else
+                  let
+                    imported = importedRawFold o;
+                  in
+                  if imported == null then leafFold else imported;
+            in
+            if f ? v2 then
               (
                 let
-                  r = o.merge.v2 { inherit loc defs; };
+                  r = f.v2 { inherit loc defs; };
                 in
                 if r.headError or null != null then throw r.headError.message else r.value
               )
             else
-              o.merge loc defs;
+              f loc defs;
           demand =
             loc: defs: v:
             walk v (map (own loc defs) kept);
@@ -6501,7 +6537,19 @@ let
             }
             // (
               if fold == null then
-                { }
+                # a carrier with no fold of its own (a gen leaf) is folded by the engine's leaf fold, which never
+                # reads `merge`: the hold states the carrier's alone fold, demanded as above (`rawFold` over a
+                # type stating no `mergeDefs`)
+                {
+                  mergeDefs =
+                    loc: defs:
+                    demand loc defs (
+                      let
+                        imported = importedRawFold met;
+                      in
+                      (if imported == null then leafFold else imported) loc defs
+                    );
+                }
               else
                 {
                   mergeDefs = (if isAttrs fold then fold else { }) // {

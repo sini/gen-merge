@@ -238,8 +238,9 @@
           # in the landing commit that makes it. den-hoag-5f99v re-anchored -1 / -2 / +1 / +1: the meet reading a gen
           # copy's replaced `verify` once on the merged value (ADR-0039's converse), after its minimality attempt,
           # with the replaced-`verify` stamp tested by comparison, which allocates nothing. den-hoag-410ri lowered
-          # each by 2: a level's key grouping binds a pushed definition's fields as formals.
-          for bound in val:347 box:726 s2:879 s3:473; do
+          # each by 2: a level's key grouping binds a pushed definition's fields as formals. den-hoag-1yqkr lowered
+          # s3 by 1: a held record's operands are kept without a filter.
+          for bound in val:347 box:726 s2:879 s3:472; do
             mode=''${bound%%:*} max=''${bound#*:}
             thunksOf "met-cost-$mode-100"
             [ "$val" = "100" ] || die "met-cost-$mode-100" "expected value 100, got '$val'"

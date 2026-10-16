@@ -3147,7 +3147,8 @@ let
   # because that is the fold the option site already gives it (`ownFold`'s `null` falls through to
   # it), so the same type folds the same at every site. For a gen leaf it is also nixpkgs' answer:
   # handed the same type, nixpkgs' freeform site folds by the `leafFold` the export publishes, which
-  # agrees with `mergeLeaf`.
+  # agrees with `mergeLeaf`. `interface.nix` `metWith`'s hold states the same fold over its own bindings,
+  # so a change here is a change there.
   rawFold =
     type:
     if type ? mergeDefs then
