@@ -2719,7 +2719,7 @@ let
   # nixpkgs' `fixupOptionType` rebuilds it through the root's forward, `substSubModules` over the
   # declaration's located set, so the root is mounted as one carrying a crossed set is (`mountOf`), and
   # its element's modules are located at the declaring file (den-hoag-kjcpb). Where that mount is not
-  # taken (the freeform group, a rebuild declaring a gen nesting element) the root is homed as before.
+  # taken (the freeform group, a rebuild declaring a gen nesting element) the root is folded as before.
   # Bounded by `importedTypeWalkFuel`, `false` at exhaustion, as `crossedRoot` is.
   reachesForeignSet =
     let
@@ -2837,7 +2837,9 @@ let
       # as rebuilt, with no re-homing and no second check (den-hoag-kjcpb)
       (if t ? carries && !(crossedRoot t) then fixed else mounted)
     else if t ? carries && !(crossedRoot t) then
-      homedAt door loc t
+      # unmounted, a gen root is folded as the record it is, as one carrying no foreign set is
+      # (`modules.nix`, the presence tests before `homedRootAt`)
+      t
     else if !(statesWrapped t && declaresNestingAt door loc t) then
       # no gen nesting element: a rebuild that is not an option type is refused by name
       (
