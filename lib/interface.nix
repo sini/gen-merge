@@ -7841,8 +7841,6 @@ let
   exportTypeWith =
     row: t:
     let
-      role = if t ? carries then roleOf (nameOf t) t.carries else null;
-
       # Built once by gen-types' `witnessRecord` and published twice, as `check` and as
       # `_checkWitness` (below), so a `check` a wrapper rewrote is the one slot that no longer holds
       # the witness (`rewritesCheck`). The pair is spelled here rather than taken from
@@ -7888,6 +7886,7 @@ let
       # and the inbound half publishes a functor a foreign engine can recover THIS type from.
       functor =
         let
+          role = if t ? carries then roleOf (nameOf t) t.carries else null;
           name = t.name or "raw";
           embeds = if row != null then row else embedsOf t;
           # Rebuild this type over a payload in the protocol's spelling — the inverse of `payload` below,
@@ -8002,7 +8001,8 @@ let
         # the base it exists to be distinguished FROM. Preserving it fails closed instead.
         # It is read off `retainedRelation', a differently-named gen datum, exactly as every other
         # derived field is read off one — see the retention site in `importType' for why.
-        functor = t.retainedRelation.functor or functor;
+        ${if t ? retainedRelation then "functor" else null} = t.retainedRelation.functor or functor;
+        ${if t ? retainedRelation then null else "functor"} = functor;
         description = phrase.text;
         # Decided by the record's own attribute presence, so each arm is published as written: a
         # computed field is a thunk on every exported type (den-hoag-c7jkw.2). `_protoLeafMerge` below too.
@@ -8071,7 +8071,12 @@ let
             t.whenEmpty or { };
         nestedTypes =
           (t.unroledNested or { })
-          // (if role == null then { } else roleSpelling.${role}.nested t.carries.${role});
+          // (
+            if !(t ? carries) then
+              { }
+            else
+              (role: roleSpelling.${role}.nested t.carries.${role}) (roleOf (nameOf t) t.carries)
+          );
         getSubOptions =
           if (t.substructure or null) == null then
             (_prefix: { })

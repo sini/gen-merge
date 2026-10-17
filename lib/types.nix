@@ -302,7 +302,20 @@ let
       t
     else
       let
-        exported = interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
+        exported =
+          if
+            t ? typeMergeRel
+            && !(
+              (t ? carries || ((t.substructure or { }).modules or null) != null)
+              && !(
+                all (f: (t.substructure or { }) ? ${f}) subFormals
+                && (!(t ? carries) || t ? recarry || t ? retainedRelation)
+              )
+            )
+          then
+            interface.exportType (core.readsMintedNode exported t)
+          else
+            interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
       in
       exported;
   # The same crossing for a type an `interface.embeddings` row stands for, the row stated by the
@@ -321,7 +334,20 @@ let
     in
     t:
     let
-      exported = exportRow (typeRow exported (core.readsMintedNode exported t));
+      exported =
+        if
+          t ? typeMergeRel
+          && !(
+            (t ? carries || ((t.substructure or { }).modules or null) != null)
+            && !(
+              all (f: (t.substructure or { }) ? ${f}) subFormals
+              && (!(t ? carries) || t ? recarry || t ? retainedRelation)
+            )
+          )
+        then
+          exportRow (core.readsMintedNode exported t)
+        else
+          exportRow (typeRow exported (core.readsMintedNode exported t));
     in
     exported;
 
