@@ -2863,7 +2863,7 @@ let
     else
       builtins.typeOf m0;
   alignedGraph =
-    what: C: flat: graph:
+    what: flat: graph:
     let
       n = length flat;
       agrees =
@@ -2871,16 +2871,21 @@ let
         let
           e = builtins.elemAt flat i;
           g = builtins.elemAt graph i;
-          k =
-            if C == { } then
-              nodeKeyOf e
-            else
-              let
-                k0 = nodeKeyOf e;
-              in
-              if k0 == null || !(C ? ${k0}) then k0 else a3.refinedKeyOf k0 e;
+          k = nodeKeyOf e;
         in
-        (if k == null then builtins.substring 0 1 g.key == "a" else k == g.key)
+        (
+          if k == null then
+            builtins.substring 0 1 g.key == "a"
+          # a node the kept graph spells refined ((a3), `a3.keptGraph`) agrees by its refinement
+          else
+            k == g.key
+            || (
+              let
+                r = a3.refineOf e;
+              in
+              r != null && g.key == k + "/" + r
+            )
+        )
         && moduleShape e.m0 == moduleShape g.m0;
       bad = filter (i: !(agrees i)) (prelude.genList (i: i) n);
     in
@@ -2903,7 +2908,7 @@ let
     treeId: defIndex: flat: kg:
     let
       inherit (kg) top;
-      graph = alignedGraph "the module family of `${treeId}'" kg.C flat kg.graph;
+      graph = alignedGraph "the module family of `${treeId}'" flat kg.graph;
       n = length flat;
       indexed = prelude.genList (
         i:
@@ -5987,7 +5992,7 @@ let
             let
               kg = a3.keptGraph flat r._callM r._modList;
             in
-            alignedGraph "the declaration anchors" kg.C flat kg.graph;
+            alignedGraph "the declaration anchors" flat kg.graph;
           anch =
             g:
             if g.importer.key == "" then
@@ -6586,7 +6591,7 @@ let
               kg = a3.keptGraph flat callM modList;
               inherit (kg) top graph;
               roots = top.roots;
-              aligned = alignedGraph "the warm origin split" kg.C flat graph;
+              aligned = alignedGraph "the warm origin split" flat graph;
               keyAt = i: (builtins.elemAt aligned i).key;
               editKeys = map (e: e.key) (removal.closeKept flat (drop baseLen roots));
               baseKeys = listToAttrs (
