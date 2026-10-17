@@ -4827,7 +4827,7 @@ let
                   member
                   defs
                   ;
-                inherit (g) root;
+                group = g;
                 address = map (d: {
                   attr = "definitions";
                   def = j;
@@ -5744,7 +5744,7 @@ let
               member
               defs
               ;
-            inherit (p) root;
+            inherit (p) group;
             address = map (d: {
               attr = "definitions";
               def = 0;
@@ -5980,7 +5980,7 @@ let
           {
             modules = n.modules ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
-            inherit (p) root;
+            root = p.group.root;
             inherit (n.empty) prefix specialArgs check;
           }
           // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6010,7 +6010,7 @@ let
                   }
                 ) p.defs;
               prefix = p.loc;
-              inherit (p) root;
+              root = p.group.root;
               inherit (n) specialArgs check coreShortCircuit;
             }
             // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6028,7 +6028,7 @@ let
               {
                 modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
                 prefix = p.loc;
-                inherit (p) root;
+                root = p.group.root;
                 inherit (n) specialArgs check coreShortCircuit;
               }
               // (if (n.class or null) == null then { } else { inherit (n) class; })
