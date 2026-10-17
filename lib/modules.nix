@@ -1703,6 +1703,104 @@ let
               }
             ) moduleOwnDecls;
         };
+    # THE DEFINITIONS OF `_module.args`, AS NIXPKGS' OPTION LISTS THEM (den-hoag-zgpaa). nixpkgs states
+    # three of them in modules of its own, at its collection's top level: `submoduleWith`'s placeholder
+    # first, its position's `{ _module.args.name = last loc; }` after the type's modules, and
+    # `internalModule`'s `{ extendModules; moduleType; }` last. Its collection is breadth-first and an
+    # option reads its definitions reversed, so a module below the top level precedes the internal
+    # module, a seed definition sits between it and the position's, and a type module the
+    # evaluation's top level holds sits between the position's and the placeholder's. Where nixpkgs
+    # locates the type's modules (`setDefaultModuleLocation`, a `root` here) they sit one level down,
+    # ahead of the internal module. This engine states none of the three as a module: `name` is a key
+    # (`positionArgsAt`), the internal set is read off the module-visible view, and a nested tree
+    # over definitions collects no placeholder, which its position always outranks. The record lists
+    # them where nixpkgs' would. A top-level module is classified as `declAnchorOf` classifies it.
+    argDefs =
+      {
+        flat,
+        modList,
+        callM,
+        pushed,
+        root,
+        positioned,
+        seeds,
+        name,
+        internal,
+      }:
+      let
+        nTop = length modList;
+        nFlat = length flat;
+        holdsPlaceholder = !positioned && nTop > 0 && prelude.last modList == namePlaceholder;
+        nOwn =
+          if seeds != null then
+            nTop - seeds
+          else if positioned then
+            0
+          else
+            nTop;
+        topPlain =
+          !(removal.removes flat modList)
+          && all (e: nodeKeyOf e == null) (
+            prelude.genList (builtins.elemAt flat) (if nTop < nFlat then nTop else nFlat)
+          );
+        graph =
+          let
+            graph0 = removal.closeKept flat (moduleTop callM modList).roots;
+          in
+          alignedGraph "the `_module.args' definitions" flat (
+            if length graph0 == length flat then graph0 else (a3.refinedGraph flat callM modList).graph
+          );
+        topIndex =
+          fi:
+          if topPlain then
+            (if fi < nTop then fi else null)
+          else
+            let
+              g = builtins.elemAt graph fi;
+            in
+            if g.importer.key == "" then g.i else null;
+        stated = concatLists (
+          prelude.imap0 (
+            fi: e:
+            let
+              mo = pushDownProperties e.attrs._module;
+            in
+            if e.attrs ? _module && mo ? args then
+              [
+                {
+                  i = topIndex fi;
+                  file = e._file;
+                  value = mo.args;
+                }
+              ]
+            else
+              [ ]
+          ) pushed
+        );
+        deep = filter (d: d.i == null) stated;
+        top = filter (d: d.i != null && !(holdsPlaceholder && d.i == nTop - 1)) stated;
+        own = filter (d: d.i < nOwn) top;
+        seeded = filter (d: d.i >= nOwn) top;
+        def = d: { inherit (d) file value; };
+      in
+      map def (reverse deep)
+      ++ (if root != null then map def (reverse own) else [ ])
+      ++ [
+        {
+          inherit file;
+          value = internal;
+        }
+      ]
+      ++ map def (reverse seeded)
+      ++ optional positioned {
+        file = "<unknown-file>";
+        value.name = name;
+      }
+      ++ (if root != null then [ ] else map def (reverse own))
+      ++ optional (positioned || holdsPlaceholder) {
+        file = "<unknown-file>";
+        value = namePlaceholder._module.args;
+      };
     # A key's surviving definitions as nixpkgs' option reads them: discharged, override-filtered,
     # each `{ file; value; }`, with the priority that survived (`null` for none, nixpkgs' 9999).
     winners =
@@ -8094,23 +8192,22 @@ let
                   value = m.args;
                 }
                 // moduleOwn.winners (
-                  (
-                    if knot.positioned then
-                      [
-                        {
-                          file = moduleOwn.file;
-                          value.name = (positionArgsAt prefix).name;
-                        }
-                      ]
-                    else
-                      [ ]
-                  )
-                  ++ reverse (
-                    map (d: {
-                      file = d._file;
-                      value = d.args;
-                    }) (moduleArgDefsOf pushed)
-                  )
+                  moduleOwn.argDefs {
+                    inherit
+                      flat
+                      modList
+                      callM
+                      pushed
+                      root
+                      ;
+                    inherit (knot) positioned;
+                    # an inner child's seeds are its position's definitions, the trailing top-level modules
+                    seeds = if knot.inner && knot.positioned then length (self.getHostAt "positions").defs else null;
+                    name = (positionArgsAt prefix).name;
+                    internal = {
+                      inherit (moduleConfig._module.args) extendModules;
+                    };
+                  }
                 );
                 check =
                   if realizedCheck == null then
