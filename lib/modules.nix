@@ -2375,10 +2375,10 @@ let
   # THE MERGE PATH MEETS BY A KEY'S MEETING (den-hoag-9zyp7 OQ2 v3): nixpkgs dedups by the reference
   # key, and two occurrences may share it under two node keys (two declaration nodes of one mark), so
   # the merge path cannot meet by node key. A key `<meeting>#<refinement>` meets every key sharing
-  # `<meeting>`, and a record states both halves apart (`__keyEq.meeting` and `refine`, its reference
-  # key being `<meeting>#<refine subject>`), so its refinement, which may read the declaration it
-  # keys, is demanded only where another occurrence shares its meeting. A key with no `#` is its own
-  # meeting (`k<key>`); a meeting is spelled `m<meeting>`, so the two never meet. The arms are
+  # `<meeting>`. A record states its meeting apart (`__keyEq.meeting`; its reference key, the result's
+  # `key`, must be `<meeting>#<refinement>`), so its key, which may read the declaration it keys, is
+  # demanded only where another occurrence shares its meeting (`a3.refineOf`). A key with no `#` is its
+  # own meeting (`k<key>`); a meeting is spelled `m<meeting>`, so the two never meet. The arms are
   # `nodeKeyOf`'s, spelled inline, because a call per entry allocates an environment per entry.
   meetKeyOf =
     let
@@ -6664,11 +6664,12 @@ let
               # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
               top0 = moduleTop callM modList;
               graph0 = removal.closeKept flat top0.roots;
-              kg = a3.refinedGraph flat callM modList;
-              top = if length graph0 == length flat then top0 else kg.top;
-              graph = if length graph0 == length flat then graph0 else kg.graph;
-              roots = top.roots;
-              aligned = alignedGraph "the warm origin split" flat graph;
+              # the refined graph is spelled at its two reads, so the split binds what it did before
+              roots =
+                (if length graph0 == length flat then top0 else (a3.refinedGraph flat callM modList).top).roots;
+              aligned = alignedGraph "the warm origin split" flat (
+                if length graph0 == length flat then graph0 else (a3.refinedGraph flat callM modList).graph
+              );
               keyAt = i: (builtins.elemAt aligned i).key;
               editKeys = map (e: e.key) (removal.closeKept flat (drop baseLen roots));
               baseKeys = listToAttrs (
