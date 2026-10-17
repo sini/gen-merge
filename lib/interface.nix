@@ -1255,6 +1255,19 @@ let
             null;
       in
       if isAttrs element then { inherit name element; } else null;
+  # Does a type forward its `getSubModules` to a nesting type's module set: a chain of forwarding steps
+  # (`forwardStep`, a gen container's or a stock one's) ending at a nesting type? nixpkgs locates a module
+  # set only there (`mergeOptionDecls`), and a union forwards none (`either', `oneOf'). Walked by steps,
+  # never by reading `getSubModules`, which refuses past the walk's fuel.
+  forwardsModuleSet =
+    t:
+    isNesting t
+    || (
+      let
+        st = forwardStep t;
+      in
+      st != null && forwardsModuleSet st.element
+    );
   # ── A CARRIAGE GEN CANNOT READ (den-hoag-l4bv5) ─────────────────────────────────────────────────
   # A gen type's `carries` states what it wraps by role, written by its constructor beside the `recarry`,
   # `substructure` and fold it states over the same parameter, and the readers below take the role they ask
@@ -8238,6 +8251,7 @@ in
     importedAdmits
     importedRehome
     isNesting
+    forwardsModuleSet
     joinInStatedRelation
     joinCarriedInStatedRelation
     joinInRebuiltPartner

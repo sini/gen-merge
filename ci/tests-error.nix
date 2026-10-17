@@ -2720,6 +2720,200 @@ in
         };
       };
 
+    # ── GEN'S OWN NESTING TYPES' REFUSALS NAME THE DECLARING FILE (den-hoag-fhggb OQ-A) ──────────────────
+    # The refusals inside a gen nesting type's tree, each read on both engines: `gen-…` is gen-merge's engine
+    # over gen's types and `nixpkgs-…` is nixpkgs' engine over the twin, and both name `decl.nix` where the
+    # nested module set states no `_file` (ci/tests/gen-nesting-declaring-file.nix reads the values). Each
+    # reaches one collection of the nested tree: a conflict in an open set (the fold's collection), in a
+    # closed set (the guard's own) and in a classed tree, and the removal walk's refusal over a closed and an
+    # open set. The empty child's name placeholder stays `<unknown-file>` beside the located module, as
+    # nixpkgs leaves its name module unlocated. RED (no root entry): `In `<unknown-file>'',
+    # `Module `<unknown-file>``; RED (the placeholder located): `defined in decl.nix (2 definitions)`.
+    flake.testsError.gen-nesting-declaring-file =
+      let
+        on =
+          gen:
+          let
+            L = if gen then gm else nixpkgsLib;
+            T = L.types;
+            ev = mods: if gen then gm.evalModuleTree { } mods else nixpkgsLib.evalModules { modules = mods; };
+            treeOf =
+              class: mods:
+              (
+                if gen then
+                  gm.evalModuleTree { inherit class; } mods
+                else
+                  nixpkgsLib.evalModules {
+                    inherit class;
+                    modules = mods;
+                  }
+              ).type;
+            open =
+              { options, ... }:
+              {
+                options.inner = L.mkOption {
+                  type = T.int;
+                  default = 3;
+                };
+              };
+            closed.options.inner = L.mkOption {
+              type = T.int;
+              default = 3;
+            };
+            mid = {
+              options.d = L.mkOption {
+                type = T.submodule open;
+                default = { };
+              };
+            };
+            # the option `n' declared at `decl.nix' with type `t', and `nc.nix' defining `v' at `at'
+            conflict =
+              n: t: at: v:
+              force (
+                (ev [
+                  {
+                    _file = "decl.nix";
+                    options.${n} = L.mkOption {
+                      type = t;
+                      default = { };
+                    };
+                  }
+                  {
+                    _file = "nc.nix";
+                    config = at (L.mkOptionDefault v);
+                  }
+                ]).config
+              );
+            badRemoval =
+              m:
+              force
+                (ev [
+                  {
+                    _file = "decl.nix";
+                    options.s = L.mkOption {
+                      type = T.submodule {
+                        imports = [
+                          m
+                          { disabledModules = [ { } ]; }
+                        ];
+                      };
+                      default = { };
+                    };
+                  }
+                ]).config.s.inner;
+            named =
+              { name, ... }:
+              {
+                config._module.args.name = L.mkOptionDefault "x";
+                options.nm = L.mkOption { default = name; };
+              };
+          in
+          {
+            open = conflict "s" (T.submodule open) (x: { s.inner = x; }) 5;
+            openAttrsOf = conflict "at" (T.attrsOf (T.submodule open)) (x: { at.k.inner = x; }) 6;
+            tree = conflict "tr" (treeOf null [ open ]) (x: { tr.inner = x; }) 7;
+            depthTwo = conflict "d2" (T.submodule mid) (x: { d2.d.inner = x; }) 8;
+            closed = conflict "s" (T.submodule closed) (x: { s.inner = x; }) 5;
+            closedAttrsOf = conflict "at" (T.attrsOf (T.submodule closed)) (x: { at.k.inner = x; }) 6;
+            classed = conflict "s" (treeOf "x" [ open ]) (x: { s.inner = x; }) 7;
+            classedClosed = conflict "s" (treeOf "x" [ closed ]) (x: { s.inner = x; }) 8;
+            removalClosed = badRemoval closed;
+            removalOpen = badRemoval open;
+            emptyName =
+              force
+                (ev [
+                  {
+                    _file = "decl.nix";
+                    options.lz = L.mkOption {
+                      type = T.lazyAttrsOf (T.submodule named);
+                      default = { };
+                    };
+                  }
+                  {
+                    _file = "def.nix";
+                    config.lz.k = L.mkIf false { };
+                  }
+                ]).config.lz.k.nm;
+          };
+        gen = on true;
+        nixpkgs = on false;
+        genText =
+          loc: v:
+          "^gen-merge: the option `${loc}' has conflicting definitions:\n- In `decl\\.nix': 3\n- In `nc\\.nix': ${v}$";
+        nixpkgsText =
+          loc: v:
+          "^The option `${loc}' has conflicting definition values:\n- In `decl\\.nix': 3\n- In `nc\\.nix': ${v}\nUse `lib\\.mkForce value` or `lib\\.mkDefault value` to change the priority on any of these definitions\\.\n?$";
+        removalText = "Module `decl\\.nix` contains a disabledModules item that is an attribute set, presumably a module, that does not have a `key` attribute\\. This means that the module system doesn't have any means to identify the module that should be disabled\\. Make sure that you've put the correct value in disabledModules: a string path relative to modulesPath, a path value, or an attribute set with a `key` attribute\\.$";
+        pair = name: loc: v: {
+          "test-gen-${name}-names-the-declaring-file" = {
+            expr = gen.${name};
+            expectedError = {
+              type = "ThrownError";
+              msg = genText loc v;
+            };
+          };
+          "test-nixpkgs-${name}-names-the-declaring-file" = {
+            expr = nixpkgs.${name};
+            expectedError = {
+              type = "ThrownError";
+              msg = nixpkgsText loc v;
+            };
+          };
+        };
+      in
+      pair "open" "s\\.inner" "5"
+      // pair "openAttrsOf" "at\\.k\\.inner" "6"
+      // pair "tree" "tr\\.inner" "7"
+      // pair "depthTwo" "d2\\.d\\.inner" "8"
+      // pair "closed" "s\\.inner" "5"
+      // pair "closedAttrsOf" "at\\.k\\.inner" "6"
+      // pair "classed" "s\\.inner" "7"
+      // pair "classedClosed" "s\\.inner" "8"
+      // {
+        test-gen-removalClosed-names-the-declaring-file = {
+          expr = gen.removalClosed;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: " + removalText;
+          };
+        };
+        test-nixpkgs-removalClosed-names-the-declaring-file = {
+          expr = nixpkgs.removalClosed;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^" + removalText;
+          };
+        };
+        test-gen-removalOpen-names-the-declaring-file = {
+          expr = gen.removalOpen;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: " + removalText;
+          };
+        };
+        test-nixpkgs-removalOpen-names-the-declaring-file = {
+          expr = nixpkgs.removalOpen;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^" + removalText;
+          };
+        };
+        test-gen-emptyName-leaves-the-placeholder-unlocated = {
+          expr = gen.emptyName;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in decl\\.nix, <unknown-file>$";
+          };
+        };
+        test-nixpkgs-emptyName-leaves-the-placeholder-unlocated = {
+          expr = nixpkgs.emptyName;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^The option `_module\\.args\\.name' is defined multiple times while it's expected to be unique\\.\n\nDefinition values:\n- In `decl\\.nix': \"x\"\n- In `<unknown-file>': \"‹name›\"\nUse `lib\\.mkForce value` or `lib\\.mkDefault value` to change the priority on any of these definitions\\.\n?$";
+          };
+        };
+      };
+
     # A UNION merges every definition through a member that accepts it, or refuses by name. These
     # cells are the only assertion available for that refusal: the shape it replaces was an
     # INTERPRETER type error — `expected a list but found a string: "b"` — which escapes

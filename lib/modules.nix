@@ -2271,7 +2271,7 @@ let
     };
 
   # ── THE MERGE PATH'S COLLECTION: the same closure, over entries ──────────────────────────────────
-  # `moduleClosure callM mods` — every module a tree reaches, one entry `{ m0; _file; content; }` per
+  # `moduleClosure specialArgs callM root mods` — every module a tree reaches, one entry `{ m0; _file; content; }` per
   # node, in the closure's order: breadth-first, the first occurrence reached winning. `flat` IS this
   # list, so the module set folded equals the node set minted.
   #
@@ -2449,9 +2449,9 @@ let
         ) kept
       );
   moduleClosure =
-    specialArgs: callM: mods:
+    specialArgs: callM: root: mods:
     let
-      plain = moduleEntries callM null mods;
+      plain = moduleEntries callM root mods;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -2461,7 +2461,7 @@ let
     then
       plain
     else
-      removal.closure specialArgs callM plain;
+      removal.closure specialArgs callM root plain;
 
   # ── MODULE REMOVAL (`disabledModules`): the reference's `collectModules`, in the one collection ──────
   # The reference loads every OCCURRENCE of the import tree (`collectStructuredModules`, no dedup),
@@ -2506,7 +2506,7 @@ let
     none = { };
     statesNone = e: !(e.content ? disabledModules);
     closure =
-      specialArgs: callM: plain:
+      specialArgs: callM: root: plain:
       let
         u = moduleLevels specialArgs callM none plain;
       in
@@ -2515,11 +2515,11 @@ let
       else
         let
           mods = map (e: e.m0) plain;
-          occ = walk.occurrences callM (walk.occurrenceLevel callM null mods);
+          occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
           dis = walk.keysOf (specialArgs.modulesPath or "") occ;
         in
         builtins.seq (walk.checked specialArgs occ) (
-          moduleLevels specialArgs callM { } (walk.keptEntries dis callM null mods)
+          moduleLevels specialArgs callM { } (walk.keptEntries dis callM root mods)
         );
     # Whether a collection removed anything: every module of a non-empty tree removed, or a removal's
     # entries carrying a non-empty key set.
@@ -2686,7 +2686,9 @@ let
             if dis ? ${nk} then [ ] else [ (e // { inherit nk dis; }) ]
           ) (moduleEntries callM importer mods)
         );
-      # The key set an evaluation removed by, off its collection, its modules and its arguments.
+      # The key set an evaluation removed by, off its collection, its modules and its arguments. Collected
+      # from a null root even in a nested tree: a key never reads a file, and the one refusal naming one
+      # (`disabledKeyOf`) was raised first by `closure`, over the same occurrences.
       keysOfTree =
         specialArgs: callM: flat: mods:
         if flat != [ ] then
@@ -3992,7 +3994,10 @@ let
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
-  namePlaceholder._module.args.name = mkOptionDefault "‹name›";
+  namePlaceholder = {
+    _file = "<unknown-file>";
+    _module.args.name = mkOptionDefault "‹name›";
+  };
 
   # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
   # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
@@ -4734,6 +4739,7 @@ let
       prefix,
       carried,
       strict,
+      sitesAt,
       leaves,
       normalize,
       freeform,
@@ -4744,6 +4750,22 @@ let
         name = builtins.toJSON l.path;
         loc = prefix ++ l.path;
         type = l.opt.type or null;
+        # its nested trees' root entry, carrying the file their own modules inherit: the declaration
+        # carrying a type, where that type states a module set (nixpkgs locates only `getSubModules`; an
+        # `either` forwards none). One entry per group, shared by every tree at its positions.
+        root =
+          if interface.forwardsModuleSet (l.opt.type or null) then
+            {
+              _file =
+                (head (filter (x: x.decl ? type) (sitesAt (prefix ++ l.path)) ++ [ { file = "<unknown-file>"; } ]))
+                .file;
+              key = "";
+              nk = "";
+              m0 = null;
+              content = null;
+            }
+          else
+            null;
         hostMode = { inherit carried strict; };
         # ONE DISCHARGE (den-hoag-i4c0n C1; item 2, gate P2): the fold's own `typeDefs`, read off the
         # option's merge record. The first arm is where forcing `m` would meet `mergeOptionWith`'s
@@ -4772,6 +4794,7 @@ let
           name = "freeform";
           loc = prefix;
           inherit (freeform) type;
+          root = null;
           # Every freeform-plane position folds by the CALLED form.
           hostMode = {
             carried = false;
@@ -4798,6 +4821,7 @@ let
                   member
                   defs
                   ;
+                group = g;
                 address = map (d: {
                   attr = "definitions";
                   def = j;
@@ -5303,6 +5327,7 @@ let
       specialArgs ? { },
       prefix ? [ ],
       optionsView ? null,
+      root ? null,
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -5317,7 +5342,7 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = moduleClosure specialArgs (m: m) modules;
+        flat = moduleClosure specialArgs (m: m) root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5439,7 +5464,7 @@ let
           else
             notAModule m;
 
-        flat = moduleClosure specialArgs callD modules;
+        flat = moduleClosure specialArgs callD root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5713,6 +5738,7 @@ let
               member
               defs
               ;
+            inherit (p) group;
             address = map (d: {
               attr = "definitions";
               def = 0;
@@ -5948,6 +5974,7 @@ let
           {
             modules = n.modules ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
+            root = p.group.root;
             inherit (n.empty) prefix specialArgs check;
           }
           // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -5977,6 +6004,7 @@ let
                   }
                 ) p.defs;
               prefix = p.loc;
+              root = p.group.root;
               inherit (n) specialArgs check coreShortCircuit;
             }
             // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -5994,6 +6022,7 @@ let
               {
                 modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
                 prefix = p.loc;
+                root = p.group.root;
                 inherit (n) specialArgs check coreShortCircuit;
               }
               // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6077,6 +6106,10 @@ let
       # tier-2 firing contract (core projection locs are declared-option leaves supplied by the core
       # module).
       coreShortCircuit ? false,
+      # The tree as its top-level modules' importer (nixpkgs' `collectStructuredModules` root `parentFile`):
+      # a nested tree's is built once per option group (`nestedGroups`), carrying its declaring file. `null`
+      # for a top-level tree, whose modules keep nixpkgs' root label.
+      root ? null,
       # ── opt-in warm re-eval (design spec §§1-4) ────────────────────────────────────────────────
       # `warmFrom` = the PREVIOUS `evalModuleTree` result (its `config`/`provenance`/`freeformConfig`/
       # `freeformProv` ARE the memo — no new table); `editedModules` = the appended module LIST (the
@@ -6145,7 +6178,7 @@ let
         let
           s = (if knot.positioned then declarationSpinePositioned else declarationSpine) (
             {
-              inherit specialArgs prefix;
+              inherit specialArgs prefix root;
               modules = modList;
             }
             // (
@@ -6168,6 +6201,8 @@ let
         else
           builtins.seq (stagedDeclarations knot.positioned (
             {
+              # no `root`: the passes decide admission only, and a refusal naming a module's file is
+              # raised first by the spine's own collection (`s`)
               inherit specialArgs prefix;
               modules = modList;
             }
@@ -6307,7 +6342,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (moduleClosure specialArgs callM modList)
+                  builtins.seq declarationGuard (moduleClosure specialArgs callM root modList)
               )
             else
               let
@@ -6315,7 +6350,7 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (moduleClosure specialArgs callM modList);
+                    builtins.seq declarationGuard (moduleClosure specialArgs callM root modList);
               in
               # nixpkgs' `checkModule` over the collection; a removed or losing module is checked where
               # the guard collects (`removal.walk.checked`)
@@ -7899,7 +7934,12 @@ let
           _nested =
             if knot.mints then
               nestedGroups {
-                inherit prefix carried strict;
+                inherit
+                  prefix
+                  carried
+                  strict
+                  sitesAt
+                  ;
                 # A child's own run is on its position record; a root counts `0` (item 4).
                 emptyRun = if knot.inner then (self.getHostAt "positions").emptyRun else 0;
                 leaves = realizedLeaves realized;
