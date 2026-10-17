@@ -2313,14 +2313,14 @@ let
       let
         m = callM m0;
       in
-      if importer == null then
+      if builtins.isString importer then
         {
           inherit m0;
           _file =
             if builtins.isPath m0 || isPathString m0 then
               toString (m._file or m0)
             else
-              toString (m0._file or (m._file or "<unknown-file>"));
+              toString (m0._file or (m._file or importer));
           content = m;
         }
       else if
@@ -2448,10 +2448,11 @@ let
             moduleEntries callM e (importsOf content)
         ) kept
       );
-  moduleClosure =
-    specialArgs: callM: mods:
+  moduleClosure = specialArgs: callM: moduleClosureAt specialArgs callM "<unknown-file>";
+  moduleClosureAt =
+    specialArgs: callM: root: mods:
     let
-      plain = moduleEntries callM null mods;
+      plain = moduleEntries callM root mods;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -2461,7 +2462,7 @@ let
     then
       plain
     else
-      removal.closure specialArgs callM plain;
+      removal.closure specialArgs callM root plain;
 
   # ── MODULE REMOVAL (`disabledModules`): the reference's `collectModules`, in the one collection ──────
   # The reference loads every OCCURRENCE of the import tree (`collectStructuredModules`, no dedup),
@@ -2506,7 +2507,7 @@ let
     none = { };
     statesNone = e: !(e.content ? disabledModules);
     closure =
-      specialArgs: callM: plain:
+      specialArgs: callM: root: plain:
       let
         u = moduleLevels specialArgs callM none plain;
       in
@@ -2515,11 +2516,11 @@ let
       else
         let
           mods = map (e: e.m0) plain;
-          occ = walk.occurrences callM (walk.occurrenceLevel callM null mods);
+          occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
           dis = walk.keysOf (specialArgs.modulesPath or "") occ;
         in
         builtins.seq (walk.checked specialArgs occ) (
-          moduleLevels specialArgs callM { } (walk.keptEntries dis callM null mods)
+          moduleLevels specialArgs callM { } (walk.keptEntries dis callM root mods)
         );
     # Whether a collection removed anything: every module of a non-empty tree removed, or a removal's
     # entries carrying a non-empty key set.
@@ -2621,9 +2622,9 @@ let
       occurrenceLevel =
         callM: importer: mods:
         let
-          ik = if importer == null then "" else importer.key;
+          ik = if builtins.isString importer then "" else importer.key;
           node =
-            if importer == null then
+            if builtins.isString importer then
               ""
             else if isPathModule importer.m0 then
               importer.key
@@ -2675,7 +2676,7 @@ let
       keptEntries =
         dis: callM: importer: mods:
         let
-          pk = if importer == null then "" else importer.nk;
+          pk = if builtins.isString importer then "" else importer.nk;
         in
         concatLists (
           prelude.imap0 (
@@ -2694,7 +2695,7 @@ let
         else if mods == [ ] then
           { }
         else
-          keysOf (specialArgs.modulesPath or "") (occurrences callM (occurrenceLevel callM null mods));
+          keysOf (specialArgs.modulesPath or "") (occurrences callM (occurrenceLevel callM "<unknown-file>" mods));
     };
   };
   # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
@@ -3992,7 +3993,10 @@ let
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
-  namePlaceholder._module.args.name = mkOptionDefault "‹name›";
+  namePlaceholder = {
+    _file = "<unknown-file>";
+    _module.args.name = mkOptionDefault "‹name›";
+  };
 
   # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
   # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
@@ -4734,6 +4738,7 @@ let
       prefix,
       carried,
       strict,
+      sitesAt,
       leaves,
       normalize,
       freeform,
@@ -4744,6 +4749,14 @@ let
         name = builtins.toJSON l.path;
         loc = prefix ++ l.path;
         type = l.opt.type or null;
+        # the file its nested trees' own modules inherit: the declaration carrying a type, where that
+        # type states a module set (nixpkgs locates only `getSubModules`; an `either` forwards none)
+        file =
+          if l.opt ? type && interface.sameValue.modules l.opt.type != null then
+            (head (filter (x: x.decl ? type) (sitesAt (prefix ++ l.path)) ++ [ { file = "<unknown-file>"; } ]))
+            .file
+          else
+            "<unknown-file>";
         hostMode = { inherit carried strict; };
         # ONE DISCHARGE (den-hoag-i4c0n C1; item 2, gate P2): the fold's own `typeDefs`, read off the
         # option's merge record. The first arm is where forcing `m` would meet `mergeOptionWith`'s
@@ -4772,6 +4785,7 @@ let
           name = "freeform";
           loc = prefix;
           inherit (freeform) type;
+          file = "<unknown-file>";
           # Every freeform-plane position folds by the CALLED form.
           hostMode = {
             carried = false;
@@ -4798,6 +4812,7 @@ let
                   member
                   defs
                   ;
+                inherit (g) file;
                 address = map (d: {
                   attr = "definitions";
                   def = j;
@@ -5303,6 +5318,7 @@ let
       specialArgs ? { },
       prefix ? [ ],
       optionsView ? null,
+      file ? "<unknown-file>",
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -5317,7 +5333,7 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = moduleClosure specialArgs (m: m) modules;
+        flat = moduleClosureAt specialArgs (m: m) file modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5439,7 +5455,7 @@ let
           else
             notAModule m;
 
-        flat = moduleClosure specialArgs callD modules;
+        flat = moduleClosureAt specialArgs callD file modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5713,6 +5729,7 @@ let
               member
               defs
               ;
+            inherit (p) file;
             address = map (d: {
               attr = "definitions";
               def = 0;
@@ -5948,6 +5965,7 @@ let
           {
             modules = n.modules ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
+            inherit (p) file;
             inherit (n.empty) prefix specialArgs check;
           }
           // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -5977,6 +5995,7 @@ let
                   }
                 ) p.defs;
               prefix = p.loc;
+              inherit (p) file;
               inherit (n) specialArgs check coreShortCircuit;
             }
             // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -5994,6 +6013,7 @@ let
               {
                 modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
                 prefix = p.loc;
+                inherit (p) file;
                 inherit (n) specialArgs check coreShortCircuit;
               }
               // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6077,6 +6097,9 @@ let
       # tier-2 firing contract (core projection locs are declared-option leaves supplied by the core
       # module).
       coreShortCircuit ? false,
+      # The file the tree's own top-level modules inherit where they state none: nixpkgs'
+      # `collectStructuredModules` root `parentFile`. A nested tree's is its option's declaring file.
+      file ? "<unknown-file>",
       # ── opt-in warm re-eval (design spec §§1-4) ────────────────────────────────────────────────
       # `warmFrom` = the PREVIOUS `evalModuleTree` result (its `config`/`provenance`/`freeformConfig`/
       # `freeformProv` ARE the memo — no new table); `editedModules` = the appended module LIST (the
@@ -6145,7 +6168,7 @@ let
         let
           s = (if knot.positioned then declarationSpinePositioned else declarationSpine) (
             {
-              inherit specialArgs prefix;
+              inherit specialArgs prefix file;
               modules = modList;
             }
             // (
@@ -6168,7 +6191,7 @@ let
         else
           builtins.seq (stagedDeclarations knot.positioned (
             {
-              inherit specialArgs prefix;
+              inherit specialArgs prefix file;
               modules = modList;
             }
             // (
@@ -6307,7 +6330,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (moduleClosure specialArgs callM modList)
+                  builtins.seq declarationGuard (moduleClosureAt specialArgs callM file modList)
               )
             else
               let
@@ -6315,7 +6338,7 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (moduleClosure specialArgs callM modList);
+                    builtins.seq declarationGuard (moduleClosureAt specialArgs callM file modList);
               in
               # nixpkgs' `checkModule` over the collection; a removed or losing module is checked where
               # the guard collects (`removal.walk.checked`)
@@ -7899,7 +7922,7 @@ let
           _nested =
             if knot.mints then
               nestedGroups {
-                inherit prefix carried strict;
+                inherit prefix carried strict sitesAt;
                 # A child's own run is on its position record; a root counts `0` (item 4).
                 emptyRun = if knot.inner then (self.getHostAt "positions").emptyRun else 0;
                 leaves = realizedLeaves realized;
