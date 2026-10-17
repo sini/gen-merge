@@ -4341,10 +4341,11 @@ let
   # nixpkgs consumer at depth 1 or more reads its definitions.
   nestedTreeAt =
     m: site:
-    evalModuleTreeWith knotRootPositioned m.carried m.inherited (
+    # the bridge's child carries how many of its modules are the site's definitions on its own knot, read only
+    # where its `_module.args` record is: a field of the request would be paid by every evaluation
+    evalModuleTreeWith (knotRootPositioned // { seeds = length site.defs; }) m.carried m.inherited (
       {
         modules = site.nests.modules ++ map site.nests.entry site.defs;
-        seedCount = length site.defs;
         prefix = site.loc;
         inherit (site.nests) specialArgs check coreShortCircuit;
       }
@@ -6449,9 +6450,6 @@ let
       # a nested tree's is built once per option group (`nestedGroups`), carrying its declaring file. `null`
       # for a top-level tree, whose modules keep nixpkgs' root label.
       root ? null,
-      # How many of `modules` are a position's definitions, trailing the type's own: the export bridge's
-      # child states it (`nestedTreeAt`); an inner child reads its position (`_module.args`' record).
-      seedCount ? null,
       # ── opt-in warm re-eval (design spec §§1-4) ────────────────────────────────────────────────
       # `warmFrom` = the PREVIOUS `evalModuleTree` result (its `config`/`provenance`/`freeformConfig`/
       # `freeformProv` ARE the memo — no new table); `editedModules` = the appended module LIST (the
@@ -8152,6 +8150,11 @@ let
             # module or the door touches `_module`, and its default alone otherwise.
             moduleOwn =
               let
+                # the engine's own arguments, nixpkgs' `internalModule` definition: one binding, read by the
+                # value and by the `_module.args` record's definition list
+                engineArgs = {
+                  inherit (moduleConfig._module.args) extendModules;
+                };
                 # GATE PROBE: the four values off their own bindings, never through `moduleConfig`
                 m = {
                   # the module-defined set, read off its own binding, beside the engine's `extendModules`
@@ -8163,9 +8166,7 @@ let
                       else
                         moduleArgs // { name = positionNameOf prefix moduleArgs pushed; }
                     )
-                    // {
-                      inherit (moduleConfig._module.args) extendModules;
-                    };
+                    // engineArgs;
                   check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                   freeformType = freeform;
                   specialArgs =
@@ -8205,13 +8206,15 @@ let
                       root
                       ;
                     inherit (knot) positioned;
-                    # an inner child's seeds are its position's definitions, the trailing top-level modules
+                    # an inner child's seeds are its position's definitions, the trailing top-level modules; the
+                    # export bridge's child's are on its knot (`nestedTreeAt`)
                     seeds =
-                      if knot.inner && knot.positioned then length (self.getHostAt "positions").defs else seedCount;
+                      if knot.inner && knot.positioned then
+                        length (self.getHostAt "positions").defs
+                      else
+                        knot.seeds or null;
                     name = (positionArgsAt prefix).name;
-                    internal = {
-                      inherit (moduleConfig._module.args) extendModules;
-                    };
+                    internal = engineArgs;
                   }
                 );
                 check =
