@@ -2244,7 +2244,12 @@ let
         m = callM m0;
         self = {
           key = moduleKeyOf importer i m0 m;
-          inherit importer i m0 m;
+          inherit
+            importer
+            i
+            m0
+            m
+            ;
           next = moduleLevel callM self (importsOf m);
         };
       in
@@ -2414,7 +2419,7 @@ let
             ]
           else
             [ ]
-      ) at
+        ) at
       );
     noRefined = _: [ { } ];
     # THE GRAPH: the identity-keyed closure spells a collided node key refined for EVERY occurrence, the
@@ -2440,8 +2445,20 @@ let
           m = callM m0;
           k0 = moduleKeyOf importer i m0 m;
           self = {
-            key = if C ? ${k0} then refinedKeyOf k0 { content = m; inherit m0; } else k0;
-            inherit importer i m0 m;
+            key =
+              if C ? ${k0} then
+                refinedKeyOf k0 {
+                  content = m;
+                  inherit m0;
+                }
+              else
+                k0;
+            inherit
+              importer
+              i
+              m0
+              m
+              ;
             next = levelC C callM self (importsOf m);
           };
         in
@@ -2482,8 +2499,10 @@ let
           inherit C;
         };
   };
+  # `chain null`: the refined-key maps of x's level (head) and of every shallower level (tail), built
+  # only where a meeting is decided distinct.
   keyedDrop =
-    specialArgs: callM: first: w: x:
+    specialArgs: callM: chain: w: x:
     let
       key = builtins.substring 1 (builtins.stringLength x.k) x.k;
     in
@@ -2504,7 +2523,7 @@ let
       # own refined key, in this level or a shallower one, and kept where it is that first
       let
         rk = a3.refinedKeyOf x.k x.e;
-        rs = first null;
+        rs = chain null;
         here = builtins.head rs;
         shallower = builtins.filter (d: d ? ${rk}) (builtins.tail rs);
       in
@@ -2537,7 +2556,7 @@ let
         }) level;
         # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key
         first = listToAttrs (
-concatMap (
+          concatMap (
             x:
             if x.k == null then
               [ ]
@@ -2558,7 +2577,9 @@ concatMap (
                 x.k == null
                 || (
                   if seen ? ${x.k} || first.${x.k}.p != x.p then
-                    keyedDrop specialArgs callM (_: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null) (seen.${x.k} or first.${x.k}) x
+                    keyedDrop specialArgs callM (
+                      _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
+                    ) (seen.${x.k} or first.${x.k}) x
                   else
                     true
                 )
@@ -2571,22 +2592,27 @@ concatMap (
       # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
       # a key is itself decided against it, and must never replace it (den-hoag-9zyp7 gate v0 C1). The
       # refined-key chain under "" is this level's, which already holds every shallower one.
-      ++ moduleLevels specialArgs callM (if keyed then
-          first
-          // seen
-          // {
-            "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
-          }
-        else
-          seen) (
-        concatMap (
-          { content, ... }@e:
-          if e ? dis then
-            removal.walk.keptEntries e.dis callM e (importsOf content)
-          else
-            moduleEntries callM e (importsOf content)
-        ) kept
-      );
+      ++
+        moduleLevels specialArgs callM
+          (
+            if keyed then
+              first
+              // seen
+              // {
+                "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+              }
+            else
+              seen
+          )
+          (
+            concatMap (
+              { content, ... }@e:
+              if e ? dis then
+                removal.walk.keptEntries e.dis callM e (importsOf content)
+              else
+                moduleEntries callM e (importsOf content)
+            ) kept
+          );
   moduleClosure =
     specialArgs: callM: root: mods:
     let
