@@ -1,8 +1,9 @@
-# THE MEET'S IDENTITY (den-hoag-hnd82 Q1, owner-ruled 2026-10-14: mint the meet). A met record is a gen-merge
-# construction, `gen-merge.meet`, over its join and the operands it owes, minted per component through the one mint
-# (ADR-0034): two constructions of one meet are one type, a different meet is not, a meet over a sealed member is
+# THE MEET'S IDENTITY (den-hoag-hnd82 Q1, owner-ruled 2026-10-14: mint the meet). A met record over a GEN join is a
+# gen-merge construction, `gen-merge.meet`, over its join and the operands it owes, minted per component through the one
+# mint (ADR-0034): two constructions of one meet are one type, a different meet is not, a meet over a sealed member is
 # refused at `typeEq` rather than decided, and the meet is still enforced. A met record is completed (its own stamp),
-# so a union reads its `verify` as its domain.
+# so a union reads its `verify` as its domain. Over a FOREIGN join it is COMPARED on every route, as the carry route's
+# record is (den-hoag-k4f4g arm (c), owner-ruled 2026-10-16): no mark, a decision and no identity.
 # The record a module set carries (`carriedAtDepth`) is the same construction where it owes ANOTHER declaration's
 # check (den-hoag-k4f4g, arm (a)); carried over its own check alone it is re-handed (ADR-0014), and a foreign record
 # keeps its foreign regime, so nixpkgs' `valueMeta` is still served for it (den-hoag-xroc7).
@@ -40,6 +41,12 @@ let
   # a met record from each of the other two producers: `meetOf`'s foreign-`verify` record (a foreign join whose copy
   # states a `verify`), and `metWith`'s held record (a gen operand whose fold is not the carrier's)
   attrsInt = np.attrsOf np.int;
+  small = v: if builtins.all (x: x < 10) (builtins.attrValues v) then null else "rejected";
+  # the same over a GEN join: a gen container's copy states the `verify`
+  verifiedOverGen = [
+    (t.attrsOf t.int // { verify = small; })
+    (t.attrsOf t.int)
+  ];
   verifiedOver = [
     (
       attrsInt
@@ -49,34 +56,54 @@ let
     )
     attrsInt
   ];
-  evenFold = gm.mkOptionType (
-    let
-      self = nixpkgsLib.mkOptionType {
-        name = "evenFold";
-        check = {
-          __functor = _: builtins.isInt;
-          isV2MergeCoherent = true;
+  # a fold whose relation answers `j`: nixpkgs' `int` (a foreign join) or gen's (a gen join)
+  evenFoldOver =
+    j:
+    gm.mkOptionType (
+      let
+        self = nixpkgsLib.mkOptionType {
+          name = "evenFold";
+          check = {
+            __functor = _: builtins.isInt;
+            isV2MergeCoherent = true;
+          };
+          merge =
+            loc: defs:
+            let
+              v = nixpkgsLib.mergeEqualOption loc defs;
+            in
+            if even v then v else throw "odd";
+          functor = np.defaultFunctor "evenFold" // {
+            type = _: self;
+            payload = { };
+            binOp = _a: _b: { };
+          };
+          typeMerge = f: if f.name == "int" || f.name == "evenFold" then j else null;
         };
-        merge =
-          loc: defs:
-          let
-            v = nixpkgsLib.mergeEqualOption loc defs;
-          in
-          if even v then v else throw "odd";
-        functor = np.defaultFunctor "evenFold" // {
-          type = _: self;
-          payload = { };
-          binOp = _a: _b: { };
-        };
-        typeMerge = f: if f.name == "int" || f.name == "evenFold" then np.int else null;
-      };
-    in
-    self
-  );
+      in
+      self
+    );
   heldOver = [
-    evenFold
+    (evenFoldOver np.int)
     t.int
   ];
+  heldOverGen = [
+    (evenFoldOver t.int)
+    t.int
+  ];
+  # what a meet over a FOREIGN join is: met, no mark, a decision (self true, a twin false) and no identity
+  compared =
+    tys:
+    let
+      m = decl tys;
+    in
+    {
+      met = m ? __meetJoin;
+      minted = m ? __mint;
+      self = try (t.typeEq m m);
+      twin = try (t.typeEq m (decl tys));
+      identity = if try (genTypes.idOf m) == "REFUSED" then "REFUSED" else "served";
+    };
   minted = m: {
     ctor = try (m.__payload.minted.ctor or null);
     self = try (t.typeEq m m);
@@ -210,11 +237,11 @@ in
         joinsMark = false;
       };
     };
-    # each producer mints: `meetOf`'s foreign-`verify` record, and `metWith`'s held record
+    # each producer mints over a gen join: `meetOf`'s foreign-`verify` record, and `metWith`'s held record
     test-a-foreign-verify-met-record-mints-its-own-construction = {
       expr =
         let
-          m = decl verifiedOver;
+          m = decl verifiedOverGen;
         in
         minted m // { verify = m ? verify; };
       expected = {
@@ -226,7 +253,7 @@ in
     test-a-held-met-record-mints-its-own-construction = {
       expr =
         let
-          m = decl heldOver;
+          m = decl heldOverGen;
         in
         minted m // { holds = m.holds or false; };
       expected = {
@@ -252,21 +279,14 @@ in
             }
           )
           [
-            (decl verifiedOver)
-            (decl heldOver)
-            (decl [
-              (np.enum [ "a" ])
-              (np.enum [ "b" ])
-            ])
+            (decl verifiedOverGen)
+            (decl heldOverGen)
           ];
       expected = [
         {
           verify = true;
           holds = null;
-          relativised = [
-            false
-            false
-          ];
+          relativised = [ false ];
         }
         {
           verify = null;
@@ -276,16 +296,81 @@ in
             false
           ];
         }
-        {
-          verify = null;
-          holds = null;
-          relativised = [
-            true
-            true
-          ];
-        }
       ];
     };
+    # over a FOREIGN join no producer mints: `meetOf`'s record, its foreign-`verify` record, `metWith`'s held record, and
+    # a join widening its operands (relativised) are each a decision, one with itself and not with a second construction,
+    # with no identity
+    test-a-met-record-over-a-foreign-join-is-compared-at-every-producer =
+      let
+        c = {
+          met = true;
+          minted = false;
+          self = true;
+          twin = false;
+          identity = "REFUSED";
+        };
+      in
+      {
+        expr = map compared [
+          [
+            (np.addCheck np.int even)
+            np.int
+          ]
+          verifiedOver
+          heldOver
+          [
+            (np.enum [ "a" ])
+            (np.enum [ "b" ])
+          ]
+        ];
+        expected = [
+          c
+          c
+          c
+          c
+        ];
+      };
+    # a foreign module-set join reaches `meetOf` inside a union and the carry route bare: one regime either way, and
+    # nixpkgs' metadata served for both at a value both declarations admit
+    test-a-foreign-module-set-join-is-compared-wrapped-in-a-union-or-not =
+      let
+        p = v: !(builtins.isAttrs v) || v.a != 3;
+        wrapped = [
+          (np.addCheck (np.either np.str npSub) p)
+          (np.either np.str npSub)
+        ];
+        bare = [
+          (np.addCheck npSub p)
+          npSub
+        ];
+        row = tys: {
+          inherit (compared tys) minted twin;
+          valueMeta = try (foreign tys).valueMeta;
+        };
+      in
+      {
+        expr = map row [
+          wrapped
+          bare
+        ];
+        expected = [
+          {
+            minted = false;
+            twin = false;
+            valueMeta = {
+              a = 2;
+            };
+          }
+          {
+            minted = false;
+            twin = false;
+            valueMeta = {
+              a = 2;
+            };
+          }
+        ];
+      };
     # the meet is still enforced: a value is served only where every declaration admits it
     test-a-minted-meet-is-still-the-meet = {
       expr =

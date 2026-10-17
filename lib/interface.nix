@@ -821,23 +821,48 @@ let
   foreignValueMeta =
     sets: t: loc: defs:
     let
-      # a completion (`__typeSelf`, a met record among them) or a relation (`typeMergeRel`); every record gen
-      # constructs states one of the two
+      # a completion (`__typeSelf`, a met record over a gen join among them) or a relation (`typeMergeRel`); every
+      # record gen constructs states one of the two
       genOwn = x: x ? __typeSelf || x ? typeMergeRel;
       # every type reachable through `nestedTypes` is foreign and carries no `verify`, and states no module set
       # unless `sets` admits one (its own `sets`, not the caller's: a name already interned costs no load); a
-      # walk out of fuel answers `false`. A nested ad-hoc `check` is refused by the call itself, as at
-      # nixpkgs. `attrTag`'s `nestedTypes` are option records, not types, so a v2 `attrTag` would be walked
-      # no deeper than its tags.
+      # walk out of fuel answers `false`. A met record below the top is walked no further: the check it owes is
+      # not in the metadata above it. A nested ad-hoc `check` is refused by the call itself, as at nixpkgs.
+      # `attrTag`'s `nestedTypes` are option records, not types, so a v2 `attrTag` would be walked no deeper than
+      # its tags.
       throughout =
         sets: fuel: x:
         isAttrs x
         && fuel > 0
-        && !(genOwn x || x ? verify || !sets && (x.getSubModules or null) != null)
+        && !(genOwn x || x ? __meetJoin || x ? verify || !sets && (x.getSubModules or null) != null)
         && prelude.all (throughout sets (fuel - 1)) (builtins.attrValues (x.nestedTypes or { }));
     in
     if genOwn t then
       throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' is gen-merge's own, which states no v2-merge metadata"
+    # a met record over a FOREIGN join is COMPARED, so not gen's own (den-hoag-k4f4g): its metadata is its join's, with
+    # the met record as its type, served only where the meet admits every definition: each passes its check, and its
+    # v2 merge, if it states one, reports no `headError` (a check or `verify` owed by another declaration)
+    else if t ? __meetJoin then
+      if
+        builtins.all (d: t.check d.value) defs
+        && (!(isV2 t) || (v2Result (t.merge.v2 { inherit loc defs; })).headError == null)
+      then
+        (
+          let
+            m = foreignValueMeta sets t.__meetJoin loc defs;
+          in
+          if m ? _internal then
+            m
+            // {
+              _internal = {
+                type = t;
+              };
+            }
+          else
+            m
+        )
+      else
+        throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': a definition is rejected by its met type `${describe t}', so its v2-merge metadata would describe a value gen-merge refuses"
     else if !(isV2 t) then
       { }
     else if adHocChecked t then
@@ -3226,8 +3251,8 @@ let
       # value declared twice, carried over its own check is re-handed (ADR-0014). A foreign join is rebuilt per
       # evaluation, so a mint over it is no identity over a total preimage (ADR-0034's MINTED): its twins would still
       # be refused, and nixpkgs' `valueMeta` would be refused with them (ADR-0039). It stays COMPARED, the join's
-      # regime, where `meetOf` mints a leaf meet over a foreign join (den-hoag-k4f4g). A single-record re-carry below
-      # a container is not yet minted (den-hoag-k4f4g §3b).
+      # regime, as `meetOf`'s producers do (den-hoag-k4f4g). A single-record re-carry below a container is not yet
+      # minted (den-hoag-k4f4g §3b).
       carriedMint =
         ts: j: os: x:
         if
@@ -6198,7 +6223,9 @@ let
   # more (ADR-0032: one `//` per met record is its measured marginal). The record is completed there
   # (`retied`'s stamp), and it declares its completion and no check witness: its `_checkWitness` is the
   # join's, which is how every later step reads it as owed (`metWith`), so the pair states the meet's
-  # debt and not what its mark was minted over. Each field is guarded inline by `types ? mkIdentity`, as
+  # debt and not what its mark was minted over. The producers mint only over a join gen-merge constructed,
+  # one stating the mint's mark (`? __mint`, as `carriedMint` asks): over a foreign join the met record
+  # is COMPARED (den-hoag-k4f4g). Each field is guarded inline by `types ? mkIdentity` and that mark, as
   # `identified` is: a binding for the guard would cost every load a thunk. The witness IS bound once, a
   # trade: +1 load thunk for -1 thunk on every met record.
   metWitness = {
@@ -6342,13 +6369,13 @@ let
               r = if asked.success then asked.value else null;
             in
             if r == null then null else metWith false r [ met ];
-          ${if types ? mkIdentity then "__mint" else null} = ids.__mint;
-          ${if types ? mkIdentity then "__payload" else null} = ids.__payload;
-          ${if types ? mkIdentity then "__sealed" else null} = ids.__sealed;
-          ${if types ? mkIdentity then "__okAt" else null} = ids.__okAt;
-          ${if types ? mkIdentity then "__typeSelf" else null} = _: met;
-          ${if types ? mkIdentity then "__witness" else null} = metWitness;
-          ${if types ? mkIdentity then "__stampReads" else null} = stampReads;
+          ${if types ? mkIdentity && j ? __mint then "__mint" else null} = ids.__mint;
+          ${if types ? mkIdentity && j ? __mint then "__payload" else null} = ids.__payload;
+          ${if types ? mkIdentity && j ? __mint then "__sealed" else null} = ids.__sealed;
+          ${if types ? mkIdentity && j ? __mint then "__okAt" else null} = ids.__okAt;
+          ${if types ? mkIdentity && j ? __mint then "__typeSelf" else null} = _: met;
+          ${if types ? mkIdentity && j ? __mint then "__witness" else null} = metWitness;
+          ${if types ? mkIdentity && j ? __mint then "__stampReads" else null} = stampReads;
         }
         // (if fold == null then { } else { mergeDefs = fold; });
       ids = metIdentity j os { } met;
@@ -6394,13 +6421,13 @@ let
               rebuildClosed.verifiedMerge vf met.merge
             else
               rebuildClosed.verifiedMerge vf (rebuildClosed.verifiedMerge.lifted met.check met.merge);
-          ${if types ? mkIdentity then "__mint" else null} = vids.__mint;
-          ${if types ? mkIdentity then "__payload" else null} = vids.__payload;
-          ${if types ? mkIdentity then "__sealed" else null} = vids.__sealed;
-          ${if types ? mkIdentity then "__okAt" else null} = vids.__okAt;
-          ${if types ? mkIdentity then "__typeSelf" else null} = _: verified;
-          ${if types ? mkIdentity then "__witness" else null} = metWitness;
-          ${if types ? mkIdentity then "__stampReads" else null} = stampReads;
+          ${if types ? mkIdentity && j ? __mint then "__mint" else null} = vids.__mint;
+          ${if types ? mkIdentity && j ? __mint then "__payload" else null} = vids.__payload;
+          ${if types ? mkIdentity && j ? __mint then "__sealed" else null} = vids.__sealed;
+          ${if types ? mkIdentity && j ? __mint then "__okAt" else null} = vids.__okAt;
+          ${if types ? mkIdentity && j ? __mint then "__typeSelf" else null} = _: verified;
+          ${if types ? mkIdentity && j ? __mint then "__witness" else null} = metWitness;
+          ${if types ? mkIdentity && j ? __mint then "__stampReads" else null} = stampReads;
         };
         vids = metIdentity j os { verify = true; } verified;
       in
@@ -6628,13 +6655,13 @@ let
             met
             // {
               holds = true;
-              ${if types ? mkIdentity then "__mint" else null} = hids.__mint;
-              ${if types ? mkIdentity then "__payload" else null} = hids.__payload;
-              ${if types ? mkIdentity then "__sealed" else null} = hids.__sealed;
-              ${if types ? mkIdentity then "__okAt" else null} = hids.__okAt;
-              ${if types ? mkIdentity then "__typeSelf" else null} = _: h;
-              ${if types ? mkIdentity then "__witness" else null} = metWitness;
-              ${if types ? mkIdentity then "__stampReads" else null} = stampReads;
+              ${if types ? mkIdentity && m ? __mint then "__mint" else null} = hids.__mint;
+              ${if types ? mkIdentity && m ? __mint then "__payload" else null} = hids.__payload;
+              ${if types ? mkIdentity && m ? __mint then "__sealed" else null} = hids.__sealed;
+              ${if types ? mkIdentity && m ? __mint then "__okAt" else null} = hids.__okAt;
+              ${if types ? mkIdentity && m ? __mint then "__typeSelf" else null} = _: h;
+              ${if types ? mkIdentity && m ? __mint then "__witness" else null} = metWitness;
+              ${if types ? mkIdentity && m ? __mint then "__stampReads" else null} = stampReads;
               typeMerge =
                 f:
                 let

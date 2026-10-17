@@ -241,8 +241,9 @@
           # each by 2: a level's key grouping binds a pushed definition's fields as formals. den-hoag-1yqkr lowered
           # s3 by 1: a held record's operands are kept without a filter. den-hoag-c922w lowered box by 28: a
           # property-free definition list is folded without the passes, and a container root over a leaf chain
-          # is not walked.
-          for bound in val:347 box:698 s2:879 s3:472; do
+          # is not walked. den-hoag-k4f4g lowered s2 and s3 by 10: a met record over a foreign join lays no
+          # mint fields.
+          for bound in val:347 box:698 s2:869 s3:462; do
             mode=''${bound%%:*} max=''${bound#*:}
             thunksOf "met-cost-$mode-100"
             [ "$val" = "100" ] || die "met-cost-$mode-100" "expected value 100, got '$val'"

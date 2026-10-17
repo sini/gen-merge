@@ -724,6 +724,11 @@ let
     };
   };
   vmPos = T.addCheck T.int (v: v > 0);
+  vmBelow10 = v: builtins.all (x: x < 10) (builtins.attrValues v);
+  vmSmall = T.addCheck (T.attrsOf T.int) vmBelow10;
+  vmVerified = T.attrsOf T.int // {
+    verify = v: if vmBelow10 v then null else "rejected";
+  };
   # the same foreign declaration inside a submodule's own evaluation, read through its module argument
   vmNested =
     evalM: subT: mkO:
@@ -964,9 +969,24 @@ in
       e: e.config.x
     );
 
+    # a meet over a FOREIGN join is COMPARED, not gen's own (den-hoag-k4f4g): its join's metadata is served where every
+    # declaration admits the value, at a leaf join whose merge states no v2, a container's check, and a `verify` copy
+    test-valueMeta-meet-leaf = vmBoth (vmTwo vmPos T.int 1) vmMeta;
+    test-valueMeta-meet-container = vmBoth (vmTwo vmSmall (T.attrsOf T.int) { a = 2; }) vmMeta;
+    test-valueMeta-meet-verify = vmBoth (vmTwo vmVerified (T.attrsOf T.int) { a = 2; }) vmMeta;
+
     # ── no value gen-merge's `config` refuses by a declared check is served through `valueMeta` ──
     test-valueMeta-guard-meet = vmGuard (vmTwo (T.attrsOf vmPos) (T.attrsOf T.int) { a = -1; }) (
       e: builtins.attrNames e.options.x.valueMeta.attrs
+    );
+    # the same at the met record itself: a check owed by another declaration, at a leaf join with no v2 merge (its
+    # check) and at a container (its merge's `headError`), and a `verify` owed on the merged value (its `headError`)
+    test-valueMeta-guard-meet-leaf = vmGuard (vmTwo vmPos T.int (-1)) (e: e.options.x.valueMeta);
+    test-valueMeta-guard-meet-container = vmGuard (vmTwo vmSmall (T.attrsOf T.int) { a = 11; }) (
+      e: e.options.x.valueMeta.attrs
+    );
+    test-valueMeta-guard-meet-verify = vmGuard (vmTwo vmVerified (T.attrsOf T.int) { a = 11; }) (
+      e: e.options.x.valueMeta.attrs
     );
     test-valueMeta-guard-checked-submodule = vmGuard (vmTwo (T.attrsOf vmChecked) (T.attrsOf vmSub) {
       a.bar = -1;

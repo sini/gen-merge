@@ -2023,6 +2023,9 @@ project gen's fold, which puts a declared default first among the definitions, a
 `valueMeta`, nixpkgs' v2-merge metadata, is nixpkgs' own where the type is foreign and gen folds it by
 that type's own merge (a v2 merge's `valueMeta` with `_internal.type`, `{ }` for a merge stating no `v2`),
 and refused by name, never absent, at every other type: a gen type, or a foreign one holding a gen type.
+A met record over a foreign join (a redeclared option whose declarations' join is foreign) answers its
+join's metadata where every declaration admits the definitions, and refuses by name where one rejects
+them; a met record below a foreign container is refused.
 Below a module set it is the metadata of the call gen's fold folds by, and each `configuration` in it is
 that call's own merged value, served only where the value is and guarded as the value is (a `verify` copy
 inside the submodule, an `addCheck` over it), as are `attrListOf`'s `attrListValue` and `definitions`;

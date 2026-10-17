@@ -1364,7 +1364,7 @@ in
           expectedError = refusal "s.k.x";
         };
         # each half of the gen-record test alone: a relation stating no completion (`anything`), and a
-        # met record, a completion stating no relation, over a foreign leaf whose merge states no `v2`
+        # met record over a gen join, a completion stating no relation, owing a foreign leaf's check
         test-a-relation = {
           expr =
             (gm.evalModuleTree { } [
@@ -1378,13 +1378,29 @@ in
         test-a-met-record = {
           expr =
             (gm.evalModuleTree { } [
-              { options.x = nl.mkOption { type = nl.types.addCheck nl.types.int (v: v > 0); }; }
+              { options.x = nl.mkOption { type = nl.types.addCheck t.int (v: v > 0); }; }
               {
-                options.x = nl.mkOption { type = nl.types.int; };
+                options.x = nl.mkOption { type = t.int; };
                 config.x = 1;
               }
             ]).options.x.valueMeta;
           expectedError = refusal "x";
+        };
+        # a met record over a FOREIGN join below a foreign container is walked no further (den-hoag-k4f4g): its
+        # owed check is the element's, which the container's metadata does not state. An open ADR-0039 defect,
+        # refused as before at a value nixpkgs serves (option-record-keys.test-valueMeta-guard-meet is its guard)
+        test-a-met-record-below-a-foreign-container = {
+          expr =
+            (gm.evalModuleTree { } [
+              {
+                options.x = nl.mkOption { type = nl.types.attrsOf (nl.types.addCheck nl.types.int (v: v > 0)); };
+              }
+              {
+                options.x = nl.mkOption { type = nl.types.attrsOf nl.types.int; };
+                config.x.a = 1;
+              }
+            ]).options.x.valueMeta;
+          expectedError = below "x";
         };
         test-a-gen-container-of-a-foreign-submodule = {
           expr =
