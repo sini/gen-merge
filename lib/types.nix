@@ -1015,9 +1015,17 @@ let
           # With no surviving definition the value is the module set evaluated over NO definitions, as
           # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
           # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
-          # would there and an undefined sub-option refuses by name. That evaluation is the child with an
-          # empty seed, read through the threaded fold; called, it refuses (den-hoag-n6dh7 item 1).
-          whenEmpty.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
+          # would there and an undefined sub-option refuses by name. Inside an evaluation that is the child
+          # with an empty seed, read through the threaded fold (`threadedAs` rebinds this field). Read
+          # here, no gen evaluation holds the type, so it is the bridge's one root evaluation, as the
+          # export's `emptyValue` reads it (den-hoag-n6dh7 item 1, narrowed by den-hoag-8qenh).
+          whenEmpty.value =
+            (interface.bridge.emptyChild {
+              position = [ ];
+              inherit nests;
+              loc = [ ];
+              defs = [ ];
+            }).config;
           # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
           # relation unions rather than merges: an option declared as a submodule in two modules ends up
           # declaring the union of what they declare. On a nullary relation the second declaration would

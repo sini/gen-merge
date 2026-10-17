@@ -8103,7 +8103,9 @@ let
                 };
             };
         # A nesting type's empty value is its tree over no definitions, through the bridge's empty
-        # accessor (`emptyAccessor`): its called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
+        # accessor (`emptyAccessor`), the one root evaluation a free-standing `submodule`'s own
+        # `whenEmpty` also reads; an evaluation's own type's called `whenEmpty` refuses
+        # (den-hoag-n6dh7 item 1, narrowed by den-hoag-8qenh).
         emptyValue =
           if isNesting t then
             { value = t.mergeDefs.threaded (emptyAccessor bridge) [ ] [ ]; }

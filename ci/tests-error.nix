@@ -8873,7 +8873,8 @@ in
             msg = "^gen-merge: `evalModuleTree': option `x' holds a nested tree with no definition inside 32 enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of 32 rather than hang[.] Define the position, or reach the recursion through a container whose keys are data [(]`attrsOf', `listOf'[)]$";
           };
         };
-        # Item 1: every evaluating field of a nesting type refuses where it is CALLED.
+        # Item 1: a nesting type's called fold refuses, and so does the called empty value of an
+        # evaluation's own type.
         test-a-submodules-called-fold-refuses = {
           expr = force (
             gm.mergeDefs [ "o" ] sub [
@@ -8888,13 +8889,28 @@ in
             msg = called "submodule" "mergeDefs" "o";
           };
         };
-        test-a-submodules-called-empty-value-refuses = {
-          expr = force sub.whenEmpty.value;
-          expectedError = {
-            type = "ThrownError";
-            msg = called "submodule" "whenEmpty" null;
+        # A free-standing type's empty value is not refused: no gen evaluation holds it, so it is the
+        # bridge's one root evaluation, nixpkgs' `base.config` (item 1, narrowed by den-hoag-8qenh).
+        test-a-submodules-called-empty-value-is-nixpkgs-base-config =
+          let
+            m = {
+              options.x = gm.mkOption {
+                type = t.int;
+                default = 1;
+              };
+            };
+            nm = {
+              options.x = nixpkgsLib.mkOption {
+                type = nixpkgsLib.types.int;
+                default = 1;
+              };
+            };
+            served = v: builtins.deepSeq v (removeAttrs v [ "_module" ]);
+          in
+          {
+            expr = served (t.submodule m).whenEmpty.value;
+            expected = served (nixpkgsLib.types.submoduleWith { modules = [ nm ]; }).emptyValue.value;
           };
-        };
         test-the-tree-records-called-fold-refuses = {
           expr = force (
             gm.mergeDefs [ "o" ] tree [

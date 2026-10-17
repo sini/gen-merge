@@ -3765,10 +3765,12 @@ let
 
   # ── THE CALLED FOLD REFUSES (den-hoag-n6dh7 item 1) ─────────────────────────────────────────────
   # A nesting type declares its tree; it does not evaluate it. Every evaluating field is a named
-  # refusal where it is CALLED (the 2-arity `mergeDefs`, `submodule`'s `whenEmpty.value`, the tree
-  # record's `emptyTree`), naming the field and the loc: the tree is a child of the one evaluation
-  # that holds it, and an evaluation reads it through the fold's threaded sibling. The exported
-  # foreign `merge` does not refuse; it bridges (item 7).
+  # refusal where it is CALLED (the 2-arity `mergeDefs` and its `.reported`, the tree record's
+  # `emptyTree`), naming the field and the loc: the tree is a child of the one evaluation that holds
+  # it, and an evaluation reads it through the fold's threaded sibling. The exported foreign `merge`
+  # does not refuse; it bridges (item 7). A free-standing type, which no gen evaluation holds, reads
+  # its empty value (`submodule`'s `whenEmpty.value`) off the bridge's one root evaluation (item 1,
+  # narrowed by den-hoag-8qenh).
   calledNestingRefusal =
     type: field: loc:
     "gen-merge: `${type}'${
@@ -4057,7 +4059,8 @@ let
   # copies none of the type's other fields. A nesting type's reporting twin rides beside its
   # threaded fold (`.reported`, which the rich fold selects on), and its EMPTY value is its threaded
   # fold over no definitions through its accessor's empty view (`interface.emptyAccessor`): the
-  # child at this position with an empty seed. Its called `whenEmpty` refuses (item 1).
+  # child at this position with an empty seed, never the type's own `whenEmpty`, which for a
+  # free-standing type is the bridge's root evaluation (item 1).
   threadedAs =
     ev: type:
     if isAttrs type && type ? mergeDefs.threaded then

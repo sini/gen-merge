@@ -20,11 +20,13 @@ let
       L = genMerge;
       ev = evalRequest;
       sub = ms: genMerge.types.submodule ms;
+      emptyOf = t: { value = t.whenEmpty.value; };
     };
     nixpkgs = {
       L = nixpkgsLib;
       ev = nixpkgsLib.evalModules;
       sub = ms: nixpkgsLib.types.submoduleWith { modules = ms; };
+      emptyOf = t: t.emptyValue;
     };
   };
   read =
@@ -40,10 +42,12 @@ let
       L,
       ev,
       sub,
+      emptyOf,
     }:
     let
       TY = L.types;
       opt = d: L.mkOption { default = d; };
+      forces = x: (builtins.tryEval (builtins.deepSeq x true)).success;
       base = {
         options.a = opt 1;
         options.l = L.mkOption {
@@ -288,6 +292,43 @@ let
       dsPubArgs =
         (builtins.tryEval (builtins.deepSeq (ev { modules = [ base ]; }).options._module.args.value true))
         .success;
+      # a free-standing type deep-forces through its empty value: alone, as a container element, and
+      # read off the options tree; a throwing default still fails the force
+      dsSubType = forces (sub [ base ]);
+      dsSubTypeThrow = forces (sub [ { options.t = opt (throw "T-default"); } ]);
+      dsSubInAttrs = forces (TY.attrsOf (sub [ base ]));
+      dsOptType =
+        forces
+          (ev {
+            modules = [
+              {
+                options.x = L.mkOption {
+                  type = sub [ base ];
+                  default = { };
+                };
+              }
+            ];
+          }).options.x.type;
+      # a hand-built composite whose empty case is its element's own empty value, inside an evaluation
+      handA =
+        let
+          S = sub [ base ];
+        in
+        read
+          (ev {
+            modules = [
+              {
+                options.x = L.mkOption {
+                  type = TY.mkOptionType {
+                    name = "hand";
+                    merge = loc: defs: S.merge loc defs;
+                    emptyValue = emptyOf S;
+                    check = _: true;
+                  };
+                };
+              }
+            ];
+          }).config.x.a;
     };
   gen = cells sides.gen;
   nixpkgs = cells sides.nixpkgs;

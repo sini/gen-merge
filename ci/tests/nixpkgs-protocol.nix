@@ -1855,10 +1855,10 @@ in
     # DEEP-FORCING A PUBLISHED DECLARATION TREE OF GEN TYPES REFUSES, for every such tree and not for the
     # tree-type: a published option record of a gen type refuses `valueMeta` by name (`lib/modules.nix`
     # `serveOptions`), and a deep force reads it. With the evaluated keys set aside, a declaration tree of leaf types
-    # deep-forces, and one holding
-    # a nesting type refuses exactly as one holding a `submodule` does: a deep force reaches the
-    # type's called empty fold (`whenEmpty`), which refuses by name. A shallow read of the tree-type
-    # answers its name.
+    # deep-forces, and so does one holding a free-standing `submodule`: a deep force reaches its empty
+    # value, which the bridge's one root evaluation serves (den-hoag-8qenh). One holding an
+    # evaluation's own type still refuses: its called empty fold (`whenEmpty`) refuses by name. A
+    # shallow read of the tree-type answers its name.
     test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys = {
       expr =
         let
@@ -1929,7 +1929,7 @@ in
         deepForceOfDeclTree = false;
         plainTypeDeclTree = false;
         declarationsOfTreeTyped = false;
-        declarationsOfSubmoduleTyped = false;
+        declarationsOfSubmoduleTyped = true;
         declarationsOfPlainTyped = true;
         valueSideControl = true;
         shallowReadControl = "submodule";

@@ -2068,8 +2068,10 @@ is not read decides nothing. `mergeDefs.threadedReported` is the same fold for t
 carries a report, the declared leaf of an evaluation: it returns `{ value; undeclared; }` off one read
 of the child, which inherits that evaluation's effective strictness. The finding is reported (above),
 and, when either the carrier or the nested tree is strict, refused by the child at its own level when
-that level is read. The CALLED forms (`mergeDefs` applied, `.reported`, and `whenEmpty.value`) refuse
-by name: no second evaluation is made for a tree. To wrap a tree's fold, **replace `mergeDefs` whole**.
+that level is read. The CALLED folds (`mergeDefs` applied, `.reported`) refuse by name, and so does an
+evaluation's own type's `whenEmpty.value`: no second evaluation is made for a tree an evaluation holds.
+A free-standing `submodule`'s `whenEmpty.value`, which no gen evaluation holds, is the bridge's one root
+evaluation, nixpkgs' `base.config`. To wrap a tree's fold, **replace `mergeDefs` whole**.
 The same holds for a foreign type imported with a `check`, whose `mergeDefs` is a functor carrying its
 unchecked fold as `.unchecked` for the freeformType site: a whole replacement governs at every site, a
 refined `__functor` is ignored at the freeformType site
