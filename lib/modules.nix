@@ -4387,14 +4387,14 @@ let
             path = p;
             refuse = refuse sk p;
           }) left;
-        # whether a node states a type gen constructs: an option whose own type `interface.own` answers, or a group
+        # whether a node states a type gen constructs: an option whose own type `interface.foreignValueMeta.own` answers, or a group
         # holding one; a member that is not an attribute set states none
         own =
           v:
           isAttrs v
           && (
             if isOptLeaf v then
-              isAttrs (v.type or null) && interface.own v.type
+              isAttrs (v.type or null) && interface.foreignValueMeta.own v.type
             else
               prelude.any own (builtins.attrValues v)
           );
@@ -7129,7 +7129,7 @@ let
           # evaluation at declaration time. Level 0 serves no such node. Level l is this evaluation with every node
           # decided below l as served read off its own fixpoint, and every other one raising its refusal. A node is
           # decided at the first level its declaration, read there, answers without a throw: served if it states no
-          # type gen constructs (`interface.own` on its own top constructor: a node declared against nixpkgs'
+          # type gen constructs (`interface.foreignValueMeta.own` on its own top constructor: a node declared against nixpkgs'
           # grammar), refused otherwise. Decisions only accrue, so the levels stop changing within one level per
           # pending node, and this evaluation is the level above them all. A read that reaches its own node meets
           # that node's refusal at the level it is tried at, and every level below was forced first (`found`), so a
