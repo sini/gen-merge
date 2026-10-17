@@ -1105,7 +1105,25 @@ let
         }) entries
       );
     in
-    lk: at root (drop depth lk);
+    {
+      __functor = _: lk: at root (drop depth lk);
+      # an evaluation whose options ONE module declares: the trie is that module's tree, so the first typed site's
+      # file is read off the tree, the trie never built (the mount's label, `homedRootFixed`)
+      file =
+        let
+          declaring = filter (e: isAttrs e.options && !(isOptLeaf e.options) && e.options != { }) entries;
+          go =
+            o: path:
+            if path == [ ] then
+              isOptLeaf o && o ? type
+            else
+              isAttrs o && !(isOptLeaf o) && o ? ${head path} && go o.${head path} (tail path);
+        in
+        if length declaring == 1 then
+          lk: if go (head declaring).options (drop depth lk) then (head declaring).file else null
+        else
+          null;
+    };
 
   # redeclareDecl — the ENGINE's answer when one option loc is declared by two modules.
   #

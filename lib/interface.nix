@@ -2853,7 +2853,7 @@ let
       s =
         if crossedRoot t then
           mountOf t
-        else if t ? carries && reachesModuleSet t then
+        else if t ? carries then
           # a gen container over a foreign set: rebuilt through its own forward, every level's owed check
           # carried, as a foreign container is (`carriedAtDepth`)
           carriedAtDepth false t
@@ -2885,7 +2885,12 @@ let
       fixed = s (
         let
           file =
-            if site ? sitesAt then
+            let
+              f = if site ? sitesAt.file && site.sitesAt.file != null then site.sitesAt.file loc else null;
+            in
+            if f != null then
+              f
+            else if site ? sitesAt then
               (head (filter (x: x.decl ? type) (site.sitesAt loc) ++ [ { file = "<unknown-file>"; } ])).file
             else
               "<unknown-file>";
@@ -2899,17 +2904,27 @@ let
         (isFunction s || isAttrs s && s ? __functor) && isAttrs fixed && fixed ? merge && fixed ? check;
       # judged on the record as written (a re-homing disagreement), then mounted as the rebuild over
       # the real module set, whose merge is the one served, the record's own `check` riding on it
-      mounted = builtins.seq (importedRehomeAt door loc t) (
-        homedAt door loc (
-          fixed
-          // {
-            check = {
-              __functor = _: x: fixed.check x && t.check x;
-              isV2MergeCoherent = true;
-            };
-          }
-        )
-      );
+      mounted =
+        if
+          !(t ? carries)
+          || t ? substructure.mount
+          || t ? retainedRelation
+          || !(!(t ? check || t ? admits) || t ? typeMergeRel.exact)
+          || rewritesCheck t
+        then
+          builtins.seq (importedRehomeAt door loc t) (
+            homedAt door loc (
+              fixed
+              // {
+                check = {
+                  __functor = _: x: fixed.check x && t.check x;
+                  isV2MergeCoherent = true;
+                };
+              }
+            )
+          )
+        else
+          fixed;
     in
     # the rebuild first, before any read of the record's own roles (a0c4z: never take a read nixpkgs
     # never takes): at an option root, a rebuild that is an option type declaring no gen nesting
@@ -2963,7 +2978,32 @@ let
       holds = o.check.__verifyProjection or o.check;
     in
     (
-      if adHocChecked o then
+      if !top && isV2 r && !(r ? typeMergeRel) && !(o ? verify) && !(adHocChecked o) then
+        r
+        // {
+          check = {
+            __functor = _: holds;
+            isV2MergeCoherent = true;
+          };
+          merge = {
+            __functor =
+              self: loc: defs:
+              (self.v2 { inherit loc defs; }).value;
+            v2 =
+              args:
+              let
+                v = r.merge.v2 args;
+              in
+              if v.headError != null || builtins.all holds (builtins.catAttrs "value" args.defs) then
+                v
+              else
+                v
+                // {
+                  headError.message = "a definition is rejected by the check of a declaration of this option";
+                };
+          };
+        }
+      else if adHocChecked o then
         # a root keeps the override's own `check`, which routes the mount to the fold (`homedRootFixed`); an
         # element keeps its coherent one, so a foreign container's fold reaches the merge. Its rebuild is
         # refused the same way, so a later rebuild (the mount's, over the fixup's) does not erase it.
