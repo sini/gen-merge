@@ -2313,14 +2313,14 @@ let
       let
         m = callM m0;
       in
-      if builtins.isString importer then
+      if importer == null then
         {
           inherit m0;
           _file =
             if builtins.isPath m0 || isPathString m0 then
               toString (m._file or m0)
             else
-              toString (m0._file or (m._file or importer));
+              toString (m0._file or (m._file or "<unknown-file>"));
           content = m;
         }
       else if
@@ -2448,7 +2448,7 @@ let
             moduleEntries callM e (importsOf content)
         ) kept
       );
-  moduleClosure = specialArgs: callM: moduleClosureAt specialArgs callM "<unknown-file>";
+  moduleClosure = specialArgs: callM: moduleClosureAt specialArgs callM null;
   moduleClosureAt =
     specialArgs: callM: root: mods:
     let
@@ -2622,9 +2622,9 @@ let
       occurrenceLevel =
         callM: importer: mods:
         let
-          ik = if builtins.isString importer then "" else importer.key;
+          ik = if importer == null then "" else importer.key;
           node =
-            if builtins.isString importer then
+            if importer == null then
               ""
             else if isPathModule importer.m0 then
               importer.key
@@ -2676,7 +2676,7 @@ let
       keptEntries =
         dis: callM: importer: mods:
         let
-          pk = if builtins.isString importer then "" else importer.nk;
+          pk = if importer == null then "" else importer.nk;
         in
         concatLists (
           prelude.imap0 (
@@ -2695,7 +2695,7 @@ let
         else if mods == [ ] then
           { }
         else
-          keysOf (specialArgs.modulesPath or "") (occurrences callM (occurrenceLevel callM "<unknown-file>" mods));
+          keysOf (specialArgs.modulesPath or "") (occurrences callM (occurrenceLevel callM null mods));
     };
   };
   # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
@@ -5325,7 +5325,7 @@ let
       specialArgs ? { },
       prefix ? [ ],
       optionsView ? null,
-      file ? "<unknown-file>",
+      root ? null,
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -5340,7 +5340,7 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = moduleClosureAt specialArgs (m: m) file modules;
+        flat = moduleClosureAt specialArgs (m: m) root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5462,7 +5462,7 @@ let
           else
             notAModule m;
 
-        flat = moduleClosureAt specialArgs callD file modules;
+        flat = moduleClosureAt specialArgs callD root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -6167,6 +6167,16 @@ let
       # A closed set (`s ? flat`) has no module that reads `options`, so every pass would equal the
       # first and the staged path could only re-raise its error: the spine is forced outright there,
       # with no `tryEval` record.
+      # The tree's root as its modules' importer: the collection's inherited-file edge carries the
+      # request's `file` down from it, still a thunk, and its empty key spells every anonymous key as
+      # a root's does. Never tested against the file, so the file is read only where a label is.
+      root = {
+        _file = file;
+        key = "";
+        nk = "";
+        m0 = { };
+        content = { };
+      };
       declarationGuard =
         let
           spine =
@@ -6175,7 +6185,7 @@ let
         let
           s = (if knot.positioned then declarationSpinePositioned else declarationSpine) (
             {
-              inherit specialArgs prefix file;
+              inherit specialArgs prefix root;
               modules = modList;
             }
             // (
@@ -6198,7 +6208,7 @@ let
         else
           builtins.seq (stagedDeclarations knot.positioned (
             {
-              inherit specialArgs prefix file;
+              inherit specialArgs prefix root;
               modules = modList;
             }
             // (
@@ -6337,7 +6347,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (moduleClosureAt specialArgs callM file modList)
+                  builtins.seq declarationGuard (moduleClosureAt specialArgs callM root modList)
               )
             else
               let
@@ -6345,7 +6355,7 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (moduleClosureAt specialArgs callM file modList);
+                    builtins.seq declarationGuard (moduleClosureAt specialArgs callM root modList);
               in
               # nixpkgs' `checkModule` over the collection; a removed or losing module is checked where
               # the guard collects (`removal.walk.checked`)
