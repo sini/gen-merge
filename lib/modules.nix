@@ -6174,8 +6174,8 @@ let
         _file = file;
         key = "";
         nk = "";
-        m0 = { };
-        content = { };
+        m0 = null;
+        content = null;
       };
       declarationGuard =
         let
