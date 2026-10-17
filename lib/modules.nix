@@ -2517,31 +2517,19 @@ let
         };
       in
       top;
-    # The kept graph of a collection: the unrefined closure, and only where it is SHORTER than `flat`
-    # (two constructions of one node key, which the unrefined closure dedups and nothing else shortens)
-    # the refined one. `{ top; graph; C; }`.
-    keptGraph =
+    # The kept graph of a collection is the unrefined closure, except where that closure is SHORTER
+    # than `flat` (two constructions of one node key, which the unrefined closure dedups and nothing
+    # else shortens): then it is this one, refined. Each graph reader spells the test inline, so a tree
+    # with no such pair never forces this binding. `{ top; graph; }`.
+    refinedGraph =
       flat: callM: mods:
       let
-        t0 = moduleTop callM mods;
-        g0 = removal.closeKept flat t0.roots;
+        t = topR (collidedOf flat) callM mods;
       in
-      if length g0 == length flat then
-        {
-          top = t0;
-          graph = g0;
-          C = { };
-        }
-      else
-        let
-          C = collidedOf flat;
-          t = topR C callM mods;
-        in
-        {
-          top = t;
-          graph = removal.closeKept flat t.roots;
-          inherit C;
-        };
+      {
+        top = t;
+        graph = removal.closeKept flat t.roots;
+      };
   };
   # `chain null`: the refined-key maps of x's level (head) and of every shallower level (tail), built
   # only where a meeting is decided distinct.
@@ -2939,7 +2927,7 @@ let
         (
           if k == null then
             builtins.substring 0 1 g.key == "a"
-          # a node the kept graph spells refined ((a3), `a3.keptGraph`) agrees by its refinement
+          # a node the kept graph spells refined ((a3), `a3.refinedGraph`) agrees by its refinement
           else
             k == g.key
             || (
@@ -5854,7 +5842,19 @@ let
     let
       r = self.get id knotAttr;
     in
-    moduleFamily id (length r._nested.groups) r._flat (a3.keptGraph r._flat r._callM r._modList);
+    let
+      top0 = moduleTop r._callM r._modList;
+      graph0 = removal.closeKept r._flat top0.roots;
+    in
+    moduleFamily id (length r._nested.groups) r._flat (
+      if length graph0 == length r._flat then
+        {
+          top = top0;
+          graph = graph0;
+        }
+      else
+        a3.refinedGraph r._flat r._callM r._modList
+    );
   knotDefinitions =
     let
       nestedDefinitions = n: map (g: g.definitions) n.groups;
@@ -6053,9 +6053,11 @@ let
               tree ++ [ { module = i; } ];
           graph =
             let
-              kg = a3.keptGraph flat r._callM r._modList;
+              graph0 = removal.closeKept flat (moduleTop r._callM r._modList).roots;
             in
-            alignedGraph "the declaration anchors" flat kg.graph;
+            alignedGraph "the declaration anchors" flat (
+              if length graph0 == length flat then graph0 else (a3.refinedGraph flat r._callM r._modList).graph
+            );
           anch =
             g:
             if g.importer.key == "" then
@@ -6651,8 +6653,11 @@ let
             let
               baseLen = length modList - length editedModules;
               # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
-              kg = a3.keptGraph flat callM modList;
-              inherit (kg) top graph;
+              top0 = moduleTop callM modList;
+              graph0 = removal.closeKept flat top0.roots;
+              kg = a3.refinedGraph flat callM modList;
+              top = if length graph0 == length flat then top0 else kg.top;
+              graph = if length graph0 == length flat then graph0 else kg.graph;
               roots = top.roots;
               aligned = alignedGraph "the warm origin split" flat graph;
               keyAt = i: (builtins.elemAt aligned i).key;
