@@ -223,11 +223,11 @@
     },
     "gen-differential": {
       "locked": {
-        "lastModified": 1792142753,
-        "narHash": "sha256-928Ui48qazH/d5qXxAJ49Twakb3PHitJWATL7rgt9Dw=",
+        "lastModified": 1792216915,
+        "narHash": "sha256-FgjREkN4c7tg2fjweC1zbdL2gSFZR/3GzFUiAOhnup8=",
         "owner": "sini",
         "repo": "gen-differential",
-        "rev": "f412d128881d362a39d8a7d97b81abd2c009c6ac",
+        "rev": "05fe7bdafdbc799c76c3723a8e4f805c5d0b5392",
         "type": "github"
       },
       "original": {
