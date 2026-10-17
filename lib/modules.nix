@@ -2195,7 +2195,7 @@ let
     importer: i: m0: m:
     if builtins.isPath m0 || isPathString m0 then
       "k" + builtins.unsafeDiscardStringContext (toString (m.key or m0))
-    else if m0 ? __moduleKey then
+    else if (m0.__moduleKey or null) != null then
       "k" + builtins.unsafeDiscardStringContext (toString m0.__moduleKey)
     else if isAttrs m && m ? key then
       "k" + builtins.unsafeDiscardStringContext (toString m.key)
@@ -2366,7 +2366,7 @@ let
     { m0, content, ... }:
     if builtins.isPath m0 || isPathString m0 then
       "k" + builtins.unsafeDiscardStringContext (toString (content.key or m0))
-    else if m0 ? __moduleKey then
+    else if (m0.__moduleKey or null) != null then
       "k" + builtins.unsafeDiscardStringContext (toString m0.__moduleKey)
     else if isAttrs content && content ? key then
       "k" + builtins.unsafeDiscardStringContext (toString content.key)
@@ -2702,7 +2702,7 @@ let
           # a record-keyed node is named by its REFERENCE key, the one a removal item states
           nk =
             g:
-            if g.m0 ? __moduleKey then
+            if (g.m0.__moduleKey or null) != null then
               builtins.unsafeDiscardStringContext (toString g.m.key)
             else if builtins.substring 0 1 g.key == "k" then
               builtins.substring 1 (builtins.stringLength g.key) g.key
