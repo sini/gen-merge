@@ -2372,6 +2372,33 @@ let
       "k" + builtins.unsafeDiscardStringContext (toString content.key)
     else
       null;
+  # THE MERGE PATH MEETS BY A KEY'S MEETING (den-hoag-9zyp7 OQ2 v3): nixpkgs dedups by the reference
+  # key, and two occurrences may share it under two node keys (two declaration nodes of one mark), so
+  # the merge path cannot meet by node key. A key `<meeting>#<refinement>` meets every key sharing
+  # `<meeting>`, and a record states both halves apart (`__keyEq.meeting` and `refine`, its reference
+  # key being `<meeting>#<refine subject>`), so its refinement, which may read the declaration it
+  # keys, is demanded only where another occurrence shares its meeting. A key with no `#` is its own
+  # meeting (`k<key>`); a meeting is spelled `m<meeting>`, so the two never meet. The arms are
+  # `nodeKeyOf`'s, spelled inline, because a call per entry allocates an environment per entry.
+  meetKeyOf =
+    let
+      parts = "k(.*)${builtins.fromJSON ''"\u0023"''}(.*)";
+      meetOf =
+        n:
+        let
+          s = builtins.match parts n;
+        in
+        if s == null then n else "m" + builtins.head s;
+    in
+    { m0, content, ... }:
+    if builtins.isPath m0 || isPathString m0 then
+      meetOf ("k" + builtins.unsafeDiscardStringContext (toString (content.key or m0)))
+    else if (m0.__moduleKey or null) != null then
+      "m" + builtins.unsafeDiscardStringContext (toString (m0.__keyEq.meeting or m0.__moduleKey))
+    else if isAttrs content && content ? key then
+      meetOf ("k" + builtins.unsafeDiscardStringContext (toString content.key))
+    else
+      null;
   # THE KEY COMPARISON (`__keyEq = { subject; decide; }`, den-hoag-kind-generator-collision-d4gnx).
   # `keyedDrop w x` decides an occurrence `x` whose node key the kept entry `w` already holds: `false`
   # drops it. Where neither publishes `__keyEq`, nixpkgs' key rule holds and `x` is dropped. Where
@@ -2387,19 +2414,36 @@ let
   isPathModule = m0: builtins.isPath m0 || isPathString m0;
   keqOf = e: e.content.__keyEq or (e.m0.__keyEq or null);
   # (a3), den-hoag-9zyp7 OQ2: ONE binding, so a tree that never meets a refined key pays one thunk.
-  # A key comparison (`__keyEq`) may publish `refine subject`, a string. Two occurrences of one node key
-  # whose refinements differ are two constructions of one declaration; both compose, each under the key
-  # refined by its refinement (`k/<refine>`), and an occurrence equal to an earlier one of its refined
-  # key is decided against THAT one (`keyedDrop`). Read only where two occurrences meet.
+  # An occurrence's REFINEMENT is its comparison's `refine subject` (a string), else its key's text
+  # after its last `#`. Two occurrences of one meeting whose refinements differ are two keys; both
+  # compose, each under the meeting refined by its refinement (`<meeting>#<refinement>`, which is the
+  # reference key), and an occurrence equal to an earlier one of its refined key is decided against
+  # THAT one (`keyedDrop`). Read only where two occurrences meet.
   a3 = rec {
+    sep = builtins.fromJSON ''"\u0023"'';
+    # a record's reference key is its result's `key`, forced here only (at a meeting)
     refineOf =
       e:
       let
         q = keqOf e;
+        record = (e.m0.__moduleKey or null) != null;
+        n =
+          if !record then
+            nodeKeyOf e
+          else if isAttrs e.content && e.content ? key then
+            "k" + builtins.unsafeDiscardStringContext (toString e.content.key)
+          else
+            null;
+        s = if n == null then null else builtins.match "k.*${sep}(.*)" n;
       in
-      if q != null && q ? refine then q.refine q.subject else null;
+      if record && q != null && q ? refine then
+        q.refine q.subject
+      else if s == null then
+        null
+      else
+        builtins.head s;
     distinctAt = w: x: refineOf w.e != null && refineOf x.e != null && refineOf w.e != refineOf x.e;
-    refinedKeyOf = k: e: k + "/" + refineOf e;
+    refinedKeyOf = k: e: k + sep + refineOf e;
     # a level's occurrences decided distinct, first per refined key; built only where a meeting is
     # decided distinct
     distinctFirst =
@@ -2504,23 +2548,14 @@ let
   keyedDrop =
     specialArgs: callM: chain: w: x:
     let
-      key = builtins.substring 1 (builtins.stringLength x.k) x.k;
+      k1 = builtins.substring 1 (builtins.stringLength x.k) x.k;
+      key = if builtins.substring 0 1 x.k == "m" then k1 + a3.sep + a3.refineOf x.e else k1;
     in
     if isPathModule x.e.m0 && isPathModule w.e.m0 && toString x.e.m0 == toString w.e.m0 then
       false
-    else if keqOf w.e == null && keqOf x.e == null then
-      removal.walk.lost specialArgs callM x.e
-    else if keqOf w.e == null || keqOf x.e == null then
-      throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}', and only `${
-        if keqOf w.e != null then w.e._file else x.e._file
-      }' publishes a key comparison (`__keyEq'). One key is one declaration: publish the comparison on both, or give them different keys."
-    else if
-      (keqOf w.e) ? refine
-      && (keqOf x.e) ? refine
-      && (keqOf w.e).refine (keqOf w.e).subject != (keqOf x.e).refine (keqOf x.e).subject
-    then
-      # (a3) two constructions of one declaration: x is decided against the first occurrence of its
-      # own refined key, in this level or a shallower one, and kept where it is that first
+    else if builtins.substring 0 1 x.k == "m" && a3.distinctAt w x then
+      # (a3) two keys of one meeting: x is decided against the first occurrence of its own refined
+      # key, in this level or a shallower one, and kept where it is that first
       let
         rk = a3.refinedKeyOf x.k x.e;
         rs = chain null;
@@ -2533,6 +2568,12 @@ let
         true
       else
         keyedDrop specialArgs callM a3.noRefined here.${rk} x
+    else if keqOf w.e == null && keqOf x.e == null then
+      removal.walk.lost specialArgs callM x.e
+    else if keqOf w.e == null || keqOf x.e == null then
+      throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}', and only `${
+        if keqOf w.e != null then w.e._file else x.e._file
+      }' publishes a key comparison (`__keyEq'). One key is one declaration: publish the comparison on both, or give them different keys."
     else
       let
         same = (keqOf w.e).decide (keqOf w.e).subject (keqOf x.e).subject;
@@ -2552,7 +2593,7 @@ let
         keyed = any (e: nodeKeyOf e != null) level;
         at = prelude.imap0 (p: e: {
           inherit p e;
-          k = nodeKeyOf e;
+          k = meetKeyOf e;
         }) level;
         # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key
         first = listToAttrs (
@@ -2905,7 +2946,7 @@ let
               let
                 r = a3.refineOf e;
               in
-              r != null && g.key == k + "/" + r
+              r != null && g.key == k + a3.sep + r
             )
         )
         && moduleShape e.m0 == moduleShape g.m0;
