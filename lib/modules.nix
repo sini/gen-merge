@@ -1798,7 +1798,7 @@ let
       }
       ++ (if root != null then [ ] else map def (reverse own))
       ++ optional (positioned || holdsPlaceholder) {
-        file = "<unknown-file>";
+        file = namePlaceholder._file;
         value = namePlaceholder._module.args;
       };
     # A key's surviving definitions as nixpkgs' option reads them: discharged, override-filtered,
