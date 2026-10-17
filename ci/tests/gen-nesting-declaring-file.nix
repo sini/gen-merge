@@ -7,7 +7,8 @@
 #
 # - Every forwarding container over a gen nesting type, gen's or a stock one (`interface.forwardsModuleSet`):
 #   `attrsOf`, `lazyAttrsOf`, `listOf`, `nullOr`, a nixpkgs `attrsOf` above or below gen's, nixpkgs'
-#   `addCheck`; never through a union (`either`), as nixpkgs' `either` forwards no module set.
+#   `addCheck`, nixpkgs' `attrListOf` (`foreignForwarding` forwards it, though the spine does not step it,
+#   den-hoag-j2ryo); never through a union (`either`), as nixpkgs' `either` forwards no module set.
 # - Every gen nesting constructor: `submodule`, an evaluation's own `.type`, `withArgs`, a type stating
 #   `nests.declAt`, depth two, and an option declared inside one.
 # - Every collection of the nested tree: the empty child (a lazy key whose definitions are all
@@ -95,6 +96,8 @@ let
       # a gen nesting type under a nixpkgs container, in gen's engine; the twin is all nixpkgs
       mx1 = if gen then T.attrsOf (NT.attrsOf sub) else NT.attrsOf (NT.attrsOf sub);
       mx2 = NT.attrsOf sub;
+      # a gen nesting type under nixpkgs' `attrListOf`, which the spine does not step (den-hoag-j2ryo)
+      al = NT.attrListOf sub;
       # an option node whose leafness reads `options': the guard's spine does not resolve, the staged passes do
       staged =
         { options, ... }:
@@ -179,6 +182,10 @@ let
             type = mx2;
             default = { };
           };
+          al = mkOption {
+            type = al;
+            default = [ ];
+          };
           mx3 = mkOption {
             type = T.listOf (T.nullOr (T.attrsOf sub));
             default = [ ];
@@ -240,6 +247,7 @@ let
           mx1.k.j = { };
           mx2.k = { };
           mx3 = [ { k = { }; } ];
+          al = [ { k = { }; } ];
           em.k = L.mkIf false { };
         };
       };
@@ -268,6 +276,7 @@ let
       Mx1 = read c.mx1.k.j.seen;
       Mx2 = read c.mx2.k.seen;
       Mx3 = read (builtins.head c.mx3).k.seen;
+      Al = read (builtins.head c.al).k.seen;
       Ac = read c.ac.seen;
       Ih = read c.ih.seen;
       DeclAt = read c.da.seen;

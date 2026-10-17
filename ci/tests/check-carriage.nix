@@ -562,6 +562,22 @@ in
               t = sub (np.coercedTo np.str (_: 7) (np.either np.bool C));
               v.y = "s";
             };
+            # a record renamed by a `//` is still its constructor (its functor's name, as nixpkgs' `defaultTypeMerge`
+            # reads it, den-hoag-j2ryo): the copy below it is enforced as below the record it renames
+            coercedFinalListOfRenamed = {
+              t = sub (np.coercedTo np.str (_: [ 7 ]) (np.listOf C) // { name = "renamed"; });
+              v.y = [ 7 ];
+            };
+            coercedFinalListOfCoercedRenamed = {
+              t = sub (np.coercedTo np.str (_: [ 7 ]) (np.listOf C) // { name = "renamed"; });
+              v.y = "s";
+            };
+            nestedAttrListOfCopyRenamed = {
+              t = sub (np.attrListOf C // { name = "renamed"; });
+              v = {
+                y.a = 7;
+              };
+            };
             # the copy below an `either` below the member `oneOf` chose
             oneOfListOfEither = {
               t = sub (
@@ -618,6 +634,9 @@ in
             coercedFinalAttrsOf = null;
             coercedFinalEither = null;
             oneOfListOfEither = null;
+            coercedFinalListOfRenamed = null;
+            coercedFinalListOfCoercedRenamed = null;
+            nestedAttrListOfCopyRenamed = null;
           };
           open = {
             crossRead = 7;
