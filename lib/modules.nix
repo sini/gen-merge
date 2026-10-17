@@ -2416,9 +2416,7 @@ let
             [ ]
       ) at
       );
-    noRefined = {
-      "" = _: [ { } ];
-    };
+    noRefined = _: [ { } ];
     # THE GRAPH: the identity-keyed closure spells a collided node key refined for EVERY occurrence, the
     # first included, so its ids do not depend on import order. `C`: the node keys `flat` holds twice.
     collidedOf =
@@ -2506,7 +2504,7 @@ let
       # own refined key, in this level or a shallower one, and kept where it is that first
       let
         rk = a3.refinedKeyOf x.k x.e;
-        rs = first."" null;
+        rs = first null;
         here = builtins.head rs;
         shallower = builtins.filter (d: d ? ${rk}) (builtins.tail rs);
       in
@@ -2537,18 +2535,9 @@ let
           inherit p e;
           k = nodeKeyOf e;
         }) level;
-        # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key. Under
-        # the name "" (no node key is empty), (a3)'s refined-key maps, this level's first and every
-        # shallower one's after it: lazy, so a level with no distinct meeting builds none.
+        # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key
         first = listToAttrs (
-          [
-            {
-              name = "";
-              # a function, so the slot allocates no thunk; applied only by `keyedDrop`
-              value = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
-            }
-          ]
-          ++ concatMap (
+concatMap (
             x:
             if x.k == null then
               [ ]
@@ -2569,7 +2558,7 @@ let
                 x.k == null
                 || (
                   if seen ? ${x.k} || first.${x.k}.p != x.p then
-                    keyedDrop specialArgs callM first (seen.${x.k} or first.${x.k}) x
+                    keyedDrop specialArgs callM (_: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null) (seen.${x.k} or first.${x.k}) x
                   else
                     true
                 )
@@ -2582,7 +2571,14 @@ let
       # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
       # a key is itself decided against it, and must never replace it (den-hoag-9zyp7 gate v0 C1). The
       # refined-key chain under "" is this level's, which already holds every shallower one.
-      ++ moduleLevels specialArgs callM (if keyed then first // seen // { "" = first.""; } else seen) (
+      ++ moduleLevels specialArgs callM (if keyed then
+          first
+          // seen
+          // {
+            "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+          }
+        else
+          seen) (
         concatMap (
           { content, ... }@e:
           if e ? dis then
