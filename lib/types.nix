@@ -302,7 +302,25 @@ let
       t
     else
       let
-        exported = interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
+        # ★ A RECORD STATING ITS RELATION AND OWING NO REFUSAL IS EXPORTED AS ITSELF: `mkTypeIn` returns
+        # it unchanged, so handing it there costs an argument thunk per construction and decides nothing
+        # (den-hoag-x5kcl). The test is `mkTypeIn`'s refusal predicate stated verbatim, not bound: a
+        # binding costs a load thunk and a call environment per construction. Every other record,
+        # refusal included, takes `mkTypeIn` unchanged. `defineEmbedded` below takes the same path.
+        exported =
+          if
+            t ? typeMergeRel
+            && !(
+              (t ? carries || ((t.substructure or { }).modules or null) != null)
+              && !(
+                all (f: (t.substructure or { }) ? ${f}) subFormals
+                && (!(t ? carries) || t ? recarry || t ? retainedRelation)
+              )
+            )
+          then
+            interface.exportType (core.readsMintedNode exported t)
+          else
+            interface.exportType (mkTypeWith exported (core.readsMintedNode exported t));
       in
       exported;
   # The same crossing for a type an `interface.embeddings` row stands for, the row stated by the
@@ -321,7 +339,20 @@ let
     in
     t:
     let
-      exported = exportRow (typeRow exported (core.readsMintedNode exported t));
+      exported =
+        if
+          t ? typeMergeRel
+          && !(
+            (t ? carries || ((t.substructure or { }).modules or null) != null)
+            && !(
+              all (f: (t.substructure or { }) ? ${f}) subFormals
+              && (!(t ? carries) || t ? recarry || t ? retainedRelation)
+            )
+          )
+        then
+          exportRow (core.readsMintedNode exported t)
+        else
+          exportRow (typeRow exported (core.readsMintedNode exported t));
     in
     exported;
 
