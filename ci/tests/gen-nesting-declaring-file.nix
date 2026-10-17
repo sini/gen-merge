@@ -7,7 +7,8 @@
 #
 # - Every forwarding container over a gen nesting type, gen's or a stock one (`interface.forwardsModuleSet`):
 #   `attrsOf`, `lazyAttrsOf`, `listOf`, `nullOr`, a nixpkgs `attrsOf` above or below gen's, nixpkgs'
-#   `addCheck`; never through a union (`either`), as nixpkgs' `either` forwards no module set.
+#   `addCheck`, nixpkgs' `attrListOf` (RED at gen-merge 1d5741e: `[ "<unknown-file>" ]`, its stock arm stepping
+#   only the containers it named; den-hoag-j2ryo); never through a union (`either`), as nixpkgs' `either` forwards no module set.
 # - Every gen nesting constructor: `submodule`, an evaluation's own `.type`, `withArgs`, a type stating
 #   `nests.declAt`, depth two, and an option declared inside one.
 # - Every collection of the nested tree: the empty child (a lazy key whose definitions are all
@@ -187,6 +188,11 @@ let
             type = NT.addCheck sub (_: true);
             default = { };
           };
+          # nixpkgs' `attrListOf` forwards its element's module set as `listOf` does (den-hoag-j2ryo's table)
+          al = mkOption {
+            type = NT.attrListOf sub;
+            default = { };
+          };
           da = mkOption {
             type = declAtType;
             default = { };
@@ -240,6 +246,7 @@ let
           mx1.k.j = { };
           mx2.k = { };
           mx3 = [ { k = { }; } ];
+          al.k = { };
           em.k = L.mkIf false { };
         };
       };
@@ -269,6 +276,7 @@ let
       Mx2 = read c.mx2.k.seen;
       Mx3 = read (builtins.head c.mx3).k.seen;
       Ac = read c.ac.seen;
+      Al = read (builtins.head c.al).k.seen;
       Ih = read c.ih.seen;
       DeclAt = read c.da.seen;
       Empty = read c.em.k.seen;

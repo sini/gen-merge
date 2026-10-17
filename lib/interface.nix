@@ -1195,6 +1195,84 @@ let
   # The three sub-protocol answers, as gen's `substructure`. A type that answers none of them is a
   # leaf and gets a leaf's three answers — it declares nothing, it has NO module-set concept (which
   # is what `null` says, and the only thing it says), and it has nothing to rebuild.
+  # ── WHICH NIXPKGS CONTAINERS FORWARD THEIR ELEMENT: ONE TABLE (den-hoag-j2ryo) ─────────────────────
+  # nixpkgs decides it in each constructor's own body, never by a name: `listOf` states
+  # `getSubModules = elemType.getSubModules` and `substSubModules = m: listOf (elemType.substSubModules m)`.
+  # A record carries that decision sealed in its closures, and this library takes no nixpkgs, so the decision
+  # is stated here once, keyed by the constructor's identity as nixpkgs' own relation reads it
+  # (`defaultTypeMerge`: `f.name != f'.name`, the functor's name). `ci/tests/forwarding-table.nix` derives
+  # every row from nixpkgs' constructors by their behaviour and holds the two equal. A row states:
+  #   forward : the `nestedTypes` role all three sub-protocol reads forward to;
+  #   level   : whether that forward adds a segment to `getSubOptions`' prefix (a key or index level);
+  #   reads   : the roles whose `getSubModules` the record's own forces, which is the frontier nixpkgs'
+  #             `fixupOptionType` reaches (`coercedTo` asserts on its `coercedType`); `attrTag` reads every tag;
+  #   v2      : nixpkgs' constructor ships a `merge.v2`, so a record of it stating none is a `//` override of its
+  #             fold (`frontierOf`);
+  #   spine   : the spine steps it (`forwardStep` carries the row to the spine). ★ `attrListOf` forwards but is NOT stepped: stepping it
+  #             spends the fuel on a finite chain nixpkgs serves, and refuses it (ADR-0039 rule 2 forbids that
+  #             move), so a cycle through it alone aborts uncatchably, as nixpkgs' twin does, where one through
+  #             `listOf` refuses by name. Both are the fuel's price, an open defect on den-hoag-j2ryo's §3b.
+  foreignForwarding = {
+    listOf = {
+      forward = "elemType";
+      level = true;
+      reads = [ "elemType" ];
+      v2 = true;
+      spine = true;
+    };
+    attrListOf = {
+      forward = "elemType";
+      level = true;
+      reads = [ "elemType" ];
+      v2 = true;
+      spine = false;
+    };
+    attrsWith = {
+      forward = "elemType";
+      level = true;
+      reads = [ "elemType" ];
+      v2 = true;
+      spine = true;
+    };
+    nullOr = {
+      forward = "elemType";
+      level = false;
+      reads = [ "elemType" ];
+      v2 = true;
+      spine = true;
+    };
+    unique = {
+      forward = "elemType";
+      level = false;
+      reads = [ "elemType" ];
+      v2 = false;
+      spine = true;
+    };
+    functionTo = {
+      forward = "elemType";
+      level = true;
+      reads = [ "elemType" ];
+      v2 = false;
+      spine = true;
+    };
+    coercedTo = {
+      forward = "finalType";
+      level = false;
+      reads = [
+        "coercedType"
+        "finalType"
+      ];
+      v2 = true;
+      spine = true;
+    };
+    attrTag = {
+      forward = null;
+      level = null;
+      reads = null;
+      v2 = false;
+      spine = false;
+    };
+  };
   # ── THE SPINE: A FORWARDING CONTAINER'S MODULE SET AND DECLARATIONS, WITHIN FUEL (den-hoag-iaram) ─
   # A one-element container answers `getSubModules` and `getSubOptions` with its element's, the
   # second under the segment it adds. Both are observations of the TYPE, with no value to consume, so
@@ -1209,8 +1287,7 @@ let
   # TWO KINDS OF STEP, AND ONLY ONE IS AN ANSWER. A gen container's step (`substructure.forward`, the
   # segment it adds on its way to `carries.element`) IS its answer, stated as data, so the walk answers
   # for it. A stock foreign record that forwards both
-  # reads to one element (`listOf`, `nullOr`, `attrsWith`, `unique`, `functionTo`, `coercedTo`'s
-  # `finalType`) is stepped for TERMINATION ONLY: once the rest of its chain is shown to bottom out,
+  # reads to one element (a `foreignForwarding` row stating `spine`) is stepped for TERMINATION ONLY: once the rest of its chain is shown to bottom out,
   # the record answers for itself, so one whose sub-protocol was overridden after construction answers
   # its override, as nixpkgs' own container over it does. A cycle that crosses the import boundary on
   # every lap is bounded, because each crossing is a step of the same walk.
@@ -1238,23 +1315,19 @@ let
         null
     else
       let
-        name = (e.functor or { }).name or null;
-        nested = e.nestedTypes or { };
+        n = (e.functor or { }).name or null;
+        r = if builtins.isString n then foreignForwarding.${n} or null else null;
         element =
-          if name == "coercedTo" then
-            nested.finalType or null
-          else if
-            name == "listOf"
-            || name == "nullOr"
-            || name == "attrsWith"
-            || name == "unique"
-            || name == "functionTo"
-          then
-            nested.elemType or null
-          else
-            null;
+          if r != null && r.forward != null then (e.nestedTypes or { }).${r.forward} or null else null;
       in
-      if isAttrs element then { inherit name element; } else null;
+      # its row rides along unforced: a result that builds no field of its own costs no thunk per step
+      if isAttrs element then
+        {
+          inherit element;
+          row = r;
+        }
+      else
+        null;
   # Does a type forward its `getSubModules` to a nesting type's module set: a chain of forwarding steps
   # (`forwardStep`, a gen container's or a stock one's) ending at a nesting type? nixpkgs locates a module
   # set only there (`mergeOptionDecls`), and a union forwards none (`either', `oneOf'). Walked by steps,
@@ -1290,10 +1363,10 @@ let
     let
       st = forwardStep e;
     in
-    if st == null then
+    if st == null || !(st.row.spine or true) then
       true
     else if fuel <= 0 then
-      throw (forwardSpentRefusal field st.name)
+      throw (forwardSpentRefusal field (st.name or e.functor.name))
     else
       spineEnds field (fuel - 1) st.element;
   spineModules =
@@ -1301,11 +1374,11 @@ let
     let
       st = forwardStep e;
     in
-    if st == null then
+    if st == null || !(st.row.spine or true) then
       # the module set the record states (`sameValue.modules`, spelled in place)
       (if e ? getSubModules && e.getSubModules == null then null else (importedSubstructure e).modules)
     else if fuel <= 0 then
-      throw (forwardSpentRefusal "getSubModules" st.name)
+      throw (forwardSpentRefusal "getSubModules" (st.name or e.functor.name))
     else if e ? substructure then
       # a gen container answers its own `getSubModules = null` (a nulled copy), asked once the rest of its chain is
       # shown to bottom out, as a stock container's override is
@@ -1319,10 +1392,10 @@ let
     let
       st = forwardStep e;
     in
-    if st == null then
+    if st == null || !(st.row.spine or true) then
       (importedSubstructure e).declares prefix
     else if fuel <= 0 then
-      throw (forwardSpentRefusal "getSubOptions" st.name)
+      throw (forwardSpentRefusal "getSubOptions" (st.name or e.functor.name))
     else if e ? substructure then
       spineDeclares (fuel - 1) st.element (prefix ++ st.seg)
     else
@@ -2176,27 +2249,22 @@ let
   frontierOf =
     t:
     let
-      n = t.name or null;
+      n = (t.functor or { }).name or null;
       e = (t.functor.payload or { }).elemType or (t.nestedTypes.elemType or null);
     in
     # a container nixpkgs ships with a v2 merge that states none is a `//` override of its fold, which reads its
-    # element as it chooses; it is not walked
+    # element as it chooses; it is not walked. The row is selected in place at each read: a binding for it, or an
+    # argument to a call, costs a thunk on every option's frontier.
     if
-      (n == "listOf" || n == "attrListOf" || n == "attrsOf" || n == "lazyAttrsOf" || n == "nullOr")
-      && t ? merge.v2
-      || n == "unique"
-      || n == "functionTo"
+      !(builtins.isString n && foreignForwarding ? ${n}) || foreignForwarding.${n}.v2 && !(t ? merge.v2)
     then
-      (if isAttrs e then [ e ] else [ ])
-    else if n == "coercedTo" && t ? merge.v2 then
-      [
-        t.nestedTypes.coercedType
-        t.nestedTypes.finalType
-      ]
-    else if n == "attrTag" then
+      [ ]
+    else if foreignForwarding.${n}.reads == null then
       map (o: o.type) (builtins.attrValues (t.nestedTypes or { }))
+    else if foreignForwarding.${n}.forward == "elemType" then
+      (if isAttrs e then [ e ] else [ ])
     else
-      [ ];
+      map (k: t.nestedTypes.${k}) foreignForwarding.${n}.reads;
   # an option whose type owes along its frontier, folded over its final definitions by the type completed there, then
   # its `apply`: the value nixpkgs' read would give, its checks those of the type as declared
   guardedOwed =
@@ -4266,7 +4334,7 @@ let
             in
             if fuel == 0 || st == null || e ? substructure then
               null
-            else if n == "unique" || n == "coercedTo" || n == "nullOr" then
+            else if !foreignForwarding.${n}.level then
               go (fuel - 1) st.element
             else if n == "listOf" then
               (
@@ -4378,11 +4446,10 @@ let
                     x:
                     if
                       x.key < importedTypeWalkFuel
-                      && builtins.elem ((x.e.functor or { }).name or null) [
-                        "unique"
-                        "coercedTo"
-                        "nullOr"
-                      ]
+                      &&
+                        (foreignForwarding.${if builtins.isString (x.e.functor.name or null) then x.e.functor.name else ""}
+                          or null
+                        ).level or null == false
                     then
                       [
                         {
@@ -8309,6 +8376,7 @@ in
     importedGroupRebuild
     spineModules
     spineDeclares
+    foreignForwarding
     importedTypeWalkFuel
     importedWrapped
     isOptionType
