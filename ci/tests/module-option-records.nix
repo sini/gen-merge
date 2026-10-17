@@ -10,9 +10,9 @@
 # the cell pins BOTH sides to literals, so an upstream move reds it as surely as a gen one. The stated
 # departures:
 #   d2o0g      nixpkgs' `args` carries `{ extendModules, moduleType }` from `lib/modules.nix`; gen
-#              passes no such argument, so that definition is read away (`noD2o0g`). Inside a
-#              submodule nixpkgs also defines `name` twice from `<unknown-file>` where gen defines it
-#              once from the engine's file, so there `args` is compared on its value's names alone.
+#              passes no `moduleType`, so that definition is read away (`noD2o0g`). Inside a
+#              submodule `args` is compared on its value's names alone; its definitions, the
+#              position's and the placeholder's included, are `module-args-definitions.nix`'s.
 #   door       `evalModuleTree { check = false; }` is gen's (nixpkgs has no door): its `check` record
 #              reads the door's definition.
 #   unspecified's fold (`mergeUntyped`, the untyped option's) departs from nixpkgs' constructor
@@ -195,7 +195,7 @@ let
                       let
                         d = dump k options._module.${k};
                       in
-                      # inside a submodule nixpkgs defines `name` twice from `<unknown-file>`; gen once
+                      # the definitions inside a submodule are `module-args-definitions.nix`'s
                       if k == "args" then { inherit (d) value isDefined type; } else d;
                   }) ownKeys
                 );
@@ -777,17 +777,9 @@ in
     # ── a freeform key gated on an engine record's value reads the record's own binding ─────────────
     test-freeform-gated-on-the-check-record = twin "ffGateCheckVal";
     test-freeform-gated-on-the-args-record = twin "ffGateArgsVal";
-    # no module defines `_module.args`: nixpkgs' own d2o0g definition makes it defined there
-    test-args-with-no-definition =
-      stated "noArgs"
-        {
-          isDefined = false;
-          value = [ ];
-        }
-        {
-          isDefined = true;
-          value = [ ];
-        };
+    # no module defines `_module.args`: the engine's own definition (nixpkgs' internal module's) makes it
+    # defined, as in nixpkgs (den-hoag-zgpaa)
+    test-args-with-no-definition = twin "noArgs";
 
     # ── nixpkgs' docs walker ───────────────────────────────────────────────────────────────────────
     test-the-docs-walker-over-the-published-tree-is-nixpkgs = twin "docsPub";

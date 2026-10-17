@@ -2042,10 +2042,12 @@ four records at every position it serves one (`.options`, a module's `options` a
 `declaredOptions` carries the four declarations, whose evaluated keys refuse by name. They stay out of
 the tree the warm walk, lint and the docs projection read. So nixpkgs' docs walker lists the four
 entries as nixpkgs does, internal below the root, each with nixpkgs' type; their descriptions are
-gen's own. Two departures are stated: `args` lacks nixpkgs' `extendModules`/`moduleType` definition,
-so where no module defines `_module.args` its record reads `isDefined = false` where nixpkgs' reads
-`true`; and under `evalModuleTree { check = false; }`, a door nixpkgs lacks, the `check` record reads
-the door's definition (`ci/tests/module-option-records.nix`).
+gen's own. `args` lists the definitions nixpkgs' option lists, in nixpkgs' order: the internal
+module's `{ extendModules; }` (`lib/modules.nix`, the engine's own function whatever a module defines),
+and in a nested evaluation the position's `name` and the placeholder's, both `<unknown-file>`
+(`ci/tests/module-args-definitions.nix`). Two departures are stated: the internal definition lacks
+nixpkgs' `moduleType` (den-hoag-d2o0g); and under `evalModuleTree { check = false; }`, a door nixpkgs
+lacks, the `check` record reads the door's definition (`ci/tests/module-option-records.nix`).
 
 **A union holds the tree as a member**, in gen's own eval and abroad. A gen union (`either`, `oneOf`,
 `nullOr`) asks its members `admits` before `check`, so `either tree str` is union membership, and
@@ -3009,9 +3011,8 @@ same modules.
     nixpkgs honours it. It waits on the door's own design.
   - *The ordered fold.* Two `apply`s, at the group or inside the leaf, keep the later, as every
     doubled field of a redeclaration does here, `specialArgs` included; nixpkgs refuses the pair.
-  - *`config._module.args` inside a module.* It holds the modules' arguments (and a nested child's
-    `name`) only. nixpkgs' also holds `extendModules` and `moduleType`; this engine has no
-    `extendModules`.
+  - *`config._module.args` inside a module.* It holds the modules' arguments, `extendModules` and a
+    nested child's `name`. nixpkgs' also holds `moduleType`; this engine has none (den-hoag-d2o0g).
   - *`config._module.check` in a child of an unchecked tree's `.type`.* The view reads the
     strictness that governs the child's refusal of an undeclared key, which is nixpkgs' value under a
     strict parent. Under a caller `check = false` that child runs lax, because this engine's `.type`

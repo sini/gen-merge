@@ -1721,6 +1721,105 @@ let
               }
             ) moduleOwnDecls;
         };
+    # THE DEFINITIONS OF `_module.args`, AS NIXPKGS' OPTION LISTS THEM (den-hoag-zgpaa). nixpkgs states
+    # three of them in modules of its own, at its collection's top level: `submoduleWith`'s placeholder
+    # first, its position's `{ _module.args.name = last loc; }` after the type's modules, and
+    # `internalModule`'s `{ extendModules; moduleType; }` last. Its collection is breadth-first and an
+    # option reads its definitions reversed, so a module below the top level precedes the internal
+    # module, a seed definition sits between it and the position's, and a type module the
+    # evaluation's top level holds sits between the position's and the placeholder's. Where nixpkgs
+    # locates the type's modules (`setDefaultModuleLocation`, a `root` here) they sit one level down,
+    # ahead of the internal module. This engine states none of the three as a module: `name` is a key
+    # (`positionArgsAt`), the internal set is one binding a module's definition merges over
+    # (`engine`), and a nested tree over definitions collects no placeholder, which its position
+    # always outranks. The record lists them where nixpkgs' would. A top-level module is classified
+    # as `declAnchorOf` classifies it.
+    definitions =
+      {
+        flat,
+        modList,
+        callM,
+        pushed,
+        root,
+        positioned,
+        seeds,
+        name,
+        internal,
+      }:
+      let
+        nTop = length modList;
+        nFlat = length flat;
+        holds = !positioned && nTop > 0 && prelude.last modList == namePlaceholder;
+        nOwn =
+          if seeds != null then
+            nTop - seeds
+          else if positioned then
+            0
+          else
+            nTop;
+        topPlain =
+          !(removal.removes flat modList)
+          && all (e: nodeKeyOf e == null) (
+            prelude.genList (builtins.elemAt flat) (if nTop < nFlat then nTop else nFlat)
+          );
+        graph =
+          let
+            graph0 = removal.closeKept flat (moduleTop callM modList).roots;
+          in
+          alignedGraph "the `_module.args' definitions" flat (
+            if length graph0 == length flat then graph0 else (a3.refinedGraph flat callM modList).graph
+          );
+        idx =
+          fi:
+          if topPlain then
+            (if fi < nTop then fi else null)
+          else
+            let
+              g = builtins.elemAt graph fi;
+            in
+            if g.importer.key == "" then g.i else null;
+        stated = concatLists (
+          prelude.imap0 (
+            fi: e:
+            let
+              m0 = pushDownProperties e.attrs._module;
+            in
+            if e.attrs ? _module && m0 ? args then
+              [
+                {
+                  i = idx fi;
+                  file = e._file;
+                  value = m0.args;
+                }
+              ]
+            else
+              [ ]
+          ) pushed
+        );
+        deep = filter (d: d.i == null) stated;
+        top = filter (d: d.i != null && !(holds && d.i == nTop - 1)) stated;
+        own = filter (d: d.i < nOwn) top;
+        seed = filter (d: d.i >= nOwn) top;
+        def = d: { inherit (d) file value; };
+      in
+      map def (reverse deep)
+      ++ (if root != null then map def (reverse own) else [ ])
+      ++ [
+        {
+          inherit file;
+          value = internal;
+        }
+      ]
+      ++ map def (reverse seed)
+      ++ optional positioned {
+        file = "<unknown-file>";
+        value.name = name;
+      }
+      ++ (if root != null then [ ] else map def (reverse own))
+      ++ optional (positioned || holds) {
+        file = namePlaceholder._file;
+        value = namePlaceholder._module.args;
+      };
     # A key's surviving definitions as nixpkgs' option reads them: discharged, override-filtered,
     # each `{ file; value; }`, with the priority that survived (`null` for none, nixpkgs' 9999).
     winners =
@@ -4261,7 +4360,9 @@ let
   # nixpkgs consumer at depth 1 or more reads its definitions.
   nestedTreeAt =
     m: site:
-    evalModuleTreeWith knotRootPositioned m.carried m.inherited (
+    # the bridge's child carries how many of its modules are the site's definitions on its own knot, read only
+    # where its `_module.args` record is: a field of the request would be paid by every evaluation
+    evalModuleTreeWith (knotRootPositioned // { seeds = length site.defs; }) m.carried m.inherited (
       {
         modules = site.nests.modules ++ map site.nests.entry site.defs;
         prefix = site.loc;
@@ -7420,8 +7521,8 @@ let
           # position no longer names it, so its `name` rides as a module of the list, as nixpkgs' child
           # evaluation carries it. A module defining the argument too adds one definition beside the
           # engine's (`mergeModuleArg`, as `positionNameOf`): `mkForce` wins, `mkDefault` yields, and a
-          # plain one refuses as defined twice. It is stated in each branch's `args`, never bound around
-          # `_module`, which every `config._module` read would allocate.
+          # plain one refuses as defined twice. The engine's own is bound once, on the `_module` records
+          # (`moduleOwn.engine`), which nothing allocates until a record or `extendModules` is read.
           moduleConfig = uncheckedConfig // {
             _module =
               (
@@ -7435,49 +7536,18 @@ let
                   {
                     args = moduleArgs // {
                       extendModules =
-                        let
-                          extendModules =
-                            let
-                              s0 = specialArgs;
-                              p0 = prefix;
-                            in
-                            e@{
-                              modules ? [ ],
-                              specialArgs ? { },
-                              prefix ? [ ],
-                            }:
-                            evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
-                              false
-                              (
-                                {
-                                  modules =
-                                    modList
-                                    ++ (
-                                      if knot.positioned && e ? prefix then
-                                        [ { _module.args.name = moduleConfig._module.args.name; } ]
-                                      else
-                                        [ ]
-                                    )
-                                    ++ modules;
-                                  specialArgs = s0 // specialArgs;
-                                  prefix = if e ? prefix then prefix else p0;
-                                  inherit check coreShortCircuit;
-                                }
-                                // (if class == null then { } else { inherit class; })
-                              );
-                        in
                         if moduleArgs ? extendModules then
                           mergeModuleArg "extendModules" (
                             builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
                             ++ [
                               {
                                 _file = "<module system>";
-                                value = extendModules;
+                                value = result.optionDefs.moduleOwn.engine.extendModules;
                               }
                             ]
                           )
                         else
-                          extendModules;
+                          result.optionDefs.moduleOwn.engine.extendModules;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
@@ -7493,49 +7563,18 @@ let
                   {
                     args = moduleArgs // {
                       extendModules =
-                        let
-                          extendModules =
-                            let
-                              s0 = specialArgs;
-                              p0 = prefix;
-                            in
-                            e@{
-                              modules ? [ ],
-                              specialArgs ? { },
-                              prefix ? [ ],
-                            }:
-                            evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
-                              false
-                              (
-                                {
-                                  modules =
-                                    modList
-                                    ++ (
-                                      if knot.positioned && e ? prefix then
-                                        [ { _module.args.name = moduleConfig._module.args.name; } ]
-                                      else
-                                        [ ]
-                                    )
-                                    ++ modules;
-                                  specialArgs = s0 // specialArgs;
-                                  prefix = if e ? prefix then prefix else p0;
-                                  inherit check coreShortCircuit;
-                                }
-                                // (if class == null then { } else { inherit class; })
-                              );
-                        in
                         if moduleArgs ? extendModules then
                           mergeModuleArg "extendModules" (
                             builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
                             ++ [
                               {
                                 _file = "<module system>";
-                                value = extendModules;
+                                value = result.optionDefs.moduleOwn.engine.extendModules;
                               }
                             ]
                           )
                         else
-                          extendModules;
+                          result.optionDefs.moduleOwn.engine.extendModules;
                       name = positionNameOf prefix moduleArgs pushed;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
@@ -7546,49 +7585,18 @@ let
                   {
                     args = moduleArgs // {
                       extendModules =
-                        let
-                          extendModules =
-                            let
-                              s0 = specialArgs;
-                              p0 = prefix;
-                            in
-                            e@{
-                              modules ? [ ],
-                              specialArgs ? { },
-                              prefix ? [ ],
-                            }:
-                            evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
-                              false
-                              (
-                                {
-                                  modules =
-                                    modList
-                                    ++ (
-                                      if knot.positioned && e ? prefix then
-                                        [ { _module.args.name = moduleConfig._module.args.name; } ]
-                                      else
-                                        [ ]
-                                    )
-                                    ++ modules;
-                                  specialArgs = s0 // specialArgs;
-                                  prefix = if e ? prefix then prefix else p0;
-                                  inherit check coreShortCircuit;
-                                }
-                                // (if class == null then { } else { inherit class; })
-                              );
-                        in
                         if moduleArgs ? extendModules then
                           mergeModuleArg "extendModules" (
                             builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
                             ++ [
                               {
                                 _file = "<module system>";
-                                value = extendModules;
+                                value = result.optionDefs.moduleOwn.engine.extendModules;
                               }
                             ]
                           )
                         else
-                          extendModules;
+                          result.optionDefs.moduleOwn.engine.extendModules;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
@@ -8068,9 +8076,43 @@ let
             # module or the door touches `_module`, and its default alone otherwise.
             moduleOwn =
               let
+                # the engine's own arguments, nixpkgs' `internalModule` definition, before a module's
+                # definition of one merges over it: the record's definition list, the served value
+                # (`moduleConfig`) and the published `extendModules` read this one binding
+                engine = {
+                  extendModules =
+                    let
+                      s0 = specialArgs;
+                      p0 = prefix;
+                    in
+                    e@{
+                      modules ? [ ],
+                      specialArgs ? { },
+                      prefix ? [ ],
+                    }:
+                    evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
+                      false
+                      (
+                        {
+                          modules =
+                            modList
+                            ++ (
+                              if knot.positioned && e ? prefix then
+                                [ { _module.args.name = moduleConfig._module.args.name; } ]
+                              else
+                                [ ]
+                            )
+                            ++ modules;
+                          specialArgs = s0 // specialArgs;
+                          prefix = if e ? prefix then prefix else p0;
+                          inherit check coreShortCircuit;
+                        }
+                        // (if class == null then { } else { inherit class; })
+                      );
+                };
                 # GATE PROBE: the four values off their own bindings, never through `moduleConfig`
                 m = {
-                  # the module-defined set, read off its own binding, beside the engine's `extendModules`
+                  # the module-defined set, read off its own binding, beside the served `extendModules`
                   # (a thunk until read, so a module gating on this record's keys does not reach `config`)
                   args =
                     (
@@ -8108,27 +8150,30 @@ let
                 );
               in
               {
+                inherit engine;
                 args = {
                   value = m.args;
                 }
                 // moduleOwn.winners (
-                  (
-                    if knot.positioned then
-                      [
-                        {
-                          file = moduleOwn.file;
-                          value.name = (positionArgsAt prefix).name;
-                        }
-                      ]
-                    else
-                      [ ]
-                  )
-                  ++ reverse (
-                    map (d: {
-                      file = d._file;
-                      value = d.args;
-                    }) (moduleArgDefsOf pushed)
-                  )
+                  moduleOwn.definitions {
+                    inherit
+                      flat
+                      modList
+                      callM
+                      pushed
+                      root
+                      ;
+                    inherit (knot) positioned;
+                    # an inner child's seeds are its position's definitions, the trailing top-level modules; the
+                    # export bridge's child's are on its knot (`nestedTreeAt`)
+                    seeds =
+                      if knot.inner && knot.positioned then
+                        length (self.getHostAt "positions").defs
+                      else
+                        knot.seeds or null;
+                    name = (positionArgsAt prefix).name;
+                    internal = engine;
+                  }
                 );
                 check =
                   if realizedCheck == null then
@@ -8245,7 +8290,7 @@ let
         config = builtins.seq result.identityHeld result.config;
         _type = "configuration";
         inherit class;
-        extendModules = result.moduleConfig._module.args.extendModules;
+        extendModules = result.optionDefs.moduleOwn.engine.extendModules;
         # nixpkgs' `graph`: `toGraph` over `collectStructuredModules`, the import TREE (one node per occurrence), over
         # this tree's identity-keyed import levels. key: a path's string, else `key`, else `<parent>:anon-<n>`; file:
         # `_file`, else the path, else the parent's. `disabled`: the key is in the set the collection removed by
