@@ -2730,6 +2730,9 @@ in
     # open set. The empty child's name placeholder stays `<unknown-file>` beside the located module, as
     # nixpkgs leaves its name module unlocated. RED (no root entry): `In `<unknown-file>'',
     # `Module `<unknown-file>``; RED (the placeholder located): `defined in decl.nix (2 definitions)`.
+    # gen names the argument's files in collection order, and the located module sits a level below the
+    # placeholder (den-hoag-yjmwc), so gen's list reads `<unknown-file>, decl.nix` where nixpkgs lists its
+    # definitions last module first; the refusal class and the two files are the parity, not their order.
     flake.testsError.gen-nesting-declaring-file =
       let
         on =
@@ -2903,7 +2906,7 @@ in
           expr = gen.emptyName;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in decl\\.nix, <unknown-file>$";
+            msg = "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in <unknown-file>, decl\\.nix$";
           };
         };
         test-nixpkgs-emptyName-leaves-the-placeholder-unlocated = {

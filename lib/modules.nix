@@ -2969,21 +2969,21 @@ let
             else
               importer.key;
         in
-        rootOrder importer (
-          prelude.imap0 (
-            i: e:
-            e
-            // {
-              key =
-                if isPathModule e.m0 then
-                  "f" + builtins.unsafeDiscardStringContext (toString e.m0)
-                else if isAttrs e.content && e.content ? key then
-                  "s" + builtins.unsafeDiscardStringContext (toString e.content.key) + "@${node}:${toString i}"
-                else
-                  "a${ik}:${toString i}";
-            }
-          ) (moduleEntries callM importer mods)
-        );
+        # Unordered by the root (`rootOrder`): an occurrence's key carries its coordinate, and the order
+        # reaches only `checked`'s first refusal, which the guard's own collection raises first.
+        prelude.imap0 (
+          i: e:
+          e
+          // {
+            key =
+              if isPathModule e.m0 then
+                "f" + builtins.unsafeDiscardStringContext (toString e.m0)
+              else if isAttrs e.content && e.content ? key then
+                "s" + builtins.unsafeDiscardStringContext (toString e.content.key) + "@${node}:${toString i}"
+              else
+                "a${ik}:${toString i}";
+          }
+        ) (moduleEntries callM importer mods);
       # The reference's load-time checks over occurrences: `unifyModuleSyntax`'s (`moduleSyntaxChecked`)
       # and `checkModule`'s class, the class read as the module argument `_class` the guard supplies.
       checked =
