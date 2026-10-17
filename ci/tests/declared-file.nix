@@ -321,8 +321,26 @@ let
             ];
           }).config.o;
       copy = TY.addCheck (gt.nullOr npSub) p;
+      # the root's own check rides on its rebuild wherever the root owes it (den-hoag-9ij33 M1), one root per
+      # class that owes: a foreign container's own check through the door, a foreign `addCheck` over a gen
+      # container through the door, an ad-hoc override of a gen container's check, and a gen container whose
+      # stated relation is not exact
+      pK = v: !(v ? k) || v.k.a != 2;
+      owing = {
+        foreign = gt.defineType (TY.addCheck (TY.attrsOf npSub) pK);
+        genAddCheck = gt.defineType (TY.addCheck (gt.attrsOf npSub) pK);
+        adHoc = (gt.attrsOf npSub) // {
+          check = v: pK v && (gt.attrsOf npSub).check v;
+        };
+        inexact = (gt.attrsOf npSub) // {
+          check = v: pK v && (gt.attrsOf npSub).check v;
+          typeMergeRel = { };
+        };
+      };
     in
     {
+      riderRefuses = builtins.mapAttrs (_: t: o t { k.a = 2; }) owing;
+      riderServes = builtins.mapAttrs (_: t: o t { k.a = 1; }) owing;
       carriedBelow = o (gt.attrsOf (gt.defineType copy)) { k.a = 2; };
       carriedAtRoot = o (gt.defineType copy) { a = 2; };
       # the live controls: a value the check accepts is served
@@ -394,5 +412,23 @@ in
         expr = carriage.servedAtRoot;
         expected.a = 1;
       };
-    };
+    }
+    // builtins.listToAttrs (
+      map (name: {
+        name = "test-rider-at-${name}-root-refuses-the-owed-check";
+        value = {
+          expr = carriage.riderRefuses.${name};
+          expected = "refused";
+        };
+      }) (builtins.attrNames carriage.riderRefuses)
+    )
+    // builtins.listToAttrs (
+      map (name: {
+        name = "test-rider-at-${name}-root-serves-an-accepted-value";
+        value = {
+          expr = carriage.riderServes.${name};
+          expected.k.a = 1;
+        };
+      }) (builtins.attrNames carriage.riderServes)
+    );
 }
