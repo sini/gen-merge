@@ -9489,6 +9489,65 @@ in
         };
       };
 
+    # THE KEY MEETING (den-hoag-9zyp7 OQ2): a meeting's refusal names the REFERENCE key the pair shares
+    # (`<meeting>#<refinement>`), as one key's refusal named it. Each cell first forces its LIVE
+    # CONTROL, two refinements of one meeting, which must read both. The compose half is
+    # `ci/tests/key-meeting.nix`.
+    flake.testsError.key-meeting =
+      let
+        decl.options.l = gm.mkOption {
+          type = t.listOf t.str;
+          default = [ ];
+        };
+        record = file: tag: node: mark: {
+          _file = file;
+          __moduleKey = node;
+          __keyEq = {
+            subject = { inherit mark tag; };
+            decide = a: b: a == b;
+            refine = s: s.mark;
+            meeting = "rk";
+          };
+          __functor = _: _: {
+            key = "rk#" + mark;
+            config.l = [ tag ];
+          };
+        };
+        l = mods: (cfg { modules = [ decl ] ++ mods; }).l;
+        controlled =
+          mods:
+          withControl (l [
+            (record "/fx/a.nix" "a" "n1" "m1")
+            (record "/fx/b.nix" "b" "n2" "m2")
+          ]) [ "b" "a" ] (builtins.deepSeq (l mods) null);
+      in
+      {
+        test-two-nodes-sharing-a-reference-key-refused-by-name = {
+          expr = controlled [
+            (record "/fx/a.nix" "a" "n1" "m1")
+            (record "/fx/b.nix" "b" "n2" "m1")
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: modules `/fx/a\\.nix' and `/fx/b\\.nix' share the key 'rk#m1' and are not equal under its key comparison \\(`__keyEq'\\)\\. .*$";
+          };
+        };
+        test-a-plain-key-stating-a-records-reference-key-refused-by-name = {
+          expr = controlled [
+            (record "/fx/a.nix" "a" "n1" "m1")
+            {
+              _file = "/fx/b.nix";
+              key = "rk#m1";
+              l = [ "f" ];
+            }
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: modules `/fx/a\\.nix' and `/fx/b\\.nix' share the key 'rk#m1', and only `/fx/a\\.nix' publishes a key comparison \\(`__keyEq'\\)\\. .*$";
+          };
+        };
+      };
+
     # THE KEY COMPARISON (`__keyEq`, den-hoag-kind-generator-collision-d4gnx): each refusal by name.
     # Each cell first forces its LIVE CONTROL, an equal pair under the same key, which must read one
     # module. The compose half and the catchability of every arm is `ci/tests/key-eq.nix`.
