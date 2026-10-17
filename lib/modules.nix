@@ -4756,14 +4756,22 @@ let
         name = builtins.toJSON l.path;
         loc = prefix ++ l.path;
         type = l.opt.type or null;
-        # the file its nested trees' own modules inherit: the declaration carrying a type, where that
-        # type states a module set (nixpkgs locates only `getSubModules`; an `either` forwards none)
-        file =
+        # its nested trees' root entry, carrying the file their own modules inherit: the declaration
+        # carrying a type, where that type states a module set (nixpkgs locates only `getSubModules`; an
+        # `either` forwards none). One entry per group, shared by every tree at its positions.
+        root =
           if forwardsModuleSet (l.opt.type or null) then
-            (head (filter (x: x.decl ? type) (sitesAt (prefix ++ l.path)) ++ [ { file = "<unknown-file>"; } ]))
-            .file
+            {
+              _file =
+                (head (filter (x: x.decl ? type) (sitesAt (prefix ++ l.path)) ++ [ { file = "<unknown-file>"; } ]))
+                .file;
+              key = "";
+              nk = "";
+              m0 = null;
+              content = null;
+            }
           else
-            "<unknown-file>";
+            null;
         hostMode = { inherit carried strict; };
         # ONE DISCHARGE (den-hoag-i4c0n C1; item 2, gate P2): the fold's own `typeDefs`, read off the
         # option's merge record. The first arm is where forcing `m` would meet `mergeOptionWith`'s
@@ -4792,7 +4800,7 @@ let
           name = "freeform";
           loc = prefix;
           inherit (freeform) type;
-          file = "<unknown-file>";
+          root = null;
           # Every freeform-plane position folds by the CALLED form.
           hostMode = {
             carried = false;
@@ -4819,7 +4827,7 @@ let
                   member
                   defs
                   ;
-                inherit (g) file;
+                inherit (g) root;
                 address = map (d: {
                   attr = "definitions";
                   def = j;
@@ -5736,7 +5744,7 @@ let
               member
               defs
               ;
-            inherit (p) file;
+            inherit (p) root;
             address = map (d: {
               attr = "definitions";
               def = 0;
@@ -5972,7 +5980,7 @@ let
           {
             modules = n.modules ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
-            inherit (p) file;
+            inherit (p) root;
             inherit (n.empty) prefix specialArgs check;
           }
           // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6002,7 +6010,7 @@ let
                   }
                 ) p.defs;
               prefix = p.loc;
-              inherit (p) file;
+              inherit (p) root;
               inherit (n) specialArgs check coreShortCircuit;
             }
             // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6020,7 +6028,7 @@ let
               {
                 modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
                 prefix = p.loc;
-                inherit (p) file;
+                inherit (p) root;
                 inherit (n) specialArgs check coreShortCircuit;
               }
               // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6104,9 +6112,10 @@ let
       # tier-2 firing contract (core projection locs are declared-option leaves supplied by the core
       # module).
       coreShortCircuit ? false,
-      # The file the tree's own top-level modules inherit where they state none: nixpkgs'
-      # `collectStructuredModules` root `parentFile`. A nested tree's is its option's declaring file.
-      file ? "<unknown-file>",
+      # The tree as its top-level modules' importer (nixpkgs' `collectStructuredModules` root `parentFile`):
+      # a nested tree's is built once per option group (`nestedGroups`), carrying its declaring file. `null`
+      # for a top-level tree, whose modules keep nixpkgs' root label.
+      root ? null,
       # ── opt-in warm re-eval (design spec §§1-4) ────────────────────────────────────────────────
       # `warmFrom` = the PREVIOUS `evalModuleTree` result (its `config`/`provenance`/`freeformConfig`/
       # `freeformProv` ARE the memo — no new table); `editedModules` = the appended module LIST (the
@@ -6167,16 +6176,6 @@ let
       # A closed set (`s ? flat`) has no module that reads `options`, so every pass would equal the
       # first and the staged path could only re-raise its error: the spine is forced outright there,
       # with no `tryEval` record.
-      # The tree's root as its modules' importer: the collection's inherited-file edge carries the
-      # request's `file` down from it, still a thunk, and its empty key spells every anonymous key as
-      # a root's does. Never tested against the file, so the file is read only where a label is.
-      root = {
-        _file = file;
-        key = "";
-        nk = "";
-        m0 = null;
-        content = null;
-      };
       declarationGuard =
         let
           spine =
