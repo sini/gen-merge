@@ -242,8 +242,9 @@
           # s3 by 1: a held record's operands are kept without a filter. den-hoag-c922w lowered box by 28: a
           # property-free definition list is folded without the passes, and a container root over a leaf chain
           # is not walked. den-hoag-k4f4g lowered s2 and s3 by 10: a met record over a foreign join lays no
-          # mint fields. den-hoag-x5kcl lowered box by 3: a type's export allocates nothing it does not decide.
-          for bound in val:347 box:695 s2:869 s3:462; do
+          # mint fields. den-hoag-x5kcl lowered box by 3: a type's export allocates nothing it does not decide,
+          # and by 2 more: the empty values a constructor states are bound once (den-hoag-o24ji).
+          for bound in val:347 box:693 s2:869 s3:462; do
             mode=''${bound%%:*} max=''${bound#*:}
             thunksOf "met-cost-$mode-100"
             [ "$val" = "100" ] || die "met-cost-$mode-100" "expected value 100, got '$val'"
@@ -260,15 +261,16 @@
           # of its chain bottoms out, and for a container stating none of its own that field is its own walk of the rest,
           # so the cost is quadratic in the depth and bounded by the walk's fuel (32). The bound is the landed figure, in
           # THUNKS; an optimization lowers it in the same change, and a rise needs an owner reading. den-hoag-x5kcl
-          # lowered it by 87: a type's export allocates nothing it does not decide.
+          # lowered it by 87: a type's export allocates nothing it does not decide, and by 58 more: the empty values a
+          # constructor states are bound once (den-hoag-o24ji).
           thunksOf spine-cost-1
           [ "$val" = "1" ] || die spine-cost-1 "expected value 1, got '$val'"
           t1=$thunks
           thunksOf spine-cost-30
           [ "$val" = "1" ] || die spine-cost-30 "expected value 1, got '$val'"
           per=$((thunks - t1))
-          [ "$per" -le "4379" ] || die spine-cost-30 "the spine costs $per thunks from depth 1 to 30, over its bound 4379"
-          echo "spine-cost: $per thunks from depth 1 to 30 (bound 4379)"
+          [ "$per" -le "4321" ] || die spine-cost-30 "the spine costs $per thunks from depth 1 to 30, over its bound 4321"
+          echo "spine-cost: $per thunks from depth 1 to 30 (bound 4321)"
 
           # den-hoag-8tmd5 (ADR-0032): the staged declaration passes' cost, as the thunks a rename's alias adds over
           # the same option defined directly. The passes are tried once at a constant depth and an earlier pass is
