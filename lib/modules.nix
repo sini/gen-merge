@@ -4236,21 +4236,25 @@ let
   # `declaredOptions` stamps them, so a pass reads only the settled output of strictly earlier passes
   # (ADR-0016 ruling 7, ADR-0033) and a node resolves at the least pass its reads allow. A pending node
   # must resolve to a LEAF: one resolving to a group is an option's presence moving with `options`.
-  # A pass folds twice. The ADMISSION fold, where the pending nodes are tried and the residue refuses,
-  # binds `options` alone, so a module's own declaration that reads a module argument still refuses. The
-  # VIEW fold, which the next pass reads, binds the module arguments too, to the `_module.args` that the
-  # previous view fold's modules define, so a later pass reads an earlier pass's declarations with the
-  # descriptors their own arguments build (nixpkgs' `doRename` copying a target type that reads
-  # `utils`). Every value a fold reads is still a strictly earlier pass's. Pass 0's view fold binds no
-  # argument, and it differs from `s0` only by publishing the arguments it defines.
+  # A pass folds twice. The ADMISSION fold, where the pending nodes are tried, binds `options` and the
+  # module arguments of the view below it, so a module's own declaration reads the arguments earlier passes
+  # settled (`with utils;`, den-hoag-8tmd5 OQ1, D1). The VIEW fold, which the next pass reads, binds the
+  # module arguments too, to the `_module.args` that the previous view fold's modules define, so a later
+  # pass reads an earlier pass's declarations with the descriptors their own arguments build (nixpkgs'
+  # `doRename` copying a target type that reads `utils`). Every value a fold reads is still a strictly
+  # earlier pass's. Pass 0's view fold binds no argument, and it differs from `s0` only by publishing the
+  # arguments it defines.
   # The pending nodes are tried once, at a constant pass G, and a pass's view fold is built only when a
   # later pass reads it: a node costs the passes its reads reach, so G is free on a node resolving
   # earlier. No count of the tree's leaves or arguments bounds the passes a resolvable node needs (the
   # hops can run through the elements of one argument), and a cycle reads down all G passes, so G stays
-  # under the evaluator's call depth: a cycle refuses by name rather than overflowing the stack. Then the
-  # spine-first of the groups and the residue (a node whose WHNF throws at pass G) is forced outside
-  # `tryEval`: a group at pass 0, where its own demand reads the poison, and a residue node at pass G, so
-  # a read that resolved does not hide the node's own error and a cycle still bottoms out in the poison.
+  # under the evaluator's call depth: a cycle refuses by name rather than overflowing the stack. What no
+  # pass resolves, the groups and the residue (a node whose WHNF throws at pass G), is not refused here: it is
+  # returned as `pending`, each node beside its own refusal, forced outside `tryEval` when it is raised (a
+  # group's at pass 0, where its own demand reads the poison, a residue node's at pass G), so a read that
+  # resolved does not hide the node's own error. The evaluation decides each by its resolution levels
+  # (`allOptions`): a node declared against nixpkgs' grammar may read its own evaluation at declaration time
+  # (ADR-0033 as extended by den-hoag-2tna3), and every other raises its refusal unchanged.
   # The root's key set is forced outside `tryEval` too: a module whose option key set or `imports`
   # read a refused argument refuses there, as the guard's spine always did. A module that catches a
   # stamped-view refusal can take another shape on the value side, where it reaches Nix's recursion
@@ -4301,14 +4305,7 @@ let
           };
       # G = 300: a cycle reads down every pass at about thirteen call frames each, so it refuses by name
       # well inside the evaluators' default call depth of 10000.
-      sk = stratum (
-        args
-        // {
-          optionsView = {
-            inherit (go 300) options;
-          };
-        }
-      );
+      sk = stratum (args // { optionsView = go 300; });
       tried = map (p: {
         inherit p;
         w = builtins.tryEval (
@@ -4320,17 +4317,46 @@ let
       }) pending0;
       grouped = map (x: x.p) (filter (x: x.w.success && !x.w.value) tried);
       left = map (x: x.p) (filter (x: !x.w.success) tried);
-      first = head (filter (p: builtins.elem p grouped || builtins.elem p left) pending0);
       pending0 = pendingIn [ ] s0.options;
     in
     if pending0 == [ ] then
       throw "gen-merge: the declaration guard's spine did not resolve, and no declaration node is unresolved"
     else if grouped == [ ] && left == [ ] then
       true
-    else if builtins.elem first left then
-      refuse sk first
     else
-      refuse s0 first;
+      rec {
+        pending =
+          map (p: {
+            path = p;
+            refuse = refuse s0 p;
+          }) grouped
+          ++ map (p: {
+            path = p;
+            refuse = refuse sk p;
+          }) left;
+        # whether a node states a type gen constructs: an option whose own type `interface.own` answers, or a group
+        # holding one; a member that is not an attribute set states none
+        own =
+          v:
+          isAttrs v
+          && (
+            if isOptLeaf v then
+              isAttrs (v.type or null) && interface.own v.type
+            else
+              prelude.any own (builtins.attrValues v)
+          );
+        # the placer: each pending path of `t` replaced by `f i y`, `i` its index in `pending`
+        spliced =
+          t: f:
+          let
+            fill =
+              t: q: v:
+              if q == [ ] then v else t // { ${head q} = fill (t.${head q} or { }) (tail q) v; };
+          in
+          foldl' (t: i: fill t (builtins.elemAt pending i).path (f i (builtins.elemAt pending i))) t (
+            builtins.genList (i: i) (length pending)
+          );
+      };
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
   # definitions and the declarations (`substructure.declares`) read it.
@@ -5067,7 +5093,7 @@ let
             inherit (x) m;
           }
         ]
-    ) r.declaredPairs;
+    ) (builtins.attrValues r.declaredPairs);
 
   # The `nested` NTA's groups for one tree: per group its `definitions` (`nestedDefinitions` reads
   # them into the host attribute every seed addresses, one list per group, by group ordinal) and its
@@ -6525,58 +6551,63 @@ let
       #
       # When the spine does not resolve, the guard takes `stagedDeclarations`: the unresolved nodes are
       # re-tried against the declarations of strictly earlier passes, and only what no pass resolves
-      # refuses. The guard still returns `s` either way, so the staged passes decide admission only.
+      # refuses. The guard returns `s`, beside the unresolved nodes (`pending`) where there are any.
       # A closed set (`s ? flat`) has no module that reads `options`, so every pass would equal the
       # first and the staged path could only re-raise its error: the spine is forced outright there,
       # with no `tryEval` record.
       declarationGuard =
-        let
-          spine =
-            t: all (v: !(isAttrs v) || (v._type or null) == "option" || spine v) (builtins.attrValues t);
-        in
-        let
-          s = (if knot.positioned then declarationSpinePositioned else declarationSpine) (
-            {
-              inherit specialArgs prefix root;
-              modules = modList;
-            }
-            // (
-              if class == null then
-                { }
-              else
-                {
-                  specialArgs = {
-                    _class = class;
-                  }
-                  // specialArgs;
-                }
-            )
-          );
-        in
-        if s ? flat then
-          builtins.seq (spine s.options) s
-        else if (builtins.tryEval (spine s.options)).success then
-          s
+        if knot ? guard then
+          knot.guard
         else
-          builtins.seq (stagedDeclarations knot.positioned (
-            {
-              # no `root`: the passes decide admission only, and a refusal naming a module's file is
-              # raised first by the spine's own collection (`s`)
-              inherit specialArgs prefix;
-              modules = modList;
-            }
-            // (
-              if class == null then
-                { }
-              else
-                {
-                  specialArgs = {
-                    _class = class;
+          let
+            spine =
+              t: all (v: !(isAttrs v) || (v._type or null) == "option" || spine v) (builtins.attrValues t);
+          in
+          let
+            s = (if knot.positioned then declarationSpinePositioned else declarationSpine) (
+              {
+                inherit specialArgs prefix root;
+                modules = modList;
+              }
+              // (
+                if class == null then
+                  { }
+                else
+                  {
+                    specialArgs = {
+                      _class = class;
+                    }
+                    // specialArgs;
                   }
-                  // specialArgs;
+              )
+            );
+          in
+          if s ? flat then
+            builtins.seq (spine s.options) s
+          else if (builtins.tryEval (spine s.options)).success then
+            s
+          else
+            (r: if r == true then s else s // r) (
+              stagedDeclarations knot.positioned (
+                {
+                  # no `root`: the passes decide admission only, and a refusal naming a module's file is
+                  # raised first by the spine's own collection (`s`)
+                  inherit specialArgs prefix;
+                  modules = modList;
                 }
-            )
-          ) s) s;
+                // (
+                  if class == null then
+                    { }
+                  else
+                    {
+                      specialArgs = {
+                        _class = class;
+                      }
+                      // specialArgs;
+                    }
+                )
+              ) s
+            );
 
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
@@ -6748,12 +6779,129 @@ let
           # `declaredPairs`, `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes
           # `allOptions` or a value traced back to it, so guarding the producer here covers all
           # five tags at any nesting depth on both the `.options` and `.config` planes.
-          allOptions = mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
-            if declarationGuard ? flat then
-              declarationGuard.validated
+          # THE RESOLUTION LEVELS (den-hoag-2tna3). A node the staged passes left unresolved (`pending`) reads this
+          # evaluation at declaration time. Level 0 serves no such node. Level l is this evaluation with every node
+          # decided below l as served read off its own fixpoint, and every other one raising its refusal. A node is
+          # decided at the first level its declaration, read there, answers without a throw: served if it states no
+          # type gen constructs (`interface.own` on its own top constructor: a node declared against nixpkgs'
+          # grammar), refused otherwise. Decisions only accrue, so the levels stop changing within one level per
+          # pending node, and this evaluation is the level above them all. A read that reaches its own node meets
+          # that node's refusal at the level it is tried at, and every level below was forced first (`found`), so a
+          # cycle refuses by name at a constant depth whatever frames it holds; an acyclic chain of n such reads is
+          # decided in n levels. A served node is read off this evaluation itself, so its reads diverge exactly where
+          # nixpkgs' do.
+          allOptions =
+            if declarationGuard ? pending then
+              let
+                raw = mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
+                  map (e: validateDeclSubtree prefix e.options) declEntries
+                );
+                n = length declarationGuard.pending;
+                # served k i: whether pending node i resolves at level k or below
+                served =
+                  knot.served or (
+                    let
+                      # level l's evaluation (l = 1 .. n), driven as an inner knot on the root's guard, and its own
+                      # declaration tree, folded from its `_flat` as the body folds `allOptions`
+                      steps = builtins.genList (
+                        l:
+                        let
+                          below = driveKnot (
+                            evalModuleTreeWith
+                              (
+                                knot
+                                // {
+                                  inner = true;
+                                  mints = false;
+                                  level = l + 1;
+                                  guard = declarationGuard;
+                                  served = served;
+                                }
+                              )
+                              carried
+                              inherited
+                              {
+                                inherit
+                                  modules
+                                  specialArgs
+                                  check
+                                  prefix
+                                  coreShortCircuit
+                                  class
+                                  root
+                                  ;
+                              }
+                          );
+                          entries = prelude.imap0 declEntry below._flat;
+                        in
+                        mergeOptionDeclTrees (redeclareDecl (declaringSitesAt (length prefix) entries)) prefix (
+                          map (e: validateDeclSubtree prefix e.options) entries
+                        )
+                      ) n;
+                      # tried.l.i: node i read in level l's evaluation, under `tryEval`, for whether it states a type gen
+                      # constructs; row 0 is never read
+                      tried = builtins.genList (
+                        l:
+                        builtins.genList (
+                          i:
+                          builtins.tryEval (
+                            declarationGuard.own (
+                              getAttrByPath (builtins.elemAt declarationGuard.pending i).path (builtins.elemAt steps (l - 1))
+                            )
+                          )
+                        ) n
+                      ) (n + 1);
+                      # found.l.i: `null` while node i answers at no level 1 .. l, else whether it states a type gen
+                      # constructs at the first level it answers at, which decides it. Entry l reads entry m (l with its
+                      # lowest set bit cleared) and then tries levels m+1 .. l in order (`genericClosure`, which holds no
+                      # frame per step), stopping at the first that answers: an entry's first forcing holds a frame per set
+                      # bit of l, never one per level, and costs the levels it tries
+                      found = builtins.genList (
+                        l:
+                        builtins.genList (
+                          i:
+                          let
+                            m = l - builtins.bitAnd l (0 - l);
+                            d = builtins.elemAt (builtins.elemAt found m) i;
+                            c = builtins.genericClosure {
+                              startSet = [ { key = m + 1; } ];
+                              operator =
+                                x:
+                                if x.key == l || (builtins.elemAt (builtins.elemAt tried x.key) i).success then
+                                  [ ]
+                                else
+                                  [ { key = x.key + 1; } ];
+                            };
+                            w = builtins.elemAt (builtins.elemAt tried (builtins.elemAt c (length c - 1)).key) i;
+                          in
+                          if l == 0 then
+                            null
+                          else if d != null then
+                            d
+                          else if w.success then
+                            w.value
+                          else
+                            null
+                        ) n
+                      ) (n + 1);
+                    in
+                    k: i: builtins.elemAt (builtins.elemAt found k) i == false
+                  );
+              in
+              declarationGuard.spliced raw (
+                i: y:
+                let
+                  x = getAttrByPath y.path raw;
+                in
+                if served ((knot.level or (n + 1)) - 1) i && !(declarationGuard.own x) then x else y.refuse
+              )
             else
-              map (e: validateDeclSubtree prefix e.options) declEntries
-          );
+              mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
+                if declarationGuard ? flat then
+                  declarationGuard.validated
+                else
+                  map (e: validateDeclSubtree prefix e.options) declEntries
+              );
 
           # ── warm decision + splice context (design spec §§1-2) ─────────────────────────────────
           # EDITED entries by ORIGIN, from the engine's OWN closure (imports expansion is
@@ -7082,8 +7230,8 @@ let
               # sub-tree), marked `group = true`. The pair projects nothing; every reader below projects
               # through `x.m`. Both trees are assembled at this level by the SAME `listToAttrs` pattern, so
               # provenance mirrors config's loc structure attribute-for-attribute.
-              declaredPairs = map (
-                k:
+              declaredPairs = mapAttrs (
+                k: _:
                 let
                   lk = loc ++ [ k ];
                   abs = prefix ++ lk;
@@ -7135,7 +7283,7 @@ let
                       subDefs k
                     );
                   }
-              ) (attrNames opts);
+              ) opts;
 
               # Undeclared config keys at THIS level → unmatched defs carrying their full path + value
               # (+ the originating `modIndex`, for per-module coalescing at the root). Grouped once per
@@ -7172,24 +7320,9 @@ let
                   );
             in
             {
-              value = listToAttrs (
-                map (x: {
-                  inherit (x) name;
-                  value = x.m.value;
-                }) declaredPairs
-              );
-              prov = listToAttrs (
-                map (x: {
-                  inherit (x) name;
-                  value = x.m.prov;
-                }) declaredPairs
-              );
-              typeDefs = listToAttrs (
-                map (x: {
-                  inherit (x) name;
-                  value = x.m.typeDefs;
-                }) declaredPairs
-              );
+              value = mapAttrs (_: x: x.m.value) declaredPairs;
+              prov = mapAttrs (_: x: x.m.prov) declaredPairs;
+              typeDefs = mapAttrs (_: x: x.m.typeDefs) declaredPairs;
               # TWO CHANNELS, ONE PER KIND OF RECORD, each in exactly one frame.
               # `unmatched` holds DEFINITIONS this level must dispose of, `{ file; modIndex; path; value; }`
               # with paths RELATIVE to `prefix`: this level's own and a group's. A leaf contributes none.
@@ -7215,7 +7348,12 @@ let
               # force every declared type whenever `listToAttrs` forces the pairs. `group = true` records
               # the pair's kind where the group/leaf branch was taken, so the walk reads a marker rather
               # than re-deriving leafness.
-              unmatched = ownUnmatched ++ concatMap (x: if x ? group then x.m.unmatched else [ ]) declaredPairs;
+              unmatched =
+                if rawDefs == [ ] then
+                  [ ]
+                else
+                  ownUnmatched
+                  ++ concatMap (x: if x ? group then x.m.unmatched else [ ]) (builtins.attrValues declaredPairs);
               # ROUTED-LEAVES EXPOSURE (den-hoag-n6dh7 L5c, "one routing"): `declaredPairs`, `subDefs`,
               # `opts` and `loc` are the descent this walk already ran to route each def to its declared
               # name. Exposing them by `inherit` binds an attribute directly to the existing thunk (no
@@ -7235,7 +7373,7 @@ let
                   x.m.undeclared
                 else
                   [ ]
-              ) declaredPairs;
+              ) (builtins.attrValues declaredPairs);
             };
 
           # `_module.check` is an option of this evaluation's own `_module` group (`bool`, default
@@ -7254,9 +7392,13 @@ let
                   mergeTree [ ] declarationGuard
                 else
                   mergeTree [ ] {
-                    options = mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
-                      builtins.catAttrs "options" declEntries
-                    );
+                    options =
+                      if declarationGuard ? pending then
+                        declarationGuard.spliced (mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
+                          builtins.catAttrs "options" declEntries
+                        )) (_: y: getAttrByPath y.path allOptions)
+                      else
+                        mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (builtins.catAttrs "options" declEntries);
                   }
               else
                 o: d:
@@ -7265,9 +7407,13 @@ let
                     mergeTree [ ] declarationGuard
                   else
                     mergeTree [ ] {
-                      options = mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
-                        builtins.catAttrs "options" declEntries
-                      );
+                      options =
+                        if declarationGuard ? pending then
+                          declarationGuard.spliced (mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
+                            builtins.catAttrs "options" declEntries
+                          )) (_: y: getAttrByPath y.path allOptions)
+                        else
+                          mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (builtins.catAttrs "options" declEntries);
                     }
                 )
                   o
@@ -7623,43 +7769,46 @@ let
           # descended; cf. `buildModuleUnmatched`); the mixed arm keeps `recursiveUpdate`'s answer for
           # that case anyway, so the construction is total.
           freeformProvCold =
-            let
-              byPath = builtins.groupBy (u: showOption u.path) realized.unmatched;
-              nest =
-                rs:
-                builtins.zipAttrsWith
-                  (
-                    _: sub:
-                    let
-                      here = filter (r: r.rest == [ ]) sub;
-                      deeper = filter (r: r.rest != [ ]) sub;
-                    in
-                    if deeper == [ ] then
-                      (head here).record
-                    else if here == [ ] then
-                      nest deeper
-                    else
-                      recursiveUpdate (head here).record (nest deeper)
-                  )
-                  (
-                    map (r: {
-                      ${head r.rest} = r // {
-                        rest = tail r.rest;
-                      };
-                    }) rs
-                  );
-            in
-            nest (
-              map (us: {
-                rest = (head us).path;
-                record = {
-                  defs = map (u: { inherit (u) file; }) us;
-                  winners = null;
-                  priority = null;
-                  defaulted = null;
-                };
-              }) (builtins.attrValues byPath)
-            );
+            if freeform == null then
+              { }
+            else
+              let
+                byPath = builtins.groupBy (u: showOption u.path) realized.unmatched;
+                nest =
+                  rs:
+                  builtins.zipAttrsWith
+                    (
+                      _: sub:
+                      let
+                        here = filter (r: r.rest == [ ]) sub;
+                        deeper = filter (r: r.rest != [ ]) sub;
+                      in
+                      if deeper == [ ] then
+                        (head here).record
+                      else if here == [ ] then
+                        nest deeper
+                      else
+                        recursiveUpdate (head here).record (nest deeper)
+                    )
+                    (
+                      map (r: {
+                        ${head r.rest} = r // {
+                          rest = tail r.rest;
+                        };
+                      }) rs
+                    );
+              in
+              nest (
+                map (us: {
+                  rest = (head us).path;
+                  record = {
+                    defs = map (u: { inherit (u) file; }) us;
+                    winners = null;
+                    priority = null;
+                    defaulted = null;
+                  };
+                }) (builtins.attrValues byPath)
+              );
           # Warm: the freeform provenance layer rides the same reuse decision as its config layer.
           freeformProv = if reuseFreeform then warmFrom.freeformProv else freeformProvCold;
 

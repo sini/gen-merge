@@ -889,6 +889,11 @@ let
     else
       r.value;
 
+  # a record gen constructs: a completion (`__typeSelf`, a met record over a gen join among them) or a relation
+  # (`typeMergeRel`); every record gen constructs states one of the two. One predicate: `foreignValueMeta` reads it,
+  # and so does the engine's declaration classifier (den-hoag-2tna3)
+  own = x: x ? __typeSelf || x ? typeMergeRel;
+
   # nixpkgs' v2-merge metadata for an option of type `t` over its final definitions `defs`, as nixpkgs'
   # `mergeDefinitions` builds it (`checkedAndMerged.valueMeta`): a v2 merge's own `valueMeta` with the type
   # beside it under `_internal`, and `{ }` for a merge stating no `v2`. It is served only where it is a
@@ -899,15 +904,12 @@ let
   # as its fold does (`adHocFold`). Below a module set (`sets`) it is the same call over definitions the type's
   # `check` admits, as `importedFold` checks a module set's (`checkedFold`), and each configuration in it is the
   # merged value that call returned, behind the guard gen's fold puts on that value. Everywhere else it is refused by name (den-hoag-xroc7: open defects under ADR-0039's parity-defect
-  # rule): a record gen constructed (`genOwn`) states no such metadata, below a gen record the metadata's merged
+  # rule): a record gen constructed (`own`) states no such metadata, below a gen record the metadata's merged
   # values would be a second evaluation without the checks gen's fold enforces there, and so would a module set
   # below an option of a configuration, whose value gen's guard folds again (`guardedAt`).
   foreignValueMeta =
     sets: t: loc: defs:
     let
-      # a completion (`__typeSelf`, a met record over a gen join among them) or a relation (`typeMergeRel`); every
-      # record gen constructs states one of the two
-      genOwn = x: x ? __typeSelf || x ? typeMergeRel;
       # every type reachable through `nestedTypes` is foreign and carries no `verify`, and states no module set
       # unless `sets` admits one (its own `sets`, not the caller's: a name already interned costs no load); a
       # walk out of fuel answers `false`. A met record below the top is walked no further: the check it owes is
@@ -918,10 +920,10 @@ let
         sets: fuel: x:
         isAttrs x
         && fuel > 0
-        && !(genOwn x || x ? __meetJoin || x ? verify || !sets && (x.getSubModules or null) != null)
+        && !(own x || x ? __meetJoin || x ? verify || !sets && (x.getSubModules or null) != null)
         && prelude.all (throughout sets (fuel - 1)) (builtins.attrValues (x.nestedTypes or { }));
     in
-    if genOwn t then
+    if own t then
       throw "gen-merge: the option `${showOption loc}' does not answer `valueMeta': its type `${describe t}' is gen-merge's own, which states no v2-merge metadata"
     # a met record over a FOREIGN join is COMPARED, so not gen's own (den-hoag-k4f4g): its metadata is its join's, with
     # the met record as its type, served only where the meet admits every definition: each passes its check, and its
@@ -8369,6 +8371,7 @@ let
 in
 {
   inherit
+    own
     importedHeadJudge
     admitsCarried
     checkedFold
