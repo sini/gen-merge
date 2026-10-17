@@ -1,9 +1,9 @@
 # THE KEY MEETING (den-hoag-9zyp7 OQ2): a record module names its NODE on its record (`__moduleKey`)
 # and its REFERENCE key in its result (`key`, what nixpkgs dedups by and a `disabledModules` item
-# names), the reference key being `<__keyEq.meeting>#<__keyEq.refine subject>`. The merge path meets
-# occurrences by meeting, so every pair sharing a reference key meets whatever their nodes, and the
-# refinement is demanded only at a meeting. Equal refinements are one key, decided as `key-eq.nix`
-# decides one key; different refinements are two keys, both kept. `l` is a list option, so one module
+# names), the reference key being `<__keyEq.meeting>#<refinement>`. The merge path meets occurrences
+# by meeting, so every pair sharing a reference key meets whatever their nodes, and the reference key
+# is demanded only at a meeting. Equal keys are one key, decided as `key-eq.nix` decides one key;
+# different refinements are two keys, both kept. `l` is a list option, so one module
 # reads one element and two read two.
 
 {
@@ -28,7 +28,7 @@ let
       mark,
       c ? tag,
       meeting ? "rk",
-      refine ? s: s.mark,
+      key ? "rk#" + mark,
       imports ? [ ],
     }:
     {
@@ -36,12 +36,10 @@ let
       __keyEq = {
         subject = { inherit mark c; };
         decide = a: b: a == b;
-        inherit refine;
       }
       // (if meeting == null then { } else { inherit meeting; });
       __functor = _: _: {
-        key = "rk#" + mark;
-        inherit imports;
+        inherit key imports;
         config.l = [ tag ];
       };
     };
@@ -189,16 +187,16 @@ in
         "1"
       ];
     };
-    # THE REFINEMENT IS DEMANDED ONLY AT A MEETING: a record whose refinement throws composes alone and
+    # THE REFERENCE KEY IS DEMANDED ONLY AT A MEETING: a record whose key throws composes alone and
     # beside another meeting's record, and is refused (the throw, caught) where its meeting is shared.
-    test-the-refinement-is-forced-only-at-a-meeting = {
+    test-the-reference-key-is-forced-only-at-a-meeting = {
       expr =
         let
           t = record {
             tag = "t";
             node = "n3";
             mark = "m3";
-            refine = _: throw "the refinement was forced";
+            key = throw "the reference key was forced";
           };
         in
         {

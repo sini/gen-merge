@@ -2382,7 +2382,7 @@ let
   # `nodeKeyOf`'s, spelled inline, because a call per entry allocates an environment per entry.
   meetKeyOf =
     let
-      parts = "k(.*)${builtins.fromJSON ''"\u0023"''}(.*)";
+      parts = "k(.*)${builtins.fromJSON "\"\\u0023\""}(.*)";
       meetOf =
         n:
         let
@@ -2420,7 +2420,8 @@ let
   # earlier one of its refined key is decided against THAT one (`keyedDrop`). Read only where two
   # occurrences meet.
   a3 = rec {
-    sep = builtins.fromJSON ''"\u0023"'';
+    # built from its JSON escape: a `#` inside a string would break the purity scan's strip premise
+    sep = builtins.fromJSON "\"\\u0023\"";
     # A record's reference key is its result's `key`, forced here only (at a meeting), and it must be
     # `<meeting>#<refinement>`, or a plain key equal to it would never meet it.
     refineOf =
