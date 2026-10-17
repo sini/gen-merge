@@ -6499,6 +6499,8 @@ let
                       class
                     else if name == "extendModules" then
                       result.moduleConfig._module.args.extendModules
+                    else if name == "moduleType" then
+                      result.moduleConfig._module.args.moduleType
                     else
                       result.moduleArgs.${name} or (throw "gen-merge: module argument `${name}' is not defined")
                   )
@@ -7420,6 +7422,21 @@ let
                           )
                         else
                           extendModules;
+                      # nixpkgs' `moduleType`: this evaluation's module set as a type, whose fold over no
+                      # definitions is a child of this evaluation (`typeOver`).
+                      moduleType =
+                        if moduleArgs ? moduleType then
+                          mergeModuleArg "moduleType" (
+                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                            ++ [
+                              {
+                                _file = "<module system>";
+                                value = typeOver result;
+                              }
+                            ]
+                          )
+                        else
+                          typeOver result;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
@@ -7478,6 +7495,21 @@ let
                           )
                         else
                           extendModules;
+                      # nixpkgs' `moduleType`: this evaluation's module set as a type, whose fold over no
+                      # definitions is a child of this evaluation (`typeOver`).
+                      moduleType =
+                        if moduleArgs ? moduleType then
+                          mergeModuleArg "moduleType" (
+                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                            ++ [
+                              {
+                                _file = "<module system>";
+                                value = typeOver result;
+                              }
+                            ]
+                          )
+                        else
+                          typeOver result;
                       name = positionNameOf prefix moduleArgs pushed;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
@@ -7531,6 +7563,21 @@ let
                           )
                         else
                           extendModules;
+                      # nixpkgs' `moduleType`: this evaluation's module set as a type, whose fold over no
+                      # definitions is a child of this evaluation (`typeOver`).
+                      moduleType =
+                        if moduleArgs ? moduleType then
+                          mergeModuleArg "moduleType" (
+                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                            ++ [
+                              {
+                                _file = "<module system>";
+                                value = typeOver result;
+                              }
+                            ]
+                          )
+                        else
+                          typeOver result;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
@@ -8022,7 +8069,7 @@ let
                         moduleArgs // { name = positionNameOf prefix moduleArgs pushed; }
                     )
                     // {
-                      inherit (moduleConfig._module.args) extendModules;
+                      inherit (moduleConfig._module.args) extendModules moduleType;
                     };
                   check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                   freeformType = freeform;
