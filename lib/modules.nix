@@ -2253,10 +2253,27 @@ let
       in
       self
     ) mods;
-  moduleLevel = moduleLevelC { };
+  moduleLevel =
+    callM: importer: mods:
+    prelude.imap0 (
+      i: m0:
+      let
+        m = callM m0;
+        self = {
+          key = moduleKeyOf importer i m0 m;
+          inherit importer i m0;
+          next = moduleLevel callM self (importsOf m);
+        };
+      in
+      self
+    ) mods;
+  # only a tree holding a record-keyed module can hold two constructions of one key
   collidedOf =
     flat:
-    prelude.filterAttrs (_: v: length v > 1) (
+    if !(any (e: e.m0 ? __moduleKey) flat) then
+      { }
+    else
+      prelude.filterAttrs (_: v: length v > 1) (
       builtins.groupBy (k: k) (
         concatMap (
           e:
@@ -2269,8 +2286,17 @@ let
     );
   # A tree's closure's top: the tree as importer, holding the tree's own module list (`roots`, its
   # import edges, a module named twice included).
-  moduleTop = moduleTopC { };
-  moduleTopC =
+  moduleTopC = C: if C == { } then moduleTop else moduleTopR C;
+  moduleTop =
+    callM: mods:
+    let
+      top = {
+        key = "";
+        roots = moduleLevel callM top mods;
+      };
+    in
+    top;
+  moduleTopR =
     C: callM: mods:
     let
       top = {
@@ -2374,7 +2400,7 @@ let
   # THE RECORD-CHANNEL KEY (den-hoag-9zyp7 OQ2 (a2)): a `__functor` module may name its node on its
   # record (`__moduleKey`), read before it is applied; its result's `key` is then for a foreign
   # evaluator alone, and this engine never forces it.
-  recordKeyOf = m0: if isAttrs m0 then m0.__moduleKey or null else null;
+  recordKeyOf = m0: if m0 ? __moduleKey then m0.__moduleKey else null;
   nodeKeyOf =
     { m0, content, ... }:
     if builtins.isPath m0 || isPathString m0 then
@@ -2410,6 +2436,23 @@ let
     if q != null && q ? refine then q.refine q.subject else null;
   distinctAt = w: x: refineOf w.e != null && refineOf x.e != null && refineOf w.e != refineOf x.e;
   refinedKeyOf = k: e: k + "/" + refineOf e;
+  # `rs`: the refined-key maps of this level (first) and every shallower one; `p`: x's position.
+  keyedDropR =
+    specialArgs: callM: rs: p: w: x:
+    if distinctAt w x then
+      let
+        rk = refinedKeyOf x.k x.e;
+        here = builtins.head rs;
+        deeper = builtins.filter (d: d ? ${rk}) (builtins.tail rs);
+      in
+      if deeper != [ ] then
+        keyedDrop specialArgs callM (builtins.head deeper).${rk} x
+      else if here.${rk}.p == p then
+        true
+      else
+        keyedDrop specialArgs callM here.${rk} x
+    else
+      keyedDrop specialArgs callM w x;
   keyedDrop =
     specialArgs: callM: w: x:
     let
@@ -2433,8 +2476,9 @@ let
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
-  moduleLevels =
-    specialArgs: callM: seen: level:
+  moduleLevels = specialArgs: callM: seen: moduleLevelsR specialArgs callM seen [ ];
+  moduleLevelsR =
+    specialArgs: callM: seen: rseen: level:
     if level == [ ] then
       [ ]
     else
@@ -2459,13 +2503,15 @@ let
               ]
           ) at
         );
-        met = x: x.k != null && (seen ? ${x.k} || first.${x.k}.p != x.p);
-        isDistinct = x: met x && distinctAt (seen.${x.k} or first.${x.k}) x;
-        # the first occurrence per refined key, among the occurrences decided distinct
+        # (a3): the occurrences decided distinct, first per refined key; forced only where a meeting
+        # is decided distinct, and carried to deeper levels unforced (`rseen`, a list of these)
         dfirst = listToAttrs (
           concatMap (
             x:
-            if isDistinct x then
+            let
+              w = seen.${x.k} or first.${x.k};
+            in
+            if x.k != null && (seen ? ${x.k} || first.${x.k}.p != x.p) && distinctAt w x then
               [
                 {
                   name = refinedKeyOf x.k x.e;
@@ -2476,6 +2522,7 @@ let
               [ ]
           ) at
         );
+        rnext = [ dfirst ] ++ rseen;
         kept =
           if keyed then
             map (x: x.e) (
@@ -2483,18 +2530,8 @@ let
                 x:
                 x.k == null
                 || (
-                  if isDistinct x then
-                    (
-                      let
-                        rk = refinedKeyOf x.k x.e;
-                      in
-                      if seen ? ${rk} || dfirst.${rk}.p != x.p then
-                        keyedDrop specialArgs callM (seen.${rk} or dfirst.${rk}) x
-                      else
-                        true
-                    )
-                  else if met x then
-                    keyedDrop specialArgs callM (seen.${x.k} or first.${x.k}) x
+                  if seen ? ${x.k} || first.${x.k}.p != x.p then
+                    keyedDropR specialArgs callM rnext x.p (seen.${x.k} or first.${x.k}) x
                   else
                     true
                 )
@@ -2504,7 +2541,7 @@ let
             level;
       in
       kept
-      ++ moduleLevels specialArgs callM (if keyed then seen // first // dfirst else seen) (
+      ++ moduleLevelsR specialArgs callM (if keyed then seen // first else seen) (if keyed then rnext else rseen) (
         concatMap (
           { content, ... }@e:
           if e ? dis then
@@ -2794,7 +2831,7 @@ let
           e = builtins.elemAt flat i;
           g = builtins.elemAt graph i;
           k0 = nodeKeyOf e;
-          k = if k0 != null && C ? ${k0} then refinedKeyOf k0 e else k0;
+          k = if C == { } || k0 == null || !(C ? ${k0}) then k0 else refinedKeyOf k0 e;
         in
         (if k == null then builtins.substring 0 1 g.key == "a" else k == g.key)
         && moduleShape e.m0 == moduleShape g.m0;
