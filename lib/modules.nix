@@ -2436,25 +2436,34 @@ let
     if q != null && q ? refine then q.refine q.subject else null;
   distinctAt = w: x: refineOf w.e != null && refineOf x.e != null && refineOf w.e != refineOf x.e;
   refinedKeyOf = k: e: k + "/" + refineOf e;
-  # `rs`: the refined-key maps of this level (first) and every shallower one; `p`: x's position.
-  keyedDropR =
-    specialArgs: callM: rs: p: w: x:
-    if distinctAt w x then
-      let
-        rk = refinedKeyOf x.k x.e;
-        here = builtins.head rs;
-        deeper = builtins.filter (d: d ? ${rk}) (builtins.tail rs);
-      in
-      if deeper != [ ] then
-        keyedDrop specialArgs callM (builtins.head deeper).${rk} x
-      else if here.${rk}.p == p then
-        true
-      else
-        keyedDrop specialArgs callM here.${rk} x
-    else
-      keyedDrop specialArgs callM w x;
+  # (a3): a level's occurrences decided distinct, first per refined key; built only where a meeting
+  # is decided distinct (`keyedDrop`)
+  distinctFirst =
+    seen: first: at:
+    listToAttrs (
+      concatMap (
+        x:
+        let
+          w = seen.${x.k} or first.${x.k};
+        in
+        if x.k != null && (seen ? ${x.k} || first.${x.k}.p != x.p) && distinctAt w x then
+          [
+            {
+              name = refinedKeyOf x.k x.e;
+              value = x;
+            }
+          ]
+        else
+          [ ]
+      ) at
+    );
+  # `first`: this level's first occurrences, carrying under "" the refined-key maps of this level and
+  # every shallower one.
+  noRefined = {
+    "" = _: [ { } ];
+  };
   keyedDrop =
-    specialArgs: callM: w: x:
+    specialArgs: callM: first: w: x:
     let
       key = builtins.substring 1 (builtins.stringLength x.k) x.k;
     in
@@ -2466,6 +2475,25 @@ let
       throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}', and only `${
         if keqOf w.e != null then w.e._file else x.e._file
       }' publishes a key comparison (`__keyEq'). One key is one declaration: publish the comparison on both, or give them different keys."
+    else if
+      (keqOf w.e) ? refine
+      && (keqOf x.e) ? refine
+      && (keqOf w.e).refine (keqOf w.e).subject != (keqOf x.e).refine (keqOf x.e).subject
+    then
+      # (a3) two constructions of one declaration: x is decided against the first occurrence of its
+      # own refined key, in this level or a shallower one, and kept where it is that first
+      let
+        rk = refinedKeyOf x.k x.e;
+        rs = first."" null;
+        here = builtins.head rs;
+        shallower = builtins.filter (d: d ? ${rk}) (builtins.tail rs);
+      in
+      if shallower != [ ] then
+        keyedDrop specialArgs callM noRefined (builtins.head shallower).${rk} x
+      else if here.${rk}.p == x.p then
+        true
+      else
+        keyedDrop specialArgs callM noRefined here.${rk} x
     else
       let
         same = (keqOf w.e).decide (keqOf w.e).subject (keqOf x.e).subject;
@@ -2476,9 +2504,8 @@ let
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
-  moduleLevels = specialArgs: callM: seen: moduleLevelsR specialArgs callM seen [ ];
-  moduleLevelsR =
-    specialArgs: callM: seen: rseen: level:
+  moduleLevels =
+    specialArgs: callM: seen: level:
     if level == [ ] then
       [ ]
     else
@@ -2488,9 +2515,18 @@ let
           inherit p e;
           k = nodeKeyOf e;
         }) level;
-        # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key
+        # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key. Under
+        # the name "" (no node key is empty), (a3)'s refined-key maps, this level's first and every
+        # shallower one's after it: lazy, so a level with no distinct meeting builds none.
         first = listToAttrs (
-          concatMap (
+          [
+            {
+              name = "";
+              # a function, so the slot allocates no thunk; applied only by `keyedDrop`
+              value = _: [ (distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+            }
+          ]
+          ++ concatMap (
             x:
             if x.k == null then
               [ ]
@@ -2503,26 +2539,6 @@ let
               ]
           ) at
         );
-        # (a3): the occurrences decided distinct, first per refined key; forced only where a meeting
-        # is decided distinct, and carried to deeper levels unforced (`rseen`, a list of these)
-        dfirst = listToAttrs (
-          concatMap (
-            x:
-            let
-              w = seen.${x.k} or first.${x.k};
-            in
-            if x.k != null && (seen ? ${x.k} || first.${x.k}.p != x.p) && distinctAt w x then
-              [
-                {
-                  name = refinedKeyOf x.k x.e;
-                  value = x;
-                }
-              ]
-            else
-              [ ]
-          ) at
-        );
-        rnext = [ dfirst ] ++ rseen;
         kept =
           if keyed then
             map (x: x.e) (
@@ -2531,7 +2547,7 @@ let
                 x.k == null
                 || (
                   if seen ? ${x.k} || first.${x.k}.p != x.p then
-                    keyedDropR specialArgs callM rnext x.p (seen.${x.k} or first.${x.k}) x
+                    keyedDrop specialArgs callM first (seen.${x.k} or first.${x.k}) x
                   else
                     true
                 )
@@ -2541,7 +2557,7 @@ let
             level;
       in
       kept
-      ++ moduleLevelsR specialArgs callM (if keyed then seen // first else seen) (if keyed then rnext else rseen) (
+      ++ moduleLevels specialArgs callM (if keyed then seen // first else seen) (
         concatMap (
           { content, ... }@e:
           if e ? dis then
