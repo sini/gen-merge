@@ -1979,6 +1979,7 @@ let
           && isList (t.getSubModules or null)
           && !(isV2 (t.substSubModules t.getSubModules))
         )
+        && foldsAsStock "attrsWith" t
       then
         rehomeAgreed door loc t {
           container = if payload.lazy then "lazyAttrsOf" else "attrsOf";
@@ -1994,6 +1995,7 @@ let
           && isList (t.getSubModules or null)
           && !(isV2 (t.substSubModules t.getSubModules))
         )
+        && foldsAsStock name t
       then
         rehomeAgreed door loc t {
           container = name;
@@ -2007,6 +2009,48 @@ let
       else
         null;
   importedRehome = importedRehomeAt null null;
+
+  # 1as3r scout K1: the fold nixpkgs mounts agrees in shape with the constructor's own on a witness list
+  foldsAsStock =
+    container: t:
+    let
+      folded = if isList (t.getSubModules or null) then t.substSubModules t.getSubModules else t;
+      stock = t.functor.type t.functor.payload;
+      loc = [ "<gen-merge override witness>" ];
+      defs =
+        if container == "attrsWith" then
+          [
+            { file = "1"; value = { a = { }; }; }
+            { file = "2"; value = { b = { }; }; }
+            { file = "3"; value = { c = { }; }; }
+          ]
+        else if container == "listOf" then
+          [
+            { file = "1"; value = [ { } ]; }
+            { file = "2"; value = [ { } { } ]; }
+            { file = "3"; value = [ { } { } { } ]; }
+          ]
+        else
+          [
+            { file = "1"; value = null; }
+            { file = "2"; value = { }; }
+          ];
+      fold = r: if isV2 stock && isV2 r then (r.merge.v2 { inherit loc defs; }).value else r.merge loc defs;
+      shape =
+        r:
+        let
+          v = fold r;
+          s =
+            if container == "attrsWith" then
+              (if isAttrs v then attrNames v else null)
+            else if container == "listOf" then
+              (if isList v then length v else null)
+            else
+              v == null;
+        in
+        builtins.tryEval (builtins.deepSeq s s);
+    in
+    !(isList (t.getSubModules or null)) || shape folded == shape stock;
 
   # THE RECOGNITION DOOR: asked through it, `importedRehomeAt` answers its recognition and never
   # judges the payload's offer (`rehomeAgreed`), so it refuses nothing. The type-time mark
