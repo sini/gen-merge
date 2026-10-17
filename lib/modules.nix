@@ -2650,13 +2650,13 @@ let
     # else shortens): then it is this one, refined. Each graph reader spells the test inline, so a tree
     # with no such pair never forces this binding. `{ top; graph; }`.
     refinedGraph =
-      flat: callM: mods:
+      root: flat: callM: mods:
       let
         t = topR (collidedOf flat) callM mods;
       in
       {
         top = t;
-        graph = removal.closeKept flat t.roots;
+        graph = removal.closeKept flat (rootOrder root t.roots);
       };
   };
   # `chain null`: the refined-key maps of x's level (head) and of every shallower level (tail), built
@@ -2770,10 +2770,23 @@ let
                 moduleEntries callM e (importsOf content)
             ) kept
           );
+  # THE ROOT'S LEVEL (den-hoag-yjmwc). nixpkgs hands each own module of a once-declared type through
+  # `setDefaultModuleLocation`, a wrapper at the head of the tree's top level that names no definition:
+  # its two effects are the file its import inherits (the root's `_file`, den-hoag-fhggb) and the level
+  # it sits at. A breadth-first queue whose head is k wrappers, each importing one own module, is the
+  # same queue, once the top level is popped, as one starting with the top level's other modules and
+  # then the k own modules: so the level is an ORDER of the top level, read after each module's
+  # coordinate is assigned, and mints no node. `located` is k, on a nested root only (`childTree`).
+  rootOrder =
+    root: xs:
+    let
+      k = root.located or 0;
+    in
+    if k == 0 then xs else drop k xs ++ take k xs;
   moduleClosure =
     specialArgs: callM: root: mods:
     let
-      plain = moduleEntries callM root mods;
+      plain = rootOrder root (moduleEntries callM root mods);
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -2783,7 +2796,7 @@ let
     then
       plain
     else
-      removal.closure specialArgs callM root plain;
+      removal.closure specialArgs callM root mods plain;
 
   # ── MODULE REMOVAL (`disabledModules`): the reference's `collectModules`, in the one collection ──────
   # The reference loads every OCCURRENCE of the import tree (`collectStructuredModules`, no dedup),
@@ -2828,7 +2841,7 @@ let
     none = { };
     statesNone = e: !(e.content ? disabledModules);
     closure =
-      specialArgs: callM: root: plain:
+      specialArgs: callM: root: mods: plain:
       let
         u = moduleLevels specialArgs callM none plain;
       in
@@ -2836,7 +2849,6 @@ let
         u
       else
         let
-          mods = map (e: e.m0) plain;
           occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
           dis = walk.keysOf (specialArgs.modulesPath or "") occ;
         in
@@ -2957,19 +2969,21 @@ let
             else
               importer.key;
         in
-        prelude.imap0 (
-          i: e:
-          e
-          // {
-            key =
-              if isPathModule e.m0 then
-                "f" + builtins.unsafeDiscardStringContext (toString e.m0)
-              else if isAttrs e.content && e.content ? key then
-                "s" + builtins.unsafeDiscardStringContext (toString e.content.key) + "@${node}:${toString i}"
-              else
-                "a${ik}:${toString i}";
-          }
-        ) (moduleEntries callM importer mods);
+        rootOrder importer (
+          prelude.imap0 (
+            i: e:
+            e
+            // {
+              key =
+                if isPathModule e.m0 then
+                  "f" + builtins.unsafeDiscardStringContext (toString e.m0)
+                else if isAttrs e.content && e.content ? key then
+                  "s" + builtins.unsafeDiscardStringContext (toString e.content.key) + "@${node}:${toString i}"
+                else
+                  "a${ik}:${toString i}";
+            }
+          ) (moduleEntries callM importer mods)
+        );
       # The reference's load-time checks over occurrences: `unifyModuleSyntax`'s (`moduleSyntaxChecked`)
       # and `checkModule`'s class, the class read as the module argument `_class` the guard supplies.
       checked =
@@ -3003,13 +3017,15 @@ let
           pk = if importer == null then "" else importer.nk;
         in
         concatLists (
-          prelude.imap0 (
-            i: e:
-            let
-              nk = nixKeyOf pk i e;
-            in
-            if dis ? ${nk} then [ ] else [ (e // { inherit nk dis; }) ]
-          ) (moduleEntries callM importer mods)
+          rootOrder importer (
+            prelude.imap0 (
+              i: e:
+              let
+                nk = nixKeyOf pk i e;
+              in
+              if dis ? ${nk} then [ ] else [ (e // { inherit nk dis; }) ]
+            ) (moduleEntries callM importer mods)
+          )
         );
       # The key set an evaluation removed by, off its collection, its modules and its arguments. Collected
       # from a null root even in a nested tree: a key never reads a file, and the one refusal naming one
@@ -5097,7 +5113,10 @@ let
         # carrying a type, where that type states a module set (nixpkgs locates only `getSubModules`; an
         # `either` forwards none). One entry per group, shared by every tree at its positions.
         root =
-          if interface.forwardsModuleSet (l.opt.type or null) then
+          if
+            interface.forwardsModuleSet (l.opt.type or null)
+            && !(l.opt ? overridden && length (filter (x: x.decl ? type) (sitesAt (prefix ++ l.path))) > 1)
+          then
             {
               _file =
                 (head (filter (x: x.decl ? type) (sitesAt (prefix ++ l.path)) ++ [ { file = "<unknown-file>"; } ]))
@@ -5977,7 +5996,7 @@ let
     in
     let
       top0 = moduleTop r._callM r._modList;
-      graph0 = removal.closeKept r._flat top0.roots;
+      graph0 = removal.closeKept r._flat (rootOrder r._root top0.roots);
     in
     moduleFamily id (length r._nested.groups) r._flat (
       if length graph0 == length r._flat then
@@ -5986,7 +6005,7 @@ let
           graph = graph0;
         }
       else
-        a3.refinedGraph r._flat r._callM r._modList
+        a3.refinedGraph r._root r._flat r._callM r._modList
     );
   knotDefinitions =
     let
@@ -6168,6 +6187,7 @@ let
           nFlat = length flat;
           nTop = length r._modList;
           nOwn = nTop - length seeds;
+          kRoot = r._root.located or 0;
           tree =
             if p == null then
               null
@@ -6186,10 +6206,13 @@ let
               tree ++ [ { module = i; } ];
           graph =
             let
-              graph0 = removal.closeKept flat (moduleTop r._callM r._modList).roots;
+              graph0 = removal.closeKept flat (rootOrder r._root (moduleTop r._callM r._modList).roots);
             in
             alignedGraph "the declaration anchors" flat (
-              if length graph0 == length flat then graph0 else (a3.refinedGraph flat r._callM r._modList).graph
+              if length graph0 == length flat then
+                graph0
+              else
+                (a3.refinedGraph r._root flat r._callM r._modList).graph
             );
           anch =
             g:
@@ -6218,8 +6241,10 @@ let
         else
           let
             fi = nFlat - 1 - mi;
+            # the top-level module at closure index `fi`, under the root's order (`rootOrder`)
+            ti = if fi + kRoot < nTop then fi + kRoot else fi + kRoot - nTop;
           in
-          if fi < nTop && topPlain then top fi "a:${toString fi}" else anch (builtins.elemAt graph fi);
+          if fi < nTop && topPlain then top ti "a:${toString ti}" else anch (builtins.elemAt graph fi);
       # Each group's seed declaration addresses (den-hoag-8hlo3 U1), aligned with `definitions`, given
       # the tree's module anchors (`declAnchorOf`).
       nestedDeclAts =
@@ -6302,6 +6327,8 @@ let
       member = p.member;
       n = member.nests;
       m = if p.mode == "called" then n.calledMode else p.mode;
+      # the group's root, which locates this type's own modules (`rootOrder`)
+      root = if p.group.root == null then null else p.group.root // { located = length n.modules; };
     in
     # A MODULE NODE (den-hoag-470xp) answers its closure entry off the host's position record, as a
     # container node reads its definitions (arm (B)), and never a tree evaluation.
@@ -6333,7 +6360,7 @@ let
           {
             modules = n.modules ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
-            root = p.group.root;
+            inherit root;
             inherit (n.empty) prefix specialArgs check;
           }
           // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6363,7 +6390,7 @@ let
                   }
                 ) p.defs;
               prefix = p.loc;
-              root = p.group.root;
+              inherit root;
               inherit (n) specialArgs check coreShortCircuit;
             }
             // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6381,7 +6408,7 @@ let
               {
                 modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
                 prefix = p.loc;
-                root = p.group.root;
+                inherit root;
                 inherit (n) specialArgs check coreShortCircuit;
               }
               // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6787,12 +6814,13 @@ let
               baseLen = length modList - length editedModules;
               # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
               top0 = moduleTop callM modList;
-              graph0 = removal.closeKept flat top0.roots;
+              graph0 = removal.closeKept flat (rootOrder root top0.roots);
               # the refined graph is spelled at its two reads, so the split binds what it did before
               roots =
-                (if length graph0 == length flat then top0 else (a3.refinedGraph flat callM modList).top).roots;
+                (if length graph0 == length flat then top0 else (a3.refinedGraph root flat callM modList).top)
+                .roots;
               aligned = alignedGraph "the warm origin split" flat (
-                if length graph0 == length flat then graph0 else (a3.refinedGraph flat callM modList).graph
+                if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
               );
               keyAt = i: (builtins.elemAt aligned i).key;
               editKeys = map (e: e.key) (removal.closeKept flat (drop baseLen roots));
@@ -8237,6 +8265,7 @@ let
           # from, one node per entry, and only when the family is read (`knotModules`).
           _flat = flat;
           _modList = modList;
+          _root = root;
           _callM = callM;
           _nested =
             if knot.mints then
