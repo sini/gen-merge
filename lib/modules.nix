@@ -2830,8 +2830,14 @@ let
         let
           e = builtins.elemAt flat i;
           g = builtins.elemAt graph i;
-          k0 = nodeKeyOf e;
-          k = if C == { } || k0 == null || !(C ? ${k0}) then k0 else refinedKeyOf k0 e;
+          k =
+            if C == { } then
+              nodeKeyOf e
+            else
+              let
+                k0 = nodeKeyOf e;
+              in
+              if k0 == null || !(C ? ${k0}) then k0 else refinedKeyOf k0 e;
         in
         (if k == null then builtins.substring 0 1 g.key == "a" else k == g.key)
         && moduleShape e.m0 == moduleShape g.m0;
