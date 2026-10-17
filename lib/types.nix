@@ -63,6 +63,23 @@ let
     mergeTypeDefs
     ;
 
+  # the leaf vocabulary's witness declaration, bound once so a composite states it as a variable (no thunk)
+  typeWitness = types.typeWitness or null;
+
+  # the empty values a constructor states that read none of its arguments, bound once (no thunk per construction)
+  emptyList = {
+    value = [ ];
+  };
+  emptySet = {
+    value = { };
+  };
+  emptyNull = {
+    value = null;
+  };
+  emptySubmodule = {
+    value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
+  };
+
   # mkOption — a plain descriptor; evalModuleTree reads .type/.default/.apply/.readOnly. Identity
   # (tagged) so the gen-aspects/gen-schema re-host is a `lib.mkOption` → `mkOption` rename.
   mkOption = descriptor: descriptor // { _type = "option"; };
@@ -390,7 +407,7 @@ let
         __sealed = ids.__sealed;
         ${if members == [ ] then null else "__okAt"} = ids.__okAt;
         __typeSelf = null;
-        ${if types ? typeWitness then "__witness" else null} = types.typeWitness;
+        ${if types ? typeWitness then "__witness" else null} = typeWitness;
       }
     else
       t;
@@ -1043,7 +1060,7 @@ let
           # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
           # would there and an undefined sub-option refuses by name. That evaluation is the child with an
           # empty seed, read through the threaded fold; called, it refuses (den-hoag-n6dh7 item 1).
-          whenEmpty.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
+          whenEmpty = emptySubmodule;
           # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
           # relation unions rather than merges: an option declared as a submodule in two modules ends up
           # declaring the union of what they declare. On a nullary relation the second declaration would
@@ -1246,7 +1263,7 @@ let
       identified "listOf" [ element ] head [ ] {
         name = "listOf";
         inherit admits;
-        whenEmpty.value = [ ];
+        whenEmpty = emptyList;
         carries.element = element;
         recarry =
           c:
@@ -1464,7 +1481,7 @@ let
       identified tyName [ element ] head [ ] {
         name = tyName;
         inherit admits;
-        whenEmpty.value = { };
+        whenEmpty = emptySet;
         carries.element = element;
         recarry =
           c:
@@ -1617,7 +1634,7 @@ let
     defineType {
       name = "attrs";
       inherit admits;
-      whenEmpty.value = { };
+      whenEmpty = emptySet;
       # STATED, NOT INHERITED, AND TWO-LEVEL. The default nullary relation matches on `.name` alone,
       # which is right for a name this library alone mints. This is not one of those, so a name-only
       # relation would answer `merged` to any same-named partner and silently adopt a fold that is not
@@ -1706,7 +1723,7 @@ let
       # row-stated type carries the stamp so that re-completing it returns it as it is
       # (`defineType`), and a `//` copy of it does not (den-hoag-n8cpq).
       __typeSelf = null;
-      ${if types ? typeWitness then "__witness" else null} = types.typeWitness;
+      ${if types ? typeWitness then "__witness" else null} = typeWitness;
       # ── the module set is EMPTY, and empty is not absent ─────────────────────────────────────────
       # `null` and `[ ]` are two different facts, and a single `null` cannot carry both: `null` says
       # "this type has no sub-module concept at all" (a leaf's answer), `[ ]` says "this type has a
@@ -1862,7 +1879,7 @@ let
         name = "nullOr";
         # A nullable option nobody defined IS null. Distinct from the containers only in which empty
         # value it names.
-        whenEmpty.value = null;
+        whenEmpty = emptyNull;
         carries.element = element;
         recarry =
           c:
