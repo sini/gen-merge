@@ -5085,6 +5085,14 @@ let
     loc:
     "gen-merge: `evalModuleTree': option `${showOption loc}' holds a nested tree with no definition inside ${toString interface.importedTypeWalkFuel} enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of ${toString interface.importedTypeWalkFuel} rather than hang. Define the position, or reach the recursion through a container whose keys are data (`attrsOf', `listOf')";
 
+  # The same fuel on an evaluation's own type (den-hoag-8qenh, OQ1 (C)): its empty value is a child one
+  # level deeper, whose own type's is another, and a read reaching past the fuel refuses by name.
+  typeEmptyRunRefusal =
+    loc:
+    "gen-merge: `evalModuleTree'${
+      if loc == [ ] then "" else " at `${showOption loc}'"
+    }: the empty value of an evaluation's own type is read inside ${toString interface.importedTypeWalkFuel} enclosing empty values of that type: each is a child of the evaluation before it, and the walk refuses past its fuel of ${toString interface.importedTypeWalkFuel} rather than nest without end";
+
   # The declared options of a tree, in declaration order, each with the definitions the realizer
   # routed to it. ONE ROUTING (den-hoag-n6dh7 L5c): `mergeTree` already ran this descent once to
   # build `declaredConfig`, so this reads its result's exposed `declaredPairs` / `subDefs` / `opts`
@@ -5126,6 +5134,9 @@ let
       normalize,
       freeform,
       emptyRun,
+      selfType,
+      emptySelf,
+      root,
     }:
     let
       optionGroup = l: {
@@ -5265,6 +5276,33 @@ let
             }) (positionsOf j g)
           );
         }) groups
+        # THE EVALUATION'S OWN TYPE'S EMPTY VALUE (den-hoag-8qenh, OQ1 (C)): one empty-seed position in
+        # the reserved group `type` (never a JSON list, as `freeform`), whose member is the tree's own
+        # type, so its child is the tree over no definitions, `nests.empty`'s arguments.
+        ++ [
+          {
+            name = "type";
+            # Past the fuel the group holds no position, so an enumeration of the node set stays
+            # total, and the read refuses by name (`typeEmptyRunRefusal`).
+            value =
+              if emptyRun >= interface.importedTypeWalkFuel then
+                { }
+              else
+                {
+                  "[]" = {
+                    key = [ ];
+                    loc = prefix;
+                    member = selfType;
+                    defs = [ ];
+                    address = [ ];
+                    mode = "called";
+                    emptyRun = emptyRun + 1;
+                    # Its modules are this tree's own, so they keep this tree's importer (`root`).
+                    group = { inherit root; };
+                  };
+                };
+          }
+        ]
       );
     in
     # Every field is a binding the walk already holds, so the record costs no thunk: the per-group
@@ -5272,7 +5310,7 @@ let
     # read, and `inputs`, the groups' own inputs, is read back by `seedDeclAts` alone
     # (`nestedDeclAts`, den-hoag-8hlo3 U1).
     {
-      inherit groups positions;
+      inherit groups positions emptySelf;
       inputs = args;
     };
 
@@ -6657,6 +6695,210 @@ let
             )
           ) s) s;
 
+      typeOver =
+        r:
+        let
+          # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
+          # (den-hoag-n6dh7 items 1, 4, 5). The tree is a child of the one evaluation that holds it,
+          # and `threaded` / `threadedReported` read it through that evaluation's accessor: the site
+          # names this tree's `nests`, the fold's `loc` and its `defs`. `threaded` is the STRICT fold,
+          # for every site that carries no undeclared report (a container element, a freeform plane):
+          # a finding in the child is refused by name when this value is read, as nixpkgs refuses per
+          # level. `threadedReported` is the one reporting caller's (the rich realizer fold): the
+          # value and the report off ONE read (ADR-0025 item 1). Its child inherits the carrying
+          # evaluation's strictness on its position record, so a strict carrier's finding is refused
+          # by the tree that owns it. Each refuses a definition outside `admits` before the read
+          # (`refusingOutside`). The CALLED forms (`__functor`, `.reported`) refuse by name (item 1).
+          strictValue =
+            loc: n:
+            if n.undeclared == [ ] then
+              n.config
+            else
+              throw (
+                "gen-merge: "
+                + concatStringsSep "; " (
+                  map (
+                    u:
+                    "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
+                  ) n.undeclared
+                )
+                + "; "
+                + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
+                + " is merged where no undeclared report is carried"
+              );
+          site = ev: loc: defs: {
+            inherit (ev) position;
+            inherit nests loc defs;
+          };
+          nestingFold = {
+            __functor =
+              _: loc: _:
+              throw (calledNestingRefusal "submodule" "mergeDefs" loc);
+            reported =
+              _: loc: _:
+              throw (calledNestingRefusal "submodule" "mergeDefs.reported" loc);
+            threaded =
+              ev:
+              refusingOutside "submodule" isModuleValue (
+                loc: defs: strictValue loc (ev.child (site ev loc defs))
+              );
+            # `strict` is the child's `mode.inherited` by construction (both are the carrying
+            # evaluation's strictness); it is kept so the signature stays `.reported`'s.
+            threadedReported =
+              ev: _strict:
+              refusingOutside "submodule" isModuleValue (
+                loc: defs:
+                let
+                  n = ev.child (site ev loc defs);
+                in
+                {
+                  value = n.config;
+                  inherit (n) undeclared;
+                }
+              );
+          };
+          # The nested tree AS DATA (den-hoag-n6dh7 item 1): what its child evaluates, field for
+          # field: `entry` is one definition read as `defsAsModules false` reads it (every definition
+          # is a module, as the reference `(evalModules …).type` reads it), `empty` is the arguments
+          # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
+          nests = {
+            modules = modList;
+            inherit
+              specialArgs
+              check
+              coreShortCircuit
+              class
+              ;
+            entry = d: head (defsAsModules false [ d ]);
+            empty = {
+              prefix = [ ];
+              inherit specialArgs check;
+            };
+            calledMode = {
+              carried = false;
+              inherited = false;
+            };
+          };
+          # The fold over no definitions, CALLED, refuses (item 1): an undefined tree is the child
+          # with an empty seed, which the threaded fold reads (`threadedAs`).
+          # THE FOLD OVER NO DEFINITIONS OF AN EVALUATION'S OWN TYPE IS A CHILD OF THAT EVALUATION
+          # (den-hoag-8qenh, OQ1 (C)): the position `nested` group `type` holds, with an empty seed, so it
+          # is a node of the one evaluation; each child's own type nests one level deeper, and the run is
+          # cut by the empty-run fuel (`emptyRunRefusal`). An evaluation that mints no positions (the
+          # declaration-only knot) holds none, and reads the bridge's one root evaluation (OQ1 (B)).
+          emptyTree.value =
+            if r._nested == null then
+              nestingFold.threaded (interface.emptyAccessor interface.bridge) [ ] [ ]
+            else if r._nested.positions.type ? "[]" then
+              r._nested.emptySelf.config
+            else
+              throw (typeEmptyRunRefusal prefix);
+        in
+        let
+          over =
+            ms:
+            (evalModuleTreeUnchecked {
+              modules = ms;
+              inherit
+                specialArgs
+                check
+                coreShortCircuit
+                class
+                ;
+            }).type;
+          freeform = resolvedFreeform (
+            map topFreeformEntry (filter hasTopFreeform r._flat)
+            ++ concatMap moduleFreeformEntries (map pushedEntry r._flat)
+          );
+        in
+        strategies.defineType {
+          name = "submodule";
+          mergeDefs = nestingFold;
+          whenEmpty = emptyTree;
+          admits = isModuleValue;
+          shorthandOnlyDefinesConfig = false;
+          inherit nests specialArgs;
+          unroledNested = if freeform == null then { } else { freeformType = freeform; };
+          carries.moduleSet = modList;
+          recarry =
+            c:
+            over (
+              if isAttrs c && c ? moduleSet then
+                c.moduleSet
+              else
+                throw (
+                  "gen-merge: the option type `submodule' states a `carries' gen cannot read at `moduleSet': `carries' "
+                  + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                  + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                  + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                  + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                  + "together in `types.mkType'"
+                )
+            );
+          typeMergeRel = {
+            exact = true;
+            __functor =
+              _:
+              (
+                other:
+                let
+                  pm = interface.importedOffered "moduleSet" other;
+                  partnerArgs = other.specialArgs or { };
+                in
+                if (other.name or null) != "submodule" then
+                  { refused = "`submodule' and `${interface.nameOf other}'"; }
+                else if pm == null then
+                  let
+                    joined = interface.joinInStatedRelation {
+                      name = "submodule";
+                      payload = interface.moduleSetPayload {
+                        modules = modList;
+                        inherit specialArgs;
+                        shorthandOnlyDefinesConfig = false;
+                      };
+                    } other;
+                  in
+                  if joined == null then
+                    {
+                      refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                    }
+                  else
+                    { merged = joined; }
+                # The one datum two `submodule' declarations must agree on beside the name, and the
+                # reason names it, since the names agree.
+                else if (other.shorthandOnlyDefinesConfig or null) != false then
+                  {
+                    refused = "`submodule' reading every definition as a module, and a `submodule' reading an attribute-set definition as config";
+                  }
+                else if builtins.intersectAttrs specialArgs partnerArgs != { } then
+                  { refused = "two `submodule' declarations stating the same specialArgs"; }
+                else
+                  {
+                    merged =
+                      (evalModuleTreeUnchecked {
+                        modules = pm ++ modList;
+                        specialArgs = specialArgs // partnerArgs;
+                        inherit check coreShortCircuit;
+                      }).type;
+                  }
+              );
+          };
+          substructure = {
+            modules = modList;
+            declares =
+              prefix:
+              (evalModuleTreeUnchecked {
+                modules = modList ++ [ namePlaceholder ];
+                inherit
+                  prefix
+                  specialArgs
+                  check
+                  class
+                  ;
+              }).options;
+            rebuild = over;
+          };
+        };
       # The evaluation's body: the knot's own attribute, over the node's reader `self` and the
       # fixpoint `result`. A root's knot drives it; a child's knot is its own node (`childTree`).
       body = (
@@ -8330,6 +8572,11 @@ let
                   ;
                 # A child's own run is on its position record; a root counts `0` (item 4).
                 emptyRun = if knot.inner then (self.getHostAt "positions").emptyRun else 0;
+                # This evaluation's own type, the member of its `type` position, and that child read
+                # off this node (`evAt`'s read).
+                selfType = typeOver result;
+                emptySelf = self.getNta "nested" "type" "[]" knotAttr;
+                inherit root;
                 leaves = realizedLeaves realized;
                 normalize =
                   if coreShortCircuit then
@@ -8464,198 +8711,7 @@ let
         #   * `getSubOptions` is the tree's declarations under the foreign prefix, a standalone
         #     evaluation (`evalModuleTreeUnchecked`), as nixpkgs' `extendModules { prefix }` is, so it
         #     evaluates its own nested trees, whose records are the evaluated ones (`serveOptions`).
-        type =
-          let
-            # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
-            # (den-hoag-n6dh7 items 1, 4, 5). The tree is a child of the one evaluation that holds it,
-            # and `threaded` / `threadedReported` read it through that evaluation's accessor: the site
-            # names this tree's `nests`, the fold's `loc` and its `defs`. `threaded` is the STRICT fold,
-            # for every site that carries no undeclared report (a container element, a freeform plane):
-            # a finding in the child is refused by name when this value is read, as nixpkgs refuses per
-            # level. `threadedReported` is the one reporting caller's (the rich realizer fold): the
-            # value and the report off ONE read (ADR-0025 item 1). Its child inherits the carrying
-            # evaluation's strictness on its position record, so a strict carrier's finding is refused
-            # by the tree that owns it. Each refuses a definition outside `admits` before the read
-            # (`refusingOutside`). The CALLED forms (`__functor`, `.reported`) refuse by name (item 1).
-            strictValue =
-              loc: n:
-              if n.undeclared == [ ] then
-                n.config
-              else
-                throw (
-                  "gen-merge: "
-                  + concatStringsSep "; " (
-                    map (
-                      u:
-                      "option `${showOption u.path}' is not declared by the nested tree that owns it (defined in ${u.file})"
-                    ) n.undeclared
-                  )
-                  + "; "
-                  + (if loc == [ ] then "the tree" else "the tree at `${showOption loc}'")
-                  + " is merged where no undeclared report is carried"
-                );
-            site = ev: loc: defs: {
-              inherit (ev) position;
-              inherit nests loc defs;
-            };
-            nestingFold = {
-              __functor =
-                _: loc: _:
-                throw (calledNestingRefusal "submodule" "mergeDefs" loc);
-              reported =
-                _: loc: _:
-                throw (calledNestingRefusal "submodule" "mergeDefs.reported" loc);
-              threaded =
-                ev:
-                refusingOutside "submodule" isModuleValue (
-                  loc: defs: strictValue loc (ev.child (site ev loc defs))
-                );
-              # `strict` is the child's `mode.inherited` by construction (both are the carrying
-              # evaluation's strictness); it is kept so the signature stays `.reported`'s.
-              threadedReported =
-                ev: _strict:
-                refusingOutside "submodule" isModuleValue (
-                  loc: defs:
-                  let
-                    n = ev.child (site ev loc defs);
-                  in
-                  {
-                    value = n.config;
-                    inherit (n) undeclared;
-                  }
-                );
-            };
-            # The nested tree AS DATA (den-hoag-n6dh7 item 1): what its child evaluates, field for
-            # field: `entry` is one definition read as `defsAsModules false` reads it (every definition
-            # is a module, as the reference `(evalModules …).type` reads it), `empty` is the arguments
-            # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
-            nests = {
-              modules = modList;
-              inherit
-                specialArgs
-                check
-                coreShortCircuit
-                class
-                ;
-              entry = d: head (defsAsModules false [ d ]);
-              empty = {
-                prefix = [ ];
-                inherit specialArgs check;
-              };
-              calledMode = {
-                carried = false;
-                inherited = false;
-              };
-            };
-            # The fold over no definitions, CALLED, refuses (item 1): an undefined tree is the child
-            # with an empty seed, which the threaded fold reads (`threadedAs`).
-            emptyTree.value = throw (calledNestingRefusal "submodule" "whenEmpty" null);
-          in
-          let
-            over =
-              ms:
-              (evalModuleTreeUnchecked {
-                modules = ms;
-                inherit
-                  specialArgs
-                  check
-                  coreShortCircuit
-                  class
-                  ;
-              }).type;
-            freeform = resolvedFreeform (
-              map topFreeformEntry (filter hasTopFreeform result._flat)
-              ++ concatMap moduleFreeformEntries (map pushedEntry result._flat)
-            );
-          in
-          strategies.defineType {
-            name = "submodule";
-            mergeDefs = nestingFold;
-            whenEmpty = emptyTree;
-            admits = isModuleValue;
-            shorthandOnlyDefinesConfig = false;
-            inherit nests specialArgs;
-            unroledNested = if freeform == null then { } else { freeformType = freeform; };
-            carries.moduleSet = modList;
-            recarry =
-              c:
-              over (
-                if isAttrs c && c ? moduleSet then
-                  c.moduleSet
-                else
-                  throw (
-                    "gen-merge: the option type `submodule' states a `carries' gen cannot read at `moduleSet': `carries' "
-                    + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
-                    + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
-                    + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
-                    + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
-                    + "together in `types.mkType'"
-                  )
-              );
-            typeMergeRel = {
-              exact = true;
-              __functor =
-                _:
-                (
-                  other:
-                  let
-                    pm = interface.importedOffered "moduleSet" other;
-                    partnerArgs = other.specialArgs or { };
-                  in
-                  if (other.name or null) != "submodule" then
-                    { refused = "`submodule' and `${interface.nameOf other}'"; }
-                  else if pm == null then
-                    let
-                      joined = interface.joinInStatedRelation {
-                        name = "submodule";
-                        payload = interface.moduleSetPayload {
-                          modules = modList;
-                          inherit specialArgs;
-                          shorthandOnlyDefinesConfig = false;
-                        };
-                      } other;
-                    in
-                    if joined == null then
-                      {
-                        refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
-                      }
-                    else
-                      { merged = joined; }
-                  # The one datum two `submodule' declarations must agree on beside the name, and the
-                  # reason names it, since the names agree.
-                  else if (other.shorthandOnlyDefinesConfig or null) != false then
-                    {
-                      refused = "`submodule' reading every definition as a module, and a `submodule' reading an attribute-set definition as config";
-                    }
-                  else if builtins.intersectAttrs specialArgs partnerArgs != { } then
-                    { refused = "two `submodule' declarations stating the same specialArgs"; }
-                  else
-                    {
-                      merged =
-                        (evalModuleTreeUnchecked {
-                          modules = pm ++ modList;
-                          specialArgs = specialArgs // partnerArgs;
-                          inherit check coreShortCircuit;
-                        }).type;
-                    }
-                );
-            };
-            substructure = {
-              modules = modList;
-              declares =
-                prefix:
-                (evalModuleTreeUnchecked {
-                  modules = modList ++ [ namePlaceholder ];
-                  inherit
-                    prefix
-                    specialArgs
-                    check
-                    class
-                    ;
-                }).options;
-              rebuild = over;
-            };
-          };
+        type = typeOver result;
       }
       // (if knot.exposes then { inherit (result) _evaluation; } else { });
   # The published door's engine: a ROOT evaluation, which mints its nested positions.
