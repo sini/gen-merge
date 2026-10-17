@@ -4344,6 +4344,7 @@ let
     evalModuleTreeWith knotRootPositioned m.carried m.inherited (
       {
         modules = site.nests.modules ++ map site.nests.entry site.defs;
+        seedCount = length site.defs;
         prefix = site.loc;
         inherit (site.nests) specialArgs check coreShortCircuit;
       }
@@ -6448,6 +6449,9 @@ let
       # a nested tree's is built once per option group (`nestedGroups`), carrying its declaring file. `null`
       # for a top-level tree, whose modules keep nixpkgs' root label.
       root ? null,
+      # How many of `modules` are a position's definitions, trailing the type's own: the export bridge's
+      # child states it (`nestedTreeAt`); an inner child reads its position (`_module.args`' record).
+      seedCount ? null,
       # ── opt-in warm re-eval (design spec §§1-4) ────────────────────────────────────────────────
       # `warmFrom` = the PREVIOUS `evalModuleTree` result (its `config`/`provenance`/`freeformConfig`/
       # `freeformProv` ARE the memo — no new table); `editedModules` = the appended module LIST (the
@@ -8202,7 +8206,8 @@ let
                       ;
                     inherit (knot) positioned;
                     # an inner child's seeds are its position's definitions, the trailing top-level modules
-                    seeds = if knot.inner && knot.positioned then length (self.getHostAt "positions").defs else null;
+                    seeds =
+                      if knot.inner && knot.positioned then length (self.getHostAt "positions").defs else seedCount;
                     name = (positionArgsAt prefix).name;
                     internal = {
                       inherit (moduleConfig._module.args) extendModules;
