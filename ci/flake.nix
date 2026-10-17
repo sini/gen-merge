@@ -3,7 +3,7 @@
     gen-harness.url = "github:sini/gen-harness";
     gen-prelude.url = "github:sini/gen-prelude";
     gen-types.url = "github:sini/gen-types";
-    # The comparison MACHINERY (ci/tests/differential.nix). It enters on the TEST plane and not on
+    # The comparison MACHINERY (ci/tests/differential.nix, consumer.nix, subjects.nix). It enters on the TEST plane and not on
     # the library's, which is the same placement `nixpkgs` gets below and for the same reason: an
     # instrument the engine is measured by must not become a node in the engine's own lock. It is
     # dependency-free — its whole surface is written in `builtins` — so pinning it adds exactly one
@@ -140,6 +140,14 @@
       # as it is for the equivalence oracle — the two instruments assert over one reference by
       # construction rather than by two files agreeing about which nixpkgs they meant.
       differential = gen-differential.lib;
+      # gen-differential's own subject (its `ci/tests/_arms.nix`, read from the pinned source), the
+      # first entry of the two-subject roster `subjects.nix` guards. Its seam re-imports nixpkgs'
+      # module source into nixpkgs' own fixpoint, so path and `lib` come from the one `nixpkgs` above.
+      differentialArms = import "${gen-differential}/ci/tests/_arms.nix" {
+        inherit nixpkgsLib;
+        nixpkgsSrc = inputs.nixpkgs;
+        genDifferential = differential;
+      };
     in
     gen-harness.lib.mkCi {
       inherit inputs;
@@ -168,6 +176,7 @@
           genScope
           interface
           differential
+          differentialArms
           ;
       };
       extraModules = [
