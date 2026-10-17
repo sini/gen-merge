@@ -2409,7 +2409,7 @@ let
     in
     if q != null && q ? refine then q.refine q.subject else null;
   distinctAt = w: x: refineOf w.e != null && refineOf x.e != null && refineOf w.e != refineOf x.e;
-  refinedKeyOf = k: e: k + "#" + refineOf e;
+  refinedKeyOf = k: e: k + "/" + refineOf e;
   keyedDrop =
     specialArgs: callM: w: x:
     let
