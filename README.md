@@ -2636,6 +2636,18 @@ same modules.
   kind with parents by its mark and publishes its sealed comparison on the kind value's record
   (`ci/tests/key-eq.nix`).
 
+- **A `__functor` module may name its graph node on its record, `__moduleKey`, and its meeting,
+  `__keyEq.meeting`.** The node key is read before the module is applied, and keys the module graph
+  (node ids, the warm origin split, declaration anchors); the result's `key` stays the REFERENCE key,
+  which every evaluator dedups by and a `disabledModules` item names. The merge path meets
+  occurrences by meeting: a key `<meeting>#<refinement>` meets every key sharing `<meeting>`, so a
+  record's reference key is forced only where another occurrence shares its meeting, and every pair
+  sharing a reference key still meets and is decided as above. A record stating no meeting meets by
+  its result's `key`, as a plain module does. **The stated meeting is trusted:** a record whose key
+  it does not prefix is refused by name where it meets, but a plain module stating that key never
+  meets it, and both compose where nixpkgs keeps one, because detecting the mismatch would force the
+  key at every import (`ci/tests/key-meeting.nix`).
+
 - **An import cycle terminates.** A keyed or path cycle (`a` imports `b` imports `a`, or a module
   importing itself) closes over its finite set of node ids and each module contributes once
   (`test-c1-…` to `test-c4-…`). nixpkgs overflows the stack on the same modules, uncatchably, so the
@@ -3166,7 +3178,7 @@ name (naming every surplus key and the file, whatever `check` says), and a short
 nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require` joins `imports`;
 `meta` on a structured module is folded into config). Both lists also carry gen-merge's engine keys
 `__pureModule`, `__reservedKeys` and `__keyEq`, and the shorthand list carries `_module`, which a shorthand module reads as config.
-`__reservedKeys` and `__keyEq` are also read off the RECORD of a `__functor` module, its unapplied
+`__reservedKeys`, `__keyEq` and `__moduleKey` are read off the RECORD of a `__functor` module, its unapplied
 value, published as `moduleSyntax.functorRecord`: nixpkgs applies a functor and collects only its
 result, so a key carried there reaches no foreign evaluator, where in a module's content it is an
 unsupported attribute (structured) or a configuration key (shorthand). Such a module classifies as

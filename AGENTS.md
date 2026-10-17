@@ -174,7 +174,12 @@ first line of each).
   non-boolean, or only one occurrence publishing it is refused by name, the same in both import orders
   wherever both occurrences publish one symmetric `decide`, as gen-schema's do; gen-merge applies the
   kept occurrence's `decide`. Neither publishing keeps nixpkgs' first-wins rule; a module publishing it
-  without a `key` is refused by name.
+  without a `key` is refused by name. Its optional `meeting` is the key's mark-free part: the merge path
+  (`meetKeyOf`) meets occurrences by it and forces the record's `key` only at a meeting; it is trusted,
+  not checked against the key until a meeting.
+- `__moduleKey` — writer gen-schema `mkSchemaEntryType` (`lib/entry-type.nix`, binding `keyEqRecord`, on the kind value's functor record), reader `nodeKeyOf` and `meetKeyOf` (`lib/modules.nix`):
+  a `__functor` module's graph node, read before the module is applied (`null` names no node); the
+  result's `key` stays the reference key that dedup and `disabledModules` read.
 
 ## Entry points by task
 

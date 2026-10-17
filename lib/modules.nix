@@ -1510,6 +1510,7 @@ let
   functorRecordKeys = [
     "__reservedKeys"
     "__keyEq"
+    "__moduleKey"
   ];
   # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
   # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
@@ -2194,6 +2195,8 @@ let
     importer: i: m0: m:
     if builtins.isPath m0 || isPathString m0 then
       "k" + builtins.unsafeDiscardStringContext (toString (m.key or m0))
+    else if (m0.__moduleKey or null) != null then
+      "k" + builtins.unsafeDiscardStringContext (toString m0.__moduleKey)
     else if isAttrs m && m ? key then
       "k" + builtins.unsafeDiscardStringContext (toString m.key)
     else
@@ -2241,7 +2244,12 @@ let
         m = callM m0;
         self = {
           key = moduleKeyOf importer i m0 m;
-          inherit importer i m0;
+          inherit
+            importer
+            i
+            m0
+            m
+            ;
           next = moduleLevel callM self (importsOf m);
         };
       in
@@ -2350,12 +2358,47 @@ let
     ) mods;
   # A node key is an attribute name, which may carry no string context: a path module's store path
   # (or a key computed from one) names its node, and the context is not part of the name.
+  # THE RECORD-CHANNEL KEY (den-hoag-9zyp7 OQ2 (a2)): a `__functor` module may name its NODE on its
+  # record (`__moduleKey`), read before it is applied, and this engine never forces the result's `key`
+  # to identify it. The result's `key` stays the module's REFERENCE key: what a foreign evaluator keys
+  # by, and what a `disabledModules` item names here too (`removal`, nixpkgs' `moduleKey`).
   nodeKeyOf =
     { m0, content, ... }:
     if builtins.isPath m0 || isPathString m0 then
       "k" + builtins.unsafeDiscardStringContext (toString (content.key or m0))
+    else if (m0.__moduleKey or null) != null then
+      "k" + builtins.unsafeDiscardStringContext (toString m0.__moduleKey)
     else if isAttrs content && content ? key then
       "k" + builtins.unsafeDiscardStringContext (toString content.key)
+    else
+      null;
+  # THE MERGE PATH MEETS BY A KEY'S MEETING (den-hoag-9zyp7 OQ2 v3): nixpkgs dedups by the reference
+  # key, and two occurrences may share it under two node keys (two declaration nodes of one mark), so
+  # the merge path cannot meet by node key. A key `<meeting>#<refinement>` meets every key sharing
+  # `<meeting>`. A record states its meeting apart (`__keyEq.meeting`; its reference key, the result's
+  # `key`, must be `<meeting>#<refinement>`), so its key, which may read the declaration it keys, is
+  # demanded only where another occurrence shares its meeting (`a3.refineOf`); a record stating no
+  # meeting meets by its result's `key`, as a plain module does. The stated meeting is trusted: a
+  # record whose key it does not prefix is refused only where it meets. A key with no `#` is its
+  # own meeting (`k<key>`); a meeting is spelled `m<meeting>`, so the two never meet. The arms are
+  # `nodeKeyOf`'s, spelled inline, because a call per entry allocates an environment per entry.
+  meetKeyOf =
+    let
+      parts = "k(.*)${builtins.fromJSON "\"\\u0023\""}(.*)";
+      meetOf =
+        n:
+        let
+          s = builtins.match parts n;
+        in
+        if s == null then n else "m" + builtins.head s;
+    in
+    { m0, content, ... }:
+    if builtins.isPath m0 || isPathString m0 then
+      meetOf ("k" + builtins.unsafeDiscardStringContext (toString (content.key or m0)))
+    else if (m0.__moduleKey or null) != null && (m0.__keyEq.meeting or null) != null then
+      "m" + builtins.unsafeDiscardStringContext (toString m0.__keyEq.meeting)
+    else if isAttrs content && content ? key then
+      meetOf ("k" + builtins.unsafeDiscardStringContext (toString content.key))
     else
       null;
   # THE KEY COMPARISON (`__keyEq = { subject; decide; }`, den-hoag-kind-generator-collision-d4gnx).
@@ -2372,13 +2415,158 @@ let
   # so it is decided by `removal.walk.lost`.
   isPathModule = m0: builtins.isPath m0 || isPathString m0;
   keqOf = e: e.content.__keyEq or (e.m0.__keyEq or null);
+  # (a3), den-hoag-9zyp7 OQ2: ONE binding, so a tree that never meets a refined key pays one thunk.
+  # An occurrence's REFINEMENT is its reference key's text after its last `#`. Two occurrences of one
+  # meeting whose refinements differ are two keys; both compose, each under the meeting refined by its
+  # refinement (`<meeting>#<refinement>`, the reference key itself), and an occurrence equal to an
+  # earlier one of its refined key is decided against THAT one (`keyedDrop`). Read only where two
+  # occurrences meet.
+  a3 = rec {
+    # built from its JSON escape: a `#` inside a string would break the purity scan's strip premise
+    sep = builtins.fromJSON "\"\\u0023\"";
+    # A record's reference key is its result's `key`, forced here only (at a meeting), and it must be
+    # `<meeting>#<refinement>`, or a plain key equal to it would never meet it.
+    refineOf =
+      e:
+      let
+        record = (e.m0.__moduleKey or null) != null;
+        n =
+          if !record then
+            nodeKeyOf e
+          else if isAttrs e.content && e.content ? key then
+            "k" + builtins.unsafeDiscardStringContext (toString e.content.key)
+          else
+            null;
+        s = if n == null then null else builtins.match "k(.*)${sep}(.*)" n;
+        meeting = e.m0.__keyEq.meeting or null;
+      in
+      if s == null then
+        (
+          if record && meeting != null then
+            throw "gen-merge: module `${e._file}' states the meeting '${meeting}', and its key is not '${meeting}${sep}<refinement>'. A record's key comparison meets every occurrence of its key's mark-free part: state the key that part names, or no meeting."
+          else
+            null
+        )
+      else if record && meeting != null && builtins.head s != meeting then
+        throw "gen-merge: module `${e._file}' states the meeting '${meeting}', and its key '${
+          builtins.substring 1 (builtins.stringLength n) n
+        }' is not '${meeting}${sep}<refinement>'. A record's key comparison meets every occurrence of its key's mark-free part: state the key that part names, or no meeting."
+      else
+        builtins.elemAt s 1;
+    distinctAt = w: x: refineOf w.e != null && refineOf x.e != null && refineOf w.e != refineOf x.e;
+    refinedKeyOf = k: e: k + sep + refineOf e;
+    # a level's occurrences decided distinct, first per refined key; built only where a meeting is
+    # decided distinct
+    distinctFirst =
+      seen: first: at:
+      listToAttrs (
+        concatMap (
+          x:
+          let
+            w = seen.${x.k} or first.${x.k};
+          in
+          if x.k != null && (seen ? ${x.k} || first.${x.k}.p != x.p) && distinctAt w x then
+            [
+              {
+                name = refinedKeyOf x.k x.e;
+                value = x;
+              }
+            ]
+          else
+            [ ]
+        ) at
+      );
+    noRefined = _: [ { } ];
+    # THE GRAPH: the identity-keyed closure spells a collided node key refined for EVERY occurrence, the
+    # first included, so its ids do not depend on import order. `C`: the node keys `flat` holds twice.
+    collidedOf =
+      flat:
+      prelude.filterAttrs (_: v: length v > 1) (
+        builtins.groupBy (k: k) (
+          concatMap (
+            e:
+            let
+              k = nodeKeyOf e;
+            in
+            if k == null then [ ] else [ k ]
+          ) flat
+        )
+      );
+    levelC =
+      C: callM: importer: mods:
+      prelude.imap0 (
+        i: m0:
+        let
+          m = callM m0;
+          k0 = moduleKeyOf importer i m0 m;
+          self = {
+            key =
+              if C ? ${k0} then
+                refinedKeyOf k0 {
+                  content = m;
+                  inherit m0;
+                }
+              else
+                k0;
+            inherit
+              importer
+              i
+              m0
+              m
+              ;
+            next = levelC C callM self (importsOf m);
+          };
+        in
+        self
+      ) mods;
+    topR =
+      C: callM: mods:
+      let
+        top = {
+          key = "";
+          roots = levelC C callM top mods;
+        };
+      in
+      top;
+    # The kept graph of a collection is the unrefined closure, except where that closure is SHORTER
+    # than `flat` (two constructions of one node key, which the unrefined closure dedups and nothing
+    # else shortens): then it is this one, refined. Each graph reader spells the test inline, so a tree
+    # with no such pair never forces this binding. `{ top; graph; }`.
+    refinedGraph =
+      flat: callM: mods:
+      let
+        t = topR (collidedOf flat) callM mods;
+      in
+      {
+        top = t;
+        graph = removal.closeKept flat t.roots;
+      };
+  };
+  # `chain null`: the refined-key maps of x's level (head) and of every shallower level (tail), built
+  # only where a meeting is decided distinct.
   keyedDrop =
-    specialArgs: callM: w: x:
+    specialArgs: callM: chain: w: x:
     let
-      key = builtins.substring 1 (builtins.stringLength x.k) x.k;
+      k1 = builtins.substring 1 (builtins.stringLength x.k) x.k;
+      key = if builtins.substring 0 1 x.k == "m" then k1 + a3.sep + a3.refineOf x.e else k1;
     in
     if isPathModule x.e.m0 && isPathModule w.e.m0 && toString x.e.m0 == toString w.e.m0 then
       false
+    else if builtins.substring 0 1 x.k == "m" && a3.distinctAt w x then
+      # (a3) two keys of one meeting: x is decided against the first occurrence of its own refined
+      # key, in this level or a shallower one, and kept where it is that first
+      let
+        rk = a3.refinedKeyOf x.k x.e;
+        rs = chain null;
+        here = builtins.head rs;
+        shallower = builtins.filter (d: d ? ${rk}) (builtins.tail rs);
+      in
+      if shallower != [ ] then
+        keyedDrop specialArgs callM a3.noRefined (builtins.head shallower).${rk} x
+      else if here.${rk}.p == x.p then
+        true
+      else
+        keyedDrop specialArgs callM a3.noRefined here.${rk} x
     else if keqOf w.e == null && keqOf x.e == null then
       removal.walk.lost specialArgs callM x.e
     else if keqOf w.e == null || keqOf x.e == null then
@@ -2404,7 +2592,7 @@ let
         keyed = any (e: nodeKeyOf e != null) level;
         at = prelude.imap0 (p: e: {
           inherit p e;
-          k = nodeKeyOf e;
+          k = meetKeyOf e;
         }) level;
         # `listToAttrs` keeps a name's FIRST occurrence: the level's first entry per node key
         first = listToAttrs (
@@ -2429,7 +2617,9 @@ let
                 x.k == null
                 || (
                   if seen ? ${x.k} || first.${x.k}.p != x.p then
-                    keyedDrop specialArgs callM (seen.${x.k} or first.${x.k}) x
+                    keyedDrop specialArgs callM (
+                      _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
+                    ) (seen.${x.k} or first.${x.k}) x
                   else
                     true
                 )
@@ -2439,15 +2629,30 @@ let
             level;
       in
       kept
-      ++ moduleLevels specialArgs callM (if keyed then seen // first else seen) (
-        concatMap (
-          { content, ... }@e:
-          if e ? dis then
-            removal.walk.keptEntries e.dis callM e (importsOf content)
-          else
-            moduleEntries callM e (importsOf content)
-        ) kept
-      );
+      # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
+      # a key is itself decided against it, and must never replace it (den-hoag-9zyp7 gate v0 C1). The
+      # refined-key chain under "" is this level's, which already holds every shallower one.
+      ++
+        moduleLevels specialArgs callM
+          (
+            if keyed then
+              first
+              // seen
+              // {
+                "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+              }
+            else
+              seen
+          )
+          (
+            concatMap (
+              { content, ... }@e:
+              if e ? dis then
+                removal.walk.keptEntries e.dis callM e (importsOf content)
+              else
+                moduleEntries callM e (importsOf content)
+            ) kept
+          );
   moduleClosure =
     specialArgs: callM: root: mods:
     let
@@ -2534,9 +2739,12 @@ let
       else
         let
           dis = (head flat).dis;
+          # a record-keyed node is named by its REFERENCE key, the one a removal item states
           nk =
             g:
-            if builtins.substring 0 1 g.key == "k" then
+            if (g.m0.__moduleKey or null) != null then
+              builtins.unsafeDiscardStringContext (toString g.m.key)
+            else if builtins.substring 0 1 g.key == "k" then
               builtins.substring 1 (builtins.stringLength g.key) g.key
             else
               "${if g.importer.key == "" then "" else nk g.importer}:anon-${toString (g.i + 1)}";
@@ -2727,7 +2935,19 @@ let
           g = builtins.elemAt graph i;
           k = nodeKeyOf e;
         in
-        (if k == null then builtins.substring 0 1 g.key == "a" else k == g.key)
+        (
+          if k == null then
+            builtins.substring 0 1 g.key == "a"
+          # a node the kept graph spells refined ((a3), `a3.refinedGraph`) agrees by its refinement
+          else
+            k == g.key
+            || (
+              let
+                r = a3.refineOf e;
+              in
+              r != null && g.key == k + a3.sep + r
+            )
+        )
         && moduleShape e.m0 == moduleShape g.m0;
       bad = filter (i: !(agrees i)) (prelude.genList (i: i) n);
     in
@@ -2747,9 +2967,10 @@ let
   # discriminates the node by data (`mode = "module"`, den-hoag-9d80v) and carries what the node
   # answers, off the host's record: its entry and the ids its imports identify to.
   moduleFamily =
-    treeId: defIndex: flat: top:
+    treeId: defIndex: flat: kg:
     let
-      graph = alignedGraph "the module family of `${treeId}'" flat (removal.closeKept flat top.roots);
+      inherit (kg) top;
+      graph = alignedGraph "the module family of `${treeId}'" flat kg.graph;
       n = length flat;
       indexed = prelude.genList (
         i:
@@ -5635,7 +5856,19 @@ let
     let
       r = self.get id knotAttr;
     in
-    moduleFamily id (length r._nested.groups) r._flat (moduleTop r._callM r._modList);
+    let
+      top0 = moduleTop r._callM r._modList;
+      graph0 = removal.closeKept r._flat top0.roots;
+    in
+    moduleFamily id (length r._nested.groups) r._flat (
+      if length graph0 == length r._flat then
+        {
+          top = top0;
+          graph = graph0;
+        }
+      else
+        a3.refinedGraph r._flat r._callM r._modList
+    );
   knotDefinitions =
     let
       nestedDefinitions = n: map (g: g.definitions) n.groups;
@@ -5832,9 +6065,13 @@ let
               builtins.elemAt seeds (i - nOwn)
             else
               tree ++ [ { module = i; } ];
-          graph = alignedGraph "the declaration anchors" flat (
-            removal.closeKept flat (moduleTop r._callM r._modList).roots
-          );
+          graph =
+            let
+              graph0 = removal.closeKept flat (moduleTop r._callM r._modList).roots;
+            in
+            alignedGraph "the declaration anchors" flat (
+              if length graph0 == length flat then graph0 else (a3.refinedGraph flat r._callM r._modList).graph
+            );
           anch =
             g:
             if g.importer.key == "" then
@@ -6430,10 +6667,14 @@ let
             let
               baseLen = length modList - length editedModules;
               # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
-              top = moduleTop callM modList;
-              graph = removal.closeKept flat top.roots;
-              roots = top.roots;
-              aligned = alignedGraph "the warm origin split" flat graph;
+              top0 = moduleTop callM modList;
+              graph0 = removal.closeKept flat top0.roots;
+              # the refined graph is spelled at its two reads, so the split binds what it did before
+              roots =
+                (if length graph0 == length flat then top0 else (a3.refinedGraph flat callM modList).top).roots;
+              aligned = alignedGraph "the warm origin split" flat (
+                if length graph0 == length flat then graph0 else (a3.refinedGraph flat callM modList).graph
+              );
               keyAt = i: (builtins.elemAt aligned i).key;
               editKeys = map (e: e.key) (removal.closeKept flat (drop baseLen roots));
               baseKeys = listToAttrs (
