@@ -8062,13 +8062,10 @@ let
                   valueMeta = { };
                 };
             };
-        # A nesting type's empty value is its tree over no definitions, through the bridge's empty
-        # accessor (`emptyAccessor`): its called `whenEmpty` refuses (den-hoag-n6dh7 item 1).
-        emptyValue =
-          if isNesting t then
-            { value = t.mergeDefs.threaded (emptyAccessor bridge) [ ] [ ]; }
-          else
-            t.whenEmpty or { };
+        # A nesting type's empty value is its own `whenEmpty`, ONE construction for the native and
+        # the exported field (den-hoag-8qenh, OQ1 (C+B)): an evaluation's own type reads its child
+        # over no definitions, and a free-standing `submodule' the bridge's one root evaluation.
+        emptyValue = t.whenEmpty or { };
         nestedTypes =
           (t.unroledNested or { })
           // (if role == null then { } else roleSpelling.${role}.nested t.carries.${role});
