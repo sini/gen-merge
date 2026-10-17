@@ -212,6 +212,44 @@ let
       ];
     in
     wrapD sub;
+  # the base shape of the fixture (`sub`) over a type that does or does not state `nests.declAt`
+  declAtOrder =
+    flag:
+    let
+      ty = t.submodule {
+        _file = "q.nix";
+        imports = [ lf ];
+        x = [ "q" ];
+      };
+      n = ty.nests;
+      dt =
+        if flag then
+          t.defineType (
+            ty
+            // {
+              nests = n // {
+                declAt = true;
+                entry = d: n.entry { inherit (d) file value; };
+              };
+            }
+          )
+        else
+          ty;
+    in
+    (g.evalModuleTree { } [
+      {
+        _file = "decl.nix";
+        options.o = g.mkOption { type = dt; };
+      }
+      {
+        _file = "def.nix";
+        config.o.x = [ "def" ];
+      }
+      {
+        _file = "def2.nix";
+        config.o.x = [ "def2" ];
+      }
+    ]).config.o.x;
   anchors = mods: map (e: map (i: i.seen) e.inner) (g.evalModuleTree { } mods).config.o;
   twins = builtins.filter (n: !(builtins.elem n beyond)) (builtins.attrNames np);
   twin =
@@ -281,6 +319,15 @@ in
           ]
         ]
       ];
+    };
+    # a type stating `nests.declAt` takes its own call in `childTree`, and reads the order its plain twin does
+    test-a-declAt-child-reads-the-located-order = {
+      expr = declAtOrder true;
+      expected = declAtOrder false;
+    };
+    test-a-declAt-child-reads-nixpkgs-order = {
+      expr = declAtOrder false;
+      expected = np.sub;
     };
     # beyond nixpkgs: the untyped-then-typed order, a field shadowed (`ut` without the shadow is a twin)
     test-gm-utShadow-reads-the-located-order = {
