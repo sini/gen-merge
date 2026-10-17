@@ -4733,6 +4733,13 @@ let
   # are the fold's: the routed definitions and the option's default, discharged, priority-resolved
   # and ordered. The freeform plane's are the coalesced definitions its fold takes whole, with nothing
   # discharged above its container.
+  # nixpkgs locates a module set only where the option's type forwards `getSubModules` to it: a
+  # container chain ending at a nesting type, never through a union (`either', `oneOf' forward none).
+  # Walked by `carries`, never by reading `getSubModules`, which refuses past the walk's fuel.
+  forwardsModuleSet =
+    t:
+    isAttrs t
+    && (interface.isNesting t || (!(t ? choose) && t ? carries.element && forwardsModuleSet t.carries.element));
   nestedGroups =
     args@{
       prefix,
@@ -4752,7 +4759,7 @@ let
         # the file its nested trees' own modules inherit: the declaration carrying a type, where that
         # type states a module set (nixpkgs locates only `getSubModules`; an `either` forwards none)
         file =
-          if l.opt ? type && interface.sameValue.modules l.opt.type != null then
+          if forwardsModuleSet (l.opt.type or null) then
             (head (filter (x: x.decl ? type) (sitesAt (prefix ++ l.path)) ++ [ { file = "<unknown-file>"; } ]))
             .file
           else
