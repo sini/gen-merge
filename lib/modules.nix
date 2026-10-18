@@ -2776,17 +2776,24 @@ let
   # it sits at. A breadth-first queue whose head is k wrappers, each importing one own module, is the
   # same queue, once the top level is popped, as one starting with the top level's other modules and
   # then the k own modules: so the level is an ORDER of the top level, read after each module's
-  # coordinate is assigned, and mints no node. `located` is k, on a nested root only (`childTree`).
+  # coordinate is assigned, and mints no node. `located` is k, on a nested root only (`childTree`). The merge
+  # path's collection reads the root's `order`, the same rotation built where the two halves are still apart;
+  # a reader of the indexed, authored list (the graph, the anchors, the removal walk) rotates it here.
   rootOrder =
     root: xs:
-    let
-      k = root.located or 0;
-    in
-    if k == 0 then xs else drop k xs ++ take k xs;
+    if (root.located or 0) == 0 then
+      xs
+    else
+      let
+        l = length xs;
+      in
+      prelude.genList (
+        i: prelude.elemAt xs (if i + root.located < l then i + root.located else i + root.located - l)
+      ) l;
   moduleClosure =
     specialArgs: callM: root: mods:
     let
-      plain = rootOrder root (moduleEntries callM root mods);
+      plain = moduleEntries callM root (root.order or mods);
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -6327,8 +6334,18 @@ let
       member = p.member;
       n = member.nests;
       m = if p.mode == "called" then n.calledMode else p.mode;
-      # the group's root, which locates this type's own modules (`rootOrder`)
-      root = if p.group.root == null then null else p.group.root // { located = length n.modules; };
+      # the group's root, which locates this type's own modules: their count, and the top level in the order
+      # a located collection reads it (`rootOrder`), built here where the two halves are still apart
+      rootOver =
+        rest:
+        if p.group.root == null then
+          null
+        else
+          p.group.root
+          // {
+            located = length n.modules;
+            order = rest ++ n.modules;
+          };
     in
     # A MODULE NODE (den-hoag-470xp) answers its closure entry off the host's position record, as a
     # container node reads its definitions (arm (B)), and never a tree evaluation.
@@ -6360,7 +6377,7 @@ let
           {
             modules = n.modules ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
-            inherit root;
+            root = rootOver [ namePlaceholder ];
             inherit (n.empty) prefix specialArgs check;
           }
           // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6377,25 +6394,27 @@ let
         if n.declAt or false then
           let
             declAts = seedDeclAts.seedsOf ra self id p;
+            seeds = prelude.imap0 (
+              k: d:
+              n.entry {
+                inherit (d) file value;
+                declAt = builtins.elemAt declAts k;
+              }
+            ) p.defs;
           in
           evalModuleTreeWith knotChildPositioned m.carried m.inherited (
             {
-              modules =
-                n.modules
-                ++ prelude.imap0 (
-                  k: d:
-                  n.entry {
-                    inherit (d) file value;
-                    declAt = builtins.elemAt declAts k;
-                  }
-                ) p.defs;
+              modules = n.modules ++ seeds;
               prefix = p.loc;
-              inherit root;
+              root = rootOver seeds;
               inherit (n) specialArgs check coreShortCircuit;
             }
             // (if (n.class or null) == null then { } else { inherit (n) class; })
           )
         else
+          let
+            seeds = map (d: n.entry { inherit (d) file value; }) p.defs;
+          in
           (
             if n.partial or false then
               evalModuleTreeWith (knotChildPositioned // { partial = true; })
@@ -6406,9 +6425,9 @@ let
             m.inherited
             (
               {
-                modules = n.modules ++ map (d: n.entry { inherit (d) file value; }) p.defs;
+                modules = n.modules ++ seeds;
                 prefix = p.loc;
-                inherit root;
+                root = rootOver seeds;
                 inherit (n) specialArgs check coreShortCircuit;
               }
               // (if (n.class or null) == null then { } else { inherit (n) class; })
