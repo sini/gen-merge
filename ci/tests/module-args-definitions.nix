@@ -249,6 +249,11 @@ let
           }
         ];
       };
+      # the own module keyed: the child's top level is not plain, so its definitions are classified through
+      # the closure graph, read in the root's order
+      innerK = inner // {
+        key = "inner-k";
+      };
       seed = {
         _module.args.z = 3;
         lst = [ "def" ];
@@ -270,6 +275,7 @@ let
         _file = "decl.nix";
         options = builtins.mapAttrs (_: type: mkOption { inherit type; }) {
           s = N.submodule inner;
+          sk = N.submodule innerK;
           at = N.attrsOf (N.submodule inner);
           ls = N.listOf (N.submodule inner);
           no = N.nullOr (N.submodule inner);
@@ -285,6 +291,7 @@ let
         _file = "def.nix";
         config = {
           s = seed;
+          sk = seed;
           at.k = seed;
           ls = [ seed ];
           no = seed;
@@ -410,6 +417,7 @@ let
           topR
         ]).config.topf;
       sub = c.s.f;
+      subK = c.sk.f;
       at = c.at.k.f;
       ls = (builtins.head c.ls).f;
       no = c.no.f;
@@ -657,6 +665,7 @@ in
       "topD2"
       "topKK"
       "sub"
+      "subK"
       "at"
       "ls"
       "no"
