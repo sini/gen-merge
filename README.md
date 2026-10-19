@@ -2014,6 +2014,18 @@ unless a caller supplied it. A module whose `_module.args` key set reads `name`
 (`_module.args = if name == … then { … } else { }`) dies with infinite recursion, as in nixpkgs: whether
 a module states `name` is decided by that key set, so it cannot wait on `name`.
 
+**A once-declared nesting type's own modules are read before its definitions, as nixpkgs reads them.**
+nixpkgs hands each module of a type it locates (`getSubModules` non-null, so never through `either` or
+`oneOf`) through `setDefaultModuleLocation`, one breadth-first level below the definitions, and an
+option reads its definitions last-collected first. A `listOf` defined by a submodule's own module and by
+two definitions therefore merges `[ "q" "def" "def2" ]`, at every forwarding container and depth, and for
+every order-reading merge (lists, `lines`, `commas`, `functionTo`, `attrs` last-wins, the child option's
+`files`, `_module.args`' definitions). gen-merge states that level as an ORDER of the child's top level
+(the root's `located` count), taken after each module's coordinate is assigned, so no module node, key or
+declaration address moves. A redeclared option is already located by the declaration fold, and keeps that
+(`ci/tests/gen-nesting-definition-order.nix`). Not reached: a child's own `extendModules` re-evaluates
+without the root, and reads its own modules after the definitions.
+
 **The published option records carry nixpkgs' declaration shape.** An evaluation's `.options` (and
 `declaredOptions`) records carry `loc`, `declarations` (the declaring modules' files) and nixpkgs'
 string form, `__toString = _: showOption loc`, so nixpkgs' `optionAttrSetToDocList` renders a mounted
