@@ -523,6 +523,78 @@ in
         config.o.x = [ "def2" ];
       }
     ]).config.o.x;
+  # `redImp` through `attrsOf`: the redeclared null root under a container
+  redAtImp =
+    (ev [
+      {
+        _file = "decl.nix";
+        options.o = mkOption { type = N.attrsOf (N.submodule (own leafList [ "q" ])); };
+      }
+      {
+        _file = "decl2.nix";
+        options.o = mkOption {
+          type = N.attrsOf (
+            N.submodule {
+              _file = "r.nix";
+              x = [ "r" ];
+            }
+          );
+        };
+      }
+      {
+        _file = "def.nix";
+        config.o.k = { ... }: {
+          imports = [
+            {
+              _file = "y.nix";
+              x = [ "y" ];
+            }
+          ];
+          x = [ "def" ];
+        };
+      }
+      {
+        _file = "def2.nix";
+        config.o.k.x = [ "def2" ];
+      }
+    ]).config.o.k.x;
+  # `redImp` typed, untyped, typed: two typed declarations around an untyped one
+  red3Imp =
+    (ev [
+      {
+        _file = "decl.nix";
+        options.o = mkOption { type = N.submodule (own leafList [ "q" ]); };
+      }
+      {
+        _file = "decl2.nix";
+        options.o = mkOption { description = "d"; };
+      }
+      {
+        _file = "decl3.nix";
+        options.o = mkOption {
+          type = N.submodule {
+            _file = "r.nix";
+            x = [ "r" ];
+          };
+        };
+      }
+      {
+        _file = "def.nix";
+        config.o = { ... }: {
+          imports = [
+            {
+              _file = "y.nix";
+              x = [ "y" ];
+            }
+          ];
+          x = [ "def" ];
+        };
+      }
+      {
+        _file = "def2.nix";
+        config.o.x = [ "def2" ];
+      }
+    ]).config.o.x;
   # depth 2 with imports on both sides at the inner level
   d2Imp = run {
     nt =

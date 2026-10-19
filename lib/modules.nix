@@ -1764,15 +1764,25 @@ let
           );
         graph =
           let
-            graph0 = removal.closeKept flat (moduleTop callM modList).roots;
+            graph0 = removal.closeKept flat (rootOrder root (moduleTop callM modList).roots);
           in
           alignedGraph "the `_module.args' definitions" flat (
-            if length graph0 == length flat then graph0 else (a3.refinedGraph flat callM modList).graph
+            if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
           );
+        kRoot = root.located or 0;
+        # a top-level module's authored index, read through the root's order (`rootOrder`), as
+        # `declAnchorOf`'s `ti`
         idx =
           fi:
           if topPlain then
-            (if fi < nTop then fi else null)
+            (
+              if fi >= nTop then
+                null
+              else if fi + kRoot < nTop then
+                fi + kRoot
+              else
+                fi + kRoot - nTop
+            )
           else
             let
               g = builtins.elemAt graph fi;
@@ -2790,6 +2800,9 @@ let
       prelude.genList (
         i: prelude.elemAt xs (if i + root.located < l then i + root.located else i + root.located - l)
       ) l;
+  # `root.order`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by
+  # `located` (`childTree`'s `rootOver`). A root whose `order` is not that permutation of `mods` drops or
+  # invents modules silently, so a caller holding other modules (a re-evaluation) passes no `order`.
   moduleClosure =
     specialArgs: callM: root: mods:
     let
@@ -2976,8 +2989,9 @@ let
             else
               importer.key;
         in
-        # Unordered by the root (`rootOrder`): an occurrence's key carries its coordinate, and the order
-        # reaches only `checked`'s first refusal, which the guard's own collection raises first.
+        # Unordered by the root (`rootOrder`), and so nixpkgs' order: nixpkgs gathers `disabledModules`
+        # in `collectStructuredModules`, a pre-order walk in AUTHORED order in which an own module's
+        # location wrapper holds that module's authored slot. Rotating the occurrences would be wrong.
         prelude.imap0 (
           i: e:
           e
@@ -6335,7 +6349,8 @@ let
       n = member.nests;
       m = if p.mode == "called" then n.calledMode else p.mode;
       # the group's root, which locates this type's own modules: their count, and the top level in the order
-      # a located collection reads it (`rootOrder`), built here where the two halves are still apart
+      # a located collection reads it (`rootOrder`), built here where the two halves are still apart.
+      # `order` must be `n.modules ++ rest` rotated by `located` (`moduleClosure` reads it for the modules)
       rootOver =
         rest:
         if p.group.root == null then
