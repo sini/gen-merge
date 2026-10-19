@@ -1769,19 +1769,19 @@ let
           alignedGraph "the `_module.args' definitions" flat (
             if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
           );
-        kRoot = length (root.nests.modules or [ ]);
+        k = length (root.nests.modules or [ ]);
         # a top-level module's authored index, read through the root's order (`rootOrder`), as
-        # `declAnchorOf`'s `ti`
+        # `declAnchorOf`'s `i`
         idx =
           fi:
           if topPlain then
             (
               if fi >= nTop then
                 null
-              else if fi + kRoot < nTop then
-                fi + kRoot
+              else if fi + k < nTop then
+                fi + k
               else
-                fi + kRoot - nTop
+                fi + k - nTop
             )
           else
             let
@@ -2780,13 +2780,14 @@ let
                 moduleEntries callM e (importsOf content)
             ) kept
           );
-  # `root.order`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by the
-  # own-module count (`childTree`). A root whose `order` is not that permutation of `mods` drops or invents
-  # modules silently, so a caller holding other modules (a re-evaluation) passes no `order`.
+  # `root.collected`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by the
+  # own-module count (`childTree`). A root whose `collected` is not that permutation of `mods` drops or invents
+  # modules silently, so a caller holding other modules (a re-evaluation) passes no `collected`.
   moduleClosure =
     specialArgs: callM: root: mods:
     let
-      plain = if root ? order then moduleEntries callM root root.order else moduleEntries callM root mods;
+      plain =
+        if root ? collected then moduleEntries callM root root.collected else moduleEntries callM root mods;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -2836,7 +2837,7 @@ let
     # then the k own modules: so the level is an ORDER of the top level, read after each module's
     # coordinate is assigned, and mints no node. k is the count of the type's own modules, read off the nesting
     # record a located root carries (`nests`, `childTree`), so building the root allocates no count. The merge
-    # path's collection reads the root's `order`, the same rotation built where the two halves are still apart;
+    # path's collection reads the root's `collected`, the same rotation built where the two halves are still apart;
     # a reader of the indexed, authored list (the graph, the anchors, the removal walk) rotates it here. Bound in
     # this record and not at the top level (one load thunk less): every reader pairs it with `closeKept` on the
     # same list.
@@ -6209,7 +6210,7 @@ let
           nFlat = length flat;
           nTop = length r._modList;
           nOwn = nTop - length seeds;
-          kRoot = length (r._root.nests.modules or [ ]);
+          k = length (r._root.nests.modules or [ ]);
           tree =
             if p == null then
               null
@@ -6264,9 +6265,9 @@ let
           let
             fi = nFlat - 1 - mi;
             # the top-level module at closure index `fi`, under the root's order (`rootOrder`)
-            ti = if fi + kRoot < nTop then fi + kRoot else fi + kRoot - nTop;
+            i = if fi + k < nTop then fi + k else fi + k - nTop;
           in
-          if fi < nTop && topPlain then top ti "a:${toString ti}" else anch (builtins.elemAt graph fi);
+          if fi < nTop && topPlain then top i "a:${toString i}" else anch (builtins.elemAt graph fi);
       # Each group's seed declaration addresses (den-hoag-8hlo3 U1), aligned with `definitions`, given
       # the tree's module anchors (`declAnchorOf`).
       nestedDeclAts =
@@ -6392,7 +6393,7 @@ let
                 p.group.root
                 // {
                   nests = n;
-                  order = [ namePlaceholder ] ++ n.modules;
+                  collected = [ namePlaceholder ] ++ n.modules;
                 };
             inherit (n.empty) prefix specialArgs check;
           }
@@ -6429,7 +6430,7 @@ let
                   p.group.root
                   // {
                     nests = n;
-                    order = seeds ++ n.modules;
+                    collected = seeds ++ n.modules;
                   };
               inherit (n) specialArgs check coreShortCircuit;
             }
@@ -6458,7 +6459,7 @@ let
                     p.group.root
                     // {
                       nests = n;
-                      order = seeds ++ n.modules;
+                      collected = seeds ++ n.modules;
                     };
                 inherit (n) specialArgs check coreShortCircuit;
               }
