@@ -1856,8 +1856,8 @@ in
     # tree-type: a published option record of a gen type refuses `valueMeta` by name (`lib/modules.nix`
     # `serveOptions`), and a deep force reads it. With the evaluated keys set aside, a declaration tree of leaf types
     # deep-forces, and so does one holding a free-standing `submodule`: a deep force reaches its empty
-    # value, which the bridge's one root evaluation serves (den-hoag-8qenh). One holding an
-    # evaluation's own type still refuses: its called empty fold (`whenEmpty`) refuses by name. A
+    # value, which the bridge's one root evaluation serves (den-hoag-8qenh, B). So does one holding an
+    # evaluation's own type: its empty value is that evaluation's on-demand `type` child (C). A
     # shallow read of the tree-type answers its name.
     test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys = {
       expr =
@@ -1928,7 +1928,7 @@ in
       expected = {
         deepForceOfDeclTree = false;
         plainTypeDeclTree = false;
-        declarationsOfTreeTyped = false;
+        declarationsOfTreeTyped = true;
         declarationsOfSubmoduleTyped = true;
         declarationsOfPlainTyped = true;
         valueSideControl = true;

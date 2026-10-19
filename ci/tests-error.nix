@@ -8883,8 +8883,7 @@ in
             msg = "^gen-merge: `evalModuleTree': option `x' holds a nested tree with no definition inside 32 enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of 32 rather than hang[.] Define the position, or reach the recursion through a container whose keys are data [(]`attrsOf', `listOf'[)]$";
           };
         };
-        # Item 1: a nesting type's called fold refuses, and so does the called empty value of an
-        # evaluation's own type.
+        # Item 1: a nesting type's called fold refuses.
         test-a-submodules-called-fold-refuses = {
           expr = force (
             gm.mergeDefs [ "o" ] sub [
@@ -8935,13 +8934,28 @@ in
             msg = called "submodule" "mergeDefs" "o";
           };
         };
-        test-the-tree-records-called-empty-value-refuses = {
-          expr = force tree.whenEmpty.value;
-          expectedError = {
-            type = "ThrownError";
-            msg = called "submodule" "whenEmpty" null;
+        # An evaluation's own type's empty value is not refused either: it is that evaluation's on-demand
+        # `type` child, its module set over no definitions, nixpkgs' `base.config` (den-hoag-8qenh, C).
+        test-the-tree-records-called-empty-value-is-nixpkgs-base-config =
+          let
+            m = {
+              options.x = gm.mkOption {
+                type = t.int;
+                default = 1;
+              };
+            };
+            nm = {
+              options.x = nixpkgsLib.mkOption {
+                type = nixpkgsLib.types.int;
+                default = 1;
+              };
+            };
+            served = v: builtins.deepSeq v (removeAttrs v [ "_module" ]);
+          in
+          {
+            expr = served (gm.evalModuleTree { } [ m ]).type.whenEmpty.value;
+            expected = served (nixpkgsLib.evalModules { modules = [ nm ]; }).type.emptyValue.value;
           };
-        };
         # U2-o's `submodule` row (v7, gate v1 K2): a lax tree inside a `submodule` evaluates in the
         # submodule's called mode, `{ true; false; }`, so the finding is today's, byte for byte. The
         # `$` is load-bearing: v6's mode gives a message carrying this one as its prefix.
