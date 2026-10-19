@@ -331,8 +331,6 @@ let
     #   level   : whether that forward adds a segment to `getSubOptions`' prefix (a key or index level);
     #   reads   : the roles whose `getSubModules` the record's own forces, which is the frontier nixpkgs'
     #             `fixupOptionType` reaches (`coercedTo` asserts on its `coercedType`); `attrTag` reads every tag;
-    #   v2      : nixpkgs' constructor ships a `merge.v2`, so a record of it stating none is a `//` override of its
-    #             fold (`frontierOf`);
     #   spine   : the spine steps it (`forwardStep` carries the row to the spine). ★ `attrListOf` forwards but is
     #             NOT stepped: stepping it spends the fuel on a finite chain nixpkgs serves, and refuses it
     #             (ADR-0039 rule 2 forbids that move). So a cycle through it alone aborts uncatchably, at parity
@@ -345,42 +343,36 @@ let
         forward = "elemType";
         level = true;
         reads = [ "elemType" ];
-        v2 = true;
         spine = true;
       };
       attrListOf = {
         forward = "elemType";
         level = true;
         reads = [ "elemType" ];
-        v2 = true;
         spine = false;
       };
       attrsWith = {
         forward = "elemType";
         level = true;
         reads = [ "elemType" ];
-        v2 = true;
         spine = true;
       };
       nullOr = {
         forward = "elemType";
         level = false;
         reads = [ "elemType" ];
-        v2 = true;
         spine = true;
       };
       unique = {
         forward = "elemType";
         level = false;
         reads = [ "elemType" ];
-        v2 = false;
         spine = true;
       };
       functionTo = {
         forward = "elemType";
         level = true;
         reads = [ "elemType" ];
-        v2 = false;
         spine = true;
       };
       coercedTo = {
@@ -390,14 +382,12 @@ let
           "coercedType"
           "finalType"
         ];
-        v2 = true;
         spine = true;
       };
       attrTag = {
         forward = null;
         level = null;
         reads = null;
-        v2 = false;
         spine = false;
       };
     };
@@ -2259,12 +2249,21 @@ let
       n = (t.functor or { }).name or null;
       e = (t.functor.payload or { }).elemType or (t.nestedTypes.elemType or null);
     in
-    # a container nixpkgs ships with a v2 merge that states none is a `//` override of its fold, which reads its
-    # element as it chooses; it is not walked. The row is selected in place at each read: a binding for it, or an
-    # argument to a call, costs a thunk on every option's frontier.
+    # a container whose constructor ships a v2 merge, stating none, is a `//` override of its fold, which reads its
+    # element as it chooses; it is not walked. Whether the constructor ships one is a fact of the release in hand
+    # (`nullOr` ships none on nixos-26.05), so it is read off the record: nixpkgs marks its `check`
+    # `isV2MergeCoherent` beside every v2 merge it ships, and a merge override keeps that check; an override of the
+    # check too is told by the functor's own rebuild (`coercedTo`'s rebuilds nothing, its check states it). The row is
+    # selected in place at each read: a binding for it, or an argument to a call, costs a thunk on every option's
+    # frontier.
     if
       !(builtins.isString n && sameValue.foreignForwarding ? ${n})
-      || sameValue.foreignForwarding.${n}.v2 && !(t ? merge.v2)
+      ||
+        !(t ? merge.v2)
+        && (
+          t.check.isV2MergeCoherent or false
+          || isFunction (t.functor.type or null) && isV2 (t.functor.type t.functor.payload)
+        )
     then
       [ ]
     else if sameValue.foreignForwarding.${n}.reads == null then

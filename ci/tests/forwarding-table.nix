@@ -1,8 +1,9 @@
 # WHICH NIXPKGS CONTAINERS FORWARD THEIR ELEMENT IS ONE TABLE, DERIVED FROM NIXPKGS (den-hoag-j2ryo).
 #
 # `lib/interface.nix` `sameValue.foreignForwarding` states, per nixpkgs constructor, the role its sub-protocol reads
-# forward to, whether the forward adds a `getSubOptions` segment, the roles its `getSubModules` forces, and
-# whether the constructor ships a `merge.v2`. nixpkgs decides each of these in the constructor's own body, so
+# forward to, whether the forward adds a `getSubOptions` segment, and the roles its `getSubModules` forces. Whether
+# the constructor ships a `merge.v2` is not a row: it varies by release, so `frontierOf` reads it off the record
+# (`frontier-v2-by-release.nix`). nixpkgs decides each of these in the constructor's own body, so
 # every row here is DERIVED from nixpkgs' constructors by their behaviour, never read from a name: each
 # constructor is applied to MARKER element types, one per role, that answer the three reads with their role
 # (`getSubModules = [ role ]`, `getSubOptions = p: { ${role} = p; }`, `substSubModules` a marker over the new
@@ -146,7 +147,6 @@ let
       level = if seg == null then null else seg != [ "P" ];
       # a record forcing every member it states (`attrTag`'s tags) states no fixed role list
       reads = if forward == null && reads != [ ] then null else reads;
-      v2 = v ? merge.v2;
       functorName = v.functor.name;
     };
   derived = lib.mapAttrs (_: derive) (lib.filterAttrs (n: _: t ? ${n}) ctors);
@@ -158,7 +158,6 @@ let
       forward
       level
       reads
-      v2
       ;
   };
 in
@@ -193,13 +192,11 @@ in
           forward = null;
           level = null;
           reads = [ ];
-          v2 = true;
         }
         {
           forward = null;
           level = null;
           reads = [ ];
-          v2 = true;
         }
       ];
     };
