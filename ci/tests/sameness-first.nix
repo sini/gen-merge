@@ -30,7 +30,7 @@ let
     members.stitch = a: v: builtins.isInt v && v >= a.lo && v <= a.hi;
   };
   its = args: algebra.mkIntensional identity.hashIdentity basting "stitch" args;
-  td = gt.typedef "stitched";
+  td = gt.typedef { } "stitched";
   r1 = its {
     lo = 1;
     hi = 9;
@@ -68,12 +68,16 @@ in
     test-a-sealed-lambda-merges-only-as-one-binding = {
       expr =
         let
-          x = gt.typedef "even" even;
+          x = gt.typedef { } "even" even;
         in
         {
           oneBinding = ev [ x x ] 4;
-          twoLambdas = ev [ (gt.typedef "even" even) (gt.typedef "even" even') ] 4;
-          markShared = (gt.typedef "even" even).__mint.minted == (gt.typedef "even" even').__mint.minted;
+          twoLambdas = ev [
+            (gt.typedef { } "even" even)
+            (gt.typedef { } "even" even')
+          ] 4;
+          markShared =
+            (gt.typedef { } "even" even).__mint.minted == (gt.typedef { } "even" even').__mint.minted;
         };
       expected = {
         oneBinding = 4;

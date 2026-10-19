@@ -1156,6 +1156,77 @@ in
     # ★ EVERY PATTERN HERE IS ANCHORED `^…$`, for the reason stated below the sub-protocol cells.
     # These messages DO carry ERE metacharacters — the parenthesised type pair, and the `.` in every
     # file name — so each is escaped and the anchors are left to carry only the ends.
+    # A TYPEDEF'S STATED FOLD (den-hoag-6orb8 U3): a definition outside the type is blamed on its file
+    # before the fold, `merge loc` no function is refused before `defs` is applied, and a result
+    # outside the type is refused naming the type's `merge`, in gen-merge and through a nixpkgs mount.
+    flake.testsError.typedef-merge =
+      let
+        tally = m: gm.types.typedef { merge = m; } "tally" builtins.isInt;
+        sum = _loc: defs: builtins.foldl' (a: d: a + d.value) 0 defs;
+        defined =
+          ty: vs:
+          (gm.evalModuleTree { } (
+            [ { options.o = gm.mkOption { type = ty; }; } ]
+            ++ map (v: {
+              _file = "${toString v}.nix";
+              config.o = v;
+            }) vs
+          )).config.o;
+        mounted =
+          ty: vs:
+          (nixpkgsLib.evalModules {
+            modules = [ { options.o = nixpkgsLib.mkOption { type = ty; }; } ] ++ map (v: { config.o = v; }) vs;
+          }).config.o;
+      in
+      {
+        test-a-definition-outside-the-type-is-blamed-on-its-file = {
+          expr = defined (tally sum) [
+            2
+            "a"
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `o' is not of type `tally', in `a\\.nix': expected type 'tally' but value \"a\" is of type 'string'$";
+          };
+        };
+        test-a-merge-whose-location-application-is-no-function-is-refused = {
+          expr = defined (tally (_: 3)) [
+            2
+            3
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `o' has a type `tally' whose `merge', applied to the location, is of type `int', not a function of the definitions$";
+          };
+        };
+        test-a-result-outside-the-type-names-the-merge = {
+          expr = defined (tally (_: _: "x")) [
+            2
+            3
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `o' has a type `tally' whose `merge' returned a value outside it: expected type 'tally' but value \"x\" is of type 'string'$";
+          };
+        };
+        test-mounted-a-result-outside-the-type-names-the-merge = {
+          expr = mounted (tally (_: _: "x")) [
+            2
+            3
+          ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `o' has a type `tally' whose `merge' returned a value outside it: expected type 'tally' but value \"x\" is of type 'string'$";
+          };
+        };
+        test-the-positional-form-names-the-options-first-form = {
+          expr = gm.types.typedef "tally" builtins.isInt;
+          expectedError = {
+            type = "ThrownError";
+            msg = "gen-types: typedef: the positional form `typedef \"tally\" <predicate>` is retired; the options come first";
+          };
+        };
+      };
     # ONE MARK, TWO TYPES (U1 landing gate C2): two types sharing one mark and differing at a sealed
     # component are refused with that reason, never "mint to different constructions" (the distinct-mark
     # refusal, pinned beside them).
@@ -1173,8 +1244,8 @@ in
       in
       {
         test-two-lambda-predicates-name-the-shared-mark = {
-          expr = declaredTwice (t.typedef "even" (v: builtins.bitAnd v 1 == 0)) (
-            t.typedef "even" (v: builtins.bitAnd v 1 == 0)
+          expr = declaredTwice (t.typedef { } "even" (v: builtins.bitAnd v 1 == 0)) (
+            t.typedef { } "even" (v: builtins.bitAnd v 1 == 0)
           );
           expectedError = {
             type = "ThrownError";
@@ -1184,12 +1255,12 @@ in
         test-two-registered-terms-name-the-shared-mark = {
           expr =
             declaredTwice
-              (t.typedef "stitched" (its {
+              (t.typedef { } "stitched" (its {
                 lo = 1;
                 hi = 9;
               }))
               (
-                t.typedef "stitched" (its {
+                t.typedef { } "stitched" (its {
                   lo = 1;
                   hi = 10;
                 })
@@ -9998,7 +10069,7 @@ in
         # With no `mint` a derivation is minted per component, so a base carrying a sealed component
         # hands it up, and demanding the identity is gen-types' named refusal.
         test-a-derivation-over-a-sealed-base-answers-no-identity = {
-          expr = force (genTypes.idOf (derive (t.typedef "even" (v: builtins.isInt v)) tagged));
+          expr = force (genTypes.idOf (derive (t.typedef { } "even" (v: builtins.isInt v)) tagged));
           expectedError = refusal "^gen-types: idOf: type 'tagged' has sealed component\\(s\\) 'members\\.0'";
         };
         # A composite over a FOREIGN element (a nixpkgs type, which carries no mint) holds that element

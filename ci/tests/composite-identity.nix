@@ -319,7 +319,7 @@ in
           nullOrRaw = t.nullOr t.raw;
           eitherRawInt = t.either t.raw t.int;
           listOfForeign = t.listOf np.str;
-          listOfTypedef = t.listOf (t.typedef "port" (v: v > 0));
+          listOfTypedef = t.listOf (t.typedef { } "port" (v: v > 0));
           derived = gm.deriveType { } "spool" (t.listOf t.raw);
           optionRecord = gm.mkOption { type = t.lazyAttrsOf t.raw; };
         };

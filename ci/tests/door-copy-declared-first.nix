@@ -91,7 +91,7 @@ let
       );
     in
     r0;
-  Td = gt.typedef "td" builtins.isInt;
+  Td = gt.typedef { } "td" builtins.isInt;
 in
 {
   flake.tests.door-copy-declared-first = {
