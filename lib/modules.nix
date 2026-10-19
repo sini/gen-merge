@@ -4345,17 +4345,19 @@ let
             else
               prelude.any own (builtins.attrValues v)
           );
-        # the placer: each pending path of `t` replaced by `f i y`, `i` its index in `pending`
+        # the placer: each pending path of `t` replaced by its slot, `slots` a list of `{ path; v; }` in `pending`'s
+        # order. The slot's own thunk sits at the leaf, so reading the node adds no call frame to the read
         spliced =
-          t: f:
+          t: slots:
           let
             fill =
               t: q: v:
-              if q == [ ] then v else t // { ${head q} = fill (t.${head q} or { }) (tail q) v; };
+              if tail q == [ ] then
+                t // { ${head q} = v; }
+              else
+                t // { ${head q} = fill (t.${head q} or { }) (tail q) v; };
           in
-          foldl' (t: i: fill t (builtins.elemAt pending i).path (f i (builtins.elemAt pending i))) t (
-            builtins.genList (i: i) (length pending)
-          );
+          foldl' (t: x: fill t x.path x.v) t slots;
       };
 
   # The documentation placeholder, one module shared by every nesting type: the child over no
@@ -6790,111 +6792,166 @@ let
           # cycle refuses by name at a constant depth whatever frames it holds; an acyclic chain of n such reads is
           # decided in n levels. A served node is read off this evaluation itself, so its reads diverge exactly where
           # nixpkgs' do.
+          # `levels.raw` is this evaluation's declaration tree as folded; `levels.slots` are its pending nodes' slots, which
+          # `allOptions` and the spine sites both splice, so a read through either reaches the same thunk
+          levels =
+            let
+              raw = mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
+                map (e: validateDeclSubtree prefix e.options) declEntries
+              );
+              n = length declarationGuard.pending;
+              # served k i: whether pending node i resolves at level k or below
+              served =
+                knot.served or (
+                  let
+                    # level l's evaluation (l = 1 .. n), driven as an inner knot on the root's guard, and its own
+                    # declaration tree, folded from its `_flat` as the body folds `allOptions`
+                    steps = builtins.genList (
+                      l:
+                      let
+                        below = driveKnot (
+                          evalModuleTreeWith
+                            (
+                              knot
+                              // {
+                                inner = true;
+                                mints = false;
+                                level = l + 1;
+                                guard = declarationGuard;
+                                served = at;
+                              }
+                            )
+                            carried
+                            inherited
+                            {
+                              inherit
+                                modules
+                                specialArgs
+                                check
+                                prefix
+                                coreShortCircuit
+                                class
+                                root
+                                ;
+                            }
+                        );
+                        entries = prelude.imap0 declEntry below._flat;
+                      in
+                      mergeOptionDeclTrees (redeclareDecl (declaringSitesAt (length prefix) entries)) prefix (
+                        map (e: validateDeclSubtree prefix e.options) entries
+                      )
+                    ) n;
+                    # tried.l.i: node i read in level l's evaluation, under `tryEval`, for whether it states a type gen
+                    # constructs; row 0 is never read
+                    tried = builtins.genList (
+                      l:
+                      builtins.genList (
+                        i:
+                        builtins.tryEval (
+                          declarationGuard.own (
+                            getAttrByPath (builtins.elemAt declarationGuard.pending i).path (builtins.elemAt steps (l - 1))
+                          )
+                        )
+                      ) n
+                    ) (n + 1);
+                    # found.l.i: `null` while node i answers at no level 1 .. l, else whether it states a type gen
+                    # constructs at the first level it answers at, which decides it. Entry l reads entry m (l with its
+                    # lowest set bit cleared) and then tries levels m+1 .. l in order (`genericClosure`, which holds no
+                    # frame per step), stopping at the first that answers: an entry's first forcing holds a frame per set
+                    # bit of l, never one per level, and costs the levels it tries
+                    found = builtins.genList (
+                      l:
+                      builtins.genList (
+                        i:
+                        let
+                          m = l - builtins.bitAnd l (0 - l);
+                          d = builtins.elemAt (builtins.elemAt found m) i;
+                          c = builtins.genericClosure {
+                            startSet = [ { key = m + 1; } ];
+                            operator =
+                              x:
+                              if x.key == l || (builtins.elemAt (builtins.elemAt tried x.key) i).success then
+                                [ ]
+                              else
+                                [ { key = x.key + 1; } ];
+                          };
+                          w = builtins.elemAt (builtins.elemAt tried (builtins.elemAt c (length c - 1)).key) i;
+                        in
+                        if l == 0 then
+                          null
+                        else if d != null then
+                          d
+                        else if w.success then
+                          w.value
+                        else
+                          null
+                      ) n
+                    ) (n + 1);
+                    at = k: i: builtins.elemAt (builtins.elemAt found k) i == false;
+                    # THE SCHEDULE. Where nixpkgs' fold forces a declaration whatever is read, the levels force its
+                    # decision first, bottom-up, so a level reads it already forced and a chain of such reads recurses
+                    # inside one level's evaluation, as in nixpkgs' fold, and not through the levels below. That is the
+                    # root's own declarations under the unmatched check (`_orphanCheck`'s arm: `_module.check`, no
+                    # freeform, a definition at the root), in key order, the check's. Level l + 1 first reads each such
+                    # node it serves, then decides the rest. The walk only orders forcing: `found` is exact at every
+                    # level, so where it stops (the first level that decides none of them) moves no value. Every other
+                    # pending node is decided when a read reaches it, as nixpkgs forces it
+                    eager =
+                      if
+                        (realized.value._module or { }).check or (check == null || check)
+                        && freeform == null
+                        && realized.rawDefs != [ ]
+                      then
+                        filter (i: tail (builtins.elemAt declarationGuard.pending i).path == [ ]) (
+                          builtins.genList (i: i) n
+                        )
+                      else
+                        [ ];
+                    top = builtins.genericClosure {
+                      startSet = [ { key = 0; } ];
+                      operator =
+                        x:
+                        let
+                          l = x.key;
+                          primed = foldl' (
+                            acc: i: if at l i then builtins.seq (builtins.elemAt (builtins.elemAt tried (l + 1)) i) acc else acc
+                          ) null eager;
+                          now = map (i: builtins.elemAt (builtins.elemAt found (l + 1)) i) eager;
+                        in
+                        if
+                          l == n
+                          || builtins.seq primed (
+                            builtins.deepSeq now (now == map (i: builtins.elemAt (builtins.elemAt found l) i) eager)
+                          )
+                        then
+                          [ ]
+                        else
+                          [ { key = l + 1; } ];
+                    };
+                  in
+                  # a level's evaluation reads `found` as it stands (`at`); the root runs the schedule first
+                  k: i: builtins.seq top (at k i)
+                );
+              # node i's slot: its declaration read off this evaluation where it is served here, else its refusal.
+              # The node is selected from its parent group and forced by one `isAttrs`, so a chain of reads costs one
+              # call frame per hop beyond the fold's own
+              level = (knot.level or (n + 1)) - 1;
+            in
+            {
+              inherit raw;
+              slots = prelude.imap0 (i: y: {
+                inherit (y) path;
+                v =
+                  let
+                    parent = if tail y.path == [ ] then raw else getAttrByPath (prelude.init y.path) raw;
+                    x = parent.${prelude.last y.path};
+                  in
+                  if served level i && (!(isAttrs x) || !(declarationGuard.own x)) then x else y.refuse;
+              }) declarationGuard.pending;
+            };
           allOptions =
             if declarationGuard ? pending then
-              let
-                raw = mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
-                  map (e: validateDeclSubtree prefix e.options) declEntries
-                );
-                n = length declarationGuard.pending;
-                # served k i: whether pending node i resolves at level k or below
-                served =
-                  knot.served or (
-                    let
-                      # level l's evaluation (l = 1 .. n), driven as an inner knot on the root's guard, and its own
-                      # declaration tree, folded from its `_flat` as the body folds `allOptions`
-                      steps = builtins.genList (
-                        l:
-                        let
-                          below = driveKnot (
-                            evalModuleTreeWith
-                              (
-                                knot
-                                // {
-                                  inner = true;
-                                  mints = false;
-                                  level = l + 1;
-                                  guard = declarationGuard;
-                                  served = served;
-                                }
-                              )
-                              carried
-                              inherited
-                              {
-                                inherit
-                                  modules
-                                  specialArgs
-                                  check
-                                  prefix
-                                  coreShortCircuit
-                                  class
-                                  root
-                                  ;
-                              }
-                          );
-                          entries = prelude.imap0 declEntry below._flat;
-                        in
-                        mergeOptionDeclTrees (redeclareDecl (declaringSitesAt (length prefix) entries)) prefix (
-                          map (e: validateDeclSubtree prefix e.options) entries
-                        )
-                      ) n;
-                      # tried.l.i: node i read in level l's evaluation, under `tryEval`, for whether it states a type gen
-                      # constructs; row 0 is never read
-                      tried = builtins.genList (
-                        l:
-                        builtins.genList (
-                          i:
-                          builtins.tryEval (
-                            declarationGuard.own (
-                              getAttrByPath (builtins.elemAt declarationGuard.pending i).path (builtins.elemAt steps (l - 1))
-                            )
-                          )
-                        ) n
-                      ) (n + 1);
-                      # found.l.i: `null` while node i answers at no level 1 .. l, else whether it states a type gen
-                      # constructs at the first level it answers at, which decides it. Entry l reads entry m (l with its
-                      # lowest set bit cleared) and then tries levels m+1 .. l in order (`genericClosure`, which holds no
-                      # frame per step), stopping at the first that answers: an entry's first forcing holds a frame per set
-                      # bit of l, never one per level, and costs the levels it tries
-                      found = builtins.genList (
-                        l:
-                        builtins.genList (
-                          i:
-                          let
-                            m = l - builtins.bitAnd l (0 - l);
-                            d = builtins.elemAt (builtins.elemAt found m) i;
-                            c = builtins.genericClosure {
-                              startSet = [ { key = m + 1; } ];
-                              operator =
-                                x:
-                                if x.key == l || (builtins.elemAt (builtins.elemAt tried x.key) i).success then
-                                  [ ]
-                                else
-                                  [ { key = x.key + 1; } ];
-                            };
-                            w = builtins.elemAt (builtins.elemAt tried (builtins.elemAt c (length c - 1)).key) i;
-                          in
-                          if l == 0 then
-                            null
-                          else if d != null then
-                            d
-                          else if w.success then
-                            w.value
-                          else
-                            null
-                        ) n
-                      ) (n + 1);
-                    in
-                    k: i: builtins.elemAt (builtins.elemAt found k) i == false
-                  );
-              in
-              declarationGuard.spliced raw (
-                i: y:
-                let
-                  x = getAttrByPath y.path raw;
-                in
-                if served ((knot.level or (n + 1)) - 1) i && !(declarationGuard.own x) then x else y.refuse
-              )
+              declarationGuard.spliced levels.raw levels.slots
             else
               mergeOptionDeclTrees (redeclareDecl sitesAt) prefix (
                 if declarationGuard ? flat then
@@ -7364,6 +7421,7 @@ let
                 subDefs
                 opts
                 loc
+                rawDefs
                 ;
               reported = concatMap (
                 x:
@@ -7396,7 +7454,7 @@ let
                       if declarationGuard ? pending then
                         declarationGuard.spliced (mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
                           builtins.catAttrs "options" declEntries
-                        )) (_: y: getAttrByPath y.path allOptions)
+                        )) levels.slots
                       else
                         mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (builtins.catAttrs "options" declEntries);
                   }
@@ -7411,7 +7469,7 @@ let
                         if declarationGuard ? pending then
                           declarationGuard.spliced (mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (
                             builtins.catAttrs "options" declEntries
-                          )) (_: y: getAttrByPath y.path allOptions)
+                          )) levels.slots
                         else
                           mergeOptionDeclTrees (spineRedeclare sitesAt) prefix (builtins.catAttrs "options" declEntries);
                     }
