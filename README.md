@@ -1005,7 +1005,10 @@ record whose overlap with the strategies is allowlisted publishes whatever subse
 strategies (`ci/tests/linkset.nix`, a fixture of the assembly's totality, not a supported wiring).
 A name it shares undeclared with the strategies refuses **per name** too: it answers with the
 linkset's named refusal when demanded, and every other name still publishes, so the protocol plus
-`{ inherit (lib.types) str nullOr; }` publishes `str` and `listOf` and refuses at `nullOr`. nixpkgs'
+`{ inherit (lib.types) str nullOr; }` publishes `str` and `listOf` and refuses at `nullOr`. A declared
+name refuses by name as well when the vocabulary's value there is live: the link keeps no record of
+what it shadows, so it admits a shadow only over a tombstone, a value that refuses when reached,
+and the shipped gen-types keeps one at each allowlisted name. nixpkgs'
 entire `lib.types`, which carries no protocol, is refused whole at construction. The allowlist is gen-merge's own declaration, so an entry is stale
 only when it names nothing gen-merge exports; an entry naming a name the vocabulary lacks is
 inapplicable, and whether the shipped gen-types still collides at each entry is a CI cell. The
@@ -2046,7 +2049,7 @@ gen's own. `args` lists the definitions nixpkgs' option lists, in nixpkgs' order
 module's `{ extendModules; }` (`lib/modules.nix`, the engine's own function whatever a module defines),
 and in a nested evaluation the position's `name` and the placeholder's, both `<unknown-file>`
 (`ci/tests/module-args-definitions.nix`). Two departures are stated: the internal definition lacks
-nixpkgs' `moduleType` (den-hoag-d2o0g); and under `evalModuleTree { check = false; }`, a door nixpkgs
+nixpkgs' `moduleType`; and under `evalModuleTree { check = false; }`, a door nixpkgs
 lacks, the `check` record reads the door's definition (`ci/tests/module-option-records.nix`).
 
 **A union holds the tree as a member**, in gen's own eval and abroad. A gen union (`either`, `oneOf`,
@@ -3012,7 +3015,7 @@ same modules.
   - *The ordered fold.* Two `apply`s, at the group or inside the leaf, keep the later, as every
     doubled field of a redeclaration does here, `specialArgs` included; nixpkgs refuses the pair.
   - *`config._module.args` inside a module.* It holds the modules' arguments, `extendModules` and a
-    nested child's `name`. nixpkgs' also holds `moduleType`; this engine has none (den-hoag-d2o0g).
+    nested child's `name`. nixpkgs' also holds `moduleType`; this engine has none.
   - *`config._module.check` in a child of an unchecked tree's `.type`.* The view reads the
     strictness that governs the child's refusal of an undeclared key, which is nixpkgs' value under a
     strict parent. Under a caller `check = false` that child runs lax, because this engine's `.type`

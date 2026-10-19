@@ -447,30 +447,100 @@ in
     expected = true;
   };
 
+  # THE PUBLISHED LINK ADMITS A SHADOW ONLY OVER A TOMBSTONE (den-hoag-y9vzt, owner arm (D)). The
+  # four shipped entries admit, because each loser is gen-types' tombstone; the same vocabulary
+  # serving a live checker at each allowlisted name refuses there, so the allowlist alone admits
+  # nothing. `mergeExports`, which keeps the retention record, still admits a live loser.
+  flake.tests.linkset.test-link-admits-a-shadow-only-over-a-tombstone = {
+    expr =
+      let
+        names = [
+          "listOf"
+          "attrsOf"
+          "option"
+          "attrs"
+        ];
+        live = genMergeWith (
+          genTypes
+          // {
+            listOf = genTypes.checkedListOf;
+            attrsOf = genTypes.checkedAttrsOf;
+            option = genTypes.checkedOption;
+            attrs = genTypes.checkedAttrs;
+          }
+        );
+        bare = genLinkset.link {
+          left = L;
+          right = R;
+          allow.shared.ground = "the right side wins here because X";
+        };
+      in
+      {
+        shipped = map (n: ok (builtins.typeOf genMerge.types.${n})) names;
+        liveRefused = map (n: refuses (builtins.typeOf live.types.${n})) names;
+        liveOthersPublish = ok (builtins.typeOf live.types.str);
+        bareLiveRefused = refuses bare.shared;
+        bareTombstone =
+          (genLinkset.link {
+            left = L // {
+              exports = L.exports // {
+                shared = throw "retired";
+              };
+            };
+            right = R;
+            allow.shared.ground = "the right side wins here because X";
+          }).shared;
+        mergeExportsLive = merged.exports.shared;
+      };
+    expected = {
+      shipped = [
+        true
+        true
+        true
+        true
+      ];
+      liveRefused = [
+        true
+        true
+        true
+        true
+      ];
+      liveOthersPublish = true;
+      bareLiveRefused = true;
+      bareTombstone = "RIGHT";
+      mergeExportsLive = "RIGHT";
+    };
+  };
+
   # den-hoag-7gp66 O4 (R10 rule 3): gen-types publishes its checkers as `checkedListOf`,
-  # `checkedAttrsOf` and `checkedOption`, which reach `types` through the union, and keeps the old
-  # names as refused-by-name tombstones, so the three entries still decide an overlap: this
-  # library's option type answers at each, and the shadowed value is the tombstone.
+  # `checkedAttrsOf` and `checkedOption`, and `checkedAttrs` (den-hoag-y9vzt), which reach `types`
+  # through the union, and keeps the old names as refused-by-name tombstones, so the four entries
+  # still decide an overlap: this library's option type answers at each, and the shadowed value is
+  # the tombstone.
   flake.tests.linkset.test-checked-composites-reach-the-union = {
     expr = {
       checked = map (n: genMerge.types ? ${n}) [
         "checkedListOf"
         "checkedAttrsOf"
         "checkedOption"
+        "checkedAttrs"
       ];
       mergeMeaning = map (n: ok (builtins.typeOf genMerge.types.${n})) [
         "listOf"
         "attrsOf"
         "option"
+        "attrs"
       ];
       shadowedRefuses = map (n: refuses (builtins.typeOf genTypes.${n})) [
         "listOf"
         "attrsOf"
         "option"
+        "attrs"
       ];
     };
     expected = {
       checked = [
+        true
         true
         true
         true
@@ -479,8 +549,10 @@ in
         true
         true
         true
+        true
       ];
       shadowedRefuses = [
+        true
         true
         true
         true

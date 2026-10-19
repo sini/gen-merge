@@ -107,6 +107,13 @@ let
       true;
   # An undecided name is BOUND TO ITS REFUSAL rather than taking the namespace with it, decided per
   # name and lazily: the spine is the two export sets' own, and a name's collision is read when it is.
+  #
+  # ★ A DECLARED COLLISION IS ADMITTED ONLY OVER A REGISTERED TOMBSTONE (owner-ruled 2026-10-18,
+  # den-hoag-y9vzt arm (D)). This link carries no retention record, so it may shadow only what loses
+  # nothing: a left value that is a throw. The allowlist is this library's register of those names, and
+  # the value test keeps the register from admitting a live one. Leijen's remedy is then met by
+  # construction: the shadowed value was a refusal, and the successor it names is still published by
+  # the left library. When the tombstones retire, their entries go and this link admits nothing.
   link =
     {
       left,
@@ -116,10 +123,21 @@ let
     left.exports
     // builtins.mapAttrs (
       n: v:
-      if left.exports ? ${n} && !(allow ? ${n}) then
-        refuseUndeclared left.library right.library [ n ]
-      else
+      if !(left.exports ? ${n}) then
         v
+      else if !(allow ? ${n}) then
+        refuseUndeclared left.library right.library [ n ]
+      else if !(builtins.tryEval left.exports.${n}).success then
+        v
+      else
+        # A declared shadow over a value the left still serves: the allowlist cannot admit it, and it is
+        # refused by name, naming both sides. Inline rather than bound, which would cost a load thunk.
+        throw (
+          "linkset: '${right.library}' shadows a live value of '${left.library}' at name '${n}'. This "
+          + "link keeps no record of what it shadows, so it admits a shadow only over a tombstone, a "
+          + "value that refuses when reached; an allowlist entry cannot admit one over a live value. "
+          + "Rename one side, or retire the left value as a tombstone naming its successor."
+        )
     ) right.exports;
 in
 {
@@ -135,7 +153,10 @@ in
   # remedy — a shadowed label stays reachable rather than being destroyed — applied where the shadow
   # is ADMITTED rather than where it is refused, and the two disciplines are complementary:
   # Cardelli's decides admission, Leijen's decides what admission costs. The record is never
-  # removable: a shadow whose loser is unreachable is a silent drop wearing a declaration.
+  # removable: a shadow whose loser is unreachable is a silent drop wearing a declaration. `link`,
+  # which keeps no record, reads this ruling as admitting only a loser that retains nothing, a
+  # registered tombstone (den-hoag-y9vzt, owner arm (D) 2026-10-18); `mergeExports` admits any
+  # declared loser because it keeps the record.
   #
   # ★ AN UNDECLARED COLLISION REFUSES PER NAME. Each overlap the allowlist does not name is bound to
   # its own named refusal, and every other name publishes: a demand is judged only on the names it
@@ -173,7 +194,14 @@ in
       );
     in
     builtins.seq (hygiene { inherit right allow; }) {
-      exports = link { inherit left right allow; };
+      # The declared losers are retained in `admitted` and leave the link, so `link` meets no live
+      # shadow here; an undeclared collision still refuses at its name.
+      exports = link {
+        left = left // {
+          exports = builtins.removeAttrs left.exports declared;
+        };
+        inherit right allow;
+      };
       # The admitted shadows, as data a consumer can read — which is what makes the declaration
       # checkable from outside rather than a comment inside this file.
       inherit admitted;

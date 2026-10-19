@@ -64,10 +64,10 @@ let
   # the winning one. Here both sides are literally `attrs`, and so is the foreign module system's
   # own — which is why this type states its relation instead of taking the name-only default.
   gmAttrs = genMerge.types.attrs;
-  # gen-types' `attrs`, PROTOCOL-COMPLETED by the library's own export path rather than hand-built,
+  # gen-types' `checkedAttrs` (its `attrs` until den-hoag-y9vzt), PROTOCOL-COMPLETED by the library's own export path rather than hand-built,
   # and reached under a non-colliding key so the linkset does not shadow it with the strategy. Its
   # `.name` is still `attrs` — that is the whole hazard — and it carries no fold of its own.
-  completedLeaf = (genMergeWith (genTypes // { attrsLeaf = genTypes.attrs; })).types.attrsLeaf;
+  completedLeaf = (genMergeWith (genTypes // { attrsLeaf = genTypes.checkedAttrs; })).types.attrsLeaf;
   attrsAnswer =
     other:
     let

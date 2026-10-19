@@ -135,11 +135,12 @@ let
       }
     ]).options.x.type.name;
 
-  # gen-types' `attrs`, PROTOCOL-COMPLETED by the library's own export path rather than hand-built,
+  # gen-types' `checkedAttrs` (its `attrs` until den-hoag-y9vzt), PROTOCOL-COMPLETED by the library's own export path rather than hand-built,
   # and reached under a non-colliding key so the linkset does not shadow it with the strategy that
   # now wins at `attrs`. Its `.name` is still `attrs`, which is exactly the hazard the relation this
   # file's `attrs-container` group reads was stated for.
-  attrsCompletedLeaf = (genMergeWith (genTypes // { attrsLeaf = genTypes.attrs; })).types.attrsLeaf;
+  attrsCompletedLeaf =
+    (genMergeWith (genTypes // { attrsLeaf = genTypes.checkedAttrs; })).types.attrsLeaf;
 
   # The same redeclaration one level down, inside a `submodule` — the nested eval carries a
   # non-empty `prefix`. `sub-a.nix` always declares `str`; the second type and its default are the
@@ -6910,6 +6911,15 @@ in
         expectedError = {
           type = "ThrownError";
           msg = "^linkset: undeclared export collision between 'the supplied `types` vocabulary' and 'gen-merge' at name 'nullOr'\\.";
+        };
+      };
+      # A declared shadow over a LIVE left value refuses by name, whatever the allowlist says
+      # (den-hoag-y9vzt): the vocabulary serves `checkedAttrs` at `attrs`, which is allowlisted.
+      test-a-shadow-over-a-live-value-refuses-by-name = {
+        expr = (genMergeWith (genTypes // { attrs = genTypes.checkedAttrs; })).types.attrs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^linkset: 'gen-merge' shadows a live value of 'the supplied `types` vocabulary' at name 'attrs'\\.";
         };
       };
     };

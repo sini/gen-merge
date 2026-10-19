@@ -191,17 +191,16 @@ let
   # (without it the library refuses at construction, tests-error.nix `check-witness-protocol`), and
   # nothing else of gen-types', so every leaf below is nixpkgs'. Not the whole of nixpkgs'
   # `lib.types`: that overlaps gen-merge's own exports at undeclared names, which would make every
-  # cell below read "refused" whatever the fold did.
+  # cell below read "refused" whatever the fold did. Nor nixpkgs' `attrs`/`listOf`/`attrsOf`/`nullOr`
+  # at the allowlisted names: gen-merge's strategy wins at each, so they were never served, and the
+  # link refuses a shadow over a live value by name (den-hoag-y9vzt). `compat.types.listOf` is
+  # gen-merge's own, over a nixpkgs leaf.
   compat = genMergeWith {
     inherit (genTypes) rewritesCheck witnessRecord witnessedCheck;
     inherit (t)
       str
       int
-      attrs
-      listOf
-      attrsOf
       ;
-    option = t.nullOr;
   };
   compatRun =
     T: v:

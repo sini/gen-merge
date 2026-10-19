@@ -20,8 +20,9 @@
     drop-in meaning here is the folding one twice over: a mounting consumer declaring `attrs`
     needs what several modules contribute to that option COMBINED, and needs an answer for the
     case where nobody contributed anything. Neither is sayable by a predicate over one value,
-    which is what gen-types' entry is; that predicate stays reachable through the hub's flat
-    roster and from gen-types directly, unchanged and still minted where it was.
+    which is what gen-types' entry was. That predicate is gen-types' `checkedAttrs` now
+    (den-hoag-y9vzt), and what it keeps at this name is a refused-by-name tombstone: the entry
+    exists for that tombstone and retires with it.
   '';
   option.ground = ''
     ★ THE WEAKEST ENTRY, AND IT SAYS SO. This library's `option` is a bare alias for
