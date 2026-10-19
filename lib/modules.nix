@@ -1769,7 +1769,7 @@ let
           alignedGraph "the `_module.args' definitions" flat (
             if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
           );
-        kRoot = root.located or 0;
+        kRoot = length (root.nests.modules or [ ]);
         # a top-level module's authored index, read through the root's order (`rootOrder`), as
         # `declAnchorOf`'s `ti`
         idx =
@@ -2786,27 +2786,27 @@ let
   # it sits at. A breadth-first queue whose head is k wrappers, each importing one own module, is the
   # same queue, once the top level is popped, as one starting with the top level's other modules and
   # then the k own modules: so the level is an ORDER of the top level, read after each module's
-  # coordinate is assigned, and mints no node. `located` is k, on a nested root only (`childTree`). The merge
+  # coordinate is assigned, and mints no node. k is the count of the type's own modules, read off the nesting
+  # record a located root carries (`nests`, `childTree`), so building the root allocates no count. The merge
   # path's collection reads the root's `order`, the same rotation built where the two halves are still apart;
   # a reader of the indexed, authored list (the graph, the anchors, the removal walk) rotates it here.
   rootOrder =
     root: xs:
-    if (root.located or 0) == 0 then
+    let
+      k = length (root.nests.modules or [ ]);
+      l = length xs;
+    in
+    if k == 0 then
       xs
     else
-      let
-        l = length xs;
-      in
-      prelude.genList (
-        i: prelude.elemAt xs (if i + root.located < l then i + root.located else i + root.located - l)
-      ) l;
-  # `root.order`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by
-  # `located` (`childTree`'s `rootOver`). A root whose `order` is not that permutation of `mods` drops or
-  # invents modules silently, so a caller holding other modules (a re-evaluation) passes no `order`.
+      prelude.genList (i: prelude.elemAt xs (if i + k < l then i + k else i + k - l)) l;
+  # `root.order`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by the
+  # own-module count (`childTree`). A root whose `order` is not that permutation of `mods` drops or invents
+  # modules silently, so a caller holding other modules (a re-evaluation) passes no `order`.
   moduleClosure =
     specialArgs: callM: root: mods:
     let
-      plain = moduleEntries callM root (root.order or mods);
+      plain = if root ? order then moduleEntries callM root root.order else moduleEntries callM root mods;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -3046,7 +3046,7 @@ let
         in
         # rotated before the filter, so the count is the authored one; only a located root (never an
         # importing entry) pays for the rotation, the walk's other importers read `es` as it is
-        if (importer.located or 0) == 0 then concatLists es else concatLists (rootOrder importer es);
+        if importer ? nests then concatLists (rootOrder importer es) else concatLists es;
       # The key set an evaluation removed by, off its collection, its modules and its arguments. Collected
       # from a null root even in a nested tree: a key never reads a file, and the one refusal naming one
       # (`disabledKeyOf`) was raised first by `closure`, over the same occurrences.
@@ -6207,7 +6207,7 @@ let
           nFlat = length flat;
           nTop = length r._modList;
           nOwn = nTop - length seeds;
-          kRoot = r._root.located or 0;
+          kRoot = length (r._root.nests.modules or [ ]);
           tree =
             if p == null then
               null
@@ -6347,20 +6347,12 @@ let
       member = p.member;
       n = member.nests;
       m = if p.mode == "called" then n.calledMode else p.mode;
-      # the group's root, which locates this type's own modules: their count, and the top level in the order
-      # a located collection reads it (`rootOrder`), built here where the two halves are still apart.
-      # `order` must be `n.modules ++ rest` rotated by `located` (`moduleClosure` reads it for the modules)
-      rootOver =
-        rest:
-        if p.group.root == null then
-          null
-        else
-          p.group.root
-          // {
-            located = length n.modules;
-            order = rest ++ n.modules;
-          };
     in
+    # Each tree branch below passes the group's root, which locates this type's own modules: the nesting
+    # record (`nests`, whose modules `rootOrder` counts) and the top level in the order a located collection
+    # reads it, `rest ++ n.modules`, the authored `n.modules ++ rest` rotated, built where the two halves are
+    # still apart (`moduleClosure` reads it for the modules). Inline at each branch: a let-bound helper is a
+    # thunk on every child.
     # A MODULE NODE (den-hoag-470xp) answers its closure entry off the host's position record, as a
     # container node reads its definitions (arm (B)), and never a tree evaluation.
     if p.mode == "module" then
@@ -6391,7 +6383,15 @@ let
           {
             modules = n.modules ++ [ namePlaceholder ];
             inherit (n) coreShortCircuit;
-            root = rootOver [ namePlaceholder ];
+            root =
+              if p.group.root == null then
+                null
+              else
+                p.group.root
+                // {
+                  nests = n;
+                  order = [ namePlaceholder ] ++ n.modules;
+                };
             inherit (n.empty) prefix specialArgs check;
           }
           // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6420,7 +6420,15 @@ let
             {
               modules = n.modules ++ seeds;
               prefix = p.loc;
-              root = rootOver seeds;
+              root =
+                if p.group.root == null then
+                  null
+                else
+                  p.group.root
+                  // {
+                    nests = n;
+                    order = seeds ++ n.modules;
+                  };
               inherit (n) specialArgs check coreShortCircuit;
             }
             // (if (n.class or null) == null then { } else { inherit (n) class; })
@@ -6441,7 +6449,15 @@ let
               {
                 modules = n.modules ++ seeds;
                 prefix = p.loc;
-                root = rootOver seeds;
+                root =
+                  if p.group.root == null then
+                    null
+                  else
+                    p.group.root
+                    // {
+                      nests = n;
+                      order = seeds ++ n.modules;
+                    };
                 inherit (n) specialArgs check coreShortCircuit;
               }
               // (if (n.class or null) == null then { } else { inherit (n) class; })
