@@ -1276,7 +1276,7 @@ in
       };
 
     # n8cpq: an embedding row is reached by the CONSTRUCTION it stands for, never by a caller-chosen
-    # name. A gen type NAMED like a row (`enum "path"`, `struct "path"`, `typedef "string"`, a
+    # name. A gen type NAMED like a row (`enum "path"`, `struct "path"`, `typedef { } "string"`, a
     # `mkOptionType` descriptor, a `defineType` record) beside the nixpkgs type that row stands for is refused in both
     # orders, as its nixpkgs twin is: keyed on the name, the order where nixpkgs' relation decides
     # served the partner's record with the gen check dropped, and `enum "attrsOf"` aborted. Live
@@ -1342,7 +1342,7 @@ in
             v = "/zz";
           };
           typedefString = {
-            g = t.typedef "string" (x: x == "a");
+            g = t.typedef { } "string" (x: x == "a");
             p = np.types.str;
             v = "zz";
           };

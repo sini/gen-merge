@@ -942,7 +942,7 @@ in
         # every order's verdict, collapsed to the set of distinct verdicts: one element is order-independence
         orders = tys: v: nixpkgsLib.unique (map (o: verdict (ev o v)) (perms tys));
         notA = x: x != "a";
-        even = gt.typedef "even" (v: builtins.isInt v && v / 2 * 2 == v);
+        even = gt.typedef { } "even" (v: builtins.isInt v && v / 2 * 2 == v);
         Wg = t.addCheck (gt.enum "e" [
           "a"
           "b"
@@ -1276,7 +1276,7 @@ in
           "2" = orders [ copy twin ] 2;
         };
         # a caller `typedef`: two of its copies are one type only through the carrier
-        even = gt.typedef "even" (v: builtins.isInt v && v / 2 * 2 == v);
+        even = gt.typedef { } "even" (v: builtins.isInt v && v / 2 * 2 == v);
         sealed = copy: {
           "2" = orders [ copy even ] 2;
           "3" = orders [ copy even ] 3;
@@ -1764,7 +1764,7 @@ in
           "b"
         ];
         St = gt.struct "s" { a = gt.int; };
-        Td = gt.typedef "td" builtins.isInt;
+        Td = gt.typedef { } "td" builtins.isInt;
         # each copy with the values it is read at and the twins it is declared beside
         cases = {
           enumVerify = {
