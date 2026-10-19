@@ -3036,18 +3036,17 @@ let
         dis: callM: importer: mods:
         let
           pk = if importer == null then "" else importer.nk;
+          es = prelude.imap0 (
+            i: e:
+            let
+              nk = nixKeyOf pk i e;
+            in
+            if dis ? ${nk} then [ ] else [ (e // { inherit nk dis; }) ]
+          ) (moduleEntries callM importer mods);
         in
-        concatLists (
-          rootOrder importer (
-            prelude.imap0 (
-              i: e:
-              let
-                nk = nixKeyOf pk i e;
-              in
-              if dis ? ${nk} then [ ] else [ (e // { inherit nk dis; }) ]
-            ) (moduleEntries callM importer mods)
-          )
-        );
+        # rotated before the filter, so the count is the authored one; only a located root (never an
+        # importing entry) pays for the rotation, the walk's other importers read `es` as it is
+        if (importer.located or 0) == 0 then concatLists es else concatLists (rootOrder importer es);
       # The key set an evaluation removed by, off its collection, its modules and its arguments. Collected
       # from a null root even in a nested tree: a key never reads a file, and the one refusal naming one
       # (`disabledKeyOf`) was raised first by `closure`, over the same occurrences.
