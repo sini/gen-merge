@@ -12,9 +12,7 @@
 # holding a module's `extendModules` in place of the engine's own reds (zgpaa gate F1/F2). nixpkgs'
 # `moduleType` key is read away on both sides until gen serves it (den-hoag-d2o0g).
 #
-# Stated departures, both sides pinned:
-#   yjmwc  a tree type whose seed imports a module: gen orders the seed's definition before the type's
-#          import, nixpkgs after it (den-hoag-yjmwc, the nested definition order).
+# Stated departure, both sides pinned:
 #   b44rx  `_module.args = mkForce { q = 1; }`: nixpkgs serves `{ q }` and a reader of `name` finds none;
 #          gen keeps serving `name` and `extendModules` (den-hoag-b44rx). The definitions already agree.
 { genMerge, nixpkgsLib, ... }:
@@ -669,8 +667,8 @@ in
       "mx"
       "docs"
       "empty"
+      "tr"
     ]
-    // cellsOf "order" order [ "mix" ] [ "tr" ]
     // cellsOf "seeds" seeds both [
       "merge"
       "ifFalse"
@@ -694,35 +692,6 @@ in
           "published"
           "publishedExtends"
         ]
-    // {
-      # den-hoag-yjmwc: the seed's import sits before the type's import in gen's collection
-      test-order-tr-gen-pinned-yjmwc = {
-        expr = {
-          gen = (order "gm").tr;
-          nixpkgs = (order "np").tr;
-        };
-        expected = {
-          gen = [
-            "y.nix"
-            "def.nix"
-            "w.nix"
-            "q.nix"
-            "lib/modules.nix"
-            "<unknown-file>"
-            "<unknown-file>"
-          ];
-          nixpkgs = [
-            "y.nix"
-            "w.nix"
-            "def.nix"
-            "q.nix"
-            "lib/modules.nix"
-            "<unknown-file>"
-            "<unknown-file>"
-          ];
-        };
-      };
-    }
     // builtins.listToAttrs (
       builtins.concatMap (
         eng:
