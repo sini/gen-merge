@@ -4142,12 +4142,12 @@ let
 
   # ── THE CALLED FOLD REFUSES (den-hoag-n6dh7 item 1) ─────────────────────────────────────────────
   # A nesting type declares its tree; it does not evaluate it. Every evaluating field is a named
-  # refusal where it is CALLED (the 2-arity `mergeDefs` and its `.reported`, the tree record's
-  # `emptyTree`), naming the field and the loc: the tree is a child of the one evaluation that holds
-  # it, and an evaluation reads it through the fold's threaded sibling. The exported foreign `merge`
-  # does not refuse; it bridges (item 7). A free-standing type, which no gen evaluation holds, reads
-  # its empty value (`submodule`'s `whenEmpty.value`) off the bridge's one root evaluation (item 1,
-  # narrowed by den-hoag-8qenh).
+  # refusal where it is CALLED (the 2-arity `mergeDefs` and its `.reported`), naming the field and
+  # the loc: the tree is a child of the one evaluation that holds it, and an evaluation reads it
+  # through the fold's threaded sibling. The exported foreign `merge` does not refuse; it bridges
+  # (item 7). The empty value is not a refusal (item 1, narrowed by den-hoag-8qenh): an evaluation's
+  # own type reads it as that evaluation's on-demand `type` child (C, OQ6 (c′)), and a free-standing
+  # type, which no gen evaluation holds, off the bridge's one root evaluation (B).
   calledNestingRefusal =
     type: field: loc:
     "gen-merge: `${type}'${
@@ -5085,14 +5085,6 @@ let
     loc:
     "gen-merge: `evalModuleTree': option `${showOption loc}' holds a nested tree with no definition inside ${toString interface.importedTypeWalkFuel} enclosing nested trees that have none either: a nesting type that holds itself grows undefined trees without end, and the walk refuses past its fuel of ${toString interface.importedTypeWalkFuel} rather than hang. Define the position, or reach the recursion through a container whose keys are data (`attrsOf', `listOf')";
 
-  # The same fuel on an evaluation's own type (den-hoag-8qenh, OQ1 (C)): its empty value is a child one
-  # level deeper, whose own type's is another, and a read reaching past the fuel refuses by name.
-  typeEmptyRunRefusal =
-    loc:
-    "gen-merge: `evalModuleTree'${
-      if loc == [ ] then "" else " at `${showOption loc}'"
-    }: the empty value of an evaluation's own type is read inside ${toString interface.importedTypeWalkFuel} enclosing empty values of that type: each is a child of the evaluation before it, and the walk refuses past its fuel of ${toString interface.importedTypeWalkFuel} rather than nest without end";
-
   # The declared options of a tree, in declaration order, each with the definitions the realizer
   # routed to it. ONE ROUTING (den-hoag-n6dh7 L5c): `mergeTree` already ran this descent once to
   # build `declaredConfig`, so this reads its result's exposed `declaredPairs` / `subDefs` / `opts`
@@ -5276,33 +5268,6 @@ let
             }) (positionsOf j g)
           );
         }) groups
-        # THE EVALUATION'S OWN TYPE'S EMPTY VALUE (den-hoag-8qenh, OQ1 (C)): one empty-seed position in
-        # the reserved group `type` (never a JSON list, as `freeform`), whose member is the tree's own
-        # type, so its child is the tree over no definitions, `nests.empty`'s arguments.
-        ++ [
-          {
-            name = "type";
-            # Past the fuel the group holds no position, so an enumeration of the node set stays
-            # total, and the read refuses by name (`typeEmptyRunRefusal`).
-            value =
-              if emptyRun >= interface.importedTypeWalkFuel then
-                { }
-              else
-                {
-                  "[]" = {
-                    key = [ ];
-                    loc = prefix;
-                    member = selfType;
-                    defs = [ ];
-                    address = [ ];
-                    mode = "called";
-                    emptyRun = emptyRun + 1;
-                    # Its modules are this tree's own, so they keep this tree's importer (`root`).
-                    group = { inherit root; };
-                  };
-                };
-          }
-        ]
       );
     in
     # Every field is a binding the walk already holds, so the record costs no thunk: the per-group
@@ -5312,6 +5277,22 @@ let
     {
       inherit groups positions emptySelf;
       inputs = args;
+      # THE EVALUATION'S OWN TYPE'S EMPTY VALUE (den-hoag-8qenh, OQ6 (c′)): one empty-seed position,
+      # the `type` NTA's only child, whose member is the tree's own type, so its child is the tree
+      # over no definitions under `nests.empty`'s arguments. The NTA is on demand: never enumerated,
+      # and with no fuel, since laziness bounds the regress as nixpkgs' `base` does. Its run starts at
+      # `0`, as a root's: the regress it starts is the type's, not an option's (`emptyRunRefusal`).
+      typePosition = {
+        key = [ ];
+        loc = prefix;
+        member = selfType;
+        defs = [ ];
+        address = [ ];
+        mode = "called";
+        emptyRun = 0;
+        # Its modules are this tree's own, so they keep this tree's importer (`root`).
+        group = { inherit root; };
+      };
     };
 
   # Leaf combine — one winner passes through; multiple equal-priority winners must be equal
@@ -6026,6 +6007,17 @@ let
             (knotModules self id).product
           else
             { };
+        # ITS OWN TYPE'S EMPTY VALUE (den-hoag-8qenh, OQ6 (c′)): a tree's one empty-seed child, whose
+        # member is the tree's own type (`typePosition`). ON DEMAND: `getNta` and an identifier reach
+        # it, and no enumeration does (gen-scope `ntaEnumerated`), because each such child holds
+        # another one level deeper, without end, as nixpkgs' `base` evaluations do.
+        nta.type =
+          self: id:
+          if id == knotId || interface.isNesting (self.getHostAt "positions").member then
+            { empty."[]" = [ ]; }
+          else
+            { };
+        ntaOnDemand = [ "type" ];
       } knotKindName)
     ];
   };
@@ -6085,6 +6077,7 @@ let
     {
       nested = r._nested.positions;
       modules = if r ? _flat then (knotModules self id).positions else { };
+      type.empty."[]" = r._nested.typePosition;
     };
   driveKnot =
     f:
@@ -6364,8 +6357,10 @@ let
           let
             c = scope.decodeNta id;
           in
-          if c.name != "nested" then
-            throw "gen-merge: `seedDeclAts': node `${c.group}.${c.key}' of family `${c.name}' holds no nested tree, so it has no declaration addresses (only the `nested' family does)"
+          if c.name == "type" then
+            addrsFor ra self id (self.get c.host "positions").type.${c.group}.${c.key} [ ]
+          else if c.name != "nested" then
+            throw "gen-merge: `seedDeclAts': node `${c.group}.${c.key}' of family `${c.name}' holds no nested tree, so it has no declaration addresses (only the `nested' and `type' families do)"
           else
             (addrsOf ra self c.host).children.${c.group}.${c.key};
       seedsFrom =
@@ -6782,17 +6777,17 @@ let
           # The fold over no definitions, CALLED, refuses (item 1): an undefined tree is the child
           # with an empty seed, which the threaded fold reads (`threadedAs`).
           # THE FOLD OVER NO DEFINITIONS OF AN EVALUATION'S OWN TYPE IS A CHILD OF THAT EVALUATION
-          # (den-hoag-8qenh, OQ1 (C)): the position `nested` group `type` holds, with an empty seed, so it
-          # is a node of the one evaluation; each child's own type nests one level deeper, and the run is
-          # cut by the empty-run fuel (`emptyRunRefusal`). An evaluation that mints no positions (the
-          # declaration-only knot) holds none, and reads the bridge's one root evaluation (OQ1 (B)).
+          # (den-hoag-8qenh, OQ1 (C), OQ6 (c′)): the `type` NTA's child, with an empty seed, a node of
+          # the one evaluation reached on demand and never enumerated; each child's own type nests one
+          # level deeper, as each nixpkgs `base` does, and nothing cuts the run: a read that never
+          # ends aborts as nixpkgs' does (ADR-0033's price for non-well-founded lazy data). An
+          # evaluation that mints no positions (the declaration-only knot) holds none, and reads the
+          # bridge's one root evaluation (OQ1 (B)).
           emptyTree.value =
             if r._nested == null then
               nestingFold.threaded (interface.emptyAccessor interface.bridge) [ ] [ ]
-            else if r._nested.positions.type ? "[]" then
-              r._nested.emptySelf.config
             else
-              throw (typeEmptyRunRefusal prefix);
+              r._nested.emptySelf.config;
         in
         let
           over =
@@ -8575,7 +8570,7 @@ let
                 # This evaluation's own type, the member of its `type` position, and that child read
                 # off this node (`evAt`'s read).
                 selfType = typeOver result;
-                emptySelf = self.getNta "nested" "type" "[]" knotAttr;
+                emptySelf = self.getNta "type" "empty" "[]" knotAttr;
                 inherit root;
                 leaves = realizedLeaves realized;
                 normalize =
