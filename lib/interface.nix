@@ -818,8 +818,33 @@ let
       )
     else if t._protoLeafMerge or false then
       null
-    else if statesFold t then
-      statedFold t
+    # ★ A FOLD A GEN LEAF STATES (den-hoag-6orb8 U3). A gen-types record not yet completed here (its
+    # `verify` and completion stamp, no gen relation) carrying the protocol's `merge` (`typedef { merge; }`)
+    # folds as nixpkgs' `mergeDefinitions` folds a `mkOptionType`: each definition passes the type before
+    # the fold, blamed on its file; `merge loc` must be a function before `defs` is applied; and the
+    # result passes the type again, refused by name naming the type's `merge`. The caller's own throw
+    # propagates as itself. The test is restated inline at `importType0`'s `checked` and the fold is
+    # built on this branch only, for cost: a binding here is a thunk per process and a call an
+    # environment on every leaf fold (hub perf-bench's load and alloc rows).
+    else if t ? verify && t ? merge && t ? __typeSelf && !(t ? typeMergeRel) && !(isV2 t) then
+      (
+        loc: defs:
+        let
+          bad = filter (d: t.verify d.value != null) defs;
+          m = t.merge loc;
+          v = m defs;
+          e = t.verify v;
+        in
+        if bad != [ ] then
+          throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe t}', in `${(head bad).file}': ${t.verify (head bad).value}"
+        # a functor is a function here: a caller's fold is called, never classified (gen-prelude's reader)
+        else if !(prelude.isFunction m) then
+          throw "gen-merge: the option `${showOption loc}' has a type `${describe t}' whose `merge', applied to the location, is of type `${builtins.typeOf m}', not a function of the definitions"
+        else if e != null then
+          throw "gen-merge: the option `${showOption loc}' has a type `${describe t}' whose `merge' returned a value outside it: ${e}"
+        else
+          v
+      )
     else if adHocChecked t then
       adHocFold t
     else if isV2 t && (t.getSubModules or null) == null then
@@ -848,32 +873,6 @@ let
       t.merge
     else
       null;
-
-  # ── A FOLD A GEN LEAF STATES (den-hoag-6orb8 U3) ──────────────────────────────────────────────────
-  # A gen-types record not yet completed here (its `verify` and completion stamp, no gen relation)
-  # that carries the protocol's `merge` (`typedef { merge; }`) states its own fold. It folds as nixpkgs'
-  # `mergeDefinitions` folds a `mkOptionType`: each definition passes the type before the fold, blamed
-  # on its file; `merge loc` must be a function before `defs` is applied; and the fold's result passes
-  # the type again, a failure refused by name, naming the type's `merge`. The caller's own throw
-  # propagates as itself.
-  statesFold = t: t ? merge && t ? verify && t ? __typeSelf && !(t ? typeMergeRel) && !(isV2 t);
-  statedFold =
-    t: loc: defs:
-    let
-      bad = filter (d: t.verify d.value != null) defs;
-      m = t.merge loc;
-      v = m defs;
-      e = t.verify v;
-    in
-    if bad != [ ] then
-      throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe t}', in `${(head bad).file}': ${t.verify (head bad).value}"
-    # a functor is a function here: a caller's fold is called, never classified (gen-prelude's reader)
-    else if !(prelude.isFunction m) then
-      throw "gen-merge: the option `${showOption loc}' has a type `${describe t}' whose `merge', applied to the location, is of type `${builtins.typeOf m}', not a function of the definitions"
-    else if e != null then
-      throw "gen-merge: the option `${showOption loc}' has a type `${describe t}' whose `merge' returned a value outside it: ${e}"
-    else
-      v;
 
   isV2 = t: (t.merge or { }) ? v2;
   # a v2 type whose `check` is not the coherent one its constructor shipped: `type // { check = ...; }`,
@@ -7575,7 +7574,12 @@ let
             # both at once, as with `mergeDefs.reported`.
             # A gen record whose `check` a wrapper rewrote crosses with that check as its checked fold
             # (`checkedFold`), never stripped with the protocol's names (den-hoag-4ifgb).
-            checked = isV2 t || checksDefs t || rewritesCheck t || statesFold t;
+            checked =
+              isV2 t
+              || checksDefs t
+              || rewritesCheck t
+              # `importedFold`'s stated-fold test, restated inline for cost
+              || t ? verify && t ? merge && t ? __typeSelf && !(t ? typeMergeRel) && !(isV2 t);
             admits = importedAdmits t;
             deprecated = importedDeprecation t;
           in
