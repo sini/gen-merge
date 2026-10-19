@@ -1764,7 +1764,7 @@ let
           );
         graph =
           let
-            graph0 = removal.closeKept flat (rootOrder root (moduleTop callM modList).roots);
+            graph0 = removal.closeKept flat (removal.rootOrder root (moduleTop callM modList).roots);
           in
           alignedGraph "the `_module.args' definitions" flat (
             if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
@@ -2666,7 +2666,7 @@ let
       in
       {
         top = t;
-        graph = removal.closeKept flat (rootOrder root t.roots);
+        graph = removal.closeKept flat (removal.rootOrder root t.roots);
       };
   };
   # `chain null`: the refined-key maps of x's level (head) and of every shallower level (tail), built
@@ -2780,26 +2780,6 @@ let
                 moduleEntries callM e (importsOf content)
             ) kept
           );
-  # THE ROOT'S LEVEL (den-hoag-yjmwc). nixpkgs hands each own module of a once-declared type through
-  # `setDefaultModuleLocation`, a wrapper at the head of the tree's top level that names no definition:
-  # its two effects are the file its import inherits (the root's `_file`, den-hoag-fhggb) and the level
-  # it sits at. A breadth-first queue whose head is k wrappers, each importing one own module, is the
-  # same queue, once the top level is popped, as one starting with the top level's other modules and
-  # then the k own modules: so the level is an ORDER of the top level, read after each module's
-  # coordinate is assigned, and mints no node. k is the count of the type's own modules, read off the nesting
-  # record a located root carries (`nests`, `childTree`), so building the root allocates no count. The merge
-  # path's collection reads the root's `order`, the same rotation built where the two halves are still apart;
-  # a reader of the indexed, authored list (the graph, the anchors, the removal walk) rotates it here.
-  rootOrder =
-    root: xs:
-    let
-      k = length (root.nests.modules or [ ]);
-      l = length xs;
-    in
-    if k == 0 then
-      xs
-    else
-      prelude.genList (i: prelude.elemAt xs (if i + k < l then i + k else i + k - l)) l;
   # `root.order`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by the
   # own-module count (`childTree`). A root whose `order` is not that permutation of `mods` drops or invents
   # modules silently, so a caller holding other modules (a re-evaluation) passes no `order`.
@@ -2848,6 +2828,28 @@ let
   # first collection that walks forces its seven attributes, and the walk's own helpers are one of
   # them (`walk`), built only where a module states `disabledModules` or loses its key.
   removal = rec {
+    # THE ROOT'S LEVEL (den-hoag-yjmwc). nixpkgs hands each own module of a once-declared type through
+    # `setDefaultModuleLocation`, a wrapper at the head of the tree's top level that names no definition:
+    # its two effects are the file its import inherits (the root's `_file`, den-hoag-fhggb) and the level
+    # it sits at. A breadth-first queue whose head is k wrappers, each importing one own module, is the
+    # same queue, once the top level is popped, as one starting with the top level's other modules and
+    # then the k own modules: so the level is an ORDER of the top level, read after each module's
+    # coordinate is assigned, and mints no node. k is the count of the type's own modules, read off the nesting
+    # record a located root carries (`nests`, `childTree`), so building the root allocates no count. The merge
+    # path's collection reads the root's `order`, the same rotation built where the two halves are still apart;
+    # a reader of the indexed, authored list (the graph, the anchors, the removal walk) rotates it here. Bound in
+    # this record and not at the top level (one load thunk less): every reader pairs it with `closeKept` on the
+    # same list.
+    rootOrder =
+      root: xs:
+      let
+        k = length (root.nests.modules or [ ]);
+        l = length xs;
+      in
+      if k == 0 then
+        xs
+      else
+        prelude.genList (i: prelude.elemAt xs (if i + k < l then i + k else i + k - l)) l;
     # the reference's `checkModule`, in its words
     classOk =
       class: e:
@@ -3046,7 +3048,7 @@ let
         in
         # rotated before the filter, so the count is the authored one; only a located root (never an
         # importing entry) pays for the rotation, the walk's other importers read `es` as it is
-        if importer ? nests then concatLists (rootOrder importer es) else concatLists es;
+        if importer ? nests then concatLists (removal.rootOrder importer es) else concatLists es;
       # The key set an evaluation removed by, off its collection, its modules and its arguments. Collected
       # from a null root even in a nested tree: a key never reads a file, and the one refusal naming one
       # (`disabledKeyOf`) was raised first by `closure`, over the same occurrences.
@@ -6016,7 +6018,7 @@ let
     in
     let
       top0 = moduleTop r._callM r._modList;
-      graph0 = removal.closeKept r._flat (rootOrder r._root top0.roots);
+      graph0 = removal.closeKept r._flat (removal.rootOrder r._root top0.roots);
     in
     moduleFamily id (length r._nested.groups) r._flat (
       if length graph0 == length r._flat then
@@ -6226,7 +6228,7 @@ let
               tree ++ [ { module = i; } ];
           graph =
             let
-              graph0 = removal.closeKept flat (rootOrder r._root (moduleTop r._callM r._modList).roots);
+              graph0 = removal.closeKept flat (removal.rootOrder r._root (moduleTop r._callM r._modList).roots);
             in
             alignedGraph "the declaration anchors" flat (
               if length graph0 == length flat then
@@ -6863,7 +6865,7 @@ let
               baseLen = length modList - length editedModules;
               # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
               top0 = moduleTop callM modList;
-              graph0 = removal.closeKept flat (rootOrder root top0.roots);
+              graph0 = removal.closeKept flat (removal.rootOrder root top0.roots);
               # the refined graph is spelled at its two reads, so the split binds what it did before
               roots =
                 (if length graph0 == length flat then top0 else (a3.refinedGraph root flat callM modList).top)
