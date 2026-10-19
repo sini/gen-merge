@@ -70,6 +70,9 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`. A
    descriptor stating `name` and no fold takes nixpkgs' constructor default (see
    [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-exported-beside-mergeleaf)).
+   A gen leaf states the same fold options first, `types.typedef { merge = loc: defs: …; } "tally" isInt`:
+   each definition is verified before the fold and blamed on its file, `merge loc` must be a function,
+   and the result is verified again, refused by name naming the type's `merge` (`ci/tests/typedef-merge.nix`).
 7. **`deferredModule`** — a lazy, import-usable module value, **never forced** by composition (handed
    opaque to the terminal). `functionTo` is intentionally omitted (consumers wrap guard functions as
    data).
