@@ -306,6 +306,42 @@ let
       key = key;
     }) "result").config;
 
+  # a module reading `f` of its arguments, deep-forced inside the evaluation, on the module system `M`
+  # (gen-merge or nixpkgs' lib), read back as the option `r`
+  mtEval =
+    M: modules:
+    if M ? evalModuleTree then M.evalModuleTree { } modules else M.evalModules { inherit modules; };
+  mtRegress =
+    M: f:
+    (mtEval M [
+      { options.a = M.mkOption { default = 1; }; }
+      (
+        { config, moduleType, ... }@a:
+        {
+          options.r = M.mkOption { default = (builtins.tryEval (builtins.deepSeq (f a) true)).success; };
+        }
+      )
+    ]).config.r;
+  mtDepth =
+    M:
+    let
+      emptyOf = t: if M ? evalModuleTree then t.whenEmpty.value else t.emptyValue.value;
+    in
+    (mtEval M [
+      (
+        { moduleType, ... }:
+        {
+          options.d = M.mkOption {
+            default =
+              let
+                r = builtins.tryEval (emptyOf moduleType).d;
+              in
+              if r.success then r.value + 1 else 0;
+          };
+        }
+      )
+    ]).config.d;
+
   cells = {
     # U2-g: ONE evaluation, however many nested trees the value holds (each reads 1).
     one-eval-flat =
@@ -373,6 +409,20 @@ let
           };
         }
       ]).type.whenEmpty.value.a;
+    # den-hoag-8qenh C17, den-hoag-d2o0g: a module that deep-forces its own `moduleType` regresses
+    # without end, since that type's empty value holds the module again, one level deeper, as
+    # nixpkgs' each `base` does. It dies on the call-depth channel on both engines, and is never
+    # cut short with a value (ADR-0033: divergence is inherited, never added).
+    mt-regress-formal = mtRegress m (a: a.moduleType);
+    mt-regress-formal-nixpkgs = mtRegress (import "${nixpkgsSrc}/lib") (a: a.moduleType);
+    mt-regress-args = mtRegress m (a: a.config._module.args.moduleType);
+    mt-regress-args-nixpkgs = mtRegress (import "${nixpkgsSrc}/lib") (
+      a: a.config._module.args.moduleType
+    );
+    # an option whose default is one more than itself in its own moduleType's empty value: no depth
+    # at which the regress is cut, so no value
+    mt-regress-depth = mtDepth m;
+    mt-regress-depth-nixpkgs = mtDepth (import "${nixpkgsSrc}/lib");
     # U2-l (gate O1): a candidate's `result` refuses before its member's modules are applied, so the
     # traced module is applied 0 times. The evaluation holds no SELECTED child of that member.
     candidate-modules =

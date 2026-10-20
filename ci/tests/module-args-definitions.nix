@@ -9,27 +9,34 @@
 # and nixpkgs' `evalModules` over gen's nesting types (the export bridge). The whole record is compared:
 # `files`, each definition's file, keys and values, `highestPrio`, `isDefined`, the value's keys and the
 # `name` the module sees. A value is shown as `<fn>` only when it is a function, so an internal entry
-# holding a module's `extendModules` in place of the engine's own reds (zgpaa gate F1/F2). nixpkgs'
-# `moduleType` key is read away on both sides until gen serves it (den-hoag-d2o0g).
+# holding a module's `extendModules` in place of the engine's own reds (zgpaa gate F1/F2), and as
+# `type:<name>` when it is a type, the internal entry's `moduleType` (den-hoag-d2o0g).
 #
 # Stated departure, both sides pinned:
 #   b44rx  `_module.args = mkForce { q = 1; }`: nixpkgs serves `{ q }` and a reader of `name` finds none;
-#          gen keeps serving `name` and `extendModules` (den-hoag-b44rx). The definitions already agree.
+#          gen keeps serving `name`, `extendModules` and `moduleType` (den-hoag-b44rx). The definitions
+#          already agree.
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
   np = nixpkgsLib;
-  show = v: if builtins.isFunction v then "<fn>" else v;
-  noMT = v: removeAttrs v [ "moduleType" ];
+  show =
+    v:
+    if builtins.isFunction v then
+      "<fn>"
+    else if builtins.isAttrs v && v._type or null == "option-type" then
+      "type:${v.name}"
+    else
+      v;
   probe = config: o: {
     files = o.files;
     defs = map (d: {
       inherit (d) file;
-      value = builtins.mapAttrs (_: show) (noMT d.value);
+      value = builtins.mapAttrs (_: show) d.value;
     }) o.definitionsWithLocations;
     prio = o.highestPrio;
     isDef = o.isDefined;
-    vkeys = builtins.attrNames (noMT o.value);
+    vkeys = builtins.attrNames o.value;
     cname = config._module.args.name or "<none>";
   };
   # a partial fold's value is its content (`partialSubmodule` has no nixpkgs twin)
@@ -736,6 +743,7 @@ in
                 gen = {
                   vkeys = [
                     "extendModules"
+                    "moduleType"
                     "name"
                     "q"
                   ];

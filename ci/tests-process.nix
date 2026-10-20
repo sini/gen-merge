@@ -165,6 +165,16 @@
           n=$(traced)
           [ "$n" = "2" ] || die one-eval-control-two-roots "the spy's control expected 2 evaluations, counted $n"
 
+          # den-hoag-8qenh C17, den-hoag-d2o0g: a module deep-forcing its own `moduleType` dies on the
+          # call-depth channel, on gen-merge and on nixpkgs alike.
+          for arm in mt-regress-formal mt-regress-args mt-regress-depth; do
+            for side in "$arm" "$arm-nixpkgs"; do
+              evalArm "$side"
+              [ "$rc" -ne 0 ] || die "$side" "expected a death, got exit 0 with '$val'"
+              grep -Eq 'stack overflow|max-call-depth exceeded' "$TMPDIR/err" || die "$side" "death is not the call-depth channel"
+            done
+          done
+
           # den-hoag-n6dh7 U2-l (gate O1): a candidate's `result` refuses before its member's modules
           # are applied — the traced module is applied 0 times — and a selected child applies it.
           evalArm candidate-modules
@@ -312,8 +322,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "50" ] || die runner "expected 50 evaluations, ran $ran"
-          echo "tests-process: 50 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "56" ] || die runner "expected 56 evaluations, ran $ran"
+          echo "tests-process: 56 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

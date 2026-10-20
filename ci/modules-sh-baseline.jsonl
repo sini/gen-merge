@@ -253,10 +253,10 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^\"42\"$","config.value","./declare-coerced-value.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^\"The option `a\\.b. defined in `.*/doRename-warnings\\.nix. has been renamed to `c\\.d\\.e.\\.\"$","config.result","./doRename-warnings.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^\"\"$","config.value.string","./types-anything/equal-atoms.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a b c\"$","config.resultFooFoo","./declare-variants.nix","./define-variant.nix"]},"verdict":"FAIL"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a b y z\"$","config.resultFooBar","./declare-variants.nix","./define-variant.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a b c\"$","config.resultFooFoo","./declare-variants.nix","./define-variant.nix"]},"verdict":"PASS"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a b y z\"$","config.resultFooBar","./declare-variants.nix","./define-variant.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a b\"$","config.result","./functionTo/merging-list.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a b\"$","config.resultFoo","./declare-variants.nix","./define-variant.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a b\"$","config.resultFoo","./declare-variants.nix","./define-variant.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a bee\"$","config.result","./functionTo/submodule-options.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^\"a c\"$","config.result","./functionTo/merging-attrs.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^\"b a\"$","config.result","./functionTo/list-order.nix"]},"verdict":"PASS"}

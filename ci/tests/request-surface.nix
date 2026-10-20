@@ -1,6 +1,6 @@
 # THE REQUEST / RESULT SURFACE nixpkgs' `evalModules` serves (den-hoag-l23bt, den-hoag-d2o0g): the
-# `class` request field and the `_class` argument, `extendModules` as an argument and a result field,
-# and the result's `_type`, `class` and `graph`. Every cell is one expression read on both engines:
+# `class` request field and the `_class` argument, `extendModules` and `moduleType` as arguments,
+# `extendModules` as a result field, and the result's `_type`, `class` and `graph`. Every cell is one expression read on both engines:
 # `expr` is gen-merge's reading and `expected` is nixpkgs' reading of the same expression. A refusal
 # reads as `"refused"` on either side, so a cell compares whether each side serves, and what.
 #
@@ -120,6 +120,38 @@ let
             ];
           }).config.r;
       id = x: x;
+      # `moduleType` held by an option as it is (`grab`), and behind a function (`fnGrab`), so a deep
+      # force of the held type meets no copy of itself
+      grab =
+        { moduleType, ... }:
+        {
+          options.mt = L.mkOption { default = moduleType; };
+        };
+      fnGrab =
+        { moduleType, ... }:
+        {
+          options.mt = L.mkOption { default = _: moduleType; };
+        };
+      # k hops down the regress: each empty value's own `moduleType`, as nixpkgs' each fresh `base`
+      hops = k: t: if k == 0 then t else hops (k - 1) (emptyOf t).value.mt;
+      gb = [
+        base
+        grab
+        posMod
+      ];
+      chainA = k: read (emptyOf (hops k (ev { modules = gb ++ [ { a = 7; } ]; }).type)).value.a;
+      viaMT = f: { moduleType, ... }: { options.r = opt (f moduleType); };
+      mtArg =
+        def: via:
+        read
+          (ev {
+            modules = [
+              base
+              { a = 4; }
+              { _module.args.moduleType = def; }
+              via
+            ];
+          }).config.r;
     in
     {
       # `extendModules`: a stated prefix replaces, an unstated one is kept
@@ -331,6 +363,206 @@ let
           }).config.x.a;
       # an evaluation's own type deep-forces through its empty value, the module set over no
       # definitions: alone, with a throwing default, as a container element, and read for a value
+      # `moduleType`: the evaluation's own type, as an argument; its regress serves every finite read
+      # however deep (den-hoag-8qenh C17), and a positioned evaluation's carries its position's `name`
+      argNames =
+        read
+          (ev {
+            modules = [
+              base
+              ({ config, ... }: { options.r = opt (builtins.attrNames config._module.args); })
+            ];
+          }).config.r;
+      pubArgNames = builtins.attrNames (ev { modules = [ base ]; }).options._module.args.value;
+      mtFormalA =
+        read
+          (ev {
+            modules = [
+              base
+              { a = 4; }
+              (viaMT (t: (emptyOf t).value.a))
+            ];
+          }).config.r;
+      mtCfgA =
+        read
+          (ev {
+            modules = [
+              base
+              { a = 4; }
+              ({ config, ... }: { options.r = opt (emptyOf config._module.args.moduleType).value.a; })
+            ];
+          }).config.r;
+      mtForce = mtArg (L.mkForce 5) (viaMT id);
+      mtDefault = mtArg (L.mkDefault 5) (viaMT (t: (emptyOf t).value.a));
+      mtHeldForces = forces (
+        (ev {
+          modules = [
+            base
+            fnGrab
+          ];
+        }).config.mt
+          null
+      );
+      mtHeldName =
+        read
+          (
+            (ev {
+              modules = [
+                base
+                fnGrab
+              ];
+            }).config.mt
+              null
+          ).name;
+      depth2 =
+        read
+          (ev {
+            modules = [
+              (
+                { moduleType, ... }:
+                {
+                  options.y = opt 5;
+                  options.x = opt (emptyOf moduleType).value.y;
+                  options.r = opt (emptyOf moduleType).value.x;
+                }
+              )
+            ];
+          }).config.r;
+      depth3 =
+        read
+          (ev {
+            modules = [
+              (
+                { moduleType, ... }:
+                {
+                  options.z = opt 9;
+                  options.y = opt (emptyOf moduleType).value.z;
+                  options.x = opt (emptyOf moduleType).value.y;
+                  options.r = opt (emptyOf moduleType).value.x;
+                }
+              )
+            ];
+          }).config.r;
+      chain31A = chainA 31;
+      chain33A = chainA 33;
+      chain40A = chainA 40;
+      chain100A = chainA 100;
+      # an option's own empty-seed run inside a 33-hop chain: a type hop is no step of its fuel
+      chain33Sub =
+        read
+          (emptyOf (
+            hops 33
+              (ev {
+                modules = gb ++ [
+                  {
+                    options.s = L.mkOption {
+                      type = sub [ base ];
+                      default = { };
+                    };
+                  }
+                ];
+              }).type
+          )).value.s.a;
+      chain33U =
+        read
+          (emptyOf (
+            hops 33 (ev { modules = gb ++ [ { options.s = L.mkOption { type = sub [ base ]; }; } ]; }).type
+          )).value.a;
+      # two hops down an unpositioned evaluation, two placeholders name it: refused on both
+      name3 = read (emptyOf (hops 2 (ev { modules = gb; }).type)).value.nm;
+      posMTEmptyNm =
+        read
+          (emptyOf
+            (ev {
+              modules = [
+                (host [
+                  posMod
+                  grab
+                ])
+              ];
+            }).config.n.foo.mt
+          ).value.nm;
+      posChain40 =
+        read
+          (emptyOf (
+            hops 40
+              (ev {
+                modules = [
+                  (host [
+                    posMod
+                    grab
+                  ])
+                ];
+              }).config.n.foo.mt
+          )).value.nm;
+      posHeldForces = forces (
+        (ev {
+          modules = [
+            (host [
+              posMod
+              fnGrab
+            ])
+          ];
+        }).config.n.foo.mt
+          null
+      );
+      # the position's `name` it carries meets another position's: refused on both
+      posMTElsewhere =
+        read
+          (ev {
+            modules = [
+              {
+                options.o = L.mkOption {
+                  type =
+                    TY.attrsOf
+                      (ev {
+                        modules = [
+                          (host [
+                            posMod
+                            grab
+                          ])
+                        ];
+                      }).config.n.foo.mt;
+                  default = { };
+                };
+                config.o.bar = { };
+              }
+            ];
+          }).config.o.bar.nm;
+      # an unpositioned evaluation's, placed at a position, takes that position's
+      mtAtPos =
+        read
+          (ev {
+            modules = [
+              {
+                options.o = L.mkOption {
+                  type = TY.attrsOf (ev { modules = gb; }).config.mt;
+                  default = { };
+                };
+                config.o.bar = { };
+              }
+            ];
+          }).config.o.bar.nm;
+      # the RESULT's `extendModules` is the engine's own, whatever a module defines as the argument
+      resExtForce =
+        builtins.isFunction
+          (ev {
+            modules = [
+              base
+              { _module.args.extendModules = L.mkForce 5; }
+            ];
+          }).extendModules;
+      resExtForceA =
+        read
+          (
+            (ev {
+              modules = [
+                base
+                { _module.args.extendModules = L.mkForce 5; }
+              ];
+            }).extendModules
+              { modules = [ { a = 3; } ]; }
+          ).config.a;
       dsMTTop = forces (ev { modules = [ base ]; }).type;
       dsMTTopThrow = forces (ev { modules = [ { options.t = opt (throw "T-default"); } ]; }).type;
       dsTreeInAttrs = forces (TY.attrsOf (ev { modules = [ base ]; }).type);

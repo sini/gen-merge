@@ -293,7 +293,16 @@ would reach no module, and a `_module.args` entry of that name stays readable as
 re-declared `type` or `apply`, while the arguments a module receives stay the caller's set. A nested
 tree's modules also receive
 `name`, the last step of their position: `types.submodule` and the tree-as-a-type state it as
-nixpkgs' `submoduleWith` does, an overridable `_module.args.name` definition. **That is the whole of the injected argument set, and it is the argument-side compat
+nixpkgs' `submoduleWith` does, an overridable `_module.args.name` definition. Every evaluation also
+serves nixpkgs' `internalModule` arguments, `extendModules` and `moduleType` (the evaluation's own
+type, whose empty value is its on-demand `type` child), through `config._module.args` and as formals,
+and `_class` as a formal. A module's own definition of one is a second definition beside the engine's:
+`mkForce` wins, `mkDefault` yields, and a plain one is refused by name, where nixpkgs, printing a
+plain `moduleType` beside its own, dies with a stack overflow. A nested tree's `moduleType` carries its
+position's `name` as a module, as nixpkgs' child evaluation lists `{ _module.args.name = last loc; }`,
+so its empty value is named by the position, however many type hops down it is read, and the type
+placed at a second position is refused there as two definitions of `name`, as in nixpkgs
+(`ci/tests/request-surface.nix`). **That is the whole of the injected argument set, and it is the argument-side compat
 boundary:** nixpkgs injects `lib` at every
 `evalModules` level and gen-merge injects none, so a module reading `lib` is refused by name
 (`` module argument `lib' is not defined ``) until the caller threads it through `specialArgs`.
@@ -2061,11 +2070,11 @@ four records at every position it serves one (`.options`, a module's `options` a
 the tree the warm walk, lint and the docs projection read. So nixpkgs' docs walker lists the four
 entries as nixpkgs does, internal below the root, each with nixpkgs' type; their descriptions are
 gen's own. `args` lists the definitions nixpkgs' option lists, in nixpkgs' order: the internal
-module's `{ extendModules; }` (`lib/modules.nix`, the engine's own function whatever a module defines),
+module's `{ extendModules; moduleType; }` (`lib/modules.nix`, the engine's own whatever a module defines),
 and in a nested evaluation the position's `name` and the placeholder's, both `<unknown-file>`
-(`ci/tests/module-args-definitions.nix`). Two departures are stated: the internal definition lacks
-nixpkgs' `moduleType`; and under `evalModuleTree { check = false; }`, a door nixpkgs
-lacks, the `check` record reads the door's definition (`ci/tests/module-option-records.nix`).
+(`ci/tests/module-args-definitions.nix`). One departure is stated: under
+`evalModuleTree { check = false; }`, a door nixpkgs lacks, the `check` record reads the door's
+definition (`ci/tests/module-option-records.nix`).
 
 **A union holds the tree as a member**, in gen's own eval and abroad. A gen union (`either`, `oneOf`,
 `nullOr`) asks its members `admits` before `check`, so `either tree str` is union membership, and
@@ -3035,8 +3044,6 @@ same modules.
     nixpkgs honours it. It waits on the door's own design.
   - *The ordered fold.* Two `apply`s, at the group or inside the leaf, keep the later, as every
     doubled field of a redeclaration does here, `specialArgs` included; nixpkgs refuses the pair.
-  - *`config._module.args` inside a module.* It holds the modules' arguments, `extendModules` and a
-    nested child's `name`. nixpkgs' also holds `moduleType`; this engine has none.
   - *`config._module.check` in a child of an unchecked tree's `.type`.* The view reads the
     strictness that governs the child's refusal of an undeclared key, which is nixpkgs' value under a
     strict parent. Under a caller `check = false` that child runs lax, because this engine's `.type`

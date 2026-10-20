@@ -9,10 +9,6 @@
 # through `?` and `tryEval`, so an absent field is a failed cell and never an abort. Where gen departs,
 # the cell pins BOTH sides to literals, so an upstream move reds it as surely as a gen one. The stated
 # departures:
-#   d2o0g      nixpkgs' `args` carries `{ extendModules, moduleType }` from `lib/modules.nix`; gen
-#              passes no `moduleType`, so that definition is read away (`noD2o0g`). Inside a
-#              submodule `args` is compared on its value's names alone; its definitions, the
-#              position's and the placeholder's included, are `module-args-definitions.nix`'s.
 #   door       `evalModuleTree { check = false; }` is gen's (nixpkgs has no door): its `check` record
 #              reads the door's definition.
 #   unspecified's fold (`mergeUntyped`, the untyped option's) departs from nixpkgs' constructor
@@ -46,46 +42,21 @@ let
   field =
     r: n: g:
     if r ? ${n} then try (g r.${n}) else "ABSENT";
-  # d2o0g: nixpkgs' `{ extendModules, moduleType }` definition, read away
-  isD2o0g = d: builtins.isAttrs d.value && d.value ? extendModules;
-  noD2o0g =
-    k: r:
-    if k != "args" || !(r ? definitionsWithLocations) then
-      r
-    else
-      let
-        kept = builtins.filter (d: !(isD2o0g d)) r.definitionsWithLocations;
-      in
-      r
-      // {
-        definitionsWithLocations = kept;
-        definitions = map (d: d.value) kept;
-        files = map (d: d.file) kept;
-        value = removeAttrs r.value [
-          "extendModules"
-          "moduleType"
-        ];
-      };
-  dump =
-    k: r0:
-    let
-      r = noD2o0g k r0;
-    in
-    {
-      type = field r "type" (t: t.name or "noname");
-      value = field r "value" show;
-      isDefined = field r "isDefined" (x: x);
-      highestPrio = field r "highestPrio" (x: x);
-      defs = field r "definitions" (map show);
-      files = field r "files" (x: x);
-      declarations = field r "declarations" (x: x);
-      loc = field r "loc" (x: x);
-      internal = field r "internal" (x: x);
-      readOnly = field r "readOnly" (x: x);
-      default = field r "default" show;
-      description = field r "description" builtins.isString;
-      str = try "${r}";
-    };
+  dump = k: r: {
+    type = field r "type" (t: t.name or "noname");
+    value = field r "value" show;
+    isDefined = field r "isDefined" (x: x);
+    highestPrio = field r "highestPrio" (x: x);
+    defs = field r "definitions" (map show);
+    files = field r "files" (x: x);
+    declarations = field r "declarations" (x: x);
+    loc = field r "loc" (x: x);
+    internal = field r "internal" (x: x);
+    readOnly = field r "readOnly" (x: x);
+    default = field r "default" show;
+    description = field r "description" builtins.isString;
+    str = try "${r}";
+  };
   ownKeys = [
     "args"
     "check"
@@ -161,15 +132,7 @@ let
               builtins.listToAttrs (
                 map (k: {
                   name = k;
-                  value = show (
-                    if k == "args" then
-                      removeAttrs config._module.args [
-                        "extendModules"
-                        "moduleType"
-                      ]
-                    else
-                      config._module.${k}
-                  );
+                  value = show (config._module.${k});
                 }) ownKeys
               )
             else
@@ -591,7 +554,8 @@ let
                 ];
               }).options
           );
-      # every record forces whole, catchably, but for the one key it refuses by name
+      # every record forces whole as nixpkgs' does: `args` holds `moduleType`, whose empty value reads
+      # `u`, declared with no default, so that one force refuses on both
       wholeRecords = map (
         k: (builtins.tryEval (builtins.deepSeq (removeAttrs pub._module.${k} [ "valueMeta" ]) true)).success
       ) ownKeys;
@@ -602,9 +566,7 @@ let
         in
         {
           isDefined = try r.isDefined;
-          value = try (
-            builtins.filter (n: n != "extendModules" && n != "moduleType") (builtins.attrNames r.value)
-          );
+          value = try (builtins.attrNames r.value);
         };
       unspecSetsDiffer = folded T.unspecified [
         { a = 1; }
@@ -708,15 +670,7 @@ in
     test-an-untyped-option-in-a-submodule-states-unspecified = twin "tnSubUntyped";
     test-the-type-descriptions-are-nixpkgs = twin "tnDesc";
     test-typed-option-control = twin "ctlTyped";
-    test-every-record-forces-whole-but-valueMeta = {
-      expr = gen.wholeRecords;
-      expected = [
-        true
-        true
-        true
-        true
-      ];
-    };
+    test-every-record-forces-whole-but-valueMeta = twin "wholeRecords";
 
     # ── two freeform definitions merge, and the record holds the merged type ────────────────────────
     test-two-attrsOf-int-freeforms-merge = twin "ffMergeInt";

@@ -6693,6 +6693,20 @@ let
       typeOver =
         r:
         let
+          # The type's module set. A positioned evaluation's carries its position's `name` as a module,
+          # as nixpkgs' child evaluation lists `{ _module.args.name = last loc; }` among the modules its
+          # `type` is built over (den-hoag-d2o0g OQ3), so the tree over no definitions is still named.
+          moduleSet =
+            if knot.positioned then
+              modList
+              ++ [
+                {
+                  _file = "<unknown-file>";
+                  _module.args.name = (positionArgsAt prefix).name;
+                }
+              ]
+            else
+              modList;
           # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
           # (den-hoag-n6dh7 items 1, 4, 5). The tree is a child of the one evaluation that holds it,
           # and `threaded` / `threadedReported` read it through that evaluation's accessor: the site
@@ -6757,7 +6771,7 @@ let
           # is a module, as the reference `(evalModules …).type` reads it), `empty` is the arguments
           # of the fold over no definitions, `calledMode` is the pair a called site's child runs in,
           nests = {
-            modules = modList;
+            modules = moduleSet;
             inherit
               specialArgs
               check
@@ -6814,7 +6828,7 @@ let
           shorthandOnlyDefinesConfig = false;
           inherit nests specialArgs;
           unroledNested = if freeform == null then { } else { freeformType = freeform; };
-          carries.moduleSet = modList;
+          carries.moduleSet = moduleSet;
           recarry =
             c:
             over (
@@ -6847,7 +6861,7 @@ let
                     joined = interface.joinInStatedRelation {
                       name = "submodule";
                       payload = interface.moduleSetPayload {
-                        modules = modList;
+                        modules = moduleSet;
                         inherit specialArgs;
                         shorthandOnlyDefinesConfig = false;
                       };
@@ -6871,7 +6885,7 @@ let
                   {
                     merged =
                       (evalModuleTreeUnchecked {
-                        modules = pm ++ modList;
+                        modules = pm ++ moduleSet;
                         specialArgs = specialArgs // partnerArgs;
                         inherit check coreShortCircuit;
                       }).type;
@@ -6879,11 +6893,11 @@ let
               );
           };
           substructure = {
-            modules = modList;
+            modules = moduleSet;
             declares =
               prefix:
               (evalModuleTreeUnchecked {
-                modules = modList ++ [ namePlaceholder ];
+                modules = moduleSet ++ [ namePlaceholder ];
                 inherit
                   prefix
                   specialArgs
@@ -6970,6 +6984,8 @@ let
                       class
                     else if name == "extendModules" then
                       result.moduleConfig._module.args.extendModules
+                    else if name == "moduleType" then
+                      result.moduleConfig._module.args.moduleType
                     else
                       result.moduleArgs.${name} or (throw "gen-merge: module argument `${name}' is not defined")
                   )
@@ -7836,10 +7852,11 @@ let
           # with modules appended, specialArgs merged by `//` and the prefix replaced only where stated.
           # A positioned evaluation re-evaluates positioned at its own prefix; at a stated prefix the
           # position no longer names it, so its `name` rides as a module of the list, as nixpkgs' child
-          # evaluation carries it. A module defining the argument too adds one definition beside the
-          # engine's (`mergeModuleArg`, as `positionNameOf`): `mkForce` wins, `mkDefault` yields, and a
-          # plain one refuses as defined twice. The engine's own is bound once, on the `_module` records
-          # (`moduleOwn.engine`), which nothing allocates until a record or `extendModules` is read.
+          # evaluation carries it. It carries the engine's `moduleType` too, this evaluation's own type
+          # (`typeOver`). A module defining either argument adds one definition beside the engine's
+          # (`mergeModuleArg`, as `positionNameOf`): `mkForce` wins, `mkDefault` yields, and a plain one
+          # refuses as defined twice. The engine's own are bound once, on the `_module` records
+          # (`moduleOwn.engine`), which nothing allocates until a record or an engine argument is read.
           moduleConfig = uncheckedConfig // {
             _module =
               (
@@ -7865,6 +7882,19 @@ let
                           )
                         else
                           result.optionDefs.moduleOwn.engine.extendModules;
+                      moduleType =
+                        if moduleArgs ? moduleType then
+                          mergeModuleArg "moduleType" (
+                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                            ++ [
+                              {
+                                _file = "<module system>";
+                                value = result.optionDefs.moduleOwn.engine.moduleType;
+                              }
+                            ]
+                          )
+                        else
+                          result.optionDefs.moduleOwn.engine.moduleType;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
@@ -7892,6 +7922,19 @@ let
                           )
                         else
                           result.optionDefs.moduleOwn.engine.extendModules;
+                      moduleType =
+                        if moduleArgs ? moduleType then
+                          mergeModuleArg "moduleType" (
+                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                            ++ [
+                              {
+                                _file = "<module system>";
+                                value = result.optionDefs.moduleOwn.engine.moduleType;
+                              }
+                            ]
+                          )
+                        else
+                          result.optionDefs.moduleOwn.engine.moduleType;
                       name = positionNameOf prefix moduleArgs pushed;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
@@ -7914,6 +7957,19 @@ let
                           )
                         else
                           result.optionDefs.moduleOwn.engine.extendModules;
+                      moduleType =
+                        if moduleArgs ? moduleType then
+                          mergeModuleArg "moduleType" (
+                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                            ++ [
+                              {
+                                _file = "<module system>";
+                                value = result.optionDefs.moduleOwn.engine.moduleType;
+                              }
+                            ]
+                          )
+                        else
+                          result.optionDefs.moduleOwn.engine.moduleType;
                     };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
@@ -8394,7 +8450,7 @@ let
             moduleOwn =
               let
                 # the engine's own arguments, nixpkgs' `internalModule` definition, before a module's
-                # definition of one merges over it: the record's definition list, the served value
+                # definition of one merges over it: the record's definition list, the served values
                 # (`moduleConfig`) and the published `extendModules` read this one binding
                 engine = {
                   extendModules =
@@ -8426,6 +8482,9 @@ let
                         }
                         // (if class == null then { } else { inherit class; })
                       );
+                  # nixpkgs' `moduleType`: this evaluation's module set as a type, whose fold over no
+                  # definitions is a child of this evaluation (`typeOver`)
+                  moduleType = typeOver result;
                 };
                 # GATE PROBE: the four values off their own bindings, never through `moduleConfig`
                 m = {
@@ -8439,7 +8498,7 @@ let
                         moduleArgs // { name = positionNameOf prefix moduleArgs pushed; }
                     )
                     // {
-                      inherit (moduleConfig._module.args) extendModules;
+                      inherit (moduleConfig._module.args) extendModules moduleType;
                     };
                   check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                   freeformType = freeform;
