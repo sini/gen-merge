@@ -2558,7 +2558,7 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
 - **The `type` chain has no fuel.** Each `type` child holds its own, as each nixpkgs `base` holds a
   `moduleType` whose `base` is another, so the family is unbounded and only laziness bounds a read: a
   hop to a `type` child restarts the empty-seed run at 0, and a read that never ends aborts uncatchably,
-  as nixpkgs' does (den-hoag-8qenh OQ6 (c′)). No enumerating read descends it.
+  as nixpkgs' does. No enumerating read descends it.
 - **Enumeration** (`allNodeIds`) evaluates every child's definitions to find its own children, and at
   gen-scope `d62b595` it grows exponentially with nesting depth. Read values through the fold.
 
