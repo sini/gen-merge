@@ -675,6 +675,13 @@ in
     functorRecord = core.functorRecordKeys;
   };
 
+  # The option names the engine serves in an option tree beside the declared ones, per shape:
+  # `submodule` for every evaluation (`_module`), `freeformSubmodule` for a submodule with a freeform
+  # type (`_module`, `_freeformOptions`), as nixpkgs' `internalModule` and `submoduleWith` serve them.
+  # Plain data derived from the constructors that serve them (lib/modules.nix), so a consumer
+  # refusing a name the engine owns reads it without evaluating a submodule (den-hoag-jbddy).
+  inherit (core) engineOptionNames;
+
   # The comparison subject of a value that can carry a type record, for a relation outside this
   # library deciding "one construction" over one (gen-schema's `constructionRelation`) — the same
   # subject `mkOptionType`'s own relation decides by (lib/interface.nix, den-hoag-bfc0k).

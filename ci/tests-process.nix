@@ -138,6 +138,19 @@
           [ "$rc" -ne 0 ] || die catch-group "expected a death, got exit 0 with '$val'"
           grep -q 'infinite recursion encountered' "$TMPDIR/err" || die catch-group "death is not the infinite-recursion channel"
 
+          # den-hoag-jbddy: the engine's option names cost no evaluation; its control, the same names
+          # read off `getSubOptions`, evaluates, and both print one record.
+          names='{ freeformSubmodule = [ "_freeformOptions" "_module" ]; submodule = [ "_module" ]; }'
+          evalArm engine-option-names
+          [ "$rc" -eq 0 ] || die engine-option-names "expected exit 0, got $rc"
+          [ "$val" = "$names" ] || die engine-option-names "expected $names, got '$val'"
+          n=$(traced)
+          [ "$n" = "0" ] || die engine-option-names "expected 0 evaluations, the spy counted $n"
+          evalArm engine-option-names-control
+          [ "$rc" -eq 0 ] || die engine-option-names-control "expected exit 0, got $rc"
+          [ "$val" = "$names" ] || die engine-option-names-control "expected $names, got '$val'"
+          n=$(traced)
+          [ "$n" -ge 1 ] || die engine-option-names-control "the spy's control expected an evaluation, counted $n"
           # den-hoag-n6dh7 U2-g: ONE gen-scope evaluation per `evalModuleTree`, however many nested
           # trees its value holds. The spy counts `scope.eval` calls; its live control reads 2.
           for arm in one-eval-flat one-eval-sub-one one-eval-attrs-two one-eval-list-two one-eval-sub-empty one-eval-deep one-eval-np-attrs; do
@@ -322,8 +335,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "56" ] || die runner "expected 56 evaluations, ran $ran"
-          echo "tests-process: 56 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "58" ] || die runner "expected 58 evaluations, ran $ran"
+          echo "tests-process: 58 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

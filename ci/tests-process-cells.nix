@@ -343,6 +343,17 @@ let
     ]).config.d;
 
   cells = {
+    # den-hoag-jbddy: the engine's own option names are read without evaluating a submodule (0),
+    # where the same names read off a freeform submodule's `getSubOptions` evaluate it (the control).
+    engine-option-names = builtins.deepSeq spied.engineOptionNames spied.engineOptionNames;
+    engine-option-names-control =
+      let
+        names = t: builtins.attrNames (t.getSubOptions [ ]);
+      in
+      {
+        submodule = names (st.submodule { });
+        freeformSubmodule = names (st.submodule { freeformType = st.lazyAttrsOf st.raw; });
+      };
     # U2-g: ONE evaluation, however many nested trees the value holds (each reads 1).
     one-eval-flat =
       (spied.evalModuleTree { } [

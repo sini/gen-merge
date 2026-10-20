@@ -8463,6 +8463,7 @@ in
     functorNamesOf
     moduleOwnTypeAdmits
     moduleLeafSubOptions
+    freeformSubOptions
     importedPartner
     importedRebuilds
     importedSubstructure

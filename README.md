@@ -3204,6 +3204,15 @@ same modules.
   **own** module set, so such a type refuses at every non-reporting use, a fully discharged
   `lazyAttrsOf` element included (its empty value is the strict fold over no definitions).
 
+The option names the engine serves in an option tree beside the declared ones are published as
+`engineOptionNames`, one list per shape: `submodule` (`[ "_module" ]`, every evaluation) and
+`freeformSubmodule` (`[ "_freeformOptions" "_module" ]`, a submodule with a freeform type), the
+roots of that shape's `getSubOptions [ ]` here and in nixpkgs. The record is computed by the two
+constructors that serve the names, run over a tree declaring nothing, so reading it evaluates no
+submodule: a consumer refusing a name the engine owns (gen-aspects' `keySemantics` door) reads it
+as data, where a submodule's own `getSubOptions` runs two evaluations
+(`ci/tests/engine-option-names.nix`; the process plane's `engine-option-names` counts 0).
+
 The module reader is nixpkgs' `unifyModuleSyntax`: a module is structured iff it carries `config` or
 `options`, a structured module admits exactly nixpkgs' `attrsToRemove` and refuses any other key by
 name (naming every surplus key and the file, whatever `check` says), and a shorthand module strips

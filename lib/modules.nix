@@ -1842,6 +1842,20 @@ let
         prio = if w == [ ] then 9999 else (head w).priority;
       };
   };
+  # The option names this engine serves in an evaluation's option tree beside the declared ones,
+  # read off the two constructors that serve them over a tree declaring nothing: `moduleOwn.serve`
+  # (`_module`, every evaluation) and `interface.freeformSubOptions` (`_freeformOptions`, a freeform
+  # submodule's `getSubOptions`). Names only, so no evaluation runs and no record is forced; the
+  # freeform type stands in for any, since the constructor reads only whether there is one. Written
+  # out per shape: a shared helper binding costs one more thunk at every load.
+  engineOptionNames = {
+    submodule = attrNames (interface.freeformSubOptions (p: moduleOwn.serve p { } { }) null [ ]);
+    freeformSubmodule = attrNames (
+      interface.freeformSubOptions (
+        p: moduleOwn.serve p { } { }
+      ) (strategies.lazyAttrsOf strategies.raw) [ ]
+    );
+  };
   # The declarations of an engine-owned `_module.<k>` an evaluation's modules state, in authored order,
   # each `{ file; decl; }`. A `_module` group declares them as `options._module.<k>` leaves
   # (`sitesAt`). A `submodule`-typed `_module` leaf declares them inside its submodule, which nixpkgs
@@ -8865,6 +8879,9 @@ in
     # enforces with, never a second spelling of them.
     structuringKeys
     moduleDefOf
+    # The option names the engine serves beside the declared ones, for the public record of the
+    # same name (lib/default.nix), built from the constructors that serve them.
+    engineOptionNames
     structuredKeys
     shorthandMetaKeys
     functorRecordKeys
