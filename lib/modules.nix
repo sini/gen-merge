@@ -7724,7 +7724,14 @@ let
                   );
             in
             {
-              value = mapAttrs (_: x: x.m.value) declaredPairs;
+              # each value is the bare selection, never a call, so a chain of value reads holds no frame per hop
+              # beyond the merge's own (a `mapAttrs` lambda here costs one call per hop under `max-call-depth`)
+              value = listToAttrs (
+                map (k: {
+                  name = k;
+                  value = declaredPairs.${k}.m.value;
+                }) (attrNames opts)
+              );
               prov = mapAttrs (_: x: x.m.prov) declaredPairs;
               typeDefs = mapAttrs (_: x: x.m.typeDefs) declaredPairs;
               # TWO CHANNELS, ONE PER KIND OF RECORD, each in exactly one frame.
