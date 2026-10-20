@@ -553,6 +553,99 @@ let
         )
         { a = 1; }
       ]).config.b;
+    # den-hoag-2tna3: a declaration in a module not declared gen grammar is forced as nixpkgs' fold
+    # forces it, so where nixpkgs' declaration aborts or diverges, so does gen-merge's (the outcome is
+    # inherited, not added). A gen-typed declaration reading config whose read aborts:
+    undeclared-gen-abort =
+      let
+        np = import "${nixpkgsSrc}/lib";
+      in
+      (eval [
+        {
+          options.v = np.mkOption {
+            type = np.types.int;
+            default = 0;
+          };
+        }
+        (
+          { config, ... }:
+          {
+            options.x =
+              m.mkOption {
+                type = m.types.int;
+                default = 1;
+              }
+              // (if config.v >= 0 then abort "declaration aborted" else { });
+          }
+        )
+        {
+          options.y = np.mkOption {
+            type = np.types.int;
+            default = 3;
+          };
+        }
+      ]).config.y;
+    # a gen-typed declaration whose presence reads an ordinary option whose value is nixpkgs' own cycle
+    undeclared-gen-diverges =
+      let
+        np = import "${nixpkgsSrc}/lib";
+      in
+      (eval [
+        (
+          { config, ... }:
+          {
+            options.c = np.mkOption {
+              type = np.types.int;
+              default = config.c + 1;
+            };
+          }
+        )
+        (
+          { config, ... }:
+          {
+            options.g =
+              m.mkOption {
+                type = m.types.int;
+                default = 1;
+              }
+              // np.optionalAttrs (config.c >= 0) { };
+          }
+        )
+        {
+          options.y = np.mkOption {
+            type = np.types.int;
+            default = 3;
+          };
+        }
+      ]).config.y;
+    # an unread pending declaration at the root, which nixpkgs' unmatched check forces, aborts
+    unread-root-declaration-aborts =
+      let
+        np = import "${nixpkgsSrc}/lib";
+      in
+      (eval [
+        {
+          options.v = np.mkOption {
+            type = np.types.int;
+            default = 0;
+          };
+        }
+        (
+          { config, ... }:
+          {
+            options.x =
+              np.mkOption { type = np.types.int; }
+              // (if config.v >= 0 then abort "unread declaration aborted" else { });
+          }
+        )
+        (
+          { config, ... }:
+          {
+            options.z =
+              np.mkOption { type = np.types.int; } // np.optionalAttrs (config.v >= 0) { default = 5; };
+          }
+        )
+      ]).config.z;
     catch-group =
       let
         np = import "${nixpkgsSrc}/lib";

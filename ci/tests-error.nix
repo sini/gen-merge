@@ -4861,105 +4861,6 @@ in
           ];
           expectedError = optionsRead;
         };
-        # An option's PRESENCE moving with `options` stays refused (ADR-0033's carried bound,
-        # declarations staying unconditional), though nixpkgs serves it.
-        test-a-presence-reading-options-refuses-by-name = {
-          expr = refused [
-            base
-            presenceReadsA
-            { a = 1; }
-          ];
-          expectedError = optionsRead;
-        };
-        test-a-declaration-reading-config-refuses-with-the-config-text = {
-          expr = refused [
-            base
-            (
-              { config, ... }:
-              {
-                options.b = mkOption { type = types.int; } // lib.optionalAttrs (config.a == 1) { default = 2; };
-              }
-            )
-            { a = 1; }
-          ];
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: a module read `config' while its own declarations were being folded.*";
-          };
-        };
-        # An option whose PRESENCE reads a module argument stays refused though another module
-        # defines it: only an earlier pass's declarations, as a later pass reads them, carry the
-        # arguments, and the pass that tries a node binds none. The rename chain beside it resolves
-        # one link per pass.
-        test-a-presence-reading-a-module-argument-refuses-by-name = {
-          expr = refused [
-            base
-            (
-              { u, ... }:
-              {
-                options.v = if u.leaf then mkOption { type = types.int; } else { };
-              }
-            )
-            { _module.args.u.leaf = true; }
-            (lib.mkRenamedOptionModule [ "c" ] [ "b" ])
-            (lib.mkRenamedOptionModule [ "b" ] [ "a" ])
-            {
-              c = 1;
-              v = 5;
-            }
-          ];
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: a module read the module argument `u' while its own declarations were being folded.*";
-          };
-        };
-        # A rename whose target's type is read down a list argument longer than the passes: element i
-        # reads element i - 1, and the last pass still reads the argument from a pass that binds none.
-        test-a-rename-deeper-than-the-passes-refuses-by-name = {
-          expr = refused [
-            base
-            (
-              { u, ... }:
-              {
-                options.v = mkOption { type = builtins.elemAt u 400; };
-              }
-            )
-            (
-              { u, ... }:
-              {
-                _module.args.u = lib.genList (i: if i == 0 then types.int else builtins.elemAt u (i - 1)) 401;
-              }
-            )
-            (lib.mkRenamedOptionModule [ "w" ] [ "v" ])
-            {
-              a = 1;
-              w = 5;
-            }
-          ];
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: a module read the module argument `u' while its own declarations were being folded.*";
-          };
-        };
-        # A pass's view is the stamped declaration record, so an evaluated field refuses there by the
-        # record's own name, catchably, not as a missing attribute.
-        test-a-declaration-reading-an-evaluated-field-refuses-with-the-record-text = {
-          expr = refused [
-            base
-            (
-              { options, ... }:
-              {
-                options.b =
-                  mkOption { type = types.int; } // lib.optionalAttrs options.a.isDefined { default = 2; };
-              }
-            )
-            { a = 1; }
-          ];
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: a gen option record does not answer `isDefined'.*";
-          };
-        };
         # The read resolves at pass 1 and the node then throws its own error: that error is the
         # refusal, as in nixpkgs, and not the in-flight poison of pass 0.
         test-a-resolved-read-reports-the-node-own-error = {
@@ -5010,6 +4911,122 @@ in
             type = "ThrownError";
             msg = "^planted aa$";
           };
+        };
+      };
+
+    # ── a declaration whose own top type constructor is gen's keeps the stratum refusal (den-hoag-2tna3) ──
+    # A module not declared gen grammar reads its own evaluation at declaration time as nixpkgs' fold
+    # does (`ci/tests/nixpkgs-grammar-declaration.nix`); the classifier reads the declaration's own top
+    # constructor, so a gen-typed declaration, or a gen container over a nixpkgs element, still refuses
+    # by the base's text, whoever it reads and whoever reads it.
+    flake.testsError.nixpkgs-grammar-declaration =
+      let
+        lib = nixpkgsLib;
+        inherit (lib) mkOption types optionalAttrs;
+        refused =
+          modules:
+          realize {
+            inherit modules;
+            specialArgs = { inherit lib; };
+          };
+        configRead = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read `config' while its own declarations were being folded.*";
+        };
+        release = mk: ty: {
+          options.v = mk {
+            type = ty;
+            default = "26.11";
+          };
+        };
+        v = {
+          options.v = mkOption {
+            type = types.int;
+            default = 0;
+          };
+        };
+      in
+      {
+        test-a-gen-declaration-reading-config-refuses = {
+          expr = refused [
+            (release gm.mkOption t.str)
+            ({ config, ... }: {
+              options.p =
+                gm.mkOption { type = t.str; } // optionalAttrs (config.v == "26.11") { default = "grav_2"; };
+            })
+          ];
+          expectedError = configRead;
+        };
+        test-a-gen-declaration-reading-a-nixpkgs-typed-option-refuses = {
+          expr = refused [
+            (release mkOption types.str)
+            ({ config, ... }: {
+              options.p =
+                gm.mkOption { type = t.str; } // optionalAttrs (config.v == "26.11") { default = "grav_2"; };
+            })
+          ];
+          expectedError = configRead;
+        };
+        test-a-gen-container-over-a-nixpkgs-element-refuses = {
+          expr = refused [
+            (release mkOption types.str)
+            ({ config, ... }: {
+              options.p =
+                mkOption { type = t.nullOr types.str; }
+                // optionalAttrs (config.v == "26.11") { default = "grav_2"; };
+            })
+          ];
+          expectedError = configRead;
+        };
+        test-a-group-with-a-gen-typed-member-refuses = {
+          expr = refused [
+            (release mkOption types.str)
+            (
+              { config, ... }:
+              {
+                options.g = {
+                  a = mkOption {
+                    type = t.int;
+                    default = 1;
+                  };
+                  b = 5;
+                }
+                // optionalAttrs (config.v == "26.11") { };
+              }
+            )
+          ];
+          expectedError = configRead;
+        };
+        test-a-gen-declaration-whose-default-reads-itself-refuses = {
+          expr = refused [
+            v
+            ({ config, ... }: {
+              options.p =
+                gm.mkOption {
+                  type = t.int;
+                  default = config.p + 1;
+                }
+                // optionalAttrs (config.v >= 0) { };
+            })
+          ];
+          expectedError = configRead;
+        };
+        test-a-nixpkgs-declaration-reading-a-gen-declaration-refuses = {
+          expr = refused [
+            v
+            ({ config, ... }: {
+              options.q =
+                gm.mkOption {
+                  type = t.int;
+                  default = 4;
+                }
+                // optionalAttrs (config.v >= 0) { };
+            })
+            ({ config, ... }: {
+              options.p = mkOption { type = types.int; } // optionalAttrs (config.q >= 0) { default = 5; };
+            })
+          ];
+          expectedError = configRead;
         };
       };
 

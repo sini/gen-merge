@@ -265,6 +265,70 @@ in
         w = 5;
       })
     ];
+    # A declaration reading its own evaluation at declaration time, beside the renames: nixpkgs'
+    # grammar reads `config`, `options` and module arguments there as nixpkgs' fold lets it
+    # (den-hoag-2tna3), so what the staged passes refused here is served.
+    test-a-presence-reading-options = cell (c: c.s.x) [
+      base
+      (
+        { options, ... }:
+        {
+          options.s =
+            if options ? a then
+              {
+                x = mkOption {
+                  type = types.int;
+                  default = 3;
+                };
+              }
+            else
+              { };
+        }
+      )
+      (def { a = 1; })
+    ];
+    test-a-declaration-reading-config = cell (c: c.b) [
+      base
+      ({ config, ... }: {
+        options.b = mkOption { type = types.int; } // lib.optionalAttrs (config.a == 1) { default = 2; };
+      })
+      (def { a = 1; })
+    ];
+    # The rename chain beside it resolves one link per pass.
+    test-a-presence-reading-a-module-argument = cell (c: c.v) [
+      base
+      ({ u, ... }: { options.v = if u.leaf then mkOption { type = types.int; } else { }; })
+      { _module.args.u.leaf = true; }
+      (named "c-to-b.nix" (R [ "c" ] [ "b" ]))
+      (R [ "b" ] [ "a" ])
+      (def {
+        c = 1;
+        v = 5;
+      })
+    ];
+    # A rename whose target's type is read down a list argument longer than the passes: element i
+    # reads element i - 1.
+    test-a-rename-deeper-than-the-passes = cell (c: c.v) [
+      base
+      ({ u, ... }: { options.v = mkOption { type = builtins.elemAt u 400; }; })
+      ({ u, ... }: {
+        _module.args.u = lib.genList (i: if i == 0 then types.int else builtins.elemAt u (i - 1)) 401;
+      })
+      (R [ "w" ] [ "v" ])
+      (def {
+        a = 1;
+        w = 5;
+      })
+    ];
+    # An evaluated field of an option record, as `misc/nixpkgs.nix` reads `isDefined`.
+    test-a-declaration-reading-an-evaluated-field = cell (c: c.b) [
+      base
+      ({ options, ... }: {
+        options.b =
+          mkOption { type = types.int; } // lib.optionalAttrs options.a.isDefined { default = 2; };
+      })
+      (def { a = 1; })
+    ];
     # A cycle's refusal is a thrown error, so `tryEval` catches it (nixpkgs reaches infinite
     # recursion); the refusal's text is pinned in `ci/tests-error.nix`.
     test-a-rename-cycle-refusal-is-catchable = {

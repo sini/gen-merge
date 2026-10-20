@@ -36,7 +36,7 @@
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .* is not of type.*positive integer.*. Definition values:\\n\\s*- In .*: 0","config.value","./declare-int-positive-value.nix","./define-value-int-zero.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: a definition for option `value' is not of type"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .* is not of type.*unsigned integer.*. Definition values:\\n\\s*- In .*: -23","config.value","./declare-int-unsigned-value.nix","./define-value-int-negative.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: a definition for option `value' is not of type"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .*. is not of type .*.\\n\\s*- In .*: \\[ \\]","config.value","./declare-coerced-value.nix","./define-value-list.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: a definition for option `value' is not of type"]}
-{"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .aBadOptionDef. is not of type .option declaration.","config.aBadOptionDef","./option.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .aBadOptionDef. is not of type .option declaration.","config.aBadOptionDef","./option.nix"]},"verdict":"PASS-CLASS","class":["gen-merge: a definition for option `aBadOptionDef' is not of type `option declaration'"]}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .absolutePathNotInStore.bad1. is not of type .absolute path not in the Nix store.","config.absolutePathNotInStore.bad1","./pathWith.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .absolutePathNotInStore.bad2. is not of type .absolute path not in the Nix store.","config.absolutePathNotInStore.bad2","./pathWith.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigError","env":"","argv":["A definition for option .anyPath.bad1. is not of type .path.","config.anyPath.bad1","./pathWith.nix"]},"verdict":"PASS"}
@@ -210,7 +210,7 @@
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^1$","config.value.mkdefault","./types-anything/mk-mods.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^1$","config.value.nested.foo","./types-anything/mk-mods.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^1.1$","config.nullableValue.float","./types.nix"]},"verdict":"PASS"}
-{"key":{"kind":"checkConfigOutput","env":"","argv":["^10$","config.anOption","./option.nix"]},"verdict":"FAIL"}
+{"key":{"kind":"checkConfigOutput","env":"","argv":["^10$","config.anOption","./option.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^10$","config.free.xxx.foo","./freeform-submodules.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^10$","config.free.yyy.bar","./freeform-submodules.nix"]},"verdict":"PASS"}
 {"key":{"kind":"checkConfigOutput","env":"","argv":["^10$","config.theOption.int","./optionTypeMerging.nix"]},"verdict":"PASS"}

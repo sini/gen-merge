@@ -135,8 +135,19 @@
           [ "$rc" -ne 0 ] || die leaf-reads-absent-field "expected a death, got exit 0 with '$val'"
           grep -q "attribute 'example' missing" "$TMPDIR/err" || die leaf-reads-absent-field "death is not the missing-attribute channel"
           evalArm catch-group
-          [ "$rc" -ne 0 ] || die catch-group "expected a death, got exit 0 with '$val'"
-          grep -q 'infinite recursion encountered' "$TMPDIR/err" || die catch-group "death is not the infinite-recursion channel"
+          [ "$rc" -eq 0 ] || die catch-group "expected exit 0, got $rc"
+          [ "$val" = '{ x = 3; }' ] || die catch-group "expected nixpkgs' value { x = 3; }, got '$val'"
+
+          # den-hoag-2tna3: nixpkgs' abort and divergence in a declaration of a module not declared gen
+          # grammar are inherited, on nixpkgs' channel.
+          for arm in undeclared-gen-abort unread-root-declaration-aborts; do
+            evalArm "$arm"
+            [ "$rc" -ne 0 ] || die "$arm" "expected a death, got exit 0 with '$val'"
+            grep -q 'declaration aborted' "$TMPDIR/err" || die "$arm" "death is not the declaration's own abort"
+          done
+          evalArm undeclared-gen-diverges
+          [ "$rc" -ne 0 ] || die undeclared-gen-diverges "expected a death, got exit 0 with '$val'"
+          grep -q 'infinite recursion encountered' "$TMPDIR/err" || die undeclared-gen-diverges "death is not the infinite-recursion channel"
 
           # den-hoag-jbddy: the engine's option names cost no evaluation; its control, the same names
           # read off `getSubOptions`, evaluates, and both print one record.
@@ -335,8 +346,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "58" ] || die runner "expected 58 evaluations, ran $ran"
-          echo "tests-process: 58 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "61" ] || die runner "expected 61 evaluations, ran $ran"
+          echo "tests-process: 61 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
