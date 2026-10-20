@@ -146,6 +146,13 @@
             n=$(traced)
             [ "$n" = "1" ] || die "$arm" "expected 1 evaluation, the spy counted $n"
           done
+          # den-hoag-8qenh (c′): an evaluation's own type's empty value is its on-demand `type` child,
+          # a node of that evaluation: 1, read off one evaluation (the bridge's root would count 2).
+          evalArm one-eval-own-type
+          [ "$rc" -eq 0 ] || die one-eval-own-type "expected exit 0, got $rc"
+          [ "$val" = "1" ] || die one-eval-own-type "expected value 1, got '$val'"
+          n=$(traced)
+          [ "$n" = "1" ] || die one-eval-own-type "expected 1 evaluation, the spy counted $n"
           # den-hoag-olrmz G3: one `verify` copy of a nesting container declared twice reads 1 and serves.
           evalArm one-eval-verify-shared
           [ "$rc" -eq 0 ] || die one-eval-verify-shared "expected exit 0, got $rc"
@@ -305,8 +312,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "49" ] || die runner "expected 49 evaluations, ran $ran"
-          echo "tests-process: 49 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "50" ] || die runner "expected 50 evaluations, ran $ran"
+          echo "tests-process: 50 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

@@ -329,6 +329,21 @@ let
               }
             ];
           }).config.x.a;
+      # an evaluation's own type deep-forces through its empty value, the module set over no
+      # definitions: alone, with a throwing default, as a container element, and read for a value
+      dsMTTop = forces (ev { modules = [ base ]; }).type;
+      dsMTTopThrow = forces (ev { modules = [ { options.t = opt (throw "T-default"); } ]; }).type;
+      dsTreeInAttrs = forces (TY.attrsOf (ev { modules = [ base ]; }).type);
+      mtTopEmptyA =
+        read
+          (emptyOf
+            (ev {
+              modules = [
+                base
+                { a = 7; }
+              ];
+            }).type
+          ).value.a;
     };
   gen = cells sides.gen;
   nixpkgs = cells sides.nixpkgs;

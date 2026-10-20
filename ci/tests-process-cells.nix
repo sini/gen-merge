@@ -362,6 +362,17 @@ let
       ]).config.o.x;
     # The spy's live control: two root evaluations read 2.
     one-eval-control-two-roots = (spiedAt sub [ { x = 1; } ]).x + (spiedAt sub [ { x = 2; } ]).x;
+    # den-hoag-8qenh (c′): an evaluation's own type's empty value is that evaluation's on-demand
+    # `type` child, so reading it is still ONE evaluation; the bridge's root would be a second.
+    one-eval-own-type =
+      (spied.evalModuleTree { } [
+        {
+          options.a = spied.mkOption {
+            type = st.int;
+            default = 1;
+          };
+        }
+      ]).type.whenEmpty.value.a;
     # U2-l (gate O1): a candidate's `result` refuses before its member's modules are applied, so the
     # traced module is applied 0 times. The evaluation holds no SELECTED child of that member.
     candidate-modules =

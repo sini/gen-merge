@@ -2088,9 +2088,9 @@ is not read decides nothing. `mergeDefs.threadedReported` is the same fold for t
 carries a report, the declared leaf of an evaluation: it returns `{ value; undeclared; }` off one read
 of the child, which inherits that evaluation's effective strictness. The finding is reported (above),
 and, when either the carrier or the nested tree is strict, refused by the child at its own level when
-that level is read. The CALLED folds (`mergeDefs` applied, `.reported`) refuse by name, and so does an
-evaluation's own type's `whenEmpty.value`: no second evaluation is made for a tree an evaluation holds.
-A free-standing `submodule`'s `whenEmpty.value`, which no gen evaluation holds, is the bridge's one root
+that level is read. The CALLED folds (`mergeDefs` applied, `.reported`) refuse by name. An evaluation's
+own type's `whenEmpty.value` is that evaluation's on-demand `type` child (below), so no second
+evaluation is made for a tree an evaluation holds. A free-standing `submodule`'s `whenEmpty.value`, which no gen evaluation holds, is the bridge's one root
 evaluation, nixpkgs' `base.config`. To wrap a tree's fold, **replace `mergeDefs` whole**.
 The same holds for a foreign type imported with a `check`, whose `mergeDefs` is a functor carrying its
 unchecked fold as `.unchecked` for the freeformType site: a whole replacement governs at every site, a
@@ -2500,10 +2500,12 @@ with a bridge that evaluates each tree once, standalone, as before. Pinned by
 ### Nested trees are children of the one evaluation
 
 `evalModuleTree` is ONE gen-scope evaluation, with no second engine evaluating each nested tree on
-its own. Its knot is a node of the kind `module-tree`, which declares one non-terminal attribute
+its own. Its knot is a node of the kind `module-tree`, which declares a non-terminal attribute
 (Vogt, Swierstra & Kuiper 1989 §3), `nested`: each nested tree the value holds is a child of that
 node, minted at its POSITION (the option's path and the position below it), and a child's own nested
-trees are its children. A child's `result` is its tree's evaluation, read from its host's position
+trees are its children. It declares a second, `type`, ON DEMAND (gen-scope's `ntaOnDemand`): every tree
+holds one `type` child with an empty seed, its own type's empty value (nixpkgs' `base.config`, one more
+`‹name›` placeholder per level), read by `whenEmpty.value` and never enumerated. A child's `result` is its tree's evaluation, read from its host's position
 record at its own coordinates (`getHostAt "positions"`: its definitions, `loc`, report mode and
 member), the host's equation for that child (Söderberg & Hedin 2013 §2.3, §4.1). Its own record
 carries its seed, the addresses of those definitions, which the evaluation does not resolve (owner
@@ -2544,6 +2546,10 @@ ruling 2026-09-28, arm (B)). The fold reads a child through the node's own recor
   holds itself, on an option left undefined, would otherwise grow undefined trees without end.
   **The price:** an undefined chain of 32 or more directly typed nesting levels is refused even where
   it is finite, since recursion and depth cannot be told apart (OQ15 (c), *defaulted, reversible*).
+- **The `type` chain has no fuel.** Each `type` child holds its own, as each nixpkgs `base` holds a
+  `moduleType` whose `base` is another, so the family is unbounded and only laziness bounds a read: a
+  hop to a `type` child restarts the empty-seed run at 0, and a read that never ends aborts uncatchably,
+  as nixpkgs' does (den-hoag-8qenh OQ6 (c′)). No enumerating read descends it.
 - **Enumeration** (`allNodeIds`) evaluates every child's definitions to find its own children, and at
   gen-scope `d62b595` it grows exponentially with nesting depth. Read values through the fold.
 
