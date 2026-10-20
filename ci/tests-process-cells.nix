@@ -55,6 +55,47 @@ let
     default = "on";
   };
   eval = modules: m.evalModuleTree { } modules;
+  # k options p1 … pk at the root or under `q` (a group with no definitions), p_i's default reading p_(i-1)
+  # under d held frames; each hop is a direct selection, so the chain holds only the engine's frames per hop
+  valueChain =
+    group: d: k:
+    let
+      np = import "${nixpkgsSrc}/lib";
+      nm = i: "p${toString i}";
+      held =
+        x:
+        let
+          f = n: if n == 0 then x else f (n - 1) && true;
+        in
+        f d;
+      opt =
+        default:
+        np.mkOption {
+          type = np.types.int;
+          inherit default;
+        };
+      root = [
+        { options.${nm 0} = opt 0; }
+      ]
+      ++ map (
+        i:
+        { config, ... }:
+        {
+          options.${nm i} = opt (if held (config.${nm (i - 1)} >= 0) then i else -1);
+        }
+      ) (np.range 1 k);
+      nest = [
+        { options.q.${nm 0} = opt 0; }
+      ]
+      ++ map (
+        i:
+        { config, ... }:
+        {
+          options.q.${nm i} = opt (if held (config.q.${nm (i - 1)} >= 0) then i else -1);
+        }
+      ) (np.range 1 k);
+    in
+    if group then (eval nest).config.q.${nm k} else (eval root).config.${nm k};
   # `<name>:<q>` read off the child `x` of an `attrsOf (submodule …)` whose second module is `extra`.
   nameAt =
     extra:
@@ -646,6 +687,12 @@ let
           }
         )
       ]).config.z;
+    # den-hoag-2tna3 arm (c): a chain of k value reads, each option's default reading the previous one under
+    # d held frames, at the root or in a group with no definitions. gen-merge serves every chain the base
+    # served, up to Nix's call depth: the runner reads k at the base's ceilings.
+    value-chain-root = valueChain false 100 91;
+    value-chain-group = valueChain true 100 92;
+    value-chain-group-unheld = valueChain true 0 1248;
     catch-group =
       let
         np = import "${nixpkgsSrc}/lib";

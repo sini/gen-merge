@@ -145,6 +145,13 @@
             [ "$rc" -ne 0 ] || die "$arm" "expected a death, got exit 0 with '$val'"
             grep -q 'declaration aborted' "$TMPDIR/err" || die "$arm" "death is not the declaration's own abort"
           done
+          # den-hoag-2tna3 arm (c): value-read chains at the base's call-depth ceilings serve their length.
+          for cell in value-chain-root:91 value-chain-group:92 value-chain-group-unheld:1248; do
+            arm=''${cell%%:*} want=''${cell#*:}
+            evalArm "$arm"
+            [ "$rc" -eq 0 ] || die "$arm" "expected exit 0 (a chain of $want value reads), got $rc: $(grep -m1 -E 'error' "$TMPDIR/err")"
+            [ "$val" = "$want" ] || die "$arm" "expected value $want, got '$val'"
+          done
           evalArm undeclared-gen-diverges
           [ "$rc" -ne 0 ] || die undeclared-gen-diverges "expected a death, got exit 0 with '$val'"
           grep -q 'infinite recursion encountered' "$TMPDIR/err" || die undeclared-gen-diverges "death is not the infinite-recursion channel"
@@ -346,8 +353,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "61" ] || die runner "expected 61 evaluations, ran $ran"
-          echo "tests-process: 61 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "64" ] || die runner "expected 64 evaluations, ran $ran"
+          echo "tests-process: 64 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
