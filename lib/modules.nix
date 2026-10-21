@@ -89,6 +89,7 @@ let
     isOrderMarker
     pushDownProperties
     mkOptionDefault
+    mkForce
     defaultPriority
     ;
 
@@ -4429,6 +4430,13 @@ let
     _file = "<unknown-file>";
     _module.args.name = mkOptionDefault "‹name›";
   };
+  # nixpkgs' `noCheckForDocsModule`: a documentation evaluation (`substructure.declares`, nixpkgs' `getSubOptions`)
+  # lists it just before `namePlaceholder`, so its published set holds it last as nixpkgs' does, and reads a module
+  # set without its definitions, so nothing in it is checked (den-hoag-47pw5).
+  noCheckForDocsModule = {
+    config._module.check = mkForce false;
+    _file = "<built-in module that disables checks for the purpose of documentation generation>";
+  };
   # The two name modules as nixpkgs' `submoduleWith` lists them in a published module set (`typeOver`),
   # with no `_file`, so a declaration reusing the set locates them as nixpkgs' does (den-hoag-1k5mi).
   # `namePlaceholder` keeps its own: inside an evaluation a root labels every unlabelled top-level module.
@@ -6979,7 +6987,10 @@ let
             declares =
               prefix:
               (evalModuleTreeUnchecked {
-                modules = moduleSet ++ [ namePlaceholder ];
+                modules = moduleSet ++ [
+                  noCheckForDocsModule
+                  namePlaceholder
+                ];
                 inherit
                   prefix
                   specialArgs
@@ -9186,6 +9197,7 @@ in
     readsMintedNode
     calledNestingRefusal
     namePlaceholder
+    noCheckForDocsModule
     # The nixpkgs `optionType` PROTOCOL BOUNDARY (lib/interface.nix), reached through this seam by
     # everything above it — the type vocabulary exports through it, this engine reads foreign types
     # through it, and the public surface stamps through it. ONE binding, so the library cannot hold

@@ -9,17 +9,14 @@
 # One cell per variant × site × read, on gen's engine (`gm`) and on the export bridge (`bx`), each expecting
 # nixpkgs' value. A read that refuses reads `<error>` on either side. RED before the landing: 53 of 108 cells
 # per arm on gm and 54 on bx, the `again` record and the position after the definitions, among others.
-#
-# Excluded by name: the `docs` site's `getSubModules` (6 cells per arm). nixpkgs' `getSubOptions` evaluation
-# lists its `noCheckForDocsModule`, which gen states nowhere; that is its own open defect
-# (den-hoag-docs-check-module-parity-47pw5), and this exclusion retires when it lands.
+# The `docs` site's `getSubModules` lists nixpkgs' `noCheckForDocsModule` (6 cells per arm, RED before
+# den-hoag-docs-check-module-parity-47pw5; `./docs-evaluation.nix`).
 { genMerge, nixpkgsLib, ... }:
 let
   fx = import ./_fixtures/published-module-set.nix {
     gm = genMerge;
     np = nixpkgsLib;
   };
-  excluded = site: read: site == "docs" && read == "sm";
   cellsOf =
     arm:
     builtins.concatLists (
@@ -30,21 +27,13 @@ let
             builtins.attrValues (
               builtins.mapAttrs (
                 site: reads:
-                builtins.concatMap (
-                  read:
-                  if excluded site read then
-                    [ ]
-                  else
-                    [
-                      {
-                        name = "test-${arm}-${variant}-${site}-${read}";
-                        value = {
-                          expr = arms.${arm}.${site}.${read};
-                          expected = reads.${read};
-                        };
-                      }
-                    ]
-                ) (builtins.attrNames reads)
+                map (read: {
+                  name = "test-${arm}-${variant}-${site}-${read}";
+                  value = {
+                    expr = arms.${arm}.${site}.${read};
+                    expected = reads.${read};
+                  };
+                }) (builtins.attrNames reads)
               ) arms.np
             )
           )

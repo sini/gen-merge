@@ -43,6 +43,7 @@ let
   inherit (core)
     evalModuleTreeNested
     namePlaceholder
+    noCheckForDocsModule
     calledNestingRefusal
     mergeDefs
     mergeDefsThreaded
@@ -1185,7 +1186,10 @@ let
             declares =
               prefix:
               (core.evalModuleTreeUnchecked {
-                modules = mods ++ [ namePlaceholder ];
+                modules = mods ++ [
+                  noCheckForDocsModule
+                  namePlaceholder
+                ];
                 inherit prefix;
                 specialArgs = args;
                 check = null;
