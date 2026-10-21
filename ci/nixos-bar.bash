@@ -54,7 +54,10 @@ evalArm() {
   [ "$left" -lt 1200 ] || left=1200
   t0=$(date +%s%N)
   rc=0
-  NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$tmp/$n.stats" timeout -k 10 "$left" "$ni" --eval --strict --json \
+  # NIX_PATH is emptied: its entries are allocated into every evaluation, so an ambient NIX_PATH moves the
+  # attributed bytes the bound is exact on (measured: +112 B per cell on a host with one entry), and no
+  # cell reads a `<…>` path. CI's columns run with none, so this is the same count there.
+  NIX_PATH="" NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$tmp/$n.stats" timeout -k 10 "$left" "$ni" --eval --strict --json \
     --readonly-mode "$NIXOS_BAR_EVAL" --arg srcs "$NIXOS_BAR_SRCS" --argstr engine "$eng" --argstr cfg "$c" \
     --argstr read "$r" --argstr route "$rt" >"$tmp/$n.out" 2>"$tmp/$n.err" || rc=$?
   ms=$((($(date +%s%N) - t0) / 1000000))
