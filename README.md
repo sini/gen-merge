@@ -170,6 +170,41 @@ Its bounds, each pinned there:
   declared inside a `partialSubmodule` folds fully, so its own options' priorities are spent: a later
   `mkDefault` beside it loses to its declared default, carried as data at the default priority.
 
+### A whole value judged — `verifyValue`
+
+`verifyValue type value` answers whether `value` is a `type` as gen's fold would serve it, in gen-types'
+`verify` shape: `null` where the fold of the one definition `value` at `type`, read to the type's depth,
+serves it, and otherwise a string naming the failing position, relative to the value, and why. A composite's
+`check` cannot be that answer: it is nixpkgs' shallow per-definition predicate (`(attrsOf int).check { b = "x"; }`
+is `true`), and it stays equal to nixpkgs' (ADR-0039).
+
+```
+verifyValue (attrsOf (listOf (submodule { options.port = mkOption { type = int; }; })))
+  { a = [ { port = 1; } { port = "x"; } ]; }
+# => "`a.\"[definition 1-entry 2]\".port': expected type 'int' but value \"x\" is of type 'string'"
+```
+
+At every position the definitions pass the fold's discharge, priority and order passes, and the head step is
+the fold's own choice predicate, the one `either` chooses its member by: each definition's `isValid`, then the
+set's head judgement (a union's `headJudge`, a refinement's `verify` on the merged value, a foreign record's
+`merge.v2` `headError`). Below it the judgement descends through a container's `split` and a nesting type's
+tree, evaluated once, whose declared options and freeform definitions are judged in turn. That descent runs
+parallel to the fold's; `ci/tests/verify-value.nix` holds the two to one answer, `null` exactly where the fold
+serves, cell by cell.
+
+Its bounds:
+
+- A foreign (nixpkgs) record's refusal below its head is not a position nixpkgs publishes: its `headError` is
+  shallow and its v1 `check` is per definition. The judgement reads the foreign fold to its depth there, and
+  nixpkgs' own throw propagates, never `null` (`ci/tests-error.nix`, `verify-value`).
+- A payload the type's depth forces throws its own error (`attrsOf raw` at `{ a = throw …; }`), as the fold
+  does; one it does not force (`lazyAttrsOf raw`, `raw`) is never read.
+- `deferredModule` is judged at its domain only: a deferred module is not evaluated until something imports it.
+
+Cost, `NIX_SHOW_STATS` `nrThunks` per key of `attrsOf (listOf E)`, two elements a key, n = 100 to 200: 852
+against the fold's 828 with `E` a submodule (each element's tree is a root evaluation, where the fold's is a
+child of its own), and 64 against 64 with `E = int`.
+
 ### `mergeDefaultOption` — the shape-directed law (exported beside `mergeLeaf`)
 
 `genMerge.mergeDefaultOption loc defs` is the nixpkgs `lib.mergeDefaultOption` analogue: the law

@@ -12911,7 +12911,7 @@ in
     # refusal nixpkgs throws below its head (its `headError` is shallow, and its v1 `check` is per definition), which
     # propagates as nixpkgs' own text rather than reading as `null` (OQ1 as ruled). `ci/tests/verify-value.nix` reads
     # these as "not served"; here, which throw each is.
-    # Red at gen-merge main 28653f3 (f251ddb): `verifyValue` is absent, so each cell aborts on the missing attribute.
+    # Red at gen-merge main f251ddb: `verifyValue` is absent, so each cell aborts on the missing attribute.
     flake.testsError.verify-value =
       let
         nl = nixpkgsLib;

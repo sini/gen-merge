@@ -5,7 +5,8 @@
 # name. The drift witnesses the spec gate found (a `// { verify }` refined container, a freeform definition, a foreign
 # record at any level) are cells here. A foreign refusal nixpkgs throws below its head propagates (the error plane pins
 # its text, `ci/tests-error.nix` `verify-value`), and reads here as "not served", never as `null`.
-# Red at gen-merge main 28653f3 (f251ddb): `verifyValue` is absent, so every key of every test here aborts.
+# Red at gen-merge main f251ddb: `verifyValue` is absent, so both judgement tests abort. The `check` and leaf
+# `verify` tests are green there: they pin that this judgement moved neither (G2, G3).
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
