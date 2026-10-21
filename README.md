@@ -176,7 +176,7 @@ Its bounds, each pinned there:
 `verify` shape: `null` where the fold of the one definition `value` at `type`, read to the type's depth,
 serves it, and otherwise a string naming the failing position, relative to the value, and why. A composite's
 `check` cannot be that answer: it is nixpkgs' shallow per-definition predicate (`(attrsOf int).check { b = "x"; }`
-is `true`), and it stays equal to nixpkgs' (ADR-0039).
+is `true`), and it stays equal to nixpkgs'.
 
 ```
 verifyValue (attrsOf (listOf (submodule { options.port = mkOption { type = int; }; })))
