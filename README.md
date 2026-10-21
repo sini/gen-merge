@@ -3491,19 +3491,25 @@ Every `toplevel`, `options` and `docs-walk` row carries `perf`, per evaluator `-
 arms' `nrThunks`, attributed bytes (`envs + list + sets + values + symbols`) and wall `ms`. gen's
 thunks and bytes are an exact bound: above it is `COST-REGRESSED`, below it `COST-RATCHET` (lower it in
 the same change), and an evaluator with no entry is `UNANCHORED`; each is a disagreement. Wall time is
-recorded and never compared. Each row also prints `at-parity` or `above-parity` against nixpkgs, a
-status and never a red.
+recorded and never compared. Each row also prints `at-parity` or `above-parity` against nixpkgs. An
+`above-parity` row is the bar's perf criterion (perf at or under nixpkgs) NOT MET, even when CI stays
+green because the ratchet admitted its rise: admitted is not approved.
 
 ```sh
 nix run ./ci#nixos-bar -- --write-baseline F      # verdicts, and this evaluator's perf
 nix run ./ci#nixos-bar -- --fold F A.log B.log C.log  # merge CI's three column logs' PERF lines
 ```
 
-The register's perf is written from CI's own columns: dispatch `ci.yml` on the branch, download the
-three column logs, `--fold`, commit. The ratchet guard reads this register too: a verdict fall needs
+The register's perf is written from CI's own columns: dispatch `ci.yml` on the branch, download each
+column's job log with `gh api --allow-escape-sequences repos/sini/gen-merge/actions/jobs/<id>/logs`,
+`--fold`, commit. The fold prints each `RISE` with its trailer hash; the hash is that of
+`<id>\t<evaluator>`, so it never changes between folds, and only which rows rise does. The commit that
+adopts a rise names each row's old and new figures, the change that caused it, and the ruling that
+admits it, with every trailer in its last paragraph. The ratchet guard reads this register too: a verdict fall needs
 `Nixos-Bar-Decrease:`, and a rise of a committed gen count needs `Bar-Perf-Rise: <hash> <class>`, the
 hash being that of `<id>\t<evaluator>`, where the class is `reanchor` (admitted only when nixpkgs'
-lock node moved and no gen member lock node and no `lib/` byte did), `parity` (the new gen figure is
+lock node moved and no gen member lock node, no `lib/` byte and none of the arm's own inputs
+`ci/modules-sh-lib.nix`, `ci/nixos-bar-eval.nix` and `ci/nixos-bar.bash` did), `parity` (the new gen figure is
 at or under the new reference figure, or the row was already above its reference at the older
 revision), `floor <row>` or `owner <row>`.
 

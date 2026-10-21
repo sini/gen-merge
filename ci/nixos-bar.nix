@@ -19,7 +19,8 @@
 # is COST-REGRESSED, below it COST-RATCHET (lower the bound in the same change), a row with no entry for
 # this evaluator UNANCHORED; all three are disagreements. `ms` is recorded, never compared. A refused arm
 # writes no stats file, so its perf is null. Parity (gen <= ref on both counters) is printed per row as
-# at-parity / above-parity, a bar status and never a red.
+# at-parity / above-parity. above-parity is the bar's perf criterion (perf <= nixpkgs) NOT MET, even where
+# CI stays green because the ratchet admitted the rise under ADR-0032: admitted is not approved.
 #
 # A PROCESS-PLANE program for the reason `tests-process.nix` gives: each verdict is an exit plus a value,
 # evidence only for the evaluator that computed it, so it calls the `nix-instantiate` on PATH and carries

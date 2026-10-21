@@ -25,8 +25,10 @@
 # <class>`, the hash being that of `<id>\t<evaluator>`, under one of ADR-0032's authorization classes:
 #
 #   reanchor             admitted only if the ENVIRONMENT moved and nothing under test did: nixpkgs' lock
-#                        node moved AND every gen member lock node (owner sini, repo gen-*) AND gen-merge's
-#                        own lib/ are unchanged between the two revisions. ADR-0032: a bound re-anchors
+#                        node moved AND every gen member lock node (owner sini, repo gen-*), gen-merge's
+#                        own lib/, and the gen arm's ci/ inputs (ci/modules-sh-lib.nix,
+#                        ci/nixos-bar-eval.nix, ci/nixos-bar.bash) are unchanged between the two
+#                        revisions. ADR-0032: a bound re-anchors
 #                        "only when the environment moves — the evaluator or a REFERENCE pin … and never
 #                        on a gen member pin, which is the change under test". An evaluator move needs no
 #                        trailer: the perf entry is keyed by the evaluator's `--version` line, so a new
@@ -53,7 +55,7 @@
 # - whether the named census row exists, or a correction's reason is right: the trailer is the record;
 # - which change a relock admission covers: it is as wide as the gap between two register revisions,
 #   so once nixpkgs moved anywhere in that gap, a gen-merge regression landed in it with a `relock`
-#   trailer is admitted too (a `reanchor` is not that wide: it refuses on any gen pin or lib/ move);
+#   trailer is admitted too (a `reanchor` is not that wide: it refuses on any gen pin, lib/ or arm-input move);
 # - its own edits: it runs from HEAD's tree, so a commit that weakens this file or
 #   `modules-sh-ratchet.jq`, or moves a register and edits `registers` with it, escapes it. Review reads
 #   every diff to `ci/modules-sh-ratchet.*` and to `registers`.
@@ -87,6 +89,12 @@ underTestAt() {
     jq -erc '[.nodes[] | .locked // {} | select(.owner == "sini" and (.repo // "" | startswith("gen-"))) | "\(.repo)@\(.rev)"] | unique | if length > 0 then . else error("no gen member node") end' ||
     control "cannot read the gen member lock nodes at ${1:0:9}"
   git rev-parse "$1:lib" || control "cannot read lib/ at ${1:0:9}"
+  # The gen arm's own inputs in ci/: the file that wires evalModuleTree in, the evaluation, and the runner
+  # whose argv is allocated into every evaluation's bytes. None of them is environment.
+  local f
+  for f in ci/modules-sh-lib.nix ci/nixos-bar-eval.nix ci/nixos-bar.bash; do
+    git rev-parse "$1:$f" || control "cannot read $f at ${1:0:9}"
+  done
 }
 hashOf() { printf '%s' "$1" | sha256sum | cut -c1-12; }
 refused=0 checked=0
