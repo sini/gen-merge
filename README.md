@@ -3467,11 +3467,45 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   replaced and compares the replaced tip's register with HEAD's.
   What it does not decide, review reads: a relock admission is as wide as the gap between two register
   revisions, so a regression landed in a gap where nixpkgs also moved is admitted by a `relock` trailer;
-  and it runs from HEAD's own tree, so a commit that edits `ci/modules-sh-ratchet.*`, or moves the
-  register together with the guard's `reg=`, escapes it.
+  and it runs from HEAD's own tree, so a commit that edits `ci/modules-sh-ratchet.*`, or moves a
+  register together with the guard's `registers` table, escapes it.
 - **The budget** for the process-plane step is 20 minutes per column. Exceeding it is not a red: a
   gated cost bound counts thunks and allocation, never CPU time. It calls for sharding the
   run inside the process plane.
+
+### NixOS on this engine
+
+Right after `modules.sh`, `ci --tests-process` evaluates NixOS through nixpkgs' own
+`nixos/lib/eval-config.nix`, once with nixpkgs' `lib` and once with that `lib`'s `evalModules` replaced
+by `evalModuleTree`, and scores each cell against `ci/nixos-bar-baseline.jsonl`:
+
+- `toplevel`: `nixos/release.nix`'s eight `closures`, read to `toplevel.drvPath`; `options`: its
+  `options` job, read to `optionsJSON.drvPath`. Both carry `"claim":"identity"`: an equal drvPath is
+  the identity of one derivation, evidence and never acceptance.
+- `doc`: one row per node of the options documentation, nixpkgs' own `optionAttrSetToDocList` entry
+  for each option of the `options` job's evaluation, compared by value. These rows are the stage's
+  acceptance. A node gen refuses is re-evaluated alone to read its refusal for `class`.
+- `docs-walk`: the walk's own cost row.
+
+Every `toplevel`, `options` and `docs-walk` row carries `perf`, per evaluator `--version` line: both
+arms' `nrThunks`, attributed bytes (`envs + list + sets + values + symbols`) and wall `ms`. gen's
+thunks and bytes are an exact bound: above it is `COST-REGRESSED`, below it `COST-RATCHET` (lower it in
+the same change), and an evaluator with no entry is `UNANCHORED`; each is a disagreement. Wall time is
+recorded and never compared. Each row also prints `at-parity` or `above-parity` against nixpkgs, a
+status and never a red.
+
+```sh
+nix run ./ci#nixos-bar -- --write-baseline F      # verdicts, and this evaluator's perf
+nix run ./ci#nixos-bar -- --fold F A.log B.log C.log  # merge CI's three column logs' PERF lines
+```
+
+The register's perf is written from CI's own columns: dispatch `ci.yml` on the branch, download the
+three column logs, `--fold`, commit. The ratchet guard reads this register too: a verdict fall needs
+`Nixos-Bar-Decrease:`, and a rise of a committed gen count needs `Bar-Perf-Rise: <hash> <class>`, the
+hash being that of `<id>\t<evaluator>`, where the class is `reanchor` (admitted only when nixpkgs'
+lock node moved and no gen member lock node and no `lib/` byte did), `parity` (the new gen figure is
+at or under the new reference figure, or the row was already above its reference at the older
+revision), `floor <row>` or `owner <row>`.
 
 ## Theoretical foundations
 
