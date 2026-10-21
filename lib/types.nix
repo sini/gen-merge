@@ -2303,6 +2303,150 @@ let
         completed = optionType;
       };
     };
+
+  # ── THE WHOLE-VALUE JUDGEMENT (den-hoag-2wo5a) ──────────────────────────────────────────────────
+  # `verifyValue type value` is `null` when gen's fold of the one definition `value` at `type`, read to
+  # the type's depth, serves it, and otherwise a string naming the failing position and why: gen-types'
+  # `verify` contract over a whole value. It is not `check`, which stays nixpkgs' shallow per-definition
+  # predicate (ADR-0039), and no type states it, so no record carries a copy (`verify` on a composite
+  # would deepen its exported `check`).
+  #
+  # At EVERY position the head step is the fold's own choice predicate, `either`'s `accepts`: each
+  # definition's `isValid`, then the set's head judgement (`interface.importedHeadJudge`, which reads a
+  # union's `headJudge`, a refinement's `verify` on the merged value and a foreign record's `merge.v2`
+  # `headError`). So this judgement and the union's member choice are one notion of "takes these
+  # definitions here". Below the head it descends through the positions the fold reads: a container's
+  # `split` (the definitions it hands each element, `null` where no member takes them) and a nesting
+  # type's tree, evaluated once through the export bridge's child as a foreign engine's fold evaluates
+  # it, whose declared options and freeform definitions are then judged in turn. The descent is parallel
+  # to the fold's, as `mergeDefs`' two spines are (lib/modules.nix), and lawful only because cells gate
+  # it: `ci/tests/verify-value.nix` pins `null` exactly where the fold serves, cell by cell.
+  #
+  # A record publishing no positions is judged by its head alone, and a FOREIGN one (no gen relation)
+  # is also read through its own fold as deep as its value goes: nixpkgs throws a refusal below its
+  # head (its `headError` is shallow and its v1 `check` per definition), so that throw propagates, as
+  # it does from the fold, and never reads as `null`. A gen leaf with several surviving definitions
+  # reads its fold too, which is where they must agree. A payload the type does not judge (`raw`,
+  # `lazyAttrsOf`'s elements) is never forced, and one the fold forces throws its own error.
+  judgeAt =
+    type: loc: rawDefs:
+    # a gen type judging nothing of one definition (`raw`, `anything`, `unspecified`) reads none of it, so
+    # its payload is not forced here, where the passes would force it to WHNF
+    if
+      length rawDefs == 1
+      && type ? typeMergeRel
+      && !(type ? admits || type ? verify || type ? split || type ? nests || type ? mergeDefs.headJudge)
+      && !(type ? _checkWitness && type ? check && type.check != type._checkWitness)
+    then
+      null
+    else
+      judgeSettled type loc (core.settledDefs rawDefs);
+  # The judgement over the definitions the fold reads. Each binding is reached only on the arm that reads
+  # it, so a position that takes its definitions pays for no refusal text.
+  judgeSettled =
+    type: loc: defs:
+    if defs == [ ] then
+      if !(core.hasEmptyValue type) then
+        refusalAt loc "is used but not defined"
+      else if type ? nests then
+        judgeTree type loc [ ]
+      else
+        null
+    else if !(all (d: isValid type d.value) defs) then
+      refusalAt loc (outsideOf type (head (filter (d: !(isValid type d.value)) defs)))
+    else if interface.importedHeadJudge type loc defs != null then
+      refusalAt loc (interface.importedHeadJudge type loc defs)
+    else if type ? split then
+      firstRefusal (
+        map (
+          e:
+          if e.type == null then
+            refusalAt loc "no member takes the definitions"
+          else
+            judgeAt e.type e.loc e.defs
+        ) (type.split loc defs)
+      )
+    else if type ? nests then
+      judgeTree type loc defs
+    else if !(type ? typeMergeRel) then
+      builtins.seq (forcedThrough (mergeDefs loc type defs)) null
+    else if length defs > 1 then
+      builtins.seq (mergeDefs loc type defs) null
+    else
+      null;
+  refusalAt = loc: reason: "`${if loc == [ ] then "<value>" else showOption loc}': ${reason}";
+  # Why one definition is outside the type: the domain the fold's door refuses with, else the leaf's own
+  # `verify` text, else the foreign `check` that said no.
+  outsideOf =
+    type: d:
+    let
+      e = if type ? verify then type.verify d.value else null;
+    in
+    if type ? admits && !(type.admits d.value) then
+      "`${nameOf type}' cannot consume a ${builtins.typeOf d.value} (${toString (d.file or "<def>")})"
+    else if e != null then
+      e
+    else
+      "is not of type `${
+        if builtins.isString (type.description or null) then type.description else nameOf type
+      }' (${toString (d.file or "<def>")})";
+  # A nesting type's tree at `loc` over `defs`, evaluated once: a definition no option owns is refused
+  # where the tree refuses it, then each declared option is judged at the definitions its fold read, and
+  # the freeform definitions at the freeform type.
+  judgeTree =
+    type: loc: defs:
+    let
+      ev = interface.bridge.child {
+        position = [ ];
+        inherit (type) nests;
+        inherit loc defs;
+      };
+      od = ev.optionDefs;
+      options =
+        os: ds: path:
+        concatMap (
+          k:
+          if k == "_module" then
+            [ ]
+          else if core.isOptLeaf os.${k} then
+            [ (judgeAt os.${k}.type (loc ++ path ++ [ k ]) (ds.${k} or [ ])) ]
+          else if isAttrs os.${k} then
+            options os.${k} (ds.${k} or { }) (path ++ [ k ])
+          else
+            [ ]
+        ) (attrNames os);
+    in
+    if ev.undeclared != [ ] then
+      refusalAt (head ev.undeclared).path "the option does not exist"
+    else
+      firstRefusal (
+        options od.allOptions od.defs [ ]
+        ++ optional (od.freeform != null && od.realized.unmatched != [ ]) (
+          judgeAt od.freeform loc (core.coalesceUnmatched false (length od.topDefs) od.realized.unmatched)
+        )
+      );
+  # The first refusal of a list of answers, forcing none after it.
+  firstRefusal = foldl' (found: r: if found != null then found else r) null;
+  # A foreign fold's value read as deep as it goes, stopping at a derivation, whose attributes are its
+  # build and no type position.
+  forcedThrough =
+    v:
+    if isAttrs v && (v.type or null) != "derivation" then
+      foldl' (acc: k: builtins.seq (forcedThrough v.${k}) acc) v (attrNames v)
+    else if isList v then
+      foldl' (acc: x: builtins.seq (forcedThrough x) acc) v v
+    else
+      v;
+  verifyValue =
+    type: value:
+    judgeAt type
+      [ ]
+      [
+        {
+          file = "<value>";
+          inherit value;
+        }
+      ];
 in
 {
   inherit
@@ -2334,6 +2478,8 @@ in
     # The submodule constructor with its fold and its constructor stated, for lib/default.nix's
     # `partialSubmodule`. Not a type, so not in `types`.
     mkSubmodule
+    # The whole-value judgement, published at the library's top level. Not a type, so not in `types`.
+    verifyValue
     ;
   # The published door: a caller's record enters here, so a `//` copy of a completed record is read as
   # the copy it is (`interface.keepStamp`), as the raw record holds its witnesses (den-hoag-59gnz C2).

@@ -12904,5 +12904,50 @@ in
           };
         }
       );
+
+    # ── THE WHOLE-VALUE JUDGEMENT'S PROPAGATED THROWS (den-hoag-2wo5a) ─────────────────────────────
+    # `verifyValue` answers `null` or a refusal string, except where the fold itself throws something no position
+    # publishes: a payload the type's depth forces (G6′, the value's own error), and a foreign nixpkgs record whose
+    # refusal nixpkgs throws below its head (its `headError` is shallow, and its v1 `check` is per definition), which
+    # propagates as nixpkgs' own text rather than reading as `null` (OQ1 as ruled). `ci/tests/verify-value.nix` reads
+    # these as "not served"; here, which throw each is.
+    # Red at gen-merge main 28653f3 (f251ddb): `verifyValue` is absent, so each cell aborts on the missing attribute.
+    flake.testsError.verify-value =
+      let
+        nl = nixpkgsLib;
+        nt = nl.types;
+        nS = nt.submodule { options.port = nl.mkOption { type = nt.int; }; };
+        judged = T: v: force (gm.verifyValue T v);
+      in
+      {
+        test-a-payload-the-key-set-forces-propagates-its-own-throw = {
+          expr = judged (t.attrsOf t.raw) { a = throw "a payload of its own"; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^a payload of its own$";
+          };
+        };
+        test-a-foreign-container-refusal-below-its-head-propagates = {
+          expr = judged (nt.attrsOf nt.int) { a = "x"; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `a' is not of type `signed integer'\\. Definition values:";
+          };
+        };
+        test-a-foreign-container-inside-a-gen-one-propagates-at-its-path = {
+          expr = judged (t.attrsOf (nt.attrsOf nt.int)) { a.b = "x"; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `a\\.b' is not of type `signed integer'\\. Definition values:";
+          };
+        };
+        test-a-foreign-submodule-inside-a-gen-container-propagates-at-its-path = {
+          expr = judged (t.attrsOf nS) { a.port = "x"; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `a\\.port' is not of type `signed integer'\\. Definition values:";
+          };
+        };
+      };
   };
 }

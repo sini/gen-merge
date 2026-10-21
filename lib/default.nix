@@ -736,6 +736,12 @@ in
     pureModule
     ;
 
+  # The whole-value judgement (den-hoag-2wo5a): `null` when gen's fold of the one definition `value` at
+  # `type`, read to the type's depth, serves it, else a string naming the failing position and why, in
+  # gen-types' `verify` shape. Outside `types`, which holds only types; a lambda, so a process that never
+  # asks pays no thunk for it.
+  verifyValue = type: value: strategies.verifyValue type value;
+
   inherit (strategies) partialAttrsOf;
   # `submodule` whose every declared option folds PARTIALLY (den-hoag-5ov3p), the declared-plane twin of
   # `partialAttrsOf`: an option's value is its winning definitions merged, under the priority that selected

@@ -3752,6 +3752,22 @@ let
       in
       if soleCore then coreDef.value.values else foldJudged loc type sorted typeDefs;
 
+  # The definitions a position's fold reads, after the three passes in `mergeDefsWith`'s order: what the
+  # whole-value judgement (`lib/types.nix` `verifyValue`) judges, so a marker is discharged before it is
+  # judged and a lower-priority definition is never judged at all (den-hoag-2wo5a).
+  settledDefs =
+    rawDefs:
+    # property-free definitions are their own answer, as at `mergeDefsWith`'s fast path
+    if all (d: !(d.value ? _type) && !(d ? priority)) rawDefs then
+      rawDefs
+    else
+      let
+        winners = filterOverrides (concatMap (d: dischargeIn d.file d.value) rawDefs);
+      in
+      map (w: { inherit (w) file value; }) (
+        if any (w: (w.value._type or null) == "order") winners then sortProperties winners else winners
+      );
+
   # The fold and judgement every definition list reaches, after the passes or without them.
   foldJudged =
     loc: type: sorted: typeDefs:
@@ -8690,6 +8706,15 @@ let
           optionDefs = {
             defs = realized.typeDefs;
             values = realized.value;
+            # What the whole-value judgement (`lib/types.nix` `verifyValue`) reads beside them, bound to the
+            # evaluation's own values: the declared tree, and the definitions no declared option owns with the
+            # freeform type that folds them (den-hoag-2wo5a).
+            inherit
+              allOptions
+              freeform
+              realized
+              topDefs
+              ;
             # The evaluated half of the engine's own `_module` records (`moduleOwn.serve`), read only
             # where a record is served: each key's value off the module-visible view, and the
             # definitions nixpkgs' option for it reads. `check` is an option of `realized` wherever a
@@ -9069,6 +9094,12 @@ in
     mergeDefs
     mergeDefsPublished
     mergeDefsPartial
+    # The passes alone, whether a type has a value with no definition, and the freeform definitions as the
+    # freeform fold reads them: the whole-value judgement's
+    # (lib/types.nix `verifyValue`).
+    settledDefs
+    hasEmptyValue
+    coalesceUnmatched
     mergeOption
     mergeOneOption
     # This engine's own no-`.merge` default — one winner passes, equal winners collapse, unequal
