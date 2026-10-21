@@ -40,6 +40,9 @@
 #   floor den-hoag-<row> the correctness floor, its attribution the cited row;
 #   owner den-hoag-<row> an owner reading.
 #
+# `nixos-bar --write-baseline` and `--fold` print every hash a change needs. Git reads trailers from a
+# message's LAST paragraph only, so all of a commit's trailers go in one paragraph (one `-m`).
+#
 # A FORCE-PUSH rewrites the history this walks, so on a GitHub push event with `forced: true` two more
 # reads run against the history the push replaced (`before`): its own register revisions that HEAD no
 # longer carries are walked the same way (a fall a squash erased stays a fall), and its tip's register

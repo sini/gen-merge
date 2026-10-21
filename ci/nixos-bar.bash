@@ -9,6 +9,21 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 base=$NIXOS_BAR_BASE
 
+# admissions <new register>: what `ci/modules-sh-ratchet.sh` will ask to have admitted against the
+# committed register, with the hash each trailer names. A RISE also says whether the new gen figure is at
+# or under its reference (`parity-now`) and whether the row was above its reference at the anchor
+# (`above-at-anchor`): either one makes a `parity` admission valid.
+admissions() {
+  jq -rn --arg keyform json --slurpfile old "$base" --slurpfile new "$1" -f "$NIXOS_BAR_RATCHET" |
+    while IFS=$'\t' read -r key was now; do
+      echo "LOWERED $(printf '%s' "$key" | sha256sum | cut -c1-12) $was -> $now $key"
+    done
+  jq -rn --arg keyform json --arg part rise --slurpfile old "$base" --slurpfile new "$1" -f "$NIXOS_BAR_RATCHET" |
+    while IFS=$'\t' read -r key e was now par above; do
+      echo "RISE $(printf '%s\t%s' "$key" "$e" | sha256sum | cut -c1-12) $was -> $now parity-now=$par above-at-anchor=$above $key $e"
+    done
+}
+
 # --fold F LOG...: the register with each log's `PERF` lines merged in. A log with none is a column that
 # did not run the arm (or a wrong file), never "no perf".
 if [ "${1:-}" = --fold ]; then
@@ -25,6 +40,7 @@ if [ "${1:-}" = --fold ]; then
   jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
     -f "$NIXOS_BAR_COMPARE" >"$out"
   echo "nixos-bar: wrote $(wc -l <"$out") rows to $out"
+  admissions "$out"
   exit 0
 fi
 
@@ -129,15 +145,7 @@ if [ "${1:-}" = --write-baseline ]; then
   [ $# -ge 2 ] || control "usage: nixos-bar --write-baseline F"
   jq -rs --arg mode write --arg ev "$evl" --slurpfile base "$base" -f "$NIXOS_BAR_COMPARE" "$tmp/records.jsonl" >"$2"
   echo "nixos-bar: wrote $(wc -l <"$2") rows to $2"
-  # What `ci/modules-sh-ratchet.sh` will ask to have admitted, with the hash each trailer names.
-  jq -rn --arg keyform json --slurpfile old "$base" --slurpfile new "$2" -f "$NIXOS_BAR_RATCHET" |
-    while IFS=$'\t' read -r key was now; do
-      echo "LOWERED $(printf '%s' "$key" | sha256sum | cut -c1-12) $was -> $now $key"
-    done
-  jq -rn --arg keyform json --arg part rise --slurpfile old "$base" --slurpfile new "$2" -f "$NIXOS_BAR_RATCHET" |
-    while IFS=$'\t' read -r key e was now _; do
-      echo "RISE $(printf '%s\t%s' "$key" "$e" | sha256sum | cut -c1-12) $was -> $now $key $e"
-    done
+  admissions "$2"
   exit 0
 fi
 jq -rs --arg mode check --arg ev "$evl" --slurpfile base "$base" -f "$NIXOS_BAR_COMPARE" "$tmp/records.jsonl" >"$tmp/report"
