@@ -20,9 +20,12 @@
     let
       # den-hoag-06toi stage 1: nixpkgs' modules.sh against this engine, scored against its baseline.
       modulesSh = import ./modules-sh.nix { inherit pkgs inputs; };
+      # den-hoag-fwkzx stage 2: NixOS through eval-config.nix on this engine, scored against its register.
+      nixosBar = import ./nixos-bar.nix { inherit pkgs inputs; };
     in
     {
       apps.modules-sh.program = "${modulesSh}/bin/modules-sh";
+      apps.nixos-bar.program = "${nixosBar}/bin/nixos-bar";
       apps.tests-process.program = pkgs.writeShellScriptBin "tests-process" (
         ''
           set -e
@@ -48,10 +51,13 @@
           cd "$TMPDIR"
           # The evaluator the cells run under, from this process and the binary they call.
           echo "evaluator: $(nix-instantiate --version | sed -n 1p)"
-          # den-hoag-06toi stage 1 runs FIRST and its status is held to the end, so a red cell below
-          # (which stops this runner) never hides its report, nor its report the cells.
+          # den-hoag-06toi stage 1 runs FIRST and stage 2 (den-hoag-fwkzx) right after it, and their
+          # statuses are held to the end, so a red cell below (which stops this runner) never hides their
+          # reports, nor their reports the cells.
           modulesRc=0
           ${modulesSh}/bin/modules-sh || modulesRc=$?
+          nixosBarRc=0
+          ${nixosBar}/bin/nixos-bar || nixosBarRc=$?
         ''
         + ''
           export NIX_STATE_DIR=$TMPDIR/nix-state NIX_LOG_DIR=$TMPDIR/nix-log
@@ -376,7 +382,8 @@
         ''
         + ''
           cat "$out"
-          exit "$modulesRc"
+          [ "$modulesRc" -eq 0 ] || exit "$modulesRc"
+          exit "$nixosBarRc"
         ''
       );
     };
