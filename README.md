@@ -1104,7 +1104,10 @@ declares = (subOf element).declares;
 vocabulary answers the same question. gen-merge's `submodule` reads `.options` off a standalone
 evaluation of the modules its fold reads, with no defs supplied, as nixpkgs' `extendModules { prefix }`
 does, so the introspection and merge halves cannot disagree about what a submodule declares, nothing
-an instance authored is forced, and the records it returns can evaluate their own nested trees. A **leaf** type
+an instance authored is forced, and the records it returns can evaluate their own nested trees. Like nixpkgs'
+`getSubOptions`, that evaluation lists nixpkgs' own `noCheckForDocsModule` (`config._module.check = mkForce false`)
+after the type's modules, so a module reading `_module.check` there reads `false` and the evaluation's `moduleType`
+lists the module last (`ci/tests/docs-evaluation.nix`). A **leaf** type
 has no sub-options and returns `{ }` — the leaf answer the boundary supplies for a type that states
 no substructure, which stays correct for every non-structural type.
 

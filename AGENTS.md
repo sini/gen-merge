@@ -384,6 +384,11 @@ is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
   positioned or end in `namePlaceholder`; any other refuses by name when its set is read. Cells:
   `ci/tests/published-module-set.nix`, `ci/tests-error.nix` `published-module-set` and
   `located-evaluation-is-named`, the process row `reuse-cost-*` (gen/ref \<= 1, ADR-0032).
+- A DOCUMENTATION evaluation (`substructure.declares`, nixpkgs' `getSubOptions`) runs over the set ++
+  `[ noCheckForDocsModule namePlaceholder ]` at both bindings (`mkSubmodule` in `lib/types.nix`, `typeOver` in
+  `lib/modules.nix`): nixpkgs' literal module, `_module.check = mkForce false` (den-hoag-47pw5). ★ The module goes
+  BEFORE the placeholder: `_own.holds` reads the last module as `namePlaceholder`, and after it the published set
+  places the placeholder wrong. Cells: `ci/tests/docs-evaluation.nix`, `ci/tests/published-module-set.nix` `*-docs-sm`.
 - Enumerating a deep node set (`allNodeIds`) is gen-scope's, and it grows exponentially with nesting
   depth at gen-scope `d62b595`; read values through the fold, not by enumerating.
 
