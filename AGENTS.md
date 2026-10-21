@@ -377,6 +377,12 @@ is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
   alone (den-hoag-i2xjs).
 - Growth over empty seeds past `importedTypeWalkFuel` refuses by name (OQ15 (c), *defaulted,
   reversible*). Its price: an undefined chain that deep refuses even where it is finite.
+- A child's PUBLISHED module set (`moduleType`, `getSubModules`, the base of `extendModules`) is nixpkgs'
+  `regularModules`, built in `typeOver` from the `_module.args` record's own grouping (`_own`); the
+  evaluation's own module list is unchanged (den-hoag-1k5mi). ★ An evaluation passed a `root` must be
+  positioned or end in `namePlaceholder`; any other refuses by name when its set is read. Cells:
+  `ci/tests/published-module-set.nix`, `ci/tests-error.nix` `published-module-set` and
+  `located-evaluation-is-named`, the process row `reuse-cost-*` (gen/ref \<= 1, ADR-0032).
 - Enumerating a deep node set (`allNodeIds`) is gen-scope's, and it grows exponentially with nesting
   depth at gen-scope `d62b595`; read values through the fold, not by enumerating.
 

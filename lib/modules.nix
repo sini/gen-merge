@@ -1742,21 +1742,14 @@ let
         pushed,
         root,
         positioned,
-        seeds,
+        holds,
+        nOwn,
         name,
         internal,
       }:
       let
         nTop = length modList;
         nFlat = length flat;
-        holds = !positioned && nTop > 0 && prelude.last modList == namePlaceholder;
-        nOwn =
-          if seeds != null then
-            nTop - seeds
-          else if positioned then
-            0
-          else
-            nTop;
         topPlain =
           !(removal.removes flat modList)
           && all (e: nodeKeyOf e == null) (
@@ -4186,7 +4179,7 @@ let
   };
   # `_module.args` merges as nixpkgs' `lazyAttrsOf raw` (`moduleArgs` in `evalModuleTreeWith`): one
   # argument's definitions are discharged and priority-filtered, and MORE THAN ONE WINNER REFUSES BY
-  # NAME, naming the argument and every winning file in fold order.
+  # NAME, naming the argument and every winning file in nixpkgs' definition order, the record's.
   mergeModuleArg =
     name: defs:
     # One property-free definition is its own winner, decided before any binding is
@@ -4196,12 +4189,12 @@ let
     else
       let
         winners = filterOverrides (concatMap (d: dischargeIn d._file d.value) defs);
-        # Each file once, in fold order; a file carrying several definitions (an `mkMerge`
-        # inside one module) says how many.
+        # Each file once, in nixpkgs' definition order (the fold order reversed, as the record lists
+        # them); a file carrying several definitions (an `mkMerge` inside one module) says how many.
         files =
           ws:
           let
-            fs = map (w: w.file or w._file) ws;
+            fs = reverse (map (w: w.file or w._file) ws);
           in
           concatStringsSep ", " (
             map (
@@ -4257,18 +4250,19 @@ let
   # none leaves the position's value itself, read without building the merge; one that states some
   # merges its definitions with the position's (`mergeModuleArg`), so `mkForce` wins, `mkDefault`
   # yields, and a plain definition refuses as defined twice. `stated` is the evaluation's
-  # `moduleArgs`, which holds no position definition.
+  # `moduleArgs`, which holds no position definition. The position's definition folds first, so the
+  # refusal reads it last, after the seeds, labelled `<unknown-file>` where the record places it.
   positionNameOf =
     prefix: stated: pushed:
     if stated ? name then
       mergeModuleArg "name" (
-        builtins.catAttrs "name" (moduleArgSetsOf pushed)
-        ++ [
+        [
           {
-            _file = "<position>";
+            _file = "<unknown-file>";
             value = (positionArgsAt prefix).name;
           }
         ]
+        ++ builtins.catAttrs "name" (moduleArgSetsOf pushed)
       )
     else
       (positionArgsAt prefix).name;
@@ -4419,6 +4413,13 @@ let
     _file = "<unknown-file>";
     _module.args.name = mkOptionDefault "‹name›";
   };
+  # The two name modules as nixpkgs' `submoduleWith` lists them in a published module set (`typeOver`),
+  # with no `_file`, so a declaration reusing the set locates them as nixpkgs' does (den-hoag-1k5mi).
+  # `namePlaceholder` keeps its own: inside an evaluation a root labels every unlabelled top-level module.
+  namePlaceholderModule = {
+    _module.args.name = mkOptionDefault "‹name›";
+  };
+  positionModule = loc: { _module.args.name = (positionArgsAt loc).name; };
 
   # ── THE NESTED TREE'S DOOR (den-hoag-n6dh7 items 4, 7) ───────────────────────────────────────────
   # One ROOT evaluation of a nesting SITE's tree — the site is `{ position; nests; loc; defs; }` —
@@ -5332,8 +5333,11 @@ let
         address = [ ];
         mode = "called";
         emptyRun = 0;
-        # Its modules are this tree's own, so they keep this tree's importer (`root`).
-        group = { inherit root; };
+        # Unlocated: its modules are this tree's published set, which carries its own location
+        # (`typeOver`), as nixpkgs' `moduleType.emptyValue` evaluates over `moduleType`'s modules.
+        group = {
+          root = null;
+        };
       };
     };
 
@@ -6740,18 +6744,33 @@ let
       typeOver =
         r:
         let
-          # The type's module set. A positioned evaluation's carries its position's `name` as a module,
-          # as nixpkgs' child evaluation lists `{ _module.args.name = last loc; }` among the modules its
-          # `type` is built over (den-hoag-d2o0g OQ3), so the tree over no definitions is still named.
+          # The type's module set, as nixpkgs' `submoduleWith` publishes the list its evaluation is built
+          # over (`regularModules`, den-hoag-1k5mi): the placeholder, the type's own modules located by
+          # their declaring file (`setDefaultModuleLocation`), then a positioned evaluation's
+          # `{ _module.args.name = last loc; }`, then its definitions. The tree over no definitions is still
+          # named (den-hoag-d2o0g OQ3). The groups are the `_module.args` record's (`_own`); an evaluation
+          # its importer locates (`root`) is one of the two that name it, so its own modules are never
+          # published unlocated.
           moduleSet =
+            let
+              located =
+                if root == null then
+                  (ms: ms)
+                else
+                  map (m: {
+                    _file = root._file;
+                    imports = [ m ];
+                  });
+            in
             if knot.positioned then
-              modList
-              ++ [
-                {
-                  _file = "<unknown-file>";
-                  _module.args.name = (positionArgsAt prefix).name;
-                }
-              ]
+              [ namePlaceholderModule ]
+              ++ located (take r._own.nOwn modList)
+              ++ [ (positionModule prefix) ]
+              ++ drop r._own.nOwn modList
+            else if r._own.holds then
+              [ namePlaceholderModule ] ++ located (prelude.init modList)
+            else if root != null then
+              throw "gen-merge: an evaluation located by its importer (`root') is neither positioned nor closed by the name placeholder, so its module set has no place for the name modules and is not published"
             else
               modList;
           # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
@@ -8074,10 +8093,10 @@ let
           # as plain references where it can, so only `args`' extension and `specialArgs`' merge
           # are thunks.
           # `args` carries the engine's own `extendModules` (nixpkgs' `internalModule`): a re-evaluation
-          # with modules appended, specialArgs merged by `//` and the prefix replaced only where stated.
-          # A positioned evaluation re-evaluates positioned at its own prefix; at a stated prefix the
-          # position no longer names it, so its `name` rides as a module of the list, as nixpkgs' child
-          # evaluation carries it. It carries the engine's `moduleType` too, this evaluation's own type
+          # over the published module set with modules appended (nixpkgs' `regularModules ++ modules`),
+          # specialArgs merged by `//` and the prefix replaced only where stated. A positioned
+          # evaluation's `name` rides as the module that set lists, `last loc` of its position, as
+          # nixpkgs' child evaluation carries it. It carries the engine's `moduleType` too, this evaluation's own type
           # (`typeOver`). A module defining either argument adds one definition beside the engine's
           # (`mergeModuleArg`, as `positionNameOf`): `mkForce` wins, `mkDefault` yields, and a plain one
           # refuses as defined twice. The engine's own are bound once, on the `_module` records
@@ -8691,25 +8710,16 @@ let
                       specialArgs ? { },
                       prefix ? [ ],
                     }:
-                    evalModuleTreeWith (if knot.positioned && !(e ? prefix) then knotRootPositioned else knotRoot) true
-                      false
-                      (
-                        {
-                          modules =
-                            modList
-                            ++ (
-                              if knot.positioned && e ? prefix then
-                                [ { _module.args.name = moduleConfig._module.args.name; } ]
-                              else
-                                [ ]
-                            )
-                            ++ modules;
-                          specialArgs = s0 // specialArgs;
-                          prefix = if e ? prefix then prefix else p0;
-                          inherit check coreShortCircuit;
-                        }
-                        // (if class == null then { } else { inherit class; })
-                      );
+                    evalModuleTreeWith knotRoot true false (
+                      {
+                        # nixpkgs' `regularModules ++ modules`: the published module set, extended
+                        modules = engine.moduleType.substructure.modules ++ modules;
+                        specialArgs = s0 // specialArgs;
+                        prefix = if e ? prefix then prefix else p0;
+                        inherit check coreShortCircuit;
+                      }
+                      // (if class == null then { } else { inherit class; })
+                    );
                   # nixpkgs' `moduleType`: this evaluation's module set as a type, whose fold over no
                   # definitions is a child of this evaluation (`typeOver`)
                   moduleType = typeOver result;
@@ -8768,13 +8778,7 @@ let
                       root
                       ;
                     inherit (knot) positioned;
-                    # an inner child's seeds are its position's definitions, the trailing top-level modules; the
-                    # export bridge's child's are on its knot (`nestedTreeAt`)
-                    seeds =
-                      if knot.inner && knot.positioned then
-                        length (self.getHostAt "positions").defs
-                      else
-                        knot.seeds or null;
+                    inherit (result._own) holds nOwn;
                     name = (positionArgsAt prefix).name;
                     internal = engine;
                   }
@@ -8841,6 +8845,30 @@ let
           # from, one node per entry, and only when the family is read (`knotModules`).
           _flat = flat;
           _modList = modList;
+          # The top level as the `_module.args` record groups it, read by the record and by the published
+          # module set (`typeOver`), so the two place the name modules by one derivation: how many leading
+          # modules are the type's own (`nOwn`), and whether the last is the name placeholder (`holds`). An
+          # inner child's seeds are its position's definitions, the trailing top-level modules; the export
+          # bridge's child's are on its knot (`nestedTreeAt`).
+          _own =
+            let
+              nTop = length modList;
+              seeds =
+                if knot.inner && knot.positioned then
+                  length (self.getHostAt "positions").defs
+                else
+                  knot.seeds or null;
+            in
+            {
+              holds = !knot.positioned && nTop > 0 && prelude.last modList == namePlaceholder;
+              nOwn =
+                if seeds != null then
+                  nTop - seeds
+                else if knot.positioned then
+                  0
+                else
+                  nTop;
+            };
           _root = root;
           _callM = callM;
           _nested =

@@ -298,10 +298,12 @@ serves nixpkgs' `internalModule` arguments, `extendModules` and `moduleType` (th
 type, whose empty value is its on-demand `type` child), through `config._module.args` and as formals,
 and `_class` as a formal. A module's own definition of one is a second definition beside the engine's:
 `mkForce` wins, `mkDefault` yields, and a plain one is refused by name, where nixpkgs, printing a
-plain `moduleType` beside its own, dies with a stack overflow. A nested tree's `moduleType` carries its
-position's `name` as a module, as nixpkgs' child evaluation lists `{ _module.args.name = last loc; }`,
-so its empty value is named by the position, however many type hops down it is read, and the type
-placed at a second position is refused there as two definitions of `name`, as in nixpkgs
+plain `moduleType` beside its own, dies with a stack overflow. A nested tree's `moduleType` publishes the
+module list nixpkgs' `submoduleWith` builds the child over: the `‹name›` placeholder, the type's own
+modules located by their declaring file, the position's `{ _module.args.name = last loc; }`, then the
+definitions, and its `extendModules` re-evaluates that list with the new modules appended
+(`ci/tests/published-module-set.nix`). So its empty value is named by the position, however many type
+hops down it is read, and the type placed at a second position is refused there as two definitions of `name`, as in nixpkgs
 (`ci/tests/request-surface.nix`). **That is the whole of the injected argument set, and it is the argument-side compat
 boundary:** nixpkgs injects `lib` at every
 `evalModules` level and gen-merge injects none, so a module reading `lib` is refused by name
@@ -2017,8 +2019,8 @@ triple. Every protocol field is then derived by `exportType` as for any gen type
 one definition at normal priority beside its modules' own. The child over no definitions, `emptyValue`
 and `getSubOptions` read the placeholder `mkOptionDefault "‹name›"`. So a module's `mkForce` or
 `mkDefault` on `_module.args.name` resolves by priority as nixpkgs resolves it, a plain definition
-refuses as defined multiple times, and a caller's `specialArgs.name` (`withArgs` on `submodule`)
-outranks it. `withArgs` therefore admits `name`, and refuses by name only the three arguments the engine
+refuses as defined multiple times, naming its files in the order the `_module.args` record lists them,
+and a caller's `specialArgs.name` (`withArgs` on `submodule`) outranks it. `withArgs` therefore admits `name`, and refuses by name only the three arguments the engine
 writes over, `config`, `options` and `prefix` (the refusal of `name` there stood
 while `submodule` injected it over the caller's, and is superseded). A module reading `name` while its
 declarations are folded (`imports`, an option key) refuses by name as it would for any module argument,
@@ -2035,8 +2037,9 @@ every order-reading merge (lists, `lines`, `commas`, `functionTo`, `attrs` last-
 `files`, `_module.args`' definitions). gen-merge states that level as an ORDER of the child's top level
 (the root's `located` count), taken after each module's coordinate is assigned, so no module node, key or
 declaration address moves. A redeclared option is already located by the declaration fold, and keeps that
-(`ci/tests/gen-nesting-definition-order.nix`). Not reached: a child's own `extendModules` re-evaluates
-without the root, and reads its own modules after the definitions.
+(`ci/tests/gen-nesting-definition-order.nix`). A child's own `extendModules` re-evaluates over the
+published module set, whose own modules are located, so it reads them before the definitions too
+(`ci/tests/published-module-set.nix`).
 
 **The published option records carry nixpkgs' declaration shape.** An evaluation's `.options` (and
 `declaredOptions`) records carry `loc`, `declarations` (the declaring modules' files) and nixpkgs'

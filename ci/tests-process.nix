@@ -352,9 +352,27 @@
             echo "$cell: $per thunks per module (bound $max)"
           done
 
+          # den-hoag-1k5mi (ADR-0032): a published module set re-evaluated, as thunks per child between n = 100 and
+          # 400, at each site that re-evaluates it (the type reused, `extendModules`, `emptyValue`). The located
+          # name modules and wrappers are nixpkgs' own list, so the rise they brought is authorized while the row
+          # stays at or under its reference arm, nixpkgs over the same construction: gen/ref <= 1. Every site's set
+          # carries the child's definitions, so each reads the sum of the children's `v`.
+          for cell in again extN emptyV; do
+            for eng in gen nixpkgs; do
+              thunksOf "reuse-cost-$cell-$eng-100"
+              [ "$val" = "4950" ] || die "reuse-cost-$cell-$eng-100" "expected value 4950, got '$val'"
+              t100=$thunks
+              thunksOf "reuse-cost-$cell-$eng-400"
+              [ "$val" = "79800" ] || die "reuse-cost-$cell-$eng-400" "expected value 79800, got '$val'"
+              eval "per_$eng=$(((thunks - t100) / 300))"
+            done
+            [ "$per_gen" -le "$per_nixpkgs" ] || die "reuse-cost-$cell-gen-400" "a re-evaluated module set ($cell) costs $per_gen thunks per child, over nixpkgs' $per_nixpkgs; ADR-0032: a rise crossing its reference is returned as a repair"
+            echo "reuse-cost $cell: $per_gen thunks per child (nixpkgs $per_nixpkgs)"
+          done
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "64" ] || die runner "expected 64 evaluations, ran $ran"
-          echo "tests-process: 64 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "76" ] || die runner "expected 76 evaluations, ran $ran"
+          echo "tests-process: 76 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

@@ -232,6 +232,49 @@ let
       ++ [ (if removal then { disabledModules = [ { key = ":anon-2"; } ]; } else { }) ];
     in
     builtins.length (builtins.filter (g: g.disabled) (m.evalModuleTree { } mods).graph);
+  # n positioned children of an `attrsOf` submodule, each reading one site that re-evaluates its published
+  # module set (den-hoag-1k5mi): its `moduleType` reused as an option type, `extendModules`, or
+  # `moduleType.emptyValue`. On gen's engine, or on nixpkgs' (the reference arm), over one construction.
+  reuseCost =
+    gen: site: n:
+    let
+      L = if gen then m else import "${nixpkgsSrc}/lib";
+      typeMod =
+        { moduleType, extendModules, ... }:
+        {
+          _file = "type.nix";
+          options = {
+            v = L.mkOption { default = 1; };
+            again = L.mkOption {
+              type = moduleType;
+              default = { };
+            };
+            extN = L.mkOption { default = (extendModules { modules = [ { _file = "ext.nix"; } ]; }).config.v; };
+            emptyV = L.mkOption { default = moduleType.emptyValue.value.v; };
+          };
+        };
+      mods = [
+        {
+          _file = "decl.nix";
+          options.xs = L.mkOption {
+            type = L.types.attrsOf (L.types.submodule [ typeMod ]);
+            default = { };
+          };
+        }
+        {
+          _file = "cfg.nix";
+          config.xs = builtins.listToAttrs (
+            builtins.genList (i: {
+              name = "c${toString i}";
+              value.v = i;
+            }) n
+          );
+        }
+      ];
+      r = if gen then m.evalModuleTree { } mods else L.evalModules { modules = mods; };
+      read = c: if site == "again" then c.again.v else c.${site};
+    in
+    builtins.foldl' (a: c: a + read c) 0 (builtins.attrValues r.config.xs);
   # One option defined through a stock nixpkgs rename, whose alias leaf runs the staged declaration
   # passes, or defined directly, which runs none.
   stagedCost =
@@ -510,6 +553,38 @@ let
     graph-cost-400 = graphCost false 400;
     graph-cost-removal-100 = graphCost true 100;
     graph-cost-removal-400 = graphCost true 400;
+    # den-hoag-1k5mi: a re-evaluated published module set's cost, read by the runner as thunks per child on
+    # gen's engine against nixpkgs'.
+  }
+  // builtins.listToAttrs (
+    builtins.concatMap
+      (
+        site:
+        builtins.concatMap
+          (
+            eng:
+            map
+              (n: {
+                name = "reuse-cost-${site}-${eng}-${toString n}";
+                value = reuseCost (eng == "gen") site n;
+              })
+              [
+                100
+                400
+              ]
+          )
+          [
+            "gen"
+            "nixpkgs"
+          ]
+      )
+      [
+        "again"
+        "extN"
+        "emptyV"
+      ]
+  )
+  // {
     # THE OUTER FIXPOINT (den-hoag-xzchx, C3). A PLAIN attrset — no formals, no `imports`, no
     # `__functor` — whose option KEY SET under `a` reads the evaluation's own `options` through
     # the lexical binding `r`. That is ADR-0033's in-flight clause read literally, reached through

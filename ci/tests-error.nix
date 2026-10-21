@@ -569,7 +569,8 @@ in
         };
       };
       # TWO MODULES DEFINING ONE `_module.args` ENTRY REFUSE BY NAME, in either order, naming the
-      # argument and both files, as nixpkgs' `lazyAttrsOf raw` does. The fold here was a last-wins
+      # argument and both files, as nixpkgs' `lazyAttrsOf raw` does, last module first, the order the
+      # `_module.args` record lists them in (den-hoag-1k5mi). The fold here was a last-wins
       # `recursiveUpdate`, so the pair read "b" and, reversed, "a", at rc 0. Identical values refuse
       # too (`raw` merges with `mergeOneOption`). The accepting arms are `./tests/merge.nix`
       # `moduleArgs` (one definition, two distinct names, `mkForce` deciding a pair).
@@ -582,7 +583,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = moduleArgsDupMsg "/demo/a\\.nix, /demo/b\\.nix";
+          msg = moduleArgsDupMsg "/demo/b\\.nix, /demo/a\\.nix";
         };
       };
       test-module-args-same-name-pair-reversed-names-the-arg-and-both-files = {
@@ -594,7 +595,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = moduleArgsDupMsg "/demo/b\\.nix, /demo/a\\.nix";
+          msg = moduleArgsDupMsg "/demo/a\\.nix, /demo/b\\.nix";
         };
       };
       test-module-args-identical-pair-refuses-by-name = {
@@ -606,7 +607,7 @@ in
         };
         expectedError = {
           type = "ThrownError";
-          msg = moduleArgsDupMsg "/demo/a\\.nix, /demo/b\\.nix";
+          msg = moduleArgsDupMsg "/demo/b\\.nix, /demo/a\\.nix";
         };
       };
       # An `mkMerge` inside ONE module carrying both definitions names that file once, with the
@@ -2801,9 +2802,8 @@ in
     # open set. The empty child's name placeholder stays `<unknown-file>` beside the located module, as
     # nixpkgs leaves its name module unlocated. RED (no root entry): `In `<unknown-file>'',
     # `Module `<unknown-file>``; RED (the placeholder located): `defined in decl.nix (2 definitions)`.
-    # gen names the argument's files in collection order, and the located module sits a level below the
-    # placeholder (den-hoag-yjmwc), so gen's list reads `<unknown-file>, decl.nix` where nixpkgs lists its
-    # definitions last module first; the refusal class and the two files are the parity, not their order.
+    # gen names the argument's files in the order its `_module.args` record lists them, last module first
+    # (den-hoag-1k5mi), so gen's list reads `decl.nix, <unknown-file>`, as its nixpkgs twin's does.
     flake.testsError.gen-nesting-declaring-file =
       let
         on =
@@ -2977,7 +2977,7 @@ in
           expr = gen.emptyName;
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in <unknown-file>, decl\\.nix$";
+            msg = "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in decl\\.nix, <unknown-file>$";
           };
         };
         test-nixpkgs-emptyName-leaves-the-placeholder-unlocated = {
@@ -5044,12 +5044,179 @@ in
     #
     # Each cell reads the TEXT, not merely that it threw: `tryEval` discards the message, and "it
     # threw" passes on any refusal anywhere in the construction.
+    # ── THE `name` REFUSAL NAMES ITS FILES IN THE RECORD'S ORDER (den-hoag-1k5mi) ──────────────────────
+    # A positioned child's `name` defined twice at one priority refuses as a module argument defined twice. gen's
+    # `_module.args` record already lists the definitions in nixpkgs' order (`moduleOwn.definitions`), and the
+    # refusal enumerates the same definitions, so it names their files in that order: one option, one definition
+    # order. The refusal's TEXT is no parity claim (den-hoag-yjmwc, 2026-10-20: ADR-0039 bounds a refusal to its
+    # class), so each cell pins gen's own text, and its nixpkgs twin beside it pins nixpkgs' definition order.
+    # The construction is `tests/_fixtures/published-module-set.nix`, read on gen's engine (`gm`), on the export
+    # bridge (`bx`) and on nixpkgs (`np`), at the sites where the position meets a stated `name`: the type reused
+    # (`again`), the child, `extendModules { prefix; }` and the type's `getSubOptions` (`docs`, where the
+    # placeholder meets a type module's). `edge`: a type module stating a plain `name` beside a definition and the
+    # position, with the type declared once (`located`) and twice (`redecl`, so gen holds no root).
+    # RED before the landing: every gen cell, which listed the fold order and labelled the position
+    # `<position>` (`againNm` of `shNamePlain` read `cfg.nix, <unknown-file>, <position>`).
+    flake.testsError.published-module-set =
+      let
+        fx = import ./tests/_fixtures/published-module-set.nix {
+          gm = genMerge;
+          np = nixpkgsLib;
+        };
+        genText =
+          files:
+          "^gen-merge: module argument `name' \\(`_module\\.args\\.name'\\) is defined multiple times, and a module argument must be unique; defined in ${builtins.concatStringsSep ", " files}$";
+        npText =
+          loc: defs:
+          "^The option `${loc}\\._module\\.args\\.name' is defined multiple times while it's expected to be unique\\.\n\nDefinition values:\n${
+            builtins.concatStringsSep "" (
+              map (d: "- In `${builtins.elemAt d 0}': \"${builtins.elemAt d 1}\"\n") defs
+            )
+          }Use `lib\\.mkForce value` or `lib\\.mkDefault value` to change the priority on any of these definitions\\.\n?$";
+        # one row: the cell read on each arm, gen's two against gen's text and nixpkgs' against its own
+        row = cell: read: loc: defs: {
+          "test-gm-${cell}-names-the-record-order" = {
+            expr = read "gm";
+            expectedError = {
+              type = "ThrownError";
+              msg = genText (map builtins.head defs);
+            };
+          };
+          "test-bx-${cell}-names-the-record-order" = {
+            expr = read "bx";
+            expectedError = {
+              type = "ThrownError";
+              msg = genText (map builtins.head defs);
+            };
+          };
+          "test-np-${cell}-names-the-record-order" = {
+            expr = read "np";
+            expectedError = {
+              type = "ThrownError";
+              msg = npText loc defs;
+            };
+          };
+        };
+        raw =
+          v: k: a:
+          force (fx.raw a v k);
+        edge = shape: a: force (fx.edge a shape);
+        defName = name: [
+          name
+          "def-name"
+        ];
+        sub = [
+          "type\\.nix"
+          "sub"
+        ];
+        again = [
+          "<unknown-file>"
+          "again"
+        ];
+      in
+      row "namePlain-again" (raw "namePlain" "againNm") "sub\\.again" [
+        (defName "def\\.nix")
+        sub
+        again
+      ]
+      // row "shNamePlain-again" (raw "shNamePlain" "againNm") "sub\\.again" [
+        (defName "cfg\\.nix")
+        sub
+        again
+      ]
+      // row "sh-again" (raw "sh" "againNm") "sub\\.again" [
+        sub
+        again
+      ]
+      // row "tmOD-again" (raw "tmOD" "againNm") "sub\\.again" [
+        sub
+        again
+      ]
+      // row "namePlain-child" (raw "namePlain" "childNm") "sub" [
+        (defName "def\\.nix")
+        [
+          "<unknown-file>"
+          "sub"
+        ]
+      ]
+      // row "namePlain-extP" (raw "namePlain" "extPNm") "elsewhere" [
+        (defName "def\\.nix")
+        [
+          "<unknown-file>"
+          "sub"
+        ]
+      ]
+      // row "tmOD-docs" (raw "tmOD" "docsNm") "p" [
+        [
+          "tn\\.nix"
+          "tn"
+        ]
+        [
+          "<unknown-file>"
+          "‹name›"
+        ]
+      ]
+      // row "edge-located" (edge "located") "s" [
+        (defName "cfg\\.nix")
+        [
+          "tm\\.nix"
+          "tm"
+        ]
+        [
+          "<unknown-file>"
+          "s"
+        ]
+      ]
+      // row "edge-redecl" (edge "redecl") "s" [
+        (defName "cfg\\.nix")
+        [
+          "tm\\.nix"
+          "tm"
+        ]
+        [
+          "<unknown-file>"
+          "s"
+        ]
+      ];
+
+    # ── AN EVALUATION ITS IMPORTER LOCATES IS NAMED (den-hoag-1k5mi P3) ─────────────────────────────────────
+    # The published module set locates the type's own modules by the evaluation's `root` and places the name
+    # modules around them (`typeOver`), which needs the evaluation to be positioned or closed by the name
+    # placeholder. Every `root` the engine passes is such a child; an evaluation located by a root and neither
+    # refuses by name when its set is read, where it would publish its modules unlocated. Reached through the
+    # core seam, the one door that takes a `root`. Control: the same evaluation with no root publishes its set.
+    # RED before the landing: the set was served, one module long.
+    flake.testsError.located-evaluation-is-named =
+      let
+        over =
+          root:
+          (genMergeCore.evalModuleTreeUnchecked {
+            modules = [ { _file = "m.nix"; } ];
+            inherit root;
+          }).type.substructure.modules;
+      in
+      {
+        test-a-located-unnamed-evaluation-refuses-to-publish-its-set = {
+          expr = withControl (builtins.length (over null)) 1 (
+            builtins.length (over {
+              _file = "r.nix";
+              key = "r";
+            })
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: an evaluation located by its importer \\(`root'\\) is neither positioned nor closed by the name placeholder, so its module set has no place for the name modules and is not published$";
+          };
+        };
+      };
+
     # ── `submodule`'s `name`: WHICH refusal fires (den-hoag-fpxsd) ──────────────────────────────
     # The value plane (`nixpkgs-protocol` `test-submodule-name-*`) holds THAT nixpkgs and gen both
     # refuse; these hold WHY, so a refusal for an unrelated reason cannot pass. Two definitions of
-    # `name` at one priority refuse as a module argument defined twice, naming both files: with
-    # definitions the position (`<position>`) is the second, over none the `‹name›` placeholder is
-    # (an anonymous module, so the two read as one file's two definitions).
+    # `name` at one priority refuse as a module argument defined twice, naming both files in the record's
+    # order: with definitions the position (`<unknown-file>`, as the record and nixpkgs label it) is the
+    # second, over none the `‹name›` placeholder is (an anonymous module, so the two read as one file's two
+    # definitions).
     # A module reading `name` on the DECLARATION plane (`imports`, an option key) refuses by name as
     # any value-stratum argument does there (ADR-0033); nixpkgs overflows (infinite recursion) and
     # gen served the position's step before the name became a definition.
@@ -5087,7 +5254,7 @@ in
                 { _module.args.name = "plain"; }
               ]
             )) { x = { }; }).x.a;
-          expectedError = twice "<unknown-file>, <position>";
+          expectedError = twice "<unknown-file> \\(2 definitions\\)";
         };
         test-an-option-default-ties-the-placeholder = {
           expr =
@@ -10206,7 +10373,7 @@ in
           });
           expectedError = {
             type = "ThrownError";
-            msg = moduleArgsDupMsg "/real/AR\\.nix, /other\\.nix";
+            msg = moduleArgsDupMsg "/other\\.nix, /real/AR\\.nix";
           };
         };
         test-read-only-module-args-refusal-names-the-path-modules-own-file = {
@@ -11673,7 +11840,7 @@ in
       let
         d = file: value: nixpkgsLib.mkDefinition { inherit file value; };
         conflictMsg = "^gen-merge: the option `x' has conflicting definitions:\n- In `/r/B\\.nix': false\n- In `/r/A\\.nix': true$";
-        argMsg = "^gen-merge: module argument `foo' \\(`_module\\.args\\.foo'\\) is defined multiple times, and a module argument must be unique; defined in /r/A\\.nix, /r/B\\.nix$";
+        argMsg = "^gen-merge: module argument `foo' \\(`_module\\.args\\.foo'\\) is defined multiple times, and a module argument must be unique; defined in /r/B\\.nix, /r/A\\.nix$";
         conflict =
           a: b:
           builtins.deepSeq
