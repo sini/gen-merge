@@ -42,6 +42,9 @@
 #   floor den-hoag-<row> the correctness floor, its attribution the cited row;
 #   owner den-hoag-<row> an owner reading.
 #
+# Every trailer in range naming a key's hash is read, and any valid one admits it, so a later trailer for
+# the same key (another change's, of a class that does not hold there) never shadows a valid one.
+#
 # `nixos-bar --write-baseline` and `--fold` print every hash a change needs. Git reads trailers from a
 # message's LAST paragraph only, so all of a commit's trailers go in one paragraph (one `-m`).
 #
@@ -102,7 +105,7 @@ summary=""
 # judge <label> <old rev> <old register spec> <new rev> <trailer range>…: the falls (and perf rises) from
 # the old register to <new rev>'s, each needing an admission among the trailers of the ranges.
 judge() {
-  local label=$1 old=$2 oldSpec=$3 new=$4 fallen rises trailers="" ptrailers="" r a b ua ub moved env key was now h adm e par above
+  local label=$1 old=$2 oldSpec=$3 new=$4 fallen rises trailers="" ptrailers="" r a b ua ub moved env key was now h adm why c e par above cands
   shift 4
   checked=$((checked + 1))
   fallen=$(jq -rn --arg keyform "$form" --slurpfile old <(git show "$oldSpec") --slurpfile new <(git show "${new}:$reg") \
@@ -124,12 +127,20 @@ judge() {
   if [ -n "$fallen" ]; then
     while IFS=$'\t' read -r key was now; do
       h=$(hashOf "$key")
-      adm=$(grep -E "^$h (relock den-hoag-[a-z0-9.]+|correction .+)\$" <<<"$trailers" | head -1 || true)
+      # Every trailer naming the hash is read, and ANY valid one admits: a later invalid trailer for the
+      # same key (another change's) never shadows a valid one.
+      mapfile -t cands < <(grep -E "^$h (relock den-hoag-[a-z0-9.]+|correction .+)\$" <<<"$trailers" || true)
+      adm="" why="no $decrease: $h trailer in $*"
+      for c in "${cands[@]}"; do
+        if [[ "$c" == "$h relock "* && "$moved" == no ]]; then
+          why="a relock admission, but nixpkgs did not move in ${old:0:9}..${new:0:9}"
+        else
+          adm=$c
+          break
+        fi
+      done
       if [ -z "$adm" ]; then
-        echo "REFUSED $label $h $was -> $now $key (no $decrease: $h trailer in $*)"
-        refused=$((refused + 1))
-      elif [[ "$adm" == "$h relock "* && "$moved" == no ]]; then
-        echo "REFUSED $label $h $was -> $now $key (a relock admission, but nixpkgs did not move in ${old:0:9}..${new:0:9})"
+        echo "REFUSED $label $h $was -> $now $key ($why)"
         refused=$((refused + 1))
       else
         echo "admitted $label $h $was -> $now ($adm)"
@@ -144,15 +155,20 @@ judge() {
   if [ "$moved" = yes ] && [ "$ua" = "$ub" ]; then env=yes; fi
   while IFS=$'\t' read -r key e was now par above; do
     h=$(hashOf "$key"$'\t'"$e")
-    adm=$(grep -E "^$h (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)\$" <<<"$ptrailers" | head -1 || true)
+    mapfile -t cands < <(grep -E "^$h (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)\$" <<<"$ptrailers" || true)
+    adm="" why="no $rise: $h trailer in $*"
+    for c in "${cands[@]}"; do
+      if [[ "$c" == "$h reanchor" && "$env" == no ]]; then
+        why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: nixpkgs moved=$moved, and a gen member pin, lib/ or an arm input moved, or nixpkgs did not"
+      elif [[ "$c" == "$h parity" && "$par" == no && "$above" == no ]]; then
+        why="a parity admission, but the rise crosses parity: at parity at the anchor, above it now"
+      else
+        adm=$c
+        break
+      fi
+    done
     if [ -z "$adm" ]; then
-      echo "REFUSED $label $h perf rise $was -> $now $key '$e' (no $rise: $h trailer in $*)"
-      refused=$((refused + 1))
-    elif [[ "$adm" == "$h reanchor" && "$env" == no ]]; then
-      echo "REFUSED $label $h perf rise $was -> $now $key '$e' (a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: nixpkgs moved=$moved, and a gen member pin or lib/ moved, or nixpkgs did not)"
-      refused=$((refused + 1))
-    elif [[ "$adm" == "$h parity" && "$par" == no && "$above" == no ]]; then
-      echo "REFUSED $label $h perf rise $was -> $now $key '$e' (a parity admission, but the rise crosses parity: at parity at the anchor, above it now)"
+      echo "REFUSED $label $h perf rise $was -> $now $key '$e' ($why)"
       refused=$((refused + 1))
     else
       echo "admitted $label $h perf rise $was -> $now ($adm)"
