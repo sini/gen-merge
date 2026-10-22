@@ -1604,13 +1604,16 @@ let
   # `allOptions` (the warm identity walk, the docs and lint read that tree) and are added where an
   # evaluated record is served, over the values the module-visible `config._module` holds
   # (`moduleConfig`), so `options._module.<k>.value` and `config._module.<k>` are one value. The file
-  # is the one that states them here, the name nixpkgs gives its own.
+  # is the one that states them here, the name nixpkgs gives its own. The descriptions are nixpkgs'
+  # text verbatim (`module-own-text.nix`): the docs walker renders them, and documentation is held to
+  # nixpkgs' values (ADR-0039).
+  moduleOwnText = import ./module-own-text.nix;
   moduleOwn = rec {
     file = "lib/modules.nix";
     options = prefix: {
       args = {
         type = strategies.lazyAttrsOf strategies.raw;
-        description = "The arguments each module is applied to beside `config', `options', `prefix' and the caller's `specialArgs': the modules' own `_module.args', merged, with a positioned evaluation's `name'.";
+        description = moduleOwnText.args;
       }
       // (if prefix == [ ] then { } else { internal = true; });
       check = {
@@ -1623,13 +1626,13 @@ let
         type = strategies.nullOr strategies.optionType;
         internal = true;
         default = null;
-        description = "If set, the type every definition without an associated option is merged with; its result is combined with the declared options' values to produce `config'.";
+        description = moduleOwnText.freeformType;
       };
       # nixpkgs' states no type: its record's `unspecified` is the fixup every untyped declaration gets
       specialArgs = {
         readOnly = true;
         internal = true;
-        description = "The caller's `specialArgs', which every module is applied to; a module cannot define it.";
+        description = moduleOwnText.specialArgs;
       };
     };
     # The four records over `own`, the evaluation's `optionDefs.moduleOwn`, added to a served tree. A

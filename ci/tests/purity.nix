@@ -155,7 +155,13 @@ let
       map (tok: "${src.name}: '${tok}'") (lib.filter (tok: genPrelude.hasInfix tok src.code) forbidden)
     ) srcs;
 
-  violations = scan sources;
+  # The files whose text is nixpkgs' own, served verbatim: documentation the docs walker renders, which
+  # names `nixpkgs` and `evalModules` in prose. Each is exempt BY NAME and holds strings only
+  # (`test-exempt-files-hold-strings-only`), so no call can hide in one.
+  exempt = [ "lib/module-own-text.nix" ];
+  scanLibrary = srcs: scan (lib.filter (s: !lib.elem s.name exempt) srcs);
+
+  violations = scanLibrary sources;
 in
 {
   flake.tests.purity.test-library-source-is-nixpkgs-free = {
@@ -179,6 +185,7 @@ in
       "lib/interface.nix"
       "lib/linkset.nix"
       "lib/lint.nix"
+      "lib/module-own-text.nix"
       "lib/modules.nix"
       "lib/priority.nix"
       "lib/types-allowlist.nix"
@@ -221,7 +228,7 @@ in
   # of the repo-root-relative paths it now sits beside. Its trailing comment names `nixpkgs`, which
   # the strip removes — so this cell also fails if the strip stops running.
   flake.tests.purity.test-detector-catches-injected-violation = {
-    expr = scan (
+    expr = scanLibrary (
       sources
       ++ [
         {
@@ -278,8 +285,50 @@ in
       lib.filter (s: genPrelude.hasInfix "''" s.text) rawSources
     );
     expected = [
+      "lib/module-own-text.nix"
       "lib/types-allowlist.nix"
       "lib/undeclared-text.nix"
     ];
+  };
+
+  # The exemption is by name and reaches no other file. A tether planted in a sibling library file (the
+  # other one carrying ported nixpkgs text) reds through the same call that reports the tree clean, and
+  # the exempt file, scanned without its exemption, carries the tokens the exemption is for: it is
+  # load-bearing, not a name on a list.
+  flake.tests.purity.test-exemption-is-by-name-only = {
+    expr = {
+      planted = scanLibrary (
+        map (
+          s:
+          if s.name == "lib/undeclared-text.nix" then
+            s // { code = s.code + "\n  x = nixpkgs.lib.foo;"; }
+          else
+            s
+        ) sources
+      );
+      exemptScanned = scan (lib.filter (s: lib.elem s.name exempt) sources);
+    };
+    expected = {
+      planted = [
+        "lib/undeclared-text.nix: 'nixpkgs'"
+        "lib/undeclared-text.nix: 'lib.'"
+      ];
+      exemptScanned = [
+        "lib/module-own-text.nix: 'nixpkgs'"
+        "lib/module-own-text.nix: 'evalModules'"
+      ];
+    };
+  };
+
+  # An exempt file is an attrset of strings and nothing else.
+  flake.tests.purity.test-exempt-files-hold-strings-only = {
+    expr = map (
+      n:
+      let
+        v = import (../.. + "/${n}");
+      in
+      builtins.isAttrs v && lib.all builtins.isString (lib.attrValues v)
+    ) exempt;
+    expected = [ true ];
   };
 }

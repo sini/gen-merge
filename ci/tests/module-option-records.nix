@@ -554,6 +554,25 @@ let
                 ];
               }).options
           );
+      # the docs walker's whole entry for every `_module.*` option, at the root and in a submodule
+      docsOwn =
+        let
+          own = builtins.filter (e: nl.hasPrefix "_module." e.name || nl.hasPrefix "s._module." e.name);
+        in
+        own (
+          nl.optionAttrSetToDocList
+            (ev (
+              plain
+              ++ [
+                {
+                  options.s = M.mkOption {
+                    type = sub { };
+                    default = { };
+                  };
+                }
+              ]
+            )).options
+        );
       # every record forces whole as nixpkgs' does: `args` holds `moduleType`, whose empty value reads
       # `u`, declared with no default, so that one force refuses on both
       wholeRecords = map (
@@ -738,5 +757,6 @@ in
     # ── nixpkgs' docs walker ───────────────────────────────────────────────────────────────────────
     test-the-docs-walker-over-the-published-tree-is-nixpkgs = twin "docsPub";
     test-the-docs-walker-over-a-mounted-submodule-is-nixpkgs = twin "docsMounted";
+    test-the-docs-entries-of-the-module-own-options-are-nixpkgs = twin "docsOwn";
   };
 }
