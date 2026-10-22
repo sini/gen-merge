@@ -1,5 +1,7 @@
-# THE DOCS WALK of the replacement bar, one file for every stage that reads an option tree (stage 2's
-# `nixos-bar-eval.nix`, stage 3's `hm-bar-eval.nix`). Each node is exactly the entry nixpkgs'
+# THE DOCS WALK of the replacement bar, the generalisation of stage 2's walk (`nixos-bar-eval.nix`), imported
+# by stage 3 (`hm-bar-eval.nix`). Stage 2 still carries its own copy, because importing this file moves stage
+# 2's exact counts (+6 thunks, +424 B on its docs-walk row); moving it here is an instrument change of its
+# own, with its own `Bar-Perf-Rise:` trailers, never a ride on another change. Each node is exactly the entry nixpkgs'
 # `optionAttrSetToDocList` emits for that option: nixpkgs' own `optionAttrSetToDocList'`, called one option
 # at a time with its sub-option recursion cut, so the walk recurses itself, under `tryEval`, and one refusing
 # node cannot hide the rest.
