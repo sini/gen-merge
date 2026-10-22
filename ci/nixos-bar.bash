@@ -85,10 +85,11 @@ evalArm() {
   NIX_PATH="" NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$tmp/$n.stats" timeout -k 10 "$left" "$ni" --eval --strict --json \
     "${BAR_FLAGS[@]}" "$BAR_EVAL" --arg srcs "$BAR_SRCS" --argstr engine "$eng" "$@" >"$tmp/$n.out" 2>"$tmp/$n.err" || rc=$?
   ms=$((($(date +%s%N) - t0) / 1000000))
-  # An evaluation that ran out of its memory is the instrument's limit, never a refusal: Lix reports it at
-  # exit 1, with the refusals.
-  if grep -qiE 'out of memory|bad_alloc' "$tmp/$n.err"; then
-    control "$n ran out of memory (exit $rc): $(grep -iE 'out of memory|bad_alloc' "$tmp/$n.err" | tail -1)"
+  # An evaluation that ran out of its memory, or lost its connection to the store, is the instrument's
+  # failure, never a refusal: both read exit 1 (Lix's out-of-memory; every evaluator's broken pipe), with the
+  # refusals.
+  if grep -qiE 'out of memory|bad_alloc|^ *error: write of [0-9]+ bytes: Broken pipe' "$tmp/$n.err"; then
+    control "$n could not be measured (exit $rc): $(grep -iE 'out of memory|bad_alloc|Broken pipe' "$tmp/$n.err" | tail -1)"
   fi
   if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
     [ "$(date +%s)" -lt "$deadline" ] || control "the run passed its deadline in $n"

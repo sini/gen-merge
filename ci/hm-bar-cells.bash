@@ -34,7 +34,7 @@ wargs() { printf '%s\n' --argstr read "$1" --argstr set "$wset" --argstr route "
 # does not outlive it.
 tests() {
   local c i e n js t sum
-  local -a names chunk alive died=()
+  local -a names=() chunk=() alive=() died=()
   evalArm names ref names --argstr read names
   [ "$rc" -eq 0 ] || control "the test names read refused: $(grep -E '^ *error' "$tmp/names.err" | tail -1)"
   mapfile -t names < <(jq -r '.v[]' "$tmp/names.out")
