@@ -217,6 +217,16 @@
             done
           done
 
+          # A `_module.check` computed from the evaluation's own `moduleType` dies on the call-depth channel,
+          # on gen-merge and on nixpkgs alike.
+          for arm in own-check-reads-nested own-check-reads-desc; do
+            for side in "$arm" "$arm-nixpkgs"; do
+              evalArm "$side"
+              [ "$rc" -ne 0 ] || die "$side" "expected a death, got exit 0 with '$val'"
+              grep -Eq 'stack overflow|max-call-depth exceeded' "$TMPDIR/err" || die "$side" "death is not the call-depth channel"
+            done
+          done
+
           # den-hoag-n6dh7 U2-l (gate O1): a candidate's `result` refuses before its member's modules
           # are applied — the traced module is applied 0 times — and a selected child applies it.
           evalArm candidate-modules
@@ -384,8 +394,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "76" ] || die runner "expected 76 evaluations, ran $ran"
-          echo "tests-process: 76 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "80" ] || die runner "expected 80 evaluations, ran $ran"
+          echo "tests-process: 80 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

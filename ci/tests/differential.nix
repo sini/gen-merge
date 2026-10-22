@@ -477,8 +477,9 @@ let
   #
   # So the engine is measured rather than named, and BY A POSITIVE MARKER ON EACH SIDE rather than
   # by one marker and its absence — an absence is also what a broken reading returns. gen-merge's
-  # `evalModuleTree` publishes a `provenance` attribute nixpkgs has no analogue of; nixpkgs'
-  # `evalModules` publishes `extendModules`, which this engine does not. Each arm must carry its own
+  # `evalModuleTree` publishes a `provenance` attribute nixpkgs has no analogue of. gen publishes every
+  # attribute nixpkgs' `evalModules` does, so nixpkgs' marker is where its result is built: the file that
+  # defines the result's `options` lies in the reference `lib`'s own directory. Each arm must carry its own
   # engine's marker AND lack the other's.
   engineFingerprint =
     arm:
@@ -487,15 +488,16 @@ let
     in
     {
       genProvenance = r ? provenance;
-      nixpkgsModule = r ? _module;
+      nixpkgsDefined = dirOf (builtins.unsafeGetAttrPos "options" r).file == nixpkgsLibDir;
     };
+  nixpkgsLibDir = dirOf (builtins.unsafeGetAttrPos "mkOption" lib.options).file;
   nixpkgsFingerprint = {
     genProvenance = false;
-    nixpkgsModule = true;
+    nixpkgsDefined = true;
   };
   genFingerprint = {
     genProvenance = true;
-    nixpkgsModule = false;
+    nixpkgsDefined = false;
   };
 
   # ── THE TEETH ─────────────────────────────────────────────────────────────────────────────────
