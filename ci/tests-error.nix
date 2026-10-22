@@ -5036,8 +5036,8 @@ in
     # two ways: the loss would already have happened, and the caller's name for it would be gone.
     #
     # ★ THERE ARE THREE. `config`, `options` and `prefix` are injected by the ENGINE, at both strata
-    # (`lib/modules.nix` `declArgs` and `baseArgs`), with the supplied set on the LEFT of `//`, so the
-    # engine's value wins. The engine refuses those three itself (`engine-reserved-args` below), but
+    # (`lib/modules.nix` `declArgs` and `baseArgs`), and the supplied set, on the RIGHT of `//` as in
+    # nixpkgs' `doCollect`, may not state them. The engine refuses those three itself (`engine-reserved-args` below), but
     # only when a module is applied; the inlet answers when the caller states the key. `name` is not
     # one: `submodule` states it as a `_module.args` definition, which the caller's outranks
     # (`nixpkgs-protocol` `test-submodule-name-caller-specialArgs-wins`).
@@ -5351,9 +5351,9 @@ in
     };
 
     # ── the engine's reserved keys ──────────────────────────────────────────────────────────────
-    # `evalModuleTree`/`declaredOptions { specialArgs }` put the caller's set on the LEFT of the
-    # engine's `config`/`options`/`prefix`, so a caller key among those three would reach no module.
-    # It refuses by name instead, at each binding (ADR-0025 item 1). The module takes no formals and
+    # `evalModuleTree`/`declaredOptions { specialArgs }` put the caller's set on the RIGHT of the
+    # engine's `config`/`options`/`prefix`, so a caller key among those three would write over the
+    # engine's own value. It refuses by name instead, at each binding (ADR-0025 item 1). The module takes no formals and
     # reads its key only in an option default, so the declaration guard never forces `declArgs` and
     # the `evalModuleTree` cells answer from `baseArgs`; the `declaredOptions` cells answer from
     # `declArgs`. Each site therefore has cells of its own.

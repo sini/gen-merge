@@ -341,8 +341,11 @@ definitions, and its `extendModules` re-evaluates that list with the new modules
 hops down it is read, and the type placed at a second position is refused there as two definitions of `name`, as in nixpkgs
 (`ci/tests/request-surface.nix`). **That is the whole of the injected argument set, and it is the argument-side compat
 boundary:** nixpkgs injects `lib` at every
-`evalModules` level and gen-merge injects none, so a module reading `lib` is refused by name
-(`` module argument `lib' is not defined ``) until the caller threads it through `specialArgs`.
+`evalModules` level, the `lib` its module system is instantiated with. gen-merge injects the `lib` it is
+built with (`lib/default.nix`'s `lib` parameter) at every level, and none if built with none, as the flake's
+`lib` output is. On that engine a module reading `lib` is refused by name
+(`` module argument `lib' is not defined ``) until the caller threads it through `specialArgs` (or, outside
+option declarations, `_module.args`). `_class` and `_prefix` are injected as nixpkgs injects them.
 
 ## Provenance
 

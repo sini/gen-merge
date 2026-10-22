@@ -1,7 +1,7 @@
 # WHAT A FUNCTION MODULE IS APPLIED TO, per formal source (lib/modules.nix `callM` and `callD`).
 #
 # A module whose every formal is in the base arguments (`specialArgs`, `options`, `config`,
-# `prefix`) is applied to the base set itself, with no per-application `extra` copy. The copy it
+# `prefix`, `_class`, `_prefix`, and `lib` on an engine built with one) is applied to the base set itself, with no per-application `extra` copy. The copy it
 # elides was `extra // baseArgs`, which holds the same keys and the same slots, so these cells pin
 # the values and the key set a module sees on both arms: the elided one (`options`/`config`, a
 # `specialArgs` formal) and the copying one (a `_module.args` formal). The declaration stratum is
@@ -96,6 +96,8 @@ in
     test-options-and-config-formals-see-the-base-key-set = {
       expr = baseFormals.seen.base.keys;
       expected = [
+        "_class"
+        "_prefix"
         "config"
         "foo"
         "options"
@@ -109,6 +111,8 @@ in
     test-a-special-arg-formal-sees-the-base-key-set = {
       expr = special.seen.special.keys;
       expected = [
+        "_class"
+        "_prefix"
         "config"
         "foo"
         "options"
@@ -127,6 +131,8 @@ in
     test-a-module-args-formal-adds-its-own-key = {
       expr = moduleArg.seen.moduleArg.keys;
       expected = [
+        "_class"
+        "_prefix"
         "bar"
         "config"
         "foo"

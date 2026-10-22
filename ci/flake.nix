@@ -97,6 +97,8 @@
         types = genTypes;
         # The published leaves, the knot `lib/default.nix` ties as `completedLeaves`.
         leaves = genMerge.types;
+        # `genMerge`'s instantiation: no `lib`.
+        lib = null;
       };
       # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
       # boundary is reached through the core rather than re-imported, so the suite reads the same
@@ -144,6 +146,17 @@
           types = genTypes;
           memo = genMemo;
         };
+      # A gen-merge instance over a CALLER-SUPPLIED `lib`, the instantiation parameter every module
+      # receives as its `lib` argument (den-hoag-61r97, S4). Same `../lib` entry point as the instances
+      # above; `genMerge` is the one built with none.
+      genMergeWithLib =
+        lib:
+        import ../lib {
+          inherit prelude lib;
+          types = genTypes;
+          memo = genMemo;
+          scope = genScope;
+        };
       # The comparison machinery, bound once so the differential suite and any later consumer read
       # the same instrument. `lib` (nixpkgs, harness-supplied) is the REFERENCE side there, exactly
       # as it is for the equivalence oracle — the two instruments assert over one reference by
@@ -180,6 +193,7 @@
           genMergeWith
           genMergeWithMemo
           genMergeWithScope
+          genMergeWithLib
           genMemo
           genTypesFlake
           genScope

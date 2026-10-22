@@ -51,13 +51,16 @@ in
 {
   # (i) THE HEADER AND THE FORMALS AGREE: no input is defaulted, so omitting one aborts AT THE CALL
   # SITE naming it rather than throwing from inside the namespace assembly.
-  flake.tests.lib-entry.test-the-entry-defaults-nothing = {
+  # `lib` is the one default: an instantiation PARAMETER, not a dependency, whose absence is a state
+  # (no `lib` injected, den-hoag-61r97) rather than a forgotten input.
+  flake.tests.lib-entry.test-the-entry-defaults-no-dependency = {
     expr = builtins.functionArgs (import ../../lib);
     expected = {
       prelude = false;
       types = false;
       memo = false;
       scope = false;
+      lib = true;
     };
   };
 

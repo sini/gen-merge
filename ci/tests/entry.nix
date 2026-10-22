@@ -455,9 +455,14 @@ in
   # `paths` is what the root WIRES; `functionArgs (import ../../lib)` is what the library REQUIRES,
   # read from a different file by a different builtin. A dependency dropped from the shim's body reds
   # here even though every surviving path still resolves.
+  # Its REQUIRED formals: `lib`, defaulted, is an instantiation parameter and not a wired dependency.
   flake.tests.entry.test-the-wired-dependency-set-is-the-libs-own-formals = {
     expr = builtins.attrNames paths;
-    expected = builtins.attrNames (builtins.functionArgs (import ../../lib));
+    expected =
+      let
+        formals = builtins.functionArgs (import ../../lib);
+      in
+      builtins.filter (n: !formals.${n}) (builtins.attrNames formals);
   };
 
   # ★★★ THE DEFAULTS FORCED — the one cell in this file that is NOT hermetic. Forcing them IS

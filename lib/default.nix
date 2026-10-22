@@ -53,11 +53,16 @@
 #             `called without required argument 'scope'` through `lib/types.nix:298`.
 #             The foreclosed arm is a DEFAULT: a defaulted formal cannot refuse, and the door below
 #             is the component. The convention `types`/`memo` state above governs here too.
+#   lib     : the library every module receives as its `lib` argument, as nixpkgs'
+#             `lib/modules.nix` is `{ lib }:` (den-hoag-61r97, owner-ruled S4). An instantiation
+#             PARAMETER, not a dependency: nothing here reads it, and `null` (the default) injects
+#             no `lib`, so a module reading one is refused by name as before.
 {
   prelude,
   types,
   memo,
   scope,
+  lib ? null,
 }:
 let
   # ── THE EVALUATOR DOOR, TOTAL, ONCE PER CONSTRUCTION ──────────────────────────────────────────
@@ -308,6 +313,7 @@ let
         scope = checkedScope;
         types = checkedTypes;
         leaves = completedLeaves;
+        inherit lib;
       }
     )
   );

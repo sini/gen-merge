@@ -19,34 +19,30 @@ let
   identity = import "${genIdentitySrc}/lib";
   algebra = import "${genAlgebraSrc}/lib";
   graph = import "${genGraphSrc}/lib" { inherit prelude; };
-  gen = import libSrc {
-    inherit prelude;
-    types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
-    memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
-    scope = import "${genScopeSrc}/lib" {
-      inherit
-        algebra
-        graph
-        identity
-        prelude
-        ;
-    };
-  };
 in
 orig.extend (
-  self: _: {
-    # `evalRequest`'s bridge (`flake.nix`), plus nixpkgs' `lib` module argument. Every request field
-    # other than `modules` is handed through, so one the door does not take is refused by name.
-    evalModules =
-      r:
-      gen.evalModuleTree (
-        removeAttrs r [ "modules" ]
-        // {
-          specialArgs = {
-            lib = self;
-          }
-          // (r.specialArgs or { });
-        }
-      ) (r.modules or [ ]);
+  self: _:
+  let
+    # gen-merge instantiated with the `lib` its modules receive, as nixpkgs' `lib/modules.nix` is `{ lib }:`.
+    gen = import libSrc {
+      inherit prelude;
+      lib = self;
+      types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
+      memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
+      scope = import "${genScopeSrc}/lib" {
+        inherit
+          algebra
+          graph
+          identity
+          prelude
+          ;
+      };
+    };
+  in
+  {
+    # `evalRequest`'s bridge (`flake.nix`). nixpkgs' `lib` is the engine's instantiation, so it reaches
+    # every evaluation the engine makes, nested ones included. Every request field other than `modules`
+    # is handed through, so one the door does not take is refused by name.
+    evalModules = r: gen.evalModuleTree (removeAttrs r [ "modules" ]) (r.modules or [ ]);
   }
 )
