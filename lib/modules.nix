@@ -45,12 +45,12 @@
   # which the raw gen-types leaf lacks. A KNOT, tied as `strategies` is.
   leaves,
   # The instantiating `lib` (`lib/default.nix`), or `null`: the module argument `lib`, never read here.
-  # It enters `declArgs` and `baseArgs` under the key `${if lib == null then null else "lib"}`: a null
-  # name drops the key (`{ ${null} = …; }` is `{ }`), so an engine built with no `lib` injects none. The
-  # name is spelled inline at each site, not let-bound, because a let binding here is a thunk every
-  # engine load pays (den-hoag-61r97). The alternative, a branch on `lib == null` between a literal with
-  # `lib` and one without, saves the omitted name's 32 B per instance on the no-`lib` engine at the price
-  # of every literal written twice.
+  # `declArgs` and `baseArgs` branch on `lib == null` between a literal without the key, the one the
+  # engine built with none uses, and the same literal with `inherit lib;` (den-hoag-61r97). The branch
+  # is written at each site, not let-bound, because a binding here is a thunk every engine load pays. A
+  # single literal with a null-able dynamic name, `${if lib == null then null else "lib"}`, cost the
+  # no-`lib` engine every flake consumer runs 32 B per instance and 523 load thunks on the hub's gen-schema
+  # rows, for a key that serves nothing there; the branch costs the duplicated literal text.
   lib,
 }:
 let
@@ -5866,8 +5866,35 @@ let
         declArgs =
           (
             if positioned then
+              if lib == null then
+                {
+                  _class = null;
+                  _prefix = prefix;
+                  config = inadmissible "config" "read `config'";
+                  options =
+                    if optionsView == null || optionsView.options == null then
+                      inadmissible "options" "read `options'"
+                    else
+                      optionsView.options;
+                  inherit prefix;
+                  name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
+                }
+              else
+                {
+                  inherit lib;
+                  _class = null;
+                  _prefix = prefix;
+                  config = inadmissible "config" "read `config'";
+                  options =
+                    if optionsView == null || optionsView.options == null then
+                      inadmissible "options" "read `options'"
+                    else
+                      optionsView.options;
+                  inherit prefix;
+                  name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
+                }
+            else if lib == null then
               {
-                ${if lib == null then null else "lib"} = lib;
                 _class = null;
                 _prefix = prefix;
                 config = inadmissible "config" "read `config'";
@@ -5877,11 +5904,10 @@ let
                   else
                     optionsView.options;
                 inherit prefix;
-                name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
               }
             else
               {
-                ${if lib == null then null else "lib"} = lib;
+                inherit lib;
                 _class = null;
                 _prefix = prefix;
                 config = inadmissible "config" "read `config'";
@@ -7032,25 +7058,53 @@ let
               # applied to, so a module reading `name` takes `callM`'s elided application. Where a
               # module declares `options._module`, `moduleArgs` holds it, after any `apply`.
               if knot.positioned then
+                if lib == null then
+                  {
+                    _class = class;
+                    _prefix = prefix;
+                    options = moduleOwn.serve prefix result.optionDefs.moduleOwn (
+                      serveOptions sitesAt [ ] prefix result.provenance result.optionDefs.defs result.optionDefs.values
+                        result.options
+                    );
+                    # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
+                    # parity); the returned `result.config` stays `_module`-free.
+                    config = result.moduleConfig;
+                    inherit prefix;
+                    name =
+                      specialArgs.name
+                        or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
+                  }
+                else
+                  {
+                    inherit lib;
+                    _class = class;
+                    _prefix = prefix;
+                    options = moduleOwn.serve prefix result.optionDefs.moduleOwn (
+                      serveOptions sitesAt [ ] prefix result.provenance result.optionDefs.defs result.optionDefs.values
+                        result.options
+                    );
+                    # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
+                    # parity); the returned `result.config` stays `_module`-free.
+                    config = result.moduleConfig;
+                    inherit prefix;
+                    name =
+                      specialArgs.name
+                        or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
+                  }
+              else if lib == null then
                 {
-                  ${if lib == null then null else "lib"} = lib;
                   _class = class;
                   _prefix = prefix;
                   options = moduleOwn.serve prefix result.optionDefs.moduleOwn (
                     serveOptions sitesAt [ ] prefix result.provenance result.optionDefs.defs result.optionDefs.values
                       result.options
                   );
-                  # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
-                  # parity); the returned `result.config` stays `_module`-free.
                   config = result.moduleConfig;
                   inherit prefix;
-                  name =
-                    specialArgs.name
-                      or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
                 }
               else
                 {
-                  ${if lib == null then null else "lib"} = lib;
+                  inherit lib;
                   _class = class;
                   _prefix = prefix;
                   options = moduleOwn.serve prefix result.optionDefs.moduleOwn (
