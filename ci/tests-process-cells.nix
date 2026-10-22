@@ -426,6 +426,13 @@ let
         }
       )
     ]).config.d;
+  # a module whose own `_module.check` is computed from its evaluation's `moduleType`, the rest of the set clean
+  ownCheck =
+    M: f:
+    (mtEval M [
+      { options.a = M.mkOption { default = 1; }; }
+      ({ moduleType, ... }: { config._module.check = f moduleType; })
+    ]).config.a;
 
   cells = {
     # den-hoag-jbddy: the engine's own option names are read without evaluating a submodule (0),
@@ -519,6 +526,18 @@ let
     # at which the regress is cut, so no value
     mt-regress-depth = mtDepth m;
     mt-regress-depth-nixpkgs = mtDepth (import "${nixpkgsSrc}/lib");
+    # An evaluation's own type reads its freeform type through its base's refusal, as nixpkgs' `base._module`
+    # does, so a `_module.check` computed from `moduleType.nestedTypes` or `moduleType.description` forces the
+    # next level's check, and so on without end. It dies on the call-depth channel on both engines, where gen
+    # served `1` while it read the freeform type past the check (ADR-0033: divergence is inherited, never added).
+    own-check-reads-nested = ownCheck m (t: !(t.nestedTypes ? freeformType));
+    own-check-reads-nested-nixpkgs = ownCheck (import "${nixpkgsSrc}/lib") (
+      t: !(t.nestedTypes ? freeformType)
+    );
+    own-check-reads-desc = ownCheck m (t: t.description == "submodule");
+    own-check-reads-desc-nixpkgs = ownCheck (import "${nixpkgsSrc}/lib") (
+      t: t.description == "submodule"
+    );
     # U2-l (gate O1): a candidate's `result` refuses before its member's modules are applied, so the
     # traced module is applied 0 times. The evaluation holds no SELECTED child of that member.
     candidate-modules =

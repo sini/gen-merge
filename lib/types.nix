@@ -1012,12 +1012,14 @@ let
       # The CALLED fold refuses by name (den-hoag-n6dh7 item 1): the tree is a child of the one
       # evaluation that holds it, read through `threaded` below.
       called = loc: _: throw (calledNestingRefusal "submodule" "mergeDefs" loc);
+      # nixpkgs' `base._module.freeformType`: read off the base evaluation's published `_module`, so
+      # through its refusal (`nestedTypes.freeformType`), and the documentation evaluation's for the
+      # docs reads (`substructure.freeformType`), whose refusal is the docs module's.
       freeform =
-        ((core.evalModuleTreeNested {
+        (core.evalModuleTreeNested {
           modules = mods ++ [ namePlaceholder ];
           inherit (nests.empty) prefix specialArgs check;
-        }).type.unroledNested
-        ).freeformType or null;
+        })._module.freeformType;
     in
     defineType (
       # The module set is ONE sealed component, the list itself: its elements keep the caller's slots,
@@ -1194,6 +1196,14 @@ let
                 specialArgs = args;
                 check = null;
               }).options;
+            freeformType =
+              (core.evalModuleTreeNested {
+                modules = mods ++ [
+                  noCheckForDocsModule
+                  namePlaceholder
+                ];
+                inherit (nests.empty) prefix specialArgs check;
+              })._module.freeformType;
             modules = mods;
             # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT
             # append: a foreign module system builds the replacement as this type's OWN modules
