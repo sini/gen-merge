@@ -25,9 +25,31 @@
 # wrong refusal also shows on a serve row. A literal that matches a different refusal on rows where
 # nixpkgs refuses too is not caught here, so authoring a class stays a review judgement.
 #
-# $mode "check" emits one line per disagreement and a summary; "write" emits the new baseline.
+# PERF, on the rows where nixpkgs serves (`checkConfigOutput`, `checkExpression`; a refusing evaluation
+# writes no counters, so `checkConfigError` carries none): a record carries gen's `perf` and the reference
+# run's `ref: {rc, verdict, perf}`, and `perf.<$ev>.gen.{thunks,bytes}` is an EXACT bound (ADR-0032), each
+# clause `nixos-bar-compare.jq`'s over this register's id: above it is COST-REGRESSED, below it COST-RATCHET,
+# no entry for $ev UNANCHORED, perf on another row INVALID-PERF; each is a disagreement.
+#
+# $mode "check" emits one line per disagreement and a summary · "perf" one `PERF modules-sh <json>` line per
+# perf row, the line `--fold` reads · "write" the new baseline, $ev's perf merged in · "fold" $base with
+# $perf's lines merged in.
 def id: [.kind, .env, .argv] | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
+def perfKind: .key.kind | IN("checkConfigOutput", "checkExpression");
+def parity: if .gen == null or .ref == null then null
+  elif .gen.thunks <= .ref.thunks and .gen.bytes <= .ref.bytes then "at-parity" else "above-parity" end;
+($ARGS.named.ev // "") as $ev
+| ($ARGS.named.perf // []) as $perf
+| if $mode == "fold" then
+  ($perf | group_by(.key | id) | map({ key: (.[0].key | id), value: map({ key: .evaluator, value: { gen, ref } }) | from_entries }) | from_entries) as $P
+  | ($base | map({ key: (.key | id), value: true }) | from_entries) as $ids
+  | ($P | keys | map(select($ids[.] | not))) as $stray
+  | if ($stray | length) > 0 then error("PERF lines for rows the register lacks: \($stray)") else . end
+  | $base[]
+  | if perfKind then .perf = ((.perf // { }) + ($P[.key | id] // { })) else . end
+  | tojson
+else
 . as $recs
 | ($base | map({ key: (.key | id), value: . }) | from_entries) as $B
 | ($recs | map(.key | id) | dupsOf) as $dups
@@ -51,10 +73,18 @@ def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
       }
   )) as $runs
 | ($runs | map(.id)) as $seen
-| if $mode == "write" then
+| if $mode == "perf" then
+    $runs[]
+    | select(perfKind)
+    | { gen: .perf, ref: .ref.perf } as $p
+    | "PERF modules-sh " + ({ key, evaluator: $ev, gen: $p.gen, ref: $p.ref, parity: ($p | parity),
+        ratio: (if ($p | parity) == null then null else { thunks: ($p.gen.thunks / $p.ref.thunks), bytes: ($p.gen.bytes / $p.ref.bytes) } end) } | tojson)
+  elif $mode == "write" then
     $runs
     | sort_by(.id)
-    | map({ key, verdict: .got } + ((.base // { }) | with_entries(select(.key == "class" or .key == "overreach"))))
+    | map({ key, verdict: .got }
+        + ((.base // { }) | with_entries(select(.key == "class" or .key == "overreach")))
+        + (if perfKind then { perf: ((.base.perf // { }) + { ($ev): { gen: .perf, ref: .ref.perf } }) } else { } end))
     | .[]
     | tojson
   else
@@ -79,7 +109,19 @@ def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
           | (if .got == "FAIL" then "REGRESSED" elif .base.verdict == "FAIL" then "IMPROVED" else "MOVED" end) + " L\(.line) \(.base.verdict) -> \(.got) \(.id)"
           + (if .got == "FAIL" then " || " + (.err | split("\n") | map(select(test("^ *error:"))) | last // "(no error line)" | ltrimstr(" ")) else "" end) ]
       + [ $base[] | select((.key | id) as $i | $seen | index($i) | not) | "MISSING \(.verdict) \(.key | id)" ]
+      + [ $base[] | select(.perf != null and (perfKind | not)) | "INVALID-PERF \(.key | id)" ]
+      + [ $runs[] | select(perfKind and .base != null) | . as $r
+          | ($r.base.perf[$ev] // null) as $a
+          | if $a == null then "UNANCHORED L\(.line) \(.id) has no perf entry for '\($ev)'"
+            elif $a.gen == null or $r.perf == null then empty
+            else
+              "thunks \($a.gen.thunks) -> \($r.perf.thunks), bytes \($a.gen.bytes) -> \($r.perf.bytes)" as $d
+              | if $r.perf.thunks > $a.gen.thunks or $r.perf.bytes > $a.gen.bytes then "COST-REGRESSED L\(.line) \(.id) \($d)"
+                elif $r.perf.thunks < $a.gen.thunks or $r.perf.bytes < $a.gen.bytes then "COST-RATCHET L\(.line) \(.id) \($d) (lower the bound in this change)"
+                else empty end
+            end ]
     ) as $bad
     | ($bad[]),
       "modules-sh: \($runs | length) assertions, baseline \($base | length): \([$runs[] | select(.got == "PASS")] | length) PASS, \([$runs[] | select(.got == "PASS-CLASS")] | length) PASS-CLASS, \([$runs[] | select(.got == "FAIL")] | length) FAIL; \($bad | length) disagreements"
   end
+end

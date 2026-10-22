@@ -1,8 +1,8 @@
 # Sourced by the copied `modules.sh` just before its first assertion (the one line added to it).
 # modules.sh's own check functions stay the verdict: each is renamed `orig_*` and called unchanged,
 # and this records one JSON line per assertion — its key (kind, the env flags modules.sh reads, argv),
-# its modules.sh line, the verdict, and the FIRST evaluation's exit status and stderr (reportFailure
-# re-evaluates on a failure; that second run is not recorded).
+# its modules.sh line, the verdict, and the FIRST evaluation's exit status, stderr and counters
+# (reportFailure re-evaluates on a failure; that second run is not recorded).
 for f in checkConfigOutput checkConfigError checkExpression local-nix-instantiate; do
   eval "orig_$(declare -f "$f")"
 done
@@ -17,14 +17,24 @@ reportFailure() { ((++fail)); }
 # loaded host. This bounds one evaluation, not the run (~410 x 120 s is past GitHub's 360-minute job
 # limit); the runner's whole-run deadline (`modules-sh.nix`) bounds the run. The binary is the one path the runner resolved, never a PATH search: `timeout` would
 # otherwise search PATH on every call, and a vanished evaluator would be answered by the next one.
-nix-instantiate() { timeout 120 "$MODULES_SH_NIX_INSTANTIATE" "$@"; }
+# Each evaluation writes its counters (`NIX_SHOW_STATS`). NIX_PATH is emptied by `nixos-bar.bash`'s rule:
+# its entries are allocated into every evaluation, CI's columns have none, so the count is CI's.
+nix-instantiate() { NIX_PATH="" NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$MODULES_SH_CAP.stats" timeout 120 "$MODULES_SH_NIX_INSTANTIATE" "$@"; }
 
 local-nix-instantiate() {
   local rc=0
+  rm -f "$MODULES_SH_CAP.stats"
   orig_local-nix-instantiate "$@" >|"$MODULES_SH_CAP.out" 2>|"$MODULES_SH_CAP.err" || rc=$?
   if [[ -z "${captured:-}" ]]; then
     cp "$MODULES_SH_CAP.err" "$MODULES_SH_CAP.first.err"
     echo "$rc" >|"$MODULES_SH_CAP.first.rc"
+    # The counter `nixos-bar.bash`'s evalArm reads, or null where the evaluation wrote no stats (a refusal
+    # writes none, on all three evaluators); the runner's served-means-measured control reads it.
+    if [[ -s "$MODULES_SH_CAP.stats" ]]; then
+      jq -c '{thunks: .nrThunks, bytes: ([.envs, .list, .sets, .values, .symbols] | map(.bytes) | add)}' "$MODULES_SH_CAP.stats" >|"$MODULES_SH_CAP.first.perf"
+    else
+      echo null >|"$MODULES_SH_CAP.first.perf"
+    fi
     captured=1
   fi
   cat "$MODULES_SH_CAP.out"
@@ -43,7 +53,8 @@ wrap() {
     --arg verdict "$([[ $fail == "$before" ]] && echo PASS || echo FAIL)" \
     --arg env "$(echo ${ABORT_ON_WARN:+ABORT_ON_WARN} ${STRICT_EVAL:+STRICT_EVAL} ${REQUIRE_INFINITE_RECURSION_HINT:+RIRH})" \
     --argjson rc "$(cat "$MODULES_SH_CAP.first.rc")" --argjson ms "$((($(date +%s%N) - t0) / 1000000))" --rawfile err "$MODULES_SH_CAP.first.err" \
-    '{key:{kind:$kind,env:$env,argv:$ARGS.positional},line:$line,verdict:$verdict,rc:$rc,ms:$ms,err:$err}' \
+    --argjson perf "$(cat "$MODULES_SH_CAP.first.perf")" \
+    '{key:{kind:$kind,env:$env,argv:$ARGS.positional},line:$line,verdict:$verdict,rc:$rc,perf:(if $perf == null then null else $perf + {ms:$ms} end),err:$err}' \
     --args "$@" >>"$MODULES_SH_RECORDS"
 }
 checkConfigOutput() { wrap checkConfigOutput "$(caller 0 | cut -d' ' -f1)" "$@"; }
