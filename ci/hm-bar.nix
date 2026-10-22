@@ -15,9 +15,11 @@
 #
 # Verdicts, perf, register, fold and ratchet are stage 2's (`nixos-bar.nix` states them). No stage-3 row
 # carries `"claim":"identity"`: a test's `act` drvPath rides inside its value as evidence, and a row whose
-# files agree while its `act` differs is FAIL. A refusal both arms share in text that is not gen-merge's (a
-# nixpkgs alias throw, an IFD refusal) scores FAIL: the class rule that would pass it is
-# den-hoag-refusal-class-consumer-throw-ovyos's, one rule for both stages.
+# files agree while its `act` differs is FAIL. A refusal both arms share in text that is not gen-merge's scores
+# PASS-CLASS only by the compare's SHARED THROW (den-hoag-refusal-class-consumer-throw-ovyos, one rule for both
+# stages): caught by `tryEval` on both arms, at one site under the subject roots (BAR_ROOTS: nixpkgs, the patched
+# home-manager tree, nmt), in one text. So a nixpkgs alias throw both arms reach passes, and an IFD refusal, which
+# this arm's mode raises and `tryEval` cannot catch, stays FAIL.
 #
 # PERF NOT MET. An above-parity row is the bar's perf criterion (perf at or under nixpkgs, ADR-0039) NOT MET,
 # even where CI stays green because the ratchet admitted its rise under ADR-0032's exact bound: admitted is
@@ -104,6 +106,16 @@ pkgs.writeShellApplication {
     export BAR_COMPARE=${./nixos-bar-compare.jq} BAR_DOCS=${./nixos-bar-docs.jq}
     export BAR_RATCHET=${./modules-sh-ratchet.jq} BAR_BASE=${./hm-bar-baseline.jsonl}
     export BAR_NIXPKGS=${inputs.nixpkgs.rev or inputs.nixpkgs.narHash}
+    # The subject roots of the shared-throw rule (`nixos-bar-compare.jq`): the code the suite and the docs evaluate.
+    export BAR_ROOTS=${
+      pkgs.lib.escapeShellArg (
+        builtins.toJSON [
+          "${inputs.nixpkgs}"
+          "${tree}"
+          "${nmt}"
+        ]
+      )
+    }
     # shellcheck disable=SC1091
     source ${./hm-bar-cells.bash}
     # shellcheck disable=SC1091

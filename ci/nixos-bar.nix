@@ -8,7 +8,9 @@
 #   {kind:"docs-walk"}        the docs walk over the `options` job's evaluation: its cost row
 #   {kind:"doc", name, n}     one node of that walk, nixpkgs' own `optionAttrSetToDocList` entry
 #
-# Verdicts are stage 1's: PASS, PASS-CLASS, FAIL (`nixos-bar-compare.jq`). A toplevel or options PASS is
+# Verdicts are stage 1's: PASS, PASS-CLASS, FAIL (`nixos-bar-compare.jq`), and a doc node both arms refuse with
+# one throw, at one site under nixpkgs, in one text, is PASS-CLASS (the compare's SHARED THROW; its subject root
+# is nixpkgs, BAR_ROOTS). A toplevel or options PASS is
 # the IDENTITY of one derivation, never equivalence of the evaluation (ADR-0039: "drvPath equality is
 # evidence and never acceptance"), so those rows carry `"claim":"identity"` and the stage's acceptance is
 # counted over `doc` rows only.
@@ -81,6 +83,8 @@ pkgs.writeShellApplication {
     export BAR_COMPARE=${./nixos-bar-compare.jq} BAR_DOCS=${./nixos-bar-docs.jq}
     export BAR_RATCHET=${./modules-sh-ratchet.jq} BAR_BASE=${./nixos-bar-baseline.jsonl}
     export BAR_NIXPKGS=${inputs.nixpkgs.rev or inputs.nixpkgs.narHash}
+    # The subject roots of the shared-throw rule (`nixos-bar-compare.jq`): the code NixOS evaluates is nixpkgs'.
+    export BAR_ROOTS=${pkgs.lib.escapeShellArg (builtins.toJSON [ "${inputs.nixpkgs}" ])}
     # shellcheck disable=SC1091
     source ${./nixos-bar-cells.bash}
     # shellcheck disable=SC1091

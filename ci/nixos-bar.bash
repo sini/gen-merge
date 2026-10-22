@@ -62,6 +62,9 @@ if [ -n "${BAR_EVALUATOR_VERSION:-}" ] && [ "$evl" != "$BAR_EVALUATOR_VERSION" ]
   control "the evaluator is pinned to '$BAR_EVALUATOR_VERSION', but $ni reports '$evl'"
 fi
 echo "$BAR_NAME: evaluator $evl ($ni), nixpkgs $BAR_NIXPKGS"
+# The stage's subject roots, the shared-throw rule's T2 (`nixos-bar-compare.jq`), which refuses without them.
+jq -e 'type == "array" and length > 0' <<<"${BAR_ROOTS:-}" >/dev/null || control "BAR_ROOTS is not a non-empty JSON list: '${BAR_ROOTS:-}'"
+echo "$BAR_NAME: subject roots $BAR_ROOTS"
 
 # The whole run has a deadline, checked before each evaluation and bounding the last one.
 deadline=$(($(date +%s) + ${BAR_DEADLINE:-3600}))
@@ -159,12 +162,25 @@ docsWalk() {
     -f "$BAR_DOCS" >"$tmp/docs-$walk.jsonl"
   # `tryEval` loses a refusal's message, so each node gen refuses is evaluated again alone, without it,
   # for the text its class is read from. It must refuse there too, or the walk's reading was not the node's.
+  # A node both walks refused is also read alone on each arm, at its own route, with `--show-trace`, for the
+  # shared-throw rule (`nixos-bar-compare.jq`): its `trace`, and `caught`, which a walk's `err:` line is by
+  # construction (the walk's `tryEval` read it). A traced read that serves is CONTROL FAILED.
   while IFS= read -r rec; do
     nodes=$((nodes + 1))
     mapfile -t a < <("$args" node "$(jq -c '[.gen.step] + .gen.route' <<<"$rec")")
     evalArm "node-$nodes" gen node "${a[@]}"
     [ "$rc" -eq 1 ] || control "doc node $(jq -c .key <<<"$rec") refused in gen's walk but served alone"
-    jq -c --rawfile err "$tmp/node-$nodes.err" '.gen.err = $err' <<<"$rec" >>"$tmp/records.jsonl"
+    rec=$(jq -c --rawfile err "$tmp/node-$nodes.err" '.gen.err = $err' <<<"$rec")
+    if jq -e '.ref.refused == true' <<<"$rec" >/dev/null; then
+      for e in ref gen; do
+        mapfile -t a < <("$args" node "$(jq -c --arg e "$e" '[.[$e].step] + .[$e].route' <<<"$rec")")
+        evalArm "trace-$nodes-$e" "$e" node "${a[@]}" --show-trace
+        [ "$rc" -eq 1 ] || control "doc node $(jq -c .key <<<"$rec") refused in both walks but its traced $e read served"
+      done
+      rec=$(jq -c --rawfile rt "$tmp/trace-$nodes-ref.err" --rawfile gt "$tmp/trace-$nodes-gen.err" \
+        '.ref += {caught: true, trace: $rt} | .gen += {caught: true, trace: $gt}' <<<"$rec")
+    fi
+    printf '%s\n' "$rec" >>"$tmp/records.jsonl"
   done < <(jq -c 'select(.gen.refused == true)' "$tmp/docs-$walk.jsonl")
   jq -c 'select(.gen.refused != true)' "$tmp/docs-$walk.jsonl" >>"$tmp/records.jsonl"
 }
@@ -174,14 +190,14 @@ nodes=0
 cells
 echo "$BAR_NAME: $(wc -l <"$tmp/records.jsonl") cells evaluated, $nodes gen-refused doc nodes read alone"
 
-jq -rs --arg mode perf --arg label "$BAR_NAME" --arg ev "$evl" --slurpfile base "$base" -f "$BAR_COMPARE" "$tmp/records.jsonl"
+jq -rs --arg mode perf --arg label "$BAR_NAME" --arg ev "$evl" --argjson roots "$BAR_ROOTS" --slurpfile base "$base" -f "$BAR_COMPARE" "$tmp/records.jsonl"
 if [ "${1:-}" = --write-baseline ]; then
   [ $# -ge 2 ] || control "usage: $BAR_NAME --write-baseline F"
-  jq -rs --arg mode write --arg ev "$evl" --slurpfile base "$base" -f "$BAR_COMPARE" "$tmp/records.jsonl" >"$2"
+  jq -rs --arg mode write --arg ev "$evl" --argjson roots "$BAR_ROOTS" --slurpfile base "$base" -f "$BAR_COMPARE" "$tmp/records.jsonl" >"$2"
   echo "$BAR_NAME: wrote $(wc -l <"$2") rows to $2"
   admissions "$2"
   exit 0
 fi
-jq -rs --arg mode check --arg label "$BAR_NAME" --arg ev "$evl" --slurpfile base "$base" -f "$BAR_COMPARE" "$tmp/records.jsonl" >"$tmp/report"
+jq -rs --arg mode check --arg label "$BAR_NAME" --arg ev "$evl" --argjson roots "$BAR_ROOTS" --slurpfile base "$base" -f "$BAR_COMPARE" "$tmp/records.jsonl" >"$tmp/report"
 cat "$tmp/report"
 tail -1 "$tmp/report" | grep -q '; 0 disagreements$'

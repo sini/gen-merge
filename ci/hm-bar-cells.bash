@@ -32,6 +32,14 @@ wargs() { printf '%s\n' --argstr read "$1" --argstr set "$wset" --argstr route "
 #
 # A chunk that exits non-zero leaves its last error lines in the job log, since the run's working directory
 # does not outlive it.
+#
+# THE SHARED THROW (`nixos-bar-compare.jq`) reads, for a test both arms refuse, each arm's `caught` and
+# `trace`. In a chunk that completed, both are caught: the chunk's `tryEval` read `err`. In a chunk that died,
+# each arm is read once more as a one-test `chunk`: exit 0 with `err` is caught, exit 1 is not (the refusal
+# killed the process, as an IFD-off or restricted-mode refusal does), and exit 0 with `ok:` is CONTROL FAILED
+# (the test served under `tryEval` though it refused alone). Where both arms are caught, both are re-read alone
+# with `--show-trace` for their `trace`, and a traced read that serves is CONTROL FAILED. An uncaught test gets
+# no trace read.
 tests() {
   local c i e n js t sum
   local -a names=() chunk=() alive=() died=()
@@ -81,12 +89,55 @@ tests() {
     while IFS=$'\t' read -r i t; do
       par evalArm "c$c-r$i" gen test --argstr read test --argstr tests "$(jq -cn --arg t "$t" '[$t]')"
     done <"$tmp/c$c.reread"
+    # Both arms refused it, so both were caught: the traced reads of the shared-throw rule.
+    jq -r --slurpfile ref "$tmp/c$c-ref.out" --slurpfile gen "$tmp/c$c-gen.out" -n \
+      '[$ref[0].v, $gen[0].v | split("\n") | map(split("\t"))] | transpose | to_entries[]
+        | select(.value[0][1] == "err" and .value[1][1] == "err") | "\(.key)\t\(.value[0][0])"' >"$tmp/c$c.both"
+    while IFS=$'\t' read -r i t; do
+      for e in ref gen; do par evalArm "c$c-x$i-$e" "$e" test --argstr read test --argstr tests "$(jq -cn --arg t "$t" '[$t]')" --show-trace; done
+    done <"$tmp/c$c.both"
+  done
+  # A test both arms refused in a chunk that died: each arm's catchability, as a one-test `chunk`.
+  for c in "${died[@]}"; do
+    c=${c#c}
+    mapfile -t chunk < <(jq -r '.[]' "$tmp/c$c.names")
+    for ((i = 0; i < ${#chunk[@]}; i++)); do
+      jq -se 'all(.[]; .refused)' "$tmp/c$c-t$i-ref.arm" "$tmp/c$c-t$i-gen.arm" >/dev/null || continue
+      js=$(jq -cn --arg t "${chunk[i]}" '[$t]')
+      for e in ref gen; do par evalArm "c$c-k$i-$e" "$e" chunk --argstr read chunk --argstr tests "$js"; done
+    done
+  done
+  joinAll
+  for c in "${died[@]}"; do
+    c=${c#c}
+    mapfile -t chunk < <(jq -r '.[]' "$tmp/c$c.names")
+    for ((i = 0; i < ${#chunk[@]}; i++)); do
+      [ -e "$tmp/c$c-k$i-ref.arm" ] || continue
+      for e in ref gen; do
+        if jq -e .refused "$tmp/c$c-k$i-$e.arm" >/dev/null; then
+          echo false >"$tmp/c$c-k$i-$e.caught"
+        elif [ "$(jq -r '.v | split("\t")[1]' "$tmp/c$c-k$i-$e.out")" = err ]; then
+          echo true >"$tmp/c$c-k$i-$e.caught"
+        else
+          control "test ${chunk[i]} refused alone on $e but served as a one-test chunk"
+        fi
+      done
+      if [ "$(cat "$tmp/c$c-k$i-ref.caught" "$tmp/c$c-k$i-gen.caught")" = "$(printf 'true\ntrue')" ]; then
+        js=$(jq -cn --arg t "${chunk[i]}" '[$t]')
+        for e in ref gen; do par evalArm "c$c-x$i-$e" "$e" test --argstr read test --argstr tests "$js" --show-trace; done
+      fi
+    done
   done
   joinAll
   for c in "${alive[@]}"; do
     while IFS=$'\t' read -r i t; do
       jq -e .refused "$tmp/c$c-r$i.arm" >/dev/null || control "test $t refused in chunk $c but served alone"
     done <"$tmp/c$c.reread"
+    while IFS=$'\t' read -r i t; do
+      for e in ref gen; do
+        jq -e .refused "$tmp/c$c-x$i-$e.arm" >/dev/null || control "test $t refused on both arms in chunk $c but its traced $e read served"
+      done
+    done <"$tmp/c$c.both"
     jq -cn --slurpfile ref "$tmp/c$c-ref.out" --slurpfile gen "$tmp/c$c-gen.out" --rawfile rr "$tmp/c$c.reread" --arg dir "$tmp" --arg c "$c" \
       '($rr | split("\n") | map(select(. != "") | split("\t")[0] | tonumber)) as $re
         | def arm: if .[1] == "err" then { refused: true, v: null, err: null } else { refused: false, v: (.[1] | ltrimstr("ok:")) } end;
@@ -97,6 +148,11 @@ tests() {
       jq -c --argjson i "$i" --rawfile err "$tmp/c$c-r$i.err" 'if .i == $i then .gen.err = $err else . end' "$tmp/c$c.recs" >"$tmp/c$c.recs2"
       mv "$tmp/c$c.recs2" "$tmp/c$c.recs"
     done <"$tmp/c$c.reread"
+    while IFS=$'\t' read -r i t; do
+      jq -c --argjson i "$i" --rawfile rt "$tmp/c$c-x$i-ref.err" --rawfile gt "$tmp/c$c-x$i-gen.err" \
+        'if .i == $i then .ref += {caught: true, trace: $rt} | .gen += {caught: true, trace: $gt} else . end' "$tmp/c$c.recs" >"$tmp/c$c.recs2"
+      mv "$tmp/c$c.recs2" "$tmp/c$c.recs"
+    done <"$tmp/c$c.both"
     jq -c 'del(.i)' "$tmp/c$c.recs" >>"$tmp/records.jsonl"
     if jq -se 'all(.[]; .ref.refused == false and .gen.refused == false)' "$tmp/c$c.recs" >/dev/null; then
       echo "c$c-ref c$c-gen" >>"$tmp/summed"
@@ -108,7 +164,18 @@ tests() {
     mapfile -t chunk < <(jq -r '.[]' "$tmp/c$c.names")
     for ((i = 0; i < ${#chunk[@]}; i++)); do
       jq -cn --arg t "${chunk[i]}" --slurpfile ref "$tmp/c$c-t$i-ref.arm" --slurpfile gen "$tmp/c$c-t$i-gen.arm" \
-        '{ key: { kind: "test", name: $t }, ref: ($ref[0] | del(.perf)), gen: ($gen[0] | del(.perf)) }' >>"$tmp/records.jsonl"
+        '{ key: { kind: "test", name: $t }, ref: ($ref[0] | del(.perf)), gen: ($gen[0] | del(.perf)) }' >"$tmp/c$c-t$i.rec"
+      for e in ref gen; do
+        [ -e "$tmp/c$c-k$i-$e.caught" ] || continue
+        if [ -e "$tmp/c$c-x$i-$e.arm" ]; then
+          jq -e .refused "$tmp/c$c-x$i-$e.arm" >/dev/null || control "test ${chunk[i]} refused alone on both arms but its traced $e read served"
+          jq -c --arg e "$e" --rawfile tr "$tmp/c$c-x$i-$e.err" '.[$e] += {caught: true, trace: $tr}' "$tmp/c$c-t$i.rec"
+        else
+          jq -c --arg e "$e" --argjson k "$(cat "$tmp/c$c-k$i-$e.caught")" '.[$e] += {caught: $k}' "$tmp/c$c-t$i.rec"
+        fi >"$tmp/c$c-t$i.rec2"
+        mv "$tmp/c$c-t$i.rec2" "$tmp/c$c-t$i.rec"
+      done
+      cat "$tmp/c$c-t$i.rec" >>"$tmp/records.jsonl"
       if jq -se 'all(.[]; .refused | not)' "$tmp/c$c-t$i-ref.arm" "$tmp/c$c-t$i-gen.arm" >/dev/null; then
         echo "c$c-t$i-ref c$c-t$i-gen" >>"$tmp/summed"
         printf 'alone\t%s\n' "${chunk[i]}" >>"$tmp/summedset"

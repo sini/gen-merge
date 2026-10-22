@@ -3484,7 +3484,13 @@ by `evalModuleTree`, and scores each cell against `ci/nixos-bar-baseline.jsonl`:
   the identity of one derivation, evidence and never acceptance.
 - `doc`: one row per node of the options documentation, nixpkgs' own `optionAttrSetToDocList` entry
   for each option of the `options` job's evaluation, compared by value. These rows are the stage's
-  acceptance. A node gen refuses is re-evaluated alone to read its refusal for `class`.
+  acceptance. A node gen refuses is re-evaluated alone to read its refusal for `class`. A node both
+  arms refuse is also re-evaluated alone on each arm with `--show-trace`: it scores `PASS-CLASS` when
+  both refusals were caught by `tryEval` (a `throw` or a failed `assert`, never an evaluator's refusal
+  for its mode), their innermost positions are one site under nixpkgs, and their final error texts are
+  byte-identical (the shared throw, `ci/nixos-bar-compare.jq`). The reference arm never imports
+  gen-merge, so that site is never gen-merge's code. A `toplevel` or `options` cell carries no trace,
+  so one both arms refuse stays `FAIL`.
 - `docs-walk`: the walk's own cost row.
 
 Every `toplevel`, `options` and `docs-walk` row carries `perf`, per evaluator `--version` line: both
@@ -3542,8 +3548,11 @@ Every evaluation runs `--read-write-mode` (home-manager's tests copy path litera
 with import-from-derivation off (no builds) and restricted evaluation with no allowed URI (no
 network); `ci/hm-bar.patch` makes the test driver return nmt's argument record and the docs driver
 export each set's evaluation, and nmt comes from home-manager's own `fetchTarball` pin, fetched at
-build. A refusal both arms share in text that is not gen-merge's scores FAIL; the class rule that
-would pass it is not yet ruled. home-manager's NixOS and nix-darwin
+build. A doc node or test both arms refuse scores `PASS-CLASS` by stage 2's shared throw, its subject
+roots nixpkgs, the patched home-manager tree and nmt: a nixpkgs alias `throw` both arms reach passes,
+while an import-from-derivation refusal, which this arm's mode raises and `tryEval` cannot catch, stays
+`FAIL`. A test in a chunk that died is read once more on each arm as a one-test chunk for that catch.
+home-manager's NixOS and nix-darwin
 integration (`tests/integration`, a VM run), the darwin suite and the release branches are not in
 this arm.
 
