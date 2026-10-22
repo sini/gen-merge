@@ -7,6 +7,7 @@
 {
   genMerge,
   nixpkgsLib,
+  interface,
   ...
 }:
 let
@@ -76,6 +77,82 @@ let
     }).options.x.type.description;
   npTwin = orders (np.addCheck np.int noOne);
   each = f: builtins.mapAttrs (_: x: builtins.mapAttrs (_: f) (orders x)) families;
+
+  # ── THE SUBJECT LEAVES OUT A MODULE SET'S OWN EVALUATION (den-hoag-stage3-rolesmet-nestedtypes-xr243) ──
+  # On a record stating a module set, `nestedTypes`, `unroledNested` and `descriptionClass` are outputs of that
+  # set's evaluation, and "one value" never forces them: the set itself is compared. On any other record
+  # `nestedTypes` is the carrying spelling and is still compared.
+  npSub = np.submodule { options.a = nl.mkOption { type = np.int; }; };
+  gSub = gt.submodule { options.a = nl.mkOption { type = np.int; }; };
+  npL = np.listOf np.int;
+  gL = gt.attrsOf gt.int;
+  pairs = {
+    npSelf = [
+      npSub
+      npSub
+    ];
+    npTwoCtor = [
+      npSub
+      (np.submodule { options.a = nl.mkOption { type = np.int; }; })
+    ];
+    npGraftName = [
+      npSub
+      (npSub // { name = "other"; })
+    ];
+    npGraftNested = [
+      npSub
+      (npSub // { nestedTypes.freeformType = np.int; })
+    ];
+    npListGraftNested = [
+      npL
+      (npL // { nestedTypes.elemType = np.str; })
+    ];
+    gSelf = [
+      gSub
+      gSub
+    ];
+    gGraftName = [
+      gSub
+      (gSub // { name = "other"; })
+    ];
+    gGraftNested = [
+      gSub
+      (gSub // { nestedTypes.freeformType = gt.int; })
+    ];
+    gGraftUnroled = [
+      gSub
+      (gSub // { unroledNested.freeformType = gt.int; })
+    ];
+    gLGraftUnroled = [
+      gL
+      (gL // { unroledNested.x = gt.str; })
+    ];
+  };
+  # a forged `//` copy of gen's submodule departing only in `nestedTypes`, declared beside its honest base
+  forged = gSub // {
+    nestedTypes.freeformType = gt.int;
+  };
+  forgedTree =
+    tys:
+    gm.evalModuleTree { } (
+      map (ty: {
+        options.s = gm.mkOption {
+          type = ty;
+          default = { };
+        };
+      }) tys
+      ++ [ { s.a = 3; } ]
+    );
+  forgedRead =
+    tys:
+    let
+      e = forgedTree tys;
+      v = tryEval (deepSeq e.config.s.a e.config.s.a);
+    in
+    {
+      value = if v.success then v.value else "REFUSED";
+      nested = builtins.attrNames e.options.s.type.nestedTypes;
+    };
 in
 {
   flake.tests.phrase-free-sameness = {
@@ -109,6 +186,63 @@ in
     test-control-nixpkgs-phrase-is-order-free = {
       expr = builtins.attrNames (builtins.groupBy npPhrase (builtins.attrValues npTwin));
       expected = [ "signed integer" ];
+    };
+    # One value over record pairs. A module-set record and its `//` copy departing only at its own evaluation's
+    # outputs are one value; a container's copy departing in its carrying spelling, a name, or a second
+    # construction is not.
+    test-one-value-leaves-out-a-module-sets-own-evaluation = {
+      expr = builtins.mapAttrs (
+        _: p: interface.sameValue (builtins.elemAt p 0) (builtins.elemAt p 1)
+      ) pairs;
+      expected = {
+        npSelf = true;
+        npTwoCtor = false;
+        npGraftName = false;
+        npGraftNested = true;
+        npListGraftNested = false;
+        gSelf = true;
+        gGraftName = false;
+        gGraftNested = true;
+        gGraftUnroled = true;
+        gLGraftUnroled = false;
+      };
+    };
+    # ★ THE STATED PRICE, pinned at the served surface: a forged copy and its honest base are one value, and in
+    # either declaration order the merged type publishes the `nestedTypes` its module set decides and serves the
+    # value. A forged copy declared alone publishes it too, because the evaluation re-derives the field from the
+    # set. No honest declaration authors the field (error, not forgery). Control: a module set stating a
+    # `freeformType` publishes it, so the read sees the field.
+    test-a-forged-own-evaluation-copy-serves-the-honest-type = {
+      expr = {
+        honestFirst = forgedRead [
+          gSub
+          forged
+        ];
+        forgedFirst = forgedRead [
+          forged
+          gSub
+        ];
+        forgedAlone = forgedRead [ forged ];
+        freeformControl = forgedRead [ (gt.submodule { freeformType = gt.attrsOf gt.int; }) ];
+      };
+      expected = {
+        honestFirst = {
+          value = 3;
+          nested = [ ];
+        };
+        forgedFirst = {
+          value = 3;
+          nested = [ ];
+        };
+        forgedAlone = {
+          value = 3;
+          nested = [ ];
+        };
+        freeformControl = {
+          value = 3;
+          nested = [ "freeformType" ];
+        };
+      };
     };
   };
 }

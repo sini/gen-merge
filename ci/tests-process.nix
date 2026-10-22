@@ -298,7 +298,9 @@
           # is not walked. den-hoag-k4f4g lowered s2 and s3 by 10: a met record over a foreign join lays no
           # mint fields. den-hoag-x5kcl lowered box by 3: a type's export allocates nothing it does not decide,
           # and by 2 more: the empty values a constructor states are bound once (den-hoag-o24ji).
-          for bound in val:347 box:693 s2:869 s3:462; do
+          # den-hoag-stage3-rolesmet-nestedtypes-xr243 lowered s2 by 4: one value compares a module-set record without its
+          # own evaluation's outputs.
+          for bound in val:347 box:693 s2:865 s3:462; do
             mode=''${bound%%:*} max=''${bound#*:}
             thunksOf "met-cost-$mode-100"
             [ "$val" = "100" ] || die "met-cost-$mode-100" "expected value 100, got '$val'"

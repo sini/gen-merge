@@ -308,7 +308,8 @@ let
           )
       )) r;
   # ONE VALUE, AS THE ENGINE ASKS IT OF TWO TYPE RECORDS (`modules.nix`'s merge steps): Nix `==` over
-  # `closuresFirst`'s subject, the record compared WITHOUT ITS PHRASE (`description`, `descriptionClass`). The phrase is
+  # `closuresFirst`'s subject over the record WITHOUT ITS PHRASE (`description`, `descriptionClass`) and, on a record
+  # stating a module set, without its own evaluation's outputs (`sameValue.subject`). The phrase is
   # display data by the protocol, never what makes two records one value (two records departing only there fold, check
   # and merge alike), and for a nesting type it is an output of its own module set's declarations, so comparing it
   # evaluates the module set it describes (den-hoag-olrmz N1, arm (a)). `sameValue a b` decides it; `sameValue.kept m
@@ -429,23 +430,35 @@ let
         r;
     __functor =
       _: x: y:
-      closuresFirst [ x ] (
-        if isAttrs x then
-          builtins.removeAttrs x [
-            "description"
-            "descriptionClass"
-          ]
-        else
-          x
-      ) == closuresFirst [ y ] (
-        if isAttrs y then
-          builtins.removeAttrs y [
-            "description"
-            "descriptionClass"
-          ]
-        else
-          y
-      );
+      sameValue.subject x == sameValue.subject y;
+    # `closuresFirst`'s subject over the record less what one value never forces: its phrase, and, on a record stating
+    # a module set (`evaluatesOwnRoles`, ADR-0014's laziness recogniser), the outputs of its own evaluation
+    # (`ownEvaluation`), as the doors' copy tests leave them (`doorUnread`). nixpkgs' fold never reads them; read on a
+    # partly merged declared type they evaluate a module set no evaluation holds, refusing a sibling's definition
+    # (den-hoag-stage3-rolesmet-nestedtypes-xr243). The module set decides each and the subject compares the set, so
+    # only a `//` copy departing at them alone answers otherwise. The prefix is taken over the same record, so it
+    # never probes them on the record compared; a module-set element nested in it is fenced by the prefix's closures.
+    subject =
+      v:
+      let
+        r =
+          if !(isAttrs v) then
+            v
+          else
+            builtins.removeAttrs v (
+              if evaluatesOwnRoles v then
+                [ "description" ] ++ ownEvaluation
+              else
+                [
+                  "description"
+                  "descriptionClass"
+                ]
+            );
+      in
+      [
+        (closuresOf r)
+        r
+      ];
     kept =
       m: a: b:
       a

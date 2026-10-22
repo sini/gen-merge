@@ -808,7 +808,8 @@ let
   # `listOf int` drops it one level down, inside `elementRel`, which `declaredPair` never sees.
   # "One value" is `interface.sameValue`: Nix `==` over `closuresFirst`'s subject, because an exported
   # record is cyclic, with the record's PHRASE left out (display data, and for a nesting type an output of
-  # its own module set). The comparison runs only on the path where a witnessed rewrite would be dropped;
+  # its own module set), and on a record stating a module set its own evaluation's outputs too
+  # (`interface.sameValue.subject`). The comparison runs only on the path where a witnessed rewrite would be dropped;
   # a record with no witness short-circuits. The kept value publishes nixpkgs' phrase (`interface.sameValue.kept`).
   # `interface.replacesVerify`, restated inline for cost: this is asked of both operands of every step
   verifySlice = builtins.intersectAttrs { verify = null; };

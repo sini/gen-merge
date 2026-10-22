@@ -294,6 +294,157 @@ let
       (at (poison (copy setsY)) declaresFn)
     ];
   };
+  # ── A REDECLARATION CROSS-DEFINED OVER THREE OR MORE DECLARATIONS (den-hoag-stage3-rolesmet-nestedtypes-xr243) ──
+  # A middle declaration's submodule only DEFINES `base`, which another declaration declares (home-manager's
+  # `accounts.email.accounts`, `mblaze.sendMailCommand`). The fold's intermediate join holds the definer without
+  # the declarer, and nixpkgs never evaluates it; the merge step's "one value" asks `interface.sameValue` of it, so
+  # a subject reading its own evaluation's outputs refused "The option `base' does not exist" where nixpkgs serves
+  # 5. Each row expects nixpkgs' value, and the reference row pins that nixpkgs gives it.
+  baseInt = lib.mkOption {
+    type = np.int;
+    default = 0;
+  };
+  declares = n: { options.${n} = baseInt; };
+  accts = type: { options.accts = lib.mkOption { inherit type; }; };
+  acctsBase = type: {
+    options.accts = lib.mkOption {
+      inherit type;
+      default = { };
+    };
+  };
+  sets5 = {
+    config.base = lib.mkDefault 5;
+  };
+  extend = map (n: accts (np.attrsOf (np.submodule (declares n))));
+  declarer = acctsBase (np.attrsOf (np.submodule (declares "base")));
+  definer = accts (np.attrsOf (np.submodule sets5));
+  defd = {
+    accts.x = { };
+  };
+  rd = c: c.accts.x.base;
+  carriers = c: empty: t: [
+    {
+      options.n = lib.mkOption {
+        type = c (np.submodule (declares "base"));
+        default = empty;
+      };
+    }
+    { options.n = lib.mkOption { type = c (np.submodule sets5); }; }
+    { options.n = lib.mkOption { type = c (np.submodule (declares "b")); }; }
+    { n = t; }
+  ];
+  crossDefined = {
+    crossDef3 = {
+      read = rd;
+      modules = [
+        declarer
+        definer
+      ]
+      ++ extend [ "b" ]
+      ++ [ defd ];
+    };
+    # the definer last: the intermediate (extension ⊳ definer) lacks the declarer
+    crossDef3c = {
+      read = rd;
+      modules = [
+        declarer
+      ]
+      ++ extend [ "b" ]
+      ++ [
+        definer
+        defd
+      ];
+    };
+    crossDef17 = {
+      read = rd;
+      modules = [
+        declarer
+        definer
+      ]
+      ++ extend (map toString (lib.range 1 16))
+      ++ [ defd ];
+    };
+    # the definer's `config` behind `mkIf`, home-manager's literal shape
+    crossDef3If = {
+      read = rd;
+      modules = [
+        declarer
+        (accts (np.attrsOf (np.submodule { config = lib.mkIf true { base = lib.mkDefault 5; }; })))
+      ]
+      ++ extend [ "b" ]
+      ++ [ defd ];
+    };
+    crossDef3Ff = {
+      read = c: c.accts.x.base + c.accts.x.extra;
+      modules = [
+        (acctsBase (
+          np.attrsOf (
+            np.submodule {
+              freeformType = np.attrsOf np.int;
+              options.base = baseInt;
+            }
+          )
+        ))
+        definer
+      ]
+      ++ extend [ "b" ]
+      ++ [ { accts.x.extra = 7; } ];
+    };
+    crossDef3Null = {
+      read = c: c.n.base;
+      modules = carriers np.nullOr null { };
+    };
+    crossDef3List = {
+      read = c: (builtins.head c.n).base;
+      modules = carriers np.listOf [ ] [ { } ];
+    };
+    # every declaration's `nestedTypes` poisoned: refused at the declarer's message before, never the poison's
+    poisonCross3 = {
+      read = rd;
+      modules = [
+        (acctsBase (np.attrsOf (poison (np.submodule (declares "base")))))
+        (accts (np.attrsOf (poison (np.submodule sets5))))
+        (accts (np.attrsOf (poison (np.submodule (declares "b")))))
+        defd
+      ];
+    };
+    # a nixpkgs container over gen's submodule
+    mixNpGen3 = {
+      read = rd;
+      modules = [
+        (acctsBase (np.attrsOf (gm.types.submodule (declares "base"))))
+        (accts (np.attrsOf (gm.types.submodule sets5)))
+        (accts (np.attrsOf (gm.types.submodule (declares "b"))))
+        defd
+      ];
+    };
+    # control: the order whose intermediate holds the declarer, served before the construction too
+    crossDef3b = {
+      read = rd;
+      modules = extend [ "b" ] ++ [
+        definer
+        declarer
+        defd
+      ];
+    };
+    # control: a sub-option nobody declares is refused by both (the message is on the error plane)
+    ctlUndeclared = {
+      read = rd;
+      modules = [
+        declarer
+        (accts (np.attrsOf (np.submodule { config.nope = 5; })))
+      ]
+      ++ extend [ "b" ]
+      ++ [ defd ];
+    };
+  };
+  crossDefinedExpected = builtins.mapAttrs (_: _: 5) crossDefined // {
+    crossDef3Ff = 12;
+    ctlUndeclared = "refused";
+  };
+  docNames =
+    eval: modules:
+    map (o: builtins.deepSeq o o.name) (lib.optionAttrSetToDocList (eval { inherit modules; }).options);
 in
 {
   flake.tests.submodule-laziness = {
@@ -501,6 +652,24 @@ in
         lintFreeformFn = [ ];
         lintCtl = [ "function-to" ];
       };
+    };
+
+    # A redeclaration cross-defined over three or more declarations serves nixpkgs' value (the group above `in`).
+    test-a-cross-defined-redeclaration-serves-nixpkgs-value = {
+      expr = builtins.mapAttrs (_: a: genL a.read a.modules) crossDefined;
+      expected = crossDefinedExpected;
+    };
+    # the reference row: nixpkgs at the ci pin gives the values the row above expects
+    test-nixpkgs-gives-the-cross-defined-values = {
+      expr = builtins.mapAttrs (_: a: ref a.read a.modules) crossDefined;
+      expected = crossDefinedExpected;
+    };
+    # the docs walk over `crossDef3` names nixpkgs' entries
+    test-the-docs-walk-over-a-cross-defined-redeclaration-is-nixpkgs = {
+      expr = docNames (
+        { modules }: gm.evalModuleTree { specialArgs = { inherit lib; }; } modules
+      ) crossDefined.crossDef3.modules;
+      expected = docNames lib.evalModules crossDefined.crossDef3.modules;
     };
   };
 }

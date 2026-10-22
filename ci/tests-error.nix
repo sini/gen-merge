@@ -10172,6 +10172,39 @@ in
             msg = "^The option `s\\.y' does not exist\\. Definition values:\n- In `<unknown-file>': 2\n\nDid you mean `s\\.x'\\?$";
           };
         };
+        # Cross-defined over three declarations (den-hoag-stage3-rolesmet-nestedtypes-xr243; the values are in
+        # `../tests/submodule-laziness.nix`): a sub-option nobody declares is refused naming the full path, as
+        # nixpkgs does, not by the fold's intermediate join at its own root.
+        test-a-cross-defined-undeclared-key-names-the-joined-path = {
+          expr =
+            let
+              sub = n: {
+                options.${n} = lib.mkOption {
+                  type = np.int;
+                  default = 0;
+                };
+              };
+            in
+            builtins.deepSeq
+              (cfg {
+                modules = [
+                  {
+                    options.accts = lib.mkOption {
+                      type = np.attrsOf (np.submodule (sub "base"));
+                      default = { };
+                    };
+                  }
+                  { options.accts = lib.mkOption { type = np.attrsOf (np.submodule { config.nope = 5; }); }; }
+                  { options.accts = lib.mkOption { type = np.attrsOf (np.submodule (sub "b")); }; }
+                  { accts.x = { }; }
+                ];
+              }).accts
+              null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^The option `accts\\.x\\.nope' does not exist\\. Definition values:\n- In `<unknown-file>': 5\n\nDid you mean `accts\\.x\\.base' or `accts\\.x\\.b'\\?$";
+          };
+        };
       };
 
     # `deriveType`'s refusals (den-hoag-5kic), each by name: a base that is not a completed option
