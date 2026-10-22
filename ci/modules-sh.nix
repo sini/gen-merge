@@ -137,8 +137,10 @@ pkgs.writeShellApplication {
     }"
 
     # THE GEN TREE RUNS GEN: gen-merge's evaluation answers a field nixpkgs' does not (stage 2's control).
+    # Read-write as modules.sh's own evaluations are: the gen tree's sources are copied at evaluation, which
+    # a read-only evaluation cannot do on a store that lacks the copy.
     engine() {
-      NIX_PATH="" "$ni" --eval -E "builtins.hasAttr \"deprecations\" ((import $1/default.nix).evalModules { modules = [ ]; })" \
+      NIX_PATH="" "$ni" --eval --read-write-mode -E "builtins.hasAttr \"deprecations\" ((import $1/default.nix).evalModules { modules = [ ]; })" \
         2>"$tmp/engine.err" || true
     }
     got=$(engine ${genTree})
