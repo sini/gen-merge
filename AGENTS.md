@@ -487,3 +487,8 @@ Run the suites locally through `ci`: it refuses when anything under a declared r
 unknown to git — any extension or name, `_`-prefixed included — and the remedy is `git add` or a
 move. The bare `nix flake check ./ci` and `nix-unit --flake ./ci#tests` are unguarded: they read a
 git-filtered copy of the tree, so an untracked cell is silently absent and the run stays green.
+
+`ci --tests-process` scores the bar registers' perf, which is keyed by the evaluator's `--version`
+line and written from CI's columns. Read it locally on an evaluator whose line is one of CI's
+(Determinate 3.23.3 or Lix 2.96.0); any other reads every perf row `UNANCHORED` by construction, and
+a local `--write-baseline` is never the cure.

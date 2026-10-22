@@ -3448,27 +3448,58 @@ raise it automatically; `nix flake check ./ci` is a plain eval and does not need
 ### nixpkgs' `modules.sh` on this engine
 
 `ci --tests-process` first runs nixpkgs' own `lib/tests/modules.sh` (from the `ci` flake's `nixpkgs`
-input) with top-level `lib.evalModules` replaced by `evalModuleTree`, and scores every assertion
-against the committed register `ci/modules-sh-baseline.jsonl`: one row per assertion, keyed by its
-check function, env flags and argv, with verdict `PASS`, `PASS-CLASS` (gen-merge refuses by name for
-nixpkgs' reason, pinned by the row's `class` literals) or `FAIL`. Any disagreement in either direction
-exits 1, so a fix ratchets the register in the same change:
+input) twice: once over nixpkgs' own `lib` (the reference), and once with top-level `lib.evalModules`
+replaced by `evalModuleTree`. It scores every gen assertion against the committed register
+`ci/modules-sh-baseline.jsonl`: one row per assertion, keyed by its check function, env flags and argv,
+with verdict `PASS`, `PASS-CLASS` (gen-merge refuses by name for nixpkgs' reason, pinned by the row's
+`class` literals) or `FAIL`. Any disagreement in either direction exits 1, so a fix ratchets the
+register in the same change:
 
 ```sh
 nix run ./ci#modules-sh -- --write-baseline ci/modules-sh-baseline.jsonl
+nix run ./ci#modules-sh -- --fold F A.log B.log C.log  # merge CI's three column logs' PERF lines
 bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluators' extra step
 ```
+
+- **The reference run** is nixpkgs' `lib` under the same hook, and it must PASS every assertion of its
+  own suite; a reference FAIL exits 2, since that row then has no reference to be scored against. Both
+  trees are named `lib`, the upstream layout: the suite's L481 assertion matches
+  `.*lib/tests/modules/deferred-module-error.nix`, which nixpkgs' own lib fails from a tree of any
+  other name. Before either run, one evaluation per tree checks that the gen tree runs gen and the
+  reference runs nixpkgs (`deprecations` answers `true` and `false`), and after both the two runs must
+  have recorded the same assertions; either one unmet exits 2.
+
+- **Perf, per assertion**, on the 259 rows where nixpkgs serves (`checkConfigOutput`,
+  `checkExpression`): each row carries, per evaluator `--version` line, both trees' `nrThunks`,
+  attributed bytes and wall `ms`, read in the process that gave the verdict, with stage 2's exact bound
+  on gen's thunks and bytes (`COST-REGRESSED`, `COST-RATCHET`, `UNANCHORED`, each a disagreement), and
+  each run prints one `PERF modules-sh {…}` line per row with its parity. An evaluation that exits 0 and
+  writes no counters exits 2. The 151 `checkConfigError` rows carry no perf: no evaluator writes
+  counters for a refusing evaluation, on either tree. So stage 1's "perf at or under nixpkgs" is a claim
+  over 259 assertions, and it says nothing about what a refusal costs. An `above-parity` row is the
+  bar's perf criterion NOT MET, even when CI is green because the ratchet admitted its rise: admitted
+  is not approved.
+
+- **The register's perf** is written from CI's own columns, as stage 2's is (`--fold`). The local
+  process plane reads it only on an evaluator whose `--version` line is one of CI's (Determinate
+  3.23.3, Lix 2.96.0); any other reads 259 `UNANCHORED` by construction, and a local
+  `--write-baseline` never makes that green. A change that moves per-evaluation cost moves every row,
+  259 per evaluator: one arm-scoped trailer, `Bar-Perf-Rise: modules-sh:* parity`, admits them all (see
+  the ratchet guard below).
 
 - **The evaluator** is resolved once from PATH and never falls back. A run for a named column sets
   `MODULES_SH_EVALUATOR` (its bin directory) and `MODULES_SH_EVALUATOR_VERSION` (the first line of its
   `--version`); either unmet exits 2, before any evaluation.
+
 - **Each evaluation** is bounded at 120 s, and an exit other than 0 or 1 exits 2. The whole run is
   bounded at 60 minutes (three times the budget below, well inside GitHub's 360-minute job limit):
   past it the run exits 2, naming how many assertions completed. Without it, ~410 × 120 s of hanging
   evaluations would outlast the job limit and be cancelled without saying why.
+
 - **The over-reach check** is a witness test: a class literal that also fires where nixpkgs serves
   must carry an `overreach` argument. It does not see a literal that matches a different refusal only
   on rows where nixpkgs refuses too, so authoring a class stays a review judgement.
+
 - **The ratchet guard** refuses a register revision that lowers a key (PASS > PASS-CLASS > FAIL, or a
   PASS / PASS-CLASS key gone) unless a commit from the older revision to HEAD carries
   `Modules-Sh-Decrease: <hash> relock <census row>` (admitted only if nixpkgs' lock node moved between
@@ -3479,9 +3510,17 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   revisions, so a regression landed in a gap where nixpkgs also moved is admitted by a `relock` trailer;
   and it runs from HEAD's own tree, so a commit that edits `ci/modules-sh-ratchet.*`, or moves a
   register together with the guard's `registers` table, escapes it.
+  A rise of a committed gen count needs `Bar-Perf-Rise:`, as stage 2's does; this register's reference
+  node is `nixpkgs` and its arm inputs are `ci/modules-sh-lib.nix`, `ci/modules-sh-hook.bash` and
+  `ci/modules-sh.nix`. Every register also takes an ARM-SCOPED trailer, `Bar-Perf-Rise: <arm>:* <class>` (`modules-sh`, `nixos-bar` or `hm-bar`), which names every rise of that register in its
+  range, with each row's class still read per row: under `parity`, a row that was at or under its
+  reference at the anchor and is above it now is refused even under the wildcard. The commit body still
+  states the rise (each row's old and new figures, or the count, minimum, median and maximum per
+  evaluator) and its attribution.
+
 - **The budget** for the process-plane step is 20 minutes per column. Exceeding it is not a red: a
-  gated cost bound counts thunks and allocation, never CPU time. It calls for sharding the
-  run inside the process plane.
+  gated cost bound counts thunks and allocation, never CPU time. It calls for running the two runs
+  concurrently, then sharding the run inside the process plane.
 
 ### NixOS on this engine
 

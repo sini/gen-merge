@@ -5,7 +5,7 @@
 # first-parent history and compares each with its predecessor (`modules-sh-ratchet.jq`). The registers,
 # each with its id form and its decrease-trailer key (`registers` below):
 #
-#   ci/modules-sh-baseline.jsonl   stage 1, `Modules-Sh-Decrease:`
+#   ci/modules-sh-baseline.jsonl   stage 1, `Modules-Sh-Decrease:`, perf rises `Bar-Perf-Rise:`
 #   ci/nixos-bar-baseline.jsonl    stage 2, `Nixos-Bar-Decrease:`, perf rises `Bar-Perf-Rise:`
 #   ci/hm-bar-baseline.jsonl       stage 3, `Hm-Bar-Decrease:`, perf rises `Bar-Perf-Rise:`
 #
@@ -50,6 +50,12 @@
 # Every trailer in range naming a key's hash is read, and any valid one admits it, so a later trailer for
 # the same key (another change's, of a class that does not hold there) never shadows a valid one.
 #
+# An ARM-SCOPED trailer `Bar-Perf-Rise: <arm>:* <class>` (the register's file name before
+# `-baseline.jsonl`: `modules-sh`, `nixos-bar`, `hm-bar`) names every rise of that arm's register in the
+# range at once, and each row's class predicate is still read per row: under `parity`, a row that was at
+# or under its reference at the anchor and is above it now is refused even under the wildcard. A change
+# that moves per-evaluation cost moves every stage-1 row (259 per evaluator), so it owes one line, not 777.
+#
 # `nixos-bar --write-baseline` and `--fold` print every hash a change needs. Git reads trailers from a
 # message's LAST paragraph only, so all of a commit's trailers go in one paragraph (one `-m`).
 #
@@ -73,7 +79,7 @@
 set -euo pipefail
 # <register> <id form> <decrease-trailer key> <perf-rise trailer key, or -> <reference lock nodes,> <arm inputs, or ->
 registers=(
-  "ci/modules-sh-baseline.jsonl legacy Modules-Sh-Decrease - nixpkgs -"
+  "ci/modules-sh-baseline.jsonl legacy Modules-Sh-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/modules-sh-hook.bash,ci/modules-sh.nix"
   "ci/nixos-bar-baseline.jsonl json Nixos-Bar-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/nixos-bar-eval.nix,ci/nixos-bar-cells.bash,ci/nixos-bar.bash"
   "ci/hm-bar-baseline.jsonl json Hm-Bar-Decrease Bar-Perf-Rise nixpkgs,home-manager ci/modules-sh-lib.nix,ci/hm-bar-eval.nix,ci/bar-walk.nix,ci/hm-bar.patch,ci/hm-bar.nix,ci/hm-bar-cells.bash,ci/nixos-bar.bash"
 )
@@ -166,12 +172,12 @@ judge() {
   if [ "$moved" = yes ] && [ "$ua" = "$ub" ]; then env=yes; fi
   while IFS=$'\t' read -r key e was now par above; do
     h=$(hashOf "$key"$'\t'"$e")
-    mapfile -t cands < <(grep -E "^$h (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)\$" <<<"$ptrailers" || true)
-    adm="" why="no $rise: $h trailer in $*"
+    mapfile -t cands < <(grep -E "^($h|$arm:\\*) (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)\$" <<<"$ptrailers" || true)
+    adm="" why="no $rise: $h (or $arm:*) trailer in $*"
     for c in "${cands[@]}"; do
-      if [[ "$c" == "$h reanchor" && "$env" == no ]]; then
+      if [[ "${c#* }" == reanchor && "$env" == no ]]; then
         why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: reference ($refs) moved=$moved, and a gen member pin, lib/ or an arm input moved, or no reference node did"
-      elif [[ "$c" == "$h parity" && "$par" == no && "$above" == no ]]; then
+      elif [[ "${c#* }" == parity && "$par" == no && "$above" == no ]]; then
         why="a parity admission, but the rise crosses parity: at parity at the anchor, above it now"
       else
         adm=$c
@@ -188,6 +194,8 @@ judge() {
 }
 for spec in "${registers[@]}"; do
   read -r reg form decrease rise refs inputs <<<"$spec"
+  arm=${reg#ci/}
+  arm=${arm%-baseline.jsonl}
   mapfile -t revs < <(git rev-list --first-parent HEAD -- "$reg")
   [ "${#revs[@]}" -gt 0 ] || control "no revision of $reg on HEAD's history"
   # revs is newest first; revs[i+1] is the revision revs[i] replaced.
