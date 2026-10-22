@@ -3543,12 +3543,12 @@ with import-from-derivation off (no builds) and restricted evaluation with no al
 network); `ci/hm-bar.patch` makes the test driver return nmt's argument record and the docs driver
 export each set's evaluation, and nmt comes from home-manager's own `fetchTarball` pin, fetched at
 build. A refusal both arms share in text that is not gen-merge's scores FAIL; the class rule that
-would pass it is den-hoag-refusal-class-consumer-throw-ovyos's. home-manager's NixOS and nix-darwin
+would pass it is not yet ruled. home-manager's NixOS and nix-darwin
 integration (`tests/integration`, a VM run), the darwin suite and the release branches are not in
 this arm.
 
 An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green: admitted is
-not approved. At home-manager `ec80131` on gen-merge `d6dc9ea`, on CI's three evaluators, every
+not approved. At home-manager `cb7de2c` on gen-merge `ce914b5`, on CI's three evaluators, every
 perf row is NOT MET: the `tests` row at ×2.29 nixpkgs' thunks (131 processes summed on both arms), the
 `hm` `docs-walk` at ×1.162, and the `nixos` and `darwin` `docs-walk` rows at ×1.023.
 
