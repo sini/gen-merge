@@ -11488,6 +11488,59 @@ in
           expectedError = refusal "`partialSubmodule' and `submodule'";
         };
       };
+    # den-hoag-qqywn — the stratum-1 door reads the value path's declarations, so it refuses what that
+    # path refuses: a gen-typed declaration whose presence reads `config` (ADR-0033's kept refusal), and a
+    # throwing sibling the guard's spine walk forces, as nixpkgs' `.options` does. The served cells are
+    # ./tests/declared-options-door.nix.
+    flake.testsError.declared-options-door = {
+      test-a-gen-declaration-whose-presence-reads-config-refuses = {
+        expr =
+          builtins.attrNames
+            (gm.declaredOptions { } [
+              {
+                options.b = gm.mkOption {
+                  type = t.bool;
+                  default = true;
+                };
+              }
+              (
+                { config, ... }:
+                {
+                  options.c =
+                    if config.b then
+                      {
+                        d = gm.mkOption {
+                          type = t.int;
+                          default = 1;
+                        };
+                      }
+                    else
+                      { };
+                }
+              )
+            ]).c;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read `config' while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output";
+        };
+      };
+      test-a-throwing-sibling-declaration-refuses-the-door = {
+        expr =
+          (gm.declaredOptions { } [
+            {
+              options.a = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+              options.b = throw "LAZY";
+            }
+          ]).a.loc;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^LAZY$";
+        };
+      };
+    };
     # den-hoag-c7jkw.3 / den-hoag-83wmp — the check passes keep every refusal. The value cells are
     # ./tests/check-pass-sharing.nix.
     flake.testsError.check-pass-sharing = {

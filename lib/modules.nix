@@ -331,8 +331,8 @@ let
   # string form, `__toString = _: showOption loc` (nixpkgs `lib/modules.nix`
   # `mergeOptionDecls`/`evalOptionValue`), so `"${opt}"` reads the path there as here.
   #
-  # THE STRATUM-1 DOOR (`declaredOptions`) folds no value, so its record is the declaration and the
-  # evaluated keys nixpkgs adds beside it are REFUSED BY NAME, never absent, because an absent key is
+  # THE STRATUM-1 DOOR (`declaredOptions`) publishes declarations, not evaluated options, so its record
+  # is the declaration and the evaluated keys nixpkgs adds beside it are REFUSED BY NAME, never absent, because an absent key is
   # an uncatchable abort in the reader (ADR-0025 item 1). One shared record, so a refusal costs no
   # thunk per option. nixpkgs has no such door. `options` is not among them: it is `getSubModules` of
   # the declared type, a declaration fact, so a stamped declaration answers it as `serveOptions` does.
@@ -365,6 +365,39 @@ let
   # `fixupOptionType`. `valueMeta`, nixpkgs' v2-merge metadata, is the same projection where the type
   # is foreign and folded by its own merge (`interface.foreignValueMeta`), and refused by name at every
   # other type.
+  # nixpkgs' `fixupOptionType` over one declaration `v` declared at `sites` (in the reference's order): the
+  # served record's type (`serveOptions`) and the stratum-1 door's (`declaredOptions`), one derivation
+  servedType =
+    sites: v:
+    # nixpkgs' `fixupOptionType`: a declaration stating no type is `unspecified` (den-hoag-pm14k)
+    # and, with one TYPED declaration stating a module set, that set located at that
+    # declaration's file, as nixpkgs' `mergeOptionDecls` hands each typed declaration's
+    # sub-modules to `substSubModules` (an untyped one contributes none), and as a redeclared
+    # option's is (`fixupModuleSets`)
+    if !(v ? type) then
+      strategies.unspecified
+    # presence first, so a gen type pays no call
+    else if
+      (
+        if v.type ? substructure then
+          v.type.substructure.modules
+        else
+          (interface.importedSubstructure v.type).modules
+      ) != null
+    then
+      let
+        typed = filter (s: s.decl ? type) sites;
+      in
+      if length typed == 1 then
+        fixupModuleSets {
+          upTo.merged = v.type;
+          declaredTypes = [ v.type ];
+          prior = typed;
+        }
+      else
+        v.type
+    else
+      v.type;
   serveOptions =
     sitesAt: rel: loc: prov: defs: cfg: tree:
     mapAttrs (
@@ -383,36 +416,7 @@ let
           # which reads `true` here and `false` under nixpkgs for an option defined by a record.
           dwl = map (d: if d.file == "<default>" then d // { file = (head sites).file; } else d) defs.${k};
           p = prov.${k};
-          # nixpkgs' `fixupOptionType`: a declaration stating no type is `unspecified` (den-hoag-pm14k)
-          # and, with one TYPED declaration stating a module set, that set located at that
-          # declaration's file, as nixpkgs' `mergeOptionDecls` hands each typed declaration's
-          # sub-modules to `substSubModules` (an untyped one contributes none), and as a redeclared
-          # option's is (`fixupModuleSets`)
-          ty =
-            if !(v ? type) then
-              strategies.unspecified
-            # presence first, so a gen type pays no call
-            else if
-              (
-                if v.type ? substructure then
-                  v.type.substructure.modules
-                else
-                  (interface.importedSubstructure v.type).modules
-              ) != null
-            then
-              let
-                typed = filter (s: s.decl ? type) sites;
-              in
-              if length typed == 1 then
-                fixupModuleSets {
-                  upTo.merged = v.type;
-                  declaredTypes = [ v.type ];
-                  prior = typed;
-                }
-              else
-                v.type
-            else
-              v.type;
+          ty = servedType sites v;
         in
         v
         // {
@@ -1696,9 +1700,9 @@ let
         // {
           _module = user // mapAttrs (k: _: record k (options prefix).${k}) moduleOwnDecls;
         };
-    # The same four declarations on the stratum-1 door's tree (`declaredOptions`), whose records are
-    # declarations whose evaluated keys refuse by name (`unansweredOptionKeys`), so the two
-    # publications agree on the declared key set.
+    # The same four declarations on a declarations-only tree, whose records are declarations whose
+    # evaluated keys refuse by name (`unansweredOptionKeys`), so the publications agree on the declared
+    # key set.
     stamp =
       prefix: stamped:
       let
@@ -1868,8 +1872,8 @@ let
   # merges with its own `_module` options, so they are read off the leaf type's sub-options, one
   # merged record named by the files that declared the leaf (`interface.moduleLeafSubOptions`). A
   # record nixpkgs has already judged against its own declarations carries `judged`.
-  # A gen `submodule` leaf's sub-options are read off its DECLARATIONS (the stratum-1 door over its
-  # own modules and arguments), never its served records: a served record states `unspecified` for a
+  # A gen `submodule` leaf's sub-options are read off its DECLARATIONS (the stratum-1 fold over its
+  # own modules and arguments, `declarationsOf`), never its served records: a served record states `unspecified` for a
   # declaration that states no type (`serveOptions`, nixpkgs' `fixupOptionType`), which an explicit
   # `type = unspecified` cannot be told from, and the judge asks what was declared. A nixpkgs leaf is
   # judged by nixpkgs (`interface.moduleLeafSubOptions`).
@@ -1878,10 +1882,11 @@ let
     if t ? carries && t ? nests then
       {
         judged = false;
-        options = declaredOptions {
+        options = declarationsOf {
           prefix = loc;
           inherit (t.nests) specialArgs;
-        } (t.nests.modules ++ [ namePlaceholder ]);
+          modules = t.nests.modules ++ [ namePlaceholder ];
+        };
       }
     else
       interface.moduleLeafSubOptions moduleOwnDecls t loc;
@@ -4309,7 +4314,7 @@ let
   # THE STAGED DECLARATION PASSES (den-hoag-9oc7y), the declaration guard's path when its spine did
   # not resolve. Pass 0 is the guard's poisoned fold, `s0`. A node whose WHNF did not resolve there
   # (`pending`) is re-tried at pass k with `options` bound to pass k-1's declarations, stamped as
-  # `declaredOptions` stamps them, so a pass reads only the settled output of strictly earlier passes
+  # `declarationsOf` stamps them, so a pass reads only the settled output of strictly earlier passes
   # (ADR-0016 ruling 7, ADR-0033) and a node resolves at the least pass its reads allow. A pending node
   # must resolve to a LEAF: one resolving to a group is an option's presence moving with `options`.
   # A pass folds twice. The ADMISSION fold, where the pending nodes are tried, binds `options` and the
@@ -6017,14 +6022,24 @@ let
               builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf (map pushedEntry flat));
         };
 
-  # THE STRATUM-1 ENTRY, published beside `evalModuleTree`. A consumer wanting DECLARATIONS without
-  # values gets a door that drives no fixpoint at all — the two `.options`-only readers in this
-  # ecosystem (gen-schema's `entry-type.nix` introspection and its `id-hash.nix` identity key set)
-  # are asking exactly this question, and they already keep the discipline by hand, each with its
-  # own comment saying it uses the locally-built merged module to avoid circularity.
-  #
-  # It is the SAME fold the full result's `options` field is, published twice rather than computed
-  # twice: a second definition of "which options are declared" is a second answer, free to disagree.
+  # The stratum-1 fold alone, stamped: the value path's own judge of what a gen `submodule` leaf
+  # declares (`moduleLeafSubOptions`). It is the guard's pass 0, with `config`, `options` and module
+  # arguments bound to named refusals, so it is not what the evaluation declares (`declaredOptions`).
+  declarationsOf =
+    o:
+    let
+      s = declarationStratum o;
+    in
+    moduleOwn.stamp (o.prefix or [ ]) (stampOptions s.sitesAt (o.prefix or [ ]) s.options);
+  # THE STRATUM-1 ENTRY, published beside `evalModuleTree`: a consumer wanting DECLARATIONS without
+  # values (gen-schema's kind introspection and identity key set) reads the evaluation's own declared
+  # records, without its `config` or the unmatched-definition check. They are the value path's
+  # declarations (`result.options`, the knot's inner binding, never the export), read by a knot flagged
+  # `declares`, so the two publications cannot disagree: a nixpkgs-grammar declaration that reads
+  # `options`, a module argument or `config` is served here as nixpkgs' fold serves it, through the
+  # guard's staged passes and resolution levels (ADR-0033 as amended, ADR-0039), and a gen-typed one
+  # needing its own stratum is refused by name on both. Its records carry nixpkgs' `fixupOptionType`
+  # type, as `.options`' do (`servedType`), and refuse the evaluated keys by name.
   #
   # Its options lead and `modules` comes last, as at `evalModuleTree` (den-hoag-7gp66 P2): the same
   # two of that door's options it reads, closed, refused by name at `declaredOptions opts`.
@@ -6039,10 +6054,7 @@ let
       }
       (
         o: modules:
-        let
-          s = declarationStratum (o // { inherit modules; });
-        in
-        moduleOwn.stamp (o.prefix or [ ]) (stampOptions s.sitesAt (o.prefix or [ ]) s.options)
+        evalModuleTreeWith (knotRoot // { declares = true; }) true false (o // { inherit modules; })
       );
 
   # ── THE ONE DRIVER — this library declares no fixpoint of its own ─────────────────────────────
@@ -9026,6 +9038,44 @@ let
     # reads `config` and `undeclared` off that record, and nothing reads the rest of the published one.
     if knot.inner then
       body
+    else if knot.declares or false then
+      # The stratum-1 door (`declaredOptions`): the value path's declarations stamped as `declarationsOf` stamps
+      # them, each record's type nixpkgs' fixup as `.options`' is. Bound here, so the value path pays nothing.
+      let
+        sitesAt = declaringSitesAt (length prefix) (prelude.imap0 declEntry result._flat);
+        # each leaf's type is `servedType`'s
+        serveStampedTypes =
+          loc: tree:
+          mapAttrs (
+            k: v:
+            let
+              lk = loc ++ [ k ];
+            in
+            if isOptLeaf v then v // { type = servedType (reverse (sitesAt lk)) v; } else serveStampedTypes lk v
+          ) tree;
+        # the four `_module` records typed as `moduleOwn.serve` types them: the engine's stated type, else a
+        # re-declaration's, else nixpkgs' `fixupOptionType` default
+        typed =
+          stamped:
+          if isOptLeaf (stamped._module or { }) then
+            stamped
+          else
+            stamped
+            // {
+              _module =
+                stamped._module
+                // mapAttrs (
+                  k: _:
+                  stamped._module.${k}
+                  // {
+                    type = (moduleOwn.options prefix).${k}.type or stamped._module.${k}.type or strategies.unspecified;
+                  }
+                ) moduleOwnDecls;
+            };
+      in
+      typed (
+        moduleOwn.stamp prefix (serveStampedTypes prefix (stampOptions sitesAt prefix result.options))
+      )
     else
       {
         # ── the refusal's ONE forcing site ────────────────────────────────────────────────────────
@@ -9173,10 +9223,12 @@ in
     evalModuleTreeUnchecked
     evalModuleTreeNested
     evalModuleTreeExposed
-    # Stratum 1 on its own — the declaration fold, published so a consumer wanting declarations
-    # without values drives no fixpoint at all. Public (see lib/default.nix); it is also the fold
-    # `evalModuleTree`'s declaration GUARD runs, so the two can never answer differently about
-    # which options a module set declares.
+    # The stratum-1 fold alone, stamped: the value path's judge of what a gen `submodule` leaf
+    # declares, which the door no longer is. Not published (this library's suites).
+    declarationsOf
+    # The declared option records alone, without values: the evaluation's own declarations, read
+    # off the same knot `evalModuleTree` drives, so the two can never answer differently about which
+    # options a module set declares. Public (see lib/default.nix).
     declaredOptions
     mergeDefs
     mergeDefsPublished

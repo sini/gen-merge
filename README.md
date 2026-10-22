@@ -1829,7 +1829,7 @@ count, as nixpkgs does. Refusing it by name would mean refusing every stratum-2 
 family.** `mkRenamedOptionModule`, `mkRenamedOptionModuleWith`, `mkAliasOptionModule` and their
 `doRename` declare the alias leaf with its target's `type`, so the leaf reads `options` and the
 guard's poisoned fold cannot resolve it. The guard then runs **staged passes**: each unresolved node
-is re-tried with `options` bound to the previous pass's declarations, stamped as `declaredOptions`
+is re-tried with `options` bound to the previous pass's declarations, stamped as `declarationsOf`
 stamps them, so a pass reads only what strictly earlier passes settled and a chain of renames
 resolves one link per pass, in any module order. The previous pass's declarations carry the module
 arguments their own modules define (`_module.args`), so an alias whose target's `type` reads an
@@ -2101,8 +2101,15 @@ Below a module set it is the metadata of the call gen's fold folds by, and each 
 that call's own merged value, served only where the value is and guarded as the value is (a `verify` copy
 inside the submodule, an `addCheck` over it), as are `attrListOf`'s `attrListValue` and `definitions`;
 `lib.modules.mapAttrsOfSubmodule` reads it as nixpkgs'. So a deep force of a published `.options` tree refuses for a tree holding any gen type
-(`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which folds
-no value, refuses the other eight by name and answers `options` as `[ ]`.
+(`test-a-deep-force-of-a-declaration-tree-meets-the-unanswered-keys`). `declaredOptions`, which
+publishes declarations, refuses the other eight by name and answers `options` as `[ ]`. Its records
+are the evaluation's own declarations, the ones `.options` serves, so a declaration that reads
+`options` (a renamed option), a module argument (`with utils;`) or `config` (its presence, or a
+`default`) is served there as nixpkgs serves it, and its `type` is nixpkgs' `fixupOptionType`'s: an
+untyped declaration, `_module.specialArgs` included, reads `unspecified`, and a module set is located
+at its declaring file (`ci/tests/declared-options-door.nix`). A gen-typed declaration that needs its
+own stratum is refused by name on both, and a throwing declaration refuses both, as nixpkgs' `.options`
+does.
 
 **The engine's own `_module` records are served too.** nixpkgs' `internalModule` declares
 `_module.args`, `check`, `freeformType` and `specialArgs` in every evaluation, and gen-merge serves the

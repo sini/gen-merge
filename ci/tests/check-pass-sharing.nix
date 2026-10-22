@@ -8,9 +8,11 @@
 # either site's sort read both suites green. Each order cell below reds exactly its own site.
 #
 # RED: `validateDeclSubtree` returning a group whose children are all leaves without copying it
-# forces the stratum-1 door's throwing sibling (`declared-lazy-…`), and on `testsError` changes
-# which of two throwing declarations refuses.
-{ genMerge, ... }:
+# forces the stratum-1 fold's throwing sibling (`declared-lazy-…`), and on `testsError` changes
+# which of two throwing declarations refuses. That fold is `declarationsOf`, read through the core:
+# the public door reads the value path's declarations, whose guard forces the sibling as nixpkgs'
+# `.options` does (den-hoag-qqywn).
+{ genMerge, genMergeCore, ... }:
 let
   gm = genMerge;
   t = gm.types;
@@ -41,17 +43,19 @@ in
         "b"
       ];
     };
-    test-declared-lazy-door-does-not-force-a-throwing-sibling = {
+    test-declared-lazy-fold-does-not-force-a-throwing-sibling = {
       expr =
-        (gm.declaredOptions { } [
-          {
-            options.a = gm.mkOption {
-              type = t.int;
-              default = 0;
-            };
-            options.b = throw "LAZY";
-          }
-        ]).a.loc;
+        (genMergeCore.declarationsOf {
+          modules = [
+            {
+              options.a = gm.mkOption {
+                type = t.int;
+                default = 0;
+              };
+              options.b = throw "LAZY";
+            }
+          ];
+        }).a.loc;
       expected = [ "a" ];
     };
   };

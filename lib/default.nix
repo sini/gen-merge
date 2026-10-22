@@ -719,12 +719,12 @@ in
   # The engine + the shared fold (spec §2) + module-system helpers consumers need.
   inherit (core)
     evalModuleTree
-    # STRATUM 1 ON ITS OWN — the declared option records, from the same fold the full result's
-    # `options` field is merged by, and with no fixpoint driven at all (ADR-0033: a two-level type
-    # system's declaration stratum is a fold, not an ascent). A consumer wanting declarations
-    # WITHOUT values — an introspection pass, an identity key set — asks for them here instead of
-    # evaluating a whole tree and projecting `.options` off it, and gets a named refusal rather
-    # than a divergence if the declarations it is asking about turn out to need the value stratum.
+    # THE DECLARED OPTION RECORDS ALONE — the evaluation's own declarations, the ones the full
+    # result's `options` field serves, without values or the unmatched-definition check. A consumer
+    # wanting declarations WITHOUT values — an introspection pass, an identity key set — asks for
+    # them here instead of projecting `.options` off a whole tree. A nixpkgs-grammar declaration that
+    # reads `options`, a module argument or `config` is served as nixpkgs' fold serves it; a gen-typed
+    # one that needs its own stratum is a named refusal on both (ADR-0033 as amended).
     declaredOptions
     # A partial fold, the container whose every key folds partially (den-hoag-fjdnf), and the submodule whose
     # every declared option does (`partialSubmodule`, den-hoag-5ov3p, below): for a consumer that folds some of
