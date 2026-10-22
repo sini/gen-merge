@@ -7344,7 +7344,7 @@
 {"key":{"kind":"test","name":"wallust"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"watson-empty-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"watson-example-settings"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"waveterm-example-config"},"verdict":"FAIL"}
+{"key":{"kind":"test","name":"waveterm-example-config"},"verdict":"PASS-CLASS"}
 {"key":{"kind":"test","name":"way-displays-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"waybar-deprecated-modules-option"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"waybar-settings-complex"},"verdict":"PASS"}

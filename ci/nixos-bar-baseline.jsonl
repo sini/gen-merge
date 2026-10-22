@@ -32816,7 +32816,7 @@
 {"key":{"kind":"doc","name":"swapDevices.*.encrypted.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.encrypted.keyFile","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.encrypted.label","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"swapDevices.*.isDevice","n":0},"verdict":"FAIL"}
+{"key":{"kind":"doc","name":"swapDevices.*.isDevice","n":0},"verdict":"PASS-CLASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.label","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.options","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.priority","n":0},"verdict":"PASS"}
