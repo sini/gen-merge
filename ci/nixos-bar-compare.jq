@@ -15,7 +15,9 @@
 # A toplevel or options row carries `"claim":"identity"`: its PASS is one derivation's identity, evidence and
 # never acceptance (ADR-0039). Only those two kinds carry it, and only perf rows carry `perf`.
 #
-# PERF, on toplevel / options / docs-walk / tests rows: `perf.<$ev>.gen.{thunks,bytes}` is an EXACT bound (ADR-0032).
+# PERF, on toplevel / options / docs-walk / tests rows: `perf.<$ev>.gen.{thunks,bytes}` is an EXACT bound (ADR-0032),
+# read only where the run summed the same processes as the anchor: a perf entry carrying `set` (stage 3's
+# `tests` row) whose set moved reads SET-MOVED instead of a COST line.
 #
 # $mode "check": one line per disagreement and a summary · "perf": one `PERF <label> <json>` line per perf row,
 # the line `--fold` reads · "write": the new register, $ev's perf merged in · "fold": $base with $perf's
@@ -99,6 +101,8 @@ else
       + [ $runs[] | select(perfKind and .base != null) | . as $r
           | ($r.base.perf[$ev] // null) as $a
           | if $a == null then "UNANCHORED \(.id) has no perf entry for '\($ev)'"
+            elif $a.gen != null and ($a.gen.set // null) != ($r.gen.perf.set // null) then
+              "SET-MOVED \(.id) summed \($a.gen.set.processes // "none") -> \($r.gen.perf.set.processes // "none") processes, set \($a.gen.set.sha[0:12] // "none") -> \($r.gen.perf.set.sha[0:12] // "none") (the bound compares only equal sets)"
             elif $a.gen == null or $r.gen.perf == null then empty
             else
               "thunks \($a.gen.thunks) -> \($r.gen.perf.thunks), bytes \($a.gen.bytes) -> \($r.gen.perf.bytes)" as $d

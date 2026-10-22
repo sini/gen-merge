@@ -23,9 +23,18 @@ wargs() { printf '%s\n' --argstr read "$1" --argstr set "$wset" --argstr route "
 # THE `tests` PERF ROW sums thunks, attributed bytes and ms over one process set, the same on both arms: a
 # process enters only if every test it holds served on BOTH arms. So a refused test never adds to a sum, and
 # the two sums are over the same work. The row's perf is null on both arms when no process qualifies.
+#
+# THE SET IS PART OF THE FIGURE. A chunk that dies moves its tests from one process to fifty, so the same
+# tests cost a different sum. Each arm's perf carries `set`, the summed processes' identity: their count, and
+# the sha256 of the sorted lines `<process>\t<test>` (`c<n>` for a chunk, `alone` for a test in its own
+# process). Test names alone would not tell a dead chunk from a live one. The compare reads the EXACT bound
+# only between equal sets, and a set that moved reads SET-MOVED, never a COST line.
+#
+# A chunk that exits non-zero leaves its last error lines in the job log, since the run's working directory
+# does not outlive it.
 tests() {
   local c i e n js t sum
-  local -a names chunk alive
+  local -a names chunk alive died=()
   evalArm names ref names --argstr read names
   [ "$rc" -eq 0 ] || control "the test names read refused: $(grep -E '^ *error' "$tmp/names.err" | tail -1)"
   mapfile -t names < <(jq -r '.v[]' "$tmp/names.out")
@@ -38,6 +47,7 @@ tests() {
   done
   joinAll
   : >"$tmp/summed"
+  : >"$tmp/summedset"
   for ((c = 0; c < n; c++)); do
     if jq -se 'all(.[]; .refused | not)' "$tmp/c$c-ref.arm" "$tmp/c$c-gen.arm" >/dev/null; then
       alive+=("$c")
@@ -45,6 +55,13 @@ tests() {
       jq -se '.[0] == (.[1].v | split("\n") | map(split("\t")[0])) and .[0] == (.[2].v | split("\n") | map(split("\t")[0]))' \
         "$tmp/c$c.names" "$tmp/c$c-ref.out" "$tmp/c$c-gen.out" >/dev/null || control "chunk $c's lines are not its tests"
     else
+      died+=("c$c")
+      for e in ref gen; do
+        if jq -e .refused "$tmp/c$c-$e.arm" >/dev/null; then
+          echo "$BAR_NAME: chunk c$c died on $e:"
+          grep -E '^ *error' "$tmp/c$c-$e.err" | tail -3 | cut -c1-400 | sed "s/^/$BAR_NAME:   c$c-$e /"
+        fi
+      done
       mapfile -t chunk < <(jq -r '.[]' "$tmp/c$c.names")
       for ((i = 0; i < ${#chunk[@]}; i++)); do
         js=$(jq -cn --arg t "${chunk[i]}" '[$t]')
@@ -83,6 +100,7 @@ tests() {
     jq -c 'del(.i)' "$tmp/c$c.recs" >>"$tmp/records.jsonl"
     if jq -se 'all(.[]; .ref.refused == false and .gen.refused == false)' "$tmp/c$c.recs" >/dev/null; then
       echo "c$c-ref c$c-gen" >>"$tmp/summed"
+      jq -r --arg p "c$c" '.[] | "\($p)\t\(.)"' "$tmp/c$c.names" >>"$tmp/summedset"
     fi
   done
   for ((c = 0; c < n; c++)); do
@@ -93,19 +111,23 @@ tests() {
         '{ key: { kind: "test", name: $t }, ref: ($ref[0] | del(.perf)), gen: ($gen[0] | del(.perf)) }' >>"$tmp/records.jsonl"
       if jq -se 'all(.[]; .refused | not)' "$tmp/c$c-t$i-ref.arm" "$tmp/c$c-t$i-gen.arm" >/dev/null; then
         echo "c$c-t$i-ref c$c-t$i-gen" >>"$tmp/summed"
+        printf 'alone\t%s\n' "${chunk[i]}" >>"$tmp/summedset"
       fi
     done
   done
   # The two sums, over the same processes.
+  local set
+  set=$(jq -cn --argjson n "$(wc -l <"$tmp/summed")" --arg sha "$(LC_ALL=C sort "$tmp/summedset" | sha256sum | cut -c1-64)" \
+    '{ processes: $n, sha: $sha }')
   sum() {
     local -a f=()
     local p
     while read -r p; do f+=("$tmp/$p.arm"); done
-    if [ "${#f[@]}" -eq 0 ]; then echo null; else jq -sc 'map(.perf) | { thunks: (map(.thunks) | add), bytes: (map(.bytes) | add), ms: (map(.ms) | add) }' "${f[@]}"; fi
+    if [ "${#f[@]}" -eq 0 ]; then echo null; else jq -sc --argjson set "$set" 'map(.perf) | { thunks: (map(.thunks) | add), bytes: (map(.bytes) | add), ms: (map(.ms) | add), $set }' "${f[@]}"; fi
   }
   jq -cn --argjson ref "$(cut -d' ' -f1 "$tmp/summed" | sum)" --argjson gen "$(cut -d' ' -f2 "$tmp/summed" | sum)" \
     '{ key: { kind: "tests" }, ref: { refused: false, v: null, perf: $ref }, gen: { refused: false, v: null, perf: $gen } }' >>"$tmp/records.jsonl"
-  echo "$BAR_NAME: tests: ${#names[@]} in $n chunks, ${#alive[@]} completed on both arms, $((n - ${#alive[@]})) re-run per test on both; $(wc -l <"$tmp/summed") processes per arm summed (every test they hold served on both arms)"
+  echo "$BAR_NAME: tests: ${#names[@]} in $n chunks, ${#alive[@]} completed on both arms, $((n - ${#alive[@]})) re-run per test on both (${died[*]:-none}); $(wc -l <"$tmp/summed") processes per arm summed (every test they hold served on both arms), set $(jq -r '.sha[0:12]' <<<"$set")"
   # Diagnostic, never a bound: each arm's counters over every process of it that exited 0, so repeats can
   # be read for identity while the summed set is empty.
   for e in ref gen; do

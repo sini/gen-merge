@@ -19,8 +19,9 @@
 # nixpkgs alias throw, an IFD refusal) scores FAIL: the class rule that would pass it is
 # den-hoag-refusal-class-consumer-throw-ovyos's, one rule for both stages.
 #
-# PERF NOT MET. An above-parity row is the bar's perf criterion (perf at or under nixpkgs, ADR-0032) NOT MET,
-# even where CI stays green because the ratchet admitted its rise: admitted is not approved (den-hoag-06toi).
+# PERF NOT MET. An above-parity row is the bar's perf criterion (perf at or under nixpkgs, ADR-0039) NOT MET,
+# even where CI stays green because the ratchet admitted its rise under ADR-0032's exact bound: admitted is
+# not approved (den-hoag-06toi).
 # At home-manager ec80131 on CI's three evaluators the nixos and darwin docs-walk rows are NOT MET at x1.023
 # nixpkgs' thunks; the hm docs-walk and tests rows have no serving gen arm, so their parity is unread.
 #

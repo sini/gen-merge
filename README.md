@@ -3533,8 +3533,10 @@ with that `lib`'s `evalModules` replaced by `evalModuleTree`, and scores each ce
 The tests run in chunks of 50 (home-manager's own CI chunk size), one evaluation per chunk per arm,
 up to `BAR_JOBS` at once (default: the host's cores), each under a GC heap of `BAR_HEAP` bytes
 (default: the host's memory over `BAR_JOBS`); running out of it is a control failure, never a
-verdict. A chunk that dies on either arm is re-run one test per process on both. The `tests` cost
-row sums only the processes whose every test served on both arms, so both arms sum the same work.
+verdict. A chunk that dies on either arm is re-run one test per process on both, and its last error
+lines are printed. The `tests` cost row sums only the processes whose every test served on both
+arms, so both arms sum the same work, and it carries that set's identity (process count and a sha):
+its bound is compared only between equal sets, and a set that moved reads `SET-MOVED`.
 
 Every evaluation runs `--read-write-mode` (home-manager's tests copy path literals into the store),
 with import-from-derivation off (no builds) and restricted evaluation with no allowed URI (no
@@ -3548,8 +3550,8 @@ this arm.
 An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green: admitted is
 not approved. At home-manager `ec80131`, on CI's three evaluators, the `nixos` and `darwin`
 `docs-walk` rows are NOT MET at ×1.023 nixpkgs' thunks; the `hm` `docs-walk` and the `tests` row have
-no serving gen arm (R1 refuses every test, and the hm walk aborts), so their parity is unread until
-R1 lands, not met. Past the reach scout's probe stubs, which are not the fixes, the hm walk read
+no serving gen arm (gen refuses every test, den-hoag-stage3-rolesmet-nestedtypes-xr243, and the hm
+walk aborts), so their parity is unread until that fix lands, not met. Past the reach scout's probe stubs, which are not the fixes, the hm walk read
 ×1.385 and the chunked suite ×2.29.
 
 ```sh
