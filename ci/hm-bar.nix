@@ -22,8 +22,8 @@
 # PERF NOT MET. An above-parity row is the bar's perf criterion (perf at or under nixpkgs, ADR-0039) NOT MET,
 # even where CI stays green because the ratchet admitted its rise under ADR-0032's exact bound: admitted is
 # not approved (den-hoag-06toi).
-# At home-manager ec80131 on CI's three evaluators the nixos and darwin docs-walk rows are NOT MET at x1.023
-# nixpkgs' thunks; the hm docs-walk and tests rows have no serving gen arm, so their parity is unread.
+# At home-manager ec80131 on gen-merge d6dc9ea, on CI's three evaluators, every perf row is NOT MET: tests at
+# x2.29 nixpkgs' thunks, the hm docs-walk at x1.162, the nixos and darwin docs-walks at x1.023.
 #
 # NOT IN THIS ARM: home-manager's NixOS and nix-darwin integration (`tests/integration`, `runTest`, whose
 # verdict is a VM run), the darwin arm of the suite, and release branches (den-hoag-1as3r): the guarantee.

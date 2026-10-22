@@ -3548,11 +3548,9 @@ integration (`tests/integration`, a VM run), the darwin suite and the release br
 this arm.
 
 An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green: admitted is
-not approved. At home-manager `ec80131`, on CI's three evaluators, the `nixos` and `darwin`
-`docs-walk` rows are NOT MET at ×1.023 nixpkgs' thunks; the `hm` `docs-walk` and the `tests` row have
-no serving gen arm (gen refuses every test, den-hoag-stage3-rolesmet-nestedtypes-xr243, and the hm
-walk aborts), so their parity is unread until that fix lands, not met. Past the reach scout's probe stubs, which are not the fixes, the hm walk read
-×1.385 and the chunked suite ×2.29.
+not approved. At home-manager `ec80131` on gen-merge `d6dc9ea`, on CI's three evaluators, every
+perf row is NOT MET: the `tests` row at ×2.29 nixpkgs' thunks (131 processes summed on both arms), the
+`hm` `docs-walk` at ×1.162, and the `nixos` and `darwin` `docs-walk` rows at ×1.023.
 
 ```sh
 nix run ./ci#hm-bar -- --write-baseline F
