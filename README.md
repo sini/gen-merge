@@ -3509,9 +3509,55 @@ admits it, with every trailer in its last paragraph. The ratchet guard reads thi
 `Nixos-Bar-Decrease:`, and a rise of a committed gen count needs `Bar-Perf-Rise: <hash> <class>`, the
 hash being that of `<id>\t<evaluator>`, where the class is `reanchor` (admitted only when nixpkgs'
 lock node moved and no gen member lock node, no `lib/` byte and none of the arm's own inputs
-`ci/modules-sh-lib.nix`, `ci/nixos-bar-eval.nix` and `ci/nixos-bar.bash` did), `parity` (the new gen figure is
+`ci/modules-sh-lib.nix`, `ci/nixos-bar-eval.nix`, `ci/nixos-bar-cells.bash` and `ci/nixos-bar.bash` did), `parity` (the new gen figure is
 at or under the new reference figure, or the row was already above its reference at the older
-revision), `floor <row>` or `owner <row>`.
+revision), `floor <row>` or `owner <row>`. Each program prints its `PERF` lines under its own name
+(`PERF nixos-bar {…}`), and `--fold` reads only its own.
+
+### home-manager on this engine
+
+After NixOS, `ci --tests-process` runs home-manager (the `ci` flake's `home-manager` input, a
+reference pin as `nixpkgs` is) through its own test and docs drivers, once on nixpkgs' `lib` and once
+with that `lib`'s `evalModules` replaced by `evalModuleTree`, and scores each cell against
+`ci/hm-bar-baseline.jsonl`:
+
+- `test`: one row per test of home-manager's x86_64-linux suite (every attribute of
+  `tests/default.nix`'s `tests`), read to what the generation writes (`home.file`, each target with its
+  text's hash or its source) with `home.activationPackage.drvPath` riding along as evidence. These
+  rows and the `doc` rows are the stage's acceptance.
+- `doc`: one row per published node of each of home-manager's three option-doc sets (`hm`, `nixos`,
+  `darwin`), nixpkgs' own `optionAttrSetToDocList` entry, over the entries the manual publishes
+  (`visible && !internal`; `ci/bar-walk.nix`).
+- `tests` and `docs-walk` (per set): cost rows, with stage 2's perf columns and exact bound.
+
+The tests run in chunks of 50 (home-manager's own CI chunk size), one evaluation per chunk per arm,
+up to `BAR_JOBS` at once (default: the host's cores), each under a GC heap of `BAR_HEAP` bytes
+(default: the host's memory over `BAR_JOBS`); running out of it is a control failure, never a
+verdict. A chunk that dies on either arm is re-run one test per process on both. The `tests` cost
+row sums only the processes whose every test served on both arms, so both arms sum the same work.
+
+Every evaluation runs `--read-write-mode` (home-manager's tests copy path literals into the store),
+with import-from-derivation off (no builds) and restricted evaluation with no allowed URI (no
+network); `ci/hm-bar.patch` makes the test driver return nmt's argument record and the docs driver
+export each set's evaluation, and nmt comes from home-manager's own `fetchTarball` pin, fetched at
+build. A refusal both arms share in text that is not gen-merge's scores FAIL; the class rule that
+would pass it is den-hoag-refusal-class-consumer-throw-ovyos's. home-manager's NixOS and nix-darwin
+integration (`tests/integration`, a VM run), the darwin suite and the release branches are not in
+this arm.
+
+An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green. At
+home-manager `ec80131` the serving perf rows are all above parity.
+
+```sh
+nix run ./ci#hm-bar -- --write-baseline F
+nix run ./ci#hm-bar -- --fold F A.log B.log C.log
+```
+
+The register is written as stage 2's is, and the ratchet reads it with `Hm-Bar-Decrease:` and
+`Bar-Perf-Rise:`. Its reference nodes are `nixpkgs` and `home-manager`, and its arm inputs
+`ci/modules-sh-lib.nix`, `ci/hm-bar-eval.nix`, `ci/bar-walk.nix`, `ci/hm-bar.patch`, `ci/hm-bar.nix`,
+`ci/hm-bar-cells.bash` and `ci/nixos-bar.bash`: a `reanchor` is refused when home-manager moves
+together with any of them.
 
 ## Theoretical foundations
 

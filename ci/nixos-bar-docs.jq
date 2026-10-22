@@ -1,5 +1,6 @@
-# The docs walk's two outputs ($ref, $gen: `nixos-bar-eval.nix`'s `walk` read, one slurped value each) as
-# one record per node: `{key: {kind: "doc", name, n}, ref, gen}`, an arm being `{refused: false, v}` or
+# The docs walk's two outputs ($ref, $gen: the `walk` read, one slurped value each) as one record per node:
+# `{key: {kind: "doc", set?, name, n}, ref, gen}` (`set`, the walk's option set, only where $set is not ""),
+# an arm being `{refused: false, v}` or
 # `{refused: true, step, route}`, and null where that walk has no such node. `n` is the node's occurrence
 # ordinal among the walk's nodes of the same name (a name may occur twice: `services.tuned.settings._module.*`).
 def nodes:
@@ -11,7 +12,7 @@ def nodes:
   | add // []
   | sort_by(.i)
   | map({
-      key: { kind: "doc", name, n },
+      key: ({ kind: "doc" } + (if $set == "" then { } else { $set } end) + { name, n }),
       arm: (if .v | startswith("err:") then { refused: true, step: (.v | ltrimstr("err:")), route } else { refused: false, v } end)
     });
 ($ref[0].v | nodes) as $R

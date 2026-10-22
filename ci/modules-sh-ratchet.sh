@@ -7,13 +7,17 @@
 #
 #   ci/modules-sh-baseline.jsonl   stage 1, `Modules-Sh-Decrease:`
 #   ci/nixos-bar-baseline.jsonl    stage 2, `Nixos-Bar-Decrease:`, perf rises `Bar-Perf-Rise:`
+#   ci/hm-bar-baseline.jsonl       stage 3, `Hm-Bar-Decrease:`, perf rises `Bar-Perf-Rise:`
+#
+# Each row also names its REFERENCE lock nodes (the environment both arms evaluate: `nixpkgs`, and for stage 3
+# `nixpkgs home-manager`) and its ARM INPUTS (the files in ci/ that make the gen arm's evaluation and argv).
 #
 # Each fallen key must be ADMITTED by its register's decrease trailer, naming the key's hash, on a commit
 # after the older revision (up to HEAD, so a later commit can admit a fall that already landed; a trailer
 # never admits a later fall):
 #
 #   <Decrease>: <hash> relock den-hoag-<census row>
-#       admitted only if nixpkgs' lock node moved between the two revisions: upstream moved the bar,
+#       admitted only if one of the row's reference lock nodes moved between the two revisions: upstream moved the bar,
 #       and the key's failure enters the census (den-hoag-uccyi, rx8sv rule 4);
 #   <Decrease>: <hash> correction <reason>
 #       a register correction (a class row that was wrong-class, say), with its reason.
@@ -24,11 +28,12 @@
 # (ADR-0032's EXACT bound; a lowering needs no admission) must be admitted by `Bar-Perf-Rise: <hash>
 # <class>`, the hash being that of `<id>\t<evaluator>`, under one of ADR-0032's authorization classes:
 #
-#   reanchor             admitted only if the ENVIRONMENT moved and nothing under test did: nixpkgs' lock
-#                        node moved AND every gen member lock node (owner sini, repo gen-*), gen-merge's
-#                        own lib/, and the gen arm's ci/ inputs (ci/modules-sh-lib.nix,
-#                        ci/nixos-bar-eval.nix, ci/nixos-bar.bash) are unchanged between the two
-#                        revisions. ADR-0032: a bound re-anchors
+#   reanchor             admitted only if the ENVIRONMENT moved and nothing under test did: one of the
+#                        row's reference lock nodes moved AND every gen member lock node (owner sini, repo
+#                        gen-*), gen-merge's own lib/, and the row's arm inputs are unchanged between the
+#                        two revisions (an arm input absent at one revision and present at the other moved).
+#                        home-manager is a reference pin as nixpkgs is: both arms evaluate it, and it is not
+#                        a gen member. ADR-0032: a bound re-anchors
 #                        "only when the environment moves — the evaluator or a REFERENCE pin … and never
 #                        on a gen member pin, which is the change under test". An evaluator move needs no
 #                        trailer: the perf entry is keyed by the evaluator's `--version` line, so a new
@@ -57,7 +62,7 @@
 # WHAT THIS DOES NOT DECIDE, read by the landing's review instead:
 # - whether the named census row exists, or a correction's reason is right: the trailer is the record;
 # - which change a relock admission covers: it is as wide as the gap between two register revisions,
-#   so once nixpkgs moved anywhere in that gap, a gen-merge regression landed in it with a `relock`
+#   so once a reference node moved anywhere in that gap, a gen-merge regression landed in it with a `relock`
 #   trailer is admitted too (a `reanchor` is not that wide: it refuses on any gen pin, lib/ or arm-input move);
 # - its own edits: it runs from HEAD's tree, so a commit that weakens this file or
 #   `modules-sh-ratchet.jq`, or moves a register and edits `registers` with it, escapes it. Review reads
@@ -66,10 +71,11 @@
 # Needs git and jq, never an evaluator. Run from the repository root:  bash ci/modules-sh-ratchet.sh
 # EXIT: 0 every fall admitted · 1 REFUSED, naming each key · 2 CONTROL FAILED, history not read.
 set -euo pipefail
-# <register> <id form> <decrease-trailer key> <perf-rise trailer key, or ->
+# <register> <id form> <decrease-trailer key> <perf-rise trailer key, or -> <reference lock nodes,> <arm inputs, or ->
 registers=(
-  "ci/modules-sh-baseline.jsonl legacy Modules-Sh-Decrease -"
-  "ci/nixos-bar-baseline.jsonl json Nixos-Bar-Decrease Bar-Perf-Rise"
+  "ci/modules-sh-baseline.jsonl legacy Modules-Sh-Decrease - nixpkgs -"
+  "ci/nixos-bar-baseline.jsonl json Nixos-Bar-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/nixos-bar-eval.nix,ci/nixos-bar-cells.bash,ci/nixos-bar.bash"
+  "ci/hm-bar-baseline.jsonl json Hm-Bar-Decrease Bar-Perf-Rise nixpkgs,home-manager ci/modules-sh-lib.nix,ci/hm-bar-eval.nix,ci/bar-walk.nix,ci/hm-bar.patch,ci/hm-bar.nix,ci/hm-bar-cells.bash,ci/nixos-bar.bash"
 )
 here=$(dirname "$0")
 control() {
@@ -80,23 +86,28 @@ if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
   # CI checks out at depth 1; the property needs the register's whole history.
   git fetch --quiet --unshallow origin || control "could not unshallow"
 fi
-# A lock whose nixpkgs is not a node-name string (a follows path, say) is unreadable, never "moved".
-nixpkgsAt() {
+# refsAt <rev>: the register's reference lock nodes (`refs`) at a revision, one `<node>@<rev>` each. A lock
+# whose node is not a node-name string (a follows path, say), or lacks it, is unreadable, never "moved".
+refsAt() {
   git show "$1:ci/flake.lock" |
-    jq -er '.nodes[.nodes.root.inputs.nixpkgs | strings].locked | (.rev // .narHash) | strings' ||
-    control "cannot read nixpkgs' lock node at ${1:0:9}"
+    jq -erc --arg refs "$refs" '. as $l | $refs | split(",") | map(. as $n | "\($n)@\($l.nodes[$l.nodes.root.inputs[$n] | strings].locked | (.rev // .narHash) | strings)")' ||
+    control "cannot read the reference lock nodes $refs at ${1:0:9}"
 }
-# Everything under test at a revision: every gen member lock node's rev, and gen-merge's own lib/ tree.
+# Everything under test at a revision: every gen member lock node's rev, gen-merge's own lib/ tree, and the
+# register's arm inputs (`inputs`).
 underTestAt() {
   git show "$1:ci/flake.lock" |
     jq -erc '[.nodes[] | .locked // {} | select(.owner == "sini" and (.repo // "" | startswith("gen-"))) | "\(.repo)@\(.rev)"] | unique | if length > 0 then . else error("no gen member node") end' ||
     control "cannot read the gen member lock nodes at ${1:0:9}"
   git rev-parse "$1:lib" || control "cannot read lib/ at ${1:0:9}"
   # The gen arm's own inputs in ci/: the file that wires evalModuleTree in, the evaluation, and the runner
-  # whose argv is allocated into every evaluation's bytes. None of them is environment.
-  local f
-  for f in ci/modules-sh-lib.nix ci/nixos-bar-eval.nix ci/nixos-bar.bash; do
-    git rev-parse "$1:$f" || control "cannot read $f at ${1:0:9}"
+  # whose argv is allocated into every evaluation's bytes. None of them is environment. One absent at a
+  # revision reads `absent`, so its arrival is a move.
+  local f t
+  [ "$inputs" = - ] && return 0
+  for f in ${inputs//,/ }; do
+    t=$(git ls-tree "$1" -- "$f") || control "cannot read $f at ${1:0:9}"
+    echo "$f ${t:-absent}"
   done
 }
 hashOf() { printf '%s' "$1" | sha256sum | cut -c1-12; }
@@ -120,8 +131,8 @@ judge() {
     trailers+=$(git log --format="%(trailers:key=$decrease,valueonly)" "$r")$'\n'
     [ "$rise" = - ] || ptrailers+=$(git log --format="%(trailers:key=$rise,valueonly)" "$r")$'\n'
   done
-  a=$(nixpkgsAt "$old") || exit 2
-  b=$(nixpkgsAt "$new") || exit 2
+  a=$(refsAt "$old") || exit 2
+  b=$(refsAt "$new") || exit 2
   moved=no
   [ "$a" = "$b" ] || moved=yes
   if [ -n "$fallen" ]; then
@@ -133,7 +144,7 @@ judge() {
       adm="" why="no $decrease: $h trailer in $*"
       for c in "${cands[@]}"; do
         if [[ "$c" == "$h relock "* && "$moved" == no ]]; then
-          why="a relock admission, but nixpkgs did not move in ${old:0:9}..${new:0:9}"
+          why="a relock admission, but no reference node ($refs) moved in ${old:0:9}..${new:0:9}"
         else
           adm=$c
           break
@@ -148,7 +159,7 @@ judge() {
     done <<<"$fallen"
   fi
   [ -n "$rises" ] || return 0
-  # reanchor's environment test: nixpkgs moved, and nothing under test did.
+  # reanchor's environment test: a reference node moved, and nothing under test did.
   ua=$(underTestAt "$old") || exit 2
   ub=$(underTestAt "$new") || exit 2
   env=no
@@ -159,7 +170,7 @@ judge() {
     adm="" why="no $rise: $h trailer in $*"
     for c in "${cands[@]}"; do
       if [[ "$c" == "$h reanchor" && "$env" == no ]]; then
-        why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: nixpkgs moved=$moved, and a gen member pin, lib/ or an arm input moved, or nixpkgs did not"
+        why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: reference ($refs) moved=$moved, and a gen member pin, lib/ or an arm input moved, or no reference node did"
       elif [[ "$c" == "$h parity" && "$par" == no && "$above" == no ]]; then
         why="a parity admission, but the rise crosses parity: at parity at the anchor, above it now"
       else
@@ -176,7 +187,7 @@ judge() {
   done <<<"$rises"
 }
 for spec in "${registers[@]}"; do
-  read -r reg form decrease rise <<<"$spec"
+  read -r reg form decrease rise refs inputs <<<"$spec"
   mapfile -t revs < <(git rev-list --first-parent HEAD -- "$reg")
   [ "${#revs[@]}" -gt 0 ] || control "no revision of $reg on HEAD's history"
   # revs is newest first; revs[i+1] is the revision revs[i] replaced.

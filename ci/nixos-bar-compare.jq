@@ -1,10 +1,12 @@
-# Scores one stage-2 run (the slurped cell records, `nixos-bar.bash`) against the committed register ($base,
-# its rows), for the evaluator whose `--version` line is $ev.
+# Scores one replacement-bar run (the slurped cell records, `nixos-bar.bash`; stage 2's `nixos-bar` and stage
+# 3's `hm-bar`) against the committed register ($base, its rows), for the evaluator whose `--version` line is
+# $ev. $label is the program's name, on its PERF and summary lines.
 #
 # A record is `{key, claim?, ref, gen}`, an arm `{refused, v, err?, perf}` (null where the walk has no such
 # node). The verdict is stage 1's (`modules-sh-compare.jq`):
 #   PASS        both arms serve and their values are equal: the drvPath for toplevel / options, the
-#               entry's JSON hash for a doc node; the docs-walk row is PASS iff both walks ran to the end
+#               entry's JSON hash for a doc node, the value's hash for a test; a docs-walk or tests row is
+#               PASS iff both arms ran to the end
 #   PASS-CLASS  both refuse, on a row whose committed `class` literals all occur in gen's refusal; a class
 #               opens `gen-merge: ` and carries no store path, and OVER-REACH is read on every run against
 #               the rows where nixpkgs serves and gen refuses (`modules-sh-compare.jq` gives the rule)
@@ -13,14 +15,14 @@
 # A toplevel or options row carries `"claim":"identity"`: its PASS is one derivation's identity, evidence and
 # never acceptance (ADR-0039). Only those two kinds carry it, and only perf rows carry `perf`.
 #
-# PERF, on toplevel / options / docs-walk rows: `perf.<$ev>.gen.{thunks,bytes}` is an EXACT bound (ADR-0032).
+# PERF, on toplevel / options / docs-walk / tests rows: `perf.<$ev>.gen.{thunks,bytes}` is an EXACT bound (ADR-0032).
 #
-# $mode "check": one line per disagreement and a summary · "perf": one `PERF <json>` line per perf row,
+# $mode "check": one line per disagreement and a summary · "perf": one `PERF <label> <json>` line per perf row,
 # the line `--fold` reads · "write": the new register, $ev's perf merged in · "fold": $base with $perf's
 # lines merged in.
 def id: .key | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
-def perfKind: .key.kind | IN("toplevel", "options", "docs-walk");
+def perfKind: .key.kind | IN("toplevel", "options", "docs-walk", "tests");
 def identityKind: .key.kind | IN("toplevel", "options");
 def hits($c): . as $e | $c | all(. as $l | $e | contains($l));
 def lastErr: (. // "") | split("\n") | map(select(test("^ *error:"))) | last // "(no error line)" | sub("^ +"; "");
@@ -47,7 +49,7 @@ else
         id: ($r | id),
         base: $b,
         got: (
-          if $r.key.kind == "docs-walk" then
+          if $r.key.kind | IN("docs-walk", "tests") then
             (if $r.ref.refused == false and $r.gen.refused == false then "PASS" else "FAIL" end)
           elif $r.ref == null or $r.gen == null then "FAIL"
           elif $r.ref.refused == false and $r.gen.refused == false and $r.ref.v == $r.gen.v then "PASS"
@@ -61,7 +63,7 @@ else
     $runs[]
     | select(perfKind)
     | { gen: .gen.perf, ref: .ref.perf } as $p
-    | "PERF " + ({ key, evaluator: $ev, gen: $p.gen, ref: $p.ref, parity: ($p | parity),
+    | "PERF \($ARGS.named.label) " + ({ key, evaluator: $ev, gen: $p.gen, ref: $p.ref, parity: ($p | parity),
         ratio: (if ($p | parity) == null then null else { thunks: ($p.gen.thunks / $p.ref.thunks), bytes: ($p.gen.bytes / $p.ref.bytes) } end) } | tojson)
   elif $mode == "write" then
     $runs
@@ -92,7 +94,7 @@ else
       + [ $runs[] | select(.base == null) | "UNBASELINED \(.got) \(.id)" ]
       + [ $runs[] | select(.base != null and .base.verdict != .got)
           | (if .got == "FAIL" then "REGRESSED" elif .base.verdict == "FAIL" then "IMPROVED" else "MOVED" end) + " \(.base.verdict) -> \(.got) \(.id)"
-          + (if .got == "FAIL" and .gen.refused == true then " || " + (.gen.err | lastErr) else "" end) ]
+          + (if .got == "FAIL" and .gen.refused == true then " || " + (if .gen.err == null then "(text not read: chunk)" else .gen.err | lastErr end) else "" end) ]
       + [ $base[] | select($seen[id] | not) | "MISSING \(.verdict) \(id)" ]
       + [ $runs[] | select(perfKind and .base != null) | . as $r
           | ($r.base.perf[$ev] // null) as $a
@@ -106,8 +108,15 @@ else
             end ]
     ) as $bad
     | [ $runs[] | select(.key.kind == "doc") ] as $docs
+    | [ $runs[] | select(.key.kind == "test") ] as $tests
     | [ $runs[] | select(identityKind) ] as $idn
-    | ($bad[]),
-      "nixos-bar: \($runs | length) cells, register \($base | length): doc \([$docs[] | select(.got == "PASS")] | length) PASS, \([$docs[] | select(.got == "PASS-CLASS")] | length) PASS-CLASS, \([$docs[] | select(.got == "FAIL")] | length) FAIL; identity (evidence) \([$idn[] | select(.got == "PASS")] | length) PASS, \([$idn[] | select(.got != "PASS")] | length) not; docs-walk \([$runs[] | select(.key.kind == "docs-walk") | .got] | join(",")); \($bad | length) disagreements"
+    | def tally: "\(map(select(.got == "PASS")) | length) PASS, \(map(select(.got == "PASS-CLASS")) | length) PASS-CLASS, \(map(select(.got == "FAIL")) | length) FAIL";
+    ($bad[]),
+      "\($ARGS.named.label): \($runs | length) cells, register \($base | length): doc \($docs | tally)"
+      + (if ($tests | length) > 0 then "; test \($tests | tally)" else "" end)
+      + (if ($idn | length) > 0 then "; identity (evidence) \([$idn[] | select(.got == "PASS")] | length) PASS, \([$idn[] | select(.got != "PASS")] | length) not" else "" end)
+      + "; docs-walk \([$runs[] | select(.key.kind == "docs-walk") | .got] | join(","))"
+      + (if ($tests | length) > 0 then "; tests \([$runs[] | select(.key.kind == "tests") | .got] | join(","))" else "" end)
+      + "; \($bad | length) disagreements"
   end
 end

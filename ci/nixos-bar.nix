@@ -46,7 +46,7 @@
 #
 # COST: as `modules-sh.nix`'s: the process-plane step's budget is 20 minutes per column; a run over it is
 # not a red, and its remedy is sharding inside the process plane. The whole run has a deadline
-# (NIXOS_BAR_DEADLINE, seconds, default 3600) and each evaluation 1200 s.
+# (BAR_DEADLINE, seconds, default 3600) and each evaluation 1200 s.
 { pkgs, inputs }:
 let
   # Strings, not path literals: a path interpolated into a string is copied to the store, which
@@ -77,10 +77,12 @@ pkgs.writeShellApplication {
     pkgs.jq
   ];
   text = ''
-    export NIXOS_BAR_EVAL=${./nixos-bar-eval.nix} NIXOS_BAR_SRCS=${srcs}
-    export NIXOS_BAR_COMPARE=${./nixos-bar-compare.jq} NIXOS_BAR_DOCS=${./nixos-bar-docs.jq}
-    export NIXOS_BAR_RATCHET=${./modules-sh-ratchet.jq} NIXOS_BAR_BASE=${./nixos-bar-baseline.jsonl}
-    export NIXOS_BAR_NIXPKGS=${inputs.nixpkgs.rev or inputs.nixpkgs.narHash}
+    export BAR_NAME=nixos-bar BAR_EVAL=${./nixos-bar-eval.nix} BAR_SRCS=${srcs}
+    export BAR_COMPARE=${./nixos-bar-compare.jq} BAR_DOCS=${./nixos-bar-docs.jq}
+    export BAR_RATCHET=${./modules-sh-ratchet.jq} BAR_BASE=${./nixos-bar-baseline.jsonl}
+    export BAR_NIXPKGS=${inputs.nixpkgs.rev or inputs.nixpkgs.narHash}
+    # shellcheck disable=SC1091
+    source ${./nixos-bar-cells.bash}
     # shellcheck disable=SC1091
     source ${./nixos-bar.bash}
   '';

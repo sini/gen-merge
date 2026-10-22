@@ -1,0 +1,51 @@
+--- a/docs/default.nix
++++ b/docs/default.nix
+@@ -156,15 +156,11 @@
+           config = lib.listToAttrs (map poisonAttr (lib.filter (n: n != "_module") (lib.attrNames options)));
+         };
+ 
+-      inherit
+-        (
+-          (docsLib.evalModules {
+-            modules = modules ++ [ poisonModule ];
+-            class = "homeManager";
+-          })
+-        )
+-        options
+-        ;
++      docsEval = docsLib.evalModules {
++        modules = modules ++ [ poisonModule ];
++        class = "homeManager";
++      };
++      inherit (docsEval) options;
+     in
+     pkgs.buildPackages.nixosOptionsDoc (
+       {
+@@ -199,7 +195,8 @@
+         "modules"
+         "includeModuleSystemOptions"
+       ]
+-    );
++    )
++    // { inherit docsEval; };
+ 
+   hmOptionsDocs = buildOptionsDocs {
+     modules =
+@@ -318,5 +315,5 @@
+   );
+ 
+   # Unstable, for tests.
+-  _internal = { inherit docsLib; };
++  _internal = { inherit docsLib hmOptionsDocs nixosOptionsDocs nixDarwinOptionsDocs; };
+ }
+--- a/tests/default.nix
++++ b/tests/default.nix
+@@ -166,7 +166,7 @@
+   inherit (pkgs.stdenv.hostPlatform) isDarwin;
+   inherit (pkgs.stdenv.hostPlatform) isLinux;
+ in
+-import nmtSrc {
++(a: a // { inherit nmtSrc; }) {
+   inherit lib pkgs modules;
+   testedAttrPath = [
+     "home"

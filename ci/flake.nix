@@ -22,6 +22,15 @@
     # test modules use — including the evalModules-equivalence ORACLE's reference side (spec §3).
     # The library itself (../lib) is nixpkgs-lib-free (ci/tests/purity.nix enforces this).
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
+    # The replacement bar's stage-3 subject (ADR-0039, `hm-bar.nix`): home-manager's source tree, its
+    # test suite and its option docs, evaluated on the nixpkgs above. A REFERENCE pin, as nixpkgs is:
+    # environment both arms evaluate, never the change under test. `flake = false`: the arm reads the
+    # tree and never the flake's outputs, so the lock gains this one node and home-manager's own nixpkgs
+    # pin has no node to enter through. master tracks nixpkgs unstable, as the input above does.
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      flake = false;
+    };
   };
 
   outputs =
