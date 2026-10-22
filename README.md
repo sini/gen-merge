@@ -3545,8 +3545,12 @@ would pass it is den-hoag-refusal-class-consumer-throw-ovyos's. home-manager's N
 integration (`tests/integration`, a VM run), the darwin suite and the release branches are not in
 this arm.
 
-An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green. At
-home-manager `ec80131` the serving perf rows are all above parity.
+An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green: admitted is
+not approved. At home-manager `ec80131`, on CI's three evaluators, the `nixos` and `darwin`
+`docs-walk` rows are NOT MET at ×1.023 nixpkgs' thunks; the `hm` `docs-walk` and the `tests` row have
+no serving gen arm (R1 refuses every test, and the hm walk aborts), so their parity is unread until
+R1 lands, not met. Past the reach scout's probe stubs, which are not the fixes, the hm walk read
+×1.385 and the chunked suite ×2.29.
 
 ```sh
 nix run ./ci#hm-bar -- --write-baseline F

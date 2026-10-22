@@ -5655,9 +5655,9 @@
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.useUserPackages","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.users","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.verbose","n":0},"verdict":"PASS"}
-{"key":{"kind":"docs-walk","set":"darwin"},"verdict":"PASS"}
-{"key":{"kind":"docs-walk","set":"hm"},"verdict":"FAIL"}
-{"key":{"kind":"docs-walk","set":"nixos"},"verdict":"PASS"}
+{"key":{"kind":"docs-walk","set":"darwin"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":94325,"bytes":34706379,"ms":198},"ref":{"thunks":92217,"bytes":34608617,"ms":171}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":94325,"bytes":35902920,"ms":255},"ref":{"thunks":92217,"bytes":35748464,"ms":431}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":93504,"bytes":37226450,"ms":236},"ref":{"thunks":91396,"bytes":37126704,"ms":197}}}}
+{"key":{"kind":"docs-walk","set":"hm"},"verdict":"FAIL","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":null,"ref":{"thunks":2211026,"bytes":147332092,"ms":816}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":null,"ref":{"thunks":2211026,"bytes":148986248,"ms":1065}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":null,"ref":{"thunks":2210037,"bytes":117601347,"ms":930}}}}
+{"key":{"kind":"docs-walk","set":"nixos"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":94553,"bytes":34721104,"ms":195},"ref":{"thunks":92415,"bytes":34619419,"ms":172}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":94553,"bytes":35918520,"ms":248},"ref":{"thunks":92415,"bytes":35760136,"ms":448}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":93732,"bytes":37236775,"ms":224},"ref":{"thunks":91594,"bytes":37134898,"ms":207}}}}
 {"key":{"kind":"test","name":"abaddon-example-config"},"verdict":"FAIL"}
 {"key":{"kind":"test","name":"abook-no-settings"},"verdict":"FAIL"}
 {"key":{"kind":"test","name":"abook-with-settings"},"verdict":"FAIL"}
@@ -7521,4 +7521,4 @@
 {"key":{"kind":"test","name":"zsh-xdg-disabled"},"verdict":"FAIL"}
 {"key":{"kind":"test","name":"zsh-zprof"},"verdict":"FAIL"}
 {"key":{"kind":"test","name":"zshrc-contents-priorities"},"verdict":"FAIL"}
-{"key":{"kind":"tests"},"verdict":"PASS"}
+{"key":{"kind":"tests"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":null,"ref":null},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":null,"ref":null},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":null,"ref":null}}}
