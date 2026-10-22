@@ -310,7 +310,7 @@ in
   result.config                     # ⇒ { name = "pinned"; }
 ```
 
-`evalModuleTree { specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; class ? null } modules → { config; options; type; provenance; undeclared; deprecations; _type; class; extendModules; graph }`. `class` is nixpkgs' nominal module class: every module reads it as its `_class` argument, and a requested class refuses a loaded module stating another (a removed module and one that loses its key to another included, as nixpkgs loads both). `extendModules` re-evaluates with modules appended (also a module argument), `graph` is nixpkgs' import tree (`disabled` marks a removed node), and `_type` is `"configuration"`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
+`evalModuleTree { specialArgs ? {}; check ? true; prefix ? []; coreShortCircuit ? false; warmFrom ? null; editedModules ? []; class ? null } modules → { config; options; _module; type; provenance; undeclared; deprecations; _type; class; extendModules; graph }`. `config`, `options` and `_module` are read through the evaluation's one refusal, as nixpkgs' `checked` reads its three: an undeclared definition under `_module.check`, or a refusing `_module.check` or `_module.freeformType`, refuses each of them. `_module` is the module-visible record (`args`, `check`, `freeformType`, `specialArgs`). `class` is nixpkgs' nominal module class: every module reads it as its `_class` argument, and a requested class refuses a loaded module stating another (a removed module and one that loses its key to another included, as nixpkgs loads both). `extendModules` re-evaluates with modules appended (also a module argument), `graph` is nixpkgs' import tree (`disabled` marks a removed node), and `_type` is `"configuration"`. `.config` is the merged output; `.options` is the merged descriptor map (introspection,
 no nixpkgs eval); `.type` carries a `.merge` so a tree nests inside a parent tree (submodule
 recursion) — and it is an option type named `submodule`, which a real nixpkgs `lib.evalModules`
 mounts (see below);
@@ -770,7 +770,7 @@ adversarial suite fixture (a marked module that `@`-captures config, asserted to
 pin it. The two internal memo fields `freeformConfig` / `freeformProv` on the result let a CHAINED warm
 (warmFrom = a warm result) reuse the freeform layer directly.
 
-**Result surface.** The public result is `config` / `options` / `provenance` / `undeclared` /
+**Result surface.** The public result is `config` / `options` / `_module` / `provenance` / `undeclared` /
 `deprecations` (+ `type`);
 `warmDecision` (the decision trace) and `freeformConfig` / `freeformProv` (the freeform memo layers)
 are internal fields — additive, threaded between chained evals, not part of the byte-identity contract.
@@ -869,17 +869,17 @@ and the **export environment**. So do its functions.
 
 The two vocabularies, kept apart on purpose:
 
-| gen-native            | what it is                                                            | the foreign field(s) it derives                     |
-| --------------------- | --------------------------------------------------------------------- | --------------------------------------------------- |
-| `name`                | the type's name                                                       | `name`, `description`, `descriptionClass`           |
-| `verify` / `admits`   | value predicate (`v -> null \| err`) / domain predicate (`v -> bool`) | `check`                                             |
-| `mergeDefs`           | definition fold, `loc -> defs -> value`                               | `merge`                                             |
-| `whenEmpty`           | what it is worth when nobody defined it                               | `emptyValue`                                        |
-| `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another               | `nestedTypes`, `getSubModules`                      |
-| `unroledNested`       | an imported record's `nestedTypes` keys that name no role, verbatim   | `nestedTypes`                                       |
-| `substructure`        | `{ declares; modules; rebuild; }`                                     | `getSubOptions`, `getSubModules`, `substSubModules` |
-| `typeMergeRel`        | the **row-free** type-merge relation (one carve-out, see below)       | `typeMerge`, `functor`                              |
-| `deprecated`          | the deprecation message, if any                                       | `deprecationMessage`                                |
+| gen-native            | what it is                                                            | the foreign field(s) it derives                                    |
+| --------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `name`                | the type's name                                                       | `name`, `description`, `descriptionClass`                          |
+| `verify` / `admits`   | value predicate (`v -> null \| err`) / domain predicate (`v -> bool`) | `check`                                                            |
+| `mergeDefs`           | definition fold, `loc -> defs -> value`                               | `merge`                                                            |
+| `whenEmpty`           | what it is worth when nobody defined it                               | `emptyValue`                                                       |
+| `carries` / `recarry` | what it wraps, by ROLE, and how to rebuild over another               | `nestedTypes`, `getSubModules`                                     |
+| `unroledNested`       | an imported record's `nestedTypes` keys that name no role, verbatim   | `nestedTypes`                                                      |
+| `substructure`        | `{ declares; modules; rebuild; freeformType; }`                       | `getSubOptions`, `getSubModules`, `substSubModules`, `description` |
+| `typeMergeRel`        | the **row-free** type-merge relation (one carve-out, see below)       | `typeMerge`, `functor`                                             |
+| `deprecated`          | the deprecation message, if any                                       | `deprecationMessage`                                               |
 
 `exportType` publishes a **partition of the fourteen** as data (`exportClasses`), so it can be read
 rather than argued: **11 DERIVED** (a real translation from a differently-named gen datum;
@@ -2047,7 +2047,7 @@ triple. Every protocol field is then derived by `exportType` as for any gen type
 | `name`                                              | `submodule`, nixpkgs' name for a type whose definitions are modules: nixpkgs merges raw sub-option declarations into an option whose type is named `submodule` (`mergeModules'`), and its container phrases and refusals read so                                                                                                                             |
 | `functor.payload`                                   | nixpkgs' `submoduleWith` payload, `{ modules; specialArgs; shorthandOnlyDefinesConfig; description; class; }`, published for both nesting types (`false` for the tree, `true` for `submodule`), so nixpkgs' `binOp` and raw-option merge read what they read off its own                                                                                     |
 | `typeMerge`                                         | the relation: two trees union their module sets in authored order, as nixpkgs' `binOp` does, and merge `specialArgs`, refusing a key both state. A tree and a `submodule` refuse each other by name, naming the reading that differs, as nixpkgs refuses the pair. A foreign `submoduleWith` partner is joined in its own functor's relation, in both orders |
-| `description`, `nestedTypes`, `getSubOptions`       | the freeform datum crosses: the tree's resolved freeform type (`unroledNested.freeformType`) gives nixpkgs' "open submodule of …", `nestedTypes.freeformType` and `_freeformOptions`                                                                                                                                                                         |
+| `description`, `nestedTypes`, `getSubOptions`       | the freeform datum crosses, each through nixpkgs' refusal: the base's (`unroledNested.freeformType`, its empty value forced first) gives `nestedTypes.freeformType`, the documentation evaluation's (`substructure.freeformType`) nixpkgs' "open submodule of …" and `_freeformOptions`                                                                      |
 | `getSubOptions`, `getSubModules`, `substSubModules` | the tree's declarations under the foreign prefix, its module set, and its rebuild over another                                                                                                                                                                                                                                                               |
 | `check`, `merge`, `emptyValue`                      | the module-value domain, the fold through the bridge (one root evaluation of the tree), and the tree over no definitions                                                                                                                                                                                                                                     |
 

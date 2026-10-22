@@ -6921,7 +6921,11 @@ let
           admits = isModuleValue;
           shorthandOnlyDefinesConfig = false;
           inherit nests specialArgs;
-          unroledNested = if freeform == null then { } else { freeformType = freeform; };
+          # nixpkgs' `base._module.freeformType`, read through the base evaluation's refusal: the fold over no
+          # definitions is that base (`emptyTree`, as nixpkgs' `emptyValue.value = base.config`).
+          unroledNested = builtins.seq emptyTree.value (
+            if freeform == null then { } else { freeformType = freeform; }
+          );
           carries.moduleSet = moduleSet;
           recarry =
             c:
@@ -7002,6 +7006,21 @@ let
                   class
                   ;
               }).options;
+            # the documentation evaluation's freeform type, through its refusal: nixpkgs' `description` and
+            # `getSubOptions` read `docsEval._module.freeformType`. The nested door: reading `_module` needs no
+            # positions
+            freeformType =
+              (evalModuleTreeNested {
+                modules = moduleSet ++ [
+                  noCheckForDocsModule
+                  namePlaceholder
+                ];
+                inherit
+                  specialArgs
+                  check
+                  class
+                  ;
+              })._module.freeformType;
             rebuild = over;
           };
         };
@@ -8956,7 +8975,7 @@ let
       body
     else
       {
-        # ── the refusal's ONE forcing site ────────────────────────────────────────────────────────
+        # ── the refusal's forcing sites: `config` here, `options` and `_module` below ─────────────
         # Interposed on the EXPORTED config, never on `result.config`. The two are the same value, and
         # the difference is who reads which: modules inside the fixpoint see `result.moduleConfig`,
         # which is built FROM the unchecked config, so seq-ing the identity verdict onto the inner binding
@@ -9011,12 +9030,17 @@ let
           let
             entries = prelude.imap0 declEntry result._flat;
           in
-          moduleOwn.serve prefix result.optionDefs.moduleOwn (
+          # Read through this evaluation's refusal, as nixpkgs' `options = checked options`: `result.config`'s
+          # WHNF is `_orphanCheck`.
+          builtins.seq result.config moduleOwn.serve prefix result.optionDefs.moduleOwn (
             serveOptions (declaringSitesAt (length prefix) entries) [ ] prefix result.provenance
               result.optionDefs.defs
               (builtins.seq result.identityHeld result.optionDefs.values)
               result.options
           );
+        # nixpkgs' `_module = checked config._module`: the module-visible `_module` its modules read,
+        # behind the same refusal.
+        _module = builtins.seq result.config result.moduleConfig._module;
         inherit (result)
           provenance
           # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —

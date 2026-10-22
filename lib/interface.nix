@@ -7756,7 +7756,14 @@ let
   # declared sub-options. Both are read only when
   # the field is, and an argument is evaluated only when read, so a type that is never described
   # abroad never resolves its freeform type here.
-  freeformOf = t: (t.unroledNested or { }).freeformType or null;
+  # A nesting type states its documentation evaluation's apart (`substructure.freeformType`): nixpkgs' docs
+  # reads go through that evaluation's refusal, `nestedTypes` through the base's.
+  freeformOf =
+    t:
+    if t ? substructure.freeformType then
+      t.substructure.freeformType
+    else
+      (t.unroledNested or { }).freeformType or null;
 
   # ── THE DOCS PHRASE (den-hoag-type-description-parity-5k1l1) ──────────────────────────────────
   # nixpkgs describes a type by a phrase and a class saying where the phrase needs parentheses, and
