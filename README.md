@@ -3471,7 +3471,10 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   counters for a refusing evaluation, on either tree. So stage 1's "perf at or under nixpkgs" is a claim
   over 259 assertions, and it says nothing about what a refusal costs. An `above-parity` row is the
   bar's perf criterion NOT MET, even when CI is green because the ratchet admitted its rise: admitted
-  is not approved.
+  is not approved. At nixpkgs `02c087f3` on gen-merge `082c47a`, on CI's three evaluators, every one of
+  the 259 rows is NOT MET: gen's thunks run from ×1.085 to ×55.364 nixpkgs' (median ×2.101, a median
+  of 2325 more thunks per assertion), and its bytes at a median of ×1.875 (Nix), ×2.029 (Determinate)
+  and ×2.080 (Lix).
 
 - **The register's perf** is written from CI's own columns, as stage 2's is (`--fold`). The local
   process plane reads it only on an evaluator whose `--version` line is one of CI's (Determinate
