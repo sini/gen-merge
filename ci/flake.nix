@@ -157,6 +157,20 @@
           memo = genMemo;
           scope = genScope;
         };
+      # The replacement bar's bridge itself (`modules-sh-lib.nix`, the file stages 1-3 run): nixpkgs'
+      # `lib` with `evalModules` replaced by this engine, wired as `modules-sh.nix` wires it. A cell
+      # over it reads what the bar's modules read, so an edit to the bridge moves the cell.
+      modulesShLib = import ./modules-sh-lib.nix {
+        orig = nixpkgsLib;
+        libSrc = ../lib;
+        genPreludeSrc = inputs.gen-prelude;
+        genIdentitySrc = inputs.gen-scope.inputs.gen-identity;
+        genGraphSrc = inputs.gen-scope.inputs.gen-graph;
+        genTypesSrc = inputs.gen-types;
+        genAlgebraSrc = inputs.gen-types.inputs.gen-algebra;
+        genMemoSrc = inputs.gen-memo;
+        genScopeSrc = inputs.gen-scope;
+      };
       # The comparison machinery, bound once so the differential suite and any later consumer read
       # the same instrument. `lib` (nixpkgs, harness-supplied) is the REFERENCE side there, exactly
       # as it is for the equivalence oracle — the two instruments assert over one reference by
@@ -194,6 +208,7 @@
           genMergeWithMemo
           genMergeWithScope
           genMergeWithLib
+          modulesShLib
           genMemo
           genTypesFlake
           genScope
