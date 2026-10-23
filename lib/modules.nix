@@ -3034,7 +3034,8 @@ let
           }
         ) (moduleEntries callM importer mods);
       # The reference's load-time checks over occurrences: `unifyModuleSyntax`'s (`moduleSyntaxChecked`)
-      # and `checkModule`'s class, the class read as the module argument `_class` the guard supplies.
+      # and `checkModule`'s class, the class read as the key `_class` `declarationStratumWith` hands the
+      # collection (its `class`, under a caller's own `_class`).
       checked =
         specialArgs: occ:
         all (e: isAttrs (moduleSyntaxChecked e) && classOk (specialArgs._class or null) e) occ;
@@ -5811,6 +5812,12 @@ let
   # them, for the next pass; a set that declares `options._module` publishes none, so its arguments
   # stay refused rather than read without the `apply` the value stratum runs. One argument and not a
   # second key or a curried flag: every nested evaluation's guard pays for either.
+  #
+  # `class`: the evaluation's, as at `evalModuleTreeWith`. It is the `_class` every declaring module
+  # reads and the class the collection's load check (`removal.walk.checked`) holds modules to; the
+  # check reads it as the key `_class` of the set the collection is handed, the caller's own key first.
+  # It is its own field rather than a key the guard adds to `specialArgs`, because `declArgs` serves
+  # `specialArgs` itself, and nixpkgs serves the caller's set there.
   declarationStratumWith =
     positioned: onRedeclare:
     {
@@ -5819,6 +5826,7 @@ let
       prefix ? [ ],
       optionsView ? null,
       root ? null,
+      class ? null,
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -5833,7 +5841,11 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = moduleClosure specialArgs (m: m) root modules;
+        flat =
+          if class == null then
+            moduleClosure specialArgs (m: m) root modules
+          else
+            moduleClosure ({ _class = class; } // specialArgs) (m: m) root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -5867,13 +5879,15 @@ let
         # inline and the key list is built only on the refusing branch: a new binding on this path
         # costs a constant thunk per nested evaluation, which the hub perf-bench prices.
         # nixpkgs' `doCollect` order: the engine's set on the left, the caller's `specialArgs` on the
-        # right, so a caller's `lib`, `_class` or `_prefix` wins as there (den-hoag-61r97).
+        # right, so a caller's `lib`, `_class`, `_prefix` or `specialArgs` wins as there (den-hoag-61r97).
+        # `specialArgs` is nixpkgs' base argument of that name: the caller's set, as handed to this
+        # evaluation, with no key the engine adds (den-hoag-specialargs-module-arg-b01wy).
         declArgs =
           (
             if positioned then
               if lib == null then
                 {
-                  _class = null;
+                  _class = class;
                   _prefix = prefix;
                   config = inadmissible "config" "read `config'";
                   options =
@@ -5881,13 +5895,13 @@ let
                       inadmissible "options" "read `options'"
                     else
                       optionsView.options;
-                  inherit prefix;
+                  inherit prefix specialArgs;
                   name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
                 }
               else
                 {
                   inherit lib;
-                  _class = null;
+                  _class = class;
                   _prefix = prefix;
                   config = inadmissible "config" "read `config'";
                   options =
@@ -5895,12 +5909,12 @@ let
                       inadmissible "options" "read `options'"
                     else
                       optionsView.options;
-                  inherit prefix;
+                  inherit prefix specialArgs;
                   name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
                 }
             else if lib == null then
               {
-                _class = null;
+                _class = class;
                 _prefix = prefix;
                 config = inadmissible "config" "read `config'";
                 options =
@@ -5908,12 +5922,12 @@ let
                     inadmissible "options" "read `options'"
                   else
                     optionsView.options;
-                inherit prefix;
+                inherit prefix specialArgs;
               }
             else
               {
                 inherit lib;
-                _class = null;
+                _class = class;
                 _prefix = prefix;
                 config = inadmissible "config" "read `config'";
                 options =
@@ -5921,7 +5935,7 @@ let
                     inadmissible "options" "read `options'"
                   else
                     optionsView.options;
-                inherit prefix;
+                inherit prefix specialArgs;
               }
           )
           // (
@@ -5987,7 +6001,11 @@ let
           else
             notAModule m;
 
-        flat = moduleClosure specialArgs callD root modules;
+        flat =
+          if class == null then
+            moduleClosure specialArgs callD root modules
+          else
+            moduleClosure ({ _class = class; } // specialArgs) callD root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -6776,23 +6794,15 @@ let
               t: all (v: !(isAttrs v) || (v._type or null) == "option" || spine v) (builtins.attrValues t);
           in
           let
-            s = (if knot.positioned then declarationSpinePositioned else declarationSpine) (
-              {
-                inherit specialArgs prefix root;
-                modules = modList;
-              }
-              // (
-                if class == null then
-                  { }
-                else
-                  {
-                    specialArgs = {
-                      _class = class;
-                    }
-                    // specialArgs;
-                  }
-              )
-            );
+            s = (if knot.positioned then declarationSpinePositioned else declarationSpine) ({
+              inherit
+                specialArgs
+                prefix
+                root
+                class
+                ;
+              modules = modList;
+            });
           in
           if s ? flat then
             builtins.seq (spine s.options) s
@@ -6800,25 +6810,12 @@ let
             s
           else
             (r: if r == true then s else s // r) (
-              stagedDeclarations knot.positioned (
-                {
-                  # no `root`: the passes decide admission only, and a refusal naming a module's file is
-                  # raised first by the spine's own collection (`s`)
-                  inherit specialArgs prefix;
-                  modules = modList;
-                }
-                // (
-                  if class == null then
-                    { }
-                  else
-                    {
-                      specialArgs = {
-                        _class = class;
-                      }
-                      // specialArgs;
-                    }
-                )
-              ) s
+              stagedDeclarations knot.positioned ({
+                # no `root`: the passes decide admission only, and a refusal naming a module's file is
+                # raised first by the spine's own collection (`s`)
+                inherit specialArgs prefix class;
+                modules = modList;
+              }) s
             );
 
       typeOver =
@@ -7100,7 +7097,7 @@ let
                     # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
                     # parity); the returned `result.config` stays `_module`-free.
                     config = result.moduleConfig;
-                    inherit prefix;
+                    inherit prefix specialArgs;
                     name =
                       specialArgs.name
                         or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
@@ -7117,7 +7114,7 @@ let
                     # Modules see the `_module`-bearing view so `config._module.args` resolves (nixpkgs
                     # parity); the returned `result.config` stays `_module`-free.
                     config = result.moduleConfig;
-                    inherit prefix;
+                    inherit prefix specialArgs;
                     name =
                       specialArgs.name
                         or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
@@ -7131,7 +7128,7 @@ let
                       result.options
                   );
                   config = result.moduleConfig;
-                  inherit prefix;
+                  inherit prefix specialArgs;
                 }
               else
                 {
@@ -7143,7 +7140,7 @@ let
                       result.options
                   );
                   config = result.moduleConfig;
-                  inherit prefix;
+                  inherit prefix specialArgs;
                 }
             )
             // (
