@@ -4497,9 +4497,9 @@ let
   # as nixpkgs' `emptyValue` is `base.config`.
   emptyTreeAt =
     m: site:
-    evalModuleTreeWith knotRoot m.carried m.inherited (
+    closedRoot m.carried m.inherited (
       {
-        modules = site.nests.modules ++ [ namePlaceholder ];
+        modules = site.nests.modules;
         inherit (site.nests) coreShortCircuit;
         inherit (site.nests.empty) prefix specialArgs check;
       }
@@ -6533,33 +6533,23 @@ let
     # are a definition at `mkOptionDefault` there as they are under one empty definition, or the empty
     # value would beat a later `mkDefault` at the default priority (den-hoag-5ov3p gate C1).
     else if p.defs == [ ] then
-      (
-        if n.partial or false then
-          evalModuleTreeWith (knotChild // { partial = true; })
-        else
-          evalModuleTreeWith knotChild
-      )
-        m.carried
-        m.inherited
-        (
-          {
-            modules = n.modules ++ [ namePlaceholder ];
-            inherit (n) coreShortCircuit;
-            root =
-              if p.group.root == null then
-                null
-              else
-                p.group.root
-                // {
-                  nests = n;
-                  collected = [ namePlaceholder ] ++ n.modules;
-                };
-            inherit (n.empty) prefix specialArgs check;
-          }
-          // (if (n.class or null) == null then { } else { inherit (n) class; })
-        )
-        self
-        (self.get id knotAttr)
+      (if n.partial or false then closedChildPartial else closedChild) m.carried m.inherited (
+        {
+          inherit (n) modules;
+          inherit (n) coreShortCircuit;
+          root =
+            if p.group.root == null then
+              null
+            else
+              p.group.root
+              // {
+                nests = n;
+                collected = [ namePlaceholder ] ++ n.modules;
+              };
+          inherit (n.empty) prefix specialArgs check;
+        }
+        // (if (n.class or null) == null then { } else { inherit (n) class; })
+      ) self (self.get id knotAttr)
     # A nesting type that declares `nests.declAt` receives each seed's declaration address
     # (`seedDeclAts`), in its own call; every other child is built exactly as before, with no `declAt`
     # attribute and no `if` operand in its `modules`. The chosen call is applied once, outside the
@@ -6633,12 +6623,14 @@ let
   # exposed to this library's suites, and the declaration-only plain knot a type's `declares` reads
   # (it folds no value, so it holds no child). A child's knot is its own node (`childTree`). `partial`: the
   # evaluation's declared options fold partially (the realizer's `mergeOption`); only `childTree` sets it.
+  # `closed`: the tree is closed by the name placeholder; only `closedTree` sets it.
   knotChild = {
     partial = false;
     mints = true;
     exposes = false;
     inner = true;
     positioned = false;
+    closed = false;
     drive = null;
   };
   # A nested tree over definitions at a position: the sets its modules are applied to hold the
@@ -6654,6 +6646,7 @@ let
     exposes = false;
     inner = false;
     positioned = false;
+    closed = false;
     drive = driveKnot;
   };
   knotRoot = {
@@ -6662,17 +6655,34 @@ let
     exposes = false;
     inner = false;
     positioned = false;
+    closed = false;
     drive = driveKnotMinting false;
   };
   knotRootPositioned = knotRoot // {
     positioned = true;
   };
+  # THE ONE WAY a tree is closed by the name placeholder: its module set gains `namePlaceholder` last and its knot
+  # states it, in one act, so `_own.holds` reads the knot and compares no module value (den-hoag-p16jh).
+  # Applied to its knot once, at a binding below, so a call pays no knot of its own.
+  closedTree =
+    knot:
+    let
+      k = knot // {
+        closed = true;
+      };
+    in
+    carried: inherited: r:
+    evalModuleTreeWith k carried inherited (r // { modules = r.modules ++ [ namePlaceholder ]; });
+  closedRoot = closedTree knotRoot;
+  closedChild = closedTree knotChild;
+  closedChildPartial = closedTree (knotChild // { partial = true; });
   knotExposed = {
     partial = false;
     mints = true;
     exposes = true;
     inner = false;
     positioned = false;
+    closed = false;
     drive = driveKnotMinting true;
   };
 
@@ -7046,11 +7056,8 @@ let
             modules = moduleSet;
             declares =
               prefix:
-              (evalModuleTreeUnchecked {
-                modules = moduleSet ++ [
-                  noCheckForDocsModule
-                  namePlaceholder
-                ];
+              (evalModuleTreeClosed {
+                modules = moduleSet ++ [ noCheckForDocsModule ];
                 inherit
                   prefix
                   specialArgs
@@ -7062,11 +7069,8 @@ let
             # `getSubOptions` read `docsEval._module.freeformType`. The nested door: reading `_module` needs no
             # positions
             freeformType =
-              (evalModuleTreeNested {
-                modules = moduleSet ++ [
-                  noCheckForDocsModule
-                  namePlaceholder
-                ];
+              (evalModuleTreeNestedClosed {
+                modules = moduleSet ++ [ noCheckForDocsModule ];
                 inherit
                   specialArgs
                   check
@@ -8992,7 +8996,8 @@ let
           # module set (`typeOver`), so the two place the name modules by one derivation: how many leading
           # modules are the type's own (`nOwn`), and whether the last is the name placeholder (`holds`). An
           # inner child's seeds are its position's definitions, the trailing top-level modules; the export
-          # bridge's child's are on its knot (`nestedTreeAt`).
+          # bridge's child's are on its knot (`nestedTreeAt`). `holds` is the knot's too (`closedTree`):
+          # comparing the last module by `==` would force its values in the evaluator's symbol order.
           _own =
             let
               nTop = length modList;
@@ -9003,7 +9008,7 @@ let
                   knot.seeds or null;
             in
             {
-              holds = !knot.positioned && nTop > 0 && prelude.last modList == namePlaceholder;
+              holds = knot.closed;
               nOwn =
                 if seeds != null then
                   nTop - seeds
@@ -9217,6 +9222,9 @@ let
   # A NESTED evaluation, made by a nesting type's called fold (`lib/types.nix` `submodule`): it
   # mints nothing, because its tree is a position of the evaluation that holds it.
   evalModuleTreeNested = evalModuleTreeWith knotNested true false;
+  # The two above over a module set their caller closes with the name placeholder.
+  evalModuleTreeClosed = closedRoot true false;
+  evalModuleTreeNestedClosed = closedTree knotNested true false;
 
   # The published door is OPTIONS FIRST, `modules` LAST (den-hoag-7gp66 P2, R7): the closed options
   # set is a `prelude.door`, refused by name and catchably at `evalModuleTree opts`'s own WHNF, so
@@ -9246,6 +9254,8 @@ in
     # has nothing to decide. Not published.
     evalModuleTreeUnchecked
     evalModuleTreeNested
+    evalModuleTreeClosed
+    evalModuleTreeNestedClosed
     evalModuleTreeExposed
     # The stratum-1 fold alone, stamped: the value path's judge of what a gen `submodule` leaf
     # declares, which the door no longer is. Not published (this library's suites).

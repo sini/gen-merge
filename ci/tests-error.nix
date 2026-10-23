@@ -5210,6 +5210,69 @@ in
         };
       };
 
+    # ── A TREE CLOSED BY THE NAME PLACEHOLDER SAYS SO WHEN IT IS BUILT (den-hoag-p16jh) ─────────────────────
+    # Which of a tree's modules is the engine's name placeholder is stated by the binding that appends it
+    # (`closedTree`), as nixpkgs' `submoduleWith` knows its placeholder because it placed it; no module is compared
+    # to find out. A published extension module is read by no one, so its `name`, defined nowhere at the top level
+    # (home-manager's `specialisation`), is never forced, and a user's module equal to the placeholder stays the
+    # user's. RED before the landing: the first refused "module argument `name' is not defined" (a deep `==`
+    # reaching `content` under every symbol order), and the second read the name module first and dropped the
+    # user's.
+    flake.testsError.closed-by-the-name-placeholder =
+      let
+        published =
+          ext:
+          (gm.evalModuleTree { } [
+            (
+              { name, extendModules, ... }:
+              {
+                options.s = gm.mkOption {
+                  type = (extendModules { modules = [ (ext name) ]; }).type;
+                  default = { };
+                };
+              }
+            )
+          ]).options.s.type.getSubModules;
+        argsOf =
+          m:
+          if !builtins.isAttrs m then
+            builtins.typeOf m
+          else if m ? imports then
+            map argsOf m.imports
+          else
+            builtins.attrNames m;
+      in
+      {
+        # every pair the old test compared but `content` is the placeholder's, so it forced `name` in every order
+        test-an-extension-reading-an-undefined-name-is-published-unread = {
+          expr = builtins.length (
+            published (name: {
+              _file = "<unknown-file>";
+              _module.args.name = gm.mkOptionDefault name;
+            })
+          );
+          expected = 2;
+        };
+        # nixpkgs' order: the evaluation's own module, then the user's
+        test-a-module-equal-to-the-placeholder-stays-the-users = {
+          expr = map argsOf (
+            published (_: {
+              _file = "<unknown-file>";
+              _module.args.name = gm.mkOptionDefault "‹name›";
+            })
+          );
+          expected = [
+            [ "lambda" ]
+            [
+              [
+                "_file"
+                "_module"
+              ]
+            ]
+          ];
+        };
+      };
+
     # ── `submodule`'s `name`: WHICH refusal fires (den-hoag-fpxsd) ──────────────────────────────
     # The value plane (`nixpkgs-protocol` `test-submodule-name-*`) holds THAT nixpkgs and gen both
     # refuse; these hold WHY, so a refusal for an unrelated reason cannot pass. Two definitions of

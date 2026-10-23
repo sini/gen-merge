@@ -381,14 +381,20 @@ is not resolved by the evaluation (arm (B), owner ruling 2026-09-28).
 - A child's PUBLISHED module set (`moduleType`, `getSubModules`, the base of `extendModules`) is nixpkgs'
   `regularModules`, built in `typeOver` from the `_module.args` record's own grouping (`_own`); the
   evaluation's own module list is unchanged (den-hoag-1k5mi). ★ An evaluation passed a `root` must be
-  positioned or end in `namePlaceholder`; any other refuses by name when its set is read. Cells:
+  positioned or closed by the name placeholder; any other refuses by name when its set is read. Cells:
   `ci/tests/published-module-set.nix`, `ci/tests-error.nix` `published-module-set` and
   `located-evaluation-is-named`, the process row `reuse-cost-*` (gen/ref \<= 1, ADR-0032).
+- A tree is CLOSED by the name placeholder only through `closedTree`, which appends `namePlaceholder` last and
+  states `closed` on the evaluation's knot in one act; `_own.holds` reads the knot, as nixpkgs' `submoduleWith`
+  knows its placeholder because it placed it. No module is compared to find out: a deep `==` forced the last
+  module's values in the evaluator's symbol order (home-manager's `specialisation`, an undefined `name`) and took a
+  user's module equal to the placeholder for the engine's (den-hoag-p16jh). Cells: `ci/tests-error.nix`
+  `closed-by-the-name-placeholder`.
 - A DOCUMENTATION evaluation (`substructure.declares`, nixpkgs' `getSubOptions`) runs over the set ++
-  `[ noCheckForDocsModule namePlaceholder ]` at both bindings (`mkSubmodule` in `lib/types.nix`, `typeOver` in
-  `lib/modules.nix`): nixpkgs' literal module, `_module.check = mkForce false` (den-hoag-47pw5). ★ The module goes
-  BEFORE the placeholder: `_own.holds` reads the last module as `namePlaceholder`, and after it the published set
-  places the placeholder wrong. Cells: `ci/tests/docs-evaluation.nix`, `ci/tests/published-module-set.nix` `*-docs-sm`.
+  `[ noCheckForDocsModule ]`, closed by the name placeholder (`evalModuleTreeClosed`), at both bindings
+  (`mkSubmodule` in `lib/types.nix`, `typeOver` in `lib/modules.nix`): nixpkgs' literal module,
+  `_module.check = mkForce false` (den-hoag-47pw5). ★ The module goes BEFORE the placeholder, which
+  `closedTree` appends last; after it the published set places the placeholder wrong. Cells: `ci/tests/docs-evaluation.nix`, `ci/tests/published-module-set.nix` `*-docs-sm`.
 - Enumerating a deep node set (`allNodeIds`) is gen-scope's, and it grows exponentially with nesting
   depth at gen-scope `d62b595`; read values through the fold, not by enumerating.
 

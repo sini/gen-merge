@@ -41,8 +41,6 @@ let
     imap0
     ;
   inherit (core)
-    evalModuleTreeNested
-    namePlaceholder
     noCheckForDocsModule
     calledNestingRefusal
     mergeDefs
@@ -1016,8 +1014,8 @@ let
       # through its refusal (`nestedTypes.freeformType`), and the documentation evaluation's for the
       # docs reads (`substructure.freeformType`), whose refusal is the docs module's.
       freeform =
-        (core.evalModuleTreeNested {
-          modules = mods ++ [ namePlaceholder ];
+        (core.evalModuleTreeNestedClosed {
+          modules = mods;
           inherit (nests.empty) prefix specialArgs check;
         })._module.freeformType;
     in
@@ -1187,21 +1185,15 @@ let
             # trees.
             declares =
               prefix:
-              (core.evalModuleTreeUnchecked {
-                modules = mods ++ [
-                  noCheckForDocsModule
-                  namePlaceholder
-                ];
+              (core.evalModuleTreeClosed {
+                modules = mods ++ [ noCheckForDocsModule ];
                 inherit prefix;
                 specialArgs = args;
                 check = null;
               }).options;
             freeformType =
-              (core.evalModuleTreeNested {
-                modules = mods ++ [
-                  noCheckForDocsModule
-                  namePlaceholder
-                ];
+              (core.evalModuleTreeNestedClosed {
+                modules = mods ++ [ noCheckForDocsModule ];
                 inherit (nests.empty) prefix specialArgs check;
               })._module.freeformType;
             modules = mods;
