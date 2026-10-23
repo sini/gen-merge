@@ -637,7 +637,7 @@ in
               config.c = 3;
             }
           ];
-          files = ms: map (e: e._file) (moduleClosure { } idCallM null ms);
+          files = ms: map (e: e._file) (moduleClosure { } null idCallM null ms);
         in
         {
           full = files (base ++ edited);
