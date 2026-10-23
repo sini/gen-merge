@@ -1,0 +1,59 @@
+{"key":{"kind":"flake","flake":"hce","plane":"names"},"verdict":"PASS"}
+{"key":{"kind":"flake","flake":"nfb","plane":"names"},"verdict":"PASS"}
+{"key":{"kind":"flake-drv","flake":"hce","plane":"packages"},"verdict":"PASS","claim":"identity"}
+{"key":{"kind":"flake-drv","flake":"nfb","plane":"checks"},"verdict":"PASS","claim":"identity"}
+{"key":{"kind":"flake-drv","flake":"nfb","plane":"devShells"},"verdict":"PASS","claim":"identity"}
+{"key":{"kind":"flake-drv","flake":"nfb","plane":"packages"},"verdict":"PASS","claim":"identity"}
+{"key":{"kind":"memo"},"verdict":"FAIL"}
+{"key":{"kind":"template","name":"default"},"verdict":"PASS"}
+{"key":{"kind":"template","name":"multi-module"},"verdict":"PASS"}
+{"key":{"kind":"template","name":"package"},"verdict":"PASS"}
+{"key":{"kind":"template","name":"unfree"},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["bundlers","test: toAppImage bundler"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["bundlers","test: toTarball bundler"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["dogfood","test: importAndPublish consumer"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["dogfood","test: importAndPublish provider"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["easyOverlay","test: exported package in overlay, perSystem invoked for memoized system"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["easyOverlay","test: exported package in overlay, perSystem invoked for non-memoized system"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["easyOverlay","test: hello_new uses final wiring"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["easyOverlay","test: hello_old comes from super"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["easyOverlay","test: non-exported package not in overlay"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["empty","test: empty flake outputs"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["example1","test: full flake output with two systems"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in apps"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in checks"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in devShells"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in formatter"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in legacyPackages"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in nixosConfigurations"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in nixosModules"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in overlays"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable built-in packages"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: disable flakeModule"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: import flakeModule"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["flakeModules","test: import flakeModuleFromFromModules"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["formatter","test: conditional null throws helpful error"]},"verdict":"PASS-CLASS"}
+{"key":{"kind":"unit","path":["formatter","test: empty when never defined"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["formatter","test: lazy per-system"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["formatter","test: present for all systems"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["modules","test: foo module in foo class"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["modules","test: generic module in arbitrary class"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["modules","test: modules in submodule with shorthandOnlyDefinesConfig"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["nixosModules","test: nixosModule evaluates correctly"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["nixosModules","test: nixosModule has _class nixos"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["nixosModules","test: nixosModule has correct _file"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["perInput","test: inputs' does not evaluate input flake formatter"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["test: mkFlake does not force self"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["test: moduleLocation from self outPath"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["test: packages not strict in devShells"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["test: partition without extra inputs"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["test: specialArgs passed to module"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["touchup","test: any filter keeps only matching attrs"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["touchup","test: any with mkDefault, attr override"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["touchup","test: error context when enabled attr throws"]},"verdict":"PASS-CLASS"}
+{"key":{"kind":"unit","path":["touchup","test: finish and attr composition"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["touchup","test: nested attr filtering per system"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["withSystem","test: withSystem provides perSystem config for declared system"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["withSystem","test: withSystem provides perSystem config for undeclared system"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["withSystem","test: withSystem provides the right system for declared system"]},"verdict":"PASS"}
+{"key":{"kind":"unit","path":["withSystem","test: withSystem provides the right system for undeclared system"]},"verdict":"PASS"}

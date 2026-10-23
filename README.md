@@ -3533,7 +3533,7 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   register together with the guard's `registers` table, escapes it.
   A rise of a committed gen count needs `Bar-Perf-Rise:`, as stage 2's does; this register's reference
   node is `nixpkgs` and its arm inputs are `ci/modules-sh-lib.nix`, `ci/modules-sh-hook.bash` and
-  `ci/modules-sh.nix`. Every register also takes an ARM-SCOPED trailer, `Bar-Perf-Rise: <arm>:* <class>` (`modules-sh`, `nixos-bar` or `hm-bar`), which names every rise of that register in its
+  `ci/modules-sh.nix`. Every register also takes an ARM-SCOPED trailer, `Bar-Perf-Rise: <arm>:* <class>` (`modules-sh`, `nixos-bar`, `hm-bar` or `fp-bar`), which names every rise of that register in its
   range, with each row's class still read per row: under `parity`, a row that was at or under its
   reference at the anchor and is above it now is refused even under the wildcard. The commit body still
   states the rise (each row's old and new figures, or the count, minimum, median and maximum per
@@ -3642,6 +3642,47 @@ The register is written as stage 2's is, and the ratchet reads it with `Hm-Bar-D
 `ci/modules-sh-lib.nix`, `ci/hm-bar-eval.nix`, `ci/bar-walk.nix`, `ci/hm-bar.patch`, `ci/hm-bar.nix`,
 `ci/hm-bar-cells.bash` and `ci/nixos-bar.bash`: a `reanchor` is refused when home-manager moves
 together with any of them.
+
+### flake-parts on this engine
+
+After home-manager, `ci --tests-process` runs flake-parts (the `ci` flake's `flake-parts-src` input) and
+two real flakes built on it (`nix-fast-build`, `hercules-ci-effects`), all reference pins as `nixpkgs`
+is. Each tree's own `flake.nix` is called with flake-parts' `nixpkgs-lib` input replaced by one whose
+`lib` is nixpkgs' or nixpkgs' with `evalModules` replaced by `evalModuleTree`, so every evaluation
+flake-parts makes runs on the engine named and nothing upstream is patched. Every real flake is handed
+this flake-parts and this `nixpkgs`; its other inputs are its own lock's entries, fetched at build.
+Cells, scored against `ci/fp-bar-baseline.jsonl`:
+
+- `unit`: one row per test of flake-parts' own nix-unit suite (`dev/tests/nix-unit.nix`), read to the
+  hash of its `expr`.
+- `memo`: flake-parts' own memoize check (`dev/tests/perSystem-memoize`), read to its `result` and the
+  number of stderr lines carrying the trace that check counts. The check asserts the trace fires once,
+  so a count that differs is `FAIL`.
+- `template`: one row per flake-parts template, read to its outputs.
+- `flake`: each real flake's output names. These rows and the three above are the stage's acceptance.
+- `flake-drv`: each real flake's x86_64-linux `packages`, `checks` and `devShells`, each name to its
+  drvPath, carrying `"claim":"identity"` (evidence, never acceptance). hercules-ci-effects' `checks`
+  and `devShells` are its `dev` partition's, which fetches a second nixpkgs at evaluation, and are not
+  in this arm.
+
+Every row is a perf row, read in the cell's own process. The suite cells run concurrently, as stage 3's
+do; the real flakes run one evaluation at a time. Each run also evaluates each real flake and template
+once more with `evalModules` throwing a token generated for that run and never written down; that read
+must refuse with the token, or the seam did not reach it and the run is a control failure. The mode is
+stage 3's (read-write, no import from derivation, restricted with no allowed URI).
+
+An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green: admitted is not
+approved.
+
+```sh
+nix run ./ci#fp-bar -- --write-baseline F
+nix run ./ci#fp-bar -- --fold F A.log B.log C.log
+```
+
+The register is written as stage 2's is, and the ratchet reads it with `Fp-Bar-Decrease:` and
+`Bar-Perf-Rise:`. Its reference nodes are `nixpkgs`, `flake-parts-src`, `nix-fast-build` and
+`hercules-ci-effects`, and its arm inputs `ci/modules-sh-lib.nix`, `ci/fp-bar-eval.nix`,
+`ci/fp-bar-cells.bash`, `ci/fp-bar.nix` and `ci/nixos-bar.bash`.
 
 ## Theoretical foundations
 

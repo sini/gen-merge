@@ -31,6 +31,24 @@
       url = "github:nix-community/home-manager";
       flake = false;
     };
+    # The replacement bar's stage-4 subjects (ADR-0039, `fp-bar.nix`): flake-parts' own tests and
+    # templates, and two real flakes built on it. REFERENCE pins, as home-manager is. `flake = false`:
+    # the arm calls each tree's `flake.nix` itself, handing every real flake this flake-parts and the
+    # nixpkgs above, so no real flake's own lock enters this one. flake-parts' tree is `flake-parts-src`: an
+    # input named `flake-parts` is gen-harness' tool override (`mkCi.nix`'s `resolve`), the flake-parts that
+    # builds this flake.
+    flake-parts-src = {
+      url = "github:hercules-ci/flake-parts";
+      flake = false;
+    };
+    nix-fast-build = {
+      url = "github:Mic92/nix-fast-build";
+      flake = false;
+    };
+    hercules-ci-effects = {
+      url = "github:hercules-ci/hercules-ci-effects";
+      flake = false;
+    };
   };
 
   outputs =

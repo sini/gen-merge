@@ -24,11 +24,14 @@
       nixosBar = import ./nixos-bar.nix { inherit pkgs inputs; };
       # den-hoag-stage3-home-manager-nk0o6 stage 3: home-manager's suite and option docs on this engine.
       hmBar = import ./hm-bar.nix { inherit pkgs inputs; };
+      # den-hoag-stage4-flake-parts-3qh4l stage 4: flake-parts' suite, templates and two real flakes on this engine.
+      fpBar = import ./fp-bar.nix { inherit pkgs inputs; };
     in
     {
       apps.modules-sh.program = "${modulesSh}/bin/modules-sh";
       apps.nixos-bar.program = "${nixosBar}/bin/nixos-bar";
       apps.hm-bar.program = "${hmBar}/bin/hm-bar";
+      apps.fp-bar.program = "${fpBar}/bin/fp-bar";
       apps.tests-process.program = pkgs.writeShellScriptBin "tests-process" (
         ''
           set -e
@@ -54,8 +57,9 @@
           cd "$TMPDIR"
           # The evaluator the cells run under, from this process and the binary they call.
           echo "evaluator: $(nix-instantiate --version | sed -n 1p)"
-          # den-hoag-06toi stage 1 runs FIRST, then stage 2 (den-hoag-fwkzx) and stage 3
-          # (den-hoag-stage3-home-manager-nk0o6), and their statuses are held to the end, so a red cell below
+          # den-hoag-06toi stage 1 runs FIRST, then stage 2 (den-hoag-fwkzx), stage 3
+          # (den-hoag-stage3-home-manager-nk0o6) and stage 4 (den-hoag-stage4-flake-parts-3qh4l), and their
+          # statuses are held to the end, so a red cell below
           # (which stops this runner) never hides their reports, nor their reports the cells.
           modulesRc=0
           ${modulesSh}/bin/modules-sh || modulesRc=$?
@@ -63,6 +67,8 @@
           ${nixosBar}/bin/nixos-bar || nixosBarRc=$?
           hmBarRc=0
           ${hmBar}/bin/hm-bar || hmBarRc=$?
+          fpBarRc=0
+          ${fpBar}/bin/fp-bar || fpBarRc=$?
         ''
         + ''
           export NIX_STATE_DIR=$TMPDIR/nix-state NIX_LOG_DIR=$TMPDIR/nix-log
@@ -401,7 +407,8 @@
           cat "$out"
           [ "$modulesRc" -eq 0 ] || exit "$modulesRc"
           [ "$nixosBarRc" -eq 0 ] || exit "$nixosBarRc"
-          exit "$hmBarRc"
+          [ "$hmBarRc" -eq 0 ] || exit "$hmBarRc"
+          exit "$fpBarRc"
         ''
       );
     };
