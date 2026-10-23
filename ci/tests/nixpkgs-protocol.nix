@@ -2436,6 +2436,29 @@ in
       ];
       docs = true;
     }) { v = "dflt"; };
+    # den-hoag-wz0un: a nixpkgs constructor that states its own phrase over its container's (`nonEmptyListOf`)
+    # keeps it where gen's evaluation rebuilds the declared type over its module set, as nixpkgs' `fixupOptionType`
+    # serves that record's own rebuild. Nested in a container, around itself, and over a leaf (no rebuild: the
+    # control that the phrase was never lost there), each read against nixpkgs' own evaluation of the same option.
+    test-a-rebuilt-container-keeps-its-constructors-phrase =
+      let
+        t = nixpkgsLib.types;
+        sub = t.submodule { options.x = nixpkgsLib.mkOption { type = t.int; }; };
+        shapes = {
+          overSubmodule = t.nonEmptyListOf sub;
+          nested = t.attrsOf (t.nonEmptyListOf sub);
+          twice = t.nonEmptyListOf (t.nonEmptyListOf sub);
+          overLeaf = t.nonEmptyListOf t.int;
+        };
+        phrase =
+          ev: ty:
+          (ev { modules = [ { options.o = nixpkgsLib.mkOption { type = ty; }; } ]; })
+          .options.o.type.description;
+      in
+      {
+        expr = builtins.mapAttrs (_: phrase (r: genMerge.evalModuleTree { } r.modules)) shapes;
+        expected = builtins.mapAttrs (_: phrase nixpkgsLib.evalModules) shapes;
+      };
     test-submodule-name-caller-specialArgs-wins = subNameEdge (_: {
       specialArgs.name = "caller";
     }) { v.x.a = "caller"; };

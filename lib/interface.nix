@@ -3262,7 +3262,19 @@ let
         if r ? recarry && r ? carries.element then
           r.recarry (r.carries // { element = e; })
         else
-          rebuiltOverAt "element" e r;
+          let
+            x = rebuiltOverAt "element" e r;
+          in
+          # the phrase is the rebuild's own, the record nixpkgs serves here: a constructor stating its own over its
+          # container's (`nonEmptyListOf`) keeps it through the re-carry (den-hoag-wz0un)
+          if isAttrs x then
+            x
+            // {
+              inherit (r) description;
+              descriptionClass = r.descriptionClass or null;
+            }
+          else
+            x;
       below =
         fuel: ts: r:
         let
