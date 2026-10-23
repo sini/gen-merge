@@ -2066,6 +2066,18 @@ unless a caller supplied it. A module whose `_module.args` key set reads `name`
 (`_module.args = if name == … then { … } else { }`) dies with infinite recursion, as in nixpkgs: whether
 a module states `name` is decided by that key set, so it cannot wait on `name`.
 
+**A nesting type may evaluate its child at the position its seed was declared at (`nests.locOf`).** A
+nesting type that states `nests.declAt = true` is handed, on each seed, its declaration address (`declAt`):
+the declaring module's anchor, the option path and the structural path the discharge took, which no
+reorder of keyed or path modules moves. Such a type may also state `nests.locOf = loc: d: …`. It is
+opt-in, and read only together with `declAt` and only for a child over ONE seed: `loc` is the merge
+position and `d` that seed's `{ file; value; declAt; }`, and the list it returns is the child tree's
+`prefix`. So the child's option locs, the positions its messages name and its default `name` render
+the declared position rather than the merge one (under `listOf`, `[definition n-entry m]` moves with
+module order). A child over several seeds (one key defined by two modules) keeps the merge position.
+`prefix` is a rendering only: the knot's node identity reads the child's `id`, never its `prefix`, so no
+node moves (`ci/tests/declaration-address.nix`, `test-locOf-names-a-single-seed-tree-and-not-a-multi-seed-one`).
+
 **A once-declared nesting type's own modules are read before its definitions, as nixpkgs reads them.**
 nixpkgs hands each module of a type it locates (`getSubModules` non-null, so never through `either` or
 `oneOf`) through `setDefaultModuleLocation`, one breadth-first level below the definitions, and an

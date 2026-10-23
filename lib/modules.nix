@@ -6529,7 +6529,18 @@ let
           evalModuleTreeWith knotChildPositioned m.carried m.inherited (
             {
               modules = n.modules ++ seeds;
-              prefix = p.loc;
+              # `nests.locOf`, stated beside `declAt`, names the tree's prefix from its one seed's record
+              # and declaration address, so its option locs, messages and `name` render the position the
+              # seed was declared at, not the one the merge gave it. Over several seeds the merge position
+              # stands. Knot identity reads `id`, never `prefix`, so no node moves.
+              prefix =
+                if n ? locOf && builtins.length p.defs == 1 then
+                  n.locOf p.loc {
+                    inherit (builtins.head p.defs) file value;
+                    declAt = builtins.head declAts;
+                  }
+                else
+                  p.loc;
               root =
                 if p.group.root == null then
                   null
