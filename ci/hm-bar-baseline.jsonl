@@ -5035,8 +5035,7 @@
 {"key":{"kind":"doc","set":"hm","name":"services.yubikey-agent.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"services.yubikey-agent.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"specialisation","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","set":"hm","name":"specialisation.<name>.configuration","n":0},"verdict":"FAIL"}
-{"key":{"kind":"doc","set":"hm","name":"specialisation.configuration","n":0},"verdict":"FAIL"}
+{"key":{"kind":"doc","set":"hm","name":"specialisation.<name>.configuration","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"sshAuthSock.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"sshAuthSock.initialization.bash","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"sshAuthSock.initialization.fish","n":0},"verdict":"PASS"}
@@ -5656,9 +5655,9 @@
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.useUserPackages","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.users","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.verbose","n":0},"verdict":"PASS"}
-{"key":{"kind":"docs-walk","set":"darwin"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":94987,"bytes":34739122,"ms":147},"ref":{"thunks":92217,"bytes":34608617,"ms":130}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":94987,"bytes":35935984,"ms":248},"ref":{"thunks":92217,"bytes":35748464,"ms":427}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":94166,"bytes":37245625,"ms":160},"ref":{"thunks":91396,"bytes":37126704,"ms":141}}}}
-{"key":{"kind":"docs-walk","set":"hm"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":2568998,"bytes":173263233,"ms":683},"ref":{"thunks":2211026,"bytes":147332072,"ms":548}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":2569294,"bytes":175034080,"ms":1456},"ref":{"thunks":2211026,"bytes":148986264,"ms":1131}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":2568396,"bytes":133437680,"ms":718},"ref":{"thunks":2210037,"bytes":117601327,"ms":585}}}}
-{"key":{"kind":"docs-walk","set":"nixos"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":95233,"bytes":34755455,"ms":156},"ref":{"thunks":92415,"bytes":34619419,"ms":138}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":95233,"bytes":35953192,"ms":253},"ref":{"thunks":92415,"bytes":35760136,"ms":306}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":94412,"bytes":37256870,"ms":161},"ref":{"thunks":91594,"bytes":37134898,"ms":144}}}}
+{"key":{"kind":"docs-walk","set":"darwin"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":94993,"bytes":34739415,"ms":192},"ref":{"thunks":92217,"bytes":34608617,"ms":165}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":94993,"bytes":35936512,"ms":263},"ref":{"thunks":92217,"bytes":35748464,"ms":232}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":94172,"bytes":37245822,"ms":209},"ref":{"thunks":91396,"bytes":37126704,"ms":185}}}}
+{"key":{"kind":"docs-walk","set":"hm"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":3001095,"bytes":203510152,"ms":1218},"ref":{"thunks":2211026,"bytes":147332072,"ms":831}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":3001707,"bytes":205312784,"ms":1590},"ref":{"thunks":2211026,"bytes":148986264,"ms":1105}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":3000899,"bytes":152433583,"ms":1157},"ref":{"thunks":2210037,"bytes":117601327,"ms":825}}}}
+{"key":{"kind":"docs-walk","set":"nixos"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":95239,"bytes":34755748,"ms":180},"ref":{"thunks":92415,"bytes":34619419,"ms":159}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":95239,"bytes":35953720,"ms":267},"ref":{"thunks":92415,"bytes":35760136,"ms":234}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":94418,"bytes":37257067,"ms":208},"ref":{"thunks":91594,"bytes":37134898,"ms":186}}}}
 {"key":{"kind":"test","name":"abaddon-example-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"abook-no-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"abook-with-settings"},"verdict":"PASS"}
@@ -6633,7 +6632,7 @@
 {"key":{"kind":"test","name":"man-no-caches-without-package"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"man-no-manpath"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"mangohud-basic-configuration"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"manual"},"verdict":"FAIL"}
+{"key":{"kind":"test","name":"manual"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"mblaze-basic"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"mblaze-maildir"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"mbsync"},"verdict":"PASS"}
@@ -7113,7 +7112,7 @@
 {"key":{"kind":"test","name":"smug-empty-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"smug-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"snixembed-basic-configuration"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"specialisation"},"verdict":"FAIL"}
+{"key":{"kind":"test","name":"specialisation"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"spectrwm-simple-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"spotify-player-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"ssh-agent-basic-service"},"verdict":"PASS"}
@@ -7523,4 +7522,4 @@
 {"key":{"kind":"test","name":"zsh-xdg-disabled"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"zsh-zprof"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"zshrc-contents-priorities"},"verdict":"PASS"}
-{"key":{"kind":"tests"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":1466586082,"bytes":117696813004,"ms":757302,"set":{"processes":131,"sha":"0cf732f2515ca3b15d7910390e962a02b0ddcde5b96056e9938964f70b3583bc"}},"ref":{"thunks":641508534,"bytes":58431234786,"ms":341736,"set":{"processes":131,"sha":"0cf732f2515ca3b15d7910390e962a02b0ddcde5b96056e9938964f70b3583bc"}}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":1467144225,"bytes":118100940288,"ms":1615630,"set":{"processes":131,"sha":"0cf732f2515ca3b15d7910390e962a02b0ddcde5b96056e9938964f70b3583bc"}},"ref":{"thunks":641508534,"bytes":58761354296,"ms":672022,"set":{"processes":131,"sha":"0cf732f2515ca3b15d7910390e962a02b0ddcde5b96056e9938964f70b3583bc"}}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":1467534539,"bytes":86574831753,"ms":953165,"set":{"processes":131,"sha":"0cf732f2515ca3b15d7910390e962a02b0ddcde5b96056e9938964f70b3583bc"}},"ref":{"thunks":641191981,"bytes":47187886487,"ms":453009,"set":{"processes":131,"sha":"0cf732f2515ca3b15d7910390e962a02b0ddcde5b96056e9938964f70b3583bc"}}}}}
+{"key":{"kind":"tests"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":1550025552,"bytes":123791658350,"ms":1302244,"set":{"processes":133,"sha":"de34adb52c1b6635d911ebd1646146163e66681f9de92dd992cd7f4ee6340c72"}},"ref":{"thunks":677255945,"bytes":61089750101,"ms":530910,"set":{"processes":133,"sha":"de34adb52c1b6635d911ebd1646146163e66681f9de92dd992cd7f4ee6340c72"}}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":1550617213,"bytes":124206299312,"ms":1703344,"set":{"processes":133,"sha":"de34adb52c1b6635d911ebd1646146163e66681f9de92dd992cd7f4ee6340c72"}},"ref":{"thunks":677255945,"bytes":61426509080,"ms":695142,"set":{"processes":133,"sha":"de34adb52c1b6635d911ebd1646146163e66681f9de92dd992cd7f4ee6340c72"}}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":1551040192,"bytes":90709744345,"ms":1374626,"set":{"processes":133,"sha":"de34adb52c1b6635d911ebd1646146163e66681f9de92dd992cd7f4ee6340c72"}},"ref":{"thunks":676930208,"bytes":49054334904,"ms":633586,"set":{"processes":133,"sha":"de34adb52c1b6635d911ebd1646146163e66681f9de92dd992cd7f4ee6340c72"}}}}}
