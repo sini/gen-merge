@@ -8,9 +8,10 @@
 #   ci/modules-sh-baseline.jsonl   stage 1, `Modules-Sh-Decrease:`, perf rises `Bar-Perf-Rise:`
 #   ci/nixos-bar-baseline.jsonl    stage 2, `Nixos-Bar-Decrease:`, perf rises `Bar-Perf-Rise:`
 #   ci/hm-bar-baseline.jsonl       stage 3, `Hm-Bar-Decrease:`, perf rises `Bar-Perf-Rise:`
+#   ci/fp-bar-baseline.jsonl       stage 4, `Fp-Bar-Decrease:`, perf rises `Bar-Perf-Rise:`
 #
-# Each row also names its REFERENCE lock nodes (the environment both arms evaluate: `nixpkgs`, and for stage 3
-# `nixpkgs home-manager`) and its ARM INPUTS (the files in ci/ that make the gen arm's evaluation and argv).
+# Each row also names its REFERENCE lock nodes (the environment both arms evaluate: `nixpkgs`, for stage 3
+# `nixpkgs home-manager`, for stage 4 `nixpkgs flake-parts-src nix-fast-build hercules-ci-effects`) and its ARM INPUTS (the files in ci/ that make the gen arm's evaluation and argv).
 #
 # Each fallen key must be ADMITTED by its register's decrease trailer, naming the key's hash, on a commit
 # after the older revision (up to HEAD, so a later commit can admit a fall that already landed; a trailer
@@ -32,8 +33,8 @@
 #                        row's reference lock nodes moved AND every gen member lock node (owner sini, repo
 #                        gen-*), gen-merge's own lib/, and the row's arm inputs are unchanged between the
 #                        two revisions (an arm input absent at one revision and present at the other moved).
-#                        home-manager is a reference pin as nixpkgs is: both arms evaluate it, and it is not
-#                        a gen member. ADR-0032: a bound re-anchors
+#                        home-manager, flake-parts-src, nix-fast-build and hercules-ci-effects are reference pins
+#                        as nixpkgs is: both arms evaluate them, and none is a gen member. ADR-0032: a bound re-anchors
 #                        "only when the environment moves — the evaluator or a REFERENCE pin … and never
 #                        on a gen member pin, which is the change under test". An evaluator move needs no
 #                        trailer: the perf entry is keyed by the evaluator's `--version` line, so a new
@@ -51,7 +52,7 @@
 # the same key (another change's, of a class that does not hold there) never shadows a valid one.
 #
 # An ARM-SCOPED trailer `Bar-Perf-Rise: <arm>:* <class>` (the register's file name before
-# `-baseline.jsonl`: `modules-sh`, `nixos-bar`, `hm-bar`) names every rise of that arm's register in the
+# `-baseline.jsonl`: `modules-sh`, `nixos-bar`, `hm-bar`, `fp-bar`) names every rise of that arm's register in the
 # range at once, and each row's class predicate is still read per row: under `parity`, a row that was at
 # or under its reference at the anchor and is above it now is refused even under the wildcard. A change
 # that moves per-evaluation cost moves every stage-1 row (259 per evaluator), so it owes one line, not 777.
@@ -82,6 +83,7 @@ registers=(
   "ci/modules-sh-baseline.jsonl legacy Modules-Sh-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/modules-sh-hook.bash,ci/modules-sh.nix"
   "ci/nixos-bar-baseline.jsonl json Nixos-Bar-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/nixos-bar-eval.nix,ci/nixos-bar-cells.bash,ci/nixos-bar.bash"
   "ci/hm-bar-baseline.jsonl json Hm-Bar-Decrease Bar-Perf-Rise nixpkgs,home-manager ci/modules-sh-lib.nix,ci/hm-bar-eval.nix,ci/bar-walk.nix,ci/hm-bar.patch,ci/hm-bar.nix,ci/hm-bar-cells.bash,ci/nixos-bar.bash"
+  "ci/fp-bar-baseline.jsonl json Fp-Bar-Decrease Bar-Perf-Rise nixpkgs,flake-parts-src,nix-fast-build,hercules-ci-effects ci/modules-sh-lib.nix,ci/fp-bar-eval.nix,ci/fp-bar-cells.bash,ci/fp-bar.nix,ci/nixos-bar.bash"
 )
 here=$(dirname "$0")
 control() {

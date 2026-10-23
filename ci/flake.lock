@@ -118,6 +118,22 @@
         "type": "github"
       }
     },
+    "flake-parts-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790898470,
+        "narHash": "sha256-zTwuwezD0w3hpga6a6P8emidzAZFyWqlNeRBlpWOOl8=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "024633cd702b10285db5cb19b40ad48d2399ba60",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
     "flake-parts_2": {
       "inputs": {
         "nixpkgs-lib": [
@@ -554,6 +570,22 @@
         "type": "github"
       }
     },
+    "hercules-ci-effects": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792325769,
+        "narHash": "sha256-KFxHbC1136pwBOxdqRQzVSdY7rw+8clqcWysMLHqq88=",
+        "owner": "hercules-ci",
+        "repo": "hercules-ci-effects",
+        "rev": "9eecf40bc88648c7b5474b476a7b325fa78b5606",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "hercules-ci-effects",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "flake": false,
       "locked": {
@@ -623,6 +655,22 @@
         "owner": "DeterminateSystems",
         "ref": "v3.23.3",
         "repo": "nix-src",
+        "type": "github"
+      }
+    },
+    "nix-fast-build": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791117172,
+        "narHash": "sha256-cNl6+X5nfe3SNZWl0xRwz6cyGZlYK9kDNxWDM9NZTTE=",
+        "owner": "Mic92",
+        "repo": "nix-fast-build",
+        "rev": "496c4c5e4624c05cafc351b547e13d8e2b8e17b7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Mic92",
+        "repo": "nix-fast-build",
         "type": "github"
       }
     },
@@ -961,13 +1009,16 @@
     },
     "root": {
       "inputs": {
+        "flake-parts-src": "flake-parts-src",
         "gen-differential": "gen-differential",
         "gen-harness": "gen-harness",
         "gen-memo": "gen-memo",
         "gen-prelude": "gen-prelude_3",
         "gen-scope": "gen-scope",
         "gen-types": "gen-types",
+        "hercules-ci-effects": "hercules-ci-effects",
         "home-manager": "home-manager",
+        "nix-fast-build": "nix-fast-build",
         "nixpkgs": "nixpkgs_6"
       }
     },

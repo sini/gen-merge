@@ -29,10 +29,12 @@
 # `abort` or an evaluator error both arms raise at one site is not caught, so it stays FAIL; and only doc nodes
 # and tests carry `caught` and `trace`, so a toplevel or options cell both arms refuse stays FAIL. The summary
 # names the share of PASS-CLASS this rule gave.
-# A toplevel or options row carries `"claim":"identity"`: its PASS is one derivation's identity, evidence and
-# never acceptance (ADR-0039). Only those two kinds carry it, and only perf rows carry `perf`.
+# A toplevel, options or flake-drv row carries `"claim":"identity"`: its PASS is derivations' identity, evidence
+# and never acceptance (ADR-0039). Only those kinds carry it, and only perf rows carry `perf`. Stage 4's kinds
+# (unit, memo, template, flake, flake-drv) occur in no other stage's register (`fp-bar-cells.bash` reads it), so
+# adding them here moves no row of stages 2-3.
 #
-# PERF, on toplevel / options / docs-walk / tests rows: `perf.<$ev>.gen.{thunks,bytes}` is an EXACT bound (ADR-0032),
+# PERF, on toplevel / options / docs-walk / tests rows and every stage-4 row: `perf.<$ev>.gen.{thunks,bytes}` is an EXACT bound (ADR-0032),
 # read only where the run summed the same processes as the anchor: a perf entry carrying `set` (stage 3's
 # `tests` row) whose set moved reads SET-MOVED instead of a COST line.
 #
@@ -42,8 +44,8 @@
 # empty list would pass no shared throw, silently.
 def id: .key | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
-def perfKind: .key.kind | IN("toplevel", "options", "docs-walk", "tests");
-def identityKind: .key.kind | IN("toplevel", "options");
+def perfKind: .key.kind | IN("toplevel", "options", "docs-walk", "tests", "unit", "memo", "template", "flake", "flake-drv");
+def identityKind: .key.kind | IN("toplevel", "options", "flake-drv");
 def hits($c): . as $e | $c | all(. as $l | $e | contains($l));
 def lastErr: (. // "") | split("\n") | map(select(test("^ *error:"))) | last // "(no error line)" | sub("^ +"; "");
 def site: (. // "") | split("\n") | map(select(test("^ *at /"))) | last // null | if . == null then null else sub("^ *at "; "") end;
@@ -152,6 +154,7 @@ else
       + (if ($idn | length) > 0 then "; identity (evidence) \([$idn[] | select(.got == "PASS")] | length) PASS, \([$idn[] | select(.got != "PASS")] | length) not" else "" end)
       + "; docs-walk \([$runs[] | select(.key.kind == "docs-walk") | .got] | join(","))"
       + (if ($tests | length) > 0 then "; tests \([$runs[] | select(.key.kind == "tests") | .got] | join(","))" else "" end)
+      + ([ "unit", "memo", "template", "flake", "flake-drv" ] | map(. as $k | [ $runs[] | select(.key.kind == $k) ] | select(length > 0) | "; \($k) \(tally)") | join(""))
       + "; \($bad | length) disagreements"
   end
 end
