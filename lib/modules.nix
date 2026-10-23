@@ -1558,7 +1558,18 @@ let
       m = e.content;
     in
     if m ? config || m ? options then
-      (if m ? meta then (m.config or { }) // { inherit (m) meta; } else m.config or { })
+      # nixpkgs' `addMeta`: the module's `meta` is one more definition beside its `config`, never laid over it, so a
+      # `config` that is a property (`mkMerge`, `mkIf`) or that defines `meta` itself keeps both
+      if m ? meta then
+        {
+          _type = "merge";
+          contents = [
+            (m.config or { })
+            { inherit (m) meta; }
+          ];
+        }
+      else
+        m.config or { }
     else if
       m ? _file
       || m ? key

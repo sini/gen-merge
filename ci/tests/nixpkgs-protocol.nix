@@ -2436,6 +2436,71 @@ in
       ];
       docs = true;
     }) { v = "dflt"; };
+    # l5iea B3.1: a structured module's top-level `meta` is one more definition beside its `config`, as nixpkgs'
+    # `unifyModuleSyntax` adds it (`addMeta`: `mkMerge [ config { meta = m.meta; } ]`), so a `config` that is a
+    # property or defines `meta` itself keeps both. nixos' acme/default.nix is the `merge` shape; the plain one is
+    # the control. Each shape is read against nixpkgs' own evaluation.
+    test-a-modules-meta-is-a-definition-beside-its-config =
+      let
+        L = nixpkgsLib;
+        decl = {
+          options.meta.doc = L.mkOption {
+            type = L.types.path // {
+              merge = loc: defs: defs;
+            };
+            default = [ ];
+          };
+          options.meta.k = L.mkOption {
+            type = L.types.listOf L.types.str;
+            default = [ ];
+          };
+          options.x = L.mkOption { default = 0; };
+        };
+        meta = {
+          doc = "/x/a.md";
+          k = [ "m" ];
+        };
+        shapes = {
+          plain = {
+            options = { };
+            config.x = 1;
+            inherit meta;
+          };
+          merge = {
+            options = { };
+            config = L.mkMerge [ { x = 1; } ];
+            inherit meta;
+          };
+          ifTrue = {
+            options = { };
+            config = L.mkIf true { x = 1; };
+            inherit meta;
+          };
+          configHasMeta = {
+            options = { };
+            config.meta.k = [ "c" ];
+            inherit meta;
+          };
+        };
+        read =
+          ev: m:
+          let
+            c =
+              (ev [
+                decl
+                m
+              ]).config;
+          in
+          {
+            doc = map (d: d.value) c.meta.doc;
+            inherit (c.meta) k;
+            inherit (c) x;
+          };
+      in
+      {
+        expr = builtins.mapAttrs (_: read (genMerge.evalModuleTree { })) shapes;
+        expected = builtins.mapAttrs (_: read (modules: L.evalModules { inherit modules; })) shapes;
+      };
     # den-hoag-wz0un: a nixpkgs constructor that states its own phrase over its container's (`nonEmptyListOf`)
     # keeps it where gen's evaluation rebuilds the declared type over its module set, as nixpkgs' `fixupOptionType`
     # serves that record's own rebuild. Nested in a container, around itself, and over a leaf (no rebuild: the
