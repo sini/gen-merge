@@ -8,6 +8,8 @@
 #   {kind:"test", name}         one test of home-manager's x86_64-linux suite (every attribute of
 #                               `tests/default.nix`'s `tests`, the set its own CI chunks), read to what the
 #                               generation writes; acceptance
+#   {kind:"test", name, ifd}    the same, for a test of the IFD column (`hm-bar-cells.bash`): one whose
+#                               evaluation reads a build's output, evaluated with IFD on; acceptance
 #   {kind:"tests"}              the cost row of the whole suite's evaluations
 #   {kind:"doc", set, name, n}  one published node of a docs set's walk (hm, nixos, darwin: the three sets
 #                               `docs/default.nix` builds); acceptance
