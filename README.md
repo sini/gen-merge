@@ -3478,10 +3478,10 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   counters for a refusing evaluation, on either tree. So stage 1's "perf at or under nixpkgs" is a claim
   over 259 assertions, and it says nothing about what a refusal costs. An `above-parity` row is the
   bar's perf criterion NOT MET, even when CI is green because the ratchet admitted its rise: admitted
-  is not approved. At nixpkgs `02c087f3` on gen-merge `8d05bbe`, on CI's three evaluators, every one of
-  the 259 rows is NOT MET: gen's thunks run from ×1.086 to ×55.364 nixpkgs' (median ×2.101, a median
-  of 2326 more thunks per assertion), and its bytes at a median of ×1.876 (Nix), ×2.030 (Determinate)
-  and ×2.083 (Lix).
+  is not approved. At nixpkgs `02c087f3` on gen-merge `7872fd6`, on CI's three evaluators, every one of
+  the 259 rows is NOT MET: gen's thunks run from ×1.086 to ×55.364 nixpkgs' (median ×2.107, a median
+  of 2335 more thunks per assertion), and its bytes at a median of ×1.879 (Nix), ×2.030 (Determinate)
+  and ×2.092 (Lix).
 
 - **The register's perf** is written from CI's own columns, as stage 2's is (`--fold`). The local
   process plane reads it only on an evaluator whose `--version` line is one of CI's (Determinate
@@ -3609,7 +3609,7 @@ integration (`tests/integration`, a VM run), the darwin suite and the release br
 this arm.
 
 An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green: admitted is
-not approved. At home-manager `cb7de2c` on gen-merge `72c0e3d`, on CI's three evaluators, every
+not approved. At home-manager `cb7de2c` on gen-merge `7872fd6`, on CI's three evaluators, every
 perf row is NOT MET: the `tests` row at ×2.29 nixpkgs' thunks (131 processes summed on both arms), the
 `hm` `docs-walk` at ×1.162, and the `nixos` and `darwin` `docs-walk` rows at ×1.030 (Lix `nixos` ×1.031).
 
