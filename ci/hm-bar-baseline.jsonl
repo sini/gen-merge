@@ -5831,7 +5831,7 @@
 {"key":{"kind":"test","name":"btop-example-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"cachix"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"caffeine-basic-service"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"calibre-settings"},"verdict":"FAIL"}
+{"key":{"kind":"test","name":"calibre-settings","ifd":true},"verdict":"PASS"}
 {"key":{"kind":"test","name":"carapace-bash"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"carapace-environment"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"carapace-fish"},"verdict":"PASS"}
@@ -6929,7 +6929,7 @@
 {"key":{"kind":"test","name":"pianobar-minimally-required-configs"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"picom-basic-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pimsync-basic"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"pipewire-configs"},"verdict":"FAIL"}
+{"key":{"kind":"test","name":"pipewire-configs","ifd":true},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pipewire-empty"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pipewire-plugins"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pipewire-scripts"},"verdict":"PASS"}

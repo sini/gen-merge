@@ -1,11 +1,26 @@
 # Stage 3's cells (den-hoag-stage3-home-manager-nk0o6, `hm-bar.nix`), run by the shared body `nixos-bar.bash`.
 #
 # MODE. `--read-write-mode`: home-manager's tests interpolate path literals, which copies them into the store,
-# and read-only that copy is never written (the reference arm dies `path … is not valid`). No builds: IFD is
-# off, so a test that reads a derivation's output at evaluation refuses by name. No network: restricted
+# and read-only that copy is never written (the reference arm dies `path … is not valid`). No builds but the
+# IFD column's (below): IFD is off, so any other test that reads a derivation's output at evaluation refuses by
+# name. No network: restricted
 # evaluation with no allowed URI refuses every eval-time fetcher (`access to URI … is forbidden in restricted
 # mode`), and `-I /nix/store` admits the store paths the sources arrive as.
 BAR_FLAGS=(--read-write-mode --option allow-import-from-derivation false --option restrict-eval true --option allowed-uris "" -I /nix/store)
+# THE IFD COLUMN. The tests whose evaluation reads a derivation's output, so that no IFD-off evaluation reaches
+# their value on either arm: the bar's claim is evaluation parity, and the build is an input to it. Each is
+# taken out of the chunks and evaluated alone per arm with BAR_FLAGS but IFD on, its row keyed
+# `{kind:"test", name, ifd:true}` so the register carries the column. Its IFD-off reference read
+# must still refuse for IFD, or the test no longer needs the column (CONTROL FAILED). Its builds are its own
+# (measured at home-manager cb7de2c: a symlink join and one `jq` run, on inputs this arm's own closure
+# realises but `lndir`), so its processes never enter the `tests` row's sums.
+IFD_TESTS=(calibre-settings pipewire-configs)
+IFD_FLAGS=("${BAR_FLAGS[@]/#false/true}")
+# ifdArm <evalArm args>: evalArm under IFD_FLAGS.
+ifdArm() {
+  local -a BAR_FLAGS=("${IFD_FLAGS[@]}")
+  evalArm "$@"
+}
 # wargs <read> <route>: one argument per line, a walk read's arguments over the set `wset`.
 wargs() { printf '%s\n' --argstr read "$1" --argstr set "$wset" --argstr route "$2"; }
 
@@ -47,6 +62,20 @@ tests() {
   [ "$rc" -eq 0 ] || control "the test names read refused: $(grep -E '^ *error' "$tmp/names.err" | tail -1)"
   mapfile -t names < <(jq -r '.v[]' "$tmp/names.out")
   [ "${#names[@]}" -gt 0 ] || control "the test names read answered no test"
+  # IFD_FLAGS differs from BAR_FLAGS in exactly one element, the value after `allow-import-from-derivation`.
+  local d=0
+  [ "${#IFD_FLAGS[@]}" -eq "${#BAR_FLAGS[@]}" ] || d=2
+  for ((i = 1; i < ${#BAR_FLAGS[@]}; i++)); do
+    [ "${BAR_FLAGS[i]}" = "${IFD_FLAGS[i]}" ] && continue
+    d=$((d + 1))
+    [ "${BAR_FLAGS[i - 1]}/${BAR_FLAGS[i]}/${IFD_FLAGS[i]}" = allow-import-from-derivation/false/true ] || d=2
+  done
+  [ "$d" -eq 1 ] || control "IFD_FLAGS is not BAR_FLAGS with IFD on: ${IFD_FLAGS[*]}"
+  for t in "${IFD_TESTS[@]}"; do
+    # `-c`, never `-q`: an early exit would SIGPIPE printf, a failed pipe under pipefail.
+    [ "$(printf '%s\n' "${names[@]}" | grep -cxF -- "$t")" = 1 ] || control "IFD column test $t is not in the suite once"
+  done
+  mapfile -t names < <(printf '%s\n' "${names[@]}" | grep -vxF -f <(printf '%s\n' "${IFD_TESTS[@]}"))
   n=$(((${#names[@]} + 49) / 50))
   for ((c = 0; c < n; c++)); do
     printf '%s\n' "${names[@]:c*50:50}" | jq -Rsc 'split("\n") | map(select(. != ""))' >"$tmp/c$c.names"
@@ -182,6 +211,19 @@ tests() {
       fi
     done
   done
+  # The IFD column: per test, the IFD-off reference read that must refuse for IFD, then both arms with IFD on.
+  for ((i = 0; i < ${#IFD_TESTS[@]}; i++)); do
+    js=$(jq -cn --arg t "${IFD_TESTS[i]}" '[$t]')
+    par evalArm "ifd$i-off" ref test --argstr read test --argstr tests "$js"
+    for e in ref gen; do par ifdArm "ifd$i-$e" "$e" test --argstr read test --argstr tests "$js"; done
+  done
+  joinAll
+  for ((i = 0; i < ${#IFD_TESTS[@]}; i++)); do
+    jq -e .refused "$tmp/ifd$i-off.arm" >/dev/null && grep -qF "'allow-import-from-derivation' is disabled" "$tmp/ifd$i-off.err" ||
+      control "IFD column test ${IFD_TESTS[i]} did not refuse for IFD with it off: it no longer needs the column"
+    jq -cn --arg t "${IFD_TESTS[i]}" --slurpfile ref "$tmp/ifd$i-ref.arm" --slurpfile gen "$tmp/ifd$i-gen.arm" \
+      '{ key: { kind: "test", name: $t, ifd: true }, ref: ($ref[0] | del(.perf)), gen: ($gen[0] | del(.perf)) }' >>"$tmp/records.jsonl"
+  done
   # The two sums, over the same processes.
   local set
   set=$(jq -cn --argjson n "$(wc -l <"$tmp/summed")" --arg sha "$(LC_ALL=C sort "$tmp/summedset" | sha256sum | cut -c1-64)" \
@@ -194,7 +236,7 @@ tests() {
   }
   jq -cn --argjson ref "$(cut -d' ' -f1 "$tmp/summed" | sum)" --argjson gen "$(cut -d' ' -f2 "$tmp/summed" | sum)" \
     '{ key: { kind: "tests" }, ref: { refused: false, v: null, perf: $ref }, gen: { refused: false, v: null, perf: $gen } }' >>"$tmp/records.jsonl"
-  echo "$BAR_NAME: tests: ${#names[@]} in $n chunks, ${#alive[@]} completed on both arms, $((n - ${#alive[@]})) re-run per test on both (${died[*]:-none}); $(wc -l <"$tmp/summed") processes per arm summed (every test they hold served on both arms), set $(jq -r '.sha[0:12]' <<<"$set")"
+  echo "$BAR_NAME: tests: ${#names[@]} in $n chunks and ${#IFD_TESTS[@]} in the IFD column (${IFD_TESTS[*]}), ${#alive[@]} completed on both arms, $((n - ${#alive[@]})) re-run per test on both (${died[*]:-none}); $(wc -l <"$tmp/summed") processes per arm summed (every test they hold served on both arms), set $(jq -r '.sha[0:12]' <<<"$set")"
   # Diagnostic, never a bound: each arm's counters over every process of it that exited 0, so repeats can
   # be read for identity while the summed set is empty.
   for e in ref gen; do
