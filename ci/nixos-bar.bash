@@ -24,8 +24,8 @@ admissions() {
       echo "LOWERED $(printf '%s' "$key" | sha256sum | cut -c1-12) $was -> $now $key"
     done
   jq -rn --arg keyform json --arg part rise --slurpfile old "$base" --slurpfile new "$1" -f "$BAR_RATCHET" |
-    while IFS=$'\t' read -r key e was now par above; do
-      echo "RISE $(printf '%s\t%s' "$key" "$e" | sha256sum | cut -c1-12) $was -> $now parity-now=$par above-at-anchor=$above $key $e"
+    while IFS=$'\t' read -r key e was now par above setmv; do
+      echo "RISE $(printf '%s\t%s' "$key" "$e" | sha256sum | cut -c1-12) $was -> $now parity-now=$par above-at-anchor=$above set-moved=$setmv $key $e"
     done
 }
 

@@ -9,7 +9,7 @@
 # $part "rise" reads the perf clause instead (ADR-0032's EXACT bound): a row whose committed gen `thunks`
 # or `bytes` for one evaluator ROSE between the revisions, both revisions serving. One line per rise:
 # `<id>\t<evaluator>\t<old gen thunks/bytes>\t<new gen thunks/bytes>\t<new at parity: yes|no>\t<old
-# above its reference at the anchor: yes|no>`. A new evaluator key, or a first serving run, is a new
+# above its reference at the anchor: yes|no>\t<summed set moved: yes|no>`. A new evaluator key, or a first serving run, is a new
 # anchor and never a rise. A perf entry that carries its summed `set` (stage 3's `tests` row) and whose set
 # moved reads as a rise whatever the figures did: the same work was not measured, so a lower figure is not
 # a lowering.
@@ -26,7 +26,7 @@ if ($ARGS.named.part // "fall") == "rise" then
   | ($O[$i][$e] // null) as $o
   | select($o != null and $o.gen != null and $n.gen != null)
   | select($n.gen.thunks > $o.gen.thunks or $n.gen.bytes > $o.gen.bytes or ($n.gen.set // null) != ($o.gen.set // null))
-  | "\($i)\t\($e)\t\($o.gen.thunks)/\($o.gen.bytes)\t\($n.gen.thunks)/\($n.gen.bytes)\t\(if $n.ref != null and le($n.gen; $n.ref) then "yes" else "no" end)\t\(if $o.ref != null and (le($o.gen; $o.ref) | not) then "yes" else "no" end)"
+  | "\($i)\t\($e)\t\($o.gen.thunks)/\($o.gen.bytes)\t\($n.gen.thunks)/\($n.gen.bytes)\t\(if $n.ref != null and le($n.gen; $n.ref) then "yes" else "no" end)\t\(if $o.ref != null and (le($o.gen; $o.ref) | not) then "yes" else "no" end)\t\(if ($n.gen.set // null) != ($o.gen.set // null) then "yes" else "no" end)"
 else
   ($new | map({ key: (.key | id), value: .verdict }) | from_entries) as $N
   | $old[]

@@ -45,7 +45,12 @@
 #                        row was already above its reference at the anchor (the older revision). The
 #                        second arm is the passage's own reading ("orchestrator, defaulted, reversible").
 #   floor den-hoag-<row> the correctness floor, its attribution the cited row;
-#   owner den-hoag-<row> an owner reading.
+#   owner den-hoag-<row> an owner reading;
+#   set                  not a cost class: the row's summed `set` (stage 3's `tests` row) changed between the
+#                        two revisions, so the figures are of other work and never a rise (the compare's
+#                        SET-MOVED reads no COST line either). Admitted only where the set moved, so it can
+#                        never carry a rise on an unchanged set; named by the row's own hash, never by the
+#                        arm wildcard.
 #
 # Every trailer in range naming a key's hash is read, and any valid one admits it, so a later trailer for
 # the same key (another change's, of a class that does not hold there) never shadows a valid one.
@@ -170,12 +175,14 @@ judge() {
   ub=$(underTestAt "$new") || exit 2
   env=no
   if [ "$moved" = yes ] && [ "$ua" = "$ub" ]; then env=yes; fi
-  while IFS=$'\t' read -r key e was now par above; do
+  while IFS=$'\t' read -r key e was now par above setmv; do
     h=$(hashOf "$key"$'\t'"$e")
-    mapfile -t cands < <(grep -E "^($h|$arm:\\*) (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)\$" <<<"$ptrailers" || true)
+    mapfile -t cands < <(grep -E "^(($h|$arm:\\*) (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)|$h set)\$" <<<"$ptrailers" || true)
     adm="" why="no $rise: $h (or $arm:*) trailer in $*"
     for c in "${cands[@]}"; do
-      if [[ "${c#* }" == reanchor && "$env" == no ]]; then
+      if [[ "${c#* }" == set && "$setmv" != yes ]]; then
+        why="a set admission, but the row's summed set did not move in ${old:0:9}..${new:0:9}"
+      elif [[ "${c#* }" == reanchor && "$env" == no ]]; then
         why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: reference ($refs) moved=$moved, and a gen member pin, lib/ or an arm input moved, or no reference node did"
       elif [[ "${c#* }" == parity && "$par" == no && "$above" == no ]]; then
         why="a parity admission, but the rise crosses parity: at parity at the anchor, above it now"
