@@ -104,6 +104,26 @@ let
     default = [ ];
   };
   hostT = t.submodule { options.xs = listOpt; };
+  # A type stating `nests.locOf` beside `declAt`: its tree's prefix renders the record the hook is
+  # handed, so the tree's `name` shows whether the hook was read and what it received.
+  LocOf =
+    let
+      sub = t.submodule (
+        { name, ... }:
+        {
+          options.nm = gm.mkOption { default = name; };
+        }
+      );
+    in
+    t.defineType (
+      sub
+      // {
+        nests = sub.nests // {
+          declAt = true;
+          locOf = loc: d: loc ++ [ (builtins.concatStringsSep "," (builtins.attrNames d)) ];
+        };
+      }
+    );
 in
 {
   flake.tests.declaration-address = {
@@ -656,6 +676,22 @@ in
             "bar"
           ]
         ];
+      };
+    };
+    # `nests.locOf` names the prefix of a tree over ONE seed, from that seed's `{ file; value; declAt; }`;
+    # over several seeds (one key defined by two modules) the tree keeps its merge position.
+    test-locOf-names-a-single-seed-tree-and-not-a-multi-seed-one = {
+      expr = builtins.mapAttrs (_: e: e.nm) (
+        (gm.evalModuleTree { } [
+          { options.xs = gm.mkOption { type = t.attrsOf LocOf; }; }
+          { config.xs.one = { }; }
+          { config.xs.two = { }; }
+          { config.xs.two = { }; }
+        ]).config.xs
+      );
+      expected = {
+        one = "declAt,file,value";
+        two = "two";
       };
     };
   };
