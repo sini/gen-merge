@@ -3034,8 +3034,9 @@ let
           }
         ) (moduleEntries callM importer mods);
       # The reference's load-time checks over occurrences: `unifyModuleSyntax`'s (`moduleSyntaxChecked`)
-      # and `checkModule`'s class: a caller's own `specialArgs._class` first, as nixpkgs' `// specialArgs`
-      # has it, else the evaluation's `class`.
+      # and a class check that reads a caller's own `specialArgs._class` first, else the evaluation's
+      # `class`. nixpkgs' `checkModule` reads `class` alone, so on a caller `_class` the two differ in
+      # which disabled modules are served or refused: an open divergence (den-hoag-zchgl).
       checked =
         specialArgs: class: occ:
         all (e: isAttrs (moduleSyntaxChecked e) && classOk (specialArgs._class or class) e) occ;
