@@ -1,6 +1,7 @@
 # `pushDownProperties`' merge arm (lib/priority.nix, den-hoag-l5iea §4.2): the fold over a merge's pushed
-# contents is seeded with the first content. The join of `{ }` and a config is that config key for key, so the
-# seed changes no value, and the first content is no longer rebuilt through `listToAttrs`.
+# contents starts at `{ }`, and `mergeConfigAttrs` joins `{ }` to its other operand as that operand itself. The
+# join of `{ }` and a config is that config key for key, so this changes no value, and the first content is no
+# longer rebuilt through `listToAttrs`.
 #
 # The value cells pin the arm's answer on every shape it meets: no contents, one, a shared key, a content that
 # is not an attrset, first or later. The copy cell reads the copy itself: an attribute rebuilt through
@@ -111,5 +112,23 @@ in
         ]);
         expected = builtins.unsafeGetAttrPos "a" first;
       };
+    # The empty test is `{ } == a`, not `a == { }`: attrset equality asks its left operand whether it is a
+    # derivation, so the reversed order forces a content's `type` key on every later join.
+    test-a-content-type-key-is-not-forced = {
+      expr = builtins.attrNames (push [
+        {
+          type = throw "TYPE-FORCED";
+          a = 1;
+        }
+        { b = 2; }
+        { c = 3; }
+      ]);
+      expected = [
+        "a"
+        "b"
+        "c"
+        "type"
+      ];
+    };
   };
 }

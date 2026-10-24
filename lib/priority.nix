@@ -42,8 +42,6 @@ let
     concatMap
     foldl'
     filter
-    head
-    tail
     map
     mapAttrs
     attrNames
@@ -348,12 +346,7 @@ let
     v:
     if isProperty v then
       if v._type == "merge" then
-        let
-          cs = map pushDownProperties v.contents;
-        in
-        # Seeded with the first content, not `{ }`: `mergeConfigAttrs { } c` is `c` key for key, built
-        # again through `listToAttrs`, a copy of every config a merge holds (addMeta's `[ config { meta } ]`).
-        if cs == [ ] then { } else foldl' mergeConfigAttrs (head cs) (tail cs)
+        foldl' mergeConfigAttrs { } (map pushDownProperties v.contents)
       else if v._type == "if" || v._type == "override" then
         let
           c = pushDownProperties v.content;
@@ -377,6 +370,9 @@ let
     if !(isAttrs a) then
       a
     else if !(isAttrs b) then
+      b
+    # The fold's `{ }` seed joins to `b` itself, no copy; `{ }` on the left, as `==` reads its left operand's `type`.
+    else if { } == a then
       b
     else
       a
