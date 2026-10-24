@@ -32,19 +32,34 @@ admissions() {
 # --fold F LOG...: the register with each log's `PERF` lines merged in. A log with none is a column that
 # did not run the arm (or a wrong file), never "no perf". A log carries every stage's PERF lines, so only
 # this register's keys are read: a line naming a row the register lacks is refused by the compare.
+# A log's verdict lines (`verdicts`) move a verdict only as the compare's fold rule says: an IMPROVED line
+# on all three columns is adopted, and any other verdict line naming a row of the register refuses.
+#
+# verdicts <column> <log>: the check's IMPROVED / REGRESSED / MOVED lines, one JSON object each. A line
+# naming no row of this register is another stage's, which the compare drops by membership.
+verdicts() {
+  { grep -oE '(IMPROVED|REGRESSED|MOVED) (L[0-9]+ )?(PASS-CLASS|PASS|FAIL) -> (PASS-CLASS|PASS|FAIL) .*$' "$2" || [ $? -eq 1 ]; } |
+    jq -cR --argjson col "$1" '. as $l
+      | (capture("^(?<word>[A-Z]+) (L[0-9]+ )?(?<was>[A-Z-]+) -> (?<now>[A-Z-]+) (?<id>.*)$") // error("unparsed verdict line: \($l)"))
+      | { col: $col, word, was, now, id: (.id | split(" || ")[0]), line: $l }'
+}
 if [ "${1:-}" = --fold ]; then
   [ $# -ge 3 ] || control "usage: $BAR_NAME --fold F LOG..."
   out=$2
   shift 2
+  : >"$tmp/moves.jsonl"
+  col=0
   for log in "$@"; do
     [ -r "$log" ] || control "cannot read $log"
     n=$(grep -c "PERF $BAR_NAME {" "$log" || true)
     [ "$n" -gt 0 ] || control "$log carries no PERF $BAR_NAME line"
     grep -o "PERF $BAR_NAME {.*}\$" "$log" | sed "s/^PERF $BAR_NAME //" >>"$tmp/perf.jsonl"
-    echo "$BAR_NAME: $log: $n PERF lines"
+    col=$((col + 1))
+    verdicts "$col" "$log" >>"$tmp/moves.jsonl" || control "cannot read the verdict lines of $log"
+    echo "$BAR_NAME: $log: $n PERF lines, $(grep -c "\"col\":$col," "$tmp/moves.jsonl" || true) verdict lines (every stage's)"
   done
   jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
-    -f "$BAR_COMPARE" >"$out"
+    --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$#" -f "$BAR_COMPARE" >"$out"
   echo "$BAR_NAME: wrote $(wc -l <"$out") rows to $out"
   admissions "$out"
   exit 0
