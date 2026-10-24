@@ -40,8 +40,9 @@
 #
 # $mode "check": one line per disagreement and a summary · "perf": one `PERF <label> <json>` line per perf row,
 # the line `--fold` reads · "write": the new register, $ev's perf merged in · "fold": $base with $perf's
-# lines merged in and $moves' IMPROVED verdicts adopted (all three columns, $columns, or refused). Every mode but "fold" refuses without $roots, a non-empty list of absolute store paths: an
-# empty list would pass no shared throw, silently.
+# lines merged in and $moves' IMPROVED verdicts adopted (all three evaluators, $columns, or refused). Every
+# mode but "fold" refuses without $roots, a non-empty list of absolute store paths: an empty list would pass
+# no shared throw, silently.
 def id: .key | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
 def perfKind: .key.kind | IN("toplevel", "options", "docs-walk", "tests", "unit", "memo", "template", "flake", "flake-drv");
@@ -64,15 +65,17 @@ def parity: if .gen == null or .ref == null then null
   | ($P | keys | map(select($ids[.] | not))) as $stray
   | if ($stray | length) > 0 then error("PERF lines for rows the register lacks: \($stray)") else . end
   # $moves: the logs' verdict lines, `{col, word, was, now, id, line}`. This register's are those naming
-  # its rows (a log carries every stage's). An IMPROVED move is adopted only when all three columns print
-  # it from the committed verdict; every other verdict line naming a row refuses.
+  # its rows (a log carries every stage's). A column is the evaluator its log's PERF lines name, never the
+  # log's position, so one log passed three times is one column. An IMPROVED move is adopted only when
+  # three distinct evaluators print it from the committed verdict; every other verdict line naming a row
+  # refuses.
   | ($base | map({ key: id, value: .verdict }) | from_entries) as $was
   | (($ARGS.named.moves // []) | map(select($was[.id] != null))) as $mine
   | ($mine | map(select(.word == "IMPROVED")) | group_by([.id, .was, .now])
       | map(select($ARGS.named.columns == 3 and (map(.col) | unique | length) == 3 and .[0].was == $was[.[0].id]))
       | map({ key: .[0].id, value: .[0].now }) | from_entries) as $V
   | ($mine | map(select(.word != "IMPROVED" or $V[.id] != .now) | .line) | unique) as $refused
-  | if ($refused | length) > 0 then error("verdict lines --fold does not adopt (only an IMPROVED line on all three columns): \($refused)") else . end
+  | if ($refused | length) > 0 then error("verdict lines --fold does not adopt (only an IMPROVED line from three distinct evaluators): \($refused)") else . end
   | $base[]
   | if perfKind then .perf = ((.perf // { }) + ($P[id] // { })) else . end
   | .verdict = ($V[id] // .verdict)
