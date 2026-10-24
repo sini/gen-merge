@@ -2724,7 +2724,7 @@ let
   # `chain null`: the refined-key maps of x's level (head) and of every shallower level (tail), built
   # only where a meeting is decided distinct.
   keyedDrop =
-    specialArgs: class: callM: chain: w: x:
+    class: callM: chain: w: x:
     let
       k1 = builtins.substring 1 (builtins.stringLength x.k) x.k;
       key = if builtins.substring 0 1 x.k == "m" then k1 + a3.sep + a3.refineOf x.e else k1;
@@ -2741,13 +2741,13 @@ let
         shallower = builtins.filter (d: d ? ${rk}) (builtins.tail rs);
       in
       if shallower != [ ] then
-        keyedDrop specialArgs class callM a3.noRefined (builtins.head shallower).${rk} x
+        keyedDrop class callM a3.noRefined (builtins.head shallower).${rk} x
       else if here.${rk}.p == x.p then
         true
       else
-        keyedDrop specialArgs class callM a3.noRefined here.${rk} x
+        keyedDrop class callM a3.noRefined here.${rk} x
     else if keqOf w.e == null && keqOf x.e == null then
-      removal.walk.lost specialArgs class callM x.e
+      removal.walk.lost class callM x.e
     else if keqOf w.e == null || keqOf x.e == null then
       throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}', and only `${
         if keqOf w.e != null then w.e._file else x.e._file
@@ -2757,13 +2757,13 @@ let
         same = (keqOf w.e).decide (keqOf w.e).subject (keqOf x.e).subject;
       in
       if same == true then
-        removal.walk.lost specialArgs class callM x.e
+        removal.walk.lost class callM x.e
       else if same == false then
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
   moduleLevels =
-    specialArgs: class: callM: seen: level:
+    class: callM: seen: level:
     if level == [ ] then
       [ ]
     else
@@ -2796,7 +2796,7 @@ let
                 x.k == null
                 || (
                   if seen ? ${x.k} || first.${x.k}.p != x.p then
-                    keyedDrop specialArgs class callM (
+                    keyedDrop class callM (
                       _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
                     ) (seen.${x.k} or first.${x.k}) x
                   else
@@ -2812,7 +2812,7 @@ let
       # a key is itself decided against it, and must never replace it (den-hoag-9zyp7 gate v0 C1). The
       # refined-key chain under "" is this level's, which already holds every shallower one.
       ++
-        moduleLevels specialArgs class callM
+        moduleLevels class callM
           (
             if keyed then
               first
@@ -2918,7 +2918,7 @@ let
     closure =
       specialArgs: class: callM: root: mods: plain:
       let
-        u = moduleLevels specialArgs class callM none plain;
+        u = moduleLevels class callM none plain;
       in
       if all statesNone u then
         u
@@ -2927,8 +2927,8 @@ let
           occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
           dis = walk.keysOf (specialArgs.modulesPath or "") occ;
         in
-        builtins.seq (walk.checked specialArgs class occ) (
-          moduleLevels specialArgs class callM { } (walk.keptEntries dis callM root mods)
+        builtins.seq (walk.checked class occ) (
+          moduleLevels class callM { } (walk.keptEntries dis callM root mods)
         );
     # Whether a collection removed anything: every module of a non-empty tree removed, or a removal's
     # entries carrying a non-empty key set.
@@ -3061,24 +3061,22 @@ let
           }
         ) (moduleEntries callM importer mods);
       # The reference's load-time checks over occurrences: `unifyModuleSyntax`'s (`moduleSyntaxChecked`)
-      # and a class check that reads a caller's own `specialArgs._class` first, else the evaluation's
-      # `class`. nixpkgs' `checkModule` reads `class` alone, so on a caller `_class` the two differ in
-      # which disabled modules are served or refused: an open divergence (den-hoag-zchgl).
-      checked =
-        specialArgs: class: occ:
-        all (e: isAttrs (moduleSyntaxChecked e) && classOk (specialArgs._class or class) e) occ;
+      # and `checkModule`'s, which reads the evaluation's `class` alone. A caller's `specialArgs._class`
+      # is the `_class` argument a module reads, never the class it is held to, so `specialArgs` is not
+      # in scope here (den-hoag-zchgl).
+      checked = class: occ: all (e: isAttrs (moduleSyntaxChecked e) && classOk class e) occ;
       # A losing occurrence `e` of the clean walk: loaded with its imports, and kept where one of them
       # states `disabledModules` (see above). The removal's walk (whose entries carry `dis`) has loaded
       # every occurrence already, and drops it.
       lost =
-        specialArgs: class: callM: e:
+        class: callM: e:
         if e ? dis then
           false
         else
           let
             occ = occurrences callM [ (e // { key = "l"; }) ];
           in
-          builtins.seq (checked specialArgs class occ) (any (o: o.content ? disabledModules) occ);
+          builtins.seq (checked class occ) (any (o: o.content ? disabledModules) occ);
       # An entry's reference key, its importer's given (`""` at the top).
       nixKeyOf =
         pk: i: e:
@@ -5842,10 +5840,10 @@ let
   # second key or a curried flag: every nested evaluation's guard pays for either.
   #
   # `class`: the evaluation's, as at `evalModuleTreeWith`. It is the `_class` every declaring module
-  # reads and the class the collection's load check (`removal.walk.checked`) holds modules to, under a
-  # caller's own `specialArgs._class`. It is its own field, threaded to the check, rather than a key the
-  # guard adds to `specialArgs`, because `declArgs` serves `specialArgs` itself, and nixpkgs serves the
-  # caller's set there.
+  # reads unless a caller's `specialArgs._class` overrides that argument, and always the class the
+  # collection's load check (`removal.walk.checked`) holds modules to. It is its own field, threaded to
+  # the check, rather than a key the guard adds to `specialArgs`, because `declArgs` serves
+  # `specialArgs` itself, and nixpkgs serves the caller's set there.
   declarationStratumWith =
     positioned: onRedeclare:
     {

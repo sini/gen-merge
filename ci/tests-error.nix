@@ -6192,6 +6192,101 @@ in
             msg = classMsg ".*/cls\\.nix";
           };
         };
+        # a caller's `specialArgs._class` is the `_class` argument, never the class a removed or
+        # losing module is held to: the reference's `checkModule` reads the evaluation's `class` alone
+        # (den-hoag-zchgl). RED, evaluated at gen-merge eb5a2b5: both serve `[ ]` / `[ "k1" ]`.
+        test-a-removed-module-is-held-to-the-evaluations-class-not-the-callers = {
+          expr =
+            x
+              {
+                class = "nixos";
+                specialArgs = {
+                  modulesPath = fx;
+                  _class = "darwin";
+                };
+              }
+              [
+                (fx + "/cls.nix")
+                { disabledModules = [ (fx + "/cls.nix") ]; }
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = classMsg ".*/cls\\.nix";
+          };
+        };
+        test-a-module-losing-its-key-is-held-to-the-evaluations-class-not-the-callers = {
+          expr =
+            x
+              {
+                class = "nixos";
+                specialArgs = {
+                  modulesPath = fx;
+                  _class = "darwin";
+                };
+              }
+              [
+                {
+                  key = "K";
+                  x = [ "k1" ];
+                }
+                {
+                  key = "K";
+                  _class = "darwin";
+                  x = [ "k2" ];
+                }
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = classMsg "<unknown-file>";
+          };
+        };
+        # a caller's `_class = null` turns no check off. RED, evaluated at gen-merge eb5a2b5: both
+        # serve `[ ]` / `[ "k1" ]`.
+        test-a-callers-null-class-checks-a-removed-module-still = {
+          expr =
+            x
+              {
+                class = "nixos";
+                specialArgs = {
+                  modulesPath = fx;
+                  _class = null;
+                };
+              }
+              [
+                (fx + "/cls.nix")
+                { disabledModules = [ (fx + "/cls.nix") ]; }
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = classMsg ".*/cls\\.nix";
+          };
+        };
+        test-a-callers-null-class-checks-a-module-losing-its-key-still = {
+          expr =
+            x
+              {
+                class = "nixos";
+                specialArgs = {
+                  modulesPath = fx;
+                  _class = null;
+                };
+              }
+              [
+                {
+                  key = "K";
+                  x = [ "k1" ];
+                }
+                {
+                  key = "K";
+                  _class = "darwin";
+                  x = [ "k2" ];
+                }
+              ];
+          expectedError = {
+            type = "ThrownError";
+            msg = classMsg "<unknown-file>";
+          };
+        };
         # the control: the same module kept
         test-a-kept-module-of-another-class-refuses = {
           expr = x { class = "nixos"; } [ (fx + "/cls.nix") ];

@@ -304,6 +304,96 @@ in
         ];
       };
     };
+    # A caller's `specialArgs._class` is the `_class` argument, never the class a removed or losing
+    # module is held to: the reference's `checkModule` reads the evaluation's `class` alone
+    # (den-hoag-zchgl). RED, evaluated at gen-merge eb5a2b5: gen refuses both, "expects class darwin".
+    test-a-callers-class-argument-holds-no-removed-or-losing-module =
+      let
+        args = {
+          class = "nixos";
+          specialArgs = {
+            modulesPath = fx;
+            _class = "darwin";
+          };
+        };
+        both' = ms: {
+          gen = (gm.evalModuleTree args ([ (declOf gm) ] ++ ms)).config.x;
+          nixpkgs = npX args ms;
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: both') {
+          removed = [
+            (fx + "/cls-nixos.nix")
+            { disabledModules = [ (fx + "/cls-nixos.nix") ]; }
+          ];
+          lost = [
+            {
+              key = "K";
+              x = [ "k1" ];
+            }
+            {
+              key = "K";
+              _class = "nixos";
+              x = [ "k2" ];
+            }
+          ];
+        };
+        expected = {
+          removed = is [ ];
+          lost = is [ "k1" ];
+        };
+      };
+    # With no `class` requested, the reference runs no class check at all, so a caller's `_class`
+    # turns none on (den-hoag-zchgl). RED, evaluated at gen-merge eb5a2b5: gen refuses all four,
+    # "expects class nixos" / "expects class darwin".
+    test-a-callers-class-argument-checks-nothing-without-a-class =
+      let
+        both' = callerClass: ms: {
+          gen =
+            (gm.evalModuleTree {
+              specialArgs = {
+                modulesPath = fx;
+                _class = callerClass;
+              };
+            } ([ (declOf gm) ] ++ ms)).config.x;
+          nixpkgs = npX {
+            specialArgs = {
+              modulesPath = fx;
+              _class = callerClass;
+            };
+          } ms;
+        };
+        removed = m: [
+          m
+          { disabledModules = [ m ]; }
+        ];
+        lost = moduleClass: [
+          {
+            key = "K";
+            x = [ "k1" ];
+          }
+          {
+            key = "K";
+            _class = moduleClass;
+            x = [ "k2" ];
+          }
+        ];
+      in
+      {
+        expr = {
+          nixosRemovesDarwin = both' "nixos" (removed (fx + "/cls.nix"));
+          nixosLosesDarwin = both' "nixos" (lost "darwin");
+          darwinRemovesNixos = both' "darwin" (removed (fx + "/cls-nixos.nix"));
+          darwinLosesNixos = both' "darwin" (lost "nixos");
+        };
+        expected = {
+          nixosRemovesDarwin = is [ ];
+          nixosLosesDarwin = is [ "k1" ];
+          darwinRemovesNixos = is [ ];
+          darwinLosesNixos = is [ "k1" ];
+        };
+      };
     # The reference refuses each shape the error plane's `disabled-modules` group pins gen-merge's
     # refusal of, so those are refusals the reference makes too.
     test-the-reference-refuses-the-error-plane-shapes = {
@@ -346,6 +436,72 @@ in
             foo = 1;
           }
         ];
+        classcaller =
+          npX
+            {
+              class = "nixos";
+              specialArgs = {
+                modulesPath = fx;
+                _class = "darwin";
+              };
+            }
+            [
+              (fx + "/cls.nix")
+              { disabledModules = [ (fx + "/cls.nix") ]; }
+            ];
+        dedupclasscaller =
+          npX
+            {
+              class = "nixos";
+              specialArgs = {
+                modulesPath = fx;
+                _class = "darwin";
+              };
+            }
+            [
+              {
+                key = "K";
+                x = [ "k1" ];
+              }
+              {
+                key = "K";
+                _class = "darwin";
+                x = [ "k2" ];
+              }
+            ];
+        classnull =
+          npX
+            {
+              class = "nixos";
+              specialArgs = {
+                modulesPath = fx;
+                _class = null;
+              };
+            }
+            [
+              (fx + "/cls.nix")
+              { disabledModules = [ (fx + "/cls.nix") ]; }
+            ];
+        dedupclassnull =
+          npX
+            {
+              class = "nixos";
+              specialArgs = {
+                modulesPath = fx;
+                _class = null;
+              };
+            }
+            [
+              {
+                key = "K";
+                x = [ "k1" ];
+              }
+              {
+                key = "K";
+                _class = "darwin";
+                x = [ "k2" ];
+              }
+            ];
         dedupclass = npX { class = "nixos"; } [
           {
             key = "K";
@@ -366,6 +522,10 @@ in
         unkeyed = true;
         dedupbad = true;
         dedupclass = true;
+        classcaller = true;
+        dedupclasscaller = true;
+        classnull = true;
+        dedupclassnull = true;
       };
     };
   };
