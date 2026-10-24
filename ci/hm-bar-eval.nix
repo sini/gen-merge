@@ -1,7 +1,7 @@
 # ONE EVALUATION of the stage-3 replacement-bar arm (den-hoag-stage3-home-manager-nk0o6, `hm-bar.nix`):
 # home-manager's own drivers, unmodified but for `hm-bar.patch`, run on gen-merge's nixpkgs with `lib` either
-# nixpkgs' (engine "ref") or the lib `modules-sh-lib.nix` builds (engine "gen": nixpkgs' lib with top-level
-# `evalModules` = gen-merge's `evalModuleTree`), handed in as `pkgs.lib`. home-manager extends that `lib`
+# nixpkgs' (engine "ref") or the lib `modules-sh-lib.nix` builds (engine "gen": nixpkgs' lib with `evalModules`
+# and `lib.modules.evalModules` = gen-merge's `evalModuleTree`), handed in as `pkgs.lib`. home-manager extends that `lib`
 # itself (`modules/lib/stdlib-extended.nix`), so every evaluation it makes runs through the engine named.
 #
 #   tests  home-manager's `tests/default.nix` (patched to return nmt's argument record) and nmt's
