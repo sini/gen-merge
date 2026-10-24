@@ -101,8 +101,9 @@ pkgs.writeShellApplication {
 
     # --fold F LOG...: `nixos-bar.bash`'s fold. A log with no `PERF modules-sh` line is a column that did not
     # run the arm (or a wrong file), never "no perf"; a line naming a row the register lacks is refused.
-    # Its verdict lines are `nixos-bar.bash`'s `verdicts`: an IMPROVED line on all three columns is adopted,
-    # and any other verdict line naming a row of the register refuses.
+    # Its verdict lines are `nixos-bar.bash`'s `verdicts`: an IMPROVED line from three distinct evaluators
+    # (a column is the evaluator its log's PERF lines name, never its position) is adopted, and any other
+    # verdict line naming a row of the register refuses.
     verdicts() {
       { grep -oE '(IMPROVED|REGRESSED|MOVED) (L[0-9]+ )?(PASS-CLASS|PASS|FAIL) -> (PASS-CLASS|PASS|FAIL) .*$' "$2" || [ $? -eq 1 ]; } |
         jq -cR --argjson col "$1" '. as $l
@@ -114,18 +115,21 @@ pkgs.writeShellApplication {
       out=$2
       shift 2
       : >"$tmp/moves.jsonl"
-      col=0
       for log in "$@"; do
         [ -r "$log" ] || control "cannot read $log"
         n=$(grep -c "PERF modules-sh {" "$log" || true)
         [ "$n" -gt 0 ] || control "$log carries no PERF modules-sh line"
         grep -o "PERF modules-sh {.*}\$" "$log" | sed "s/^PERF modules-sh //" >>"$tmp/perf.jsonl"
-        col=$((col + 1))
+        col=$(grep -o "PERF modules-sh {.*}\$" "$log" | sed "s/^PERF modules-sh //" | jq -sc 'map(.evaluator) | unique') ||
+          control "cannot read the evaluator of $log"
+        [ "$(jq length <<<"$col")" -eq 1 ] || control "$log's PERF lines name $col, not one evaluator"
+        col=$(jq -c '.[0]' <<<"$col")
         verdicts "$col" "$log" >>"$tmp/moves.jsonl" || control "cannot read the verdict lines of $log"
-        echo "modules-sh: $log: $n PERF lines, $(grep -c "\"col\":$col," "$tmp/moves.jsonl" || true) verdict lines (every stage's)"
+        echo "modules-sh: $log: $n PERF lines, evaluator $col, $(jq -c --argjson c "$col" 'select(.col == $c)' "$tmp/moves.jsonl" | wc -l) verdict lines (every stage's)"
       done
+      cols=$(jq -rs 'map(.evaluator) | unique | length' "$tmp/perf.jsonl") || control "cannot count the evaluators of the logs"
       jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
-        --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$#" -f ${./modules-sh-compare.jq} >"$out"
+        --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$cols" -f ${./modules-sh-compare.jq} >"$out"
       echo "modules-sh: wrote $(wc -l <"$out") rows to $out"
       admissions "$out"
       exit 0

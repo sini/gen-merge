@@ -33,9 +33,9 @@ admissions() {
 # did not run the arm (or a wrong file), never "no perf". A log carries every stage's PERF lines, so only
 # this register's keys are read: a line naming a row the register lacks is refused by the compare.
 # A log's verdict lines (`verdicts`) move a verdict only as the compare's fold rule says: an IMPROVED line
-# on all three columns is adopted, and any other verdict line naming a row of the register refuses.
+# from three distinct evaluators is adopted, and any other verdict line naming a row of the register refuses.
 #
-# verdicts <column> <log>: the check's IMPROVED / REGRESSED / MOVED lines, one JSON object each. A line
+# verdicts <evaluator, JSON> <log>: the check's IMPROVED / REGRESSED / MOVED lines, one JSON object each. A line
 # naming no row of this register is another stage's, which the compare drops by membership.
 verdicts() {
   { grep -oE '(IMPROVED|REGRESSED|MOVED) (L[0-9]+ )?(PASS-CLASS|PASS|FAIL) -> (PASS-CLASS|PASS|FAIL) .*$' "$2" || [ $? -eq 1 ]; } |
@@ -48,18 +48,22 @@ if [ "${1:-}" = --fold ]; then
   out=$2
   shift 2
   : >"$tmp/moves.jsonl"
-  col=0
   for log in "$@"; do
     [ -r "$log" ] || control "cannot read $log"
     n=$(grep -c "PERF $BAR_NAME {" "$log" || true)
     [ "$n" -gt 0 ] || control "$log carries no PERF $BAR_NAME line"
     grep -o "PERF $BAR_NAME {.*}\$" "$log" | sed "s/^PERF $BAR_NAME //" >>"$tmp/perf.jsonl"
-    col=$((col + 1))
+    # The column is the evaluator this log's PERF lines name: one log passed twice is one column.
+    col=$(grep -o "PERF $BAR_NAME {.*}\$" "$log" | sed "s/^PERF $BAR_NAME //" | jq -sc 'map(.evaluator) | unique') ||
+      control "cannot read the evaluator of $log"
+    [ "$(jq length <<<"$col")" -eq 1 ] || control "$log's PERF lines name $col, not one evaluator"
+    col=$(jq -c '.[0]' <<<"$col")
     verdicts "$col" "$log" >>"$tmp/moves.jsonl" || control "cannot read the verdict lines of $log"
-    echo "$BAR_NAME: $log: $n PERF lines, $(grep -c "\"col\":$col," "$tmp/moves.jsonl" || true) verdict lines (every stage's)"
+    echo "$BAR_NAME: $log: $n PERF lines, evaluator $col, $(jq -c --argjson c "$col" 'select(.col == $c)' "$tmp/moves.jsonl" | wc -l) verdict lines (every stage's)"
   done
+  cols=$(jq -rs 'map(.evaluator) | unique | length' "$tmp/perf.jsonl") || control "cannot count the evaluators of the logs"
   jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
-    --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$#" -f "$BAR_COMPARE" >"$out"
+    --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$cols" -f "$BAR_COMPARE" >"$out"
   echo "$BAR_NAME: wrote $(wc -l <"$out") rows to $out"
   admissions "$out"
   exit 0

@@ -33,7 +33,7 @@
 #
 # $mode "check" emits one line per disagreement and a summary · "perf" one `PERF modules-sh <json>` line per
 # perf row, the line `--fold` reads · "write" the new baseline, $ev's perf merged in · "fold" $base with
-# $perf's lines merged in and $moves' IMPROVED verdicts adopted (all three columns, or refused).
+# $perf's lines merged in and $moves' IMPROVED verdicts adopted (all three evaluators, or refused).
 def id: [.kind, .env, .argv] | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
 def perfKind: .key.kind | IN("checkConfigOutput", "checkExpression");
@@ -53,7 +53,7 @@ def parity: if .gen == null or .ref == null then null
       | map(select($ARGS.named.columns == 3 and (map(.col) | unique | length) == 3 and .[0].was == $was[.[0].id]))
       | map({ key: .[0].id, value: .[0].now }) | from_entries) as $V
   | ($mine | map(select(.word != "IMPROVED" or $V[.id] != .now) | .line) | unique) as $refused
-  | if ($refused | length) > 0 then error("verdict lines --fold does not adopt (only an IMPROVED line on all three columns): \($refused)") else . end
+  | if ($refused | length) > 0 then error("verdict lines --fold does not adopt (only an IMPROVED line from three distinct evaluators): \($refused)") else . end
   | $base[]
   | if perfKind then .perf = ((.perf // { }) + ($P[.key | id] // { })) else . end
   | .verdict = ($V[.key | id] // .verdict)
