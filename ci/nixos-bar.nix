@@ -31,7 +31,8 @@
 #   nixos-bar                        run and score; exit 1 on any disagreement with the register
 #   nixos-bar --write-baseline F     run and write the register to F, this evaluator's perf merged
 #   nixos-bar --fold F LOG...        no evaluation: the register with the `PERF` lines of LOG... (CI's
-#                                    three column logs) merged in, written to F
+#                                    three column logs) merged in and an IMPROVED verdict all three print
+#                                    adopted, written to F; any other verdict change refuses
 #
 # THE REGISTER IS WRITTEN UNDER THE BINARIES THAT JUDGE. CI's evaluators are gen-harness's pins, which
 # `engine-pins.nix` holds coherent with its engine inputs; a local build of those differs from CI's only in

@@ -50,8 +50,11 @@
 #   set                  not a cost class: the row's summed `set` (stage 3's `tests` row) changed between the
 #                        two revisions, so the figures are of other work and never a rise (the compare's
 #                        SET-MOVED reads no COST line either). Admitted only where the set moved, so it can
-#                        never carry a rise on an unchanged set; named by the row's own hash, never by the
-#                        arm wildcard.
+#                        never carry a rise on an unchanged set, AND where nothing under test moved
+#                        (reanchor's second half: every gen member lock node, lib/ and the row's arm inputs
+#                        unchanged between the two revisions), so a cost change riding a set move is never
+#                        admitted with it: the set move and the cost each take their own revision, or the
+#                        cost a cost class. Named by the row's own hash, never by the arm wildcard.
 #
 # Every trailer in range naming a key's hash is read, and any valid one admits it, so a later trailer for
 # the same key (another change's, of a class that does not hold there) never shadows a valid one.
@@ -129,7 +132,7 @@ summary=""
 # judge <label> <old rev> <old register spec> <new rev> <trailer range>…: the falls (and perf rises) from
 # the old register to <new rev>'s, each needing an admission among the trailers of the ranges.
 judge() {
-  local label=$1 old=$2 oldSpec=$3 new=$4 fallen rises trailers="" ptrailers="" r a b ua ub moved env key was now h adm why c e par above cands
+  local label=$1 old=$2 oldSpec=$3 new=$4 fallen rises trailers="" ptrailers="" r a b ua ub moved same env key was now h adm why c e par above cands
   shift 4
   checked=$((checked + 1))
   fallen=$(jq -rn --arg keyform "$form" --slurpfile old <(git show "$oldSpec") --slurpfile new <(git show "${new}:$reg") \
@@ -172,11 +175,13 @@ judge() {
     done <<<"$fallen"
   fi
   [ -n "$rises" ] || return 0
-  # reanchor's environment test: a reference node moved, and nothing under test did.
+  # reanchor's environment test: a reference node moved, and nothing under test did (`same`, which `set` needs too).
   ua=$(underTestAt "$old") || exit 2
   ub=$(underTestAt "$new") || exit 2
+  same=no
+  [ "$ua" != "$ub" ] || same=yes
   env=no
-  if [ "$moved" = yes ] && [ "$ua" = "$ub" ]; then env=yes; fi
+  if [ "$moved" = yes ] && [ "$same" = yes ]; then env=yes; fi
   while IFS=$'\t' read -r key e was now par above setmv; do
     h=$(hashOf "$key"$'\t'"$e")
     mapfile -t cands < <(grep -E "^(($h|$arm:\\*) (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)|$h set)\$" <<<"$ptrailers" || true)
@@ -184,6 +189,8 @@ judge() {
     for c in "${cands[@]}"; do
       if [[ "${c#* }" == set && "$setmv" != yes ]]; then
         why="a set admission, but the row's summed set did not move in ${old:0:9}..${new:0:9}"
+      elif [[ "${c#* }" == set && "$same" != yes ]]; then
+        why="a set admission, but a gen member pin, lib/ or an arm input moved in ${old:0:9}..${new:0:9}, so the figures carry a change under test"
       elif [[ "${c#* }" == reanchor && "$env" == no ]]; then
         why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: reference ($refs) moved=$moved, and a gen member pin, lib/ or an arm input moved, or no reference node did"
       elif [[ "${c#* }" == parity && "$par" == no && "$above" == no ]]; then

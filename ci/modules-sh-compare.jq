@@ -33,7 +33,7 @@
 #
 # $mode "check" emits one line per disagreement and a summary · "perf" one `PERF modules-sh <json>` line per
 # perf row, the line `--fold` reads · "write" the new baseline, $ev's perf merged in · "fold" $base with
-# $perf's lines merged in.
+# $perf's lines merged in and $moves' IMPROVED verdicts adopted (all three columns, or refused).
 def id: [.kind, .env, .argv] | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
 def perfKind: .key.kind | IN("checkConfigOutput", "checkExpression");
@@ -46,8 +46,17 @@ def parity: if .gen == null or .ref == null then null
   | ($base | map({ key: (.key | id), value: true }) | from_entries) as $ids
   | ($P | keys | map(select($ids[.] | not))) as $stray
   | if ($stray | length) > 0 then error("PERF lines for rows the register lacks: \($stray)") else . end
+  # $moves: the logs' verdict lines, adopted as `nixos-bar-compare.jq`'s fold adopts them.
+  | ($base | map({ key: (.key | id), value: .verdict }) | from_entries) as $was
+  | (($ARGS.named.moves // []) | map(select($was[.id] != null))) as $mine
+  | ($mine | map(select(.word == "IMPROVED")) | group_by([.id, .was, .now])
+      | map(select($ARGS.named.columns == 3 and (map(.col) | unique | length) == 3 and .[0].was == $was[.[0].id]))
+      | map({ key: .[0].id, value: .[0].now }) | from_entries) as $V
+  | ($mine | map(select(.word != "IMPROVED" or $V[.id] != .now) | .line) | unique) as $refused
+  | if ($refused | length) > 0 then error("verdict lines --fold does not adopt (only an IMPROVED line on all three columns): \($refused)") else . end
   | $base[]
   | if perfKind then .perf = ((.perf // { }) + ($P[.key | id] // { })) else . end
+  | .verdict = ($V[.key | id] // .verdict)
   | tojson
 else
 . as $recs

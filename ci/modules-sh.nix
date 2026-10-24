@@ -23,8 +23,9 @@
 #   modules-sh --write-baseline F  run and write the baseline to F, this evaluator's perf merged in (the
 #                                  ratchet; review its diff and the LOWERED / RISE lines it prints)
 #   modules-sh --fold F LOG...     no evaluation: the baseline with the `PERF modules-sh` lines of LOG...
-#                                  (CI's three column logs) merged in, written to F; the register's perf
-#                                  is written from CI's columns this way, as stage 2's is
+#                                  (CI's three column logs) merged in and an IMPROVED verdict all three
+#                                  print adopted, written to F (any other verdict change refuses); the
+#                                  register's perf is written from CI's columns this way, as stage 2's is
 #
 # EXIT: 0 no disagreement · 1 a disagreement · 2 CONTROL FAILED, a broken instrument, never a verdict.
 #
@@ -100,19 +101,31 @@ pkgs.writeShellApplication {
 
     # --fold F LOG...: `nixos-bar.bash`'s fold. A log with no `PERF modules-sh` line is a column that did not
     # run the arm (or a wrong file), never "no perf"; a line naming a row the register lacks is refused.
+    # Its verdict lines are `nixos-bar.bash`'s `verdicts`: an IMPROVED line on all three columns is adopted,
+    # and any other verdict line naming a row of the register refuses.
+    verdicts() {
+      { grep -oE '(IMPROVED|REGRESSED|MOVED) (L[0-9]+ )?(PASS-CLASS|PASS|FAIL) -> (PASS-CLASS|PASS|FAIL) .*$' "$2" || [ $? -eq 1 ]; } |
+        jq -cR --argjson col "$1" '. as $l
+          | (capture("^(?<word>[A-Z]+) (L[0-9]+ )?(?<was>[A-Z-]+) -> (?<now>[A-Z-]+) (?<id>.*)$") // error("unparsed verdict line: \($l)"))
+          | { col: $col, word, was, now, id: (.id | split(" || ")[0]), line: $l }'
+    }
     if [ "''${1:-}" = --fold ]; then
       [ $# -ge 3 ] || control "usage: modules-sh --fold F LOG..."
       out=$2
       shift 2
+      : >"$tmp/moves.jsonl"
+      col=0
       for log in "$@"; do
         [ -r "$log" ] || control "cannot read $log"
         n=$(grep -c "PERF modules-sh {" "$log" || true)
         [ "$n" -gt 0 ] || control "$log carries no PERF modules-sh line"
         grep -o "PERF modules-sh {.*}\$" "$log" | sed "s/^PERF modules-sh //" >>"$tmp/perf.jsonl"
-        echo "modules-sh: $log: $n PERF lines"
+        col=$((col + 1))
+        verdicts "$col" "$log" >>"$tmp/moves.jsonl" || control "cannot read the verdict lines of $log"
+        echo "modules-sh: $log: $n PERF lines, $(grep -c "\"col\":$col," "$tmp/moves.jsonl" || true) verdict lines (every stage's)"
       done
       jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
-        -f ${./modules-sh-compare.jq} >"$out"
+        --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$#" -f ${./modules-sh-compare.jq} >"$out"
       echo "modules-sh: wrote $(wc -l <"$out") rows to $out"
       admissions "$out"
       exit 0
