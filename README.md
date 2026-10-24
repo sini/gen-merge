@@ -347,6 +347,25 @@ built with (`lib/default.nix`'s `lib` parameter) at every level, and none if bui
 (`` module argument `lib' is not defined ``) until the caller threads it through `specialArgs` (or, outside
 option declarations, `_module.args`). `_class` and `_prefix` are injected as nixpkgs injects them.
 
+### A type that refuses a caller's base module argument — `refusingSubmodule`
+
+`refusingSubmodule keys mods` is `submodule mods` that STATES base module arguments it refuses from a
+caller: a type of gen's own, with no nixpkgs twin, whose evaluation supplies those arguments itself (a
+gen-schema instance reads its own `config` to bind its kind argument and identity). Its `withArgs`
+refuses a stated key by name when the caller's set carries it, and gen's submodule union refuses a
+stated key that either declaration's arguments carry, in either order; the merged type refuses what
+either side stated. Presence decides, never the value. Any other key is served, as on a plain
+`submodule`. The stated set is the record's `refusedArgs` attribute beside `specialArgs`, sorted and
+unique, never in `functor.payload`, so the payload stays nixpkgs' `submoduleWith`'s; every rebuild
+(`recarry`, `substructure.rebuild`, the union, the exported `typeMerge` and `substSubModules`, a
+`deriveType`) carries it, and it enters the type's mint, so two types differing only in it mint apart. A
+redeclaration through nixpkgs' own `submoduleWith` is nixpkgs' record and carries no set. `keys` must be
+a list of strings drawn from the engine's `baseArgNames` (`lib/modules.nix`: `_class`, `_prefix`,
+`config`, `lib`, `name`, `options`, `prefix`, `specialArgs`, held to the arguments a module receives by
+`test-baseArgNames-is-every-key-the-engine-supplies`); any other key is refused at
+construction, since no evaluation of the type supplies it. A type serving as a nixpkgs twin never
+states a key: there nixpkgs serves the caller's value.
+
 ## Provenance
 
 `.provenance` is an always-on, lazy tree mirroring `.config`'s loc structure — one record per option

@@ -217,6 +217,7 @@ let
       "nests"
       "split"
       "specialArgs"
+      "refusedArgs"
       "shorthandOnlyDefinesConfig"
       "__name"
       "__nameWithin"

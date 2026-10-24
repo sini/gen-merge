@@ -14,6 +14,7 @@
   nixpkgsLib,
   interface,
   genMergeCore,
+  genMergeWithLib,
   ...
 }:
 let
@@ -2529,6 +2530,67 @@ in
     # module reading the key reads the CALLER's value, and a set with no reader evaluates as without
     # it. The fresh key `argand` is the live control: the channel works and the expected table is not
     # vacuous. Each gen door is read against nixpkgs' own door of that shape, in one cell.
+    # den-hoag-58bib β: `baseArgNames` (lib/modules.nix), the one list `refusingSubmodule` reads, is every base
+    # module argument a module receives: root and positioned, declaration and value strata, an engine built
+    # with nixpkgs' `lib` and one built with none, no caller key. A key added to or dropped from `declArgs` or
+    # `baseArgs` without the list reds here.
+    test-baseArgNames-is-every-key-the-engine-supplies =
+      let
+        keysOf =
+          gm:
+          let
+            T = gm.types;
+            decl = a: {
+              options = builtins.listToAttrs (
+                map (k: {
+                  name = "d_${k}";
+                  value = gm.mkOption {
+                    type = T.raw;
+                    default = null;
+                  };
+                }) (builtins.attrNames a)
+              );
+            };
+            val = a: {
+              options.v = gm.mkOption {
+                type = T.raw;
+                default = builtins.attrNames a;
+              };
+            };
+            mods = [
+              (a@{ ... }: decl a)
+              (a@{ ... }: val a)
+            ];
+            root = (gm.evalModuleTree { } mods).config;
+            sub =
+              (gm.evalModuleTree { } [
+                {
+                  options.s = gm.mkOption {
+                    type = T.attrsOf (T.submodule mods);
+                    default = { };
+                  };
+                  config.s.x = { };
+                }
+              ]).config.s.x;
+            dk =
+              c:
+              map (n: builtins.substring 2 (-1) n) (
+                builtins.filter (n: builtins.substring 0 2 n == "d_") (builtins.attrNames c)
+              );
+          in
+          dk root ++ root.v ++ dk sub ++ sub.v;
+      in
+      {
+        expr = builtins.attrNames (
+          builtins.listToAttrs (
+            map (k: {
+              name = k;
+              value = null;
+            }) (keysOf genMerge ++ keysOf (genMergeWithLib nixpkgsLib))
+          )
+        );
+        expected = genMergeCore.baseArgNames;
+      };
     test-reserved-specialArgs-are-served-as-nixpkgs-serves =
       let
         keys = [

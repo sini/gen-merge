@@ -1877,6 +1877,22 @@ let
       ) (strategies.lazyAttrsOf strategies.raw) [ ]
     );
   };
+  # The base module argument names this engine supplies to a module before any caller key: the keys of
+  # `declArgs` and `baseArgs` below, over every shape (positioned or not, an engine built with `lib` or
+  # without), sorted. A type may refuse a caller's value only for one of these (`refusingSubmodule`,
+  # den-hoag-58bib β): a key outside them is no argument the evaluation supplies. The literals stay written out
+  # per shape (each is a thunk on every evaluation's hot path), so `ci/tests/nixpkgs-protocol.nix`
+  # `test-baseArgNames-is-every-key-the-engine-supplies` holds this list to the arguments a module receives.
+  baseArgNames = [
+    "_class"
+    "_prefix"
+    "config"
+    "lib"
+    "name"
+    "options"
+    "prefix"
+    "specialArgs"
+  ];
   # The declarations of an engine-owned `_module.<k>` an evaluation's modules state, in authored order,
   # each `{ file; decl; }`. A `_module` group declares them as `options._module.<k>` leaves
   # (`sitesAt`). A `submodule`-typed `_module` leaf declares them inside its submodule, which nixpkgs
@@ -9291,6 +9307,8 @@ in
     # The option names the engine serves beside the declared ones, for the public record of the
     # same name (lib/default.nix), built from the constructors that serve them.
     engineOptionNames
+    # The base module argument names the engine supplies, read by `refusingSubmodule` (lib/default.nix).
+    baseArgNames
     structuredKeys
     shorthandMetaKeys
     functorRecordKeys

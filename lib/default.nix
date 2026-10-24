@@ -759,7 +759,38 @@ in
   # empty value. Pinned by `ci/tests/partial-submodule.nix`.
   # Built here rather than bound in lib/types.nix and inherited, and as a lambda: each of those, and an
   # argument that is an attribute-set literal, is one more thunk on every process that loads this library.
-  partialSubmodule = mods: strategies.mkSubmodule true "partialSubmodule" { } mods;
+  partialSubmodule = mods: strategies.mkSubmodule true "partialSubmodule" [ ] { } mods;
+  # `submodule` that REFUSES the base module arguments `keys` from a caller (den-hoag-58bib β): a caller
+  # supplying one through `withArgs`, or through a redeclaration the relation unions in, is refused by
+  # name on the key's presence. A refusal contract the type states for arguments its own evaluation
+  # supplies. gen's own construct with no nixpkgs twin, so it lives beside `partialSubmodule` and outside
+  # `types`, the nixpkgs-mirroring namespace, where a caller's `config`, `options` and `prefix` are served
+  # as nixpkgs serves them (ADR-0039); a type serving as a nixpkgs twin never states one.
+  #
+  # A key this engine never supplies (`core.baseArgNames`, one list) is refused at construction: such a
+  # key is no argument the evaluation supplies, so a refusal of it would state a false reason and refuse a
+  # value nixpkgs serves (`pkgs`), outside the licence (ADR-0039, 2026-10-24).
+  refusingSubmodule =
+    keys: mods:
+    if !(builtins.isList keys) || !(builtins.all builtins.isString keys) then
+      throw "gen-merge: `refusingSubmodule' takes a list of base module argument names first, then the module set; got ${builtins.typeOf keys}"
+    else if builtins.any (k: !(builtins.elem k core.baseArgNames)) keys then
+      throw "gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies (${
+        builtins.concatStringsSep ", " (map (k: "`${k}'") core.baseArgNames)
+      }); ${
+        builtins.concatStringsSep ", " (
+          map (k: "`${k}'") (builtins.filter (k: !(builtins.elem k core.baseArgNames)) keys)
+        )
+      } is not one, and a caller's value for it is the only one any module reads"
+    else
+      strategies.mkSubmodule false "submodule" (builtins.attrNames (
+        builtins.listToAttrs (
+          map (k: {
+            name = k;
+            value = null;
+          }) keys
+        )
+      )) { } mods;
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)

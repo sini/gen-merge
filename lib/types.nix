@@ -929,6 +929,34 @@ let
   # element's fold allocates nothing for it.
   exactThread = element: if interface.mayFoldNested element then threadExact else threadElement;
 
+  # A `refusingSubmodule`'s stated keys (den-hoag-58bib β), at file level so a plain submodule allocates
+  # nothing for them: the union of two declarations' sets, sorted and unique, so set-equal statements mint
+  # equal; the stated keys an argument set supplies; and the refusal naming them, in the type's own terms.
+  refusedArgsUnion =
+    keys: other:
+    attrNames (
+      listToAttrs (
+        map (k: {
+          name = k;
+          value = null;
+        }) (keys ++ (other.refusedArgs or [ ]))
+      )
+    );
+  refusedArgsHit = keys: a: filter (k: a ? ${k}) keys;
+  refusedArgsRefusal = via: keys: "gen-merge: " + refusedArgsReason via keys;
+  # The reason alone: a relation's `refused` string carries no `gen-merge:` prefix, since the declaration
+  # stratum words it inside its own `declared with types that do not merge (…)`.
+  refusedArgsReason =
+    via: keys:
+    "${via} supplies the base module argument"
+    + (if length keys == 1 then " " else "s ")
+    + concatStringsSep ", " (map (k: "`${k}'") keys)
+    + " to a `submodule' that refuses "
+    + (if length keys == 1 then "it" else "them")
+    + " from a caller (`refusingSubmodule'): the type states "
+    + (if length keys == 1 then "it as an argument" else "them as arguments")
+    + " its own evaluation supplies, so a caller's value would replace the evaluation's own";
+
   # submodule — recurse into a nested evalModuleTree over the submodule module + all defs; binds the
   # per-key `name` (spec §1 item 3). One nested fixpoint per merge (spec §1 item 4).
   #
@@ -958,8 +986,18 @@ let
   # nested tree (`nests.partial`), read where the child is evaluated (lib/modules.nix `childTree`). `ctor`
   # is the constructor the type is minted as, `submodule` or `partialSubmodule`: a parameter rather than a
   # choice made here, because an argument computed per construction is a thunk per construction.
+  #
+  # `refusedKeys` (den-hoag-58bib β): the base module argument keys the TYPE refuses from a caller, a sorted
+  # unique list, `[ ]` for every `submodule` and `partialSubmodule`. A refusal contract the type states,
+  # not a fact derived from what its modules read. A caller's args are served as nixpkgs serves them
+  # (ADR-0039's base-argument inlet), so a stated key is refused BY PRESENCE wherever a caller's args join
+  # the type's — `withArgs` and the relation's union — never by recognising a value. Stated only through
+  # `refusingSubmodule` (lib/default.nix), gen's own construct with no nixpkgs twin, and published as a
+  # plain descriptor attribute beside `specialArgs` (never in `functor.payload`, which stays nixpkgs'
+  # `submoduleWith`'s). It enters the mint, so two types differing only in what they refuse are two types;
+  # a type refusing nothing states no attribute, mints as before, and allocates nothing for it.
   mkSubmodule =
-    partial: ctor: args: modOrMods:
+    partial: ctor: refusedKeys: args: modOrMods:
     let
       mods = if isList modOrMods then modOrMods else [ modOrMods ];
       # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
@@ -1010,7 +1048,11 @@ let
       # slot and Lix by the forced closure (den-hoag-1fo91).
       # The constructor tag enters the mint (ADR-0034): a `partialSubmodule` and a `submodule` over one
       # module set are two types, and the name, which both keep, decides nothing.
-      identified ctor [ ] (_: { specialArgs = args; })
+      identified ctor [ ]
+        (_: {
+          specialArgs = args;
+          ${if refusedKeys == [ ] then null else "refusedArgs"} = refusedKeys;
+        })
         [
           {
             path = [ "modules" ];
@@ -1024,9 +1066,15 @@ let
           # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
           # nobody added to, which is what makes the union below total.
           specialArgs = args;
-          # THE INLET. Refusal lives HERE — one place, where the caller states the key — rather than at
-          # the eval sites, where the loss would already have happened and the name would be gone.
-          withArgs = a: mkSubmodule partial ctor (args // a) mods;
+          ${if refusedKeys == [ ] then null else "refusedArgs"} = refusedKeys;
+          # THE INLET. A caller's args are forwarded and served as nixpkgs serves them; the one key
+          # refused here is one this type states, by presence, where the caller states it.
+          withArgs =
+            a:
+            if refusedKeys == [ ] || all (k: !(a ? ${k})) refusedKeys then
+              mkSubmodule partial ctor refusedKeys (args // a) mods
+            else
+              throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
           inherit admits nests;
           # With no surviving definition the value is the module set evaluated over NO definitions, as
           # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
@@ -1049,7 +1097,7 @@ let
           carries.moduleSet = mods;
           recarry =
             c:
-            mkSubmodule partial ctor args (
+            mkSubmodule partial ctor refusedKeys args (
               if isAttrs c && c ? moduleSet then
                 c.moduleSet
               else
@@ -1127,6 +1175,18 @@ let
                       }
                     else
                       { merged = joined; }
+                  # A key either declaration refuses and either one's args supply: the union would serve the
+                  # caller's value where the type states it never does. The partner's set is read off its
+                  # descriptor attribute, as its args are, never off a foreign `binOp`'s payload.
+                  else if
+                    (refusedKeys != [ ] || other ? refusedArgs)
+                    && refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs) != [ ]
+                  then
+                    {
+                      refused = refusedArgsReason "a redeclaration" (
+                        refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs)
+                      );
+                    }
                   # The module sets UNION, so the args must too — and two declarations that disagree about
                   # what a base module argument IS are a conflict this library names rather than resolves by
                   # declaration order.
@@ -1141,8 +1201,14 @@ let
                   # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
                   # the union nixpkgs builds. Pinned by
                   # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
+                  else if refusedKeys == [ ] && !(other ? refusedArgs) then
+                    { merged = mkSubmodule partial ctor refusedKeys (args // partnerArgs) (partnerMods ++ mods); }
                   else
-                    { merged = mkSubmodule partial ctor (args // partnerArgs) (partnerMods ++ mods); }
+                    {
+                      merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) (args // partnerArgs) (
+                        partnerMods ++ mods
+                      );
+                    }
               );
           };
           substructure = {
@@ -1172,7 +1238,7 @@ let
             # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
             # second time, double-evaluating the base module (a readOnly config value — e.g.
             # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
-            rebuild = m: mkSubmodule partial ctor args m;
+            rebuild = m: mkSubmodule partial ctor refusedKeys args m;
           };
           # A definition outside `admits` is refused here, naming the option and the file, before the
           # module reader would refuse it without either (`refusingOutside`).
@@ -1198,7 +1264,7 @@ let
 
   # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
   # base module args to the TYPE it returns, never to this.
-  submodule = mkSubmodule false "submodule" { };
+  submodule = mkSubmodule false "submodule" [ ] { };
 
   # listOf — concat all list defs in order (byte-mode drops the order pass; spec §7), each element
   # merged through the element type (a submodule element becomes an instance; a leaf is verified).

@@ -13013,5 +13013,36 @@ in
           };
         };
       };
+
+    # ── den-hoag-58bib β: `refusingSubmodule` states only a base module argument the evaluation supplies ──
+    # A key outside `baseArgNames` (lib/modules.nix) is no argument any evaluation of the type supplies, so a
+    # refusal of it would give a false reason and refuse a value nixpkgs serves. Refused at construction, by
+    # name; the instance-type set and the other engine keys still state. Read by TEXT.
+    flake.testsError.refusing-submodule-keys = {
+      test-a-key-the-engine-never-supplies-is-refused-at-construction = {
+        expr = force (gm.refusingSubmodule [ "pkgs" ] [ ]).refusedArgs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies \\(.*\\); `pkgs' is not one";
+        };
+      };
+      test-the-engine-keys-state-control = {
+        expr = force (
+          assert
+            (gm.refusingSubmodule [ "prefix" "config" "options" "config" ] [ ]).refusedArgs == [
+              "config"
+              "options"
+              "prefix"
+            ];
+          assert
+            (gm.refusingSubmodule genMergeCore.baseArgNames [ ]).refusedArgs == genMergeCore.baseArgNames;
+          throw "stated"
+        );
+        expectedError = {
+          type = "ThrownError";
+          msg = "^stated$";
+        };
+      };
+    };
   };
 }
