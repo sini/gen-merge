@@ -1,8 +1,8 @@
 # ONE EVALUATION of the stage-4 replacement-bar arm (den-hoag-stage4-flake-parts-3qh4l, `fp-bar.nix`):
 # flake-parts' own `flake.nix`, unmodified, called with its `nixpkgs-lib` input replaced by a hand-built input
 # whose `lib` is nixpkgs' (engine "ref"), the lib `modules-sh-lib.nix` builds (engine "gen": nixpkgs' lib with
-# top-level `evalModules` = gen-merge's `evalModuleTree`), or nixpkgs' lib with that one binding a throw of the
-# run's token (engine "poison"). flake-parts' `lib.nix` receives it exactly where it receives `nixpkgs-lib.lib`
+# `evalModules` and `lib.modules.evalModules` = gen-merge's `evalModuleTree`), or nixpkgs' lib with top-level
+# `evalModules` a throw of the run's token (engine "poison"). flake-parts' `lib.nix` receives it exactly where it receives `nixpkgs-lib.lib`
 # upstream, so every `evalModules` flake-parts makes runs through the engine named. A real flake's own
 # `pkgs.lib` evaluations (treefmt-nix's, a NixOS test's) stay nixpkgs' on every engine: those are stages 2-3.
 #

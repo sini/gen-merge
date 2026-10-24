@@ -1,7 +1,7 @@
 # ONE EVALUATION of the stage-2 replacement-bar arm (den-hoag-fwkzx, `nixos-bar.nix`): one NixOS
 # configuration through nixpkgs' own `nixos/lib/eval-config.nix`, with `lib` either nixpkgs' (engine
-# "ref") or the lib `modules-sh-lib.nix` builds (engine "gen"): nixpkgs' lib with ONE binding replaced,
-# top-level `evalModules` = gen-merge's `evalModuleTree`. `eval-config.nix` takes `lib` as an argument, so
+# "ref") or the lib `modules-sh-lib.nix` builds (engine "gen"): nixpkgs' lib with `evalModules` and
+# `lib.modules.evalModules` = gen-merge's `evalModuleTree`. `eval-config.nix` takes `lib` as an argument, so
 # no copy of nixpkgs is made, and the nested evaluations NixOS makes through its `lib` argument
 # (`documentation.nix`'s) run through gen as well.
 #
