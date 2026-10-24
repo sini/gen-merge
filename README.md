@@ -3496,10 +3496,10 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   counters for a refusing evaluation, on either tree. So stage 1's "perf at or under nixpkgs" is a claim
   over 259 assertions, and it says nothing about what a refusal costs. An `above-parity` row is the
   bar's perf criterion NOT MET, even when CI is green because the ratchet admitted its rise: admitted
-  is not approved. At nixpkgs `02c087f3` on gen-merge `b69fda9`, on CI's three evaluators, every one of
-  the 259 rows is NOT MET: gen's thunks run from ×1.086 to ×55.366 nixpkgs' (median ×2.110, a median
-  of 2341 more thunks per assertion), and its bytes at a median of ×1.881 (Nix), ×2.033 (Determinate)
-  and ×2.094 (Lix).
+  is not approved. At nixpkgs `02c087f3` on gen-merge `9edc257`, on CI's three evaluators, every one of
+  the 259 rows is NOT MET: gen's thunks run from ×1.086 to ×55.368 nixpkgs' (median ×2.111, a median
+  of 2343 more thunks per assertion), and its bytes at a median of ×1.883 (Nix), ×2.037 (Determinate)
+  and ×2.104 (Lix).
 
 - **The register's perf** is written from CI's own columns, as stage 2's is (`--fold`). The local
   process plane reads it only on an evaluator whose `--version` line is one of CI's (Determinate
@@ -3627,10 +3627,10 @@ integration (`tests/integration`, a VM run), the darwin suite and the release br
 this arm.
 
 An `above-parity` row is the bar's perf criterion NOT MET, even where CI stays green: admitted is
-not approved. At home-manager `cb7de2c` on gen-merge `b69fda9`, on CI's three evaluators, every
-perf row is NOT MET: the `tests` row at ×2.29 nixpkgs' thunks (133 processes summed on both arms), the
-`hm` `docs-walk` at ×1.357 (Determinate and Lix ×1.358), the `nixos` `docs-walk` at ×1.031 and the
-`darwin` `docs-walk` at ×1.030.
+not approved. At home-manager `cb7de2c` on gen-merge `9edc257`, on CI's three evaluators, every
+perf row is NOT MET: the `tests` row at ×2.450 nixpkgs' thunks (Determinate ×2.451, Lix ×2.452; 37
+processes summed on both arms), the `hm` `docs-walk` at ×1.373, the `nixos` `docs-walk` at ×1.031 and
+the `darwin` `docs-walk` at ×1.030.
 
 ```sh
 nix run ./ci#hm-bar -- --write-baseline F
