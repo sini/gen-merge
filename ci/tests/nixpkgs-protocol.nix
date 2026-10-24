@@ -2524,6 +2524,104 @@ in
         expr = builtins.mapAttrs (_: phrase (r: genMerge.evalModuleTree { } r.modules)) shapes;
         expected = builtins.mapAttrs (_: phrase nixpkgsLib.evalModules) shapes;
       };
+    # den-hoag-58bib: a caller's `config`, `options` and `prefix` are served as nixpkgs serves them
+    # (ADR-0039's serve half), at every door a caller's set enters and on every module-set shape: a
+    # module reading the key reads the CALLER's value, and a set with no reader evaluates as without
+    # it. The fresh key `argand` is the live control: the channel works and the expected table is not
+    # vacuous. Each gen door is read against nixpkgs' own door of that shape, in one cell.
+    test-reserved-specialArgs-are-served-as-nixpkgs-serves =
+      let
+        keys = [
+          "config"
+          "options"
+          "prefix"
+          "argand"
+        ];
+        shapes =
+          mk: k:
+          let
+            decl = {
+              options.sel = mk {
+                type = gmT.raw;
+                default = 0;
+              };
+            };
+            reader = args: {
+              options.sel = mk {
+                type = gmT.raw;
+                default = args.${k}.tag or "LOST";
+              };
+            };
+          in
+          {
+            closed = [ decl ];
+            importsAttrs = [ { imports = [ decl ]; } ];
+            fnNoRead = [ (_: decl) ];
+            fnReader = [ reader ];
+            importsReader = [ { imports = [ reader ]; } ];
+            mixedReader = [
+              { options.other = mk { default = 0; }; }
+              reader
+            ];
+          };
+        try =
+          e:
+          let
+            r = builtins.tryEval (builtins.deepSeq e e);
+          in
+          if r.success then r.value else "REFUSED";
+        table =
+          mk: door:
+          builtins.listToAttrs (
+            map (k: {
+              name = k;
+              value = builtins.mapAttrs (_: ms: try (door ms { ${k}.tag = "CALLER"; })) (shapes mk k);
+            }) keys
+          );
+        nested =
+          ev: mkOpt: type: ms: sa:
+          (ev {
+            modules = [
+              { options.t = mkOpt { type = type ms sa; }; }
+              { t = { }; }
+            ];
+          }).config.t.sel;
+        npSub =
+          ms: sa:
+          nixpkgsLib.types.submoduleWith {
+            modules = ms;
+            specialArgs = sa;
+          };
+        genSub = ms: sa: (gmT.submodule ms).withArgs sa;
+        root =
+          mk: ev: ms: sa:
+          (ev {
+            modules = ms;
+            specialArgs = sa;
+          }).config.sel;
+        npDoors = {
+          evalModules = table nixpkgsLib.mkOption (root nixpkgsLib.mkOption nixpkgsLib.evalModules);
+          submoduleWith = table nixpkgsLib.mkOption (nested nixpkgsLib.evalModules nixpkgsLib.mkOption npSub);
+        };
+      in
+      {
+        expr = {
+          evalModuleTree = table genMerge.mkOption (root genMerge.mkOption evalRequest);
+          declaredOptions = table genMerge.mkOption (
+            ms: sa: (genMerge.declaredOptions { specialArgs = sa; } ms).sel.default
+          );
+          withArgs = table genMerge.mkOption (nested evalRequest genMerge.mkOption genSub);
+          withArgsInNixpkgs = table genMerge.mkOption (
+            nested nixpkgsLib.evalModules nixpkgsLib.mkOption genSub
+          );
+        };
+        expected = {
+          evalModuleTree = npDoors.evalModules;
+          declaredOptions = npDoors.evalModules;
+          withArgs = npDoors.submoduleWith;
+          withArgsInNixpkgs = npDoors.submoduleWith;
+        };
+      };
     test-submodule-name-caller-specialArgs-wins = subNameEdge (_: {
       specialArgs.name = "caller";
     }) { v.x.a = "caller"; };

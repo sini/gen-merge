@@ -929,22 +929,6 @@ let
   # element's fold allocates nothing for it.
   exactThread = element: if interface.mayFoldNested element then threadExact else threadElement;
 
-  # The base module arguments a submodule's own evaluation WRITES OVER whatever a caller supplies.
-  # `config`, `options` and `prefix` are injected by the engine itself at BOTH strata —
-  # `lib/modules.nix` `declArgs` (declaration) and `baseArgs` (value) — and in both the caller's set is
-  # on the LEFT of `//`, so the engine's key wins. The engine refuses those three keys itself at both
-  # bindings; `withArgs` refuses them at the moment the caller states them, which is the earlier door.
-  # `name` is not one: the engine states it as a `_module.args` definition (`positionArgsAt`),
-  # which a caller's `name` outranks, as nixpkgs `submoduleWith`'s `specialArgs.name` does. It was
-  # reserved here (den-hoag-jyiji) while `submodule` injected it over the caller's value; that arm is
-  # superseded (den-hoag-fpxsd), since the caller's value is now the one used.
-  # `ci/tests-error.nix` `engine-reserved-args` holds the two spellings to one answer per key.
-  submoduleReservedArgs = {
-    config = null;
-    options = null;
-    prefix = null;
-  };
-
   # submodule — recurse into a nested evalModuleTree over the submodule module + all defs; binds the
   # per-key `name` (spec §1 item 3). One nested fixpoint per merge (spec §1 item 4).
   #
@@ -1042,21 +1026,7 @@ let
           specialArgs = args;
           # THE INLET. Refusal lives HERE — one place, where the caller states the key — rather than at
           # the eval sites, where the loss would already have happened and the name would be gone.
-          withArgs =
-            a:
-            let
-              reserved = filter (k: submoduleReservedArgs ? ${k}) (attrNames a);
-            in
-            if reserved != [ ] then
-              throw (
-                "gen-merge: `withArgs' cannot supply the base module argument"
-                + (if length reserved == 1 then " " else "s ")
-                + concatStringsSep ", " (map (k: "`${k}'") reserved)
-                + "; a submodule's own evaluation injects over whatever a caller supplies there, so the "
-                + "value would be discarded rather than used"
-              )
-            else
-              mkSubmodule partial ctor (args // a) mods;
+          withArgs = a: mkSubmodule partial ctor (args // a) mods;
           inherit admits nests;
           # With no surviving definition the value is the module set evaluated over NO definitions, as
           # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix

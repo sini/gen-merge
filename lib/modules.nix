@@ -5882,10 +5882,10 @@ let
               ", or compose the modules before evaluation rather than through `imports = [ config.… ]'"
           }";
 
-        # A caller key among `config`/`options`/`prefix` would write over the engine's own value, which
-        # every module relies on, so it refuses by name (ADR-0025 item 1), as at `baseArgs`. The guard is
-        # inline and the key list is built only on the refusing branch: a new binding on this path
-        # costs a constant thunk per nested evaluation, which the hub perf-bench prices.
+        # The caller's set is the RIGHT operand, as in nixpkgs' `evalModules`: a caller key among
+        # `config`/`options`/`prefix`/`name` is the value every module reads, at both strata
+        # (ADR-0039's serve half, den-hoag-58bib). A caller's value is not this evaluation's in-flight
+        # output, so reading it here consumes nothing of stratum 2.
         # nixpkgs' `doCollect` order: the engine's set on the left, the caller's `specialArgs` on the
         # right, so a caller's `lib`, `_class`, `_prefix` or `specialArgs` wins as there (den-hoag-61r97).
         # `specialArgs` is nixpkgs' base argument of that name: the caller's set, as handed to this
@@ -5904,7 +5904,7 @@ let
                     else
                       optionsView.options;
                   inherit prefix specialArgs;
-                  name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
+                  name = inadmissible "config" "read the module argument `name'";
                 }
               else
                 {
@@ -5918,7 +5918,7 @@ let
                     else
                       optionsView.options;
                   inherit prefix specialArgs;
-                  name = specialArgs.name or (inadmissible "config" "read the module argument `name'");
+                  name = inadmissible "config" "read the module argument `name'";
                 }
             else if lib == null then
               {
@@ -5946,24 +5946,7 @@ let
                 inherit prefix specialArgs;
               }
           )
-          // (
-            if !(specialArgs ? config || specialArgs ? options || specialArgs ? prefix) then
-              specialArgs
-            else
-              let
-                stated = filter (k: specialArgs ? ${k}) [
-                  "config"
-                  "options"
-                  "prefix"
-                ];
-              in
-              throw (
-                "gen-merge: `specialArgs' cannot supply the base module argument"
-                + (if length stated == 1 then " " else "s ")
-                + concatStringsSep ", " (map (k: "`${k}'") stated)
-                + "; the engine injects its own value there, so the caller's would be discarded rather than used"
-              )
-          );
+          // specialArgs;
 
         # `callM`'s shape, over the declaration stratum's arguments. A module arg that is not in
         # `declArgs` comes from `_module.args`, which is a `config` value and therefore stratum 2's:
@@ -7086,7 +7069,7 @@ let
       body = (
         self: result:
         let
-          # The same refusal as at `declArgs`, spelled inline for the same reason.
+          # The caller's set is the RIGHT operand, as at `declArgs` and as in nixpkgs.
           baseArgs =
             (
               # A positioned evaluation carries its `name` here, resolved as a definition
@@ -7106,9 +7089,7 @@ let
                     # parity); the returned `result.config` stays `_module`-free.
                     config = result.moduleConfig;
                     inherit prefix specialArgs;
-                    name =
-                      specialArgs.name
-                        or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
+                    name = if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed;
                   }
                 else
                   {
@@ -7123,9 +7104,7 @@ let
                     # parity); the returned `result.config` stays `_module`-free.
                     config = result.moduleConfig;
                     inherit prefix specialArgs;
-                    name =
-                      specialArgs.name
-                        or (if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed);
+                    name = if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed;
                   }
               else if lib == null then
                 {
@@ -7151,24 +7130,7 @@ let
                   inherit prefix specialArgs;
                 }
             )
-            // (
-              if !(specialArgs ? config || specialArgs ? options || specialArgs ? prefix) then
-                specialArgs
-              else
-                let
-                  stated = filter (k: specialArgs ? ${k}) [
-                    "config"
-                    "options"
-                    "prefix"
-                  ];
-                in
-                throw (
-                  "gen-merge: `specialArgs' cannot supply the base module argument"
-                  + (if length stated == 1 then " " else "s ")
-                  + concatStringsSep ", " (map (k: "`${k}'") stated)
-                  + "; the engine injects its own value there, so the caller's would be discarded rather than used"
-                )
-            );
+            // specialArgs;
 
           # Apply a module by its declared formals, sourcing each from baseArgs then the dynamic
           # module-args set. Using `functionArgs` (static) is what breaks the spine cycle.

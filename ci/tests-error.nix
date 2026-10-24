@@ -5368,58 +5368,13 @@ in
         };
       };
 
-    flake.testsError.submodule-args = {
-      test-withArgs-refuses-the-reserved-config-by-name = {
-        expr = (t.submodule [ { } ]).withArgs { config = "CALLER"; };
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: `withArgs' cannot supply the base module argument `config'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
-        };
-      };
-      test-withArgs-refuses-the-reserved-options-by-name = {
-        expr = (t.submodule [ { } ]).withArgs { options = "CALLER"; };
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: `withArgs' cannot supply the base module argument `options'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
-        };
-      };
-      test-withArgs-refuses-the-reserved-prefix-by-name = {
-        expr = (t.submodule [ { } ]).withArgs { prefix = "CALLER"; };
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: `withArgs' cannot supply the base module argument `prefix'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
-        };
-      };
-      # Two at once are named together rather than one-at-a-time, so a caller fixes both in one
-      # edit instead of rediscovering the second after the first.
-      test-withArgs-names-every-reserved-key-the-caller-stated = {
-        expr = (t.submodule [ { } ]).withArgs {
-          config = "A";
-          prefix = "B";
-        };
-        expectedError = {
-          type = "ThrownError";
-          msg = "^gen-merge: `withArgs' cannot supply the base module arguments `config', `prefix'; a submodule's own evaluation injects over whatever a caller supplies there, so the value would be discarded rather than used$";
-        };
-      };
-      # LIVE CONTROL, same run: an UNRESERVED key is admitted and the type still builds. Without it
-      # the four cells above are consistent with a `withArgs` that refuses everything — which would
-      # pass its own oracle while shipping no inlet at all.
-      test-withArgs-admits-an-unreserved-key-control = {
-        expr = ((t.submodule [ { } ]).withArgs { anArg = "CALLER"; }).specialArgs;
-        expected = {
-          anArg = "CALLER";
-        };
-      };
-    };
-
     # ── the engine's reserved keys ──────────────────────────────────────────────────────────────
     # `evalModuleTree`/`declaredOptions { specialArgs }` put the caller's set on the RIGHT of the
-    # engine's `config`/`options`/`prefix`, so a caller key among those three would write over the
-    # engine's own value. It refuses by name instead, at each binding (ADR-0025 item 1). The module takes no formals and
-    # reads its key only in an option default, so the declaration guard never forces `declArgs` and
-    # the `evalModuleTree` cells answer from `baseArgs`; the `declaredOptions` cells answer from
-    # `declArgs`. Each site therefore has cells of its own.
+    # engine's `config`/`options`/`prefix`, as nixpkgs' `evalModules` does, so a caller key among those
+    # three is what a module reading it receives (ADR-0039, den-hoag-58bib arm S). The module takes no
+    # formals and reads its key only in an option default, so the declaration guard never forces
+    # `declArgs` and the `evalModuleTree` answers come from `baseArgs`; the `declaredOptions` answers
+    # come from `declArgs`.
     flake.testsError.engine-reserved-args =
       let
         reads = k: args: {
@@ -5430,13 +5385,6 @@ in
         };
         engine = sa: k: (gm.evalModuleTree { specialArgs = sa; } [ (reads k) ]).options.sel.default;
         declared = sa: k: (gm.declaredOptions { specialArgs = sa; } [ (reads k) ]).sel.default;
-        msg =
-          keys:
-          "^gen-merge: `specialArgs' cannot supply the base module ${keys}; the engine injects its own value there, so the caller's would be discarded rather than used$";
-        refused = keys: {
-          type = "ThrownError";
-          msg = msg keys;
-        };
         # One answer per key, per door: REFUSED, the caller's value, or LOST (the engine's won).
         answer =
           e:
@@ -5453,41 +5401,8 @@ in
         one = k: { ${k} = "CALLER"; };
       in
       {
-        test-evalModuleTree-refuses-a-caller-config-by-name = {
-          expr = engine { config = "CALLER"; } "config";
-          expectedError = refused "argument `config'";
-        };
-        test-evalModuleTree-refuses-a-caller-options-by-name = {
-          expr = engine { options = "CALLER"; } "options";
-          expectedError = refused "argument `options'";
-        };
-        test-evalModuleTree-refuses-a-caller-prefix-by-name = {
-          expr = engine { prefix = "CALLER"; } "prefix";
-          expectedError = refused "argument `prefix'";
-        };
-        test-evalModuleTree-names-every-reserved-key-the-caller-stated = {
-          expr = engine {
-            config = "A";
-            prefix = "B";
-          } "config";
-          expectedError = refused "arguments `config', `prefix'";
-        };
-        # At HEAD `config`/`options` refused here with ADR-0033's "a module read `config'" text,
-        # which blamed the module for a key the caller supplied; `prefix` was lost in silence.
-        test-declaredOptions-refuses-a-caller-config-by-name = {
-          expr = declared { config = "CALLER"; } "config";
-          expectedError = refused "argument `config'";
-        };
-        test-declaredOptions-refuses-a-caller-options-by-name = {
-          expr = declared { options = "CALLER"; } "options";
-          expectedError = refused "argument `options'";
-        };
-        test-declaredOptions-refuses-a-caller-prefix-by-name = {
-          expr = declared { prefix = "CALLER"; } "prefix";
-          expectedError = refused "argument `prefix'";
-        };
-        # The two reserved sets are spelled twice (`withArgs`' in `lib/types.nix`, the engine's
-        # inline at each binding), so this cell holds them to one answer per key. `name`, `lib` and
+        # `withArgs` and the engine's two strata are separate inlets, so this cell holds them to one
+        # answer per key. `name`, `lib` and
         # `anArg` are the controls: every door admits them. Each answer comes through `tryEval`, so this
         # cell is also the catchability oracle.
         test-withArgs-and-both-engine-strata-agree-per-key = {
@@ -5519,9 +5434,9 @@ in
               };
             in
             {
-              config = all3 "REFUSED";
-              options = all3 "REFUSED";
-              prefix = all3 "REFUSED";
+              config = all3 "CALLER";
+              options = all3 "CALLER";
+              prefix = all3 "CALLER";
               name = all3 "CALLER";
               lib = all3 "CALLER";
               anArg = all3 "CALLER";

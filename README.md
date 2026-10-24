@@ -320,10 +320,10 @@ mounts (see below);
 
 Every function module receives `config`, `options`, and `prefix` (the module's option path, equal to
 the `loc` at the enclosing `submodule.merge` call — `[]` at the root, `["sub"]` inside an option
-named `sub`) in addition to any `specialArgs` and `_module.args` entries. The engine's three win over
-an entry of the same name: a `specialArgs` key among them is refused by name, since the caller's value
-would reach no module, and a `_module.args` entry of that name stays readable as
-`config._module.args.<name>` but does not bind the formal. Inside a module, `config._module` carries
+named `sub`) in addition to any `specialArgs` and `_module.args` entries. A `specialArgs` key among
+the three is the value every module reading it receives, as in nixpkgs' `evalModules`, where the
+caller's set is the right operand of the base arguments; a `_module.args` entry of that name stays
+readable as `config._module.args.<name>` but does not bind the formal. Inside a module, `config._module` carries
 `args`, `check`, `freeformType` and `specialArgs`, as nixpkgs' does. `specialArgs` reads through a
 re-declared `type` or `apply`, while the arguments a module receives stay the caller's set. A nested
 tree's modules also receive
@@ -2061,9 +2061,8 @@ one definition at normal priority beside its modules' own. The child over no def
 and `getSubOptions` read the placeholder `mkOptionDefault "‹name›"`. So a module's `mkForce` or
 `mkDefault` on `_module.args.name` resolves by priority as nixpkgs resolves it, a plain definition
 refuses as defined multiple times, naming its files in the order the `_module.args` record lists them,
-and a caller's `specialArgs.name` (`withArgs` on `submodule`) outranks it. `withArgs` therefore admits `name`, and refuses by name only the three arguments the engine
-writes over, `config`, `options` and `prefix` (the refusal of `name` there stood
-while `submodule` injected it over the caller's, and is superseded). A module reading `name` while its
+and a caller's `specialArgs.name` (`withArgs` on `submodule`) outranks it. `withArgs` therefore admits `name`, as it
+admits `config`, `options` and `prefix`: a caller's value for each is the one the modules read. A module reading `name` while its
 declarations are folded (`imports`, an option key) refuses by name as it would for any module argument,
 unless a caller supplied it. A module whose `_module.args` key set reads `name`
 (`_module.args = if name == … then { … } else { }`) dies with infinite recursion, as in nixpkgs: whether
