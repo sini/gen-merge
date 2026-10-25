@@ -810,7 +810,9 @@ drop-in the re-host points at (`lib.types.X` → `genMerge.types.X`):
 [`mergeDefaultOption`](#mergedefaultoption--the-shape-directed-law-exported-beside-mergeleaf)).
 **`optionType`**'s values are types, gen's own records or foreign ones. One definition is its own
 value; several merge through the declaration type-merge, the later module deciding against each
-earlier one, as nixpkgs' `types.optionType.merge` hands them to its own; a pair that does not merge is
+earlier one, as nixpkgs' `types.optionType.merge` hands them to its own, and the merged type is rebuilt
+over each definition's module set located at its file, so a sub-option's `declarations` name the file
+that defined it, as nixpkgs' `fixupOptionType` locates them; a pair that does not merge is
 refused by name with the type-merge text (where nixpkgs says `already declared`), and a definition
 that is not a type is refused as outside the type. `_module.freeformType` is `nullOr optionType`, and
 its definitions fold through the same binding (`mergeTypeDefs`, lib/modules.nix).
