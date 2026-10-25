@@ -2357,8 +2357,10 @@ costs per option, Nix thunks: +7 for `listOf int`, +19 for a three-deep stock ne
 option's `check` alone. Its merge is kept and its value is served with each option guarded at its own read,
 where nixpkgs reads that option's check: on the option's final definitions, before `apply`, and only along
 the members nixpkgs' read forces (`interface.frontierAt`: what `getSubModules` reaches, and the member an
-`either` or `oneOf` merge chooses). A copy declared there, or below a container, an `either`'s chosen member
-or a `coercedTo`'s final member there, is refused by name where the value its `verify` rejects was served:
+`either` or `oneOf` merge chooses). A copy declared there, over a gen leaf or a gen container of leaves alike
+(a gen container folds its own `verify`, but a `//` copy's `merge` is its base's and never reads the one it
+replaced), or below a container, an `either`'s chosen member or a `coercedTo`'s final member there, is refused
+by name where the value its `verify` rejects was served:
 the copy itself with the spine's message (`… is not of the expected type: <verify's message>`), a copy
 reached through a container or `attrTag` with nixpkgs' phrase over the completed record. A value nixpkgs
 refuses there with no copy anywhere, at an option typed by an `either` or by a container over a submodule
@@ -2372,7 +2374,9 @@ through a sibling's cross-read inside the evaluation (`config.z = config.y`, rea
 holds the evaluation's returned value and not its fixpoint; a copy below a record outside nixpkgs'
 vocabulary (a hand-rolled `mkOptionType` merging over it), since walking an unknown record forces what
 nixpkgs may not force; and a copy below a freeform type, since nixpkgs merges the freeform definitions
-internally and its merged value cannot be merged again unchanged.
+internally and its merged value cannot be merged again unchanged. A further open defect, not yet pinned: a
+copy of a gen container over a gen nesting element (`listOf (submodule …)`, `attrsOf (submodule …)`) is
+served at a value its `verify` rejects, where gen's root refuses it.
 
 **An unrecognised container threads through its own rebuild** (ruled 2026-09-30, arm (T)). At a
 declared option, a foreign type outside the six that declares a gen nesting element (`coercedTo`,

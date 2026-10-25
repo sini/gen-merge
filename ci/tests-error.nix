@@ -9512,6 +9512,20 @@ in
             msg = "^gen-merge: a definition for option `s[.]y' is not of the expected type: rejected by the copy$";
           };
         };
+        # The same over a gen container (den-hoag-89s7p): the copy's own `verify` text, at the nested option's path.
+        test-a-verify-copy-over-a-gen-container-inside-a-nixpkgs-submodule-is-refused-as-the-copy-bare = {
+          expr = opt (np.submodule {
+            options.y = nixpkgsLib.mkOption {
+              type = t.listOf t.int // {
+                verify = v: if v == [ 7 ] then "rejected by the copy" else null;
+              };
+            };
+          }) { y = [ 7 ]; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `s[.]y' is not of the expected type: rejected by the copy$";
+          };
+        };
         # An ad-hoc `// { check }` on a stock submodule's own option is judged as gen's root judges the same
         # declared type (den-hoag-spb8r, den-hoag-vjxra): refused by name, the admitted value too. The frontier
         # refold reads no option-level `check`, so the override is read before it.
