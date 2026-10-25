@@ -795,12 +795,16 @@ let
           if partnerElem != null then partnerElem else interface.embeddedOffered embedding "element" other;
         # THE MEET: the element pair through the meeting merge. Where it meets, the partner's relation is
         # asked only about the PARAMETERS (its own element against itself), never a gen element as the decider
-        metFirst = if other ? carries || stated == null then null else mergeElemTypes element stated;
+        metFirst =
+          if other ? carries && !(other ? retainedRelation) || stated == null then
+            null
+          else
+            mergeElemTypes element stated;
         joinOver = if metFirst != null then stated else element;
         # a partner whose payload is its element alone states no parameters to agree on: it is rebuilt
         # over the met element by its own constructor, and its relation is not asked
         foreignJoin =
-          if other ? carries then
+          if other ? carries && !(other ? retainedRelation) then
             null
           else if metFirst != null && partnerElem != null then
             interface.rebuiltOverAt "element" metFirst other

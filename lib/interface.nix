@@ -750,7 +750,12 @@ let
     let
       pf = t.functor or { };
     in
-    if e == null || t ? carries || (pf.name or null) != e.name || !isAttrs (pf.payload or null) then
+    if
+      e == null
+      || t ? carries && !(t ? retainedRelation)
+      || (pf.name or null) != e.name
+      || !isAttrs (pf.payload or null)
+    then
       null
     else
       pf.payload.${roleSpelling.${role}.payloadKey} or null;
@@ -6360,7 +6365,7 @@ let
     let
       e = embedding;
       joined =
-        if other ? carries then
+        if other ? carries && !(other ? retainedRelation) then
           null
         else if role != null && importedOffered role other != null then
           joinInStatedRelation {
