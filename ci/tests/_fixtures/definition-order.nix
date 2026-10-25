@@ -61,6 +61,162 @@ let
     in
     read r.config.o;
   key = v: { k = v; };
+  # the redeclared option (`redImp`) over another seed form, at the root or at an `attrsOf` element
+  redSeed =
+    con: elem: seed:
+    let
+      nt = m: if elem then con (N.submodule m) else N.submodule m;
+      at = v: if elem then { k = v; } else v;
+      o =
+        (ev [
+          {
+            _file = "decl.nix";
+            options.o = mkOption { type = nt (own leafList [ "q" ]); };
+          }
+          {
+            _file = "decl2.nix";
+            options.o = mkOption {
+              type = nt {
+                _file = "r.nix";
+                x = [ "r" ];
+              };
+            };
+          }
+          {
+            _file = "def.nix";
+            config.o = at seed;
+          }
+          {
+            _file = "def2.nix";
+            config.o = at { x = [ "def2" ]; };
+          }
+        ]).config.o;
+    in
+    if elem then o.k.x else o.x;
+  # a nixpkgs `attrTag` whose tag is a `submodule`, redeclared, defined at its tag
+  redTag =
+    seed:
+    let
+      tg =
+        m:
+        P.attrTag {
+          t = mkOption { type = P.submodule m; };
+        };
+    in
+    (ev [
+      {
+        _file = "decl.nix";
+        options.o = mkOption { type = tg (own leafList [ "q" ]); };
+      }
+      {
+        _file = "decl2.nix";
+        options.o = mkOption {
+          type = tg {
+            _file = "r.nix";
+            x = [ "r" ];
+          };
+        };
+      }
+      {
+        _file = "def.nix";
+        config.o.t = seed;
+      }
+      {
+        _file = "def2.nix";
+        config.o.t.x = [ "def2" ];
+      }
+    ]).config.o.t.x;
+  optionTypeRed =
+    seed:
+    let
+      ty =
+        (ev [
+          {
+            _file = "t.nix";
+            options.ty = mkOption { type = P.optionType; };
+          }
+          {
+            _file = "t1.nix";
+            ty = P.submodule (own leafList [ "q" ]);
+          }
+          {
+            _file = "t2.nix";
+            ty = P.submodule {
+              _file = "r.nix";
+              x = [ "r" ];
+            };
+          }
+        ]).config.ty;
+    in
+    (ev [
+      {
+        _file = "decl.nix";
+        options.o = mkOption { type = ty; };
+      }
+      {
+        _file = "def.nix";
+        config.o = seed;
+      }
+      {
+        _file = "def2.nix";
+        config.o.x = [ "def2" ];
+      }
+    ]).config.o.x;
+  # the redeclared option beneath a gen nesting type where gen-merge's engine runs over nixpkgs' types (the
+  # nested evaluation's own option, gate C2), beneath the arm's own `submodule` everywhere else
+  redUnderGen =
+    seed:
+    (ev [
+      {
+        _file = "n.nix";
+        options.n = mkOption {
+          type = (if eng == "gmnp" then gm.submodule else N.submodule) {
+            imports = [
+              {
+                _file = "decl.nix";
+                options.o = mkOption { type = N.submodule (own leafList [ "q" ]); };
+              }
+              {
+                _file = "decl2.nix";
+                options.o = mkOption {
+                  type = N.submodule {
+                    _file = "r.nix";
+                    x = [ "r" ];
+                  };
+                };
+              }
+            ];
+          };
+          default = { };
+        };
+      }
+      {
+        _file = "def.nix";
+        config.n.o = seed;
+      }
+      {
+        _file = "def2.nix";
+        config.n.o.x = [ "def2" ];
+      }
+    ]).config.n.o.x;
+  seedFnPlain = { ... }: { x = [ "def" ]; };
+  seedFnNested =
+    { ... }:
+    {
+      imports = [
+        {
+          _file = "w.nix";
+          imports = [
+            {
+              _file = "y.nix";
+              x = [ "y" ];
+            }
+          ];
+          x = [ "w" ];
+        }
+      ];
+      x = [ "def" ];
+    };
   treeOf =
     m:
     if eng == "np" || eng == "gmnp" then
@@ -595,6 +751,30 @@ in
         config.o.x = [ "def2" ];
       }
     ]).config.o.x;
+  # the redeclared option over a function seed with no imports, a path seed and a function seed importing twice
+  # over, at the root and at an `attrsOf` element
+  redFn = redSeed N.attrsOf false seedFnPlain;
+  redAtFn = redSeed N.attrsOf true seedFnPlain;
+  redPath = redSeed N.attrsOf false ./definition-order-seed.nix;
+  redAtPath = redSeed N.attrsOf true ./definition-order-seed.nix;
+  redNested = redSeed N.attrsOf false seedFnNested;
+  redAtNested = redSeed N.attrsOf true seedFnNested;
+  # the same under gen-merge's own `attrsOf` over the element where gen-merge's engine runs (a gen container over a
+  # nixpkgs element is mounted as a foreign root is), nixpkgs' `attrsOf` where nixpkgs' engine runs
+  redGconFn = redSeed (if isGmEng then gm.types.attrsOf else P.attrsOf) true seedFnPlain;
+  redGconImp = redSeed (if isGmEng then gm.types.attrsOf else P.attrsOf) true seedFnNested;
+  # nixpkgs' `attrsOf` over the arm's own `submodule`, redeclared: on gen's nesting types a foreign container over
+  # a gen element is threaded, and its root is mounted where the group's positions are walked (gate C2)
+  redMxFn = redSeed P.attrsOf true seedFnPlain;
+  redMxImp = redSeed P.attrsOf true seedFnNested;
+  redUnderGenFn = redUnderGen seedFnPlain;
+  redUnderGenImp = redUnderGen seedFnNested;
+  redTagFn = redTag seedFnPlain;
+  redTagImp = redTag seedFnNested;
+  # GUARD: an `optionType` option's merge of two definitions locates each definition's module set, and the option
+  # declared with that type locates it again; nixpkgs locates twice here, and so does every engine
+  optionTypeRedFn = optionTypeRed seedFnPlain;
+  optionTypeRedImp = optionTypeRed seedFnNested;
   # depth 2 with imports on both sides at the inner level
   d2Imp = run {
     nt =

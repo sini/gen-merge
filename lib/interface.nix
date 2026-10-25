@@ -399,9 +399,9 @@ let
     # `getSubModules` alone (`mergeOptionDecls` collects a declaration's set only where it is not `null`, and
     # `fixupOptionType` mounts a type stating `null` as it is), so a declaration stating `null` contributes no module
     # to its option. A `//` copy that nulls a record's module set (`// { getSubModules = null; }`) carries its base's
-    # `substructure`, which still states the set, so the four readers of a declaration's contribution to its option
+    # `substructure`, which still states the set, so the five readers of a declaration's contribution to its option
     # (`modules.nix` `fixupModuleSets`' own sets and mount test, `spineModules`, `sameValue.kept`, the published
-    # doors) read the statement, not the carried substructure. A copy stating another list is not read here.
+    # doors, `homedRootFixed`'s rebuild over the fold's list) read the statement, not the carried substructure. A copy stating another list is not read here.
     # `modules` and `dropped` are members of `sameValue` under names the library already interns, so the library's
     # load pays nothing for them; an evaluation pays their two members where it first asks one.
     modules =
@@ -3028,23 +3028,62 @@ let
       # contributes `getSubModules`. A site stating no declarations (the public `mergeOption`, the freeform
       # group) has none, and keeps the label nixpkgs gives a module that states no file. One binding per
       # mount; spelled inline, `_file` would allocate one thunk per module instead.
+      #
+      # nixpkgs locates a declaration's module set once per `mergeOptionDecls` it passes, and the declaration fold
+      # is that plane's location for a loc two or more typed declarations declare (`modules.nix`
+      # `fixupModuleSets`). So where the fold rebuilt the loc, the mount rebuilds over the list the fold built, not
+      # over the rebuilt type's set again: each typed declaration's own set, located at its own file, in authored
+      # order (a foreign `getSubModules` restates a rebuilt set in its own shape, so it is not handed back). The
+      # fold rebuilt it exactly when a shadowing declaration says so (`overridden`, as the nested groups' `root`
+      # reads it), two or more of its sites are typed, and the merged type states a module set (the fold's own
+      # condition; it returns the merged type unrebuilt otherwise). The fold tests `sub.modules == null ||
+      # sameValue.modules merged == null`, one test here: `sameValue.modules` answers `null` or `sub.modules`, so its
+      # `null` is the disjunction. The typed sites are walked once per such mount,
+      # and an option that shadowed nothing keeps the label's one lazy binding.
       fixed = s (
-        let
-          file =
+        if site ? overridden && site ? sitesAt then
+          let
+            typed = filter (x: x.decl ? type) (site.sitesAt loc);
+          in
+          if length typed > 1 && sameValue.modules t != null then
+            prelude.concatMap (
+              x:
+              let
+                ms = sameValue.modules x.decl.type;
+              in
+              if ms == null then
+                [ ]
+              else
+                map (m: {
+                  _file = x.file;
+                  imports = [ m ];
+                }) ms
+            ) typed
+          else
             let
-              f = if site ? sitesAt.file && site.sitesAt.file != null then site.sitesAt.file loc else null;
+              file = (head (typed ++ [ { file = "<unknown-file>"; } ])).file;
             in
-            if f != null then
-              f
-            else if site ? sitesAt then
-              (head (filter (x: x.decl ? type) (site.sitesAt loc) ++ [ { file = "<unknown-file>"; } ])).file
-            else
-              "<unknown-file>";
-        in
-        map (m: {
-          _file = file;
-          imports = [ m ];
-        }) t.getSubModules
+            map (m: {
+              _file = file;
+              imports = [ m ];
+            }) t.getSubModules
+        else
+          let
+            file =
+              let
+                f = if site ? sitesAt.file && site.sitesAt.file != null then site.sitesAt.file loc else null;
+              in
+              if f != null then
+                f
+              else if site ? sitesAt then
+                (head (filter (x: x.decl ? type) (site.sitesAt loc) ++ [ { file = "<unknown-file>"; } ])).file
+              else
+                "<unknown-file>";
+          in
+          map (m: {
+            _file = file;
+            imports = [ m ];
+          }) t.getSubModules
       );
       mountable =
         (isFunction s || isAttrs s && s ? __functor) && isAttrs fixed && fixed ? merge && fixed ? check;
