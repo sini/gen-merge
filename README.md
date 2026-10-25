@@ -366,6 +366,17 @@ a list of strings drawn from the engine's `baseArgNames` (`lib/modules.nix`: `_c
 construction, since no evaluation of the type supplies it. A type serving as a nixpkgs twin never
 states a key: there nixpkgs serves the caller's value.
 
+`refusingSubmoduleOver stated keys mods` is the same type minted over the CONSTRUCTION its module set
+is built from, for a library that builds `mods` itself from arguments. `stated` is
+`{ ctor; members; args = tags: { … }; sealed; }`: `ctor` qualified in the stating library's namespace
+(an unqualified one is refused, since the mint keeps the spelling as stated),
+`members` the minted inputs (entering by their marks), `args` the inert ones, and `sealed` the caller
+content. It is minted in place of the module list's seal, so two constructions over equal arguments
+are one type and two over different arguments are two. The statement must cover every input `mods`
+depends on, or two different module sets mint one type. `withArgs` keeps it; a rebuild keeps it and
+seals the module set it is rebuilt over beside it; a union of two declarations and a `recarry` seal the
+module list again, as for `refusingSubmodule`. `refusingSubmoduleOver null` is `refusingSubmodule`.
+
 ## Provenance
 
 `.provenance` is an always-on, lazy tree mirroring `.config`'s loc structure — one record per option

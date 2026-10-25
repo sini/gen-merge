@@ -13138,6 +13138,21 @@ in
     # refusal of it would give a false reason and refuse a value nixpkgs serves. Refused at construction, by
     # name; the instance-type set and the other engine keys still state. Read by TEXT.
     flake.testsError.refusing-submodule-keys = {
+      # den-hoag-dwln8: a stated constructor is qualified, since its mint keeps the spelling as stated
+      test-an-unqualified-stated-constructor-is-refused = {
+        expr =
+          force
+            (gm.refusingSubmoduleOver {
+              ctor = "inst";
+              members = [ ];
+              args = _: { };
+              sealed = [ ];
+            } [ ] [ ]).refusedArgs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `refusingSubmoduleOver' takes a constructor qualified in the stating library's namespace";
+        };
+      };
       test-a-key-the-engine-never-supplies-is-refused-at-construction = {
         expr = force (gm.refusingSubmodule [ "pkgs" ] [ ]).refusedArgs;
         expectedError = {
