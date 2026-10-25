@@ -629,6 +629,30 @@ in
           msg = moduleArgsDupMsg "/demo/m\\.nix \\(2 definitions\\)";
         };
       };
+      # A PLAIN `moduleType` BESIDE THE ENGINE'S OWN REFUSES BY NAME, as a thrown error a caller can
+      # catch: the engine's definition is the second one, filed as `<module system>`. nixpkgs refuses
+      # the same pair in `mergeUniqueOption` and overflows the stack rendering its own `moduleType`
+      # into the message. The accepting arms are `./tests/request-surface.nix` `mtForce`/`mtDefault`.
+      test-module-args-plain-moduleType-refuses-by-name = {
+        expr = realize {
+          modules = [
+            (
+              { moduleType, ... }:
+              {
+                options.x = gm.mkOption { default = moduleType; };
+              }
+            )
+            {
+              _file = "/demo/mt.nix";
+              config._module.args.moduleType = 5;
+            }
+          ];
+        };
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: module argument `moduleType' \\(`_module\\.args\\.moduleType'\\) is defined multiple times, and a module argument must be unique; defined in <module system>, /demo/mt\\.nix$";
+        };
+      };
       # A TOP-LEVEL `_module` BESIDE `config`/`options` IS REFUSED BY NAME, naming the module file,
       # as nixpkgs' `unifyModuleSyntax` refuses it: `_module` is not one of its `attrsToRemove`.
       # Two sites in one module are two definitions with no order between them; the trigger is the
