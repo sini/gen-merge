@@ -359,7 +359,10 @@ either side stated. Presence decides, never the value. Any other key is served, 
 unique, never in `functor.payload`, so the payload stays nixpkgs' `submoduleWith`'s; every rebuild
 (`recarry`, `substructure.rebuild`, the union, the exported `typeMerge` and `substSubModules`, a
 `deriveType`) carries it, and it enters the type's mint, so two types differing only in it mint apart. A
-redeclaration through nixpkgs' own `submoduleWith` is nixpkgs' record and carries no set. `keys` must be
+redeclaration through nixpkgs' own `submoduleWith` is nixpkgs' record and carries no set: gen's relation
+refuses there a stated key that partner's `specialArgs` supply, and the record that join returns keeps
+the stated keys through every later join it decides and every rebuild of it, answering a later partner
+that supplies one with no merge (a join a later nixpkgs record decides never asks it). `keys` must be
 a list of strings drawn from the engine's `baseArgNames` (`lib/modules.nix`: `_class`, `_prefix`,
 `config`, `lib`, `name`, `options`, `prefix`, `specialArgs`, held to the arguments a module receives by
 `test-baseArgNames-is-every-key-the-engine-supplies`); any other key is refused at
