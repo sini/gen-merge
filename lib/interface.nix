@@ -2236,7 +2236,11 @@ let
   # An option of a stock submodule's evaluation, at its read, judged only through what nixpkgs' own read of it
   # forces: the type's frontier (`frontierAt`, the members nixpkgs' `fixupOptionType` forces through
   # `getSubModules`), the `either` member nixpkgs' merge chose (`eitherChosen`), and the metadata nixpkgs' merge
-  # built (`valueMeta`). A record gen completed itself (a gen leaf, a gen container) folds its own `verify`.
+  # built (`valueMeta`). A record gen completed itself (a gen leaf, a gen container) folds its own `verify`. A `//`
+  # copy of one does not: its `merge` is its base's and never reads the `verify` it replaced (`replacesVerify`), so
+  # it is judged as the copy, here and in `frontierCompleted`. A plain gen container states no `verify`, so it is
+  # asked `? verify` first and pays no call. A copy of a gen container over a gen nesting element (`listOf
+  # (submodule …)`) is reached by neither binding and is still served (an open defect, den-hoag-rpuk2).
   guardedAt =
     o: v:
     if !(isAttrs o) then
@@ -2247,7 +2251,9 @@ let
       guardedOption o (o.type or null) (o.definitionsWithLocations or [ ]) v;
   guardedOption =
     o: t: defs: v:
-    if !(isAttrs t) || defs == [ ] || t ? carries || isNesting t then
+    if
+      !(isAttrs t) || defs == [ ] || (t ? carries && !(t ? verify && replacesVerify t)) || isNesting t
+    then
       v
     # the copy itself: its `verify` over its own fold, as gen's engine applies one declared bare; nixpkgs' value kept
     else if replacesVerify t then
@@ -2375,7 +2381,12 @@ let
   # frontier members completed, each member completed only when the rebuilt record forces it.
   frontierCompleted =
     l: t:
-    if !(isAttrs t) || t ? carries || isNesting t || (t ? verify && !(replacesVerify t)) then
+    if
+      !(isAttrs t)
+      || (t ? carries && !(t ? verify && replacesVerify t))
+      || isNesting t
+      || (t ? verify && !(replacesVerify t))
+    then
       t
     else if replacesVerify t then
       completedElement "evalModuleTree" l t

@@ -645,6 +645,156 @@ in
           };
         };
       };
+    # A `//` COPY OVER A GEN CONTAINER IS ENFORCED INSIDE A NIXPKGS SUBMODULE TOO (den-hoag-89s7p). A gen container
+    # folds its own `verify`, but a copy's `merge` is its base's and never reads the `verify` it replaced, so the copy
+    # is the guard's as the `int` copy above is: at the option's own read, and as a stock container's element or an
+    # `attrTag` tag below it. Each copy is read at the rejected value and its passing twin over every reach; `lazy`
+    # reads one attribute of a `lazyAttrsOf` copy whose `verify` asks only for a key, beside a value nixpkgs never
+    # forces, and `sibling` reads the copy beside a sibling whose type is an error. A container over a gen nesting
+    # element is not covered (den-hoag-rpuk2).
+    test-a-verify-copy-over-a-gen-container-inside-a-nixpkgs-submodule-is-enforced-at-its-read =
+      let
+        copy = c: c.t // { verify = v: if v == c.bad then "rejected by the copy" else null; };
+        copies = {
+          listOf = {
+            t = gt.listOf gt.int;
+            bad = [ 7 ];
+            ok = [ 1 ];
+          };
+          attrsOf = {
+            t = gt.attrsOf gt.int;
+            bad.k = 7;
+            ok.k = 1;
+          };
+          lazyAttrsOf = {
+            t = gt.lazyAttrsOf gt.int;
+            bad.k = 7;
+            ok.k = 1;
+          };
+          nullOr = {
+            t = gt.nullOr gt.int;
+            bad = 7;
+            ok = 1;
+          };
+          either = {
+            t = gt.either gt.int gt.str;
+            bad = 7;
+            ok = 1;
+          };
+          oneOf = {
+            t = gt.oneOf [
+              gt.int
+              gt.str
+            ];
+            bad = 7;
+            ok = 1;
+          };
+          listOfListOf = {
+            t = gt.listOf (gt.listOf gt.int);
+            bad = [ [ 7 ] ];
+            ok = [ [ 1 ] ];
+          };
+        };
+        sub = t: np.submodule { options.y = nixpkgsLib.mkOption { type = t; }; };
+        tag = t: np.attrTag { y = nixpkgsLib.mkOption { type = t; }; };
+        reach = {
+          submodule = {
+            w = sub;
+            v = x: { y = x; };
+          };
+          twoDeep = {
+            w = t: sub (sub t);
+            v = x: { y.y = x; };
+          };
+          attrsOfSubmodule = {
+            w = t: np.attrsOf (sub t);
+            v = x: { k.y = x; };
+          };
+          listOfSubmodule = {
+            w = t: np.listOf (sub t);
+            v = x: [ { y = x; } ];
+          };
+          submoduleInAttrTag = {
+            w = t: tag (sub t);
+            v = x: { y.y = x; };
+          };
+          listOfInSubmodule = {
+            w = t: sub (np.listOf t);
+            v = x: { y = [ x ]; };
+          };
+          attrTagInSubmodule = {
+            w = t: sub (tag t);
+            v = x: { y.y = x; };
+          };
+        };
+        keyed = gt.lazyAttrsOf gt.int // {
+          verify = v: if v ? bad then "rejected by the copy" else null;
+        };
+        lazyAt = V: (opt (sub keyed) { y = V; }).y.a;
+        short = gt.listOf gt.int // {
+          verify = v: if builtins.length v > 2 then "too long" else null;
+        };
+        sibling =
+          V:
+          builtins.length
+            (opt (np.submodule {
+              options.y = nixpkgsLib.mkOption { type = short; };
+              options.z = nixpkgsLib.mkOption { type = throw "the unread sibling's type"; };
+            }) { y = V; }).y;
+        never = throw "never forced";
+      in
+      {
+        expr = {
+          reach = builtins.mapAttrs (
+            _: c:
+            builtins.mapAttrs (_: w: {
+              rejected = accepted (w.w (copy c)) (w.v c.bad);
+              twin = accepted (w.w (copy c)) (w.v c.ok);
+            }) reach
+          ) copies;
+          lazy = {
+            served = lazyAt {
+              a = 1;
+              b = never;
+            };
+            refused =
+              (tryEval (lazyAt {
+                a = 1;
+                b = never;
+                bad = 2;
+              })).success;
+          };
+          sibling = {
+            served = sibling [
+              1
+              2
+            ];
+            refused =
+              (tryEval (sibling [
+                1
+                2
+                3
+              ])).success;
+          };
+        };
+        expected = {
+          reach = builtins.mapAttrs (
+            _: _:
+            builtins.mapAttrs (_: _: {
+              rejected = false;
+              twin = true;
+            }) reach
+          ) copies;
+          lazy = {
+            served = 1;
+            refused = false;
+          };
+          sibling = {
+            served = 2;
+            refused = false;
+          };
+        };
+      };
     # THE RESIDUE (README "The prices, stated"): a check over the bare tree, served, as pinned here.
     # A stock `either`/`oneOf`/`nullOr` over the bare tree is NOT in it: the tree's `check` is its
     # module-value domain, so the rewritten check over the union is carried (member B) and refuses,
