@@ -7163,6 +7163,12 @@ let
   # certificate that the join keeps each operand's check, so the step meets it with every operand, at
   # every role and at the top (`lib/modules.nix` `relationMergeWithin`, `declaredPair`), as
   # `importedMerge`'s raw join is met. A join that is not a type the step can apply is named.
+  # A refusal of a FOREIGN partner (raw, or stating its author's relation: `retainedRelation`) is this
+  # relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later operand, so the
+  # step does (`declaredPair`). Against a gen-native partner it still vetoes; that is a hold while the
+  # leaf relation, deciding, keys a stated-relation partner by type name where nixpkgs keys by functor
+  # name (den-hoag-6ylun), not a law. The predicate is spelled at each refusal, so an answer allocates
+  # nothing for it.
   foreignRel =
     t: other:
     let
@@ -7187,13 +7193,18 @@ let
     else if joined != null && !whole then
       {
         refused = "${pair}, which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
+        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
       }
     else if answer == null && functorNames != null then
       {
         refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
+        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
       }
     else if answer == null then
-      { refused = "${pair}, which the first type's own `functor' does not reconcile"; }
+      {
+        refused = "${pair}, which the first type's own `functor' does not reconcile";
+        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
+      }
     else
       { merged = answer; };
 
