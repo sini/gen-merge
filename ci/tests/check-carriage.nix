@@ -678,6 +678,47 @@ in
     # in a stock host alike (den-hoag-spb8r, den-hoag-vjxra; `../tests-error.nix` holds the refusals). Declared
     # twice it is met as two types are met (the redeclaration meet), so the value it admits is served, evaluated:
     # over a gen `either` of a submodule, over a stock one through the `mkOptionType` door, and over leaves.
+    # A nixpkgs `addCheck` over a stock union whose `merge` is overridden (`//`) is NOT the ad-hoc override: the
+    # declared record is not v2, so nixpkgs folds it with no coherence guard, and the re-home carries its check
+    # marked coherent (den-hoag-vjxra). It is served, as at the root before; the value still ignores the `merge`
+    # override where nixpkgs honours it, an open defect (den-hoag-eyqu1) not pinned here.
+    test-an-addCheck-over-a-merge-overridden-stock-union-is-not-refused-as-ad-hoc =
+      let
+        mfs = a: a // { merge = loc: defs: a.merge loc (builtins.tail defs); };
+        els = {
+          E = {
+            t = sub;
+            v = m;
+          };
+          U = {
+            t = gt.either sub gt.str;
+            v = m;
+          };
+          TR = {
+            t = gt.attrsOf sub;
+            v = {
+              k = m;
+            };
+          };
+        };
+        mids = {
+          eit = x: np.either x np.str;
+          one =
+            x:
+            np.oneOf [
+              x
+              np.str
+              np.int
+            ];
+        };
+        cells = builtins.mapAttrs (
+          _: mid: builtins.mapAttrs (_: e: accepted (ac (mfs (mid e.t)) (_: true)) e.v) els
+        ) mids;
+      in
+      {
+        expr = cells;
+        expected = builtins.mapAttrs (_: _: builtins.mapAttrs (_: _: true) els) mids;
+      };
     test-an-ad-hoc-check-declared-twice-is-met-and-serves-what-it-admits =
       let
         adHoc = T: T // { check = v: T.check v && v != { a = 7; } && v != 7; };
