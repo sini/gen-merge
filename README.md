@@ -2476,7 +2476,11 @@ an ad-hoc `type // { check = ...; }` is such a `check`, riding on the rebuild as
 and is not mounted. The fix-up item's `_file` is the file of the declaration that carries the type, as
 nixpkgs' `mergeOptionDecls` locates `opt.options`, so the nested evaluation's own `options` argument and its
 refusals name it (an untyped declaration before it included; the served type takes the same declaration),
-and the module set is the merged type's, not a union per declaration. Refused by name. The first two are open defects, where nixpkgs serves the shape; the
+and the module set is the merged type's, not a union per declaration. Where two or more typed declarations
+declare the option, the declaration fold has already located each one's set at its own file, as
+`mergeOptionDecls` does once per declaration plane, so the mount rebuilds over that list and does not locate
+the merged type's set a second time: a function definition's own body reads where nixpkgs reads it
+(`ci/tests/gen-nesting-definition-order.nix`, the `gmnp` arm). Refused by name. The first two are open defects, where nixpkgs serves the shape; the
 last two are not measured against nixpkgs:
 
 - a record declaring a gen nesting element that nixpkgs never rebuilds (no module set at the root,
