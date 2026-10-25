@@ -1912,15 +1912,28 @@ only at the first. Each pass
 re-folds the whole module set, so a set holding renames pays about one extra declaration fold per
 pass its reads reach, and a cycle pays all 300.
 
-**An earlier gen-native relation's refusal is never overruled.** Each fold step first asks the
-earlier operand's `typeMergeRel`, if it has one, about the type every later declaration jointly
-became; a refusal there is the answer. So `[gt.int, Fint, str]` refuses as nixpkgs does. The one
-exception is a refusal stated as the decider's answer alone (`vetoes = false`: the leaf relation's
-refusal of a same-keyed partner stating a payload, and a container's over such an element pair).
-nixpkgs never asks the earlier operand, so the later relation decides, and the refusal names the pair
-only where that relation gives no join; a partner relation's own `throw` is then reported in gen's
-words. The veto
-protects a gen relation against the type it is actually merged into. A foreign relation keeps the
+**An earlier relation's refusal ends the step unless the decider's answer alone.** Each fold step
+first asks the earlier operand's `typeMergeRel`, if it has one, about the type every later declaration
+jointly became; a refusal there is the answer. So `[gt.int, Fint, str]` refuses as nixpkgs does. The
+exception is a refusal stated as the decider's answer alone (`vetoes = false`), which nixpkgs, asking
+only the later declaration, would give where that relation decides:
+
+- the leaf relation's refusal of a same-keyed partner stating a payload, and a container's over such
+  an element pair;
+- the leaf relation's refusal of a partner of another key that is **foreign**: a raw record, or one
+  stating its author's relation through `mkOptionType` (it carries `retainedRelation`);
+- a relation an author stated through `mkOptionType` refusing a foreign partner.
+
+There the later relation decides and its join is met with every declaration's check, and the refusal
+names the pair only where that relation gives no join; a partner relation's own `throw` is then
+reported in gen's words. So a nixpkgs `int` alias whose `typeMerge` answers `int`, declared after gen's
+`int`, serves what both declarations admit, and `[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`
+merges to nixpkgs' `str` met with `Fint`'s check, refusing `"a"` and `1`. Against a **gen-native** later type (one stating `typeMergeRel`
+and no `retainedRelation`) those two relations' refusals still end the step. That is a hold, not a
+law: the leaf relation, deciding, keys a partner stating a relation by its type name where nixpkgs keys
+by functor name, and would serve where nixpkgs refuses. Every other gen relation's refusal of a later
+type also ends the step. Where nixpkgs serves such a pair these refusals are open defects, listed
+under [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate). A foreign relation keeps the
 authority nixpkgs gives it, also over a join that drops a name an operand states, authored or
 inherited, which is met at the step (below): `[gt.int, str, Fx]` with `Fx = str // { typeMerge = _: int; }`
 answers `int`, as nixpkgs does, and rejects what `str` rejects.
@@ -1928,8 +1941,8 @@ answers `int`, as nixpkgs does, and rejects what `str` rejects.
 **Against nixpkgs, on the type.** Over every declaration list of length 3 and 4 in a seven-family
 census (8,338 words), gen-merge agreed with nixpkgs on every all-foreign list whose joins keep their
 operands' names, on both the declaration and the freeform planes. It departs where a fold step's
-gen-native relation refuses, and then by refusing: an earlier gen relation vetoing a later foreign
-relation that answers another type.
+gen-native relation refuses, and then by refusing ("A redeclared option's type refuses where an
+earlier relation's refusal ends the step", under Known byte-mode boundaries).
 Gen `attrs` against foreign `attrs` merges in both orders, directly or under a gen container, to gen's
 fold met with the partner's check. Where a merge drops a check (a foreign join that renames an
 operand, or the check a wrapper added to a gen record) the join is met, so the value differs only where
@@ -3182,17 +3195,24 @@ same modules.
     (`specialArgs`, `check`, a non-attrset `_module`) and reports nothing for an unknown `_module.<x>`,
     where the two engines agree.
 
-- **A redeclared option's type refuses where a gen-native relation refuses, even where nixpkgs
-  accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign list whose
-  joins keep their operands' names the two engines agree, on the declaration and freeform planes
-  (see "Redeclaring an option"). The
-  departures are all over-refusals, each at a fold step whose earlier operand is a gen type whose
-  relation refuses the later one. Under a **foreign** outer container the element relation runs in
-  foreign code and accepts what nixpkgs accepts. The list fold's cost is linear in the number of modules
-  that declare one option with a type, in thunks and calls ("Redeclaring an option", **Cost**). Measured members:
+- **A redeclared option's type refuses where an earlier relation's refusal ends the step, even
+  where nixpkgs accepts.** The declared-type list folds as nixpkgs brackets it, and on every all-foreign
+  list whose joins keep their operands' names the two engines agree, on the declaration and freeform
+  planes (see "Redeclaring an option"). An earlier relation's refusal ends a fold step wherever it is
+  not the decider's answer alone ("Redeclaring an option"), and where nixpkgs, asking only the later
+  declaration, serves a value every declaration admits, that refusal is an **open defect** (the
+  parity-defect rule), not a stated limit. Under a **foreign** outer container the element relation
+  runs in foreign code and accepts what nixpkgs accepts. The list fold's cost is linear in the number of
+  modules that declare one option with a type, in thunks and calls ("Redeclaring an option", **Cost**).
+  Measured members:
 
-  - an earlier gen relation vetoing a later foreign relation that answers another type
-    (`[gt.str, Fint]` with `Fint = int // { typeMerge = _: str; }`, and a refined type before `Fx`).
+  - two constructions of one name, `[mkOptionType { name = "int"; check = lt10; }, gt.int]` at 5, where
+    each admits 5 (at 50 the refusal is the meet's: `lt10` rejects it);
+  - a foreign author relation before a gen-native type, `[mkOptionType fnull, gt.int]` at 4 with
+    `fnull = int` stating `typeMerge = _: null`, which the raw `[fnull, gt.int]` serves;
+  - a gen union before a nixpkgs one: gen `either int bool` before `either u8 bool` at 5 and `true`;
+  - a gen `enum [ "a" ]` before a nixpkgs `enum [ "z" ]` whose relation answers its own values, at
+    `"a"` and `"z"`, where nixpkgs serves each though one declaration alone refuses it.
 
 - **A foreign join that drops a name an operand states is met** ("A foreign join that drops an
   operand's check is met"). A check family whose join renames it (`port ∥ int`, `u8 ∥ u16`, two
