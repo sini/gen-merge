@@ -764,8 +764,8 @@ that adds no path level (`nullOr`) holds its instance at its own position. Pinne
 `test-identity-wrapper-without-a-path-level-holds-its-instance-in-place`,
 `test-72izy-warm-config-read-forces-no-undeclared-identity` and `test-the-walk-reads-no-raw-payload`.
 
-**The decision trace.** Every result carries `.warmDecision` (always-on data; `mode = "cold"` on a
-plain compose):
+**The decision trace.** Every result carries `.warmDecision` (always-on data, plus the one function field
+`next`; `mode = "cold"` on a plain compose):
 
 ```nix
 {
@@ -777,7 +777,7 @@ plain compose):
   remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
   modules  = { clean = [ file… ]; dirty = [ … ]; edited = [ … ]; };   # the classification
   uncheckedConfig = <attrs>;                      # read through this evaluation's refusal (Result surface, below)
-  next     = <door>;                              # the warm continuation (Result surface, below)
+  next     = <function: options → modules → evaluation>;  # the warm continuation (Result surface, below)
 }
 ```
 
