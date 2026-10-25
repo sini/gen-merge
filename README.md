@@ -349,7 +349,7 @@ option declarations, `_module.args`). `_class` and `_prefix` are injected as nix
 
 ### A type that refuses a caller's base module argument — `refusingSubmodule`
 
-`refusingSubmodule keys mods` is `submodule mods` that STATES base module arguments it refuses from a
+`refusingSubmodule stated keys mods` is `submodule mods` that STATES base module arguments it refuses from a
 caller: a type of gen's own, with no nixpkgs twin, whose evaluation supplies those arguments itself (a
 gen-schema instance reads its own `config` to bind its kind argument and identity). Its `withArgs`
 refuses a stated key by name when the caller's set carries it, and gen's submodule union refuses a
@@ -366,16 +366,17 @@ a list of strings drawn from the engine's `baseArgNames` (`lib/modules.nix`: `_c
 construction, since no evaluation of the type supplies it. A type serving as a nixpkgs twin never
 states a key: there nixpkgs serves the caller's value.
 
-`refusingSubmoduleOver stated keys mods` is the same type minted over the CONSTRUCTION its module set
-is built from, for a library that builds `mods` itself from arguments. `stated` is
-`{ ctor; members; args = tags: { … }; sealed; }`: `ctor` qualified in the stating library's namespace
-(an unqualified one is refused, since the mint keeps the spelling as stated),
-`members` the minted inputs (entering by their marks), `args` the inert ones, and `sealed` the caller
-content. It is minted in place of the module list's seal, so two constructions over equal arguments
-are one type and two over different arguments are two. The statement must cover every input `mods`
-depends on, or two different module sets mint one type. `withArgs` keeps it; a rebuild keeps it and
-seals the module set it is rebuilt over beside it; a union of two declarations and a `recarry` seal the
-module list again, as for `refusingSubmodule`. `refusingSubmoduleOver null` is `refusingSubmodule`.
+The first operand, `stated`, is `null` for a type minted over its module list, or the CONSTRUCTION
+the module set is built from, for a library that builds `mods` itself from arguments:
+`{ ctor; members; args = tags: { … }; sealed; }`, with `ctor` qualified in the stating library's
+namespace (an unqualified one, or one in `gen-merge.`, is refused, since the mint keeps the spelling as
+stated), `members` the minted inputs (entering by their marks), `args` the inert ones, and `sealed` the
+caller content. It is minted in place of the module list's seal, so two constructions over equal
+arguments are one type and two over different arguments are two. The statement must cover every input
+`mods` depends on, or two different module sets mint one type. `withArgs` keeps it; a rebuild keeps it
+and seals the module set it is rebuilt over beside it; a union of two declarations and a `recarry` seal
+the module list again. Any other first operand is refused by name, so a call that hands the key list
+first is refused where it is written.
 
 ## Provenance
 
