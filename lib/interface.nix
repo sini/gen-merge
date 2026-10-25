@@ -2177,10 +2177,15 @@ let
           # It is one lazy binding in the one update: gen's fold never asks `merge.v2`, so it pays that binding alone.
           # The rebuild is v2 where the declared record may not be (a `//` override of its `merge`), and v2-ness is
           # the declared record's: a check carried from a record that is not v2 is no ad-hoc override, so it is
-          # marked coherent, as nixpkgs' protocol reads it there (`adHocChecked`)
+          # marked coherent, as nixpkgs' protocol reads it there (`adHocChecked`). The mark is read first, so a
+          # record already marked never forces its `merge`
           rebuilt
           // {
-            check = if isV2 t then t.check else witnessRecord t.check // { isV2MergeCoherent = true; };
+            check =
+              if t.check.isV2MergeCoherent or false || isV2 t then
+                t.check
+              else
+                witnessRecord t.check // { isV2MergeCoherent = true; };
             merge =
               if isV2 rebuilt then rebuildClosed.verifiedMerge.lifted t.check rebuilt.merge else rebuilt.merge;
           }
