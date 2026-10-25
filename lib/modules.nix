@@ -4287,49 +4287,54 @@ let
       else
         throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}";
 
-  # The definitions one whole `_module.args` definition discharges to, `[{ priority; value; … }]`, as
-  # `dischargeIn` gives them but read off the property tree's STRUCTURE: an `mkIf`'s condition is forced
-  # only where a definition below it outranks the default (`mkIf c (mkForce { … })`), which is where
-  # nixpkgs' override pass needs it. Elsewhere the condition stays on each definition (`mkIf c { … }`), so
-  # its keys are known with no condition forced, and a condition reading an argument reaches its fixpoint.
-  moduleArgDefsOf =
-    v:
-    if !(priority.isProperty v) then
-      [
-        {
-          priority = defaultPriority;
-          value = v;
-        }
-      ]
-    else if v._type == "if" then
-      let
-        defs = moduleArgDefsOf v.content;
-      in
-      if any (d: d.priority < defaultPriority) defs then
-        (if v.condition then defs else [ ])
-      else
-        map (d: d // { value = priority.mkIf v.condition d.value; }) defs
-    else if v._type == "merge" then
-      concatMap moduleArgDefsOf v.contents
-    else
-      dischargeIn null v;
   # Whether a pushed module's WHOLE `_module.args` outranks the engine's own definitions of it
   # (`internalModule`'s, a position's `name`), which nixpkgs' option holds at the default priority:
-  # a property one of whose definitions sits above it, as `mkForce { … }` does. A module stating no
-  # property there is decided by `?` alone, which allocates nothing.
+  # a property one of whose parts sits above it, as `mkForce { … }` does. The parts are read off the
+  # property tree's STRUCTURE, as `dischargeIn` reads them but with an `mkIf`'s condition forced only
+  # above such a part (`mkIf c (mkForce { … })`, where nixpkgs' override pass needs it), so `mkIf c
+  # { … }` forces nothing and a condition reading an argument reaches its fixpoint. A module stating no
+  # property there is decided by `?` alone, which allocates nothing; the walk is a local of the
+  # property branch, as at each of its readers, so no binding is paid where no property is stated.
   overridden =
     p:
     p.attrs ? _module
     && priority.isProperty ((pushDownProperties p.attrs._module).args or null)
-    && any (d: d.priority < defaultPriority) (
-      moduleArgDefsOf (pushDownProperties p.attrs._module).args
+    && (
+      let
+        # the least priority of a whole definition's parts above the default, or the default, read off
+        # the property tree's structure: an `mkIf`'s condition is forced only above such a part
+        least =
+          v:
+          if !(priority.isProperty v) then
+            defaultPriority
+          else if v._type == "if" then
+            (
+              let
+                t = least v.content;
+              in
+              if t < defaultPriority && v.condition then t else defaultPriority
+            )
+          else if v._type == "merge" then
+            foldl' (
+              n: c:
+              let
+                t = least c;
+              in
+              if t < n then t else n
+            ) defaultPriority v.contents
+          else
+            foldl' (n: d: if d.priority < n then d.priority else n) defaultPriority (dischargeIn null v);
+      in
+      least (pushDownProperties p.attrs._module).args < defaultPriority
     );
   # Each module's `_module.args`, one set of `{ _file; value; }` definitions per definition that stays,
   # as nixpkgs' option reads them: its override pass runs over each module's WHOLE definition, the
   # engine's own among them at the default, before its `lazyAttrsOf` merges keys. Only the definitions at
   # the highest priority (`top`) stay: where a module outranks the engine's own (`overridden`), the forced
-  # ones; otherwise those at the default, so `mkDefault { … }` drops, outranked by the engine's own. `top`
-  # is decided only when a module states `_module.args`. Pay per use: `filter` calls its predicate
+  # ones; otherwise those at the default, so `mkDefault { … }` drops, outranked by the engine's own. A
+  # property's definitions are read off its structure as `overridden` reads them: the condition of an
+  # `mkIf` over no forced part stays on each definition (`mkIf c { q }` keeps `q = mkIf c 1` by key).
+  # `top` is decided only when a module states `_module.args`. Pay per use: `filter` calls its predicate
   # without allocating a thunk, so a module stating no `_module` costs nothing here, and one stating no
   # `_module.args` costs its `m` alone.
   moduleArgSetsOf =
@@ -4337,11 +4342,46 @@ let
     let
       top =
         if any overridden pushed then
-          foldl' (n: d: if d.priority < n then d.priority else n) defaultPriority (
-            concatMap (p: moduleArgDefsOf (pushDownProperties p.attrs._module).args or null) (
-              filter (p: p.attrs ? _module) pushed
-            )
-          )
+          foldl' (
+            n: p:
+            let
+              a = (pushDownProperties p.attrs._module).args or null;
+            in
+            if priority.isProperty a then
+              let
+                # the least priority of a whole definition's parts above the default, or the default, read off
+                # the property tree's structure: an `mkIf`'s condition is forced only above such a part
+                least =
+                  v:
+                  if !(priority.isProperty v) then
+                    defaultPriority
+                  else if v._type == "if" then
+                    (
+                      let
+                        t = least v.content;
+                      in
+                      if t < defaultPriority && v.condition then t else defaultPriority
+                    )
+                  else if v._type == "merge" then
+                    foldl' (
+                      n: c:
+                      let
+                        t = least c;
+                      in
+                      if t < n then t else n
+                    ) defaultPriority v.contents
+                  else
+                    foldl' (n: d: if d.priority < n then d.priority else n) defaultPriority (dischargeIn null v);
+              in
+              (
+                let
+                  t = least a;
+                in
+                if t < n then t else n
+              )
+            else
+              n
+          ) defaultPriority (filter (p: p.attrs ? _module) pushed)
         else
           defaultPriority;
     in
@@ -4365,13 +4405,37 @@ let
             [ ]
         )
       else
+        let
+          # the definitions at `top`, each a value to push down by key
+          at =
+            v:
+            if !(priority.isProperty v) then
+              (if top == defaultPriority then [ v ] else [ ])
+            else if v._type == "if" then
+              (
+                let
+                  xs = at v.content;
+                in
+                # above the default only forced parts stay, and whether one does is the condition
+                if xs == [ ] then
+                  [ ]
+                else if top < defaultPriority then
+                  (if v.condition then xs else [ ])
+                else
+                  map (priority.mkIf v.condition) xs
+              )
+            else if v._type == "merge" then
+              concatMap at v.contents
+            else
+              map (d: d.value) (filter (d: d.priority == top) (dischargeIn null v));
+        in
         map (
-          d:
+          v:
           mapAttrs (_: value: {
             inherit (p) _file;
             inherit value;
-          }) (pushDownProperties d.value)
-        ) (filter (d: d.priority == top) (moduleArgDefsOf m.args))
+          }) (pushDownProperties v)
+        ) (at m.args)
     ) (filter (p: p.attrs ? _module) pushed);
 
   # A positioned evaluation's `name`, as nixpkgs' `submoduleWith` resolves it: the position's
