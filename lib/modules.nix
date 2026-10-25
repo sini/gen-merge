@@ -815,6 +815,10 @@ let
   #    The declaration list's fixup carries a root again over its rebuild (`fixupModuleSets`,
   #    den-hoag-8ip0d), and so does the type merge of several definitions, the freeform plane's
   #    (`mergeTypeDefs`); a union's member, which no fixup reaches, is carried by the step.
+  #  - EVERY FOLD STEP IS MET, A HELD STEP INCLUDED. An answer stating `holds` is not taken as met:
+  #    an operand's exported `typeMerge` answers a held record met with that operand alone (it is
+  #    handed a functor, never the partner), and an author's answer can state `holds` itself. A
+  #    stated relation supplies the join, never a certificate (`interface.foreignRel`).
   #
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
@@ -842,8 +846,6 @@ let
     in
     if m == null then
       null
-    else if m ? holds then
-      m
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer over two gen operands stating their own checks carries both: nothing is
       # owed, and nothing is allocated (`metWith`'s first test, inline)

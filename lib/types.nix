@@ -203,11 +203,13 @@ let
         #    (ADR-0039's serve half).
         # A declined embedding join is REFUSED, never `self`: the partner's own check would be dropped
         # unsaid (ADR-0025 item 1), so the table cannot widen the same-key fallback's reach.
+        # gen's own partner is a gen record with NO retained relation; a nixpkgs leaf through a
+        # `mkOptionType` door retains its author's relation and is joined here as its raw form is.
         nullaryRel = {
           exact = true;
           __functor =
             _: other:
-            if isAttrs other && other ? typeMergeRel then
+            if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
               if (keyOf other) == name then
                 { merged = self; }
               else

@@ -12049,6 +12049,199 @@ in
           };
         };
       };
+    # A nixpkgs leaf through either `mkOptionType` door beside gen's own leaf (ci/tests/leaf-door.nix) keeps the door
+    # partner's own check: a value it rejects is refused by name, where nixpkgs drops the check and serves it. RED
+    # (each): the leaf relation's refusal of the pair, "`string' and `str'" and its kin, not these texts.
+    flake.testsError.leaf-door =
+      let
+        np = nixpkgsLib.types;
+        read =
+          ts: v:
+          let
+            x =
+              (gm.evalModuleTree { } (map (ty: { options.x = gm.mkOption { type = ty; }; }) ts ++ [ { x = v; } ]))
+              .config.x;
+          in
+          builtins.deepSeq x x;
+        notOfType = ty: "^gen-merge: a definition for option `x' is not of type `${ty}'.*$";
+        checkedStr = np.addCheck np.str (s: s != "bad");
+        checkedEnum = np.addCheck (np.enum [
+          "a"
+          "b"
+        ]) (v: v != "b");
+        checkedNumber = np.addCheck np.number (x: x > 0);
+      in
+      {
+        test-a-checked-str-through-the-door-keeps-its-check = {
+          expr = read [ (gm.mkOptionType checkedStr) t.str ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-str-through-the-door-declared-second-keeps-its-check = {
+          expr = read [ t.str (gm.mkOptionType checkedStr) ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-str-through-the-types-door-keeps-its-check-in-either-order = {
+          expr = read [ (gm.types.mkOptionType checkedStr) t.str ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-enum-through-the-door-keeps-its-check = {
+          expr = read [
+            (gm.mkOptionType checkedEnum)
+            (t.enum "e" [
+              "a"
+              "b"
+            ])
+          ] "b";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "one of \"a\", \"b\"";
+          };
+        };
+        test-a-checked-number-through-the-door-keeps-its-check = {
+          expr = read [ (gm.mkOptionType checkedNumber) t.number ] (-1);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of type `signed integer or floating point number'\\. TypeError: a definition is rejected by the check of another declaration of this option.*$";
+          };
+        };
+      };
+    # Three and four declarations through the door (ci/tests/leaf-door.nix): a checked partner's check is kept at every
+    # step of the fold, a held step included, so the value it rejects is refused by name, where nixpkgs drops the check
+    # and serves it. RED (each): the held step's join answered past the meet and served the value; `int' `[C, G, N]'
+    # and the four-declaration cells were served on main before the leaf guards. An answer stating `holds` where
+    # neither operand does (an author's `typeMerge` forging it, or answering a held record gen met) is met too:
+    # RED where the step took such an answer as already met.
+    flake.testsError.leaf-door-held-step =
+      let
+        np = nixpkgsLib.types;
+        read =
+          ts: v:
+          let
+            x =
+              (gm.evalModuleTree { } (map (ty: { options.x = gm.mkOption { type = ty; }; }) ts ++ [ { x = v; } ]))
+              .config.x;
+          in
+          builtins.deepSeq x x;
+        notOfType = ty: "^gen-merge: a definition for option `x' is not of type `${ty}'.*$";
+        door = gm.mkOptionType;
+        str = {
+          C = door (np.addCheck np.str (s: s != "bad"));
+          D = door (np.addCheck np.str (s: s != "worse"));
+          N = door np.str;
+          G = t.str;
+        };
+        abc = [
+          "a"
+          "b"
+          "c"
+        ];
+        enum = {
+          C = door (np.addCheck (np.enum abc) (v: v != "b"));
+          N = door (np.enum abc);
+          G = t.enum "e" abc;
+        };
+        int = {
+          C = door (np.addCheck np.int (x: x > 0));
+          N = door np.int;
+          G = t.int;
+        };
+        declared =
+          ts:
+          (gm.evalModuleTree { } (map (ty: { options.x = gm.mkOption { type = ty; }; }) ts)).options.x.type;
+        checkedStr = np.addCheck np.str (s: s != "bad");
+        forged = np.str // {
+          typeMerge = _: np.str // { holds = true; };
+        };
+        laundered = np.str // {
+          typeMerge =
+            _:
+            declared [
+              str.D
+              str.N
+            ];
+        };
+      in
+      {
+        test-a-checked-str-kept-past-a-held-step-before-gen-str = {
+          expr = read [ str.C str.N str.G ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-str-kept-past-a-held-step-after-gen-str = {
+          expr = read [ str.C str.G str.N ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-str-kept-among-door-returns-alone = {
+          expr = read [ str.C str.D str.N ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-str-kept-in-four-declarations-gen-first = {
+          expr = read [ str.G str.C str.D str.N ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-second-checked-str-kept-in-four-declarations = {
+          expr = read [ str.D str.G str.C str.N ] "worse";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-enum-kept-past-a-held-step = {
+          expr = read [ enum.C enum.N enum.G ] "b";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "one of \"a\", \"b\", \"c\"";
+          };
+        };
+        test-a-checked-int-kept-past-a-held-step-after-gen-int = {
+          expr = read [ int.C int.G int.N ] (-1);
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "signed integer";
+          };
+        };
+        test-a-checked-int-kept-past-a-held-step-before-gen-int = {
+          expr = read [ int.C int.N int.G ] (-1);
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "signed integer";
+          };
+        };
+        test-a-checked-str-kept-past-a-forged-held-answer = {
+          expr = read [ checkedStr forged ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+        test-a-checked-str-kept-past-a-laundered-held-answer = {
+          expr = read [ checkedStr laundered ] "bad";
+          expectedError = {
+            type = "ThrownError";
+            msg = notOfType "string";
+          };
+        };
+      };
     # nixpkgs' `definition` record (ci/tests/definition-record.nix): a refusal names the RECORD's file,
     # not the enclosing module's, on an option and on a module argument (nixpkgs names `/r/B.nix` and
     # `/r/A.nix` in both). Each has a plain-definition control carrying the same message.

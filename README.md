@@ -1708,8 +1708,9 @@ foreign engine can recover this type from, in the foreign spellings:
 ```nix
 # nullary — raw, anything, every gen-types leaf
 { name; type; payload = null; binOp = _a: _b: null; }      # same name ⇒ the deciding side's own record;
-                                                           # a gen leaf facing a raw foreign nullary leaf
-                                                           # answers the partner's
+                                                           # a gen leaf facing a raw foreign nullary leaf,
+                                                           # or a nixpkgs leaf through a door, answers
+                                                           # the partner's
 # one-element containers — listOf, nullOr                   (gen role: `element`)
 { payload = { elemType; }; type = p: rebuild p.elemType; }
 # embedded in a richer foreign constructor (`interface.embeddings`): published under ITS name
@@ -1799,8 +1800,9 @@ all — a gen-types **parametric** leaf (`enum`, `struct`, `union`) reaches the 
 bare constructor — makes its container not mergeable instead of aborting on a missing attribute.
 
 **A nullary leaf pair is joined in the partner's published functor** (`interface.joinLeafInStatedRelation`,
-called from the leaf relation behind `other ? typeMergeRel`, so a gen × gen pair builds nothing). A gen
-leaf facing a RAW foreign leaf of the same key (equal `functor.name`, both payloads null, a `type` the
+called from the leaf relation for every partner that is not gen's own, a gen record with no retained
+relation, so a gen × gen pair builds nothing). A gen leaf facing a RAW foreign leaf, or a nixpkgs leaf
+through a door, of the same key (equal `functor.name`, both payloads null, a `type` the
 functor names) answers the protocol's default over that functor, which is the record the partner's twin
 answers in the order where it decides: a mixed `int`/`bool`/`float`/`raw`/`anything` redeclaration, bare
 or under `listOf`/`nullOr`, has nixpkgs' declared type in both orders and under both engines. It refuses
@@ -1985,7 +1987,10 @@ the wrapper first or second, under a gen parametric (`union [ int ]`), under a c
 (`listOf (addCheck int p)` beside `listOf int`), in a longer list, and in gen's engine for a foreign
 operand too (`addCheck lib.types.int p` beside `lib.types.int`, and a nixpkgs partner of any check).
 The join still decides the record (its fold, name and functor, nixpkgs' later operand); the meet
-decides acceptance, a lower bound by induction over the fold. **An operand is exact, and owes
+decides acceptance, a lower bound by induction over the fold. **Every fold step is met, a held step
+included**: an answer stating that it holds is met with both operands again, because an operand's
+exported `typeMerge` answers a record met with that operand alone, and a stated relation supplies the
+join, never a certificate. **An operand is exact, and owes
 nothing, only where gen-merge constructed its relation**: every relation this library builds carries a
 construction witness (`typeMergeRel.exact`), and an operand stating neither `check` nor `admits` owes
 none. A `typeMergeRel` an author states is author vocabulary and no witness, so an author type whose
