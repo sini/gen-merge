@@ -13138,11 +13138,12 @@ in
     # refusal of it would give a false reason and refuse a value nixpkgs serves. Refused at construction, by
     # name; the instance-type set and the other engine keys still state. Read by TEXT.
     flake.testsError.refusing-submodule-keys = {
-      # den-hoag-dwln8: a stated constructor is qualified, since its mint keeps the spelling as stated
+      # den-hoag-dwln8: a stated constructor is qualified in its own library's namespace, since its mint
+      # keeps the spelling as stated
       test-an-unqualified-stated-constructor-is-refused = {
         expr =
           force
-            (gm.refusingSubmoduleOver {
+            (gm.refusingSubmodule {
               ctor = "inst";
               members = [ ];
               args = _: { };
@@ -13150,11 +13151,34 @@ in
             } [ ] [ ]).refusedArgs;
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-merge: `refusingSubmoduleOver' takes a constructor qualified in the stating library's namespace";
+          msg = "^gen-merge: `refusingSubmodule' takes a stated constructor qualified in the stating library's namespace";
+        };
+      };
+      test-a-stated-constructor-in-gen-merge-namespace-is-refused = {
+        expr =
+          force
+            (gm.refusingSubmodule {
+              ctor = "gen-merge.submodule";
+              members = [ ];
+              args = _: { };
+              sealed = [ ];
+            } [ ] [ ]).refusedArgs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `refusingSubmodule' takes a stated constructor qualified in the stating library's namespace";
+        };
+      };
+      # den-hoag-dwln8: the construction is the first operand, so a call written before it existed hands
+      # the key list first and is refused by name where it is written
+      test-an-unmigrated-two-operand-call-is-refused = {
+        expr = force (gm.refusingSubmodule [ "config" ] [ ]).refusedArgs;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: `refusingSubmodule' takes the construction its module set is built from first .*; got list first$";
         };
       };
       test-a-key-the-engine-never-supplies-is-refused-at-construction = {
-        expr = force (gm.refusingSubmodule [ "pkgs" ] [ ]).refusedArgs;
+        expr = force (gm.refusingSubmodule null [ "pkgs" ] [ ]).refusedArgs;
         expectedError = {
           type = "ThrownError";
           msg = "^gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies \\(.*\\); `pkgs' is not one";
@@ -13163,13 +13187,13 @@ in
       test-the-engine-keys-state-control = {
         expr = force (
           assert
-            (gm.refusingSubmodule [ "prefix" "config" "options" "config" ] [ ]).refusedArgs == [
+            (gm.refusingSubmodule null [ "prefix" "config" "options" "config" ] [ ]).refusedArgs == [
               "config"
               "options"
               "prefix"
             ];
           assert
-            (gm.refusingSubmodule genMergeCore.baseArgNames [ ]).refusedArgs == genMergeCore.baseArgNames;
+            (gm.refusingSubmodule null genMergeCore.baseArgNames [ ]).refusedArgs == genMergeCore.baseArgNames;
           throw "stated"
         );
         expectedError = {

@@ -1007,7 +1007,7 @@ let
   # `stated` (den-hoag-dwln8): `null`, or the construction another library built the module set from,
   # `{ ctor; members; args = tags: { … }; sealed; }`, minted IN PLACE OF the module list's seal (ADR-0034's
   # construction clause: a constructor and its argument components, members by mark and caller content
-  # sealed). Stated only through `refusingSubmoduleOver` (lib/default.nix). `withArgs` and `rebuild` keep
+  # sealed). Stated only through `refusingSubmodule`'s first operand (lib/default.nix). `withArgs` and `rebuild` keep
   # it; the relation's union and `recarry` pass `null`, since a union of two declarations, or a module set
   # a caller carries in, is no longer that library's construction, and the list's seal returns.
   mkSubmodule =

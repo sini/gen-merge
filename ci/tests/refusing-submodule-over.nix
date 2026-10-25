@@ -1,8 +1,8 @@
-# A SUBMODULE MINTED OVER ITS STATED CONSTRUCTION (den-hoag-dwln8). `refusingSubmoduleOver stated keys
+# A SUBMODULE MINTED OVER ITS STATED CONSTRUCTION (den-hoag-dwln8). `refusingSubmodule stated keys
 # mods` mints over the constructor and argument components another library states, in place of the
 # module list's seal: twins over equal arguments are one type, a differing argument or constructor two,
 # and the constructor keeps the stating library's namespace. A rebuild keeps the statement and seals
-# the rebuilt set beside it. `null` states nothing and is `refusingSubmodule`.
+# the rebuilt set beside it. `null` states nothing and mints over the module list's seal, as before.
 { genMerge, ... }:
 let
   gm = genMerge;
@@ -15,7 +15,7 @@ let
     args = _: { inherit n; };
     sealed = [ ];
   };
-  over = s: gm.refusingSubmoduleOver s [ "config" ] mods;
+  over = s: gm.refusingSubmodule s [ "config" ] mods;
   eq = gt.typeEq;
   rebuilt = t: t.substructure.rebuild mods;
 in
@@ -40,13 +40,14 @@ in
       expected = true;
     };
     test-a-statement-replaces-the-module-list-seal = {
-      expr = eq (over (stating "lib-a.inst" 1)) (gm.refusingSubmodule [ "config" ] mods);
+      expr = eq (over (stating "lib-a.inst" 1)) (over null);
       expected = false;
     };
-    # the control: stating nothing is the module list's seal
-    test-null-is-refusing-submodule = {
-      expr = eq (over null) (gm.refusingSubmodule [ "config" ] mods);
-      expected = true;
+    # the control: stating nothing mints what the type minted before the operand existed (the digest
+    # pinned at gen-merge b78f70b, read off `refusingSubmodule [ "config" "options" "prefix" ] { }` there)
+    test-null-mints-the-module-list-seal = {
+      expr = (gm.refusingSubmodule null [ "config" "options" "prefix" ] { }).__mint.minted;
+      expected = "type:2930c401b7082acb4e330fae0da7df64ddf87b1ede3d3a6e698b4f0f893cf13a";
     };
     test-a-rebuild-keeps-the-statement = {
       expr = {
