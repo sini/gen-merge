@@ -383,6 +383,9 @@ without discharge. So: provenance forces the *shape* of who-defined-what (declar
 freeform: files only), never the resolved value. (This is weaker than nixpkgs `definitionsWithLocations`,
 which forces nothing — byte-mode discharges eagerly to resolve priorities.)
 
+**Served on a refused evaluation.** `.provenance` is served where `config` refuses: it records what the
+engine read and from where, which is a different question from whether it checks.
+
 Per **declared-option** loc — a rich record:
 
 ```nix
@@ -555,6 +558,9 @@ that declared the option, in authored order — a deprecation is fixed at the de
 supplying the type need not be the only one declaring the option (a layering module adding an `apply`
 carries no type of its own). These are the data nixpkgs' own `warnDeprecation` reports, read off the
 same field.
+
+**Served on a refused evaluation.** `.deprecations` is served where `config` refuses: it records what the
+engine read and from where, which is a different question from whether it checks.
 
 **On the result, not on stderr**, and that is a mechanism decision: Nix's eval cache swallows
 `trace`/`warn`, so a printed deprecation appears on the first eval and never again — a report that
@@ -770,6 +776,8 @@ plain compose):
   reused   = [ <loc-string> … ];                  # the spliced declared leaves (dot-joined)
   remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
   modules  = { clean = [ file… ]; dirty = [ … ]; edited = [ … ]; };   # the classification
+  uncheckedConfig = <attrs>;                      # read through this evaluation's refusal (Result surface, below)
+  next     = <door>;                              # the warm continuation (Result surface, below)
 }
 ```
 
@@ -789,13 +797,19 @@ already says nothing was spliced.
 **The `pureModule` teeth here.** A lying marker's stale reuse surfaces as a warm-vs-cold byte
 divergence — the standing override oracle (every consumer's CI), the in-bench byte gate, and the
 adversarial suite fixture (a marked module that `@`-captures config, asserted to diverge visibly) all
-pin it. The two internal memo fields `freeformConfig` / `freeformProv` on the result let a CHAINED warm
-(warmFrom = a warm result) reuse the freeform layer directly.
+pin it. The three internal memo fields `freeformConfig` / `freeformProv` / `warmDecision.next` on the
+result let a CHAINED warm (warmFrom = a warm result) reuse the freeform layer directly.
 
 **Result surface.** The public result is `config` / `options` / `_module` / `provenance` / `undeclared` /
 `deprecations` (+ `type`);
-`warmDecision` (the decision trace) and `freeformConfig` / `freeformProv` (the freeform memo layers)
-are internal fields — additive, threaded between chained evals, not part of the byte-identity contract.
+`warmDecision` (the decision trace), `freeformConfig` / `freeformProv` (the freeform memo layers) and
+`warmDecision.next` (the warm continuation a `warmFrom` evaluation runs through) are internal fields —
+additive, threaded between chained evals, not part of the byte-identity contract. `optionDefs`,
+`freeformConfig` and `warmDecision.uncheckedConfig` carry definition values, so they are read through
+the evaluation's refusal, as `config` is: its identity verdict, then its unmatched-definition check.
+`warmDecision.next o modules` is `evalModuleTree (o // { warmFrom = r; }) modules` over this result
+`r`, under the same door and its refusals, holding `r`'s record unread through `r`'s refusal: a warm
+evaluation runs through it, so a prior's refusal is never the next evaluation's.
 
 ## The `types` namespace
 
@@ -3096,7 +3110,7 @@ same modules.
   `options._module` leaf plus a module's `_module.check` is refused by name
   (`` The option `_module.check' does not exist ``) where nixpkgs serves. Warm re-evaluation is served
   and equals cold: a reused leaf and the prior's identity walk read the prior's unchecked config
-  (`warmDecision.uncheckedConfig`), so a prior's refusal is never this evaluation's.
+  through its warm continuation (`warmDecision.next`), so a prior's refusal is never this evaluation's.
   `_module.specialArgs` is refused by presence (`… is set by the caller, never by a module …`):
   nixpkgs drops a module's definition silently, and a silent drop is not a value. A non-attrset
   `_module` is refused (`` `_module' must be an attribute set, and this one is <type>; defined in <file> ``),

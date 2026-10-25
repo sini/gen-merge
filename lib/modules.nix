@@ -9166,6 +9166,30 @@ let
         # nixpkgs' `_module = checked config._module`: the module-visible `_module` its modules read,
         # behind the same refusal.
         _module = builtins.seq result.config result.moduleConfig._module;
+        # The attributes carrying a definition VALUE are read through the refusal the exported `config`
+        # carries (its identity verdict, then `_orphanCheck`), as `options` is: serving one where `config`
+        # refuses would serve a value no check enforced (ADR-0039 (b′)).
+        optionDefs = builtins.seq result.identityHeld (builtins.seq result.config result.optionDefs);
+        freeformConfig = builtins.seq result.identityHeld (
+          builtins.seq result.config result.freeformConfig
+        );
+        # The memoization decision trace (spec §4); `mode = "cold"` on a plain compose (no warmFrom). Only
+        # `uncheckedConfig` carries values; the rest is the decision's metadata, served as it is.
+        warmDecision = result.warmDecision // {
+          uncheckedConfig = builtins.seq result.identityHeld (
+            builtins.seq result.config result.warmDecision.uncheckedConfig
+          );
+          # The warm continuation, an internal memo field: the published door over `o`, warm-started from
+          # THIS evaluation's own record, unread through its refusal, so a prior's refusal is never the
+          # next evaluation's and reading it forces nothing. It refuses what the door refuses, so
+          # `next o m` is `evalModuleTree (o // { warmFrom = r; }) m`: it returns an evaluation and never
+          # a value of this one, and what that evaluation serves is read through ITS refusal and equals
+          # its cold evaluation (ADR-0008 item 2). The record carries no `next`, so the door runs the
+          # engine over it.
+          next = o: evalModuleTree (o // { warmFrom = result; });
+        };
+        # Metadata only, served past the refusal: what the engine read and from where is a different
+        # question from whether it checks (see `undeclared`).
         inherit (result)
           provenance
           # The unmatched definitions this eval did not merge into `config`, the REFUSED ones included —
@@ -9176,13 +9200,9 @@ let
           # message, the type's name and the files that declared the option — empty when no declared
           # type is deprecated, which is the ordinary case.
           deprecations
-          # Freeform layers exposed as internal memo fields (public surface = the five above):
-          # a CHAINED warm re-eval reuses `warmFrom.freeformConfig`/`freeformProv` directly (spec §2).
-          freeformConfig
+          # The freeform layer's provenance, an internal memo field (a chained warm re-eval reuses the
+          # prior's freeform layers through `warmDecision.next`).
           freeformProv
-          optionDefs
-          # The memoization decision trace (spec §4); `mode = "cold"` on a plain compose (no warmFrom).
-          warmDecision
           ;
         # The tree AS a type — lets a parent tree nest this one (submodule recursion / freeform). Nested
         # evals are always COLD (no `warmFrom` threaded) — a documented boundary, like provenance's.
@@ -9239,10 +9259,20 @@ let
     "editedModules"
     "class"
   ];
-  evalModuleTree = prelude.door {
-    name = "gen-merge.evalModuleTree";
-    optional = evalModuleTreeOptions;
-  } (o: modules: evalModuleTreeUnchecked (o // { inherit modules; }));
+  evalModuleTree =
+    prelude.door
+      {
+        name = "gen-merge.evalModuleTree";
+        optional = evalModuleTreeOptions;
+      }
+      (
+        o: modules:
+        # a warm evaluation runs through its prior's own continuation, which holds the prior's unread record
+        if o.warmFrom or null != null && o.warmFrom ? warmDecision.next then
+          o.warmFrom.warmDecision.next o modules
+        else
+          evalModuleTreeUnchecked (o // { inherit modules; })
+      );
 in
 {
   inherit

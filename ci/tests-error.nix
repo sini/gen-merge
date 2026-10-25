@@ -13217,5 +13217,54 @@ in
           };
         };
       };
+
+    # A refused evaluation's value-carrying gen-only attributes refuse with the refusal its `config` carries, and the
+    # warm continuation `warmDecision.next` refuses what the published door refuses, by the door's name
+    # (`ci/tests/genonly-attrs-gated.nix` pins each read refused; this suite pins which refusal fires).
+    flake.testsError.genonly-attrs-gated =
+      let
+        fx = import ./tests/_fixtures/genonly-attrs-gated.nix { inherit gm; };
+        pin = text: {
+          type = "ThrownError";
+          msg = "^" + prelude.escapeRegex text + "$";
+        };
+        evalOptions = [
+          "specialArgs"
+          "check"
+          "prefix"
+          "coreShortCircuit"
+          "warmFrom"
+          "editedModules"
+          "class"
+        ];
+      in
+      {
+        test-an-orphaned-evaluation-option-defs-refuse-by-the-orphan = {
+          expr = fx.raw.s1Values;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^The option `bogus' does not exist[.] Definition values:";
+          };
+        };
+        test-a-check-refused-evaluation-freeform-config-refuses-by-the-check = {
+          expr = fx.raw.s2Free;
+          expectedError = pin "khk2v-plant-check";
+        };
+        test-an-identity-refused-evaluation-option-defs-refuse-by-the-identity = {
+          expr = fx.raw.idmValues;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-memo[.]identitiesHeld: minted identity moved on a warm re-compose at ''";
+          };
+        };
+        test-the-warm-continuation-refuses-the-internal-root-by-the-door = {
+          expr = fx.raw.nextRoot;
+          expectedError = pin (prelude.refusals.unknownOption "gen-merge.evalModuleTree" evalOptions "root");
+        };
+        test-the-warm-continuation-refuses-a-misspelt-option-by-the-door = {
+          expr = fx.raw.nextMisspelt;
+          expectedError = pin (prelude.refusals.unknownOption "gen-merge.evalModuleTree" evalOptions "chekc");
+        };
+      };
   };
 }
