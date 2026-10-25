@@ -682,7 +682,7 @@ in
     # declared record is not v2, so nixpkgs folds it with no coherence guard, and the re-home carries its check
     # marked coherent (den-hoag-vjxra). It is served, as at the root before; the value still ignores the `merge`
     # override where nixpkgs honours it, an open defect (den-hoag-eyqu1) not pinned here.
-    test-an-addCheck-over-a-merge-overridden-stock-union-is-not-refused-as-ad-hoc =
+    test-an-addCheck-over-a-merge-overridden-stock-union-is-served =
       let
         mfs = a: a // { merge = loc: defs: a.merge loc (builtins.tail defs); };
         els = {
