@@ -321,5 +321,52 @@ in
         }) (arrangements (tagOf leaf) (tagOf np.int));
         expected = every;
       };
+
+    # the same leaf held by a container that crossed `mkOptionType` (den-hoag-8uwxu R3): a tag, a list of tags, a
+    # tag in a tag, and a `listOf` and an `attrsOf` element. The door's record keeps its author's relation, whose
+    # witness takes the join on names, and the held role is met there as on the raw foreign arm
+    test-a-leaf-held-through-mk-option-type-is-met-redeclared =
+      let
+        q = v: v != 1;
+        leaf = np.addCheck np.int q;
+        shapes = {
+          tag = {
+            mk = tagOf;
+            w = v: { t = v; };
+          };
+          listTag = {
+            mk = s: np.listOf (tagOf s);
+            w = v: [ { t = v; } ];
+          };
+          tagTag = {
+            mk = s: np.attrTag { u = nixpkgsLib.mkOption { type = tagOf s; }; };
+            w = v: { u.t = v; };
+          };
+          list = {
+            mk = np.listOf;
+            w = v: [ v ];
+          };
+          attrs = {
+            mk = np.attrsOf;
+            w = v: { k = v; };
+          };
+        };
+        at =
+          s: ts: v:
+          let
+            r = read ts (s.w v);
+          in
+          if r == "REFUSED" then r else r == nixpkgs (map (_: s.mk np.int) ts) (s.w v);
+      in
+      {
+        expr = builtins.mapAttrs (
+          _: s:
+          builtins.mapAttrs (_: ts: {
+            bad = at s ts 1;
+            ok = at s ts 2;
+          }) (arrangements (gm.mkOptionType (s.mk leaf)) (s.mk np.int))
+        ) shapes;
+        expected = builtins.mapAttrs (_: _: every) shapes;
+      };
   };
 }

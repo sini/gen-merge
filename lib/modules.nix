@@ -652,8 +652,12 @@ let
               b
             ]
         )
+      # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
+      # payload states even where its witness took the join: the witness compares names, never checks, so a
+      # held role's check is as uncertified as on the raw foreign arm below. The top is met by the caller
+      # (`mergeTypesBy`), relativised; only the absolute meet waits on `holds`
       else if answer ? merged then
-        answer.merged
+        (if a ? retainedRelation then rolesMet answer.merged a b else answer.merged)
       else
         null
     else

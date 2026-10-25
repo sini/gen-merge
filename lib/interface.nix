@@ -7614,9 +7614,11 @@ let
     # one of the six stock containers is gen's own container, and a record declaring a gen nesting
     # element that is none of them is refused at construction, since `mkOptionType` is this door.
     #
-    # ★ ONLY WHERE IT MAY NEST (`canNest`), which is what re-homing buys: a tree to thread to. A stock
-    # container over no nesting element keeps its own fold, and with it any override its author
-    # stated, since the stated price of re-homing buys nothing there (*defaulted, reversible*).
+    # ★ ONLY WHERE IT MAY NEST (`canNest`) OR HOLDS AN OWED COPY (`owedCopyBelow`), which is what
+    # re-homing buys: a tree to thread to, or a fold that reads the copy's `verify` (`homedAt`'s own
+    # test). A stock container over no nesting element and no owed copy keeps its own fold, and with it
+    # any override its author stated, since the stated price of re-homing buys nothing there
+    # (*defaulted, reversible*).
     #
     # A record that is ITSELF a nesting type declares nothing by crossing: it is a record copy, whose
     # fold this import replaces with the copied exported one — the stated price (gen-schema's
@@ -7627,7 +7629,10 @@ let
     # The arm's guard asks the has-attr tests first, so an import without the completion stamp pays
     # no call on this path (the hub perf-bench's ratchets are exact).
     else if
-      !(isNesting t) && statesWrapped t && importedRehomeAt "mkOptionType" null t != null && canNest t
+      !(isNesting t)
+      && statesWrapped t
+      && importedRehomeAt "mkOptionType" null t != null
+      && (canNest t || owedCopyBelow t)
     then
       (
         let
