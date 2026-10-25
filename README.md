@@ -1918,8 +1918,8 @@ answers `int`, as nixpkgs does, and rejects what `str` rejects.
 
 **Against nixpkgs, on the type.** Over every declaration list of length 3 and 4 in a seven-family
 census (8,338 words), gen-merge agreed with nixpkgs on every all-foreign list whose joins keep their
-operands' names, on both the declaration and the freeform planes. It departs where a fold step's
-gen-native relation refuses, and then by refusing ("A redeclared option's type refuses where an
+operands' names, on both the declaration and the freeform planes. It departs where an earlier
+relation's refusal ends a fold step, and then by refusing ("A redeclared option's type refuses where an
 earlier relation's refusal ends the step", under Known byte-mode boundaries).
 Gen `attrs` against foreign `attrs` merges in both orders, directly or under a gen container, to gen's
 fold met with the partner's check. Where a merge drops a check (a foreign join that renames an
@@ -3186,7 +3186,8 @@ same modules.
     `fnull = int` stating `typeMerge = _: null`, which the raw `[fnull, gt.int]` serves;
   - a gen union before a nixpkgs one: gen `either int bool` before `either u8 bool` at 5 and `true`;
   - a gen `enum [ "a" ]` before a nixpkgs `enum [ "z" ]` whose relation answers its own values, at
-    `"a"` and `"z"`, where nixpkgs serves each though one declaration alone refuses it.
+    `"a"` and `"z"`, where nixpkgs serves each though one declaration alone refuses it, an open defect
+    because an enum's merged type is the union of its members.
 
 - **A foreign join that drops a name an operand states is met** ("A foreign join that drops an
   operand's check is met"). A check family whose join renames it (`port ∥ int`, `u8 ∥ u16`, two
