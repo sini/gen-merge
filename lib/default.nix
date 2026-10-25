@@ -660,33 +660,6 @@ let
     else
       completeExport v
   ) checkedTypes;
-  refusingSubmoduleOver =
-    stated: keys: mods:
-    if !(builtins.isList keys) || !(builtins.all builtins.isString keys) then
-      throw "gen-merge: `refusingSubmodule' takes a list of base module argument names first, then the module set; got ${builtins.typeOf keys}"
-    else if builtins.any (k: !(builtins.elem k core.baseArgNames)) keys then
-      throw "gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies (${
-        builtins.concatStringsSep ", " (map (k: "`${k}'") core.baseArgNames)
-      }); ${
-        builtins.concatStringsSep ", " (
-          map (k: "`${k}'") (builtins.filter (k: !(builtins.elem k core.baseArgNames)) keys)
-        )
-      } is not one, and a caller's value for it is the only one any module reads"
-    else if
-      stated != null
-      && (!builtins.isString (stated.ctor or null) || builtins.match "[^.]*" stated.ctor != null)
-    then
-      throw "gen-merge: `refusingSubmoduleOver' takes a constructor qualified in the stating library's namespace (`<library>.<name>'), which its mint keeps; an unqualified one would be spelled as gen-merge's own"
-    else
-      strategies.mkSubmodule false "submodule" (builtins.attrNames (
-        builtins.listToAttrs (
-          map (k: {
-            name = k;
-            value = null;
-          }) keys
-        )
-      )) stated { } mods;
-
 in
 {
   # Portable-subset lint (README "Portable-subset lint") — statically flag modules using constructs
@@ -797,7 +770,27 @@ in
   # A key this engine never supplies (`core.baseArgNames`, one list) is refused at construction: such a
   # key is no argument the evaluation supplies, so a refusal of it would state a false reason and refuse a
   # value nixpkgs serves (`pkgs`), outside the licence (ADR-0039, 2026-10-24).
-  refusingSubmodule = keys: mods: refusingSubmoduleOver null keys mods;
+  refusingSubmodule =
+    keys: mods:
+    if !(builtins.isList keys) || !(builtins.all builtins.isString keys) then
+      throw "gen-merge: `refusingSubmodule' takes a list of base module argument names first, then the module set; got ${builtins.typeOf keys}"
+    else if builtins.any (k: !(builtins.elem k core.baseArgNames)) keys then
+      throw "gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies (${
+        builtins.concatStringsSep ", " (map (k: "`${k}'") core.baseArgNames)
+      }); ${
+        builtins.concatStringsSep ", " (
+          map (k: "`${k}'") (builtins.filter (k: !(builtins.elem k core.baseArgNames)) keys)
+        )
+      } is not one, and a caller's value for it is the only one any module reads"
+    else
+      strategies.mkSubmodule false "submodule" (builtins.attrNames (
+        builtins.listToAttrs (
+          map (k: {
+            name = k;
+            value = null;
+          }) keys
+        )
+      )) null { } mods;
   # `refusingSubmodule` whose identity is the CONSTRUCTION its module set is built from (den-hoag-dwln8):
   # `stated` = `null` (exactly `refusingSubmodule`), or `{ ctor; members; args = tags: { … }; sealed; }`,
   # minted in place of the module list's seal (lib/types.nix `mkSubmodule`). `ctor` is qualified in the
@@ -806,8 +799,34 @@ in
   # member, an inert one in `args`, and caller content sealed, since a statement that omits one mints two
   # different module sets one type, where the list's seal would have refused. The dependence is stated by
   # hand because a module function is not a first-order term; it becomes derivable when the construction
-  # is one (ADR-0013). Bound once above and inherited, which costs what an attribute lambda here costs.
-  inherit refusingSubmoduleOver;
+  # is one (ADR-0013). `refusingSubmodule`'s key checks are restated in place for cost: a binding the two
+  # shared would be one more environment slot on every process that loads this library.
+  refusingSubmoduleOver =
+    stated: keys: mods:
+    if !(builtins.isList keys) || !(builtins.all builtins.isString keys) then
+      throw "gen-merge: `refusingSubmodule' takes a list of base module argument names first, then the module set; got ${builtins.typeOf keys}"
+    else if builtins.any (k: !(builtins.elem k core.baseArgNames)) keys then
+      throw "gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies (${
+        builtins.concatStringsSep ", " (map (k: "`${k}'") core.baseArgNames)
+      }); ${
+        builtins.concatStringsSep ", " (
+          map (k: "`${k}'") (builtins.filter (k: !(builtins.elem k core.baseArgNames)) keys)
+        )
+      } is not one, and a caller's value for it is the only one any module reads"
+    else if
+      stated != null
+      && (!builtins.isString (stated.ctor or null) || builtins.match "[^.]*" stated.ctor != null)
+    then
+      throw "gen-merge: `refusingSubmoduleOver' takes a constructor qualified in the stating library's namespace (`<library>.<name>'), which its mint keeps; an unqualified one would be spelled as gen-merge's own"
+    else
+      strategies.mkSubmodule false "submodule" (builtins.attrNames (
+        builtins.listToAttrs (
+          map (k: {
+            name = k;
+            value = null;
+          }) keys
+        )
+      )) stated { } mods;
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
