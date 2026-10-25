@@ -4353,8 +4353,9 @@ let
   moduleArgSetsOf =
     pushed:
     let
+      stating = filter (p: p.attrs ? _module) pushed;
       top =
-        if any overridden pushed then
+        if any overridden stating then
           foldl' (
             n: p:
             if
@@ -4404,7 +4405,7 @@ let
               )
             else
               n
-          ) defaultPriority (filter (p: p.attrs ? _module) pushed)
+          ) defaultPriority stating
         else
           defaultPriority;
     in
@@ -4459,7 +4460,7 @@ let
             inherit value;
           }) (pushDownProperties v)
         ) (at m.args)
-    ) (filter (p: p.attrs ? _module) pushed);
+    ) stating;
 
   # A positioned evaluation's `name`, as nixpkgs' `submoduleWith` resolves it: the position's
   # `last loc` is one priority-100 definition beside whatever the modules state. A module stating
