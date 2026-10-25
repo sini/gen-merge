@@ -242,16 +242,13 @@ in
       };
     };
 
-    # a leaf's fold refusing an odd value. Two cells serve nothing at 4 at every tree, pre-G11 included, and are
-    # pinned so a landing that moves them does so knowingly:
-    #  - `raw-ab-four`: declared raw, the later `int`'s own relation decides, and it joins no `evenM` (nixpkgs refuses
-    #    the pair too);
-    #  - `mot-ba-four`: nixpkgs serves it; the leaf relation's veto (`nullaryRel` asked of a door-copied `int` beside
-    #    an author leaf), den-hoag-wsnn0 v1 OQ4
+    # a leaf's fold refusing an odd value. One cell serves nothing at 4 at every tree, pre-G11 included, and is
+    # pinned so a landing that moves it does so knowingly: `raw-ab-four`, declared raw, where the later `int`'s own
+    # relation decides and joins no `evenM` (nixpkgs refuses the pair too). `mot-ba-four` serves 4, as nixpkgs does:
+    # the leaf relation's refusal of the door-copied author leaf decides only as the decider (`nullaryRel`)
     test-a-leaf-fold-refusal-is-owed = {
       expr = grid [ evenM np.int ] ev3 1;
       expected = every ev3 evVerdicts // {
-        mot-ba-four = "REFUSED";
         raw-ab-four = "REFUSED";
       };
     };
@@ -266,7 +263,6 @@ in
     test-a-v2-fold-head-error-is-owed = {
       expr = grid [ evenH np.int ] ev3 1;
       expected = every ev3 evVerdicts // {
-        mot-ba-four = "REFUSED";
         raw-ab-four = "REFUSED";
       };
     };
@@ -298,9 +294,8 @@ in
         attrsOf = every pv pvVerdicts;
         nullOr = every pv pvVerdicts;
         either = every pv pvVerdicts;
-        # 4's two refusals are the leaf's own, as `test-a-leaf-fold-refusal-is-owed` states
+        # 4's refusal is the leaf's own, as `test-a-leaf-fold-refusal-is-owed` states
         listOfLeaf = every ev3 evVerdicts // {
-          mot-ba-four = "REFUSED";
           raw-ab-four = "REFUSED";
         };
       };

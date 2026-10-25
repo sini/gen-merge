@@ -203,6 +203,10 @@ let
         #    (ADR-0039's serve half).
         # A declined embedding join is REFUSED, never `self`: the partner's own check would be dropped
         # unsaid (ADR-0025 item 1), so the table cannot widen the same-key fallback's reach.
+        # A partner of another key is refused AS THE DECIDER only where it is foreign: always for a raw
+        # partner, and for a partner stating a relation where it carries `retainedRelation` (its author's).
+        # That is the twin's own answer where the twin decides. A gen-native partner of another key keeps
+        # the veto, held while this relation, deciding, keys such a partner by type name (den-hoag-6ylun).
         nullaryRel = {
           exact = true;
           __functor =
@@ -211,7 +215,10 @@ let
               if (keyOf other) == name then
                 { merged = self; }
               else
-                { refused = "`${nameOf t}' and `${nameOf other}'"; }
+                {
+                  refused = "`${nameOf t}' and `${nameOf other}'";
+                  vetoes = !(other ? retainedRelation);
+                }
             else
               let
                 # the row this type's constructor stated, never one its name collides with
@@ -271,7 +278,10 @@ let
               else if sameKey then
                 meet (if leafJoin == null then self else leafJoin)
               else
-                { refused = "`${nameOf t}' and `${nameOf other}'"; };
+                {
+                  refused = "`${nameOf t}' and `${nameOf other}'";
+                  vetoes = false;
+                };
         };
       in
       t
