@@ -229,6 +229,79 @@ let
 in
 {
   flake.tests.door-verify-copy = {
+    # A stock nixpkgs container over a gen leaf's verify copy, through `mkOptionType`, is re-homed (den-hoag-8uwxu,
+    # the door's guard is `homedAt`'s own): the fold reads the copy's `verify`, so the rejected value refuses
+    # declared alone and twice, and `deriveType` over the same container serves the admitted one at nixpkgs' value
+    test-a-stock-container-over-a-verify-copy-through-mk-option-type-reads-the-verify =
+      let
+        copy = gt.int // {
+          verify = v: if v < 10 then null else "the copy rejects ${toString v}";
+        };
+        containers = {
+          attrsOf = {
+            m = np.attrsOf;
+            w = v: { k = v; };
+          };
+          lazyAttrsOf = {
+            m = np.lazyAttrsOf;
+            w = v: { k = v; };
+          };
+          listOf = {
+            m = np.listOf;
+            w = v: [ v ];
+          };
+          nullOr = {
+            m = np.nullOr;
+            w = v: v;
+          };
+          either = {
+            m = t: np.either t np.str;
+            w = v: v;
+          };
+        };
+        decl = n: ty: map (_: { options.x = gm.mkOption { type = ty; }; }) (builtins.genList (i: i) n);
+        readN =
+          n: ty: v:
+          let
+            x = (gm.evalModuleTree { } (decl n ty ++ [ { x = v; } ])).config.x;
+            o = tryEval (deepSeq x x);
+          in
+          if o.success then o.value else "REFUSED";
+        twin = c: v: readNp (c.m np.int) [ (c.w v) ];
+      in
+      {
+        expr =
+          mapAttrs (_: c: {
+            bad = readN 1 (gm.mkOptionType (c.m copy)) (c.w 20);
+            ok = readN 1 (gm.mkOptionType (c.m copy)) (c.w 1) == twin c 1;
+            derived = readN 1 (gm.deriveType { } "uccyi" (c.m copy)) (c.w 1) == twin c 1;
+          }) containers
+          // {
+            LL =
+              let
+                c = containers.attrsOf;
+              in
+              {
+                bad = readN 2 (gm.mkOptionType (c.m copy)) (c.w 20);
+                # a nixpkgs leaf's copy: over gen's `int` the twice-derived join still states no `recarry`
+                derived =
+                  readN 2 (gm.deriveType { } "uccyi" (c.m (np.int // { inherit (copy) verify; }))) (c.w 1)
+                  == twin c 1;
+              };
+          };
+        expected =
+          mapAttrs (_: _: {
+            bad = "REFUSED";
+            ok = true;
+            derived = true;
+          }) containers
+          // {
+            LL = {
+              bad = "REFUSED";
+              derived = true;
+            };
+          };
+      };
     # Through each door, the `verify` judges the MERGED value, as it does raw.
     test-a-door-completed-verify-copy-judges-the-merged-value = {
       expr = mapAttrs (

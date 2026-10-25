@@ -12245,6 +12245,80 @@ in
           };
         };
       };
+    # A held check below a container that crossed `mkOptionType` is refused by name (den-hoag-8uwxu;
+    # `../tests/attrtag-tag-carriage.nix` and `../tests/door-verify-copy.nix` hold the values): a leaf held at a tag
+    # or an element, redeclared, is refused with the meet's text at the held option, and a verify copy held below
+    # a stock container, declared alone, with the copy's own `verify` text
+    flake.testsError.held-check-through-mk-option-type =
+      let
+        np = nixpkgsLib.types;
+        opt =
+          ts: v:
+          builtins.deepSeq
+            (gm.evalModuleTree { } (map (ty: { options.x = gm.mkOption { type = ty; }; }) ts ++ [ { x = v; } ]))
+            .config.x
+            null;
+        tagOf = ty: np.attrTag { t = nixpkgsLib.mkOption { type = ty; }; };
+        leaf = np.addCheck np.int (v: v != 1);
+        LL = mk: v: opt [ (gm.mkOptionType (mk leaf)) (gm.mkOptionType (mk leaf)) ] v;
+        meet = at: {
+          type = "ThrownError";
+          msg = "^A definition for option `${at}' is not of type `signed integer'[.] Definition values:";
+        };
+        copy = t.int // {
+          verify = v: if v < 10 then null else "the copy rejects ${toString v}";
+        };
+        A = mk: v: opt [ (gm.mkOptionType (mk copy)) ] v;
+        verified = at: {
+          type = "ThrownError";
+          msg = "^gen-merge: a definition for option `${at}' is not of the expected type: the copy rejects 20$";
+        };
+      in
+      {
+        test-a-leaf-tag-redeclared-refuses-by-name = {
+          expr = LL tagOf { t = 1; };
+          expectedError = meet "x[.]t";
+        };
+        test-a-leaf-tag-in-a-list-redeclared-refuses-by-name = {
+          expr = LL (s: np.listOf (tagOf s)) [ { t = 1; } ];
+          expectedError = meet "x[.]\"\\[definition 1-entry 1\\]\"[.]t";
+        };
+        test-a-leaf-tag-in-a-tag-redeclared-refuses-by-name = {
+          expr = LL (s: np.attrTag { u = nixpkgsLib.mkOption { type = tagOf s; }; }) { u.t = 1; };
+          expectedError = meet "x[.]u[.]t";
+        };
+        test-a-leaf-list-element-redeclared-refuses-by-name = {
+          expr = LL np.listOf [ 1 ];
+          expectedError = meet "x[.]\"\\[definition 1-entry 1\\]\"";
+        };
+        test-a-leaf-attrs-element-redeclared-refuses-by-name = {
+          expr = LL np.attrsOf { k = 1; };
+          expectedError = meet "x[.]k";
+        };
+        test-a-verify-copy-in-attrs-of-refuses-by-name = {
+          expr = A np.attrsOf { k = 20; };
+          expectedError = verified "x[.]k";
+        };
+        test-a-verify-copy-in-lazy-attrs-of-refuses-by-name = {
+          expr = A np.lazyAttrsOf { k = 20; };
+          expectedError = verified "x[.]k";
+        };
+        test-a-verify-copy-in-list-of-refuses-by-name = {
+          expr = A np.listOf [ 20 ];
+          expectedError = verified "x[.]\"\\[definition 1-entry 1\\]\"";
+        };
+        test-a-verify-copy-in-null-or-refuses-by-name = {
+          expr = A np.nullOr 20;
+          expectedError = verified "x";
+        };
+        test-a-verify-copy-in-either-refuses-by-name = {
+          expr = A (s: np.either s np.str) 20;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x' has definitions no single `either' member accepts [(]`int' rejects ";
+          };
+        };
+      };
     # A non-v2 copy crossing a door is lifted into the v2 protocol (`interface.rebuildClosed.verifiedMerge.lifted`,
     # den-hoag-dw8d3): its check is read on every definition as its `headError`, and the refusal names the
     # definitions it rejects, as nixpkgs' `checkDefsForError` does (`../tests/verify-carriage.nix` holds the values).
