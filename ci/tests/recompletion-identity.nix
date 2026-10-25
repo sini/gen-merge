@@ -305,8 +305,8 @@ in
         both = subEnforced;
       }) doors;
     };
-    # C4 beyond the bare position: element positions, three declarations, and the freeform plane, which
-    # the declaration list's fixup does not run on.
+    # C4 beyond the bare position: element positions, three declarations, and the freeform plane, whose
+    # type merge the declaration list's fixup does not run on (its own, `mergeTypeDefs`, does).
     test-the-module-set-carriage-reaches-every-plane = {
       expr = {
         listOf = [

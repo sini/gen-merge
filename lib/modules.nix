@@ -812,8 +812,8 @@ let
   #    the dropped checks (`interface.carriedAtDepth`), which the fold enforces as it enforces one declared
   #    alone: a witnessed rewrite's, a foreign wrapper's, which states no witness, and a mounted record's.
   #    The declaration list's fixup carries a root again over its rebuild (`fixupModuleSets`,
-  #    den-hoag-8ip0d); a union's member and the freeform plane, which no fixup reaches, are carried by
-  #    the step.
+  #    den-hoag-8ip0d), and so does the type merge of several definitions, the freeform plane's
+  #    (`mergeTypeDefs`); a union's member, which no fixup reaches, is carried by the step.
   #
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
@@ -1020,8 +1020,9 @@ let
   # restricted by every check a declaration states that the rebuild cannot carry, at every depth
   # (`interface.carriedAtDepth`, den-hoag-8ip0d): nixpkgs' rebuild erases them, gen's enforces them. A type
   # that states no module set (a leaf, `either`, `oneOf`) is returned as is. Lives on the
-  # declaration plane, not in `mergeDeclaredTypes`, because that is also the freeform-type merge,
-  # which nixpkgs's `optionType.merge` leaves unrebuilt. Each module is handed on located at its
+  # declaration plane and in `mergeTypeDefs`, not in `mergeDeclaredTypes`, because only those readers
+  # hold each type's declaring file; nixpkgs' `optionType.merge` rebuilds the freeform type and an
+  # `optionType` option of two or more definitions the same way. Each module is handed on located at its
   # declaring file (`setDefaultModuleLocation`), as nixpkgs' `mergeOptionDecls` hands `opt.options`:
   # a foreign `substSubModules` may destructure that shape (`attrTag`'s takes `{ _file, imports }`).
   fixupModuleSets =
@@ -2261,9 +2262,10 @@ let
       );
   # nixpkgs' `types.optionType.merge`, read over an AUTHORED list (first module first): one
   # definition is its own type, several merge through the declaration type-merge
-  # (`mergeDeclaredTypes`, the last authored deciding), and a pair that does not merge is refused by
-  # name, its files in authored order. The freeform winners arrive authored. `types.optionType`'s
-  # fold is handed its definitions last module first, as every type's merge is, and reverses them
+  # (`mergeDeclaredTypes`, the last authored deciding) and are rebuilt over every definition's module
+  # set located at its file (`fixupModuleSets`, as `optionType.merge` calls `fixupOptionType`), and a
+  # pair that does not merge is refused by name, its files in authored order. The freeform winners
+  # arrive authored. `types.optionType`'s fold is handed its definitions last module first, as every type's merge is, and reverses them
   # before calling this (lib/types.nix), so both readers fold one list one way.
   mergeTypeDefs =
     what: defs:
@@ -2271,10 +2273,18 @@ let
       (head defs).value
     else
       let
-        decided = mergeDeclaredTypes (map (d: d.value) defs);
+        declaredTypes = map (d: d.value) defs;
+        decided = mergeDeclaredTypes declaredTypes;
       in
       if decided ? merged then
-        decided.merged
+        fixupModuleSets {
+          upTo = decided;
+          inherit declaredTypes;
+          prior = map (d: {
+            inherit (d) file;
+            decl.type = d.value;
+          }) defs;
+        }
       else
         throw "gen-merge: ${what} is defined with types that do not merge (${declaredRefusalText decided}); defined in ${
           concatStringsSep ", " (map (d: d.file) defs)

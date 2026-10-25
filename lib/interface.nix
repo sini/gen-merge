@@ -6633,8 +6633,8 @@ let
   #    modules). Every check it does not carry rides on it instead, as the declaration list's fixup carries
   #    a root (`carriedAtDepth`): a witnessed rewrite's, a foreign wrapper's, a mounted record's. The step
   #    carries it HERE, at every step, because the fixup reaches only a root and its containers' elements:
-  #    a union's member (`either` states no module set) and the freeform plane are steps no fixup runs on
-  #    (den-hoag-78k2m). Carried here, the meet holds at every step by itself, which is the induction the
+  #    a union's member (`either` states no module set) is a step no fixup runs on, and the freeform plane's
+  #    steps are carried before its merge's fixup runs (den-hoag-78k2m, `lib/modules.nix` `mergeTypeDefs`). Carried here, the meet holds at every step by itself, which is the induction the
   #    redeclaration law states (`lib/modules.nix` `mergeTypesBy`). Over a FOREIGN join, which states no
   #    relation, the owed conjunction REPLACES the join's own check rather than conjoining it, as at a
   #    root (`carryBy`): a foreign join stricter than its operands' conjunction is not kept stricter

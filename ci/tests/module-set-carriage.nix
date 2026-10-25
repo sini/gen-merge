@@ -338,8 +338,8 @@ in
           adHoc = members;
         };
       };
-    # the same record as the `freeformType` of two modules: the freeform plane's steps are met too, though
-    # the declaration list's fixup does not run there (den-hoag-78k2m)
+    # the same record as the `freeformType` of two modules: the freeform plane's steps are met too, and the
+    # type merge's fixup carries the checks again over its rebuild (den-hoag-78k2m, `mergeTypeDefs`)
     test-a-checked-nixpkgs-submodule-as-a-freeformType-of-two-modules-is-enforced =
       let
         S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };

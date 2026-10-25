@@ -272,6 +272,14 @@ let
       folded =
         type: defs:
         try (ev ([ { options.u = untyped type; } ] ++ map (v: { config.u = v; }) defs)).config.u;
+      # a freeform type's sub-options, and one module defining a freeform `attrsOf` submodule
+      ffSubOpts = mods: (ev mods).options._module.freeformType.value.getSubOptions [ ];
+      ffSubOf = file: opts: {
+        _file = file;
+        config._module.freeformType = T.attrsOf (sub {
+          options = opts;
+        });
+      };
     in
     {
       # `.type.name` of the four records and of an untyped option, published and at the argument
@@ -334,6 +342,72 @@ let
           elem = r.value.nestedTypes.elemType.name;
           inherit (r) files isDefined;
         };
+      # a merged freeform type is rebuilt over each definition's module set located at its file, as
+      # nixpkgs' `optionType.merge` does with two or more definitions; one definition is its own type
+      ffMergeSubDecls =
+        (ffSubOpts [
+          {
+            _file = "ff.nix";
+            config._module.freeformType = M.mkMerge [
+              (T.attrsOf (sub {
+                options.foo = M.mkOption { };
+              }))
+              (T.attrsOf (sub {
+                options.bar = M.mkOption { };
+              }))
+            ];
+          }
+        ]).foo.declarations;
+      ffMergeSubDeclsThree =
+        (ffSubOpts [
+          (ffSubOf "f1.nix" { foo = M.mkOption { }; })
+          (ffSubOf "f2.nix" { bar = M.mkOption { }; })
+          (ffSubOf "f3.nix" { baz = M.mkOption { }; })
+        ]).bar.declarations;
+      # both definitions declare the one sub-option, so the list reads the rebuild's module order
+      ffMergeSubDeclsSame =
+        (ffSubOpts [
+          (ffSubOf "f1.nix" { foo = M.mkOption { }; })
+          (ffSubOf "f2.nix" { foo = M.mkOption { }; })
+        ]).foo.declarations;
+      ffMergeSubDeclsOne = (ffSubOpts [ (ffSubOf "ff.nix" { foo = M.mkOption { }; }) ]).foo.declarations;
+      ffMergeSubVal =
+        (ev [
+          {
+            _file = "ff.nix";
+            config._module.freeformType = M.mkMerge [
+              (T.attrsOf (sub {
+                options.foo = M.mkOption { default = 1; };
+              }))
+              (T.attrsOf (sub {
+                options.bar = M.mkOption { default = 2; };
+              }))
+            ];
+            config.x = { };
+          }
+        ]).config.x;
+      optTypeMergeDecls =
+        (
+          (ev [
+            {
+              _file = "o0.nix";
+              options.t = M.mkOption { type = T.optionType; };
+            }
+            {
+              _file = "o1.nix";
+              config.t = T.attrsOf (sub {
+                options.foo = M.mkOption { type = T.int; };
+              });
+            }
+            {
+              _file = "o2.nix";
+              config.t = T.attrsOf (sub {
+                options.bar = M.mkOption { type = T.int; };
+              });
+            }
+          ]).config.t.getSubOptions
+            [ ]
+        ).foo.declarations;
       ffRefuseCaught = try (ev (two (T.attrsOf T.int) (T.attrsOf T.str) ++ [ d ])).config;
       ffRefuseFunctorCaught = try (ev (two (T.attrsOf T.int) (T.listOf T.int) ++ [ d ])).config;
       ffNotAType =
@@ -696,6 +770,11 @@ in
     test-two-attrsOf-submodule-freeforms-merge-both-options = twin "ffMergeSub";
     test-the-freeform-record-holds-the-merged-type = twin "ffMergeRecord";
     test-the-freeform-record-lists-definitions-last-module-first = twin "orderFF";
+    test-a-merged-freeform-locates-its-submodules = twin "ffMergeSubDecls";
+    test-a-merged-freeform-of-three-locates-each-submodule = twin "ffMergeSubDeclsThree";
+    test-a-merged-freeform-lists-a-twice-declared-sub-option-in-module-order = twin "ffMergeSubDeclsSame";
+    test-one-freeform-definition-is-not-relocated = twin "ffMergeSubDeclsOne";
+    test-a-merged-freeform-serves-each-submodules-defaults = twin "ffMergeSubVal";
     test-an-unmergeable-freeform-pair-is-refused-catchably = twin "ffRefuseCaught";
     test-an-unmergeable-freeform-functor-pair-is-refused-catchably = twin "ffRefuseFunctorCaught";
     test-a-freeform-that-is-not-a-type-is-refused = twin "ffNotAType";
@@ -703,6 +782,7 @@ in
     # ── `types.optionType` ─────────────────────────────────────────────────────────────────────────
     test-optionType-check = twin "optTypeCheck";
     test-optionType-merges-two-types = twin "optTypeMerge";
+    test-optionType-merge-locates-each-definitions-submodules = twin "optTypeMergeDecls";
     test-optionType-one-definition-is-its-value = twin "optTypeMergeOne";
     test-optionType-merge-called-directly-decides-as-nixpkgs = twin "optTypeOrient";
     test-optionType-at-an-option-decides-as-nixpkgs = twin "optTypeOrientOpt";
