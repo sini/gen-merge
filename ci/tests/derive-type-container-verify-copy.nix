@@ -7,7 +7,7 @@
 # The `verify` that admits everything rejects nothing, so its `{ a = 2; }` is served evaluated too.
 # The exception is a `// { check }` copy of a union (`either`, `oneOf`), which states no module set: in gen's
 # engine it is the ad-hoc override nixpkgs refuses, so gen refuses it by name, the admitted definition too. In
-# nixpkgs' `lib.evalModules` the derivation still serves it, an open defect (den-hoag-vjxra F1) pinned here as it
+# nixpkgs' `lib.evalModules` the derivation still serves it, an open defect (den-hoag-8irpj) pinned here as it
 # reads, not as law.
 # Red, every cell, with the overlay left unhomed in `deriveTypeCore`.
 { genMerge, nixpkgsLib, ... }:
@@ -173,7 +173,8 @@ let
           }
         ]
     );
-  # the ad-hoc override on a union, refused in gen's engine; the nixpkgs-engine rows read as they do (den-hoag-vjxra F1)
+  # the ad-hoc override on a union, refused in gen's engine; the nixpkgs-engine rows read as they do, an open
+  # defect (den-hoag-8irpj)
   adHocUnion =
     cn: kn:
     kn == "checkVerify"
