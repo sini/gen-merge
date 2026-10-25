@@ -5,6 +5,9 @@
 # one: the rewritten check lives in the `check` field and its `_checkWitness`, and nowhere else. A
 # derivation over it carries "the base's check and fold" (derive-type.nix C5), so the pair crosses the
 # derivation's cut. `deriveType` used to cut it, and the derivation then served the value its base refuses.
+# An `either` of a submodule states no module set itself (`getSubModules` null), so its `// { check }` is the
+# ad-hoc override nixpkgs refuses, not the module-set check the owner's ruling covers: declared alone it is
+# refused by name, as nixpkgs refuses it, the accepted value too, and declared twice it is met and served.
 # Each served cell is paired with its refusing twin, and `unrewritten` is the control that the refusing
 # cells fire on the rewrite and not on every module set.
 {
@@ -149,6 +152,15 @@ let
   every =
     pop: f:
     mapAttrs (_: S: mapAttrs (_: _: mapAttrs (_: _: mapAttrs (_: _: f S) arrs) doors) forms) pop;
+  # the ad-hoc override on the `either` declared alone, which is refused rather than served
+  adHocOnce =
+    table:
+    table
+    // {
+      eitherSub = table.eitherSub // {
+        ovr = mapAttrs (_: d: builtins.removeAttrs d [ "a" ]) table.eitherSub.ovr;
+      };
+    };
 in
 {
   flake.tests.derive-type-rewritten-check = {
@@ -160,8 +172,13 @@ in
     };
     # The value every declared check admits is still served, at the value it holds.
     test-a-derivation-over-a-check-rewritten-module-set-serves-the-accepted-value = {
-      expr = tableOf shapes doors "ok";
-      expected = every shapes (S: S.ok);
+      expr = adHocOnce (tableOf shapes doors "ok");
+      expected = adHocOnce (every shapes (S: S.ok));
+    };
+    # The ad-hoc override on the `either` of a submodule, declared alone, refuses the accepted value by name.
+    test-a-derivation-over-an-ad-hoc-check-on-an-either-of-a-submodule-refuses-the-accepted-value-declared-alone = {
+      expr = mapAttrs (_: door: arrs.a (door (forms.ovr shapes.eitherSub.b)) shapes.eitherSub.ok) doors;
+      expected = mapAttrs (_: _: "REFUSED") doors;
     };
     # The derivation reads as the underived copy does, on both values.
     test-the-derivation-agrees-with-the-underived-copy = {

@@ -674,35 +674,48 @@ in
         statedCheckOverOfferedTree = false;
       };
     };
-    # An ad-hoc `// { check }` on a stock submodule's own option is judged as gen's root judges the same declared
-    # type (den-hoag-spb8r): where the root re-homes it, over a gen submodule member or a member owing a `verify`,
-    # an admitted value is served, and it is the root's value (`../tests-error.nix` holds the refusals).
-    test-an-ad-hoc-check-in-a-stock-host-serves-what-the-root-serves =
+    # An ad-hoc `// { check }` on a v2 union stating no module set is refused by name declared once, at the root and
+    # in a stock host alike (den-hoag-spb8r, den-hoag-vjxra; `../tests-error.nix` holds the refusals). Declared
+    # twice it is met as two types are met (the redeclaration meet), so the value it admits is served, evaluated:
+    # over a gen `either` of a submodule, over a stock one through the `mkOptionType` door, and over leaves.
+    test-an-ad-hoc-check-declared-twice-is-met-and-serves-what-it-admits =
       let
-        adHoc = T: T // { check = v: T.check v && v != { a = 7; }; };
-        host = T: np.submodule { options.y = nixpkgsLib.mkOption { type = T; }; };
-        owedCopy = np.attrsOf np.int // {
-          verify = v: if v ? a && v.a == 7 then "rejected by the copy" else null;
+        adHoc = T: T // { check = v: T.check v && v != { a = 7; } && v != 7; };
+        keyed = gt.submodule {
+          key = "check-carriage-keyed-sub";
+          options.a = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
+          options.b = gm.mkOption {
+            type = gt.int;
+            default = 0;
+          };
         };
-        both = T: {
-          root = opt T { a = 1; };
-          host = (opt (host T) { y.a = 1; }).y;
-        };
+        twice =
+          T: V:
+          (gm.evalModuleTree { } [
+            { options.s = gm.mkOption { type = T; }; }
+            { options.s = gm.mkOption { type = T; }; }
+            { s = V; }
+          ]).config.s;
       in
       {
         expr = {
-          genSubmodule = both (adHoc (np.either sub np.str));
-          owedCopy = both (adHoc (np.either owedCopy np.str));
+          genEither = twice (adHoc (gt.either keyed gt.str)) { a = 1; };
+          stockEither = twice (gm.mkOptionType (adHoc (np.either keyed np.str))) { a = 1; };
+          leafEither = twice (adHoc (gt.either gt.int gt.str)) 1;
         };
         expected = {
-          genSubmodule = {
-            root.a = 1;
-            host.a = 1;
+          genEither = {
+            a = 1;
+            b = 0;
           };
-          owedCopy = {
-            root.a = 1;
-            host.a = 1;
+          stockEither = {
+            a = 1;
+            b = 0;
           };
+          leafEither = 1;
         };
       };
   };

@@ -803,7 +803,8 @@ let
   #  - A gen x gen step owes nothing (gen relations are exact over checks they state), so it is
   #    answered before `metWith` is called and allocates nothing.
   #  - A pair that is ONE value keeps it (`x ⊔ x = x ⊓ x = x`): the same wrapped binding declared
-  #    twice merges and keeps its check.
+  #    twice merges and keeps its check. An ad-hoc override (`adHocChecked`) is the exception: it is no
+  #    type, so `sameValue.kept` meets it as two values are met.
   #  - The constructor's own law over its PARAMETERS is kept: a fresh join of one constructor that
   #    widens an operand's parameters (`enum`'s value union) owes that operand only where its own
   #    parameters admit the value, so a wrapper over it stays owed (`metWith`).

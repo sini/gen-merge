@@ -9377,9 +9377,9 @@ in
         carried = carriedAt "s";
         adHoc = T: T // { check = v: T.check v && v != { a = 7; } && v != 7; };
         hosted = T: V: opt (np.submodule { options.y = nixpkgsLib.mkOption { type = T; }; }) { y = V; };
-        adHocAt = ref: {
+        adHocAt = loc: ref: {
           type = "ThrownError";
-          msg = "^gen-merge: the option `s[.]y' has a type `${phrase ref}' that uses an ad-hoc `type // [{] check = [.][.][.]; [}]' override, which the v2 merge protocol refuses; state the check with `addCheck' instead$";
+          msg = "^gen-merge: the option `${loc}' has a type `${phrase ref}' that uses an ad-hoc `type // [{] check = [.][.][.]; [}]' override, which the v2 merge protocol refuses; state the check with `addCheck' instead$";
         };
         oneOfSub = np.oneOf [
           sub
@@ -9391,6 +9391,9 @@ in
           np.str
           np.int
         ];
+        owedCopy = np.attrsOf np.int // {
+          verify = v: if v ? a && v.a == 7 then "rejected by the copy" else null;
+        };
       in
       {
         test-a-rewritten-leaf-check-refuses-as-the-checked-fold = {
@@ -9453,33 +9456,46 @@ in
             msg = ''^gen-merge: a definition for option `s[.]"\[definition 1-entry 1\]"' is not of type `${phrase (np.either npSub np.str)}', in `def[.]nix'$'';
           };
         };
-        # An ad-hoc `// { check }` over a stock `either`/`oneOf` holding a gen nesting element is
-        # carried on the re-home and enforced by gen's own fold: a definition the stock union admits
-        # and the override rejects refuses, at the root, under a gen container and under a re-homed
-        # nixpkgs one (den-hoag-lok6a, ADR-0039's planted-rejection oracle).
+        # An ad-hoc `// { check }` over a stock `either`/`oneOf` holding a gen nesting element states no
+        # module set, so re-homed as gen's own union it is refused by name, as nixpkgs refuses it: at the
+        # root, under a gen container and under a re-homed nixpkgs one (den-hoag-lok6a, den-hoag-vjxra).
         test-an-ad-hoc-check-over-a-re-homed-either-refuses-what-it-rejects = {
           expr = opt (adHoc (np.either sub np.str)) { a = 7; };
-          expectedError = carried (np.either npSub np.str);
+          expectedError = adHocAt "s" (np.either npSub np.str);
         };
         test-an-ad-hoc-check-over-a-re-homed-oneOf-refuses-what-it-rejects = {
           expr = opt (adHoc oneOfSub) { a = 7; };
-          expectedError = carried oneOfNpSub;
+          expectedError = adHocAt "s" oneOfNpSub;
         };
         test-an-ad-hoc-check-over-a-re-homed-either-under-a-gen-container-refuses-what-it-rejects = {
           expr = opt (t.attrsOf (adHoc (np.either sub np.str))) { k.a = 7; };
-          expectedError = carriedAt "s[.]k" (np.either npSub np.str);
+          expectedError = adHocAt "s[.]k" (np.either npSub np.str);
         };
         test-an-ad-hoc-check-over-a-re-homed-oneOf-under-a-gen-container-refuses-what-it-rejects = {
           expr = opt (t.attrsOf (adHoc oneOfSub)) { k.a = 7; };
-          expectedError = carriedAt "s[.]k" oneOfNpSub;
+          expectedError = adHocAt "s[.]k" oneOfNpSub;
         };
         test-an-ad-hoc-check-over-a-re-homed-either-under-a-nixpkgs-list-refuses-what-it-rejects = {
           expr = opt (np.listOf (adHoc (np.either sub np.str))) [ { a = 7; } ];
-          expectedError = carriedAt ''s[.]"\[definition 1-entry 1\]"'' (np.either npSub np.str);
+          expectedError = adHocAt ''s[.]"\[definition 1-entry 1\]"'' (np.either npSub np.str);
         };
         test-an-ad-hoc-check-over-a-re-homed-oneOf-under-a-nixpkgs-list-refuses-what-it-rejects = {
           expr = opt (np.listOf (adHoc oneOfSub)) [ { a = 7; } ];
-          expectedError = carriedAt ''s[.]"\[definition 1-entry 1\]"'' oneOfNpSub;
+          expectedError = adHocAt ''s[.]"\[definition 1-entry 1\]"'' oneOfNpSub;
+        };
+        # The override on a gen union declared once is refused by name on its own route (the threaded fold
+        # of a nesting union), what it admits too; so is one over leaves, and over any gen v2 type.
+        test-an-ad-hoc-check-over-a-gen-either-of-a-submodule-refuses-what-it-admits = {
+          expr = opt (adHoc (t.either sub t.str)) { a = 1; };
+          expectedError = adHocAt "s" (np.either npSub np.str);
+        };
+        test-an-ad-hoc-check-over-a-gen-either-of-leaves-refuses-what-it-admits = {
+          expr = opt (adHoc (t.either t.int t.str)) 1;
+          expectedError = adHocAt "s" (np.either np.int np.str);
+        };
+        test-an-ad-hoc-check-over-a-gen-nullOr-refuses-what-it-admits = {
+          expr = opt (adHoc (t.nullOr t.int)) 1;
+          expectedError = adHocAt "s" (np.nullOr np.int);
         };
         # A `//` copy's `verify` inside a nixpkgs submodule (den-hoag-dk6zg) is refused with gen's own message for the
         # copy declared bare, at the nested option's path: the copy's own `verify` text.
@@ -9497,34 +9513,51 @@ in
           };
         };
         # An ad-hoc `// { check }` on a stock submodule's own option is judged as gen's root judges the same
-        # declared type (den-hoag-spb8r; `../tests/check-carriage.nix` holds the values it serves): where the root
-        # re-homes it the check is enforced per definition, and elsewhere it is refused by name, the admitted value
-        # too. The frontier refold reads no option-level `check`, so either way the override is read before it.
+        # declared type (den-hoag-spb8r, den-hoag-vjxra): refused by name, the admitted value too. The frontier
+        # refold reads no option-level `check`, so the override is read before it.
         test-an-ad-hoc-check-over-a-nixpkgs-either-in-a-stock-host-is-refused-by-name = {
           expr = hosted (adHoc (np.either npSub np.str)) { a = 7; };
-          expectedError = adHocAt (np.either npSub np.str);
+          expectedError = adHocAt "s[.]y" (np.either npSub np.str);
         };
         test-an-ad-hoc-check-over-a-nixpkgs-either-in-a-stock-host-refuses-what-it-admits = {
           expr = hosted (adHoc (np.either npSub np.str)) { a = 1; };
-          expectedError = adHocAt (np.either npSub np.str);
+          expectedError = adHocAt "s[.]y" (np.either npSub np.str);
         };
         # `canNest` alone would re-home neither of these: the root's own test is asked, so a `coercedTo` (never
         # re-homed) is refused by name over a gen submodule too, and an either of leaves is refused as well.
         test-an-ad-hoc-check-over-a-coercedTo-of-an-either-in-a-stock-host-is-refused-by-name = {
           expr = hosted (adHoc (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str))) { a = 7; };
-          expectedError = adHocAt (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str));
+          expectedError = adHocAt "s[.]y" (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str));
         };
         test-an-ad-hoc-check-over-a-coercedTo-of-a-gen-either-in-a-stock-host-refuses-what-it-admits = {
           expr = hosted (adHoc (np.coercedTo np.int (_: { a = 1; }) (np.either sub np.str))) { a = 1; };
-          expectedError = adHocAt (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str));
+          expectedError = adHocAt "s[.]y" (np.coercedTo np.int (_: { a = 1; }) (np.either npSub np.str));
         };
         test-an-ad-hoc-check-over-an-either-of-leaves-in-a-stock-host-is-refused-by-name = {
           expr = hosted (adHoc (np.either np.int np.str)) 7;
-          expectedError = adHocAt (np.either np.int np.str);
+          expectedError = adHocAt "s[.]y" (np.either np.int np.str);
         };
         test-an-ad-hoc-check-over-a-gen-either-in-a-stock-host-refuses-what-it-rejects = {
           expr = hosted (adHoc (np.either sub np.str)) { a = 7; };
-          expectedError = carriedAt "s[.]y" (np.either npSub np.str);
+          expectedError = adHocAt "s[.]y" (np.either npSub np.str);
+        };
+        # The value it admits is refused as well, at the root and in the host alike, over a gen submodule member
+        # and over a member owing a `verify` (a `//` copy).
+        test-an-ad-hoc-check-over-a-gen-either-refuses-what-it-admits-at-the-root = {
+          expr = opt (adHoc (np.either sub np.str)) { a = 1; };
+          expectedError = adHocAt "s" (np.either npSub np.str);
+        };
+        test-an-ad-hoc-check-over-a-gen-either-in-a-stock-host-refuses-what-it-admits = {
+          expr = hosted (adHoc (np.either sub np.str)) { a = 1; };
+          expectedError = adHocAt "s[.]y" (np.either npSub np.str);
+        };
+        test-an-ad-hoc-check-over-an-owed-copy-either-refuses-what-it-admits-at-the-root = {
+          expr = opt (adHoc (np.either owedCopy np.str)) { a = 1; };
+          expectedError = adHocAt "s" (np.either (np.attrsOf np.int) np.str);
+        };
+        test-an-ad-hoc-check-over-an-owed-copy-either-in-a-stock-host-refuses-what-it-admits = {
+          expr = hosted (adHoc (np.either owedCopy np.str)) { a = 1; };
+          expectedError = adHocAt "s[.]y" (np.either (np.attrsOf np.int) np.str);
         };
       };
 

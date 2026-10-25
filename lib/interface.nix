@@ -317,7 +317,9 @@ let
   # a b` is what a pair that is one value merges to: its first operand, which carries every check either states,
   # publishing the phrase nixpkgs' merge publishes in either declaration order, the join's (`m`, nixpkgs' functor
   # rebuild) where the two phrases differ (owner-ruled 2026-10-12, den-hoag-olrmz F1). Each phrase field is read
-  # lazily, so the merge step never forces one. The two share one binding, so the library's load pays for one.
+  # lazily, so the merge step never forces one. The two share one binding, so the library's load pays for one. An
+  # ad-hoc override (`adHocChecked`) is no type of the algebra, so it gets no idempotence: its pair is met as two values
+  # are (`metWith`), the constructor's join owing its check.
   sameValue = {
     # ── WHICH NIXPKGS CONTAINERS FORWARD THEIR ELEMENT: ONE TABLE (den-hoag-j2ryo) ─────────────────────
     # nixpkgs decides it in each constructor's own body, never by a name: `listOf` states
@@ -462,20 +464,26 @@ let
       ];
     kept =
       m: a: b:
-      a
-      // {
-        # nixpkgs' join is its functor's rebuild, which states the constructor's module set: a kept operand stating
-        # none (a nulled copy) publishes the join's (den-hoag-y4w78)
-        ${if a ? getSubModules then "getSubModules" else null} =
-          if a.getSubModules == null then m.getSubModules or null else a.getSubModules;
-        ${if a ? description then "description" else null} =
-          if a.description == b.description or null then a.description else m.description or a.description;
-        ${if a ? descriptionClass then "descriptionClass" else null} =
-          if a.descriptionClass == b.descriptionClass or null then
-            a.descriptionClass
-          else
-            m.descriptionClass or a.descriptionClass;
-      };
+      if adHocChecked a then
+        metWith false m [
+          a
+          b
+        ]
+      else
+        a
+        // {
+          # nixpkgs' join is its functor's rebuild, which states the constructor's module set: a kept operand stating
+          # none (a nulled copy) publishes the join's (den-hoag-y4w78)
+          ${if a ? getSubModules then "getSubModules" else null} =
+            if a.getSubModules == null then m.getSubModules or null else a.getSubModules;
+          ${if a ? description then "description" else null} =
+            if a.description == b.description or null then a.description else m.description or a.description;
+          ${if a ? descriptionClass then "descriptionClass" else null} =
+            if a.descriptionClass == b.descriptionClass or null then
+              a.descriptionClass
+            else
+              m.descriptionClass or a.descriptionClass;
+        };
   };
   closuresFirst = records: v: [
     (map closuresOf records)
@@ -1085,7 +1093,16 @@ let
     let
       bad = filter (d: !(t.check d.value)) defs;
     in
-    if bad == [ ] then
+    # `adHocChecked` with the coherence mark read first, on a witnessed record: the law enforces an ad-hoc override
+    # as a check over a module set alone, so this fold refuses it by name, as nixpkgs' coherence guard does
+    if
+      t ? _checkWitness
+      && !(t.check.isV2MergeCoherent or false)
+      && (t.getSubModules or null) == null
+      && isV2 t
+    then
+      adHocFold t loc defs
+    else if bad == [ ] then
       fold loc defs
     # a met record names its gen join's reason for the first rejected definition, where the join states one
     # and its check is still its verify's witness; any other record's `verify` is read only past its check,
@@ -2230,14 +2247,12 @@ let
     # an owed copy, a module set or an `either` on the frontier: the option folded again over nixpkgs' final
     # definitions by its type completed along that frontier (`frontierCompleted`), then its `apply`. That fold
     # reads no option-level `check`, so an ad-hoc override (`adHocChecked`) is first judged as gen's root judges
-    # the same declared type: enforced per definition where the root re-homes it (`homedAt`'s own test), else
-    # refused by name (`importedFold`). Inline: a binding costs every load a thunk
+    # the same declared type: refused by name, as at the root (`adHocFold`). Inline: a binding costs every load a
+    # thunk
     else if frontierAt owesAtFrontier t then
       (
         if !(adHocChecked t) then
           guardedOwed o.loc t defs (if o ? apply then o.apply else (x: x)) v
-        else if importedRehomeAt "evalModuleTree" o.loc t != null && (canNest t || owedCopyBelow t) then
-          checkedFold t (l: ds: guardedOwed l t ds (if o ? apply then o.apply else (x: x)) v) o.loc defs
         else
           adHocFold t o.loc defs
       )
