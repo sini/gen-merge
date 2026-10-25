@@ -13209,7 +13209,7 @@ in
     # comes first. A non-stated key, and a partner stating no `specialArgs`, are served. Read by TEXT.
     flake.testsError.refusing-submodule-foreign-join =
       let
-        stating = gm.refusingSubmodule [ "config" ] [ ];
+        stating = gm.refusingSubmodule null [ "config" ] [ ];
         foreign =
           specialArgs:
           nixpkgsLib.types.submoduleWith {
