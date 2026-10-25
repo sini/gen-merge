@@ -1592,7 +1592,10 @@ type is **refused by name**, as nixpkgs refuses it; state the check with `addChe
 a gen `either`, and over a stock `either` or `oneOf` holding a gen nesting element that is re-homed as
 gen's own union: an `either` of a submodule states no module set. Declared twice or more, the
 override is met as the redeclaration meet meets any two types, so its check is enforced on the met
-type. On a **submodule-bearing** v2 type (`submodule`, `attrsOf submodule`, …) nixpkgs does not refuse the override
+type. Imported through a door, the override is judged at each join nixpkgs asks the door for: a join
+that is the override again (its functor rebuilds it) is refused by name, declared once beside another
+type or declared twice, and a join that is a coherent type is served, the override's check owed on the
+values its own merge admits. On a **submodule-bearing** v2 type (`submodule`, `attrsOf submodule`, …) nixpkgs does not refuse the override
 but erases it without a word when it rebuilds the type at declaration (`substSubModules`); gen-merge
 enforces it as the check it is, as it enforces an `addCheck` there: a value it admits is served, and a
 value it rejects is refused by name, a deliberate departure from a silent answer. An ad-hoc `check` on a
@@ -2009,7 +2012,9 @@ verdict is the same in both orders; a raw copy overriding `typeMerge` is therefo
 as its completion too, which moves it from refused to served only. A
 fresh join that widens a constructor's own parameters keeps that
 constructor's law over them (two `enum`s union their values), and each operand stays owed for the
-values its own parameters admit, so a wrapper over an `enum` is kept. A container's element is one of
+values its own parameters admit, so a wrapper over an `enum` is kept. Where an operand's functor
+states no coherent type at its own parameters (a v2 ad-hoc override it rebuilds), those parameters are
+the ones its v2 merge was built at, read from that merge's `headError`. A container's element is one of
 its parameters, read as the meet reads its roles (an element type, or a pair of alternatives), so
 `nullOr`, `uniq`/`unique`, `either` and `oneOf` over an `enum`, and their nests, union as the bare
 `enum` does, a gen `enum` under them included; a foreign union of three members is not a pair the meet

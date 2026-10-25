@@ -17,11 +17,15 @@
 #    stated merge law is nixpkgs' own v2 `either` / `oneOf` rule: the first member whose merge states no `headError`
 #    over the definitions. A value oracle (the return admits: its merge; its check rejects: the other member's) and a
 #    check oracle (both reject: refused). nixpkgs' twin serves the return's base merge there, its `addCheck` dropped at
-#    the redeclaration, so these values are served beyond nixpkgs, under this law.
+#    the redeclaration, so these values are served beyond nixpkgs, under this law;
+#  - the OVERRIDE-JOIN cells: a v2 ad-hoc override whose functor rebuilds it, judged at the join nixpkgs asks for: a
+#    join that is the override again is refused as the twin refuses it, and a coherent join is served with the twin's
+#    value, the override's check owed inside the parameters its v2 merge was built at.
 # Red: every check cell with `imported` reverted to `t: r: r`; the `elemG` cells with `substructure` left out; the
 # widening cells with the join's check taken whole; the container widening cells outside the parameters with
 # membership read by the base's `check` alone; the verify and element cells with the closure built from the
-# door's return instead of the caller's record (P11).
+# door's return instead of the caller's record (P11); the override-join refusals with `close` owing `oc` on every
+# join, or with the base's membership read by its `check`; the override-join values with the check owed on every value.
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -420,10 +424,323 @@ let
         };
       };
   };
+  # a nixpkgs v2 record with an ad-hoc `check` whose functor rebuilds the override, through `mkOptionType`: the join
+  # nixpkgs asks the door for is decided on the join itself. A join that is the override again is refused by name, as
+  # the all-nixpkgs twin's coherence guard refuses it; a coherent join is served with the twin's value, and owes the
+  # check on the values the override's v2 merge admits (`xaa`, `xnull`), which the twin serves only by dropping it.
+  # `npg` reads nixpkgs' engine over gen's export, `door` gen's engine; TL is the gen container first, LL the door twice.
+  short = v: isList v && length v < 2;
+  ea = np.enum [ "a" ];
+  isA = p: (p.elemType.functor.payload.values or null) == [ "a" ];
+  # `c`'s record over `elem` with check `p`, its functor returning the override at the payloads `at` holds and `c`'s
+  # coherent record at any other
+  overAt =
+    c: p: at: elem:
+    np.mkOptionType {
+      inherit ((c elem)) name merge;
+      check = p;
+      functor = (c elem).functor // {
+        type = q: if at q then overAt c p at q.elemType else c q.elemType;
+      };
+      nestedTypes.elemType = elem;
+    };
+  listInt = {
+    np = np.listOf np.int;
+    gt = gt.listOf np.int;
+  };
+  listB = {
+    np = np.listOf (np.enum [ "b" ]);
+    gt = gt.listOf (np.enum [ "b" ]);
+  };
+  overrides = {
+    shortList = {
+      p = np.mkOptionType {
+        name = "listOf";
+        check = short;
+        inherit (listInt.np) merge;
+        functor = {
+          name = "listOf";
+          wrapped = null;
+          payload.elemType = np.int;
+          type = _: overrides.shortList.p;
+          binOp =
+            a: b:
+            let
+              m = a.elemType.typeMerge b.elemType.functor;
+            in
+            if m == null then null else { elemType = m; };
+        };
+        nestedTypes.elemType = np.int;
+      };
+      beside = listInt;
+    };
+    lazyList = {
+      p = np.mkOptionType {
+        name = "listOf";
+        check = isList;
+        inherit (listInt.np) merge;
+        functor = {
+          name = "listOf";
+          wrapped = null;
+          payload = {
+            elemType = np.int;
+            lazy = true;
+          };
+          type = _: overrides.lazyList.p;
+          binOp =
+            a: b:
+            let
+              m = a.elemType.typeMerge b.elemType.functor;
+            in
+            if m == null then
+              null
+            else
+              {
+                elemType = m;
+                inherit (a) lazy;
+              };
+        };
+        nestedTypes.elemType = np.int;
+      };
+      beside = listInt;
+    };
+    shortOver = {
+      p = listInt.np // {
+        check = short;
+      };
+      beside = listInt;
+    };
+    hzP = {
+      p = overAt np.listOf short isA ea;
+      beside = listB;
+    };
+    hzQ = {
+      p = overAt np.listOf (v: isList v && all (x: x == "a") v && length v < 2) isA ea;
+      beside = listB;
+    };
+    hzR = {
+      p = overAt np.listOf short (q: !(isA q)) ea;
+      beside = listB;
+    };
+    hzN = {
+      p = overAt np.nullOr (v: v != null) isA ea;
+      beside = {
+        np = np.nullOr (np.enum [ "b" ]);
+        gt = gt.nullOr (np.enum [ "b" ]);
+      };
+    };
+  };
+  joinVals = {
+    ok = [ 2 ];
+    long = [
+      2
+      3
+    ];
+    a = [ "a" ];
+    b = [ "b" ];
+    ab = [
+      "a"
+      "b"
+    ];
+    xaa = [
+      "a"
+      "a"
+    ];
+    xnull = null;
+  };
+  runGen =
+    ts: dv:
+    let
+      c =
+        (gm.evalModuleTree { } (
+          map (t: { options.x = gm.mkOption { type = t; }; }) ts ++ map (v: { x = v; }) dv
+        )).config;
+      o = builtins.tryEval (builtins.deepSeq c.x c.x);
+    in
+    if o.success then o.value else "REFUSED";
+  # `expect` is "REFUSED", or "twin": the all-nixpkgs twin's value in the same order
+  overrideJoin =
+    expect: pn: engine: a: vn:
+    let
+      h = overrides.${pn};
+      D = gm.mkOptionType h.p;
+      arr = {
+        TL = s: P: [
+          s
+          P
+        ];
+        LT = s: P: [
+          P
+          s
+        ];
+        LL = _: P: [
+          P
+          P
+        ];
+      };
+    in
+    {
+      name = "test-mkOptionType-override-join-${pn}-${engine}-${a}-${vn}";
+      value = {
+        expr = (if engine == "door" then runGen else run) (arr.${a} h.beside.gt D) [ joinVals.${vn} ];
+        expected = if expect == "twin" then run (arr.${a} h.beside.np h.p) [ joinVals.${vn} ] else expect;
+      };
+    };
+  overrideJoins =
+    map (pt: overrideJoin "REFUSED" pt.p pt.e pt.a pt.v) [
+      # the check oracle: inside the override's own parameters, rejected by its check
+      {
+        p = "shortList";
+        e = "npg";
+        a = "TL";
+        v = "long";
+      }
+      {
+        p = "shortList";
+        e = "npg";
+        a = "LL";
+        v = "long";
+      }
+      {
+        p = "hzP";
+        e = "npg";
+        a = "TL";
+        v = "xaa";
+      }
+      {
+        p = "hzP";
+        e = "door";
+        a = "TL";
+        v = "xaa";
+      }
+      {
+        p = "hzN";
+        e = "npg";
+        a = "TL";
+        v = "xnull";
+      }
+      # the join is the override again, which the twin refuses
+      {
+        p = "shortList";
+        e = "npg";
+        a = "TL";
+        v = "ok";
+      }
+      {
+        p = "shortList";
+        e = "npg";
+        a = "LL";
+        v = "ok";
+      }
+      {
+        p = "shortList";
+        e = "door";
+        a = "TL";
+        v = "ok";
+      }
+      {
+        p = "shortList";
+        e = "door";
+        a = "LL";
+        v = "ok";
+      }
+      {
+        p = "lazyList";
+        e = "npg";
+        a = "TL";
+        v = "ok";
+      }
+      {
+        p = "lazyList";
+        e = "npg";
+        a = "LL";
+        v = "ok";
+      }
+      {
+        p = "lazyList";
+        e = "door";
+        a = "LL";
+        v = "ok";
+      }
+      {
+        p = "hzR";
+        e = "npg";
+        a = "TL";
+        v = "a";
+      }
+    ]
+    # regression pins: gen's engine refuses these through the override's own carriage, the join decision aside
+    ++ map (pt: overrideJoin "REFUSED" pt.p "door" pt.a pt.v) [
+      {
+        p = "lazyList";
+        a = "TL";
+        v = "ok";
+      }
+      {
+        p = "shortList";
+        a = "TL";
+        v = "long";
+      }
+      {
+        p = "shortList";
+        a = "LL";
+        v = "long";
+      }
+    ]
+    # a coherent join, served with the twin's value: a value outside the override's own parameters is not its check's
+    # to judge (the widening law), and a join the override's functor does not rebuild is not refused for its partner
+    ++ map (pt: overrideJoin "twin" pt.p pt.e pt.a pt.v) (
+      concatMap
+        (e: [
+          {
+            p = "hzP";
+            inherit e;
+            a = "TL";
+            v = "a";
+          }
+          {
+            p = "hzP";
+            inherit e;
+            a = "TL";
+            v = "b";
+          }
+          {
+            p = "hzP";
+            inherit e;
+            a = "TL";
+            v = "ab";
+          }
+          {
+            p = "shortList";
+            inherit e;
+            a = "LT";
+            v = "ok";
+          }
+        ])
+        [
+          "npg"
+          "door"
+        ]
+      ++ [
+        {
+          p = "hzQ";
+          e = "npg";
+          a = "TL";
+          v = "b";
+        }
+        {
+          p = "shortOver";
+          e = "npg";
+          a = "TL";
+          v = "ok";
+        }
+      ]
+    );
 in
 {
   flake.tests.door-return-closed = listToAttrs (
     checkCells
+    ++ overrideJoins
     ++ map widened [
       "none"
       "addCheck"

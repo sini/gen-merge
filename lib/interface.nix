@@ -3821,11 +3821,14 @@ let
     # (den-hoag-jyisy, den-hoag-xj4tw); a checked gen `nullOr` of a keyed nixpkgs submodule declared twice keeps its
     # check through `carryBy`'s root carriage. Still residue: `deriveType` over a checked verify copy of a gen `nullOr` of
     # a keyed nixpkgs submodule, in gen's engine, drops the laid check declared twice (den-hoag-grkfk).
+    # Each join is decided on the join itself, the record nixpkgs' coherence guard judges (den-hoag-kr84r): a join that
+    # is an ad-hoc override again (a v2 record whose functor rebuilds it) is refused by name, and a coherent join owes
+    # `t`'s check on the values `t`'s own parameters admit, which for a v2 override are those its v2 merge was built at.
     own =
       t: r:
       let
         # `t`'s check, a coherent check: an ad-hoc override's is carried as nixpkgs' `addCheck` carries one, judging each
-        # definition, never refused for its spelling
+        # definition, on a join that is coherent; a join that is the override again is refused by name (`close`)
         o = {
           check = {
             __functor = _: t.check;
@@ -3849,12 +3852,27 @@ let
             o
             // {
               check = {
-                # membership in the base judged at every depth: `b`'s own merge of the value as one definition, forced
+                # membership in the base judged at every depth: `b`'s own merge of the value as one definition, forced;
+                # an override base's head is its v2 merge's `headError`, as `eitherChosen` asks a v2 member, never its
+                # check, which is the debt
                 __functor =
                   _: v:
                   let
                     member =
-                      b.check v
+                      (
+                        if adHocChecked b then
+                          (b.merge.v2 {
+                            loc = [ "<base>" ];
+                            defs = [
+                              {
+                                file = "<base>";
+                                value = v;
+                              }
+                            ];
+                          }).headError == null
+                        else
+                          b.check v
+                      )
                       && (
                         let
                           r = builtins.tryEval (
@@ -3897,7 +3915,9 @@ let
           if isAttrs x then
             (
               let
-                c = carryBy false oc x;
+                # a join that is itself an ad-hoc override is refused by name, as nixpkgs' coherence guard refuses the
+                # same join; any other join owes `oc`
+                c = if adHocChecked x then carryBy false x x else carryBy false oc x;
               in
               owed (c // rebuild oc c)
             )
