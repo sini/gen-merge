@@ -6256,8 +6256,9 @@ let
   #
   # A `self` carrying `keys` (a `refusingSubmodule`'s stated base module args) is answered
   # `{ refused = <keys>; }` where the partner's payload `specialArgs` supply any of them, before any
-  # join: the join is the partner's record, which carries no refused set, so the refusal is made here
-  # or nowhere. Presence only; the values are the caller's. Read inline and spelled in names this file
+  # join. Otherwise the join is the partner's record, re-wrapped so that every later join it decides,
+  # and every rebuild of it, refuses the same keys (below); where a later operand decides, the record is
+  # never asked. Presence only; the values are the caller's. Read inline and spelled in names this file
   # already interns, so a caller stating no keys pays no thunk and no evaluation a new symbol (the bar
   # registers' bounds are exact, ADR-0032).
   joinInStatedRelation =
@@ -6272,8 +6273,31 @@ let
       { refused = filter (k: (pf.payload or null).specialArgs or { } ? ${k}) self.keys; }
     else if !(statesRelation other) || !(isFunction (pf.type or null)) then
       null
+    else if (self.keys or [ ]) == [ ] then
+      protoTypeMerge (pf // { inherit (self) name payload; }) pf
+    # The joined record keeps the stated keys through every later join it decides and every rebuild of
+    # it: a later declaration whose payload `specialArgs` supply one is answered `null` before the
+    # partner's relation runs, as the export's `typeMerge` answers a refused join, so gen's engine names
+    # the pair and nixpkgs' the declarations.
     else
-      protoTypeMerge (pf // { inherit (self) name payload; }) pf;
+      let
+        kept =
+          keys: j:
+          if !(isAttrs j) then
+            j
+          else
+            j
+            // {
+              typeMerge =
+                f:
+                if filter (k: (f.payload or null).specialArgs or { } ? ${k}) keys != [ ] then
+                  null
+                else
+                  kept keys (j.typeMerge f);
+              substSubModules = m: kept keys (j.substSubModules m);
+            };
+      in
+      kept self.keys (protoTypeMerge (pf // { inherit (self) name payload; }) pf);
 
   # THE SAME JOIN FOR A CONTAINER, whose parameter is ONE carried role (`element`), against a RAW foreign
   # partner (one that carries no gen role). Taken only where the partner's join keeps each operand's

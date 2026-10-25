@@ -13290,6 +13290,91 @@ in
         };
       };
 
+    # ── den-hoag-psqwi: the record the foreign join returns keeps the stated keys ──
+    # The join above returns nixpkgs' record, re-wrapped so that every later join it decides, and every
+    # rebuild of it, answers a partner supplying a stated key with no merge. `chain` declares a partner
+    # carrying the caller's set, a plain partner, then the stating type (a.nix, b.nix, c.nix); `rejoin`
+    # redeclares the type a first evaluation of [plain partner, stating type] publishes after the partner
+    # carrying the caller's set. Both engines; gen's names the pair, nixpkgs' the declarations. Read by TEXT.
+    flake.testsError.refusing-submodule-foreign-join-kept =
+      let
+        stating = gm.refusingSubmodule null [ "config" ] [ ];
+        foreign =
+          specialArgs:
+          nixpkgsLib.types.submoduleWith {
+            modules = [ ];
+            inherit specialArgs;
+          };
+        decls =
+          mkOption: ts:
+          lib.imap0 (i: type: {
+            _file = "${builtins.elemAt [ "a" "b" "c" ] i}.nix";
+            options.x = mkOption { inherit type; };
+          }) ts;
+        gen = ts: (gm.evalModuleTree { } (decls gm.mkOption ts)).options.x.type;
+        np = ts: (nixpkgsLib.evalModules { modules = decls nixpkgsLib.mkOption ts; }).options.x.type;
+        chain =
+          ev: sa:
+          (ev [
+            (foreign sa)
+            (foreign { })
+            stating
+          ]).name;
+        rejoin =
+          ev: sa:
+          (ev [
+            (foreign sa)
+            (ev [
+              (foreign { })
+              stating
+            ])
+          ]).name;
+        pin = text: {
+          type = "ThrownError";
+          msg = "^" + prelude.escapeRegex text + "$";
+        };
+        served =
+          name:
+          force (
+            assert name == "submodule";
+            throw "served"
+          );
+      in
+      {
+        test-a-chain-supplying-a-stated-key-is-refused-gen-engine = {
+          expr = chain gen { config = { }; };
+          expectedError = pin "gen-merge: option `x' is declared with types that do not merge (`submodule' and `submodule'); declared in a.nix, b.nix, c.nix";
+        };
+        test-a-chain-supplying-a-stated-key-is-refused-nixpkgs-engine = {
+          expr = chain np { config = { }; };
+          expectedError = pin "The option `x' in `a.nix' is already declared in `c.nix' and `b.nix'.";
+        };
+        test-a-rebuild-redeclared-supplying-a-stated-key-is-refused-gen-engine = {
+          expr = rejoin gen { config = { }; };
+          expectedError = pin "gen-merge: option `x' is declared with types that do not merge (`submodule' and `submodule'); declared in a.nix, b.nix";
+        };
+        test-a-rebuild-redeclared-supplying-a-stated-key-is-refused-nixpkgs-engine = {
+          expr = rejoin np { config = { }; };
+          expectedError = pin "The option `x' in `a.nix' is already declared in `b.nix'.";
+        };
+        test-a-chain-supplying-a-key-the-type-does-not-state-is-served-gen-engine-control = {
+          expr = served (chain gen { argand = 1; });
+          expectedError = pin "served";
+        };
+        test-a-chain-supplying-a-key-the-type-does-not-state-is-served-nixpkgs-engine-control = {
+          expr = served (chain np { argand = 1; });
+          expectedError = pin "served";
+        };
+        test-a-rebuild-supplying-a-key-the-type-does-not-state-is-served-gen-engine-control = {
+          expr = served (rejoin gen { argand = 1; });
+          expectedError = pin "served";
+        };
+        test-a-rebuild-supplying-a-key-the-type-does-not-state-is-served-nixpkgs-engine-control = {
+          expr = served (rejoin np { argand = 1; });
+          expectedError = pin "served";
+        };
+      };
+
     # A refused evaluation's value-carrying gen-only attributes refuse with the refusal its `config` carries, and the
     # warm continuation `warmDecision.next` refuses what the published door refuses, by the door's name
     # (`ci/tests/genonly-attrs-gated.nix` pins each read refused; this suite pins which refusal fires).
