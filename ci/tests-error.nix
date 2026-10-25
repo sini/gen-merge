@@ -13266,5 +13266,63 @@ in
           expectedError = pin (prelude.refusals.unknownOption "gen-merge.evalModuleTree" evalOptions "chekc");
         };
       };
+
+    # ── A WHOLE `_module.args` OVERRIDE OUTRANKS THE ENGINE'S OWN ARGUMENTS (den-hoag-b44rx) ────────────────────
+    # nixpkgs' override pass runs over each module's whole definition, the engine's own at the default priority
+    # among them, so an argument the winning definitions do not state is undefined, and nixpkgs aborts on
+    # `attribute 'x' missing`. gen refuses its read by name with the text of any undefined argument, catchably.
+    # One cell per form × position × read nixpkgs leaves undefined (`tests/_fixtures/module-args-whole-set.nix`;
+    # the served reads are `tests/module-args-whole-set.nix`). RED before the landing: every forced form's
+    # `extendModules`, `moduleType` and child `name`, `mmerge`'s `r` and `dflt`/`odflt`'s `q` (served).
+    flake.testsError.module-args-whole-set =
+      let
+        fx = import ./tests/_fixtures/module-args-whole-set.nix {
+          inherit gm;
+          np = nixpkgsLib;
+        };
+        undefinedText = x: {
+          type = "ThrownError";
+          msg = "^gen-merge: module argument `${x}' is not defined$";
+        };
+      in
+      builtins.listToAttrs (
+        builtins.concatMap (
+          form:
+          builtins.concatMap (
+            pos:
+            map (read: {
+              name = "test-${form}-${pos}-${read}";
+              value = {
+                expr = fx.cell "gm" form pos read;
+                # a key a false condition disabled stays (the value cells' `iff` departure), and refuses as disabled
+                expectedError =
+                  if form == "iff" && read == "q" then
+                    {
+                      type = "ThrownError";
+                      msg = "^gen-merge: module argument `q' [(]`_module[.]args[.]q'[)] is used but every definition of it is disabled; defined in ";
+                    }
+                  else
+                    undefinedText read;
+              };
+            }) (fx.undefinedAt form pos)
+          ) fx.positions
+        ) fx.forms
+      )
+      // {
+        # a child re-declaring `options._module.args` reads `name` off the merged set, which a force left without one
+        test-declaring-child-name-forced = {
+          expr = fx.declaring true;
+          expectedError = undefinedText "name";
+        };
+        # a condition over a forced set is forced to rank it, and one reading an argument the force would remove has
+        # no fixpoint: it recurses, as nixpkgs' does, and only where the law needs the condition
+        test-conditional-over-a-forced-set-recurses = {
+          expr = fx.conditional "gm" "forced" "q";
+          expectedError = {
+            type = "EvalError";
+            msg = "infinite recursion encountered";
+          };
+        };
+      };
   };
 }

@@ -2073,7 +2073,10 @@ let
       stated = builtins.zipAttrsWith mergeModuleArg (moduleArgSetsOf pushed);
     in
     moduleOwnApply sites (
-      if positioned then stated // { name = positionNameOf prefix stated pushed; } else stated
+      if positioned && !(any overridden pushed) then
+        stated // { name = positionNameOf prefix stated pushed; }
+      else
+        stated
     );
   # The `_module.specialArgs` a module reads where its evaluation's modules declare `options._module`:
   # the caller's set, as nixpkgs' `internalModule` defines it, merged through a re-declared `type`
@@ -4284,37 +4287,92 @@ let
       else
         throw "gen-merge: module argument `${name}' (`_module.args.${name}') is defined multiple times, and a module argument must be unique; defined in ${files winners}";
 
-  # Each module's `_module.args`, one set of `{ _file; value; }` definitions per module stating any.
-  # Each module's `_module.args` definition, `{ _file; args; }`, as written (`args` undischarged).
-  # Pay per use: `filter` calls its predicate without allocating a thunk, so a module
-  # stating no `_module` costs nothing here, and one stating no `_module.args` costs
-  # its `m` alone (an `optional` call would thunk both of its arguments).
+  # The definitions one whole `_module.args` definition discharges to, `[{ priority; value; … }]`, as
+  # `dischargeIn` gives them but read off the property tree's STRUCTURE: an `mkIf`'s condition is forced
+  # only where a definition below it outranks the default (`mkIf c (mkForce { … })`), which is where
+  # nixpkgs' override pass needs it. Elsewhere the condition stays on each definition (`mkIf c { … }`), so
+  # its keys are known with no condition forced, and a condition reading an argument reaches its fixpoint.
   moduleArgDefsOf =
+    v:
+    if !(priority.isProperty v) then
+      [
+        {
+          priority = defaultPriority;
+          value = v;
+        }
+      ]
+    else if v._type == "if" then
+      let
+        defs = moduleArgDefsOf v.content;
+      in
+      if any (d: d.priority < defaultPriority) defs then
+        (if v.condition then defs else [ ])
+      else
+        map (d: d // { value = priority.mkIf v.condition d.value; }) defs
+    else if v._type == "merge" then
+      concatMap moduleArgDefsOf v.contents
+    else
+      dischargeIn null v;
+  # Whether a pushed module's WHOLE `_module.args` outranks the engine's own definitions of it
+  # (`internalModule`'s, a position's `name`), which nixpkgs' option holds at the default priority:
+  # a property one of whose definitions sits above it, as `mkForce { … }` does. A module stating no
+  # property there is decided by `?` alone, which allocates nothing.
+  overridden =
+    p:
+    p.attrs ? _module
+    && priority.isProperty ((pushDownProperties p.attrs._module).args or null)
+    && any (d: d.priority < defaultPriority) (
+      moduleArgDefsOf (pushDownProperties p.attrs._module).args
+    );
+  # Each module's `_module.args`, one set of `{ _file; value; }` definitions per definition that stays,
+  # as nixpkgs' option reads them: its override pass runs over each module's WHOLE definition, the
+  # engine's own among them at the default, before its `lazyAttrsOf` merges keys. Only the definitions at
+  # the highest priority (`top`) stay: where a module outranks the engine's own (`overridden`), the forced
+  # ones; otherwise those at the default, so `mkDefault { … }` drops, outranked by the engine's own. `top`
+  # is decided only when a module states `_module.args`. Pay per use: `filter` calls its predicate
+  # without allocating a thunk, so a module stating no `_module` costs nothing here, and one stating no
+  # `_module.args` costs its `m` alone.
+  moduleArgSetsOf =
     pushed:
+    let
+      top =
+        if any overridden pushed then
+          foldl' (n: d: if d.priority < n then d.priority else n) defaultPriority (
+            concatMap (p: moduleArgDefsOf (pushDownProperties p.attrs._module).args or null) (
+              filter (p: p.attrs ? _module) pushed
+            )
+          )
+        else
+          defaultPriority;
+    in
     concatMap (
       p:
       let
         m = pushDownProperties p.attrs._module;
       in
-      if m ? args then
-        [
-          {
-            inherit (p) _file;
-            inherit (m) args;
-          }
-        ]
-      else
+      if !(m ? args) then
         [ ]
+      else if !(priority.isProperty m.args) then
+        (
+          if top == defaultPriority then
+            [
+              (mapAttrs (_: value: {
+                inherit (p) _file;
+                inherit value;
+              }) (pushDownProperties m.args))
+            ]
+          else
+            [ ]
+        )
+      else
+        map (
+          d:
+          mapAttrs (_: value: {
+            inherit (p) _file;
+            inherit value;
+          }) (pushDownProperties d.value)
+        ) (filter (d: d.priority == top) (moduleArgDefsOf m.args))
     ) (filter (p: p.attrs ? _module) pushed);
-  moduleArgSetsOf =
-    pushed:
-    map (
-      d:
-      mapAttrs (_: value: {
-        inherit (d) _file;
-        inherit value;
-      }) (pushDownProperties d.args)
-    ) (moduleArgDefsOf pushed);
 
   # A positioned evaluation's `name`, as nixpkgs' `submoduleWith` resolves it: the position's
   # `last loc` is one priority-100 definition beside whatever the modules state. A module stating
@@ -4323,9 +4381,13 @@ let
   # yields, and a plain definition refuses as defined twice. `stated` is the evaluation's
   # `moduleArgs`, which holds no position definition. The position's definition folds first, so the
   # refusal reads it last, after the seeds, labelled `<unknown-file>` where the record places it.
+  # Where a module's whole set outranks the position (`overridden`), only that set's own `name`
+  # stands, and with none the read is refused as any undefined argument's.
   positionNameOf =
     prefix: stated: pushed:
-    if stated ? name then
+    if any overridden pushed then
+      stated.name or (throw "gen-merge: module argument `name' is not defined")
+    else if stated ? name then
       mergeModuleArg "name" (
         [
           {
@@ -7124,7 +7186,11 @@ let
                     # parity); the returned `result.config` stays `_module`-free.
                     config = result.moduleConfig;
                     inherit prefix specialArgs;
-                    name = if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed;
+                    name =
+                      if allOptions ? _module then
+                        moduleArgs.name or (throw "gen-merge: module argument `name' is not defined")
+                      else
+                        positionNameOf prefix moduleArgs pushed;
                   }
                 else
                   {
@@ -7139,7 +7205,11 @@ let
                     # parity); the returned `result.config` stays `_module`-free.
                     config = result.moduleConfig;
                     inherit prefix specialArgs;
-                    name = if allOptions ? _module then moduleArgs.name else positionNameOf prefix moduleArgs pushed;
+                    name =
+                      if allOptions ? _module then
+                        moduleArgs.name or (throw "gen-merge: module argument `name' is not defined")
+                      else
+                        positionNameOf prefix moduleArgs pushed;
                   }
               else if lib == null then
                 {
@@ -7183,13 +7253,12 @@ let
                   if m ? __functor then m.__functionArgs or (functionArgs (m.__functor m)) else functionArgs m;
                 extra = mapAttrs (
                   name: _:
-                  baseArgs.${name} or (
-                    if name == "extendModules" then
-                      result.moduleConfig._module.args.extendModules
-                    else if name == "moduleType" then
-                      result.moduleConfig._module.args.moduleType
+                  baseArgs.${name} or ((
+                    if name == "extendModules" || name == "moduleType" then
+                      result.moduleConfig._module.args
                     else
-                      result.moduleArgs.${name} or (throw "gen-merge: module argument `${name}' is not defined")
+                      result.moduleArgs
+                  ).${name} or (throw "gen-merge: module argument `${name}' is not defined")
                   )
                 ) formals;
               in
@@ -8237,6 +8306,8 @@ let
           # (`mergeModuleArg`, as `positionNameOf`): `mkForce` wins, `mkDefault` yields, and a plain one
           # refuses as defined twice. The engine's own are bound once, on the `_module` records
           # (`moduleOwn.engine`), which nothing allocates until a record or an engine argument is read.
+          # A module whose WHOLE set outranks them (`overridden`) leaves `moduleArgs` alone: the
+          # engine's own definitions lost nixpkgs' override pass, `name` among them.
           moduleConfig = uncheckedConfig // {
             _module =
               (
@@ -8248,34 +8319,39 @@ let
               // (
                 if allOptions ? _module then
                   {
-                    args = moduleArgs // {
-                      extendModules =
-                        if moduleArgs ? extendModules then
-                          mergeModuleArg "extendModules" (
-                            builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
-                            ++ [
-                              {
-                                _file = "<module system>";
-                                value = result.optionDefs.moduleOwn.engine.extendModules;
-                              }
-                            ]
-                          )
-                        else
-                          result.optionDefs.moduleOwn.engine.extendModules;
-                      moduleType =
-                        if moduleArgs ? moduleType then
-                          mergeModuleArg "moduleType" (
-                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
-                            ++ [
-                              {
-                                _file = "<module system>";
-                                value = result.optionDefs.moduleOwn.engine.moduleType;
-                              }
-                            ]
-                          )
-                        else
-                          result.optionDefs.moduleOwn.engine.moduleType;
-                    };
+                    args =
+                      if any overridden pushed then
+                        moduleArgs
+                      else
+                        moduleArgs
+                        // {
+                          extendModules =
+                            if moduleArgs ? extendModules then
+                              mergeModuleArg "extendModules" (
+                                builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
+                                ++ [
+                                  {
+                                    _file = "<module system>";
+                                    value = result.optionDefs.moduleOwn.engine.extendModules;
+                                  }
+                                ]
+                              )
+                            else
+                              result.optionDefs.moduleOwn.engine.extendModules;
+                          moduleType =
+                            if moduleArgs ? moduleType then
+                              mergeModuleArg "moduleType" (
+                                builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                                ++ [
+                                  {
+                                    _file = "<module system>";
+                                    value = result.optionDefs.moduleOwn.engine.moduleType;
+                                  }
+                                ]
+                              )
+                            else
+                              result.optionDefs.moduleOwn.engine.moduleType;
+                        };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
                     specialArgs = moduleOwnSpecialArgs (
@@ -8288,69 +8364,79 @@ let
                   }
                 else if knot.positioned then
                   {
-                    args = moduleArgs // {
-                      extendModules =
-                        if moduleArgs ? extendModules then
-                          mergeModuleArg "extendModules" (
-                            builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
-                            ++ [
-                              {
-                                _file = "<module system>";
-                                value = result.optionDefs.moduleOwn.engine.extendModules;
-                              }
-                            ]
-                          )
-                        else
-                          result.optionDefs.moduleOwn.engine.extendModules;
-                      moduleType =
-                        if moduleArgs ? moduleType then
-                          mergeModuleArg "moduleType" (
-                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
-                            ++ [
-                              {
-                                _file = "<module system>";
-                                value = result.optionDefs.moduleOwn.engine.moduleType;
-                              }
-                            ]
-                          )
-                        else
-                          result.optionDefs.moduleOwn.engine.moduleType;
-                      name = positionNameOf prefix moduleArgs pushed;
-                    };
+                    args =
+                      if any overridden pushed then
+                        moduleArgs
+                      else
+                        moduleArgs
+                        // {
+                          extendModules =
+                            if moduleArgs ? extendModules then
+                              mergeModuleArg "extendModules" (
+                                builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
+                                ++ [
+                                  {
+                                    _file = "<module system>";
+                                    value = result.optionDefs.moduleOwn.engine.extendModules;
+                                  }
+                                ]
+                              )
+                            else
+                              result.optionDefs.moduleOwn.engine.extendModules;
+                          moduleType =
+                            if moduleArgs ? moduleType then
+                              mergeModuleArg "moduleType" (
+                                builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                                ++ [
+                                  {
+                                    _file = "<module system>";
+                                    value = result.optionDefs.moduleOwn.engine.moduleType;
+                                  }
+                                ]
+                              )
+                            else
+                              result.optionDefs.moduleOwn.engine.moduleType;
+                          name = positionNameOf prefix moduleArgs pushed;
+                        };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
                     freeformType = freeform;
                   }
                 else
                   {
-                    args = moduleArgs // {
-                      extendModules =
-                        if moduleArgs ? extendModules then
-                          mergeModuleArg "extendModules" (
-                            builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
-                            ++ [
-                              {
-                                _file = "<module system>";
-                                value = result.optionDefs.moduleOwn.engine.extendModules;
-                              }
-                            ]
-                          )
-                        else
-                          result.optionDefs.moduleOwn.engine.extendModules;
-                      moduleType =
-                        if moduleArgs ? moduleType then
-                          mergeModuleArg "moduleType" (
-                            builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
-                            ++ [
-                              {
-                                _file = "<module system>";
-                                value = result.optionDefs.moduleOwn.engine.moduleType;
-                              }
-                            ]
-                          )
-                        else
-                          result.optionDefs.moduleOwn.engine.moduleType;
-                    };
+                    args =
+                      if any overridden pushed then
+                        moduleArgs
+                      else
+                        moduleArgs
+                        // {
+                          extendModules =
+                            if moduleArgs ? extendModules then
+                              mergeModuleArg "extendModules" (
+                                builtins.catAttrs "extendModules" (moduleArgSetsOf pushed)
+                                ++ [
+                                  {
+                                    _file = "<module system>";
+                                    value = result.optionDefs.moduleOwn.engine.extendModules;
+                                  }
+                                ]
+                              )
+                            else
+                              result.optionDefs.moduleOwn.engine.extendModules;
+                          moduleType =
+                            if moduleArgs ? moduleType then
+                              mergeModuleArg "moduleType" (
+                                builtins.catAttrs "moduleType" (moduleArgSetsOf pushed)
+                                ++ [
+                                  {
+                                    _file = "<module system>";
+                                    value = result.optionDefs.moduleOwn.engine.moduleType;
+                                  }
+                                ]
+                              )
+                            else
+                              result.optionDefs.moduleOwn.engine.moduleType;
+                        };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     inherit specialArgs;
                     freeformType = freeform;
@@ -8874,15 +8960,18 @@ let
                   # the module-defined set, read off its own binding, beside the served `extendModules`
                   # (a thunk until read, so a module gating on this record's keys does not reach `config`)
                   args =
-                    (
-                      if allOptions ? _module || !knot.positioned then
-                        moduleArgs
-                      else
-                        moduleArgs // { name = positionNameOf prefix moduleArgs pushed; }
-                    )
-                    // {
-                      inherit (moduleConfig._module.args) extendModules moduleType;
-                    };
+                    if any overridden pushed then
+                      moduleArgs
+                    else
+                      (
+                        if allOptions ? _module || !knot.positioned then
+                          moduleArgs
+                        else
+                          moduleArgs // { name = positionNameOf prefix moduleArgs pushed; }
+                      )
+                      // {
+                        inherit (moduleConfig._module.args) extendModules moduleType;
+                      };
                   check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                   freeformType = freeform;
                   specialArgs =

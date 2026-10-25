@@ -333,7 +333,11 @@ serves nixpkgs' `internalModule` arguments, `extendModules` and `moduleType` (th
 type, whose empty value is its on-demand `type` child), through `config._module.args` and as formals,
 and `_class` as a formal. A module's own definition of one is a second definition beside the engine's:
 `mkForce` wins, `mkDefault` yields, and a plain one is refused by name, where nixpkgs, printing a
-plain `moduleType` beside its own, dies with a stack overflow. A nested tree's `moduleType` publishes the
+plain `moduleType` beside its own, dies with a stack overflow. A module's WHOLE `_module.args` set under a property is ranked against
+the engine's definitions as nixpkgs' override pass ranks it: `mkForce { … }` serves the forced set alone, so
+`extendModules`, `moduleType` and the position's `name` are then undefined and a read of one is refused by name
+where nixpkgs aborts, and `mkDefault { … }` loses to them. A condition over a set at normal priority stays per key,
+so deciding the keys forces no condition, and `mkIf false { … }` keeps its keys where nixpkgs drops them. A nested tree's `moduleType` publishes the
 module list nixpkgs' `submoduleWith` builds the child over: the `‹name›` placeholder, the type's own
 modules located by their declaring file, the position's `{ _module.args.name = last loc; }`, then the
 definitions, and its `extendModules` re-evaluates that list with the new modules appended

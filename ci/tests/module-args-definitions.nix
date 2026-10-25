@@ -11,11 +11,8 @@
 # `name` the module sees. A value is shown as `<fn>` only when it is a function, so an internal entry
 # holding a module's `extendModules` in place of the engine's own reds (zgpaa gate F1/F2), and as
 # `type:<name>` when it is a type, the internal entry's `moduleType` (den-hoag-d2o0g).
-#
-# Stated departure, both sides pinned:
-#   b44rx  `_module.args = mkForce { q = 1; }`: nixpkgs serves `{ q }` and a reader of `name` finds none;
-#          gen keeps serving `name`, `extendModules` and `moduleType` (den-hoag-b44rx). The definitions
-#          already agree.
+# `_module.args = mkForce { q = 1; }` (`mf`) serves `{ q }` alone and a reader of `name` finds none, as
+# nixpkgs' does (den-hoag-b44rx; the whole class is `./module-args-whole-set.nix`).
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -732,28 +729,11 @@ in
             };
           }
           {
-            # den-hoag-b44rx: the forced set is not the whole value
-            name = "test-record-mf-${tag}-value-pinned-b44rx";
+            # the forced set is the whole value (den-hoag-b44rx)
+            name = "test-record-mf-${tag}-value";
             value = {
-              expr = {
-                gen = { inherit (g) vkeys cname; };
-                nixpkgs = { inherit (n) vkeys cname; };
-              };
-              expected = {
-                gen = {
-                  vkeys = [
-                    "extendModules"
-                    "moduleType"
-                    "name"
-                    "q"
-                  ];
-                  cname = "mf";
-                };
-                nixpkgs = {
-                  vkeys = [ "q" ];
-                  cname = "<none>";
-                };
-              };
+              expr = { inherit (g) vkeys cname; };
+              expected = { inherit (n) vkeys cname; };
             };
           }
         ]
