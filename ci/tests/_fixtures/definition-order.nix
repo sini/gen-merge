@@ -61,6 +61,63 @@ let
     in
     read r.config.o;
   key = v: { k = v; };
+  # the PUBLISHED module set of a redeclared option defined by attrsets (no value moves there): the option's type's
+  # `getSubModules` and the nested evaluation's own `moduleType`'s, each module described by its location chain
+  descr =
+    m:
+    if builtins.isPath m || builtins.isString m then
+      "P:" + baseNameOf m
+    else if builtins.isFunction m then
+      "fn"
+    else if builtins.isAttrs m then
+      (m._file or m.key or "-")
+      + (if m ? imports then "[" + builtins.concatStringsSep "," (map descr m.imports) + "]" else "")
+    else
+      "?";
+  subMods = t: if t ? getSubModules then t.getSubModules else t.substructure.modules;
+  redSet =
+    elem:
+    let
+      nt = m: if elem then N.attrsOf (N.submodule m) else N.submodule m;
+      at = v: if elem then { k = v; } else v;
+      mt =
+        { moduleType, ... }:
+        {
+          options.mt = mkOption { default = map descr (subMods moduleType); };
+        };
+      r = ev [
+        {
+          _file = "decl.nix";
+          options.o = mkOption {
+            type = nt [
+              (own leafList [ "q" ])
+              mt
+            ];
+          };
+        }
+        {
+          _file = "decl2.nix";
+          options.o = mkOption {
+            type = nt {
+              _file = "r.nix";
+              x = [ "r" ];
+            };
+          };
+        }
+        {
+          _file = "def.nix";
+          config.o = at { x = [ "def" ]; };
+        }
+        {
+          _file = "def2.nix";
+          config.o = at { x = [ "def2" ]; };
+        }
+      ];
+    in
+    {
+      published = map descr (subMods r.options.o.type);
+      moduleType = (if elem then r.config.o.k else r.config.o).mt;
+    };
   # the redeclared option (`redImp`) over another seed form, at the root or at an `attrsOf` element
   redSeed =
     con: elem: seed:
@@ -767,6 +824,11 @@ in
   # a gen element is threaded, and its root is mounted where the group's positions are walked (gate C2)
   redMxFn = redSeed P.attrsOf true seedFnPlain;
   redMxImp = redSeed P.attrsOf true seedFnNested;
+  # the published module set, read where no value moves: located once, as nixpkgs locates it
+  redSetPublished = (redSet false).published;
+  redSetModuleType = (redSet false).moduleType;
+  redAtSetPublished = (redSet true).published;
+  redAtSetModuleType = (redSet true).moduleType;
   redUnderGenFn = redUnderGen seedFnPlain;
   redUnderGenImp = redUnderGen seedFnNested;
   redTagFn = redTag seedFnPlain;
