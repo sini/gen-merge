@@ -395,11 +395,18 @@ let
   # unions the two module sets, which is not idempotent, so one binding declared twice evaluates its
   # module set twice, as nixpkgs `lib.evalModules` does (a doubled list option reads `[ 1 1 ]` there
   # and here). Merging to the partner served `[ 1 ]`, a value nixpkgs never produces (ADR-0039).
+  #
+  # A constructor another library states (`mkSubmodule`'s `stated`, den-hoag-dwln8) arrives qualified,
+  # `<library>.<name>`, and keeps that spelling: it is that library's construction, and spelling it
+  # `gen-merge.` would decide it one with a gen-merge constructor of the same tail. Decided inside the
+  # lazy identity half, so a construction pays nothing for it until its mint is read.
   identified =
     ctor: members: mkArgs: sealed: t:
     if types ? mkIdentity then
       let
-        ids = types.mkIdentity "gen-merge.${ctor}" members mkArgs sealed (t.name or ctor);
+        ids = types.mkIdentity (
+          if builtins.match "[^.]*" ctor == null then ctor else "gen-merge.${ctor}"
+        ) members mkArgs sealed (t.name or ctor);
       in
       t
       // {
@@ -996,8 +1003,15 @@ let
   # plain descriptor attribute beside `specialArgs` (never in `functor.payload`, which stays nixpkgs'
   # `submoduleWith`'s). It enters the mint, so two types differing only in what they refuse are two types;
   # a type refusing nothing states no attribute, mints as before, and allocates nothing for it.
+  #
+  # `stated` (den-hoag-dwln8): `null`, or the construction another library built the module set from,
+  # `{ ctor; members; args = tags: { … }; sealed; }`, minted IN PLACE OF the module list's seal (ADR-0034's
+  # construction clause: a constructor and its argument components, members by mark and caller content
+  # sealed). Stated only through `refusingSubmoduleOver` (lib/default.nix). `withArgs` and `rebuild` keep
+  # it; the relation's union and `recarry` pass `null`, since a union of two declarations, or a module set
+  # a caller carries in, is no longer that library's construction, and the list's seal returns.
   mkSubmodule =
-    partial: ctor: refusedKeys: args: modOrMods:
+    partial: ctor: refusedKeys: stated: args: modOrMods:
     let
       mods = if isList modOrMods then modOrMods else [ modOrMods ];
       # A submodule reads its definitions as nixpkgs `types.submodule` does: `mergeDefs` hands them
@@ -1048,17 +1062,29 @@ let
       # slot and Lix by the forced closure (den-hoag-1fo91).
       # The constructor tag enters the mint (ADR-0034): a `partialSubmodule` and a `submodule` over one
       # module set are two types, and the name, which both keep, decides nothing.
-      identified ctor [ ]
-        (_: {
-          specialArgs = args;
-          ${if refusedKeys == [ ] then null else "refusedArgs"} = refusedKeys;
-        })
-        [
-          {
-            path = [ "modules" ];
-            value = mods;
-          }
-        ]
+      (
+        if stated == null then
+          identified ctor [ ]
+            (_: {
+              specialArgs = args;
+              ${if refusedKeys == [ ] then null else "refusedArgs"} = refusedKeys;
+            })
+            [
+              {
+                path = [ "modules" ];
+                value = mods;
+              }
+            ]
+        else
+          identified stated.ctor stated.members (
+            tags:
+            stated.args tags
+            // {
+              specialArgs = args;
+              ${if refusedKeys == [ ] then null else "refusedArgs"} = refusedKeys;
+            }
+          ) stated.sealed
+      )
         {
           name = "submodule";
           unroledNested = if freeform == null then { } else { freeformType = freeform; };
@@ -1072,7 +1098,7 @@ let
           withArgs =
             a:
             if refusedKeys == [ ] || all (k: !(a ? ${k})) refusedKeys then
-              mkSubmodule partial ctor refusedKeys (args // a) mods
+              mkSubmodule partial ctor refusedKeys stated (args // a) mods
             else
               throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
           inherit admits nests;
@@ -1097,7 +1123,7 @@ let
           carries.moduleSet = mods;
           recarry =
             c:
-            mkSubmodule partial ctor refusedKeys args (
+            mkSubmodule partial ctor refusedKeys null args (
               if isAttrs c && c ? moduleSet then
                 c.moduleSet
               else
@@ -1206,10 +1232,10 @@ let
                   # the union nixpkgs builds. Pinned by
                   # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
                   else if refusedKeys == [ ] && !(other ? refusedArgs) then
-                    { merged = mkSubmodule partial ctor refusedKeys (args // partnerArgs) (partnerMods ++ mods); }
+                    { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (partnerMods ++ mods); }
                   else
                     {
-                      merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) (args // partnerArgs) (
+                      merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
                         partnerMods ++ mods
                       );
                     }
@@ -1242,7 +1268,33 @@ let
             # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
             # second time, double-evaluating the base module (a readOnly config value — e.g.
             # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
-            rebuild = m: mkSubmodule partial ctor refusedKeys args m;
+            # A stated construction keeps its statement and seals the supplied set beside it: the set is
+            # caller content the statement does not cover (ADR-0034, per component).
+            # Decided once per type, not per rebuild: an argument computed per call is a thunk per call.
+            rebuild =
+              if stated == null then
+                m: mkSubmodule partial ctor refusedKeys null args m
+              else
+                m:
+                mkSubmodule partial ctor refusedKeys (
+                  stated
+                  // {
+                    args =
+                      tags:
+                      stated.args tags
+                      // {
+                        rebuilt = {
+                          sealed = true;
+                        };
+                      };
+                    sealed = stated.sealed ++ [
+                      {
+                        path = [ "rebuilt" ];
+                        value = m;
+                      }
+                    ];
+                  }
+                ) args m;
           };
           # A definition outside `admits` is refused here, naming the option and the file, before the
           # module reader would refuse it without either (`refusingOutside`).
@@ -1268,7 +1320,7 @@ let
 
   # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
   # base module args to the TYPE it returns, never to this.
-  submodule = mkSubmodule false "submodule" [ ] { };
+  submodule = mkSubmodule false "submodule" [ ] null { };
 
   # listOf — concat all list defs in order (byte-mode drops the order pass; spec §7), each element
   # merged through the element type (a submodule element becomes an instance; a leaf is verified).
