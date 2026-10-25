@@ -368,7 +368,7 @@
           # node's `disabled` forced. With no removal the bound is the figure before removal existed (gen-merge
           # e3e1305), so a per-node re-walk of the closure (x92 at n = 400) reds it; with one removal the marking
           # is one walk of the tree. The bounds are the landed figures, in THUNKS.
-          for bound in graph-cost:16 graph-cost-removal:69; do
+          for bound in graph-cost:16 graph-cost-removal:68; do
             cell=''${bound%%:*} max=''${bound#*:} want=0
             [ "$cell" = graph-cost ] || want=1
             thunksOf "$cell-100"
