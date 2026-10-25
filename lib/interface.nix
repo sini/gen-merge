@@ -6421,13 +6421,14 @@ let
   # foreign join. A FOREIGN ANSWER THAT ABORTS IS NO ANSWER: the rebuilt relation runs foreign code
   # over gen's members (nixpkgs' `defaultTypeMerge` asserts two payloads agree on null-ness), so it is taken through
   # `tryEval`, the idiom `lib/default.nix` uses, and this relation stays a value or a named refusal
-  # (ADR-0025 item 1).
+  # (ADR-0025 item 1). A door return retaining its author's relation is a raw partner here, as its
+  # raw form is.
   joinInRebuiltPartner =
     { role, self }:
     other:
     let
       partner =
-        if other ? carries || importedOffered role other == null then
+        if other ? carries && !(other ? retainedRelation) || importedOffered role other == null then
           null
         else
           importedPartner (other.functor or null);

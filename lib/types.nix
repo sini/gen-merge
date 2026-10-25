@@ -207,11 +207,13 @@ let
         # partner, and for a partner stating a relation where it carries `retainedRelation` (its author's).
         # That is the twin's own answer where the twin decides. A gen-native partner of another key keeps
         # the veto, held while this relation, deciding, keys such a partner by type name (den-hoag-6ylun).
+        # gen's own partner is a gen record with NO retained relation; a nixpkgs leaf through a
+        # `mkOptionType` door retains its author's relation and is joined here as its raw form is.
         nullaryRel = {
           exact = true;
           __functor =
             _: other:
-            if isAttrs other && other ? typeMergeRel then
+            if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
               if (keyOf other) == name then
                 { merged = self; }
               else

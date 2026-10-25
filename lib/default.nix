@@ -525,11 +525,12 @@ let
           # relation over this instance's members, this operand first, so the answer is nixpkgs' union
           # under nixpkgs' record (ADR-0039 serve half). The join is taken only where it keeps every
           # member of this enum and the partner's name, so no declared membership is dropped; a
-          # declined join is refused by name, never `self`.
+          # declined join is refused by name, never `self`. A door return (a gen record retaining
+          # its author's relation) is a raw partner here, as its raw form is.
           else if
             row != null
             && builtins.isAttrs other
-            && !(other ? typeMergeRel)
+            && !(other ? typeMergeRel && !(other ? retainedRelation))
             && core.interface.keyedUnderEmbedding row other
           then
             let
