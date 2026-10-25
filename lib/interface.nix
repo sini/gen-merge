@@ -6230,12 +6230,24 @@ let
   # own `typeMerge` gets that functor's relation in the order where this side decides.
   # `self` is `{ name; payload; }`, this type's functor name and payload; `null` where the partner
   # states no applicable relation.
+  #
+  # A `self` carrying `keys` (a `refusingSubmodule`'s stated base module args) is answered
+  # `{ refused = <keys>; }` where the partner's payload `specialArgs` supply any of them, before any
+  # join: the join is the partner's record, which carries no refused set, so the refusal is made here
+  # or nowhere. Presence only; the values are the caller's. Read inline and spelled in names this file
+  # already interns, so a caller stating no keys pays no thunk and no evaluation a new symbol (the bar
+  # registers' bounds are exact, ADR-0032).
   joinInStatedRelation =
     self: other:
     let
       pf = other.functor or null;
     in
-    if !(statesRelation other) || !(isFunction (pf.type or null)) then
+    if
+      (self.keys or [ ]) != [ ]
+      && filter (k: (pf.payload or null).specialArgs or { } ? ${k}) self.keys != [ ]
+    then
+      { refused = filter (k: (pf.payload or null).specialArgs or { } ? ${k}) self.keys; }
+    else if !(statesRelation other) || !(isFunction (pf.type or null)) then
       null
     else
       protoTypeMerge (pf // { inherit (self) name payload; }) pf;

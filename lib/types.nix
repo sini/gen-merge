@@ -1167,9 +1167,13 @@ let
                           specialArgs = args;
                           shorthandOnlyDefinesConfig = true;
                         };
+                        # a stated key the foreign partner supplies is answered by name, before its join
+                        keys = refusedKeys;
                       } other;
                     in
-                    if joined == null then
+                    if joined ? refused then
+                      { refused = refusedArgsReason "a redeclaration" joined.refused; }
+                    else if joined == null then
                       {
                         refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
                       }

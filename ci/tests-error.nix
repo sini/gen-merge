@@ -13163,5 +13163,59 @@ in
         };
       };
     };
+
+    # ── den-hoag-b7v1h: a stated key a foreign partner's `specialArgs` supply is refused at the join ──
+    # A redeclaration beside a nixpkgs `submoduleWith` joins to nixpkgs' record, which carries no refused
+    # set, so `typeMergeRel`'s foreign branch refuses by presence, in β's union words, whichever declaration
+    # comes first. A non-stated key, and a partner stating no `specialArgs`, are served. Read by TEXT.
+    flake.testsError.refusing-submodule-foreign-join =
+      let
+        stating = gm.refusingSubmodule [ "config" ] [ ];
+        foreign =
+          specialArgs:
+          nixpkgsLib.types.submoduleWith {
+            modules = [ ];
+            inherit specialArgs;
+          };
+        refused = {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(a redeclaration supplies the base module argument `config' to a `submodule' that refuses it from a caller \\(`refusingSubmodule'\\): the type states it as an argument its own evaluation supplies, so a caller's value would replace the evaluation's own\\); declared in a\\.nix, b\\.nix$";
+        };
+        servedBothOrders =
+          partner:
+          force (
+            assert declaredTwice stating partner == "submodule";
+            assert declaredTwice partner stating == "submodule";
+            throw "served"
+          );
+      in
+      {
+        test-a-stated-key-the-foreign-partner-supplies-is-refused-gen-first = {
+          expr = declaredTwice stating (foreign {
+            config = { };
+          });
+          expectedError = refused;
+        };
+        test-a-stated-key-the-foreign-partner-supplies-is-refused-foreign-first = {
+          expr = declaredTwice (foreign { config = { }; }) stating;
+          expectedError = refused;
+        };
+        test-a-key-the-type-does-not-state-crosses-the-foreign-join-control = {
+          expr = servedBothOrders (foreign {
+            argand = 1;
+          });
+          expectedError = {
+            type = "ThrownError";
+            msg = "^served$";
+          };
+        };
+        test-a-foreign-partner-stating-no-specialargs-is-served-control = {
+          expr = servedBothOrders (nixpkgsLib.types.submoduleWith { modules = [ ]; });
+          expectedError = {
+            type = "ThrownError";
+            msg = "^served$";
+          };
+        };
+      };
   };
 }
