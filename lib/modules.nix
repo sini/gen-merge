@@ -4294,12 +4294,20 @@ let
   # property tree's STRUCTURE, as `dischargeIn` reads them but with an `mkIf`'s condition forced only
   # above such a part (`mkIf c (mkForce { … })`, where nixpkgs' override pass needs it), so `mkIf c
   # { … }` forces nothing and a condition reading an argument reaches its fixpoint. A module stating no
-  # property there is decided by `?` alone, which allocates nothing; the walk is a local of the
-  # property branch, as at each of its readers, so no binding is paid where no property is stated.
+  # property there is decided by `?` alone, which allocates nothing: a `_module` that is not itself a
+  # property holds its `args` as stated, so it is read with no call. The walk (`least`) is a local of
+  # the property branch, so no binding is paid where no property is stated; `moduleArgSetsOf`'s `top`
+  # holds its twin, and an edit to one is owed to the other.
   overridden =
     p:
     p.attrs ? _module
-    && priority.isProperty ((pushDownProperties p.attrs._module).args or null)
+    && (
+      if p.attrs._module ? _type then
+        (pushDownProperties p.attrs._module).args or null
+      else
+        p.attrs._module.args or null
+    )
+      ? _type
     && (
       let
         # the least priority of a whole definition's parts above the default, or the default, read off
@@ -4326,7 +4334,12 @@ let
           else
             foldl' (n: d: if d.priority < n then d.priority else n) defaultPriority (dischargeIn null v);
       in
-      least (pushDownProperties p.attrs._module).args < defaultPriority
+      least (
+        if p.attrs._module ? _type then
+          (pushDownProperties p.attrs._module).args or null
+        else
+          p.attrs._module.args or null
+      ) < defaultPriority
     );
   # Each module's `_module.args`, one set of `{ _file; value; }` definitions per definition that stays,
   # as nixpkgs' option reads them: its override pass runs over each module's WHOLE definition, the
@@ -4345,10 +4358,15 @@ let
         if any overridden pushed then
           foldl' (
             n: p:
-            let
-              a = (pushDownProperties p.attrs._module).args or null;
-            in
-            if priority.isProperty a then
+            if
+              (
+                if p.attrs._module ? _type then
+                  (pushDownProperties p.attrs._module).args or null
+                else
+                  p.attrs._module.args or null
+              )
+                ? _type
+            then
               let
                 # the least priority of a whole definition's parts above the default, or the default, read off
                 # the property tree's structure: an `mkIf`'s condition is forced only above such a part
@@ -4376,7 +4394,12 @@ let
               in
               (
                 let
-                  t = least a;
+                  t = least (
+                    if p.attrs._module ? _type then
+                      (pushDownProperties p.attrs._module).args or null
+                    else
+                      p.attrs._module.args or null
+                  );
                 in
                 if t < n then t else n
               )
