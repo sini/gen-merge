@@ -5,6 +5,10 @@
 # `lib.evalModules` and in gen's `evalModuleTree`, as the option's own type and inside `either _ int`: an admitted
 # definition is served evaluated (`b = 0`), and a definition one of the copy's own predicates rejects is refused.
 # The `verify` that admits everything rejects nothing, so its `{ a = 2; }` is served evaluated too.
+# The exception is a `// { check }` copy of a union (`either`, `oneOf`), which states no module set: in gen's
+# engine it is the ad-hoc override nixpkgs refuses, so gen refuses it by name, the admitted definition too. In
+# nixpkgs' `lib.evalModules` the derivation still serves it, an open defect (den-hoag-vjxra F1) pinned here as it
+# reads, not as law.
 # Red, every cell, with the overlay left unhomed in `deriveTypeCore`.
 { genMerge, nixpkgsLib, ... }:
 let
@@ -169,6 +173,15 @@ let
           }
         ]
     );
+  # the ad-hoc override on a union, refused in gen's engine; the nixpkgs-engine rows read as they do (den-hoag-vjxra F1)
+  adHocUnion =
+    cn: kn:
+    kn == "checkVerify"
+    && builtins.elem cn [
+      "eitherLeft"
+      "eitherRight"
+      "oneOf"
+    ];
   expectedOf =
     C: K:
     listToAttrs (
@@ -215,7 +228,17 @@ in
           name = "test-${cn}-${kn}";
           value = {
             expr = cellsOf C (gm.deriveType { } "derive-type-container-verify-copy" (K.c C.t));
-            expected = expectedOf C K;
+            expected =
+              expectedOf C K
+              // (
+                if adHocUnion cn kn then
+                  {
+                    gen-root-admitted = "REFUSED";
+                    gen-union-admitted = "REFUSED";
+                  }
+                else
+                  { }
+              );
           };
         }
       ) (builtins.attrNames copies)

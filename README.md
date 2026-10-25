@@ -1553,10 +1553,11 @@ swaps it for a `merge` the record also states; a union asks it when choosing a m
 **A nixpkgs v2 type is merged by its own `merge.v2`**, as `mergeDefinitions` merges it: its
 `headError` decides, not the record's `check`, and an answer that is not exactly
 `{ headError, value, valueMeta }` aborts as it does there. An ad-hoc `type // { check = …; }` on a v2
-type is **refused by name**, as nixpkgs refuses it; state the check with `addCheck`. Over a stock
-`either` or `oneOf` holding a gen nesting element, which is re-homed as gen's own union, the override
-is carried and enforced instead: what its check rejects is refused, what it admits is served. On a
-**submodule-bearing** v2 type (`submodule`, `attrsOf submodule`, …) nixpkgs does not refuse the override
+type is **refused by name**, as nixpkgs refuses it; state the check with `addCheck`. That holds over
+a gen `either`, and over a stock `either` or `oneOf` holding a gen nesting element that is re-homed as
+gen's own union: an `either` of a submodule states no module set. Declared twice or more, the
+override is met as the redeclaration meet meets any two types, so its check is enforced on the met
+type. On a **submodule-bearing** v2 type (`submodule`, `attrsOf submodule`, …) nixpkgs does not refuse the override
 but erases it without a word when it rebuilds the type at declaration (`substSubModules`); gen-merge
 enforces it as the check it is, as it enforces an `addCheck` there: a value it admits is served, and a
 value it rejects is refused by name, a deliberate departure from a silent answer. An ad-hoc `check` on a
