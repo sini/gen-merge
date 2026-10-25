@@ -17,6 +17,8 @@
 #
 # `gm` cells: `expr` is gen-merge's engine over gen's types and `expected` nixpkgs' engine over nixpkgs' types.
 # `br` cells: `expr` is nixpkgs' engine over gen's types (the export bridge, whose depth-two child is gen's).
+# `gmnp` cells: `expr` is gen-merge's engine over nixpkgs' types, where a redeclared option's module set is located
+# once, by the declaration fold, and not again at the mount (den-hoag-coek8).
 # RED (no root order): `[ "def" "def2" "q" ]` where nixpkgs reads `[ "q" "def" "def2" ]`.
 {
   genMerge,
@@ -44,6 +46,7 @@ let
   np = on "np";
   gm = on "gm";
   br = on "br";
+  gmnp = on "gmnp";
   # nixpkgs refuses an untyped declaration restating a field the typed one states; gen serves it (the
   # ordered declaration fold, ADR-0029), and the type is still the typed declaration's, located by the root
   beyond = [ "utShadow" ];
@@ -263,76 +266,78 @@ let
     }) twins;
 in
 {
-  flake.tests.gen-nesting-definition-order = builtins.listToAttrs (twin "gm" gm ++ twin "br" br) // {
-    # the reference arm is live: no twin cell agrees by both engines refusing it
-    test-nixpkgs-serves-every-twin-cell = {
-      expr = builtins.filter (name: np.${name} == "refused") twins;
-      expected = [ ];
-    };
-    # ADR-0034: the root order mints no module node (the wrapper arm reds every shape, one node per own
-    # module), a refined key's graph and a keyed own module's anchors pair with the reordered collection
-    test-the-root-order-mints-no-module-node = {
-      expr = builtins.mapAttrs (_: ids) shapes;
-      expected = {
-        imports = 11;
-        keyed = 9;
-        list = 13;
-        refined = 9;
-        removal = 8;
-        two = 8;
+  flake.tests.gen-nesting-definition-order =
+    builtins.listToAttrs (twin "gm" gm ++ twin "br" br ++ twin "gmnp" gmnp)
+    // {
+      # the reference arm is live: no twin cell agrees by both engines refusing it
+      test-nixpkgs-serves-every-twin-cell = {
+        expr = builtins.filter (name: np.${name} == "refused") twins;
+        expected = [ ];
+      };
+      # ADR-0034: the root order mints no module node (the wrapper arm reds every shape, one node per own
+      # module), a refined key's graph and a keyed own module's anchors pair with the reordered collection
+      test-the-root-order-mints-no-module-node = {
+        expr = builtins.mapAttrs (_: ids) shapes;
+        expected = {
+          imports = 11;
+          keyed = 9;
+          list = 13;
+          refined = 9;
+          removal = 8;
+          two = 8;
+        };
+      };
+      test-a-keyed-own-module-anchors-under-the-root-order = {
+        expr = anchors (
+          host (t.listOf elemK) [
+            {
+              config.o = [
+                { tag = "a"; }
+                { tag = "b"; }
+              ];
+            }
+          ]
+        );
+        expected = [
+          [
+            [
+              [
+                "a:1"
+                "o"
+                0
+                { module = 1; }
+                "inner"
+                0
+              ]
+            ]
+          ]
+          [
+            [
+              [
+                "a:1"
+                "o"
+                1
+                { module = 1; }
+                "inner"
+                0
+              ]
+            ]
+          ]
+        ];
+      };
+      # a type stating `nests.declAt` takes its own call in `childTree`, and reads the order its plain twin does
+      test-a-declAt-child-reads-the-located-order = {
+        expr = declAtOrder true;
+        expected = declAtOrder false;
+      };
+      test-a-declAt-child-reads-nixpkgs-order = {
+        expr = declAtOrder false;
+        expected = np.sub;
+      };
+      # beyond nixpkgs: the untyped-then-typed order, a field shadowed (`ut` without the shadow is a twin)
+      test-gm-utShadow-reads-the-located-order = {
+        expr = gm.utShadow;
+        expected = np.ut;
       };
     };
-    test-a-keyed-own-module-anchors-under-the-root-order = {
-      expr = anchors (
-        host (t.listOf elemK) [
-          {
-            config.o = [
-              { tag = "a"; }
-              { tag = "b"; }
-            ];
-          }
-        ]
-      );
-      expected = [
-        [
-          [
-            [
-              "a:1"
-              "o"
-              0
-              { module = 1; }
-              "inner"
-              0
-            ]
-          ]
-        ]
-        [
-          [
-            [
-              "a:1"
-              "o"
-              1
-              { module = 1; }
-              "inner"
-              0
-            ]
-          ]
-        ]
-      ];
-    };
-    # a type stating `nests.declAt` takes its own call in `childTree`, and reads the order its plain twin does
-    test-a-declAt-child-reads-the-located-order = {
-      expr = declAtOrder true;
-      expected = declAtOrder false;
-    };
-    test-a-declAt-child-reads-nixpkgs-order = {
-      expr = declAtOrder false;
-      expected = np.sub;
-    };
-    # beyond nixpkgs: the untyped-then-typed order, a field shadowed (`ut` without the shadow is a twin)
-    test-gm-utShadow-reads-the-located-order = {
-      expr = gm.utShadow;
-      expected = np.ut;
-    };
-  };
 }

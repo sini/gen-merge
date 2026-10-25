@@ -5739,7 +5739,14 @@ let
                 threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) optDecl.type
             else
               threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) (
-                interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)
+                # a declaration that shadowed another states so (`redeclareDecl`), and the mount reads it; branched
+                # here, so an option that shadowed nothing passes `mode` itself and allocates no argument
+                if optDecl ? overridden then
+                  interface.homedRootAt "evalModuleTree" loc (mode // { inherit (optDecl) overridden; }) (
+                    optDecl.type or null
+                  )
+                else
+                  interface.homedRootAt "evalModuleTree" loc mode (optDecl.type or null)
               )
           ) withDefault;
     in
