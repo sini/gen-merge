@@ -7913,7 +7913,11 @@ let
                 mergeDefs = {
                   __functor = _: fold;
                   unchecked = importedRawFold t;
-                };
+                }
+                # the fold this import builds over `t`'s check is completed by the door that completes the import
+                # (`modules.nix` `readsMintedNode`), which ties the record it completes here and nowhere else: a
+                # fold that already names its completion, or names none, was taken by `//` (den-hoag-mvevv)
+                // (if t ? split || t ? choose then { } else { completed = null; });
               }
             else
               { mergeDefs = fold; }
