@@ -1808,14 +1808,22 @@ let
   # record it cannot read this way: the walk then answers. It reads the `element` role and refuses the two other
   # named ones (`alternatives`, `moduleSet`); a hand-built `carries` stating a role outside the vocabulary beside
   # `element` is read as its element chain, which is what every gen container's fold reads of it.
+  # `null` where the chain ends at a leaf but some element's fold is not its completion's (a `//` copy restating it,
+  # den-hoag-d2myd): the engine then folds the option on its threaded twin, where each element is a declared record,
+  # rather than by the called fold, which folds an element as it is handed.
   chainEndsAtLeaf =
     let
       go =
         fuel: t:
-        fuel > 0
-        && t ? carries.element
-        && !(t ? nests || t ? __threadedForeign || t ? carries.alternatives || t ? carries.moduleSet)
-        && (
+        if
+          !(
+            fuel > 0
+            && t ? carries.element
+            && !(t ? nests || t ? __threadedForeign || t ? carries.alternatives || t ? carries.moduleSet)
+          )
+        then
+          false
+        else if
           !(t.carries.element ? carries || t.carries.element ? nests || t.carries.element ? __threadedForeign)
           && (
             ((t.carries.element.functor or { }).payload or null) ? modules
@@ -1823,8 +1831,49 @@ let
             || (t.carries.element.nestedTypes or { }) == { }
           )
           && !(t.carries.element ? elemType)
-          || t.carries.element ? carries.element && go (fuel - 1) t.carries.element
-        );
+        then
+          (
+            if
+              !(t.carries.element ? mergeDefs)
+              || (
+                if t.carries.element ? mergeDefs.completed then
+                  t.carries.element.mergeDefs == t.carries.element.mergeDefs.completed.mergeDefs
+                else if (t.carries.element.__typeSelf or null) != null then
+                  (t.carries.element.__typeSelf null) ? mergeDefs
+                  && t.carries.element.mergeDefs == (t.carries.element.__typeSelf null).mergeDefs
+                else
+                  !(t.carries.element ? merge.completed)
+                  ||
+                    t.carries.element.merge.completed ? mergeDefs
+                    && t.carries.element.mergeDefs == t.carries.element.merge.completed.mergeDefs
+              )
+            then
+              true
+            else
+              null
+          )
+        else if !(t.carries.element ? carries.element) then
+          false
+        else if
+          !(t.carries.element ? mergeDefs)
+          || (
+            if t.carries.element ? mergeDefs.completed then
+              t.carries.element.mergeDefs == t.carries.element.mergeDefs.completed.mergeDefs
+            else if (t.carries.element.__typeSelf or null) != null then
+              (t.carries.element.__typeSelf null) ? mergeDefs
+              && t.carries.element.mergeDefs == (t.carries.element.__typeSelf null).mergeDefs
+            else
+              !(t.carries.element ? merge.completed)
+              ||
+                t.carries.element.merge.completed ? mergeDefs
+                && t.carries.element.mergeDefs == t.carries.element.merge.completed.mergeDefs
+          )
+        then
+          go (fuel - 1) t.carries.element
+        else if go (fuel - 1) t.carries.element == false then
+          false
+        else
+          null;
     in
     go importedTypeWalkFuel;
 

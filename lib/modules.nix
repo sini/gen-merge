@@ -5042,9 +5042,66 @@ let
   # A type bound at a declared option or at the freeform plane, threaded where it may nest and the
   # evaluation reads its nested trees as children (`mode.reader`). The public `mergeOption` carries
   # no reader, so a nesting type there folds CALLED, and refuses.
+  # ── A DECLARED RECORD FOLDS BY ITS COMPLETION'S FOLD (den-hoag-d2myd, ADR-0039 serve half) ──────────
+  # A `//` copy restating a record's fold (`mergeDefs`) and keeping its `merge` states two folds that disagree;
+  # nixpkgs' evaluation runs `merge`. Where the ENGINE picks the fold of a declared record (an option's type, the
+  # freeform plane, a gen container's element on the threaded twin, which runs only under an evaluation's accessor)
+  # the fold run is the completion's: the record the fold was completed with (`mergeDefs.completed`, the door's tie),
+  # else the record's stamp (`__typeSelf`), else a constant constructor's fold record (`merge.completed`). Its
+  # `mergeDefs` and the `merge` derived from it go together; a completion stating no `mergeDefs` (a leaf) folds by its
+  # `merge`. A stamp's fold also brings the stamp's check witness pair where the record kept its check (its `check` is
+  # its `_checkWitness`), so the record checks by the completion it folds by and the threaded twin's provenance test
+  # reads one witness against itself, not two records holding the same closures, which `==` equates on Lix only. Each
+  # site carrying it is one a record reaching a witness test passes; the option fold's leaf short cut, the freeform
+  # plane's raw fold and `attrsOfWith`'s root read hand no such record on. The CALLED fold folds the record it is handed, and a called container its elements as they are: the
+  # caller's (ADR-0039 parity-defect rule (2)). Each site tests the record's keep first, inline, so a record that keeps
+  # its fold pays no call; the stamp is told by comparison, as a stamp is a function or absent.
   threadedIn =
     mode: group: type:
-    if mode ? reader && interface.canNest type then threadedAs (evAt mode group) type else type;
+    if
+      !(type ? mergeDefs)
+      || (
+        if type ? mergeDefs.completed then
+          type.mergeDefs == type.mergeDefs.completed.mergeDefs
+        else if (type.__typeSelf or null) != null then
+          (type.__typeSelf null) ? mergeDefs && type.mergeDefs == (type.__typeSelf null).mergeDefs
+        else
+          !(type ? merge.completed)
+          || type.merge.completed ? mergeDefs && type.mergeDefs == type.merge.completed.mergeDefs
+      )
+    then
+      (if mode ? reader && interface.canNest type then threadedAs (evAt mode group) type else type)
+    else
+      (t: if mode ? reader && interface.canNest t then threadedAs (evAt mode group) t else t) (
+        (
+          if type ? mergeDefs.completed then
+            type // { inherit (type.mergeDefs.completed) mergeDefs merge; }
+          else if (type.__typeSelf or null) != null then
+            (
+              if (type.__typeSelf null) ? mergeDefs then
+                type
+                // (
+                  if type ? _checkWitness && type.check == type._checkWitness then
+                    {
+                      inherit (type.__typeSelf null)
+                        mergeDefs
+                        merge
+                        _checkWitness
+                        check
+                        ;
+                    }
+                  else
+                    { inherit (type.__typeSelf null) mergeDefs merge; }
+                )
+              else
+                removeAttrs type [ "mergeDefs" ] // { inherit (type.__typeSelf null) merge; }
+            )
+          else if type.merge.completed ? mergeDefs then
+            type // { inherit (type.merge.completed) mergeDefs merge; }
+          else
+            removeAttrs type [ "mergeDefs" ] // { inherit (type.merge.completed) merge; }
+        )
+      );
 
   # ── THE KEY WALK (den-hoag-n6dh7 item 2; OQ9 (M′); S1 RULED (ii) for class (b), (iii) for (a)) ──
   # Which positions of an option's value are nested trees, each with the ADDRESSES of the
@@ -5912,7 +5969,40 @@ let
             if optDecl ? type && optDecl.type == null then
               throw (declaredTypeRefusal loc null)
             else if (optDecl.type or null) ? verify && !(optDecl.type ? mergeDefs.threaded) then
-              optDecl.type
+              (
+                if
+                  !(optDecl.type ? mergeDefs)
+                  || (
+                    if optDecl.type ? mergeDefs.completed then
+                      optDecl.type.mergeDefs == optDecl.type.mergeDefs.completed.mergeDefs
+                    else if (optDecl.type.__typeSelf or null) != null then
+                      (optDecl.type.__typeSelf null) ? mergeDefs
+                      && optDecl.type.mergeDefs == (optDecl.type.__typeSelf null).mergeDefs
+                    else
+                      !(optDecl.type ? merge.completed)
+                      ||
+                        optDecl.type.merge.completed ? mergeDefs
+                        && optDecl.type.mergeDefs == optDecl.type.merge.completed.mergeDefs
+                  )
+                then
+                  optDecl.type
+                else
+                  (
+                    if optDecl.type ? mergeDefs.completed then
+                      optDecl.type // { inherit (optDecl.type.mergeDefs.completed) mergeDefs merge; }
+                    else if (optDecl.type.__typeSelf or null) != null then
+                      (
+                        if (optDecl.type.__typeSelf null) ? mergeDefs then
+                          optDecl.type // { inherit (optDecl.type.__typeSelf null) mergeDefs merge; }
+                        else
+                          removeAttrs optDecl.type [ "mergeDefs" ] // { inherit (optDecl.type.__typeSelf null) merge; }
+                      )
+                    else if optDecl.type.merge.completed ? mergeDefs then
+                      optDecl.type // { inherit (optDecl.type.merge.completed) mergeDefs merge; }
+                    else
+                      removeAttrs optDecl.type [ "mergeDefs" ] // { inherit (optDecl.type.merge.completed) merge; }
+                  )
+              )
             # a crossed module set, or a container carrying one, is mounted (`interface.crossedRoot`)
             else if
               (optDecl.type or null) ? carries
@@ -5933,8 +6023,106 @@ let
               )
             then
               # a container whose element chain ends at a leaf cannot nest, which its record says by presence
-              if optDecl.type ? carries.element && interface.chainEndsAtLeaf optDecl.type then
-                optDecl.type
+              if optDecl.type ? carries.element && interface.chainEndsAtLeaf optDecl.type == true then
+                (
+                  if
+                    !(optDecl.type ? mergeDefs)
+                    || (
+                      if optDecl.type ? mergeDefs.completed then
+                        optDecl.type.mergeDefs == optDecl.type.mergeDefs.completed.mergeDefs
+                      else if (optDecl.type.__typeSelf or null) != null then
+                        (optDecl.type.__typeSelf null) ? mergeDefs
+                        && optDecl.type.mergeDefs == (optDecl.type.__typeSelf null).mergeDefs
+                      else
+                        !(optDecl.type ? merge.completed)
+                        ||
+                          optDecl.type.merge.completed ? mergeDefs
+                          && optDecl.type.mergeDefs == optDecl.type.merge.completed.mergeDefs
+                    )
+                  then
+                    optDecl.type
+                  else
+                    (
+                      if optDecl.type ? mergeDefs.completed then
+                        optDecl.type // { inherit (optDecl.type.mergeDefs.completed) mergeDefs merge; }
+                      else if (optDecl.type.__typeSelf or null) != null then
+                        (
+                          if (optDecl.type.__typeSelf null) ? mergeDefs then
+                            optDecl.type
+                            // (
+                              if optDecl.type ? _checkWitness && optDecl.type.check == optDecl.type._checkWitness then
+                                {
+                                  inherit (optDecl.type.__typeSelf null)
+                                    mergeDefs
+                                    merge
+                                    _checkWitness
+                                    check
+                                    ;
+                                }
+                              else
+                                { inherit (optDecl.type.__typeSelf null) mergeDefs merge; }
+                            )
+                          else
+                            removeAttrs optDecl.type [ "mergeDefs" ] // { inherit (optDecl.type.__typeSelf null) merge; }
+                        )
+                      else if optDecl.type.merge.completed ? mergeDefs then
+                        optDecl.type // { inherit (optDecl.type.merge.completed) mergeDefs merge; }
+                      else
+                        removeAttrs optDecl.type [ "mergeDefs" ] // { inherit (optDecl.type.merge.completed) merge; }
+                    )
+                )
+              # a leaf chain holding a restated element (`chainEndsAtLeaf`'s `null`) folds on the engine's threaded twin,
+              # where each element is a declared record
+              else if
+                mode ? reader && optDecl.type ? carries.element && interface.chainEndsAtLeaf optDecl.type == null
+              then
+                threadedAs (evAt mode (builtins.toJSON (drop (length mode.prefix) loc))) (
+                  if
+                    !(optDecl.type ? mergeDefs)
+                    || (
+                      if optDecl.type ? mergeDefs.completed then
+                        optDecl.type.mergeDefs == optDecl.type.mergeDefs.completed.mergeDefs
+                      else if (optDecl.type.__typeSelf or null) != null then
+                        (optDecl.type.__typeSelf null) ? mergeDefs
+                        && optDecl.type.mergeDefs == (optDecl.type.__typeSelf null).mergeDefs
+                      else
+                        !(optDecl.type ? merge.completed)
+                        ||
+                          optDecl.type.merge.completed ? mergeDefs
+                          && optDecl.type.mergeDefs == optDecl.type.merge.completed.mergeDefs
+                    )
+                  then
+                    optDecl.type
+                  else
+                    (
+                      if optDecl.type ? mergeDefs.completed then
+                        optDecl.type // { inherit (optDecl.type.mergeDefs.completed) mergeDefs merge; }
+                      else if (optDecl.type.__typeSelf or null) != null then
+                        (
+                          if (optDecl.type.__typeSelf null) ? mergeDefs then
+                            optDecl.type
+                            // (
+                              if optDecl.type ? _checkWitness && optDecl.type.check == optDecl.type._checkWitness then
+                                {
+                                  inherit (optDecl.type.__typeSelf null)
+                                    mergeDefs
+                                    merge
+                                    _checkWitness
+                                    check
+                                    ;
+                                }
+                              else
+                                { inherit (optDecl.type.__typeSelf null) mergeDefs merge; }
+                            )
+                          else
+                            removeAttrs optDecl.type [ "mergeDefs" ] // { inherit (optDecl.type.__typeSelf null) merge; }
+                        )
+                      else if optDecl.type.merge.completed ? mergeDefs then
+                        optDecl.type // { inherit (optDecl.type.merge.completed) mergeDefs merge; }
+                      else
+                        removeAttrs optDecl.type [ "mergeDefs" ] // { inherit (optDecl.type.merge.completed) merge; }
+                    )
+                )
               else
                 threadedIn mode (builtins.toJSON (drop (length mode.prefix) loc)) optDecl.type
             else
@@ -8396,13 +8584,106 @@ let
               } ${interface.typeDefect freeform}"
             else
               rawFold (
-                if interface.canNest freeform then
-                  threadedAs (evAt {
-                    reader = self;
-                    inherit result;
-                  } "freeform") (interface.homedAt "evalModuleTree" prefix freeform)
+                if
+                  interface.canNest freeform
+                  || freeform ? carries.element && interface.chainEndsAtLeaf freeform == null
+                then
+                  threadedAs
+                    (evAt {
+                      reader = self;
+                      inherit result;
+                    } "freeform")
+                    (
+                      if
+                        !(freeform ? mergeDefs)
+                        || (
+                          if freeform ? mergeDefs.completed then
+                            freeform.mergeDefs == freeform.mergeDefs.completed.mergeDefs
+                          else if (freeform.__typeSelf or null) != null then
+                            (freeform.__typeSelf null) ? mergeDefs && freeform.mergeDefs == (freeform.__typeSelf null).mergeDefs
+                          else
+                            !(freeform ? merge.completed)
+                            || freeform.merge.completed ? mergeDefs && freeform.mergeDefs == freeform.merge.completed.mergeDefs
+                        )
+                      then
+                        interface.homedAt "evalModuleTree" prefix freeform
+                      else
+                        (
+                          let
+                            freeformType = interface.homedAt "evalModuleTree" prefix freeform;
+                          in
+                          if freeformType ? mergeDefs.completed then
+                            freeformType
+                            // {
+                              inherit (freeformType.mergeDefs.completed) mergeDefs merge;
+                            }
+                          else if (freeformType.__typeSelf or null) != null then
+                            (
+                              if (freeformType.__typeSelf null) ? mergeDefs then
+                                freeformType
+                                // (
+                                  if freeformType ? _checkWitness && freeformType.check == freeformType._checkWitness then
+                                    {
+                                      inherit (freeformType.__typeSelf null)
+                                        mergeDefs
+                                        merge
+                                        _checkWitness
+                                        check
+                                        ;
+                                    }
+                                  else
+                                    { inherit (freeformType.__typeSelf null) mergeDefs merge; }
+                                )
+                              else
+                                removeAttrs freeformType [ "mergeDefs" ]
+                                // {
+                                  inherit (freeformType.__typeSelf null) merge;
+                                }
+                            )
+                          else if freeformType.merge.completed ? mergeDefs then
+                            freeformType
+                            // {
+                              inherit (freeformType.merge.completed) mergeDefs merge;
+                            }
+                          else
+                            removeAttrs freeformType [ "mergeDefs" ]
+                            // {
+                              inherit (freeformType.merge.completed) merge;
+                            }
+                        )
+                    )
                 else
-                  freeform
+                  (
+                    if
+                      !(freeform ? mergeDefs)
+                      || (
+                        if freeform ? mergeDefs.completed then
+                          freeform.mergeDefs == freeform.mergeDefs.completed.mergeDefs
+                        else if (freeform.__typeSelf or null) != null then
+                          (freeform.__typeSelf null) ? mergeDefs && freeform.mergeDefs == (freeform.__typeSelf null).mergeDefs
+                        else
+                          !(freeform ? merge.completed)
+                          || freeform.merge.completed ? mergeDefs && freeform.mergeDefs == freeform.merge.completed.mergeDefs
+                      )
+                    then
+                      freeform
+                    else
+                      (
+                        if freeform ? mergeDefs.completed then
+                          freeform // { inherit (freeform.mergeDefs.completed) mergeDefs merge; }
+                        else if (freeform.__typeSelf or null) != null then
+                          (
+                            if (freeform.__typeSelf null) ? mergeDefs then
+                              freeform // { inherit (freeform.__typeSelf null) mergeDefs merge; }
+                            else
+                              removeAttrs freeform [ "mergeDefs" ] // { inherit (freeform.__typeSelf null) merge; }
+                          )
+                        else if freeform.merge.completed ? mergeDefs then
+                          freeform // { inherit (freeform.merge.completed) mergeDefs merge; }
+                        else
+                          removeAttrs freeform [ "mergeDefs" ] // { inherit (freeform.merge.completed) merge; }
+                      )
+                  )
               ) prefix (coalesceUnmatched false (length topDefs) realized.unmatched);
           # Warm: reuse prev's whole freeform layer (byte-identical when `reuseFreeform`), skipping the
           # freeform fold's re-run; else the cold layer. The cold thunk stays unforced under reuse.
