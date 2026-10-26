@@ -1571,6 +1571,13 @@ or through `types.mkType`), which is served as its fold serves; and a copy that 
 import's checked fold (`mkOptionType { check = …; } // { inherit (other) mergeDefs; }`), because
 the import's fold carries no witness and is trusted by its presence.
 
+A nesting record's fold is its own only while it is the fold the record was completed with. A `//`
+copy of a `submodule`, or of an evaluation's own `type`, that rewrites `mergeDefs.threaded` or
+replaces the fold whole is refused by the record's own `check` per definition, at the top and as a
+container's element (`` gen-merge: a definition for option `x' is not of type `submodule', in `a.nix' ``),
+and a door does not tie such a copy's fold to it (`ci/tests-error.nix` `caller-admits`). Inside the
+record's domain the copy's own fold still runs.
+
 **A foreign type's `check` is applied to every definition before its fold**, as nixpkgs'
 `mergeDefinitions` does (`checkedAndMerged`). A type whose domain is stated in the foreign protocol —
 `lib.types.str`, a `check` given to `mkOptionType`, a leaf vocabulary injected as `types`, or a gen
