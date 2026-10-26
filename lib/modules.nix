@@ -3755,7 +3755,8 @@ let
           )
         # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
         # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
-        # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+        # this record's own `admits` and fold (an import's checked fold is one exactly when the door that completes
+        # the import has named it, `readsMintedNode`, den-hoag-mvevv), and not a check
         # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
         # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
         # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
@@ -3764,7 +3765,6 @@ let
         else if
           type != null
           && type ? admits
-          && !(type ? mergeDefs.unchecked)
           && !(
             type ? _checkWitness
             && (
@@ -3896,7 +3896,8 @@ let
       )
     # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
     # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
-    # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+    # this record's own `admits` and fold (an import's checked fold is one exactly when the door that completes
+    # the import has named it, `readsMintedNode`, den-hoag-mvevv), and not a check
     # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
     # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
     # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
@@ -3905,7 +3906,6 @@ let
     else if
       type != null
       && type ? admits
-      && !(type ? mergeDefs.unchecked)
       && !(
         type ? _checkWitness
         && (
@@ -4136,7 +4136,8 @@ let
           )
         # A record's `admits` is read here where the fold `ownFold` ran carries no witness of a guard of it: not a
         # fold completed under this record's witness (`mergeDefs.completed`, den-hoag-u5jwx) whose completion holds
-        # this record's own `admits` and fold, not the import's checked fold (`unchecked` beside it), and not a check
+        # this record's own `admits` and fold (an import's checked fold is one exactly when the door that completes
+        # the import has named it, `readsMintedNode`, den-hoag-mvevv), and not a check
         # a wrapper rewrote (`importedFold` checks that one per definition) (den-hoag-gxybe). A `//` copy restating
         # `admits`, or rewriting the fold record it took, keeps a witness of a fold that never closed over what it
         # states, so both slots are compared (den-hoag-2632d). `attrs`, `deferredModule` and `optionType` guard
@@ -4145,7 +4146,6 @@ let
         else if
           type != null
           && type ? admits
-          && !(type ? mergeDefs.unchecked)
           && !(
             type ? _checkWitness
             && (
@@ -4919,7 +4919,18 @@ let
   # attribute presence only, because every type built pays it.
   readsMintedNode =
     self: t:
-    if !(isAttrs t) || !(t ? mergeDefs.threaded) then
+    # AN IMPORT'S CHECKED FOLD IS TIED HERE, ONCE, to the record this door completes over it: the import door builds
+    # it over that record's check and leaves its completion open (`completed = null`, interface.nix's import arm),
+    # and only that open slot is filled, so a fold carried from another record by `//` (its completion named, or
+    # removed) is never certified as this one's (den-hoag-mvevv)
+    if t ? mergeDefs.unchecked && (t.mergeDefs.completed or false) == null then
+      t
+      // {
+        mergeDefs = t.mergeDefs // {
+          completed = self;
+        };
+      }
+    else if !(isAttrs t) || !(t ? mergeDefs.threaded) then
       t
     # A NESTING FOLD IS TIED ONCE, by the door that completes its constructor's record (den-hoag-2632d): a
     # submodule's fold closes over the `admits` its record states, so it carries the record it was completed

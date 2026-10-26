@@ -12998,6 +12998,88 @@ in
               nestCopies.threaded nesting.evaluation-type
             )) { a = 1; };
           }) fnDoors;
+        # den-hoag-mvevv: an import's checked fold is the record's own only while the door that completes the import
+        # names it. A `//` copy taking ANOTHER import's fold, as that import completed it or rebuilt without its
+        # completion, is refused outside by its own check, raw and through each door, and as a container's element;
+        # so is a whole-replaced nesting fold stating `unchecked`. Each serves its in-domain twin.
+        evenImport = gm.mkOptionType {
+          name = "evenT";
+          check = even;
+        };
+        anyImport = gm.mkOptionType {
+          name = "anyT";
+          check = _: true;
+        };
+        npIntFold = (gm.mkOptionType nixpkgsLib.types.int).mergeDefs;
+        importCopies = {
+          swap-import = evenImport // {
+            mergeDefs = anyImport.mergeDefs;
+          };
+          swap-import-np = cases.defineType // {
+            mergeDefs = npIntFold;
+          };
+          rebuilt-swap-import = evenImport // {
+            mergeDefs = builtins.removeAttrs anyImport.mergeDefs [ "completed" ];
+          };
+          rebuilt-swap-import-np = cases.defineType // {
+            mergeDefs = builtins.removeAttrs npIntFold [ "completed" ];
+          };
+        };
+        importDoors = fnDoors // {
+          mkOptionType = gm.mkOptionType;
+          types-mkOptionType = t.mkOptionType;
+        };
+        uncheckedFoldCopy = nesting.submodule // {
+          mergeDefs = {
+            __functor = _: lastVal;
+            threaded = _: lastVal;
+            unchecked = lastVal;
+          };
+        };
+        notEvenT = ty: v: {
+          expr = builtins.deepSeq (read ty v) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of type `evenT', in `a\\.nix'$";
+          };
+        };
+        # where no fold the door builds judges the copy's check, the engine reads its `admits`, and refuses as raw
+        byAdmits = [
+          "rebuilt-swap-import-defineType"
+          "rebuilt-swap-import-np-defineType"
+          "rebuilt-swap-import-np-mkOptionType"
+          "rebuilt-swap-import-np-types-mkOptionType"
+        ];
+        importCells =
+          nixpkgsLib.concatMapAttrs (
+            cn: copy:
+            nixpkgsLib.concatMapAttrs (dn: door: {
+              "test-${cn}-copy-${dn}-refuses-outside" =
+                if dn == "raw" || builtins.elem "${cn}-${dn}" byAdmits then
+                  refused (door copy) 3 "evenT"
+                else
+                  notEvenT (door copy) 3;
+              "test-${cn}-copy-${dn}-serves-inside" = served (door copy) 4;
+            }) importDoors
+          ) importCopies
+          // {
+            test-swap-import-copy-as-listOf-element-refuses-outside =
+              refusedElement (t.listOf importCopies.swap-import)
+                [
+                  3
+                ];
+            test-swap-import-copy-as-attrsOf-element-refuses-outside =
+              refusedElement (t.attrsOf importCopies.swap-import)
+                {
+                  k = 3;
+                };
+            test-submodule-unchecked-fold-copy-defineType-refuses-outside = notSubmodule (t.defineType uncheckedFoldCopy) "s";
+            test-submodule-unchecked-fold-copy-defineType-serves-inside =
+              served (t.defineType uncheckedFoldCopy)
+                {
+                  a = 1;
+                };
+          };
       in
       nixpkgsLib.mapAttrs' (
         k: ty: nixpkgsLib.nameValuePair "test-${k}-refuses-outside" (refused ty 3 "evenT")
@@ -13011,7 +13093,8 @@ in
         test-attrs-fold-function-copy-serves-inside = served (fnCopy t.attrs) { a = 1; };
       }
       // fnCells
-      // nestCells;
+      // nestCells
+      // importCells;
 
     flake.testsError.fold-rewrite-check =
       let
