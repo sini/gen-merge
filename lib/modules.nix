@@ -1311,9 +1311,32 @@ let
             else
               merged // { overridden = chain; };
         in
+        # nixpkgs' `mergeOptionDecls` guard (`bothHave`), ahead of the type decision as there: two
+        # declarations both stating `default`, `example`, `description` or `apply` are refused, by
+        # PRESENCE. `av` is the accumulation, so the pair need not be adjacent.
+        if
+          av ? default && bv ? default
+          || av ? example && bv ? example
+          || av ? description && bv ? description
+          || av ? apply && bv ? apply
+        then
+          let
+            k = head (
+              filter (k: av ? ${k} && bv ? ${k}) [
+                "default"
+                "example"
+                "description"
+                "apply"
+              ]
+            );
+            earlier = filter (s: s.idx < modIndex && s.decl ? ${k}) sites;
+          in
+          throw "gen-merge: The option `${showOption lk}' in `${
+            if earlier == [ ] then "<unknown-file>" else (head earlier).file
+          }' is already declared in `${(prelude.elemAt sites j).file}': both declarations state `${k}'"
         # A step whose two operands both carry a `type` shadows `type`, so it records a shadow by
         # construction: its record is the union, the chain and the type, built in one `//`.
-        if !((av ? type) && (bv ? type)) then
+        else if !((av ? type) && (bv ? type)) then
           kept
         # the LAST typed declaration decides the whole list; an earlier step's prefix is provisional
         else if modIndex >= lastTypedIdx then
