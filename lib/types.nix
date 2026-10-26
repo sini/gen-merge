@@ -927,7 +927,38 @@ let
   # accessor `ev` goes with it, its position extended by the element's `step`, so the tree a nesting
   # element reads is the one at that position. It is the called fold's call with `ev` added.
   threadElement =
-    ev: e: mergeDefsThreaded (ev // { position = ev.position ++ e.step; }) e.loc e.type e.defs;
+    ev: e:
+    mergeDefsThreaded (ev // { position = ev.position ++ e.step; }) e.loc (
+      if
+        !(e.type ? mergeDefs)
+        || (
+          if e.type ? mergeDefs.completed then
+            e.type.mergeDefs == e.type.mergeDefs.completed.mergeDefs
+          else if (e.type.__typeSelf or null) != null then
+            (e.type.__typeSelf null) ? mergeDefs && e.type.mergeDefs == (e.type.__typeSelf null).mergeDefs
+          else
+            !(e.type ? merge.completed)
+            || e.type.merge.completed ? mergeDefs && e.type.mergeDefs == e.type.merge.completed.mergeDefs
+        )
+      then
+        e.type
+      else
+        (
+          if e.type ? mergeDefs.completed then
+            e.type // { inherit (e.type.mergeDefs.completed) mergeDefs merge; }
+          else if (e.type.__typeSelf or null) != null then
+            (
+              if (e.type.__typeSelf null) ? mergeDefs then
+                e.type // { inherit (e.type.__typeSelf null) mergeDefs merge; }
+              else
+                removeAttrs e.type [ "mergeDefs" ] // { inherit (e.type.__typeSelf null) merge; }
+            )
+          else if e.type.merge.completed ? mergeDefs then
+            e.type // { inherit (e.type.merge.completed) mergeDefs merge; }
+          else
+            removeAttrs e.type [ "mergeDefs" ] // { inherit (e.type.merge.completed) merge; }
+        )
+    ) e.defs;
   # An EXACT container's element (`attrsOf`, `listOf`): marked with its own position, so a container
   # there that the key walk made a container node is read off it (`mergeDefsThreaded`). The mark
   # names one position, so a container below that adds a step clears it.
@@ -936,13 +967,47 @@ let
     let
       position = ev.position ++ e.step;
     in
-    mergeDefsThreaded (
-      ev
-      // {
-        inherit position;
-        exactAt = position;
-      }
-    ) e.loc e.type e.defs;
+    mergeDefsThreaded
+      (
+        ev
+        // {
+          inherit position;
+          exactAt = position;
+        }
+      )
+      e.loc
+      (
+        if
+          !(e.type ? mergeDefs)
+          || (
+            if e.type ? mergeDefs.completed then
+              e.type.mergeDefs == e.type.mergeDefs.completed.mergeDefs
+            else if (e.type.__typeSelf or null) != null then
+              (e.type.__typeSelf null) ? mergeDefs && e.type.mergeDefs == (e.type.__typeSelf null).mergeDefs
+            else
+              !(e.type ? merge.completed)
+              || e.type.merge.completed ? mergeDefs && e.type.mergeDefs == e.type.merge.completed.mergeDefs
+          )
+        then
+          e.type
+        else
+          (
+            if e.type ? mergeDefs.completed then
+              e.type // { inherit (e.type.mergeDefs.completed) mergeDefs merge; }
+            else if (e.type.__typeSelf or null) != null then
+              (
+                if (e.type.__typeSelf null) ? mergeDefs then
+                  e.type // { inherit (e.type.__typeSelf null) mergeDefs merge; }
+                else
+                  removeAttrs e.type [ "mergeDefs" ] // { inherit (e.type.__typeSelf null) merge; }
+              )
+            else if e.type.merge.completed ? mergeDefs then
+              e.type // { inherit (e.type.merge.completed) mergeDefs merge; }
+            else
+              removeAttrs e.type [ "mergeDefs" ] // { inherit (e.type.merge.completed) merge; }
+          )
+      )
+      e.defs;
   # The thread an exact container's elements take, decided ONCE, when the type is built: the mark
   # only where the element may fold as such a node (`interface.mayFoldNested`), so any other
   # element's fold allocates nothing for it.
@@ -1555,7 +1620,41 @@ let
               listToAttrs (
                 map (r: {
                   name = head r.key;
-                  value = element.mergeDefs.threaded (ev // { position = r.key; }) r.loc r.defs;
+                  value =
+                    (
+                      if
+                        !(element ? mergeDefs)
+                        || (
+                          if element ? mergeDefs.completed then
+                            element.mergeDefs == element.mergeDefs.completed.mergeDefs
+                          else if (element.__typeSelf or null) != null then
+                            (element.__typeSelf null) ? mergeDefs && element.mergeDefs == (element.__typeSelf null).mergeDefs
+                          else
+                            !(element ? merge.completed)
+                            || element.merge.completed ? mergeDefs && element.mergeDefs == element.merge.completed.mergeDefs
+                        )
+                      then
+                        element
+                      else
+                        (
+                          if element ? mergeDefs.completed then
+                            element // { inherit (element.mergeDefs.completed) mergeDefs merge; }
+                          else if (element.__typeSelf or null) != null then
+                            (
+                              if (element.__typeSelf null) ? mergeDefs then
+                                element // { inherit (element.__typeSelf null) mergeDefs merge; }
+                              else
+                                removeAttrs element [ "mergeDefs" ] // { inherit (element.__typeSelf null) merge; }
+                            )
+                          else if element.merge.completed ? mergeDefs then
+                            element // { inherit (element.merge.completed) mergeDefs merge; }
+                          else
+                            removeAttrs element [ "mergeDefs" ] // { inherit (element.merge.completed) merge; }
+                        )
+                    ).mergeDefs.threaded
+                      (ev // { position = r.key; })
+                      r.loc
+                      r.defs;
                 }) (builtins.attrValues (ev.child { positions = true; }))
               )
           )
@@ -1682,37 +1781,69 @@ let
     element:
     let
       base = lazyAttrsOf element;
-    in
-    base
-    // {
-      mergeDefs = base.mergeDefs // {
-        __functor =
-          _:
-          refusingOutside "partialAttrsOf" isAttrs (
-            loc: defs:
-            builtins.mapAttrs (
-              k:
-              mergeDefsPartial (loc ++ [ k ]) (
-                if interface.owesThroughForeign element then
-                  interface.homedAt "evalModuleTree" (loc ++ [ k ]) element
-                else
-                  element
+      # the record this constructor completes, which its fold names (`completed`): the partial fold is its own
+      self = base // {
+        mergeDefs = base.mergeDefs // {
+          completed = self;
+          __functor =
+            _:
+            refusingOutside "partialAttrsOf" isAttrs (
+              loc: defs:
+              builtins.mapAttrs (
+                k:
+                mergeDefsPartial (loc ++ [ k ]) (
+                  if interface.owesThroughForeign element then
+                    interface.homedAt "evalModuleTree" (loc ++ [ k ]) element
+                  else
+                    element
+                )
+              ) (defsByKey defs)
+            );
+          threaded =
+            ev:
+            refusingOutside "partialAttrsOf" isAttrs (
+              loc: defs:
+              listToAttrs (
+                map (e: {
+                  name = head e.step;
+                  value = mergeDefsThreadedPartial (ev // { position = ev.position ++ e.step; }) e.loc (
+                    if
+                      !(e.type ? mergeDefs)
+                      || (
+                        if e.type ? mergeDefs.completed then
+                          e.type.mergeDefs == e.type.mergeDefs.completed.mergeDefs
+                        else if (e.type.__typeSelf or null) != null then
+                          (e.type.__typeSelf null) ? mergeDefs && e.type.mergeDefs == (e.type.__typeSelf null).mergeDefs
+                        else
+                          !(e.type ? merge.completed)
+                          || e.type.merge.completed ? mergeDefs && e.type.mergeDefs == e.type.merge.completed.mergeDefs
+                      )
+                    then
+                      e.type
+                    else
+                      (
+                        if e.type ? mergeDefs.completed then
+                          e.type // { inherit (e.type.mergeDefs.completed) mergeDefs merge; }
+                        else if (e.type.__typeSelf or null) != null then
+                          (
+                            if (e.type.__typeSelf null) ? mergeDefs then
+                              e.type // { inherit (e.type.__typeSelf null) mergeDefs merge; }
+                            else
+                              removeAttrs e.type [ "mergeDefs" ] // { inherit (e.type.__typeSelf null) merge; }
+                          )
+                        else if e.type.merge.completed ? mergeDefs then
+                          e.type // { inherit (e.type.merge.completed) mergeDefs merge; }
+                        else
+                          removeAttrs e.type [ "mergeDefs" ] // { inherit (e.type.merge.completed) merge; }
+                      )
+                  ) e.defs;
+                }) (base.split loc defs)
               )
-            ) (defsByKey defs)
-          );
-        threaded =
-          ev:
-          refusingOutside "partialAttrsOf" isAttrs (
-            loc: defs:
-            listToAttrs (
-              map (e: {
-                name = head e.step;
-                value = mergeDefsThreadedPartial (ev // { position = ev.position ++ e.step; }) e.loc e.type e.defs;
-              }) (base.split loc defs)
-            )
-          );
+            );
+        };
       };
-    };
+    in
+    self;
 
   # attrs — the NULLARY container: an attribute set whose KEYS are its whole content, with no element
   # type to descend into. The injected leaf library answers "is this value an attribute set", which is

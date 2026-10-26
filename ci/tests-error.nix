@@ -12827,13 +12827,6 @@ in
               };
             };
         };
-        notSubmodule = ty: v: {
-          expr = builtins.deepSeq (read ty v) null;
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: a definition for option `x' is not of type `submodule', in `a\\.nix'$";
-          };
-        };
         refusedElement = ty: v: {
           expr = (builtins.tryEval (builtins.deepSeq (read ty v) null)).success;
           expected = false;
@@ -12842,8 +12835,10 @@ in
           nixpkgsLib.concatMapAttrs (
             cn: copy:
             nixpkgsLib.concatMapAttrs (dn: door: {
-              "test-submodule-${cn}-copy-${dn}-refuses-outside" =
-                notSubmodule (door (copy nesting.submodule)) "s";
+              # the copy's fold is its completion's (den-hoag-d2myd), so it refuses as the intact record does
+              "test-submodule-${cn}-copy-${dn}-refuses-outside" = refused (door (
+                copy nesting.submodule
+              )) "s" "submodule";
               "test-submodule-${cn}-copy-${dn}-serves-inside" = served (door (copy nesting.submodule)) { a = 1; };
             }) fnDoors
             // {
@@ -12926,8 +12921,10 @@ in
           nixpkgsLib.concatMapAttrs (
             cn: copy:
             nixpkgsLib.concatMapAttrs (dn: door: {
+              # a raw copy whose fold names no completion folds by its stamp's (den-hoag-d2myd), and refuses as the
+              # doored import does
               "test-${cn}-copy-${dn}-refuses-outside" =
-                if dn == "raw" || builtins.elem "${cn}-${dn}" byAdmits then
+                if dn == "raw" && cn != "rebuilt-swap-import" || builtins.elem "${cn}-${dn}" byAdmits then
                   refused (door copy) 3 "evenT"
                 else
                   notEvenT (door copy) 3;
@@ -12945,7 +12942,10 @@ in
                 {
                   k = 3;
                 };
-            test-submodule-unchecked-fold-copy-defineType-refuses-outside = notSubmodule (t.defineType uncheckedFoldCopy) "s";
+            # the copy's fold is its completion's (den-hoag-d2myd), so it refuses as the intact record does
+            test-submodule-unchecked-fold-copy-defineType-refuses-outside =
+              refused (t.defineType uncheckedFoldCopy) "s"
+                "submodule";
             test-submodule-unchecked-fold-copy-defineType-serves-inside =
               served (t.defineType uncheckedFoldCopy)
                 {
@@ -13038,9 +13038,14 @@ in
           t.attrsOf sub
         )) { j.a = 1; }) "x" "list of \\(submodule\\)";
         # A container's fold stating no witness (a hand-written fold, gen `attrs`' bare fold) owes the check too.
-        test-an-attrs-with-a-hand-written-fold-is-refused-by-its-own-check = refused (gen (
-          t.attrsOf sub // { mergeDefs = _loc: defs: map (d: d.value) defs; }
-        ) [ 1 ]) "x" "attribute set of \\(submodule\\)";
+        # a fold restated with `merge` kept folds by its completion (den-hoag-d2myd), which refuses as the intact record does
+        test-an-attrs-with-a-hand-written-fold-is-refused-by-its-own-check = {
+          expr = gen (t.attrsOf sub // { mergeDefs = _loc: defs: map (d: d.value) defs; }) [ 1 ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `x' has definitions `attrsOf' cannot consume \\(<unknown-file>\\)$";
+          };
+        };
         test-an-attrs-with-a-hand-written-threaded-fold-through-define-type-is-refused-by-its-own-check =
           refused
             (gen (t.defineType (
@@ -13097,7 +13102,106 @@ in
             msg = "^gen-merge: a definition for option `x' is not of the expected type: needs a and b$";
           };
         };
-      };
+      }
+      # A `//` copy restating a record's fold and keeping its `merge` folds by the fold of the record it was completed
+      # with (den-hoag-d2myd, ADR-0039 serve half), so it refuses a definition that record's check rejects, in that
+      # record's own words, as nixpkgs' `evalModules` refuses the same copy. gen-merge served the restated fold's value
+      # (`{ a = "x"; }`, `[ "x" ]`, the last definition). The values these copies serve are
+      # `ci/tests/declared-fold-completion.nix`'s.
+      // (
+        let
+          lastVal = _loc: defs: (nixpkgsLib.last defs).value;
+          threadedRewrite =
+            ty:
+            ty
+            // {
+              mergeDefs = ty.mergeDefs // {
+                threaded = _: lastVal;
+              };
+            };
+          replaced =
+            ty:
+            ty
+            // {
+              mergeDefs = {
+                __functor = _: lastVal;
+                threaded = _: lastVal;
+              };
+            };
+          evt =
+            (gm.evalModuleTree { } [
+              {
+                options.a = gm.mkOption {
+                  type = t.int;
+                  default = 0;
+                };
+              }
+            ]).type;
+          intReplaced = t.int // {
+            mergeDefs = lastVal;
+          };
+          genDefs =
+            ty: vs:
+            force
+              (gm.evalModuleTree { } ([ { options.x = gm.mkOption { type = ty; }; } ] ++ map (v: { x = v; }) vs))
+              .config.x;
+          notInt = expr: at: {
+            inherit expr;
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: a definition for option `${at}' is not of the expected type: expected type 'int' but value \"x\" is of type 'string'$";
+            };
+          };
+          conflicting = expr: {
+            inherit expr;
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: the option `x' has conflicting definitions:\n- In `<unknown-file>': 2\n- In `<unknown-file>': 1$";
+            };
+          };
+          entry = "\"\\[definition 1-entry 1\\]\"";
+        in
+        {
+          test-a-threaded-rewritten-submodule-is-refused-by-its-completions-check = notInt (gen
+            (threadedRewrite sub)
+            { a = "x"; }
+          ) "x[.]a";
+          test-a-replaced-submodule-is-refused-by-its-completions-check = notInt (gen (replaced sub) {
+            a = "x";
+          }) "x[.]a";
+          test-a-replaced-submodule-through-define-type-is-refused-by-its-completions-check = notInt (gen
+            (t.defineType (replaced sub))
+            { a = "x"; }
+          ) "x[.]a";
+          test-an-evaluations-threaded-rewritten-type-as-an-attrs-element-is-refused-by-its-completions-check =
+            notInt (gen (t.attrsOf (threadedRewrite evt)) { k.a = "x"; })
+              "x[.]k[.]a";
+          test-a-replaced-list-is-refused-by-its-completions-check = notInt (gen (replaced (t.listOf t.int)) [
+            "x"
+          ]) "x[.]${entry}";
+          test-a-replaced-list-through-define-type-as-a-list-element-is-refused-by-its-completions-check =
+            notInt (gen (t.listOf (t.defineType (replaced (t.listOf t.int)))) [ [ "x" ] ])
+              "x[.]${entry}[.]${entry}";
+          test-a-replaced-attrs-as-an-attrs-element-is-refused-by-its-completions-check = notInt (gen
+            (t.attrsOf (replaced (t.attrsOf t.int)))
+            { k.a = "x"; }
+          ) "x[.]k[.]a";
+          test-a-leaf-given-a-fold-refuses-two-definitions-as-the-leaf-does = conflicting (
+            genDefs intReplaced [
+              1
+              2
+            ]
+          );
+          test-a-leaf-given-a-fold-through-mk-option-type-refuses-two-definitions-as-the-leaf-does =
+            conflicting
+              (
+                genDefs (gm.mkOptionType intReplaced) [
+                  1
+                  2
+                ]
+              );
+        }
+      );
     # den-hoag-56u5o: a `//` copy of a completed gen container that rewrites its `admits` states a domain its fold
     # never closed over, and the published doors hand it on as the check rewrite it states (`check && admits`, as
     # nixpkgs' `addCheck` conjoins). A value inside the container's own domain and outside the new `admits` is refused

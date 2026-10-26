@@ -279,7 +279,7 @@ let
       (gm.evalModuleTree { } [
         { options.p = gm.mkOption { type = T; }; }
         { p.a = 1; }
-      ]).config.p.p;
+      ]).config.p;
   };
   forged = f: {
     __functor = _: f;
@@ -533,24 +533,38 @@ in
       };
     };
 
-    # A whole `mergeDefs` replacement on a routed check-bearing record reaches the freeformType site
-    # as it reaches an option site; the gen-native type is the control.
-    test-replaced-mergeDefs-governs-at-the-freeformType-site = {
-      expr = {
-        routed = replacedAt (replaced (gm.mkOptionType (t.attrsOf t.int)));
-        native = replacedAt (replaced (gt.attrsOf gt.int));
-      };
-      expected = {
-        routed = {
-          freeform = "REPLACED";
-          option = "REPLACED";
+    # A whole `mergeDefs` replacement on a routed check-bearing record, its `merge` kept, folds at the freeformType site
+    # and at an option site by the record's completion, which is nixpkgs' value over the same record (ADR-0039 serve
+    # half, den-hoag-d2myd); the gen-native type is the control.
+    test-replaced-mergeDefs-governs-at-the-freeformType-site =
+      let
+        twin = T: {
+          freeform =
+            (nixpkgsLib.evalModules {
+              modules = [
+                { freeformType = T; }
+                { p = 1; }
+              ];
+            }).config.p;
+          option =
+            (nixpkgsLib.evalModules {
+              modules = [
+                { options.p = nixpkgsLib.mkOption { type = T; }; }
+                { p.a = 1; }
+              ];
+            }).config.p;
         };
-        native = {
-          freeform = "REPLACED";
-          option = "REPLACED";
+      in
+      {
+        expr = {
+          routed = replacedAt (replaced (gm.mkOptionType (t.attrsOf t.int)));
+          native = replacedAt (replaced (gt.attrsOf gt.int));
+        };
+        expected = {
+          routed = twin (replaced (gm.mkOptionType (t.attrsOf t.int)));
+          native = twin (replaced (gt.attrsOf gt.int));
         };
       };
-    };
 
     # The v2 protocol is read whole, as nixpkgs reads it: its `headError` decides, not the record's
     # `check`. A non-v2 type's override stays honoured, as nixpkgs honours it.
