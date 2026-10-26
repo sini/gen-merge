@@ -1545,13 +1545,13 @@ reader's refusal.
 **A record's `admits` is refused outside wherever the fold the engine runs carries no witness of a
 guard of it.** A record stating `admits` and no `verify` (a caller's, through any door or none, or a
 `//` copy taking a fold of its own) is refused with the text above, before its fold's value is read,
-unless the fold it runs carries such a witness. Three folds do:
+unless the fold it runs carries such a witness. Two folds do:
 
 - a fold completed under the record's own `_checkWitness` (`mergeDefs.completed`, the record the fold
   was completed with) whose completion holds the record's own `admits` and fold record, which a
-  container's and a submodule's fold carry, tied where the door completes them, and a library
-  constant's carries, stating the constant;
-- the import's checked fold (`mergeDefs.unchecked` beside it);
+  container's and a submodule's fold carry, tied where the door completes them, a library
+  constant's carries, stating the constant, and an import's checked fold carries, tied by the door
+  that completes the import (the import leaves the slot open, and the door fills only an open slot);
 - the fold of a record whose `check` a wrapper rewrote, which the import checks per definition.
 
 A `//` copy that swaps the fold takes a fold without the witness, so its `admits` is read
@@ -1565,11 +1565,11 @@ a `//` copy that restates `admits`, or rewrites only the fold's function
 its fold no longer closes over what it states, so its `admits` is read. The witness costs a call
 through the fold record (one value per fold of a constant), and on `attrs`, `deferredModule` and
 `optionType` the slot comparison costs more per option than the second `admits` read it replaces.
-Two copies are still served against their `admits`:
+One copy is still served against its `admits`:
 a container's `//` copy that keeps its fold and restates `admits` without passing either door (raw,
-or through `types.mkType`), which is served as its fold serves; and a copy that borrows another
-import's checked fold (`mkOptionType { check = …; } // { inherit (other) mergeDefs; }`), because
-the import's fold carries no witness and is trusted by its presence.
+or through `types.mkType`), which is served as its fold serves. A copy that borrows another import's
+checked fold (`mkOptionType { check = …; } // { inherit (other) mergeDefs; }`) carries that import's
+completion, or none once the fold is rebuilt without it, so its `admits` is read.
 
 A nesting record's fold is its own only while it is the fold the record was completed with. A `//`
 copy of a `submodule`, or of an evaluation's own `type`, that rewrites `mergeDefs.threaded` or

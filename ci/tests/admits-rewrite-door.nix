@@ -145,7 +145,8 @@ in
     # completed, so its `admits` is judged against that record's, and two doored copies share one fold record, which
     # `==` reads without walking the cycle through `completed` (a door re-tying the fold on every copy hands each copy a
     # fresh fold record whose other fields are the constructor's, and a structural `==` of two such copies overflows the
-    # stack, uncatchably)
+    # stack, uncatchably). The import door's own checked fold is completed by the door that completes the import, so an
+    # imported copy's fold names the import as its completion (den-hoag-mvevv)
     test-a-door-keeps-the-completion-a-nesting-fold-already-holds = {
       expr =
         let
@@ -163,8 +164,28 @@ in
       expected = {
         constructor = false;
         doored = false;
-        imported = false;
+        imported = true;
       };
+    };
+    # the import door names every checked fold it builds: the fold's completion is open only between the import arm
+    # and the door's tie (`readsMintedNode`), so no published import carries it open (den-hoag-mvevv)
+    test-a-published-import-names-its-checked-folds-completion = {
+      expr = map (r: r.mergeDefs.completed != null) [
+        (gm.mkOptionType nl.types.int)
+        (gm.mkOptionType {
+          name = "evenT";
+          check = builtins.isInt;
+        })
+        (gt.mkOptionType {
+          name = "evenT";
+          check = builtins.isInt;
+        })
+      ];
+      expected = [
+        true
+        true
+        true
+      ];
     };
     # a self-referential submodule copy narrowing its `admits` is enforced at its own nested position, and the plain
     # one reads as before (a door reading the completion stamp of a nesting record forces what it is still building)
