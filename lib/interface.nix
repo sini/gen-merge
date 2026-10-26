@@ -6639,7 +6639,8 @@ let
           builtins.all oc vs
         else
           builtins.all (v: builtins.all (c: c v) ocs) vs;
-      # A join folding under nixpkgs' v2 protocol keeps it: its own merge (which checks the join) is
+      # A join folding under nixpkgs' v2 protocol keeps it: its own merge (which checks the join where the
+      # join states its check coherent with that merge (`isV2MergeCoherent`); an ad-hoc check is judged here) is
       # asked once and the owed checks are judged over the same definitions, by primops around the checks.
       # A v1 join keeps its own `merge`, which a foreign engine applies after the conjoined `check`.
       v2 = isV2 j && (j.getSubModules or null) == null;
@@ -6667,7 +6668,12 @@ let
                   let
                     r = j.merge.v2 { inherit loc defs; };
                   in
-                  if r.headError != null || owedHold (builtins.catAttrs "value" defs) then
+                  if
+                    r.headError != null
+                    ||
+                      owedHold (builtins.catAttrs "value" defs)
+                      && (j.check.isV2MergeCoherent or false || builtins.all jc (builtins.catAttrs "value" defs))
+                  then
                     r
                   else
                     r
@@ -6940,7 +6946,14 @@ let
       # module set, an `attrTag`'s tags, a `coercedTo`'s final type) passes it; a module-set join is met above,
       # before this branch
       else if
-        meets == "holds" || builtins.catAttrs "holds" once != [ ] || builtins.any uncertifiedLeaf once
+        meets == "holds"
+        || builtins.catAttrs "holds" once != [ ]
+        ||
+          !(m ? typeMergeRel)
+          && builtins.any (
+            o: o ? typeMergeRel && !(o ? retainedRelation) && (o ? carries.element || o ? carries.alternatives)
+          ) once
+        || builtins.any uncertifiedLeaf once
       then
         # The join was taken PAST the witness (it renames an operand: the carrier is not that operand's own
         # constructor), so the carrier's fold is not that operand's. A declaration's admission is its `check` AND
@@ -6955,7 +6968,65 @@ let
           met = meetOf m once;
           kept =
             if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+              # a step taken past the witness holds such an operand whole, by its unchecked fold
               once
+            else if !(m ? typeMergeRel) then
+              let
+                # beside a carrier gen did not construct, an operand owed relativised to its own parameters (the union
+                # law) is held as its own constructor over the role the join carries, which is what that law owes; where the
+                # join states no element or alternatives role it owes its relativised check alone, unless the join's payload
+                # IS its element (a type), which no role meet reads: then it is held whole
+                rebuilt = builtins.concatMap (
+                  o:
+                  if !(o ? __stockCheck) then
+                    [ o ]
+                  else
+                    let
+                      e = carriedAt "element" m;
+                      a = carriedAt "alternatives" m;
+                      x =
+                        if e != null then
+                          rebuiltOverAt "element" e o
+                        else if a != null then
+                          rebuiltOverAt "alternatives" a o
+                        else
+                          null;
+                    in
+                    if x != null then
+                      [ x ]
+                    else if (m.functor.payload or null) ? _type then
+                      [ o ]
+                    else
+                      [ ]
+                );
+              in
+              rebuilt (
+                # an operand is not held where its own fold cannot be read as its admission: it states a module set at
+                # any depth (a module set's join is the union of its declarations, and a held fold would evaluate its
+                # own alone; its checks are carried at depth, `carriedAtDepth`), or an ad-hoc v2 override (its fold
+                # refuses its spelling, `adHocChecked`; its check is owed). Past the walk's fuel the operand is held,
+                # so a wrong answer refuses
+                let
+                  go =
+                    fuel: t:
+                    isAttrs t
+                    && (
+                      (importedSubstructure t).modules != null
+                      || isNesting t
+                      || adHocChecked t
+                      || fuel > 0 && builtins.any (go (fuel - 1)) (declaredWrapped t)
+                    );
+                in
+                filter (
+                  o:
+                  uncertifiedLeaf o
+                  ||
+                    o ? typeMergeRel
+                    && !(o ? retainedRelation)
+                    && (o ? carries.element || o ? carries.alternatives)
+                    && !(go importedTypeWalkFuel o)
+                ) once
+              )
             else
               filter uncertifiedLeaf once;
           walk =

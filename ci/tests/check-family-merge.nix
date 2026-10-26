@@ -40,6 +40,16 @@ let
     else
       "REFUSED";
 
+  # whether the merged option serves the value, forced whole (a refused merge and a rejected value alike refuse)
+  served =
+    tys: val:
+    let
+      res = gm.evalModuleTree { } (
+        map (ty: { options.p = gm.mkOption { type = ty; }; }) tys ++ [ { p = val; } ]
+      );
+    in
+    if (tryEval (deepSeq res.config.p true)).success then "SERVED" else "REFUSED";
+
   # the relation alone, for a pair no value distinguishes
   merged =
     a: b:
@@ -2147,6 +2157,217 @@ in
               # re-completed, it keeps its witnessed check (den-hoag-59gnz C1): a met record read as its join
               recompletedMet = row (sh "k" 1 true) (sh "k" 0 false);
             };
+        };
+      };
+
+    # A V2 JOIN WHOSE `check` IS NOT STATED COHERENT WITH ITS MERGE OWES THAT CHECK (den-hoag-a6690, C1). The
+    # partner is nixpkgs' `listOf int` with an ad-hoc `check` (at most one element): its v2 merge never runs that
+    # check, nixpkgs' `checkV2MergeCoherence` reason. Declared after gen's `listOf`, the partner IS the join, so the
+    # met record's merge also judges the join's own check: a long list is refused in every such sequence.
+    test-an-incoherent-v2-join-owes-its-own-check =
+      let
+        short = v: builtins.isList v && builtins.length v < 2;
+        shortList = t.mkOptionType {
+          name = "listOf";
+          check = short;
+          merge = (t.listOf t.int).merge;
+          functor = {
+            name = "listOf";
+            wrapped = null;
+            payload.elemType = t.int;
+            type = _: shortList;
+            binOp =
+              a: b:
+              let
+                m = a.elemType.typeMerge b.elemType.functor;
+              in
+              if m == null then null else { elemType = m; };
+          };
+          nestedTypes.elemType = t.int;
+        };
+        G = gt.listOf t.int;
+        P = shortList;
+      in
+      {
+        expr = {
+          GP-long = served [ G P ] [ 2 3 ];
+          GPP-long = served [ G P P ] [ 2 3 ];
+          GPPP-long = served [ G P P P ] [ 2 3 ];
+          GP-ok = served [ G P ] [ 2 ];
+          GPP-ok = served [ G P P ] [ 2 ];
+          GPPP-ok = served [ G P P P ] [ 2 ];
+        };
+        expected = {
+          GP-long = "REFUSED";
+          GPP-long = "REFUSED";
+          GPPP-long = "REFUSED";
+          GP-ok = "SERVED";
+          GPP-ok = "SERVED";
+          GPPP-ok = "SERVED";
+        };
+      };
+
+    # A CARRIER GEN DID NOT CONSTRUCT HOLDS A GEN CONTAINER'S FOLD (den-hoag-a6690, C2). A partner stating no gen
+    # relation (`typeMergeRel`) whose fold never judges an element (`shortLegacy`, `legacy`: a plain merge) is the
+    # carrier, so gen's `listOf` / `attrsOf` is held by its own fold beside it and its element check is enforced in
+    # every order. Beyond the grid: a stricter gen element beside a constant-functor carrier (`Gpos`, `adhoc`), and a
+    # wrapper below a widened gen operand beside a parametric carrier that lies about its element (`W`, `Y`), whose
+    # `["a"]` is owed by every reading while `["b"]` and `["c"]` keep the union. A gen container returned through
+    # either door beside `shortLegacy` is held in the orders not ending in the carrier.
+    test-a-foreign-carrier-holds-a-gen-container-s-fold =
+      let
+        short = v: builtins.isList v && builtins.length v < 2;
+        shortA = v: builtins.isAttrs v && builtins.length (builtins.attrNames v) < 2;
+        binOp =
+          a: b:
+          let
+            m = a.elemType.typeMerge b.elemType.functor;
+          in
+          if m == null then null else { elemType = m; };
+        shortLegacy = t.mkOptionType {
+          name = "listOf";
+          check = short;
+          merge = _loc: defs: builtins.concatLists (map (d: d.value) defs);
+          functor = {
+            name = "listOf";
+            wrapped = null;
+            payload.elemType = t.int;
+            type = _: shortLegacy;
+            inherit binOp;
+          };
+          nestedTypes.elemType = t.int;
+        };
+        A = t.attrsOf t.int;
+        legacyA = t.mkOptionType {
+          name = A.name;
+          check = shortA;
+          merge = _loc: defs: (builtins.head defs).value;
+          functor = A.functor // {
+            type = _: legacyA;
+          };
+          inherit (A) nestedTypes;
+        };
+        L3 = t.listOf t.int;
+        short3 = v: builtins.isList v && builtins.length v < 3;
+        adhoc = t.mkOptionType {
+          name = "listOf";
+          check = short3;
+          inherit (L3) merge nestedTypes;
+          functor = L3.functor // {
+            type = _: adhoc;
+          };
+        };
+        lying =
+          el:
+          t.mkOptionType {
+            name = "listOf";
+            check = builtins.isList;
+            merge = _loc: defs: builtins.concatLists (map (d: d.value) defs);
+            functor = (t.listOf el).functor // {
+              type = p: lying p.elemType;
+            };
+            nestedTypes.elemType = el;
+          };
+        G = gt.listOf t.int;
+        GA = gt.attrsOf t.int;
+        Gpos = gt.listOf t.ints.positive;
+        W = gt.listOf (
+          t.addCheck (gt.enum "e" [
+            "a"
+            "c"
+          ]) (v: v != "a")
+        );
+        Y = lying (t.enum [ "b" ]);
+        P = shortLegacy;
+      in
+      {
+        expr = {
+          L-GP-bad = served [ G P ] [ "s" ];
+          L-PG-bad = served [ P G ] [ "s" ];
+          L-GPG-bad = served [ G P G ] [ "s" ];
+          L-PGP-bad = served [ P G P ] [ "s" ];
+          L-GP-ok = served [ G P ] [ 2 ];
+          L-PG-ok = served [ P G ] [ 2 ];
+          L-GPG-ok = served [ G P G ] [ 2 ];
+          L-PGP-ok = served [ P G P ] [ 2 ];
+          A-GP-bad = served [ GA legacyA ] { a = "s"; };
+          A-PG-bad = served [ legacyA GA ] { a = "s"; };
+          A-GPG-bad = served [ GA legacyA GA ] { a = "s"; };
+          A-PGP-bad = served [ legacyA GA legacyA ] { a = "s"; };
+          A-GP-ok = served [ GA legacyA ] { a = 2; };
+          A-PG-ok = served [ legacyA GA ] { a = 2; };
+          A-GPG-ok = served [ GA legacyA GA ] { a = 2; };
+          A-PGP-ok = served [ legacyA GA legacyA ] { a = 2; };
+          Gpos-adhoc = served [ Gpos adhoc ] [ (-1) ];
+          adhoc-Gpos = served [ adhoc Gpos ] [ (-1) ];
+          Gpos-adhoc-ok = served [ Gpos adhoc ] [ 2 ];
+          WY-a = served [ W Y ] [ "a" ];
+          YW-a = served [ Y W ] [ "a" ];
+          WY-b = served [ W Y ] [ "b" ];
+          YW-b = served [ Y W ] [ "b" ];
+          WY-c = served [ W Y ] [ "c" ];
+          YW-c = served [ Y W ] [ "c" ];
+          d1-PA-bad = served [ P (gm.mkOptionType G) ] [ "s" ];
+          d1-APA-bad = served [ (gm.mkOptionType G) P (gm.mkOptionType G) ] [ "s" ];
+          d1-PPA-bad = served [ P P (gm.mkOptionType G) ] [ "s" ];
+          d2-PA-bad = served [ P (gt.mkOptionType G) ] [ "s" ];
+          d2-APA-bad = served [ (gt.mkOptionType G) P (gt.mkOptionType G) ] [ "s" ];
+          d2-PPA-bad = served [ P P (gt.mkOptionType G) ] [ "s" ];
+          d1d1-PA-bad = served [ (gm.mkOptionType P) (gm.mkOptionType G) ] [ "s" ];
+          d1d1-APA-bad =
+            served
+              [
+                (gm.mkOptionType G)
+                (gm.mkOptionType P)
+                (gm.mkOptionType G)
+              ]
+              [ "s" ];
+          d1d1-PPA-bad =
+            served
+              [
+                (gm.mkOptionType P)
+                (gm.mkOptionType P)
+                (gm.mkOptionType G)
+              ]
+              [ "s" ];
+          d1-PA-ok = served [ P (gm.mkOptionType G) ] [ 2 ];
+        };
+        expected = {
+          L-GP-bad = "REFUSED";
+          L-PG-bad = "REFUSED";
+          L-GPG-bad = "REFUSED";
+          L-PGP-bad = "REFUSED";
+          L-GP-ok = "SERVED";
+          L-PG-ok = "SERVED";
+          L-GPG-ok = "SERVED";
+          L-PGP-ok = "SERVED";
+          A-GP-bad = "REFUSED";
+          A-PG-bad = "REFUSED";
+          A-GPG-bad = "REFUSED";
+          A-PGP-bad = "REFUSED";
+          A-GP-ok = "SERVED";
+          A-PG-ok = "SERVED";
+          A-GPG-ok = "SERVED";
+          A-PGP-ok = "SERVED";
+          Gpos-adhoc = "REFUSED";
+          adhoc-Gpos = "REFUSED";
+          Gpos-adhoc-ok = "SERVED";
+          WY-a = "REFUSED";
+          YW-a = "REFUSED";
+          WY-b = "SERVED";
+          YW-b = "SERVED";
+          WY-c = "SERVED";
+          YW-c = "SERVED";
+          d1-PA-bad = "REFUSED";
+          d1-APA-bad = "REFUSED";
+          d1-PPA-bad = "REFUSED";
+          d2-PA-bad = "REFUSED";
+          d2-APA-bad = "REFUSED";
+          d2-PPA-bad = "REFUSED";
+          d1d1-PA-bad = "REFUSED";
+          d1d1-APA-bad = "REFUSED";
+          d1d1-PPA-bad = "REFUSED";
+          d1-PA-ok = "SERVED";
         };
       };
 
