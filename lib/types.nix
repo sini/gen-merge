@@ -1535,6 +1535,9 @@ let
           && interface.isNesting element
           && !(element ? verify)
           && !(element ? _checkWitness && element ? check && element.check != element._checkWitness)
+          # a nesting fold that is not the one its record was completed with folds by the engine's element path, which
+          # owes the record's check (`modules.nix` `threadedAs`)
+          && element.mergeDefs == (element.mergeDefs.completed.mergeDefs or null)
         then
           ev:
           refusingOutside tyName admits (

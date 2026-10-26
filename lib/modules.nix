@@ -4728,7 +4728,19 @@ let
         mergeDefs =
           if type.mergeDefs ? threadedReported then
             {
-              __functor = _: type.mergeDefs.threaded ev;
+              # the strict fold owes the record's check under the provenance test below, as the check branch
+              # does; `reported` stays the record's own reporting fold, which the reporting caller reads
+              __functor =
+                _:
+                if
+                  type ? _checkWitness
+                  && type ? check
+                  && type ? nests
+                  && type.mergeDefs != (type.mergeDefs.completed.mergeDefs or null)
+                then
+                  interface.checkedFold type (type.mergeDefs.threaded ev)
+                else
+                  type.mergeDefs.threaded ev;
               reported = type.mergeDefs.threadedReported ev;
             }
           # A `check` a foreign wrapper rewrote is carried onto the threaded fold HERE, before the
@@ -4744,6 +4756,10 @@ let
                 (type ? split || type ? choose)
                 && !(type ? verify)
                 && (type.mergeDefs.completed._checkWitness or null) != type._checkWitness
+              # a nesting fold is the record's own only while it is the fold the record was completed with
+              # (den-hoag-2632d's tie): a `//` copy rewriting `threaded`, or replacing the fold whole, owes the
+              # record's own check per definition
+              || type ? nests && type.mergeDefs != (type.mergeDefs.completed.mergeDefs or null)
             )
           then
             (
@@ -4880,7 +4896,9 @@ let
     # with as a container's does. A nesting fold holding a completion already keeps it, and is never re-tied:
     # a fresh fold record per door would let `==` of two doored copies walk the cycle through `completed`.
     else if t ? nests then
-      if t ? split || t ? choose || t.mergeDefs ? completed then
+      # a witnessed record arriving with no completion on its fold took that fold by `//` (the constructor's own
+      # record reaches this door unwitnessed), so the door does not tie it, as a container's door does not
+      if t ? split || t ? choose || t.mergeDefs ? completed || t ? _checkWitness then
         t
       else
         t

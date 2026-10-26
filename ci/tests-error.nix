@@ -12795,6 +12795,81 @@ in
             "test-${k}-fold-function-copy-${dn}-refuses-outside" = refused (door (fnCopy c)) "s" k;
           }) fnDoors
         ) foldExtend;
+        # den-hoag-qmk09: a nesting fold is the record's own only while it is the fold the record was completed with
+        # (den-hoag-2632d's tie). A `//` copy of a submodule rewriting `threaded`, or replacing the fold whole, is
+        # refused outside by the record's own check, raw, through `defineType` and as a container's element; so is an
+        # evaluation's own type rewriting `threaded`, as an element, while at the top it keeps its reporting fold's value.
+        subOpts.a = gm.mkOption {
+          type = t.int;
+          default = 0;
+        };
+        nesting = {
+          submodule = t.submodule { options = subOpts; };
+          evaluation-type = (gm.evalModuleTree { } [ { options = subOpts; } ]).type;
+        };
+        lastVal = _loc: defs: (nixpkgsLib.last defs).value;
+        nestCopies = {
+          threaded =
+            r:
+            r
+            // {
+              mergeDefs = r.mergeDefs // {
+                threaded = _: lastVal;
+              };
+            };
+          fold =
+            r:
+            r
+            // {
+              mergeDefs = {
+                __functor = _: lastVal;
+                threaded = _: lastVal;
+              };
+            };
+        };
+        notSubmodule = ty: v: {
+          expr = builtins.deepSeq (read ty v) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of type `submodule', in `a\\.nix'$";
+          };
+        };
+        refusedElement = ty: v: {
+          expr = (builtins.tryEval (builtins.deepSeq (read ty v) null)).success;
+          expected = false;
+        };
+        nestCells =
+          nixpkgsLib.concatMapAttrs (
+            cn: copy:
+            nixpkgsLib.concatMapAttrs (dn: door: {
+              "test-submodule-${cn}-copy-${dn}-refuses-outside" =
+                notSubmodule (door (copy nesting.submodule)) "s";
+              "test-submodule-${cn}-copy-${dn}-serves-inside" = served (door (copy nesting.submodule)) { a = 1; };
+            }) fnDoors
+            // {
+              "test-submodule-${cn}-copy-as-listOf-element-refuses-outside" = refusedElement (t.listOf (
+                copy nesting.submodule
+              )) [ "s" ];
+              "test-submodule-${cn}-copy-as-attrsOf-element-refuses-outside" = refusedElement (t.attrsOf (
+                copy nesting.submodule
+              )) { k = "s"; };
+            }
+          ) nestCopies
+          // nixpkgsLib.concatMapAttrs (dn: door: {
+            "test-evaluation-type-threaded-copy-${dn}-as-listOf-element-refuses-outside" =
+              refusedElement (t.listOf (door (nestCopies.threaded nesting.evaluation-type)))
+                [ "s" ];
+            "test-evaluation-type-threaded-copy-${dn}-as-attrsOf-element-refuses-outside" =
+              refusedElement (t.attrsOf (door (nestCopies.threaded nesting.evaluation-type)))
+                { k = "s"; };
+            "test-evaluation-type-threaded-copy-${dn}-serves-its-empty-value-at-the-top" = {
+              expr = read (door (nestCopies.threaded nesting.evaluation-type)) { };
+              expected.a = 0;
+            };
+            "test-evaluation-type-threaded-copy-${dn}-serves-inside-at-the-top" = served (door (
+              nestCopies.threaded nesting.evaluation-type
+            )) { a = 1; };
+          }) fnDoors;
       in
       nixpkgsLib.mapAttrs' (
         k: ty: nixpkgsLib.nameValuePair "test-${k}-refuses-outside" (refused ty 3 "evenT")
@@ -12807,7 +12882,8 @@ in
         test-attrs-fold-copy-serves-inside = served attrsCopy { a = 1; };
         test-attrs-fold-function-copy-serves-inside = served (fnCopy t.attrs) { a = 1; };
       }
-      // fnCells;
+      // fnCells
+      // nestCells;
 
     flake.testsError.fold-rewrite-check =
       let
