@@ -12256,6 +12256,134 @@ in
           };
         };
       };
+    # A construction's certificate (`typeMergeRel.exact`) excuses an operand only where the answer carries it: the
+    # answer is the operand's own construction (its check witness), or a join stating parameters
+    # (ci/tests/author-check-certification.nix serves what every check admits). Each value below is rejected by one
+    # declaration's own check and nixpkgs serves it. RED (each): the certificate read as "the operand's relation is
+    # gen's", so an author record reusing gen's relation, a gen record holding another construction's relation, or
+    # a second construction of the same name had its check dropped and the value served; driven red per read
+    # (`metWith`'s first test, its `mayOwe`, `mergeTypesBy`'s inline test), each alone.
+    flake.testsError.author-check-certification =
+      let
+        np = nixpkgsLib.types;
+        read =
+          ts: v:
+          let
+            x =
+              (gm.evalModuleTree { } (map (ty: { options.x = gm.mkOption { type = ty; }; }) ts ++ [ { x = v; } ]))
+              .config.x;
+          in
+          builtins.deepSeq x x;
+        refused = ty: ts: v: {
+          expr = read ts v;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x' is not of type `${ty}'.*$";
+          };
+        };
+        refusedEntry = ts: v: {
+          expr = read ts v;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a definition for option `x\\.\"\\[definition 1-entry 1\\]\"' is not of type `signed integer'.*$";
+          };
+        };
+        isInt = builtins.isInt;
+        author = c: {
+          name = "int";
+          check = c;
+          merge = np.int.merge;
+        };
+        # n4djd's shape: an author record reusing gen's relation verbatim over its own check
+        borrowing = c: np.mkOptionType (author c) // { inherit (t.int) typeMergeRel; };
+        borrow = borrowing (v: isInt v && v < 3);
+        auth = author (v: isInt v && v < 3);
+        # a check that does not imply `int`
+        authS = author (v: v != 3);
+        Tc = t.defineType (author (v: isInt v && v != 4));
+        Td = t.defineType (author (v: isInt v && v != 7));
+        # a gen-witnessed record holding another construction's relation
+        xpl = t.defineType authS // {
+          inherit (t.int) typeMergeRel;
+        };
+        gl = t.listOf t.int;
+        px = t.listOf (t.defineType authS) // {
+          inherit (gl) typeMergeRel;
+        };
+      in
+      {
+        test-a-borrowed-relation-keeps-its-author-check-after-gen-int = refused "signed integer" [
+          t.int
+          borrow
+        ] 5;
+        test-a-borrowed-relation-keeps-its-author-check-before-gen-int = refused "signed integer" [
+          borrow
+          t.int
+        ] 5;
+        test-a-borrowed-relation-keeps-its-author-check-under-listof-after =
+          refusedEntry
+            [
+              (t.listOf t.int)
+              (t.listOf borrow)
+            ]
+            [ 5 ];
+        test-a-borrowed-relation-keeps-its-author-check-under-listof-before =
+          refusedEntry
+            [
+              (t.listOf borrow)
+              (t.listOf t.int)
+            ]
+            [ 5 ];
+        test-a-same-name-definetype-keeps-its-check-before-gen-int = refused "signed integer" [
+          (t.defineType auth)
+          t.int
+        ] 3;
+        test-a-same-name-definetype-not-implying-int-keeps-its-check-before-gen-int =
+          refused "signed integer"
+            [
+              (t.defineType authS)
+              t.int
+            ]
+            3;
+        test-gen-int-keeps-its-check-before-a-same-name-definetype = refused "int" [
+          t.int
+          (t.defineType authS)
+        ] "s";
+        test-a-same-name-definetype-keeps-its-check-under-listof =
+          refusedEntry
+            [
+              (t.listOf (t.defineType auth))
+              (t.listOf t.int)
+            ]
+            [ 3 ];
+        test-two-same-name-definetypes-keep-the-first-check = refused "int" [
+          Tc
+          Td
+        ] 4;
+        test-two-same-name-definetypes-keep-the-first-check-in-reverse = refused "int" [
+          Td
+          Tc
+        ] 7;
+        test-a-transplanted-relation-keeps-its-holder-check-before-gen-int = refused "signed integer" [
+          xpl
+          t.int
+        ] 3;
+        test-a-transplanted-relation-keeps-its-holder-check-after-gen-int = refused "signed integer" [
+          t.int
+          xpl
+        ] 3;
+        test-two-borrowed-relations-keep-both-author-checks = refused "signed integer" [
+          (borrowing (v: isInt v && v != 7))
+          (borrowing (v: isInt v && v != 4))
+        ] 7;
+        test-a-transplanted-container-relation-keeps-its-holder-element-check-declared-first =
+          refusedEntry
+            [
+              px
+              gl
+            ]
+            [ 3 ];
+      };
     # nixpkgs' `definition` record (ci/tests/definition-record.nix): a refusal names the RECORD's file,
     # not the enclosing module's, on an option and on a module argument (nixpkgs names `/r/B.nix` and
     # `/r/A.nix` in both). Each has a plain-definition control carrying the same message.
