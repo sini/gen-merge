@@ -655,9 +655,20 @@ let
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
       # payload states even where its witness took the join: the witness compares names, never checks, so a
       # held role's check is as uncertified as on the raw foreign arm below. The top is met by the caller
-      # (`mergeTypesBy`), relativised; only the absolute meet waits on `holds`
+      # (`mergeTypesBy`), relativised; only the absolute meet waits on `holds`. A join the door refused by name, an
+      # ad-hoc override again, stays refused: its functor would rebuild the override unrefused. The door's closure
+      # (`interface.rebuildClosed.own`) marks every join it serves coherent and keeps a refused join's own check, so
+      # the mark tells the two apart
       else if answer ? merged then
-        (if a ? retainedRelation then rolesMet answer.merged a b else answer.merged)
+        (
+          if
+            a ? retainedRelation
+            && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
+          then
+            rolesMet answer.merged a b
+          else
+            answer.merged
+        )
       else
         null
     else
