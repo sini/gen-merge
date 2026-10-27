@@ -6859,7 +6859,31 @@ let
         xs0 =
           (if isMetRecord m then m.__metDebt.of else [ ])
           ++ builtins.concatMap (o: if isMetRecord o then o.__metDebt.of else [ o ]) os;
+        xs =
+          if length xs0 == length os then
+            os
+          else
+            (builtins.foldl' (
+              acc: x:
+              let
+                k = closuresFirst [ x ] x;
+              in
+              if builtins.elem k acc.k then
+                acc
+              else
+                {
+                  k = acc.k ++ [ k ];
+                  v = acc.v ++ [ x ];
+                }
+            ) {
+              k = [ ];
+              v = [ ];
+            } xs0).v;
       in
+      # a met answer that already answers for every declaration of the step owes nothing more: it is the step's meet
+      if isMetRecord m && length xs == length m.__metDebt.of then
+        m
+      else
       (
         m: xs:
         let
@@ -7201,27 +7225,7 @@ let
         meetCovering ((if length notM != length xs then [ m ] else [ ]) ++ notM) m once
       )
         (if isMetRecord m then m.__meetJoin else m)
-        (
-          if length xs0 == length os then
-            os
-          else
-            (builtins.foldl' (
-              acc: x:
-              let
-                k = closuresFirst [ x ] x;
-              in
-              if builtins.elem k acc.k then
-                acc
-              else
-                {
-                  k = acc.k ++ [ k ];
-                  v = acc.v ++ [ x ];
-                }
-            ) {
-              k = [ ];
-              v = [ ];
-            } xs0).v
-        );
+        xs;
   # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
   # functor as `joinInRebuiltPartner` rebuilds it, through `tryEval` (nixpkgs' default asserts); `null`
   # where it declines or renames.
