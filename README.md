@@ -2020,13 +2020,26 @@ join, never a certificate. **An operand is exact, and owes
 nothing, only where gen-merge constructed its relation**: every relation this library builds carries a
 construction witness (`typeMergeRel.exact`), and an operand stating neither `check` nor `admits` owes
 none. A `typeMergeRel` an author states is author vocabulary and no witness, so an author type whose
-relation answers a join keeping every name still owes its own check. **`wraps` is the meet's
+relation answers a join keeping every name still owes its own check. **The witness certifies an
+operand only where the answer carries it**: where the answer is the operand's own construction (one
+check witness, compared by `==`; a `//` copy keeping it, as a description copy does, is the same
+construction), or where the answer states parameters, a join built over the operands'. A leaf answer
+carries its own construction's check alone, so an author record reusing gen's relation over its own
+check (`lib.mkOptionType { name = "int"; check = c; … } // { inherit (types.int) typeMergeRel; }`), a gen
+record holding another construction's relation, and two `defineType`s of one name each owe their own
+check beside `int` or each other, in either order and under a container: `[int, B]` refuses a value `B`'s
+check rejects, where nixpkgs serves it. The parameter test does not ask whose parameters the answer
+states, so an answer stating a payload that is not a join over this operand's parameters still certifies
+it: beside `number` or `pathLike`, whose own answer states one, and under a container relation
+transplanted onto another container, which answers a join over the relation's parameters rather than its
+holder's, such an operand's check is still dropped, an open defect. **`wraps` is the meet's
 declared-base surface**: a record naming the record whose constructor and parameters its own are; its
 own check stays owed. The meet reads an operand's parameters (`shapeOf`) and the stock it is owed
 relative to (`relativised`) off the innermost declared base, so gen-schema's `refined B rs`, whose
 functor is its own (`refined<B>`), widens and is relativised as `B` is and still owes its refinements. A
 met record whose operands owe no merged-value `verify` names its gen join's `verify` reason on refusal where
-the join's check is still that `verify`'s witness; any other record's `verify` is read only past its check. A gen x gen step owes nothing and is
+the join's check is still that `verify`'s witness; any other record's `verify` is read only past its check. A gen x gen step whose answer carries both
+operands owes nothing and is
 answered before the meet is built, except to a `//` copy whose `verify` no completion vouches for
 (`interface.replacesVerify`: it replaced its completion's `verify`, or states one with no completion
 stamp). Its `check`, witness and relation are still its base's, so no relation carries that `verify`, and

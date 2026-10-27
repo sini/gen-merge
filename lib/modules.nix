@@ -815,8 +815,10 @@ let
   # what every declaration accepts, a lower bound, not the greatest one (a join stricter than the
   # conjunction stays stricter). `declaredPair`'s veto arm routes a relation's `meets` answer through
   # the same function, and the foreign arm meets role by role (`rolesMet`).
-  #  - A gen x gen step owes nothing (gen relations are exact over checks they state), so it is
-  #    answered before `metWith` is called and allocates nothing.
+  #  - A gen x gen step whose answer carries both operands owes nothing, so it is answered before
+  #    `metWith` is called and allocates nothing. A certified operand (`typeMergeRel.exact`) is carried
+  #    only where the answer is its own construction or a join stating parameters (`metWith`'s reading,
+  #    with its scope); a leaf answer beside another construction's record meets it.
   #  - A pair that is ONE value keeps it (`x ⊔ x = x ⊓ x = x`): the same wrapped binding declared
   #    twice merges and keeps its check. An ad-hoc override (`adHocChecked`) is the exception: it is no
   #    type, so `sameValue.kept` meets it as two values are met.
@@ -862,12 +864,29 @@ let
     if m == null then
       null
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
-      # a gen relation's answer over two gen operands stating their own checks carries both: nothing is
-      # owed, and nothing is allocated (`metWith`'s first test, inline)
+      # a gen relation's answer carries a certified operand where it is that operand's own construction (one
+      # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s
+      # first test, inline, and its scope). `m ? carries` comes first: it answers a container join without
+      # forcing that join's functor or witness. `statesPayload` is read through `interface`, which alone
+      # utters the payload's protocol name.
       if
         m ? typeMergeRel
-        && (!(a ? check || a ? admits) || a ? typeMergeRel.exact)
-        && (!(b ? check || b ? admits) || b ? typeMergeRel.exact)
+        && (
+          !(a ? check || a ? admits)
+          ||
+            a ? typeMergeRel.exact
+            && (
+              m ? carries || (a._checkWitness or null) == (m._checkWitness or null) || interface.statesPayload m
+            )
+        )
+        && (
+          !(b ? check || b ? admits)
+          ||
+            b ? typeMergeRel.exact
+            && (
+              m ? carries || (b._checkWitness or null) == (m._checkWitness or null) || interface.statesPayload m
+            )
+        )
         && !(a ? holds)
         && !(b ? holds)
       then

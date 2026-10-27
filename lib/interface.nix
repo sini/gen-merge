@@ -6760,10 +6760,19 @@ let
       in
       verified;
   # The answer of every type merge: `m` met with each operand whose check it does not carry.
-  #  - A gen relation's answer over a gen operand stating its own check carries it (gen x gen relations
-  #    are exact), so only a foreign operand, a witnessed rewrite (a wrapper's check, or a met record), or
-  #    a foreign answer can owe one (`mayOwe`, asked before any comparison: a gen x gen step compares
+  #  - A gen operand's construction certificate (`typeMergeRel.exact`) says its relation is gen's, not that
+  #    `m` carries its check. It is read against `m`: the operand is carried where `m` is its own construction
+  #    (one check witness, compared by `==` as the check-witness protocol compares it) or `m` states a payload,
+  #    a join a parametric relation built over its operands' parameters. A leaf answer carries one
+  #    construction's check, its own, so an author record reusing gen's relation over its own check, a gen
+  #    record holding another construction's relation, and a second construction of the same name each owe
+  #    theirs. Otherwise only a foreign operand, a witnessed rewrite (a wrapper's check, or a met record), or a
+  #    foreign answer can owe one (`mayOwe`, asked before any comparison: a certified step compares
   #    nothing). An operand that IS `m` owes nothing.
+  #    The payload test does not ask WHOSE parameters: an answer stating a payload that is not a join over
+  #    this operand's parameters still certifies it (gen's `number` and `pathLike` state one on their own
+  #    answer; a container relation transplanted onto another container answers a join over the relation's
+  #    parameters, not its holder's). That residue is an open defect (den-hoag-n4djd).
   #  - A module set's join is the union of its declarations, itself the meet of what they declare, and its
   #    own check is the module shape: its records are never compared (a comparison would evaluate their
   #    modules). Every check it does not carry rides on it instead, as the declaration list's fixup carries
@@ -6809,7 +6818,12 @@ let
       && m ? typeMergeRel
       && builtins.all (
         o:
-        (!(o ? check || o ? admits) || o ? typeMergeRel.exact)
+        (
+          !(o ? check || o ? admits)
+          ||
+            o ? typeMergeRel.exact
+            && (((o._checkWitness or null) == (m._checkWitness or null)) || (m.functor.payload or null) != null)
+        )
         && !(rewritesCheck o)
         && !(replacesVerify o)
         && !(o ? holds)
@@ -6820,7 +6834,12 @@ let
       let
         mayOwe =
           o:
-          !(!(o ? check || o ? admits) || o ? typeMergeRel.exact)
+          !(
+            !(o ? check || o ? admits)
+            ||
+              o ? typeMergeRel.exact
+              && (((o._checkWitness or null) == (m._checkWitness or null)) || (m.functor.payload or null) != null)
+          )
           || !(m ? typeMergeRel)
           || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
           || replacesVerify o
