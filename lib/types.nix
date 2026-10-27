@@ -213,20 +213,24 @@ let
           exact = true;
           __functor =
             _: other:
-            if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
-              if (keyOf other) == name then
-                { merged = self; }
-              else
-                {
-                  refused = "`${nameOf t}' and `${nameOf other}'";
-                  vetoes = !(other ? retainedRelation);
-                }
+            if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name then
+              { merged = self; }
+            else if
+              isAttrs other
+              && other ? typeMergeRel
+              && !(other ? retainedRelation)
+              && !(interface.keyedUnderEmbedding row other)
+            then
+              {
+                refused = "`${nameOf t}' and `${nameOf other}'";
+                vetoes = true;
+              }
             else
               let
                 # the row this type's constructor stated, never one its name collides with
                 e = row;
                 embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
-                sameKey = isAttrs other && (keyOf other) == name;
+                sameKey = isAttrs other && (interface.protocolKeyOf other) == name;
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
                   embedding = e;
@@ -2210,7 +2214,7 @@ let
             _:
             (
               other:
-              if !(isAttrs other) || (keyOf other) != "either" then
+              if !(isAttrs other) || (interface.protocolKeyOf other) != "either" then
                 { refused = "`either' and `${nameOf other}'"; }
               else if other ? carries then
                 eitherMemberwise a b other

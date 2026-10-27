@@ -662,7 +662,7 @@ let
     && builtins.isFunction (t.__typeSelf or null)
     && stampOk t;
   # Whether `other` is keyed under the name row `e` embeds in: the one place a relation asks it.
-  keyedUnderEmbedding = e: other: e != null && (keyOf other) == e.name;
+  keyedUnderEmbedding = e: other: e != null && (protocolKeyOf other) == e.name;
   # The leaf row `t`'s mint reaches, read only off the record its constructor (or this boundary)
   # COMPLETED: a `//` copy keeps its base's mark while changing what that mark stands for, so it
   # reaches none (gen-types' completion stamp, `stampOk`, which `restamp` re-ties at the import door).
@@ -1561,6 +1561,19 @@ let
   # a record without the datum it is the name, so nothing built otherwise moves.
   keyOf =
     x: if isAttrs x && x ? __derivation then "derivation:${x.__derivation.id}" else x.name or null;
+
+  # ── THE KEY THE FOREIGN PROTOCOL READS ──────────────────────────────────────────────────────────
+  # nixpkgs keys a redeclaration on the FUNCTOR name (`protoTypeMerge`), and a refinement keeps its
+  # base's functor under a name of its own: `ints.positive` is `positiveInt` over functor `int`, and
+  # gen's `number` is `number` over `either`. So whether a partner IS a relation's key, or is keyed
+  # under its embedding, is asked here, where the partner is read as the protocol reads it. A
+  # derivation keeps its own identity (`keyOf`), and a record stating no functor name is its name.
+  protocolKeyOf =
+    x:
+    if isAttrs x && !(x ? __derivation) && builtins.isString ((x.functor or { }).name or null) then
+      x.functor.name
+    else
+      keyOf x;
 
   # ── THE NAME THAT GOVERNED ──────────────────────────────────────────────────────────────────────
   # The foreign protocol keys a redeclaration on the FUNCTOR name, not the type name (`protoTypeMerge'
@@ -8744,6 +8757,7 @@ in
     replacesVerify
     departsWithinCarrier
     keyOf
+    protocolKeyOf
     wrapsKeyOf
     nameOf
     functorNamesOf
