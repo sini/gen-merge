@@ -2688,10 +2688,12 @@ let
         n =
           if !record then
             nodeKeyOf e
-          else if isAttrs e.content && e.content ? key then
-            "k" + builtins.unsafeDiscardStringContext (toString e.content.key)
+          # a record stating its reference key (`__keyEq.key`) is read by it, never by its result's `key`,
+          # which is the foreign evaluator's (v1.4: the result may carry nixpkgs' key)
           else if (e.m0.__keyEq.key or null) != null then
             "k" + builtins.unsafeDiscardStringContext (toString e.m0.__keyEq.key)
+          else if isAttrs e.content && e.content ? key then
+            "k" + builtins.unsafeDiscardStringContext (toString e.content.key)
           else
             null;
         s = if n == null then null else builtins.match "k(.*)${sep}(.*)" n;
@@ -2880,7 +2882,19 @@ let
         # kept, in collection order, by its `decide` alone (no refinement read, so no mark): equal to one of them is
         # that construction reached again and is dropped; distinct from all is another construction and is kept.
         # `seen."~<k>"` carries a meeting's kept constructions into deeper levels.
-        composes = e: ((e.m0.__keyEq or null).onDistinct or null) == "compose";
+        composes =
+          e:
+          builtins.elem ((e.m0.__keyEq or null).onDistinct or null) [
+            "compose"
+            "refuse-on-conflict"
+          ];
+        # v1.5 lever (O by seal): `onDistinct = "refuse-on-conflict"` keeps a distinct construction unless its
+        # record's `conflicts` says it collides with a kept one, which is refused by name
+        refusesOn =
+          r: x:
+          (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict"
+          && composes r.e
+          && x.e.m0.__keyEq.conflicts r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
         sameConstruction =
           r: x:
           if composes r.e then
@@ -2904,7 +2918,13 @@ let
               rs =
                 acc.reps.${x.k} or (seen."~${x.k}" or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]));
               dup = any (r: sameConstruction r x) rs;
+              clash = if dup then [ ] else builtins.filter (r: refusesOn r x) rs;
             in
+            if clash != [ ] then
+              throw "gen-merge: modules `${(builtins.head clash).e._file}' and `${x.e._file}' share the key '${
+                builtins.substring 1 (builtins.stringLength x.k) x.k
+              }' and are two constructions its key comparison (`__keyEq') refuses to compose. One key is one declaration: give them different keys, or import one of them."
+            else
             {
               reps = acc.reps // {
                 ${x.k} = if dup then rs else rs ++ [ x ];
