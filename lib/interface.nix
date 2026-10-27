@@ -6926,7 +6926,8 @@ let
         # compared inline so the meet binds nothing for it
         km = closuresFirst [ m ] m;
         notM = filter (o: km != closuresFirst [ o ] o) maybe;
-        fresh = builtins.all (o: km != closuresFirst [ o ] o) xs;
+        # fresh: neither of the STEP's operands (a met operand is one record here, as nixpkgs' fold sees it)
+        fresh = builtins.all (o: km != closuresFirst [ o ] o) os;
         relativised =
           o:
           let
