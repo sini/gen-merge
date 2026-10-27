@@ -7292,7 +7292,7 @@ let
       if isAttrs x && !(x ? __derivation) && builtins.isString ((x.functor or { }).name or null) then
         x.functor.name
       else
-        keyOf x;;
+        keyOf x;
     unanswerable =
       a: b:
       let
@@ -7303,7 +7303,7 @@ let
       else
         "`${nameOf a}' and `${nameOf b}', whose first type's `functor' states a merge relation but does not answer "
         + concatStringsSep ", " (map (g: "`${g}'") gaps)
-        + ", so the protocol's own default cannot apply it";;
+        + ", so the protocol's own default cannot apply it";
   };
 
   # relationRefusal — a relation STATED and unusable. It is the COMPLEMENT of `functorRefusal' over
