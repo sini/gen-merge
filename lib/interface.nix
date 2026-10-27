@@ -5757,7 +5757,7 @@ let
         let
           # a met record's carrier is asked, never the record: the caller meets the answer with the record's declarations
           # (`mergeTypesBy` → `metWith`), so asking the record would meet it twice and nest one met record in the next
-          j = (if a ? __declared && !(a ? holds) then a.__meetJoin else a).typeMerge b.functor;
+          j = (if isMetRecord a then a.__meetJoin else a).typeMerge b.functor;
           # a join the step can apply states the check and the fold an operand states; any other answer is
           # no join (the test is inline, so the pair pays no binding for it)
           k =
@@ -6570,7 +6570,7 @@ let
   # A redeclared option accepts a definition only where EVERY declared check accepts it. `meetOf j os`
   # is the join `j` (the carrier: its fold, name, functor) restricted by each check in `os`, published as
   # a witnessed rewrite (`check` is not `_checkWitness`), so every later step sees it as owed.
-  # What a later step owes of it is what was DECLARED, never its carrier's own check: `__declared` lists the
+  # What a later step owes of it is what was DECLARED, never its carrier's own check: `__metDebt.of` lists the
   # declarations the record answers for (`metWith`), so at the next step the record is met as those declarations,
   # each judged against that step's join, and the carrier `j` is owed again only where it stood for a declaration
   # it carried. nixpkgs' later step drops the carrier's check; the meet owes every declared check and no other.
@@ -6664,7 +6664,10 @@ let
               conj;
           _checkWitness = j._checkWitness or j.check;
           __meetJoin = j;
-          ${if cov == null then null else "__declared"} = cov;
+          ${if cov == null then null else "__metDebt"} = {
+            of = cov;
+            self = met;
+          };
           merge =
             if v2 then
               {
@@ -6813,6 +6816,9 @@ let
   # the hold's trigger (`metWith`, below): an operand stating a relation gen did not construct (a
   # `typeMergeRel` with no `exact` witness), not relativised to its own parameters (`__stockCheck`), carrying no
   # element or alternatives role. Bound once here: a lambda written where it is passed is a thunk per meet.
+  # the record `meetCovering` built and not a `//` copy of it (which keeps its fields): its own debt names it. A held
+  # record stays whole. `[ ]` around each side compares the two by reference before any field is read
+  isMetRecord = o: o ? __metDebt && !(o ? holds) && [ o.__metDebt.self ] == [ o ];
   uncertifiedLeaf =
     o:
     o ? typeMergeRel
@@ -6840,8 +6846,12 @@ let
       m
     else
       let
-        # a met operand is the declarations it answers for (`meetCovering`), never its carrier; a held one stays whole
-        xs0 = builtins.concatMap (o: if o ? __declared && !(o ? holds) then o.__declared else [ o ]) os;
+        # a met operand is the declarations it answers for (`meetCovering`), never its carrier, and so is an answer that is
+        # a met record, which is then its carrier: no step's carrier is a met record and none re-walks one. A copy of one
+        # (`//`: a derivation, an override) is not one (`isMetRecord`) and is met whole
+        xs0 =
+          (if isMetRecord m then m.__metDebt.of else [ ])
+          ++ builtins.concatMap (o: if isMetRecord o then o.__metDebt.of else [ o ]) os;
       in
       (
         m: xs:
@@ -7175,7 +7185,7 @@ let
       else
         meetCovering ((if length notM != length xs then [ m ] else [ ]) ++ notM) m once
       )
-        m
+        (if isMetRecord m then m.__meetJoin else m)
         (
           if length xs0 == length os then
             os
