@@ -2181,7 +2181,7 @@ let
       }"
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
-    else if (m ? __keyEq || (e.m0.__keyEq or null) != null) && !(m ? key) then
+    else if (m ? __keyEq || (e.m0.__keyEq or null) != null) && !(m ? key) && !((e.m0.__keyEq or null) ? key) then
       throw "gen-merge: module `${e._file}' publishes a key comparison (`__keyEq') but no `key'. The comparison decides between two occurrences of one key, so a module without a key has nothing for it to decide: give the module its `key', or remove `__keyEq'."
     else if isAttrs m then
       e
@@ -2671,6 +2671,8 @@ let
             nodeKeyOf e
           else if isAttrs e.content && e.content ? key then
             "k" + builtins.unsafeDiscardStringContext (toString e.content.key)
+          else if (e.m0.__keyEq.key or null) != null then
+            "k" + builtins.unsafeDiscardStringContext (toString e.m0.__keyEq.key)
           else
             null;
         s = if n == null then null else builtins.match "k(.*)${sep}(.*)" n;
