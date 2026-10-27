@@ -2913,6 +2913,10 @@ let
           acc: x:
           if x.k == null || !(composes x.e) then
             acc
+          # a lone first holder (no deeper rep, first in its level) is kept without a fold step: it is the
+          # level's `first`, which every later occurrence of its key reads as a rep
+          else if !(seen ? "~${x.k}") && !(seen ? ${x.k}) && first.${x.k}.p == x.p then
+            acc
           else
             let
               # the level's first holder of the key is a rep too where it does not compose (a plain module or
@@ -2920,12 +2924,7 @@ let
               rs =
                 acc.reps.${x.k} or (
                   (seen."~${x.k}" or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
-                  ++ (
-                    if !(seen ? ${x.k}) && first.${x.k}.p != x.p && !(composes first.${x.k}.e) then
-                      [ first.${x.k} ]
-                    else
-                      [ ]
-                  )
+                  ++ (if !(seen ? ${x.k}) && first.${x.k}.p != x.p then [ first.${x.k} ] else [ ])
                 );
               dup = any (r: sameConstruction r x) rs;
               clash = if dup then [ ] else builtins.filter (r: refusesOn r x) rs;
@@ -2955,7 +2954,7 @@ let
                 x.k == null
                 || (
                   if composes x.e then
-                    opt.keep.${toString x.p}
+                    opt.keep.${toString x.p} or true
                   else if seen ? ${x.k} || first.${x.k}.p != x.p then
                     keyedDrop class callM (
                       _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
