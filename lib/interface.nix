@@ -7287,12 +7287,7 @@ let
   # (`relationGaps`), so the protocol's default would abort applying it; `null` where it can answer.
   # The two readers the leaf relations and the fold step reach, as one binding (one load-time value).
   protocolReaders = {
-    keyOf =
-      x:
-      if isAttrs x && !(x ? __derivation) && builtins.isString ((x.functor or { }).name or null) then
-        x.functor.name
-      else
-        keyOf x;
+    keyOf = x: if isAttrs x && !(x ? __derivation) && x ? functor.name then x.functor.name else keyOf x;
     unanswerable =
       a: b:
       let
