@@ -5765,7 +5765,15 @@ let
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
   importedMerge =
     a: b:
-    if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
+    # a functor stating a relation it cannot answer (`relationGaps`: no `name`, or no `type` to apply) is no
+    # join: the protocol's default would abort reading it, so the pair is refused by name instead
+    if
+      a ? typeMerge
+      && b ? functor
+      && relationGaps (a.functor or null) == [ ]
+      && importedDecidable a
+      && importedDecidable b
+    then
       (
         let
           j = a.typeMerge b.functor;
