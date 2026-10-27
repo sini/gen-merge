@@ -260,10 +260,16 @@ let
                 in
                 if unionJoin != null then
                   meet unionJoin
-                # a gen partner of the embedding (gen's `either`) answers in its own union relation, which
-                # reads this type's members as its member pair; it is asked, not rebuilt
-                else if other ? typeMergeRel && !(other ? retainedRelation) then
-                  other.typeMergeRel self
+                # a gen union partner of the embedding (gen's `either`) is joined memberwise against the
+                # members this type publishes, as two gen `either`s are (`eitherMemberwise`)
+                else if other ? typeMergeRel && !(other ? retainedRelation) && other ? carries.alternatives then
+                  let
+                    ms = self.functor.payload.elemType or null;
+                  in
+                  if isList ms && length ms == 2 then
+                    eitherMemberwise (head ms) (elemAt ms 1) other
+                  else
+                    { refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding"; }
                 else
                   {
                     refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
