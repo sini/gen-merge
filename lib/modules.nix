@@ -979,18 +979,10 @@ let
         else
           { };
       # read only where the veto did not end the step, so a refusal seen here is one that defers
-      # a decider-only answer hands the step to the later declaration's own relation; a later FOREIGN record whose
-      # functor states a relation it cannot answer (`interface.relationGaps`) has none to hand it to, so the step is
-      # refused by name (`mergeTypesReason` names the gap) where the protocol's default would abort reading it
-      handsOff = !(veto.vetoes or true);
       m =
         if !decidable then
           null
-        else if
-          handsOff && !(later ? typeMergeRel) && interface.relationGaps (later.functor or null) != [ ]
-        then
-          null
-        else if veto ? refused || handsOff then
+        else if veto ? refused || !(veto.vetoes or true) then
           (
             let
               tried = builtins.tryEval (mergeTypesWithin later earlier);
@@ -1035,6 +1027,20 @@ let
     else if veto ? refused && (veto.vetoes or true) then
       {
         inherit (veto) refused;
+        inherit earlier later;
+      }
+    # a decider-only answer hands the step to the later declaration's own relation; a later FOREIGN record whose
+    # functor states a relation it cannot answer (`interface.relationGaps`) has none to hand it to, so the step is
+    # refused by name where the protocol's default would abort reading it (asked before `m`, which would read it)
+    else if
+      !(veto.vetoes or true)
+      && !(later ? typeMergeRel)
+      && interface.relationGaps (later.functor or null) != [ ]
+    then
+      {
+        refused = "`${interface.nameOf later}' and `${interface.nameOf earlier}', whose first type's `functor' states a merge relation but does not answer ${
+          concatStringsSep ", " (map (g: "`${g}'") (interface.relationGaps later.functor))
+        }, so the protocol's own default cannot apply it";
         inherit earlier later;
       }
     else if m == null then
