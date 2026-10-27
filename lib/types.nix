@@ -299,7 +299,7 @@ let
                   vetoes = false;
                 }
               else if sameKey then
-                meet (if leafJoin == null then self else leafJoin)
+                meet (if leafJoin == null then self else leafJoin) // { vetoes = (keyOf other) == name; }
               else
                 {
                   refused = "`${nameOf t}' and `${nameOf other}'";
