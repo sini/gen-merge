@@ -298,8 +298,16 @@ let
                   refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
                   vetoes = false;
                 }
+              # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
+              # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
+              # only as the later declaration
+              else if sameKey && (keyOf other) == name then
+                {
+                  merged = if leafJoin == null then self else leafJoin;
+                  meets = true;
+                }
               else if sameKey then
-                meet (if leafJoin == null then self else leafJoin) // { vetoes = (keyOf other) == name; }
+                meet (if leafJoin == null then self else leafJoin)
               else
                 {
                   refused = "`${nameOf t}' and `${nameOf other}'";
