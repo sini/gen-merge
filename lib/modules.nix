@@ -3773,14 +3773,10 @@ let
               || type ? choose
               ||
                 (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
-                &&
-                  builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type == builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type.mergeDefs.completed
+                && (k: builtins.intersectAttrs k type == builtins.intersectAttrs k type.mergeDefs.completed) {
+                  admits = null;
+                  mergeDefs = null;
+                }
             )
           )
           && !(all (d: type.admits d.value) typeDefs)
@@ -3914,14 +3910,10 @@ let
           || type ? choose
           ||
             (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
-            &&
-              builtins.intersectAttrs {
-                admits = null;
-                mergeDefs = null;
-              } type == builtins.intersectAttrs {
-                admits = null;
-                mergeDefs = null;
-              } type.mergeDefs.completed
+            && (k: builtins.intersectAttrs k type == builtins.intersectAttrs k type.mergeDefs.completed) {
+              admits = null;
+              mergeDefs = null;
+            }
         )
       )
       && !(all (d: type.admits d.value) typeDefs)
@@ -4154,14 +4146,10 @@ let
               || type ? choose
               ||
                 (type.mergeDefs.completed._checkWitness or null) == type._checkWitness
-                &&
-                  builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type == builtins.intersectAttrs {
-                    admits = null;
-                    mergeDefs = null;
-                  } type.mergeDefs.completed
+                && (k: builtins.intersectAttrs k type == builtins.intersectAttrs k type.mergeDefs.completed) {
+                  admits = null;
+                  mergeDefs = null;
+                }
             )
           )
           && !(all (d: type.admits d.value) typeDefs)
