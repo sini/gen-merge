@@ -1030,16 +1030,16 @@ let
         inherit earlier later;
       }
     # a decider-only MEET hands the step to the later declaration's own relation; a later FOREIGN record that cannot
-    # answer one (`interface.unanswerableRelation`) is refused by name where the protocol's default would abort
+    # answer one (`interface.protocolReaders.unanswerable`) is refused by name where the protocol's default would abort
     # reading it (asked before `m`, which would read it)
     else if
       (veto.meets or false)
       && !(veto.vetoes or true)
       && !(later ? typeMergeRel)
-      && interface.unanswerableRelation later earlier != null
+      && interface.protocolReaders.unanswerable later earlier != null
     then
       {
-        refused = interface.unanswerableRelation later earlier;
+        refused = interface.protocolReaders.unanswerable later earlier;
         inherit earlier later;
       }
     else if m == null then

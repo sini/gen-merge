@@ -232,7 +232,7 @@ let
                 # the row this type's constructor stated, never one its name collides with
                 e = row;
                 embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
-                sameKey = isAttrs other && (interface.protocolKeyOf other) == name;
+                sameKey = isAttrs other && (interface.protocolReaders.keyOf other) == name;
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
                   embedding = e;
@@ -2231,7 +2231,7 @@ let
             _:
             (
               other:
-              if !(isAttrs other) || (interface.protocolKeyOf other) != "either" then
+              if !(isAttrs other) || (interface.protocolReaders.keyOf other) != "either" then
                 { refused = "`either' and `${nameOf other}'"; }
               else if other ? carries then
                 eitherMemberwise a b other
