@@ -5755,7 +5755,9 @@ let
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
       (
         let
-          j = a.typeMerge b.functor;
+          # a met record's carrier is asked, never the record: the caller meets the answer with the record's declarations
+          # (`mergeTypesBy` → `metWith`), so asking the record would meet it twice and nest one met record in the next
+          j = (if a ? __declared && !(a ? holds) then a.__meetJoin else a).typeMerge b.functor;
           # a join the step can apply states the check and the fold an operand states; any other answer is
           # no join (the test is inline, so the pair pays no binding for it)
           k =
