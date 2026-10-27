@@ -213,7 +213,9 @@ let
           exact = true;
           __functor =
             _: other:
-            if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name then
+            if
+              isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name
+            then
               { merged = self; }
             else if
               isAttrs other
@@ -264,12 +266,14 @@ let
                 # members this type publishes, as two gen `either`s are (`eitherMemberwise`)
                 else if other ? typeMergeRel && !(other ? retainedRelation) && other ? carries.alternatives then
                   let
-                    ms = self.functor.payload.elemType or null;
+                    ms = interface.importedOffered "alternatives" self;
                   in
                   if isList ms && length ms == 2 then
                     eitherMemberwise (head ms) (elemAt ms 1) other
                   else
-                    { refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding"; }
+                    {
+                      refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
+                    }
                 else
                   {
                     refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";

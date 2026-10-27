@@ -1565,9 +1565,9 @@ let
   # ── THE KEY THE FOREIGN PROTOCOL READS ──────────────────────────────────────────────────────────
   # nixpkgs keys a redeclaration on the FUNCTOR name (`protoTypeMerge`), and a refinement keeps its
   # base's functor under a name of its own: `ints.positive` is `positiveInt` over functor `int`, and
-  # gen's `number` is `number` over `either`. So whether a partner IS a relation's key, or is keyed
-  # under its embedding, is asked here, where the partner is read as the protocol reads it. A
-  # derivation keeps its own identity (`keyOf`), and a record stating no functor name is its name.
+  # gen's `number` is `number` over `either`. So whether a partner IS a relation's key is asked here,
+  # where the partner is read as the protocol reads it. A derivation keeps its own identity
+  # (`keyOf`), and a record stating no functor name is its name.
   protocolKeyOf =
     x:
     if isAttrs x && !(x ? __derivation) && builtins.isString ((x.functor or { }).name or null) then
