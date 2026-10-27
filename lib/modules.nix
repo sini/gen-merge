@@ -3005,9 +3005,9 @@ let
           # a record-keyed node is named by its REFERENCE key, the one a removal item states
           nk =
             g:
-            if (g.m0.__moduleKey or null) != null then
+            if (g.m0.__moduleKey or null) != null && g.m ? key then
               builtins.unsafeDiscardStringContext (toString g.m.key)
-            else if builtins.substring 0 1 g.key == "k" then
+            else if (g.m0.__moduleKey or null) == null && builtins.substring 0 1 g.key == "k" then
               builtins.substring 1 (builtins.stringLength g.key) g.key
             else
               "${if g.importer.key == "" then "" else nk g.importer}:anon-${toString (g.i + 1)}";
