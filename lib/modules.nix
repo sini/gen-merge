@@ -2832,6 +2832,34 @@ let
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
+  # v1.6: hoisted out of `moduleLevels`, so a level allocates none of them
+  lvComposes =
+    e:
+    builtins.elem ((e.m0.__keyEq or null).onDistinct or null) [
+      "compose"
+      "refuse-on-conflict"
+    ];
+  # v1.5 lever (O by seal): `onDistinct = "refuse-on-conflict"` keeps a distinct construction unless its
+  # record's `conflicts` says it collides with a kept one, which is refused by name
+  lvRefusesOn =
+    r: x:
+    (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict"
+    && lvComposes r.e
+    && x.e.m0.__keyEq.conflicts r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
+  sameConstructionIn =
+    class: callM: r: x:
+    if lvComposes r.e then
+      let
+        same = r.e.m0.__keyEq.decide r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
+      in
+      if builtins.isBool same then
+        same
+      else
+        throw "gen-merge: the key comparison (`__keyEq.decide') of `${x.e._file}' returned ${builtins.typeOf same}, not a boolean."
+    else if a3.distinctAt r x then
+      false
+    else
+      !(keyedDrop class callM a3.noRefined r x);
   moduleLevels =
     class: callM: seen: level:
     if level == [ ] then
@@ -2863,33 +2891,6 @@ let
         # kept, in collection order, by its `decide` alone (no refinement read, so no mark): equal to one of them is
         # that construction reached again and is dropped; distinct from all is another construction and is kept.
         # `seen."~<k>"` carries a meeting's kept constructions into deeper levels.
-        composes =
-          e:
-          builtins.elem ((e.m0.__keyEq or null).onDistinct or null) [
-            "compose"
-            "refuse-on-conflict"
-          ];
-        # v1.5 lever (O by seal): `onDistinct = "refuse-on-conflict"` keeps a distinct construction unless its
-        # record's `conflicts` says it collides with a kept one, which is refused by name
-        refusesOn =
-          r: x:
-          (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict"
-          && composes r.e
-          && x.e.m0.__keyEq.conflicts r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
-        sameConstruction =
-          r: x:
-          if composes r.e then
-            let
-              same = r.e.m0.__keyEq.decide r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
-            in
-            if builtins.isBool same then
-              same
-            else
-              throw "gen-merge: the key comparison (`__keyEq.decide') of `${x.e._file}' returned ${builtins.typeOf same}, not a boolean."
-          else if a3.distinctAt r x then
-            false
-          else
-            !(keyedDrop class callM a3.noRefined r x);
         opt = builtins.foldl' (
           acc: x:
           # the collision pre-check FIRST (v1.6): a lone first holder (no deeper holder, first in its level) is
@@ -2897,7 +2898,7 @@ let
           # later occurrence of its key reads as a rep
           if x.k == null || (!(seen ? ${x.k}) && first.${x.k}.p == x.p) then
             acc
-          else if !(composes x.e) then
+          else if !(lvComposes x.e) then
             acc
           else
             let
@@ -2908,8 +2909,8 @@ let
                   ((seen."~" or { }).${x.k} or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
                   ++ (if !(seen ? ${x.k}) && first.${x.k}.p != x.p then [ first.${x.k} ] else [ ])
                 );
-              dup = any (r: sameConstruction r x) rs;
-              clash = if dup then [ ] else builtins.filter (r: refusesOn r x) rs;
+              dup = any (r: sameConstructionIn class callM r x) rs;
+              clash = if dup then [ ] else builtins.filter (r: lvRefusesOn r x) rs;
             in
             if clash != [ ] then
               throw "gen-merge: modules `${(builtins.head clash).e._file}' and `${x.e._file}' share the key '${
@@ -2937,7 +2938,7 @@ let
                 || (
                   if !(seen ? ${x.k}) && first.${x.k}.p == x.p then
                     true
-                  else if composes x.e then
+                  else if lvComposes x.e then
                     opt.keep.${toString x.p} or true
                   else if seen ? ${x.k} || first.${x.k}.p != x.p then
                     keyedDrop class callM (
