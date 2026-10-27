@@ -1001,7 +1001,7 @@ let
       m =
         if !decidable then
           null
-        else if veto ? refused then
+        else if veto ? refused || !(veto.vetoes or true) then
           (
             let
               tried = builtins.tryEval (mergeTypesWithin later earlier);
@@ -1011,7 +1011,7 @@ let
         else
           mergeTypesWithin later earlier;
     in
-    if veto.meets or false then
+    if (veto.meets or false) && (veto.vetoes or true) then
       {
         # met as `relationMergeWithin` meets a `meets` answer: a roleless join at the top alone
         merged =
@@ -1046,6 +1046,19 @@ let
     else if veto ? refused && (veto.vetoes or true) then
       {
         inherit (veto) refused;
+        inherit earlier later;
+      }
+    # a decider-only MEET hands the step to the later declaration's own relation; a later FOREIGN record that cannot
+    # answer one (`interface.protocolReaders.unanswerable`) is refused by name where the protocol's default would abort
+    # reading it (asked before `m`, which would read it)
+    else if
+      (veto.meets or false)
+      && !(veto.vetoes or true)
+      && !(later ? typeMergeRel)
+      && !(interface.protocolReaders.answers later)
+    then
+      {
+        refused = interface.protocolReaders.unanswerable later earlier;
         inherit earlier later;
       }
     else if m == null then

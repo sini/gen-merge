@@ -213,20 +213,21 @@ let
           exact = true;
           __functor =
             _: other:
-            if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
-              if (keyOf other) == name then
-                { merged = self; }
-              else
-                {
-                  refused = "`${nameOf t}' and `${nameOf other}'";
-                  vetoes = !(other ? retainedRelation);
-                }
+            if
+              isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name
+            then
+              { merged = self; }
+            else if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
+              {
+                refused = "`${nameOf t}' and `${nameOf other}'";
+                vetoes = true;
+              }
             else
               let
                 # the row this type's constructor stated, never one its name collides with
                 e = row;
                 embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
-                sameKey = isAttrs other && (keyOf other) == name;
+                sameKey = isAttrs other && (interface.protocolReaders.keyOf other) == name;
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
                   embedding = e;
@@ -237,10 +238,13 @@ let
                   inherit name self;
                   embedding = e;
                 } other;
-                # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
+                # a join with a foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`), and it
+                # is this relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later
+                # declaration, whose own relation decides where it is later (`declaredPair`)
                 meet = j: {
                   merged = j;
                   meets = true;
+                  vetoes = false;
                 };
                 ownJoin = interface.joinInPartnerRelation self other;
               in
@@ -276,6 +280,14 @@ let
                 {
                   refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
                   vetoes = false;
+                }
+              # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
+              # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
+              # only as the later declaration
+              else if sameKey && (keyOf other) == name then
+                {
+                  merged = if leafJoin == null then self else leafJoin;
+                  meets = true;
                 }
               else if sameKey then
                 meet (if leafJoin == null then self else leafJoin)
@@ -2210,7 +2222,17 @@ let
             _:
             (
               other:
-              if !(isAttrs other) || (keyOf other) != "either" then
+              # a partner keyed `either` by identity, or a FOREIGN one by the protocol's key: a gen record keeps its
+              # identity, since a foreign engine hands this relation a functor and never a `//` copy's own check
+              if
+                !(isAttrs other)
+                ||
+                  (keyOf other) != "either"
+                  && (
+                    (interface.protocolReaders.keyOf other) != "either"
+                    || other ? typeMergeRel && !(other ? retainedRelation)
+                  )
+              then
                 { refused = "`either' and `${nameOf other}'"; }
               else if other ? carries then
                 eitherMemberwise a b other
@@ -2225,6 +2247,7 @@ let
                   {
                     merged = foreignJoin;
                     meets = true;
+                    vetoes = false;
                   }
                 else
                   eitherMemberwise a b other
