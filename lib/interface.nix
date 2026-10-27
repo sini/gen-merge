@@ -662,7 +662,7 @@ let
     && builtins.isFunction (t.__typeSelf or null)
     && stampOk t;
   # Whether `other` is keyed under the name row `e` embeds in: the one place a relation asks it.
-  keyedUnderEmbedding = e: other: e != null && (protocolKeyOf other) == e.name;
+  keyedUnderEmbedding = e: other: e != null && (keyOf other) == e.name;
   # The leaf row `t`'s mint reaches, read only off the record its constructor (or this boundary)
   # COMPLETED: a `//` copy keeps its base's mark while changing what that mark stands for, so it
   # reaches none (gen-types' completion stamp, `stampOk`, which `restamp` re-ties at the import door).

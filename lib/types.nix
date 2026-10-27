@@ -260,6 +260,10 @@ let
                 in
                 if unionJoin != null then
                   meet unionJoin
+                # a gen partner of the embedding (gen's `either`) answers in its own union relation, which
+                # reads this type's members as its member pair; it is asked, not rebuilt
+                else if other ? typeMergeRel && !(other ? retainedRelation) then
+                  other.typeMergeRel self
                 else
                   {
                     refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
