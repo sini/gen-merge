@@ -6006,7 +6006,8 @@ let
   importedMergeReason =
     a: b:
     let
-      j = if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+      gaps = relationGaps (a.functor or null);
+      j = if a ? typeMerge && b ? functor && gaps == [ ] then a.typeMerge b.functor else null;
       dropsA = j != null && joinRenames j a;
       dropsB = j != null && joinRenames j b;
       dropped =
@@ -6017,7 +6018,11 @@ let
         else
           "the check `${nameOf a}' declares but not the check `${nameOf b}' declares";
     in
-    if
+    if gaps != [ ] then
+      "`${nameOf a}' and `${nameOf b}', whose first type's `functor' states a merge relation but does not answer ${
+        concatStringsSep ", " (map (g: "`${g}'") gaps)
+      }, so the protocol's own default cannot apply it"
+    else if
       j != null
       && !(
         isAttrs j && (j ? check || !(a ? check || b ? check)) && (j ? merge || !(a ? merge || b ? merge))
