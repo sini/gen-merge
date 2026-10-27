@@ -7288,6 +7288,15 @@ let
   # The two readers the leaf relations and the fold step reach, as one binding (one load-time value).
   protocolReaders = {
     keyOf = x: if isAttrs x && !(x ? __derivation) && x ? functor.name then x.functor.name else keyOf x;
+    # whether `a`'s functor answers the relation it states (`relationGaps a.functor == [ ]`), restated as a
+    # predicate for the fold step's cost: it is asked once per decider-only step
+    answers =
+      a:
+      (a.functor.binOp or null) == null
+      ||
+        a.functor ? name
+        && a.functor ? type
+        && ((a.functor.payload or null) == null || isFunction a.functor.type);
     unanswerable =
       a: b:
       let

@@ -1036,7 +1036,7 @@ let
       (veto.meets or false)
       && !(veto.vetoes or true)
       && !(later ? typeMergeRel)
-      && interface.protocolReaders.unanswerable later earlier != null
+      && !(interface.protocolReaders.answers later)
     then
       {
         refused = interface.protocolReaders.unanswerable later earlier;
