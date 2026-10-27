@@ -786,7 +786,9 @@ let
   # way is still a legible operand — its element is read through the boundary's import environment,
   # which is the one place that knows any spelling but this one.
   #
-  # ★ ONE CARVE-OUT, against a RAW FOREIGN partner that states a relation and whose payload is just
+  # ★ ONE CARVE-OUT, against a partner that states its own relation, raw or returned by the `mkOptionType`
+  # door (a record stating `retainedRelation` beside `carries`) where gen cannot read that relation whole
+  # and the door return's own relation answers the pair with no ad-hoc override, and whose payload is just
   # the element, or is the payload of the richer constructor this container embeds in (`attrsOf` in
   # `attrsWith`, `interface.embeddings`): the partner's own relation decides the pair
   # (`interface.joinCarriedInStatedRelation`), so the merged type is that partner's record and not a
@@ -807,13 +809,57 @@ let
           if partnerElem != null then partnerElem else interface.embeddedOffered embedding "element" other;
         # THE MEET: the element pair through the meeting merge. Where it meets, the partner's relation is
         # asked only about the PARAMETERS (its own element against itself), never a gen element as the decider
-        metFirst = if other ? carries || stated == null then null else mergeElemTypes element stated;
+        metFirst =
+          if other ? carries && !(other ? retainedRelation) || stated == null then
+            null
+          else
+            mergeElemTypes element stated;
         joinOver = if metFirst != null then stated else element;
         # a partner whose payload is its element alone states no parameters to agree on: it is rebuilt
-        # over the met element by its own constructor, and its relation is not asked
+        # over the met element by its own constructor, and its relation is not asked. A door return is joined so
+        # only where gen cannot read its stated relation whole (`importedOffered`) and its own closed relation,
+        # asked of this pair as nixpkgs asks it, answers a join stating no ad-hoc override at any depth; any other
+        # stays gen's partner, so its closure decides the pair where it is the deciding declaration. Every declared
+        # role is walked, an option-shaped one (`attrTag`'s tags) at its type, and a join still wrapping types past
+        # the walk's fuel is taken as stating one (`importedTypeWalkFuel`'s stated price: refused, never guessed)
         foreignJoin =
-          if other ? carries then
+          if other ? carries && (!(other ? retainedRelation) || partnerElem != null) then
             null
+          else if other ? carries then
+            # a door return gen cannot read whole: its own answer is asked once, here; an answer stating an override
+            # is marked (`adHocChecked`, a name the library already interns) for the refusal below, which names it; no
+            # binding outside this arm, so no other pair pays
+            (
+              let
+                j = (interface.importedMerge other (rebuild element)).merged or null;
+                go =
+                  fuel: t:
+                  isAttrs t
+                  && (
+                    if (t._type or null) == "option" then
+                      go fuel (t.type or null)
+                    else
+                      (t.merge or { }) ? v2 && !(t.check.isV2MergeCoherent or false)
+                      || (
+                        if fuel > 0 then
+                          builtins.any (go (fuel - 1)) (interface.importedWrapped t)
+                        else
+                          interface.importedWrapped t != [ ]
+                      )
+                  );
+              in
+              if j == null then
+                null
+              else if go interface.importedTypeWalkFuel j then
+                { adHocChecked = true; }
+              else
+                interface.joinCarriedInStatedRelation {
+                  inherit name embedding;
+                  role = "element";
+                  carried = joinOver;
+                  self = rebuild joinOver;
+                } other
+            )
           else if metFirst != null && partnerElem != null then
             interface.rebuiltOverAt "element" metFirst other
           else
@@ -838,7 +884,7 @@ let
             vetoes = !(element ? typeMergeRel) || ((element.typeMergeRel partner).vetoes or true);
           };
       in
-      if foreignJoin != null then
+      if foreignJoin != null && !(foreignJoin ? adHocChecked) then
         let
           # the met element, or the join's own element met with both
           metElem =
@@ -881,6 +927,10 @@ let
           { refused = "`${name}' and a partner that states no element type of its own"; }
         else if mergeElemTypes element embeddedElem == null then
           elementRefusal embeddedElem
+        else if foreignJoin ? adHocChecked then
+          {
+            refused = "`${name}' over `${nameOf element}' and a partner over `${nameOf embeddedElem}' whose own relation joins this pair with an ad-hoc `type // { check = ...; }' override, which the v2 merge protocol refuses";
+          }
         else
           {
             refused = "`${name}' over `${nameOf element}' and a partner over `${nameOf embeddedElem}' whose own relation does not join this one's parameters";

@@ -1685,7 +1685,8 @@ answer is nothing. A refusal names the option path and *every* declaring file; t
 "Redeclaring an option" below).
 
 **gen states this as `typeMergeRel`, and it is ROW-FREE — that is the whole difference.** (One
-carve-out, against a raw foreign partner that states a relation of its own: see "A foreign payload is
+carve-out, against a partner that states a relation of its own, raw or returned by the `mkOptionType`
+door: see "A foreign payload is
 read only where it is read WHOLE" below.) nixpkgs
 asks `a.typeMerge b.functor`: the second operand is a functor **payload**, a row whose shape both
 sides must agree on before the question can even be posed. The relation takes **the other type**. It
@@ -1774,7 +1775,12 @@ about +300 against gen's engine's former (wrong-record) answer. A partner stated
 (nixpkgs `attrsWith` for `attrsOf`/`lazyAttrsOf`, `deferredModuleWith` for `deferredModule`) is joined
 in the same binding over the embedding (`interface.embeddings`): gen's parameters are a point of that
 payload, so the pair is decided by the partner's `binOp` under the same witness, a foreign
-`staticModules` survives it, and a refused `attrsOf` pair names its element pair. Three LEAVES embed
+`staticModules` survives it, and a refused `attrsOf` pair names its element pair. A container or
+`deferredModule` returned by the `mkOptionType` door (either door) states its relation beside gen's role. Where gen
+cannot read that relation whole and the door return's own relation answers the pair with no ad-hoc override at any
+depth, it is joined at these element and embedding pairs in that relation; otherwise it stays gen's partner, and its
+own closure decides the pair where it is the deciding declaration. A union's member pair
+does not read it so, and refuses that door return where nixpkgs serves. Three LEAVES embed
 too: gen-merge publishes gen-types' `string` as nixpkgs' `str` (no payload; the witness reads the two
 names as one record's, the table's `joinsAs`), and `path`/`pathLike` as `pathWith` at `absolute = true`
 and at no constraint. A mixed `str`/`path`/`pathLike` redeclaration therefore has nixpkgs' record in both orders
