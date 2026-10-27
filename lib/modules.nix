@@ -982,7 +982,7 @@ let
       m =
         if !decidable then
           null
-        else if veto ? refused then
+        else if veto ? refused || !(veto.vetoes or true) then
           (
             let
               tried = builtins.tryEval (mergeTypesWithin later earlier);
@@ -992,7 +992,7 @@ let
         else
           mergeTypesWithin later earlier;
     in
-    if veto.meets or false then
+    if (veto.meets or false) && (veto.vetoes or true) then
       {
         # met as `relationMergeWithin` meets a `meets` answer: a roleless join at the top alone
         merged =

@@ -7338,21 +7338,22 @@ let
         merged = joined;
         meets = true;
         holds = true;
+        vetoes = false;
       }
     else if joined != null && !whole then
       {
         refused = "${pair}, which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
-        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
+        vetoes = false;
       }
     else if answer == null && functorNames != null then
       {
         refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
-        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
+        vetoes = false;
       }
     else if answer == null then
       {
         refused = "${pair}, which the first type's own `functor' does not reconcile";
-        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
+        vetoes = false;
       }
     else
       { merged = answer; };

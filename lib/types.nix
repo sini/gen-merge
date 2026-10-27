@@ -243,10 +243,13 @@ let
                   inherit name self;
                   embedding = e;
                 } other;
-                # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
+                # a join with a foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`), and it
+                # is this relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later
+                # declaration, whose own relation decides where it is later (`declaredPair`)
                 meet = j: {
                   merged = j;
                   meets = true;
+                  vetoes = false;
                 };
                 ownJoin = interface.joinInPartnerRelation self other;
               in
@@ -2243,6 +2246,7 @@ let
                   {
                     merged = foreignJoin;
                     meets = true;
+                    vetoes = false;
                   }
                 else
                   eitherMemberwise a b other
