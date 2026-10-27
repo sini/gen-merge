@@ -3422,7 +3422,12 @@ let
             if keyed then
               first
               // seen
-              // prelude.mapAttrs' (k: v: prelude.nameValuePair "~${k}" v) opt.reps
+              // listToAttrs (
+                map (k: {
+                  name = "~${k}";
+                  value = opt.reps.${k};
+                }) (attrNames opt.reps)
+              )
               // {
                 "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
               }
