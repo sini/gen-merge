@@ -2892,11 +2892,12 @@ let
             !(keyedDrop class callM a3.noRefined r x);
         opt = builtins.foldl' (
           acc: x:
-          if x.k == null || !(composes x.e) then
+          # the collision pre-check FIRST (v1.6): a lone first holder (no deeper holder, first in its level) is
+          # kept without a fold step and without reading its record; it is the level's `first`, which every
+          # later occurrence of its key reads as a rep
+          if x.k == null || (!(seen ? ${x.k}) && first.${x.k}.p == x.p) then
             acc
-          # a lone first holder (no deeper rep, first in its level) is kept without a fold step: it is the
-          # level's `first`, which every later occurrence of its key reads as a rep
-          else if !(seen ? "~${x.k}") && !(seen ? ${x.k}) && first.${x.k}.p == x.p then
+          else if !(composes x.e) then
             acc
           else
             let
@@ -2904,7 +2905,7 @@ let
               # a record stating the key without opting in), so the pair is decided, never skipped
               rs =
                 acc.reps.${x.k} or (
-                  (seen."~${x.k}" or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
+                  ((seen."~" or { }).${x.k} or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
                   ++ (if !(seen ? ${x.k}) && first.${x.k}.p != x.p then [ first.${x.k} ] else [ ])
                 );
               dup = any (r: sameConstruction r x) rs;
@@ -2934,7 +2935,9 @@ let
                 x:
                 x.k == null
                 || (
-                  if composes x.e then
+                  if !(seen ? ${x.k}) && first.${x.k}.p == x.p then
+                    true
+                  else if composes x.e then
                     opt.keep.${toString x.p} or true
                   else if seen ? ${x.k} || first.${x.k}.p != x.p then
                     keyedDrop class callM (
@@ -2958,12 +2961,10 @@ let
             if keyed then
               first
               // seen
-              // listToAttrs (
-                map (k: {
-                  name = "~${k}";
-                  value = opt.reps.${k};
-                }) (attrNames opt.reps)
-              )
+              # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
+              // {
+                "~" = (seen."~" or { }) // opt.reps;
+              }
               // {
                 "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
               }
