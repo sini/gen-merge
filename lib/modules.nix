@@ -2739,16 +2739,23 @@ let
     collidedOf =
       flat:
       prelude.filterAttrs (_: v: length v > 1) (
-        builtins.groupBy (k: k) (
-          concatMap (
-            e:
-            let
-              k = nodeKeyOf e;
-            in
-            if k == null then [ ] else [ k ]
-          ) flat
-        )
+        builtins.groupBy nodeKeyOf (filter (e: nodeKeyOf e != null) flat)
       );
+    # PROTO (S): a record composing on distinct (`__keyEq.onDistinct = "compose"`) is a graph node refined by its
+    # construction's POSITION among its node key's kept constructions (`flat`'s order), found by its `decide`;
+    # never by its mark.
+    composesM = m0: ((m0.__keyEq or null).onDistinct or null) == "compose";
+    consIndex =
+      entries: m0:
+      let
+        hits = builtins.filter (i: let e = builtins.elemAt entries i; in e.m0.__keyEq.decide e.m0.__keyEq.subject m0.__keyEq.subject) (
+          prelude.genList (i: i) (length entries)
+        );
+      in
+      if hits == [ ] then
+        throw "gen-merge: a construction kept under a shared node key is not among its key's kept constructions"
+      else
+        builtins.head hits;
     levelC =
       C: callM: importer: mods:
       prelude.imap0 (
@@ -2758,7 +2765,9 @@ let
           k0 = moduleKeyOf importer i m0 m;
           self = {
             key =
-              if C ? ${k0} then
+              if C ? ${k0} && composesM m0 then
+                k0 + sep + "c" + toString (consIndex C.${k0} m0)
+              else if C ? ${k0} then
                 refinedKeyOf k0 {
                   content = m;
                   inherit m0;
@@ -3263,6 +3272,7 @@ let
   alignedGraph =
     what: flat: graph:
     let
+      collided = a3.collidedOf flat;
       n = length flat;
       agrees =
         i:
@@ -3278,10 +3288,18 @@ let
           else
             k == g.key
             || (
-              let
-                r = a3.refineOf e;
-              in
-              r != null && g.key == k + a3.sep + r
+              a3.composesM e.m0
+              && collided ? ${k}
+              && g.key == k + a3.sep + "c" + toString (a3.consIndex collided.${k} e.m0)
+            )
+            || (
+              !(a3.composesM e.m0)
+              && (
+                let
+                  r = a3.refineOf e;
+                in
+                r != null && g.key == k + a3.sep + r
+              )
             )
         )
         && moduleShape e.m0 == moduleShape g.m0;
