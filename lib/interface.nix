@@ -7007,9 +7007,15 @@ let
             [ (head owed) ]
           else
             owed;
+        # a met operand over this very carrier that already answers for every declaration of the step is the step's meet
+        kept' = builtins.filter (
+          o: isMetRecord o && length o.__metDebt.of == length xs && closuresFirst [ o.__meetJoin ] o.__meetJoin == km
+        ) os;
       in
       if maybe == [ ] then
         m
+      else if kept' != [ ] then
+        head kept'
       else if (importedSubstructure m).modules != null then
         carriedAtDepth true xs m
       else if owed == [ ] then
