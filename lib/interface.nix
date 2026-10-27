@@ -6666,7 +6666,8 @@ let
           __meetJoin = j;
           ${if cov == null then null else "__metDebt"} = {
             of = cov;
-            self = met;
+            inherit (met) check;
+            n = length (builtins.attrNames met);
           };
           merge =
             if v2 then
@@ -6816,9 +6817,10 @@ let
   # the hold's trigger (`metWith`, below): an operand stating a relation gen did not construct (a
   # `typeMergeRel` with no `exact` witness), not relativised to its own parameters (`__stockCheck`), carrying no
   # element or alternatives role. Bound once here: a lambda written where it is passed is a thunk per meet.
-  # the record `meetCovering` (or `metWith`'s hold) built and not a `//` copy of it (which keeps its fields): its own debt
-  # names it. `[ ]` around each side compares the two by reference before any field is read
-  isMetRecord = o: o ? __metDebt && [ o.__metDebt.self ] == [ o ];
+  # the record `meetCovering` (or `metWith`'s hold) built, and not a `//` copy of it, which keeps its fields: its debt states
+  # the check it published and how many attributes it has, so a copy that replaced the check or added a field (a derivation,
+  # a `verify` record) is met whole. The check is compared by reference (`[ ]`), and no field is compared by value
+  isMetRecord = o: o ? __metDebt && [ o.check ] == [ o.__metDebt.check ] && length (builtins.attrNames o) == o.__metDebt.n;
   uncertifiedLeaf =
     o:
     o ? typeMergeRel
@@ -7131,7 +7133,8 @@ let
               # a held record is held again wherever it is met, as its declarations (`heldIn`), never as its carrier
               __metDebt = {
                 of = (if length notM != length xs then [ m ] else [ ]) ++ notM;
-                self = h;
+                inherit (h) check;
+                n = length (builtins.attrNames h);
               };
               ${if types ? mkIdentity && m ? __mint then "__mint" else null} = hids.__mint;
               ${if types ? mkIdentity && m ? __mint then "__payload" else null} = hids.__payload;
