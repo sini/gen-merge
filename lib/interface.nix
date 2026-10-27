@@ -6914,8 +6914,9 @@ let
         maybe = if meets == false then filter mayOwe xs else xs;
         # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
         # compared inline so the meet binds nothing for it
-        notM = filter (o: closuresFirst [ m ] m != closuresFirst [ o ] o) maybe;
-        fresh = builtins.all (o: closuresFirst [ m ] m != closuresFirst [ o ] o) xs;
+        km = closuresFirst [ m ] m;
+        notM = filter (o: km != closuresFirst [ o ] o) maybe;
+        fresh = builtins.all (o: km != closuresFirst [ o ] o) xs;
         relativised =
           o:
           let
@@ -7179,9 +7180,22 @@ let
           if length xs0 == length os then
             os
           else
-            builtins.foldl' (
-              acc: x: if builtins.any (y: closuresFirst [ y ] y == closuresFirst [ x ] x) acc then acc else acc ++ [ x ]
-            ) [ ] xs0
+            (builtins.foldl' (
+              acc: x:
+              let
+                k = closuresFirst [ x ] x;
+              in
+              if builtins.elem k acc.k then
+                acc
+              else
+                {
+                  k = acc.k ++ [ k ];
+                  v = acc.v ++ [ x ];
+                }
+            ) {
+              k = [ ];
+              v = [ ];
+            } xs0).v
         );
   # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
   # functor as `joinInRebuiltPartner` rebuilds it, through `tryEval` (nixpkgs' default asserts); `null`
