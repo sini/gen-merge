@@ -6816,9 +6816,9 @@ let
   # the hold's trigger (`metWith`, below): an operand stating a relation gen did not construct (a
   # `typeMergeRel` with no `exact` witness), not relativised to its own parameters (`__stockCheck`), carrying no
   # element or alternatives role. Bound once here: a lambda written where it is passed is a thunk per meet.
-  # the record `meetCovering` built and not a `//` copy of it (which keeps its fields): its own debt names it. A held
-  # record stays whole. `[ ]` around each side compares the two by reference before any field is read
-  isMetRecord = o: o ? __metDebt && !(o ? holds) && [ o.__metDebt.self ] == [ o ];
+  # the record `meetCovering` (or `metWith`'s hold) built and not a `//` copy of it (which keeps its fields): its own debt
+  # names it. `[ ]` around each side compares the two by reference before any field is read
+  isMetRecord = o: o ? __metDebt && [ o.__metDebt.self ] == [ o ];
   uncertifiedLeaf =
     o:
     o ? typeMergeRel
@@ -6849,6 +6849,8 @@ let
         # a met operand is the declarations it answers for (`meetCovering`), never its carrier, and so is an answer that is
         # a met record, which is then its carrier: no step's carrier is a met record and none re-walks one. A copy of one
         # (`//`: a derivation, an override) is not one (`isMetRecord`) and is met whole
+        # a held met record, operand or answer, holds the step that meets its declarations
+        heldIn = builtins.any (o: o ? holds && isMetRecord o) ([ m ] ++ os);
         xs0 =
           (if isMetRecord m then m.__metDebt.of else [ ])
           ++ builtins.concatMap (o: if isMetRecord o then o.__metDebt.of else [ o ]) os;
@@ -6992,6 +6994,7 @@ let
       # before this branch
       else if
         meets == "holds"
+        || heldIn
         || builtins.catAttrs "holds" once != [ ]
         ||
           !(m ? typeMergeRel)
@@ -7012,7 +7015,7 @@ let
         let
           met = meetOf m once;
           kept =
-            if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+            if meets == "holds" || heldIn || builtins.catAttrs "holds" once != [ ] then
               # a step taken past the witness holds such an operand whole, by its unchecked fold
               once
             else if !(m ? typeMergeRel) then
@@ -7125,6 +7128,11 @@ let
             met
             // {
               holds = true;
+              # a held record is held again wherever it is met, as its declarations (`heldIn`), never as its carrier
+              __metDebt = {
+                of = (if length notM != length xs then [ m ] else [ ]) ++ notM;
+                self = h;
+              };
               ${if types ? mkIdentity && m ? __mint then "__mint" else null} = hids.__mint;
               ${if types ? mkIdentity && m ? __mint then "__payload" else null} = hids.__payload;
               ${if types ? mkIdentity && m ? __mint then "__sealed" else null} = hids.__sealed;
