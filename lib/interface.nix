@@ -7338,7 +7338,6 @@ let
         merged = joined;
         meets = true;
         holds = true;
-        vetoes = false;
       }
     else if joined != null && !whole then
       {
