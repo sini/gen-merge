@@ -2915,8 +2915,18 @@ let
             acc
           else
             let
+              # the level's first holder of the key is a rep too where it does not compose (a plain module or
+              # a record stating the key without opting in), so the pair is decided, never skipped
               rs =
-                acc.reps.${x.k} or (seen."~${x.k}" or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]));
+                acc.reps.${x.k} or (
+                  (seen."~${x.k}" or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
+                  ++ (
+                    if !(seen ? ${x.k}) && first.${x.k}.p != x.p && !(composes first.${x.k}.e) then
+                      [ first.${x.k} ]
+                    else
+                      [ ]
+                  )
+                );
               dup = any (r: sameConstruction r x) rs;
               clash = if dup then [ ] else builtins.filter (r: refusesOn r x) rs;
             in
