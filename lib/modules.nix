@@ -2866,6 +2866,48 @@ let
               ]
           ) at
         );
+        # PROTO (S), den-hoag-xh14j key spec v1.4: a record publishing `__keyEq.onDistinct = "compose"` (gen-schema's
+        # kinds and plain bases; never an aspect core) is decided against EVERY distinct construction its meeting has
+        # kept, in collection order, by its `decide` alone (no refinement read, so no mark): equal to one of them is
+        # that construction reached again and is dropped; distinct from all is another construction and is kept.
+        # `seen."~<k>"` carries a meeting's kept constructions into deeper levels.
+        composes = e: ((e.m0.__keyEq or null).onDistinct or null) == "compose";
+        sameConstruction =
+          r: x:
+          if composes r.e then
+            let
+              same = r.e.m0.__keyEq.decide r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
+            in
+            if builtins.isBool same then
+              same
+            else
+              throw "gen-merge: the key comparison (`__keyEq.decide') of `${x.e._file}' returned ${builtins.typeOf same}, not a boolean."
+          else if a3.distinctAt r x then
+            false
+          else
+            !(keyedDrop class callM a3.noRefined r x);
+        opt = builtins.foldl' (
+          acc: x:
+          if x.k == null || !(composes x.e) then
+            acc
+          else
+            let
+              rs =
+                acc.reps.${x.k} or (seen."~${x.k}" or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]));
+              dup = any (r: sameConstruction r x) rs;
+            in
+            {
+              reps = acc.reps // {
+                ${x.k} = if dup then rs else rs ++ [ x ];
+              };
+              keep = acc.keep // {
+                ${toString x.p} = !dup;
+              };
+            }
+        ) {
+          reps = { };
+          keep = { };
+        } at;
         kept =
           if keyed then
             map (x: x.e) (
@@ -2873,7 +2915,9 @@ let
                 x:
                 x.k == null
                 || (
-                  if seen ? ${x.k} || first.${x.k}.p != x.p then
+                  if composes x.e then
+                    opt.keep.${toString x.p}
+                  else if seen ? ${x.k} || first.${x.k}.p != x.p then
                     keyedDrop class callM (
                       _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
                     ) (seen.${x.k} or first.${x.k}) x
@@ -2895,6 +2939,7 @@ let
             if keyed then
               first
               // seen
+              // prelude.mapAttrs' (k: v: prelude.nameValuePair "~${k}" v) opt.reps
               // {
                 "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
               }
