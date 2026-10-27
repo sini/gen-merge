@@ -217,12 +217,7 @@ let
               isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name
             then
               { merged = self; }
-            else if
-              isAttrs other
-              && other ? typeMergeRel
-              && !(other ? retainedRelation)
-              && !(interface.keyedUnderEmbedding row other)
-            then
+            else if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
               {
                 refused = "`${nameOf t}' and `${nameOf other}'";
                 vetoes = true;
@@ -265,25 +260,6 @@ let
                 in
                 if unionJoin != null then
                   meet unionJoin
-                # a gen union partner of the embedding (gen's `either`) is joined memberwise against the
-                # members this type publishes, as two gen `either`s are (`eitherMemberwise`); a `//` copy that
-                # rewrote its check is not: its own exported `typeMerge` is its base's, so under a foreign engine the
-                # join would replace it and drop the rewrite (ADR-0039: a gen function run there is gen's)
-                else if
-                  other ? typeMergeRel
-                  && !(other ? retainedRelation)
-                  && other ? carries.alternatives
-                  && !(interface.rewritesCheck other)
-                then
-                  let
-                    ms = interface.importedOffered "alternatives" self;
-                  in
-                  if isList ms && length ms == 2 then
-                    eitherMemberwise (head ms) (elemAt ms 1) other
-                  else
-                    {
-                      refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
-                    }
                 else
                   {
                     refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
@@ -2246,15 +2222,15 @@ let
             _:
             (
               other:
-              # a partner keyed `either` by identity, or by the protocol's key where it is not a gen record whose
-              # check a `//` copy rewrote (whose exported `typeMerge` is its base's: see `nullaryRel`'s members branch)
+              # a partner keyed `either` by identity, or a FOREIGN one by the protocol's key: a gen record keeps its
+              # identity, since a foreign engine hands this relation a functor and never a `//` copy's own check
               if
                 !(isAttrs other)
                 ||
                   (keyOf other) != "either"
                   && (
                     (interface.protocolReaders.keyOf other) != "either"
-                    || other ? typeMergeRel && !(other ? retainedRelation) && interface.rewritesCheck other
+                    || other ? typeMergeRel && !(other ? retainedRelation)
                   )
               then
                 { refused = "`either' and `${nameOf other}'"; }
