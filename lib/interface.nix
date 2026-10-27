@@ -6840,10 +6840,8 @@ let
       m
     else
       let
-        # a met record, operand or answer, is the declarations it answers for (`meetCovering`), and an answer is its
-        # carrier, so no step's carrier is a met record and none re-walks one; a held record stays whole
-        flat = o: o ? __declared && !(o ? holds);
-        xs0 = (if flat m then m.__declared else [ ]) ++ builtins.concatMap (o: if flat o then o.__declared else [ o ]) os;
+        # a met operand is the declarations it answers for (`meetCovering`), never its carrier; a held one stays whole
+        xs0 = builtins.concatMap (o: if o ? __declared && !(o ? holds) then o.__declared else [ o ]) os;
       in
       (
         m: xs:
@@ -7177,7 +7175,7 @@ let
       else
         meetCovering ((if length notM != length xs then [ m ] else [ ]) ++ notM) m once
       )
-        (if flat m then m.__meetJoin else m)
+        m
         (
           if length xs0 == length os then
             os
