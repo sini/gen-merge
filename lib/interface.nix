@@ -5765,22 +5765,7 @@ let
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
   importedMerge =
     a: b:
-    # a functor stating a relation it cannot answer (`relationGaps`: no `name`, or no `type` to apply) is no
-    # join: the protocol's default would abort reading it, so the pair is refused by name instead
-    # (`importedMergeReason` names the gap). `relationGaps a.functor == [ ]`, restated inline for cost.
-    if
-      a ? typeMerge
-      && b ? functor
-      && (
-        (a.functor.binOp or null) == null
-        ||
-          a.functor ? name
-          && a.functor ? type
-          && ((a.functor.payload or null) == null || isFunction a.functor.type)
-      )
-      && importedDecidable a
-      && importedDecidable b
-    then
+    if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
       (
         let
           j = a.typeMerge b.functor;
@@ -8778,6 +8763,7 @@ in
     departsWithinCarrier
     keyOf
     protocolKeyOf
+    relationGaps
     wrapsKeyOf
     nameOf
     functorNamesOf

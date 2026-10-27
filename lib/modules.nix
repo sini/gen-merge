@@ -979,10 +979,18 @@ let
         else
           { };
       # read only where the veto did not end the step, so a refusal seen here is one that defers
+      # a decider-only answer hands the step to the later declaration's own relation; a later FOREIGN record whose
+      # functor states a relation it cannot answer (`interface.relationGaps`) has none to hand it to, so the step is
+      # refused by name (`mergeTypesReason` names the gap) where the protocol's default would abort reading it
+      handsOff = !(veto.vetoes or true);
       m =
         if !decidable then
           null
-        else if veto ? refused || !(veto.vetoes or true) then
+        else if
+          handsOff && !(later ? typeMergeRel) && interface.relationGaps (later.functor or null) != [ ]
+        then
+          null
+        else if veto ? refused || handsOff then
           (
             let
               tried = builtins.tryEval (mergeTypesWithin later earlier);
