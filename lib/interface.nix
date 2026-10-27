@@ -6568,8 +6568,13 @@ let
   # A redeclared option accepts a definition only where EVERY declared check accepts it. `meetOf j os`
   # is the join `j` (the carrier: its fold, name, functor) restricted by each check in `os`, published as
   # a witnessed rewrite (`check` is not `_checkWitness`), so every later step sees it as owed.
-  meetOf =
-    j: os:
+  # What a later step owes of it is what was DECLARED, never its carrier's own check: `__declared` lists the
+  # declarations the record answers for (`metWith`), so at the next step the record is met as those declarations,
+  # each judged against that step's join, and the carrier `j` is owed again only where it stood for a declaration
+  # it carried. nixpkgs' later step drops the carrier's check; the meet owes every declared check and no other.
+  meetOf = meetCovering null;
+  meetCovering =
+    cov: j: os:
     let
       fold = j.mergeDefs or (importedRawFold j);
       # each check in its cheapest callable form: a witness record's function, not its functor
@@ -6657,6 +6662,7 @@ let
               conj;
           _checkWitness = j._checkWitness or j.check;
           __meetJoin = j;
+          ${if cov == null then null else "__declared"} = cov;
           merge =
             if v2 then
               {
@@ -6832,6 +6838,14 @@ let
       m
     else
       let
+        # a met record, operand or answer, is the declarations it answers for (`meetCovering`), and an answer is its
+        # carrier, so no step's carrier is a met record and none re-walks one; a held record stays whole
+        flat = o: o ? __declared && !(o ? holds);
+        xs0 = (if flat m then m.__declared else [ ]) ++ builtins.concatMap (o: if flat o then o.__declared else [ o ]) os;
+      in
+      (
+        m: xs:
+        let
         mayOwe =
           o:
           !(
@@ -6897,11 +6911,11 @@ let
             so = shapeOf importedTypeWalkFuel o;
           in
           so != sm && widensAt so sm;
-        maybe = if meets == false then filter mayOwe os else os;
+        maybe = if meets == false then filter mayOwe xs else xs;
         # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
         # compared inline so the meet binds nothing for it
         notM = filter (o: closuresFirst [ m ] m != closuresFirst [ o ] o) maybe;
-        fresh = builtins.all (o: closuresFirst [ m ] m != closuresFirst [ o ] o) os;
+        fresh = builtins.all (o: closuresFirst [ m ] m != closuresFirst [ o ] o) xs;
         relativised =
           o:
           let
@@ -6954,7 +6968,7 @@ let
       if maybe == [ ] then
         m
       else if (importedSubstructure m).modules != null then
-        carriedAtDepth true os m
+        carriedAtDepth true xs m
       else if owed == [ ] then
         m
       # a held operand (a record met holding, `holds`) is held again wherever it is met. So is an operand stating a
@@ -7158,7 +7172,17 @@ let
         in
         if kept == [ ] then met else h
       else
-        meetOf m once;
+        meetCovering ((if length notM != length xs then [ m ] else [ ]) ++ notM) m once
+      )
+        (if flat m then m.__meetJoin else m)
+        (
+          if length xs0 == length os then
+            os
+          else
+            builtins.foldl' (
+              acc: x: if builtins.any (y: closuresFirst [ y ] y == closuresFirst [ x ] x) acc then acc else acc ++ [ x ]
+            ) [ ] xs0
+        );
   # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
   # functor as `joinInRebuiltPartner` rebuilds it, through `tryEval` (nixpkgs' default asserts); `null`
   # where it declines or renames.
