@@ -5998,8 +5998,8 @@ let
   importedMergeReason =
     a: b:
     let
-      gaps = relationGaps (a.functor or null);
-      j = if a ? typeMerge && b ? functor && gaps == [ ] then a.typeMerge b.functor else null;
+      unanswerable = unanswerableRelation a b;
+      j = if a ? typeMerge && b ? functor && unanswerable == null then a.typeMerge b.functor else null;
       dropsA = j != null && joinRenames j a;
       dropsB = j != null && joinRenames j b;
       dropped =
@@ -6010,10 +6010,8 @@ let
         else
           "the check `${nameOf a}' declares but not the check `${nameOf b}' declares";
     in
-    if gaps != [ ] then
-      "`${nameOf a}' and `${nameOf b}', whose first type's `functor' states a merge relation but does not answer ${
-        concatStringsSep ", " (map (g: "`${g}'") gaps)
-      }, so the protocol's own default cannot apply it"
+    if unanswerable != null then
+      unanswerable
     else if
       j != null
       && !(
@@ -7289,6 +7287,20 @@ let
     else
       (if f ? name then [ ] else [ "name" ])
       ++ (if f ? type && ((f.payload or null) == null || isFunction f.type) then [ ] else [ "type" ]);
+
+  # The pair's refusal where `a`, deciding, states a relation in its functor that it cannot answer
+  # (`relationGaps`), so the protocol's default would abort applying it; `null` where it can answer.
+  unanswerableRelation =
+    a: b:
+    let
+      gaps = relationGaps (a.functor or null);
+    in
+    if gaps == [ ] then
+      null
+    else
+      "`${nameOf a}' and `${nameOf b}', whose first type's `functor' states a merge relation but does not answer "
+      + concatStringsSep ", " (map (g: "`${g}'") gaps)
+      + ", so the protocol's own default cannot apply it";
 
   # relationRefusal — a relation STATED and unusable. It is the COMPLEMENT of `functorRefusal' over
   # the same records: the two partition "supplies a functor" on `binOp', the other answering for a
@@ -8763,7 +8775,7 @@ in
     departsWithinCarrier
     keyOf
     protocolKeyOf
-    relationGaps
+    unanswerableRelation
     wrapsKeyOf
     nameOf
     functorNamesOf

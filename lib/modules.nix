@@ -1029,18 +1029,17 @@ let
         inherit (veto) refused;
         inherit earlier later;
       }
-    # a decider-only answer hands the step to the later declaration's own relation; a later FOREIGN record whose
-    # functor states a relation it cannot answer (`interface.relationGaps`) has none to hand it to, so the step is
-    # refused by name where the protocol's default would abort reading it (asked before `m`, which would read it)
+    # a decider-only MEET hands the step to the later declaration's own relation; a later FOREIGN record that cannot
+    # answer one (`interface.unanswerableRelation`) is refused by name where the protocol's default would abort
+    # reading it (asked before `m`, which would read it)
     else if
-      !(veto.vetoes or true)
+      (veto.meets or false)
+      && !(veto.vetoes or true)
       && !(later ? typeMergeRel)
-      && interface.relationGaps (later.functor or null) != [ ]
+      && interface.unanswerableRelation later earlier != null
     then
       {
-        refused = "`${interface.nameOf later}' and `${interface.nameOf earlier}', whose first type's `functor' states a merge relation but does not answer ${
-          concatStringsSep ", " (map (g: "`${g}'") (interface.relationGaps later.functor))
-        }, so the protocol's own default cannot apply it";
+        refused = interface.unanswerableRelation later earlier;
         inherit earlier later;
       }
     else if m == null then
