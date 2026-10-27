@@ -11989,7 +11989,7 @@ in
             expr = builtins.deepSeq p p;
             expectedError = {
               type = "ThrownError";
-              msg = "^gen-merge: option `p' is declared with types that do not merge \\(`attrsOf' and a partner that states no element type of its own\\); declared in <unknown-file>, <unknown-file>$";
+              msg = "^gen-merge: option `p' is declared with types that do not merge \\(`attrsOf' over `int' and a partner over `int' whose own relation does not join this one's parameters\\); declared in <unknown-file>, <unknown-file>$";
             };
           };
       };
@@ -14047,6 +14047,142 @@ in
             type = "EvalError";
             msg = "infinite recursion encountered";
           };
+        };
+      };
+
+    # A DOOR RETURN BESIDE ITS BARE TYPE (ci/tests/door-partner.nix): the door's record states its relation beside
+    # gen's role and is joined in that relation, so THE MEET holds the element's check. A value the door element's
+    # check rejects is refused by the meet, by name, where nixpkgs' engine drops the check and serves; an element
+    # clash names the element pair; a laziness clash keeps its own reason; a door return whose own join is an ad-hoc
+    # override, at its top or nested, names the override. RED (each `msg`): "a partner that states no element type of
+    # its own", where the pair guards read `? carries` alone; the override pins also with "whose own relation does not
+    # join this one's parameters", where the refusal does not name the door return's own answer.
+    flake.testsError.door-partner =
+      let
+        np = nixpkgsLib.types;
+        door = gm.mkOptionType;
+        sub = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+        p = v: !(builtins.isAttrs v) || (v.a or 0) != 1;
+        # an ad-hoc override whose functor rebuilds it: at the top (`attrsWith` with a parameter no embedding row has),
+        # and one element down
+        rawExtra = np.mkOptionType {
+          name = "attrsOf";
+          check = builtins.isAttrs;
+          merge = (np.attrsOf np.int).merge;
+          functor = {
+            name = "attrsWith";
+            wrapped = null;
+            payload = {
+              elemType = np.int;
+              lazy = false;
+              placeholder = "name";
+              extra = 1;
+            };
+            type = _: rawExtra;
+            binOp =
+              a: b:
+              let
+                m = a.elemType.typeMerge b.elemType.functor;
+              in
+              if m == null then null else a // { elemType = m; };
+          };
+          nestedTypes.elemType = np.int;
+        };
+        shortList = np.mkOptionType {
+          name = "listOf";
+          check = v: builtins.isList v && builtins.length v < 2;
+          inherit (np.listOf np.int) merge;
+          functor = {
+            name = "listOf";
+            wrapped = null;
+            payload.elemType = np.int;
+            type = _: shortList;
+            binOp =
+              a: b:
+              let
+                m = a.elemType.typeMerge b.elemType.functor;
+              in
+              if m == null then null else { elemType = m; };
+          };
+          nestedTypes.elemType = np.int;
+        };
+        # a partner stating no override of its own whose functor answers every join with `attrsOf X`: the override sits
+        # in the join only, in an `attrTag` tag, or past the walk's fuel (`importedTypeWalkFuel`, 32)
+        joinsAs =
+          X:
+          np.mkOptionType {
+            inherit (np.attrsOf np.int) name merge check;
+            functor = (np.attrsOf np.int).functor // {
+              type = _: np.attrsOf X;
+            };
+            nestedTypes.elemType = np.int;
+          };
+        nestList = n: e: if n == 0 then e else np.listOf (nestList (n - 1) e);
+        overrides =
+          of:
+          "${of} whose own relation joins this pair with an ad-hoc `type // \\{ check = \\.\\.\\.; }' override, which the v2 merge protocol refuses";
+        x =
+          ts: v:
+          let
+            r =
+              (gm.evalModuleTree { } (map (ty: { options.x = gm.mkOption { type = ty; }; }) ts ++ [ { x = v; } ]))
+              .config.x;
+          in
+          builtins.deepSeq r r;
+        notOf = at: {
+          type = "ThrownError";
+          msg = "^gen-merge: a definition for option `${at}' is not of type `submodule', in `<unknown-file>'$";
+        };
+        undeclared = why: {
+          type = "ThrownError";
+          msg = "^gen-merge: option `x' is declared with types that do not merge \\(${why}\\); declared in <unknown-file>, <unknown-file>$";
+        };
+      in
+      {
+        test-r5-bad-bare-first = {
+          expr = x [ (t.attrsOf sub) (door (t.attrsOf (np.addCheck sub p))) ] { k.a = 1; };
+          expectedError = notOf "x.k";
+        };
+        test-r5-bad-door-first = {
+          expr = x [ (door (t.attrsOf (np.addCheck sub p))) (t.attrsOf sub) ] { k.a = 1; };
+          expectedError = notOf "x.k";
+        };
+        test-lazy-attrs-of-bad-through-the-vocabulary-door = {
+          expr = x [ (t.lazyAttrsOf sub) (t.mkOptionType (t.lazyAttrsOf (np.addCheck sub p))) ] { k.a = 1; };
+          expectedError = notOf "x.k";
+        };
+        test-a-nested-door-return-bad = {
+          expr = x [ (t.attrsOf (t.attrsOf sub)) (t.attrsOf (door (t.attrsOf (np.addCheck sub p)))) ] {
+            j.k.a = 1;
+          };
+          expectedError = notOf "x.j.k";
+        };
+        test-an-element-clash-names-the-element-pair = {
+          expr = x [ (t.attrsOf np.int) (door (t.attrsOf np.str)) ] { k = 2; };
+          expectedError = undeclared "`attrsOf' over `int' and `attrsOf' over `str', whose element types do not merge";
+        };
+        test-a-laziness-clash-keeps-its-reason = {
+          expr = x [ (door (t.attrsOf np.int)) (t.lazyAttrsOf np.int) ] { k = 2; };
+          expectedError = undeclared "`attrsOf' and `lazyAttrsOf', which the first type's own `functor' does not reconcile";
+        };
+        test-a-door-return-whose-own-join-is-an-override-names-it = {
+          expr = x [ (door rawExtra) (t.attrsOf np.int) ] { k = 2; };
+          expectedError = undeclared (overrides "`attrsOf' over `int' and a partner over `int'");
+        };
+        test-a-door-return-whose-own-join-states-an-override-in-an-attrtag-tag-names-it = {
+          expr = x [
+            (t.attrsOf np.int)
+            (door (joinsAs (np.attrTag { a = nixpkgsLib.mkOption { type = shortList; }; })))
+          ] { };
+          expectedError = undeclared (overrides "`attrsOf' over `int' and a partner over `int'");
+        };
+        test-a-door-return-whose-own-join-wraps-past-the-walk-fuel-is-refused-as-stating-an-override = {
+          expr = x [ (t.attrsOf np.int) (door (joinsAs (nestList 32 shortList))) ] { };
+          expectedError = undeclared (overrides "`attrsOf' over `int' and a partner over `int'");
+        };
+        test-a-door-return-whose-own-join-nests-an-override-names-it = {
+          expr = x [ (t.mkOptionType (np.attrsOf shortList)) (t.attrsOf (t.listOf np.int)) ] { k = [ 2 ]; };
+          expectedError = undeclared (overrides "`attrsOf' over `listOf' and a partner over `listOf'");
         };
       };
   };

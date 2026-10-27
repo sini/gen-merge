@@ -741,7 +741,8 @@ let
     else
       (if role == null then { } else { ${roleSpelling.${role}.payloadKey} = carried; })
       // (e.params or { });
-  # What a RAW partner stating its relation under row `e`'s richer name offers at `role`:
+  # What a partner stating its own relation (raw, or a door return stating `retainedRelation`) under
+  # row `e`'s richer name offers at `role`:
   # the role's key read out of that payload, beside parameters gen does not carry. `null` where `e`
   # is no row or the partner is not stated under that name. Read only to NAME a refused pair, so
   # its reason is the element pair's, never a merge path of its own.
@@ -750,7 +751,12 @@ let
     let
       pf = t.functor or { };
     in
-    if e == null || t ? carries || (pf.name or null) != e.name || !isAttrs (pf.payload or null) then
+    if
+      e == null
+      || t ? carries && !(t ? retainedRelation)
+      || (pf.name or null) != e.name
+      || !isAttrs (pf.payload or null)
+    then
       null
     else
       pf.payload.${roleSpelling.${role}.payloadKey} or null;
@@ -6369,8 +6375,9 @@ let
       in
       kept self.keys (protoTypeMerge (pf // { inherit (self) name payload; }) pf);
 
-  # THE SAME JOIN FOR A CONTAINER, whose parameter is ONE carried role (`element`), against a RAW foreign
-  # partner (one that carries no gen role). Taken only where the partner's join keeps each operand's
+  # THE SAME JOIN FOR A CONTAINER, whose parameter is ONE carried role (`element`), against a partner
+  # stating its own relation (one that carries no gen role, or a door return stating `retainedRelation`
+  # beside it). Taken only where the partner's join keeps each operand's
   # stated name (`joinRenames`), as `importedMerge` takes a foreign join; `null` otherwise, and the
   # caller's own relation then answers as it did before. A partner whose payload names more than the
   # role's own key (`importedOffered` null) is not read whole, so it is not joined here either —
@@ -6391,7 +6398,7 @@ let
     let
       e = embedding;
       joined =
-        if other ? carries then
+        if other ? carries && !(other ? retainedRelation) then
           null
         else if role != null && importedOffered role other != null then
           joinInStatedRelation {
