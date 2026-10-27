@@ -6666,7 +6666,7 @@ let
           __meetJoin = j;
           ${if cov == null then null else "__metDebt"} = {
             of = cov;
-            inherit (met) check;
+            slice = checkSlice met;
             n = length (builtins.attrNames met);
           };
           merge =
@@ -6819,8 +6819,11 @@ let
   # element or alternatives role. Bound once here: a lambda written where it is passed is a thunk per meet.
   # the record `meetCovering` (or `metWith`'s hold) built, and not a `//` copy of it, which keeps its fields: its debt states
   # the check it published and how many attributes it has, so a copy that replaced the check or added a field (a derivation,
-  # a `verify` record) is met whole. The check is compared by reference (`[ ]`), and no field is compared by value
-  isMetRecord = o: o ? __metDebt && [ o.check ] == [ o.__metDebt.check ] && length (builtins.attrNames o) == o.__metDebt.n;
+  # a `verify` record) is met whole. The check is compared as a one-attribute slice, which Nix compares by reference
+  # (`lib/modules.nix` `verifySlice` reads `verify` the same way), and no other field is compared
+  isMetRecord =
+    o: o ? __metDebt && checkSlice o == o.__metDebt.slice && length (builtins.attrNames o) == o.__metDebt.n;
+  checkSlice = builtins.intersectAttrs { check = null; };
   uncertifiedLeaf =
     o:
     o ? typeMergeRel
@@ -7133,7 +7136,7 @@ let
               # a held record is held again wherever it is met, as its declarations (`heldIn`), never as its carrier
               __metDebt = {
                 of = (if length notM != length xs then [ m ] else [ ]) ++ notM;
-                inherit (h) check;
+                slice = checkSlice h;
                 n = length (builtins.attrNames h);
               };
               ${if types ? mkIdentity && m ? __mint then "__mint" else null} = hids.__mint;
