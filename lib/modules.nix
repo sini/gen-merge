@@ -611,10 +611,10 @@ let
   # walked, so asking again would re-walk every sub-tree once per level, quadratic in depth. Every
   # other ENTRY to a gen relation asks it too: `declaredPair`'s veto below, and `exportType`'s
   # `typeMerge` and `binOp` (`lib/interface.nix`), which a foreign engine calls.
-  relationMergeWithin =
-    a: b:
+  relationMergeOps =
+    ops: a: b:
     if b ? wraps && interface.wrapsKeyOf b a then
-      relationMergeWithin b a
+      relationMergeOps ops b a
     else if a ? typeMergeRel then
       let
         answer = a.typeMergeRel b;
@@ -637,20 +637,11 @@ let
                 else
                   rolesMet r a b
               )
-              [
-                a
-                b
-              ]
+              (if ops == null then [ a b ] else ops)
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith true r [
-              a
-              b
-            ]
+            interface.metWith true r (if ops == null then [ a b ] else ops)
           else
-            interface.metWith true (rolesMet r a b) [
-              a
-              b
-            ]
+            interface.metWith true (rolesMet r a b) (if ops == null then [ a b ] else ops)
         )
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
       # payload states even where its witness took the join: the witness compares names, never checks, so a
@@ -680,12 +671,10 @@ let
       # a join taken past the witness (it renames an operand, `importedMerge`'s answer `holds`) is met here
       # holding every operand's fold
       else if r.holds or false then
-        interface.metWith "holds" (rolesMet r.merged a b) [
-          a
-          b
-        ]
+        interface.metWith "holds" (rolesMet r.merged a b) (if ops == null then [ a b ] else ops)
       else
         rolesMet r.merged a b;
+  relationMergeWithin = relationMergeOps null;
   # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
   # records carry (an element; a union's two members) its own carried type is met with the operands'
   # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
@@ -856,13 +845,15 @@ let
         && !(builtins.isFunction (o.__typeSelf or null) && verifySlice o == verifySlice (o.__typeSelf null))
     )
     && !(interface.sameValue m o);
-  mergeTypesBy =
-    relation: a: b:
+  mergeTypesOps =
+    ops: relation: a: b:
     let
       m = relation a b;
     in
     if m == null then
       null
+    else if ops != null then
+      interface.metWith false m ops
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer carries a certified operand where it is that operand's own construction (one
       # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s
@@ -903,6 +894,7 @@ let
         a
         b
       ];
+  mergeTypesBy = mergeTypesOps null;
   mergeTypes = mergeTypesBy relationMerge;
   mergeTypesWithin = mergeTypesBy relationMergeWithin;
 
@@ -986,8 +978,9 @@ let
   # for a foreign pair that is one shared value, by keeping it: README "Known byte-mode boundaries
   # (deliberate)".
   declaredPair =
-    earlier: later:
+    ops: earlier: later:
     let
+      step = if ops == null then mergeTypesWithin else mergeTypesOps ops (relationMergeOps ops);
       # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
       decidable = interface.importedDecidable earlier && interface.importedDecidable later;
       veto =
@@ -1004,12 +997,12 @@ let
         else if veto ? refused then
           (
             let
-              tried = builtins.tryEval (mergeTypesWithin later earlier);
+              tried = builtins.tryEval (step later earlier);
             in
             if tried.success then tried.value else null
           )
         else
-          mergeTypesWithin later earlier;
+          step later earlier;
     in
     if veto.meets or false then
       {
@@ -1028,20 +1021,11 @@ let
                 else
                   rolesMet r earlier later
               )
-              [
-                earlier
-                later
-              ]
+              (if ops == null then [ earlier later ] else ops)
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith true r [
-              earlier
-              later
-            ]
+            interface.metWith true r (if ops == null then [ earlier later ] else ops)
           else
-            interface.metWith true (rolesMet r earlier later) [
-              earlier
-              later
-            ];
+            interface.metWith true (rolesMet r earlier later) (if ops == null then [ earlier later ] else ops);
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
@@ -1082,11 +1066,58 @@ let
     else
       interface.carriedAtDepth true r.declaredTypes (sub.rebuild (concatMap own r.prior));
   # The list, in AUTHORED order; stops at the first refusing step. A one-element list is itself.
+  #
+  # ★ THE ACCUMULATOR'S DEBT IS THE FOLD'S, NOT THE RECORD'S (den-hoag-meet-carrier-join-check-reowed-15va3). A met record
+  # this fold built (`met`) answers for the declarations folded so far, never for its carrier's own check: nixpkgs' next
+  # step asks the carrier's relation and drops a check no declaration made (ADR-0039 THE MEET owes DECLARED checks). So
+  # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`decls`, one per value) and
+  # the earlier one. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
+  # owed whole by its own check, and keeps its own relation. A held accumulator is folded as before.
   mergeDeclaredTypes =
     ts:
-    foldl' (acc: earlier: if acc ? refused then acc else declaredPair earlier acc.merged) {
-      merged = prelude.last ts;
-    } (reverse (prelude.init ts));
+    let
+      keyOf = x: interface.closuresFirst [ x ] x;
+      last = prelude.last ts;
+    in
+    foldl'
+      (
+        acc: earlier:
+        if acc ? refused then
+          acc
+        else
+          let
+            k = keyOf earlier;
+            decls = if builtins.elem k acc.keys then acc.decls else acc.decls ++ [ earlier ];
+            later = if acc.met then acc.merged.__meetJoin else acc.merged;
+            r = declaredPair (if acc.met then decls else null) earlier later;
+            t = r.merged;
+          in
+          if r ? refused then
+            r
+          else
+            {
+              merged = t;
+              # built by this step: a met record that is neither operand (an operand that is one is a declaration's)
+              met =
+                t ? __meetJoin
+                && !(t ? holds)
+                && (
+                  if earlier ? __meetJoin || later ? __meetJoin then
+                    keyOf t != k && keyOf t != keyOf later
+                  else
+                    true
+                );
+              inherit decls;
+              keys = if builtins.elem k acc.keys then acc.keys else acc.keys ++ [ k ];
+            }
+      )
+      {
+        merged = last;
+        met = false;
+        decls = [ last ];
+        keys = [ (keyOf last) ];
+      }
+      (reverse (prelude.init ts));
   # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
   # first; only the null-reason fallback is spelled here, and it names the pair in authored order,
   # through the library's one total name reader (`interface.nameOf`). Where the two state functor
