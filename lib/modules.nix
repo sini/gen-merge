@@ -1134,8 +1134,33 @@ interface.metWith "holds"
                 x: x ? __meetJoin && keyOf x != k && keyOf x != keyOf later
               else
                 x: x ? __meetJoin;
-            # the step's carrier under every meet it built (a relation's meet, then the step's own)
-            carrierOf = x: if ownMet x then carrierOf x.__meetJoin else x;
+            # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each role the
+            # carrier's own met role likewise: a foreign relation asked of the carrier asks its roles' exported `typeMerge`,
+            # which would meet them again. A role that is a declaration's own role is kept (`declaredAt`)
+            unwrap = x: if ownMet x then unwrap x.__meetJoin else x;
+            declaredAt =
+              role: x:
+              builtins.any (d: interface.carriedAt role d != null && keyOf (interface.carriedAt role d) == keyOf x) decls;
+            atRoles =
+              x:
+              let
+                e = interface.carriedAt "element" x;
+                al = interface.carriedAt "alternatives" x;
+                re = if e != null && e ? __meetJoin && !(declaredAt "element" e) then interface.rebuiltOverAt "element" (unwrap e) x else null;
+              in
+              if re != null then
+                re
+              else if al != null && builtins.any (y: y ? __meetJoin) al then
+                (
+                  let
+                    al' = map (y: if y ? __meetJoin then unwrap y else y) al;
+                    r = interface.rebuiltOverAt "alternatives" al' x;
+                  in
+                  if r == null then x else r
+                )
+              else
+                x;
+            carrierOf = x: atRoles (unwrap x);
           in
           if r ? refused then
             r
