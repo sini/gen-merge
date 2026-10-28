@@ -637,11 +637,11 @@ let
                 else
                   rolesMet r a b
               )
-              (if ops == null then [ a b ] else ops)
+              (if ops == null then [ a b ] else ops.xs)
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith true r (if ops == null then [ a b ] else ops)
+            interface.metWith (if ops != null && ops.held then "holds" else true) r (if ops == null then [ a b ] else ops.xs)
           else
-            interface.metWith true (rolesMet r a b) (if ops == null then [ a b ] else ops)
+            interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet r a b) (if ops == null then [ a b ] else ops.xs)
         )
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
       # payload states even where its witness took the join: the witness compares names, never checks, so a
@@ -671,7 +671,7 @@ let
       # a join taken past the witness (it renames an operand, `importedMerge`'s answer `holds`) is met here
       # holding every operand's fold
       else if r.holds or false then
-        interface.metWith "holds" (rolesMet r.merged a b) (if ops == null then [ a b ] else ops)
+        interface.metWith "holds" (rolesMet r.merged a b) (if ops == null then [ a b ] else ops.xs)
       else
         rolesMet r.merged a b;
   relationMergeWithin = relationMergeOps null;
@@ -853,7 +853,7 @@ let
     if m == null then
       null
     else if ops != null then
-      interface.metWith false m ops
+      interface.metWith (if ops.held then "held" else false) m ops.xs
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer carries a certified operand where it is that operand's own construction (one
       # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s
@@ -1021,11 +1021,11 @@ let
                 else
                   rolesMet r earlier later
               )
-              (if ops == null then [ earlier later ] else ops)
+              (if ops == null then [ earlier later ] else ops.xs)
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith true r (if ops == null then [ earlier later ] else ops)
+            interface.metWith (if ops != null && ops.held then "holds" else true) r (if ops == null then [ earlier later ] else ops.xs)
           else
-            interface.metWith true (rolesMet r earlier later) (if ops == null then [ earlier later ] else ops);
+            interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet r earlier later) (if ops == null then [ earlier later ] else ops.xs);
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
@@ -1072,7 +1072,8 @@ let
   # step asks the carrier's relation and drops a check no declaration made (ADR-0039 THE MEET owes DECLARED checks). So
   # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`decls`, one per value) and
   # the earlier one. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
-  # owed whole by its own check, and keeps its own relation. A held accumulator is folded as before.
+  # owed whole by its own check, and keeps its own relation. A held accumulator holds the next step again (`held`): its
+  # declarations' folds are demanded as its own were.
   mergeDeclaredTypes =
     ts:
     let
@@ -1089,7 +1090,15 @@ let
             k = keyOf earlier;
             decls = if builtins.elem k acc.keys then acc.decls else acc.decls ++ [ earlier ];
             later = if acc.met then acc.merged.__meetJoin else acc.merged;
-            r = declaredPair (if acc.met then decls else null) earlier later;
+            r = declaredPair (
+              if acc.met then
+                {
+                  xs = decls;
+                  held = acc.merged ? holds;
+                }
+              else
+                null
+            ) earlier later;
             t = r.merged;
           in
           if r ? refused then
@@ -1100,7 +1109,6 @@ let
               # built by this step: a met record that is neither operand (an operand that is one is a declaration's)
               met =
                 t ? __meetJoin
-                && !(t ? holds)
                 && (
                   if earlier ? __meetJoin || later ? __meetJoin then
                     keyOf t != k && keyOf t != keyOf later
