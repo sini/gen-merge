@@ -630,7 +630,8 @@ let
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it
           if answer.holds or false then
-            interface.metWith "holds"
+            opsMet ops (
+interface.metWith "holds"
               (
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
@@ -638,10 +639,11 @@ let
                   rolesMet r a b
               )
               (if ops == null then [ a b ] else ops.xs)
+            )
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith (if ops != null && ops.held then "holds" else true) r (if ops == null then [ a b ] else ops.xs)
+            (opsMet ops (interface.metWith (if ops != null && ops.held then "holds" else true) r (if ops == null then [ a b ] else ops.xs)))
           else
-            interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet r a b) (if ops == null then [ a b ] else ops.xs)
+            (opsMet ops (interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet r a b) (if ops == null then [ a b ] else ops.xs)))
         )
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
       # payload states even where its witness took the join: the witness compares names, never checks, so a
@@ -671,10 +673,12 @@ let
       # a join taken past the witness (it renames an operand, `importedMerge`'s answer `holds`) is met here
       # holding every operand's fold
       else if r.holds or false then
-        interface.metWith "holds" (rolesMet r.merged a b) (if ops == null then [ a b ] else ops.xs)
+        (opsMet ops (interface.metWith "holds" (rolesMet r.merged a b) (if ops == null then [ a b ] else ops.xs)))
       else
         rolesMet r.merged a b;
   relationMergeWithin = relationMergeOps null;
+  # a step owing `ops` marks the answers its relation already met with them, so `mergeTypesOps` meets only a bare join
+  opsMet = ops: x: if ops == null || x == null then x else { __opsMet = x; };
   # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
   # records carry (an element; a union's two members) its own carried type is met with the operands'
   # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
@@ -853,7 +857,7 @@ let
     if m == null then
       null
     else if ops != null then
-      interface.metWith (if ops.held then "held" else false) m ops.xs
+      (if m ? __opsMet then m.__opsMet else interface.metWith (if ops.held then "held" else false) m ops.xs)
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer carries a certified operand where it is that operand's own construction (one
       # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s

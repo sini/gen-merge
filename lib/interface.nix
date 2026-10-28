@@ -6901,8 +6901,9 @@ let
         maybe = if meets == false || meets == "held" then filter mayOwe os else os;
         # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
         # compared inline so the meet binds nothing for it
-        notM = filter (o: closuresFirst [ m ] m != closuresFirst [ o ] o) maybe;
-        fresh = builtins.all (o: closuresFirst [ m ] m != closuresFirst [ o ] o) os;
+        km = closuresFirst [ m ] m;
+        notM = filter (o: km != closuresFirst [ o ] o) maybe;
+        fresh = builtins.all (o: km != closuresFirst [ o ] o) os;
         relativised =
           o:
           let
