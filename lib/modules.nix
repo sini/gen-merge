@@ -636,14 +636,14 @@ interface.metWith "holds"
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
                 else
-                  rolesMet r a b
+                  rolesMetOps ops r a b
               )
               (if ops == null then [ a b ] else ops.xs)
             )
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
             (opsMet ops (interface.metWith (if ops != null && ops.held then "holds" else true) r (if ops == null then [ a b ] else ops.xs)))
           else
-            (opsMet ops (interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet r a b) (if ops == null then [ a b ] else ops.xs)))
+            (opsMet ops (interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMetOps ops r a b) (if ops == null then [ a b ] else ops.xs)))
         )
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
       # payload states even where its witness took the join: the witness compares names, never checks, so a
@@ -658,7 +658,7 @@ interface.metWith "holds"
             a ? retainedRelation
             && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
-            rolesMet answer.merged a b
+            rolesMetOps ops answer.merged a b
           else
             answer.merged
         )
@@ -673,19 +673,37 @@ interface.metWith "holds"
       # a join taken past the witness (it renames an operand, `importedMerge`'s answer `holds`) is met here
       # holding every operand's fold
       else if r.holds or false then
-        (opsMet ops (interface.metWith "holds" (rolesMet r.merged a b) (if ops == null then [ a b ] else ops.xs)))
+        (opsMet ops (interface.metWith "holds" (rolesMetOps ops r.merged a b) (if ops == null then [ a b ] else ops.xs)))
       else
-        rolesMet r.merged a b;
+        rolesMetOps ops r.merged a b;
   relationMergeWithin = relationMergeOps null;
+  rolesMet = rolesMetOps null;
   # a step owing `ops` marks the answers its relation already met with them, so `mergeTypesOps` meets only a bare join
   opsMet = ops: x: if ops == null || x == null then x else { __opsMet = x; };
   # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
   # records carry (an element; a union's two members) its own carried type is met with the operands'
   # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
   # caller (`mergeTypesBy`).
-  rolesMet =
-    r: a: b:
+  rolesMetOps =
+    ops: r: a: b:
     let
+      # a step owing `ops` owes, at a role, the role each owed declaration carries (`roleOps`), never the accumulated
+      # carrier's own met role
+      roleOps =
+        f:
+        if ops == null then
+          null
+        else
+          {
+            xs = builtins.concatMap (
+              d:
+              let
+                x = f d;
+              in
+              if x == null then [ ] else [ x ]
+            ) ops.xs;
+            held = false;
+          };
       at =
         role:
         map (interface.carriedAt role) [
@@ -704,23 +722,29 @@ interface.metWith "holds"
       pick = l: i: builtins.elemAt l i;
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
-        r': a': b':
-        interface.metWith false (rolesMet r' a' b') [
-          a'
-          b'
-        ];
+        o: r': a': b':
+        interface.metWith false (rolesMetOps o r' a' b') (if o == null then [ a' b' ] else o.xs);
     in
     if builtins.all (x: x != null) el then
       (
         let
-          m = innerMet (pick el 0) (pick el 1) (pick el 2);
+          m = innerMet (roleOps (interface.carriedAt "element")) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
     else if builtins.all (x: x != null) al then
       (
         let
-          m = builtins.genList (i: innerMet (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)) 2;
+          m = builtins.genList (
+            i:
+            innerMet (roleOps (
+              d:
+              let
+                x = interface.carriedAt "alternatives" d;
+              in
+              if x == null then null else pick x i
+            )) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+          ) 2;
         in
         if
           interface.sameValue (pick m 0) (pick (pick al 0) 0)
@@ -748,7 +772,7 @@ interface.metWith "holds"
               if length ds == 2 then
                 let
                   vs = filter (d: d ? verify) ds;
-                  c = innerMet o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
+                  c = innerMet null o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
                   verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
                 in
                 if vs == [ ] then
@@ -1023,13 +1047,13 @@ interface.metWith "holds"
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
                 else
-                  rolesMet r earlier later
+                  rolesMetOps ops r earlier later
               )
               (if ops == null then [ earlier later ] else ops.xs)
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
             interface.metWith (if ops != null && ops.held then "holds" else true) r (if ops == null then [ earlier later ] else ops.xs)
           else
-            interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet r earlier later) (if ops == null then [ earlier later ] else ops.xs);
+            interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMetOps ops r earlier later) (if ops == null then [ earlier later ] else ops.xs);
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
