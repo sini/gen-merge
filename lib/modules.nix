@@ -1089,7 +1089,7 @@ let
           let
             k = keyOf earlier;
             decls = if builtins.elem k acc.keys then acc.decls else acc.decls ++ [ earlier ];
-            later = if acc.met then acc.merged.__meetJoin else acc.merged;
+            later = acc.carrier;
             r = declaredPair (
               if acc.met then
                 {
@@ -1101,26 +1101,29 @@ let
             ) earlier later;
             t = r.merged;
           in
+            # a met record is built by this step where it is neither operand (an operand that is one is a declaration)
+            ownMet =
+              if earlier ? __meetJoin || later ? __meetJoin then
+                x: x ? __meetJoin && keyOf x != k && keyOf x != keyOf later
+              else
+                x: x ? __meetJoin;
+            # the step's carrier under every meet it built (a relation's meet, then the step's own)
+            carrierOf = x: if ownMet x then carrierOf x.__meetJoin else x;
+          in
           if r ? refused then
             r
           else
             {
               merged = t;
-              # built by this step: a met record that is neither operand (an operand that is one is a declaration's)
-              met =
-                t ? __meetJoin
-                && (
-                  if earlier ? __meetJoin || later ? __meetJoin then
-                    keyOf t != k && keyOf t != keyOf later
-                  else
-                    true
-                );
+              met = ownMet t;
+              carrier = carrierOf t;
               inherit decls;
               keys = if builtins.elem k acc.keys then acc.keys else acc.keys ++ [ k ];
             }
       )
       {
         merged = last;
+        carrier = last;
         met = false;
         decls = [ last ];
         keys = [ (keyOf last) ];
