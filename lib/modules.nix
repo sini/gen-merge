@@ -1100,7 +1100,6 @@ let
                 null
             ) earlier later;
             t = r.merged;
-          in
             # a met record is built by this step where it is neither operand (an operand that is one is a declaration)
             ownMet =
               if earlier ? __meetJoin || later ? __meetJoin then
