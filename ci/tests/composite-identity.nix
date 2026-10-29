@@ -268,10 +268,7 @@ in
             1
           ]
         ];
-        genDefault = [
-          1
-          1
-        ];
+        genDefault = "REFUSED";
         nixpkgsDefault = "REFUSED";
       };
     };

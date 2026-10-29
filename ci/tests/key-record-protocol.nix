@@ -1,0 +1,282 @@
+# THE RECORD'S REFERENCE KEY AND ITS FOLD. A record module may state its reference key on the record
+# (`__keyEq.key`) and carry no `key` in its result, or a result `key` that is a foreign evaluator's
+# own: this engine reads the record's, only where two occurrences meet, and tests its presence (never
+# its value) at load. A record opting into the seal-decided fold (`__keyEq.onDistinct =
+# "refuse-on-conflict"`, the one value) is decided against every construction its key has kept: equal
+# under `decide` is that construction reached again (one module), otherwise `conflicts` refuses it by
+# name, otherwise both compose. A record naming its node and stating no result key is still walked, so
+# one construction reached N times is one module (the plain-list fast path reads `__moduleKey`). `l` is
+# a list option, so one module reads one element and two read two.
+{
+  genMerge,
+  nixpkgsLib,
+  ...
+}:
+let
+  gm = genMerge;
+  lib = nixpkgsLib;
+  decl.options.l = gm.mkOption {
+    type = gm.types.listOf gm.types.str;
+    default = [ ];
+  };
+  try =
+    v:
+    let
+      r = builtins.tryEval (builtins.deepSeq v v);
+    in
+    if r.success then r.value else "REFUSED";
+  l = mods: try (gm.evalModuleTree { } ([ decl ] ++ mods)).config.l;
+  # a record: node `node`, record key `rkey` (absent where null), result key `result` (absent where
+  # null); `c` names its construction, `x` whether it conflicts with a distinct one
+  record =
+    {
+      tag,
+      node ? "n1",
+      rkey ? "rk#m1",
+      result ? null,
+      c ? tag,
+      x ? false,
+      onDistinct ? null,
+    }:
+    {
+      __moduleKey = node;
+      __keyEq = {
+        meeting = "rk";
+        subject = { inherit c x; };
+        decide = a: b: a.c == b.c;
+      }
+      // (if rkey == null then { } else { key = rkey; })
+      // (
+        if onDistinct == null then
+          { }
+        else
+          {
+            inherit onDistinct;
+            conflicts = a: b: a.x || b.x;
+          }
+      );
+      __functor =
+        _: _:
+        {
+          config.l = [ tag ];
+        }
+        // (if result == null then { } else { key = result; });
+    };
+  fold = args: record (args // { onDistinct = "refuse-on-conflict"; });
+
+  # OQ-V5's shape: a record naming its node, its reference key on the record only, the option declared
+  # in its own content, reached N times; the declaration through gen-merge's `mkOption`, nixpkgs'
+  # `lib.mkOption` and raw (`{ _type = "option"; ... }`). `decls:value` reads one declaration kept.
+  fooDecl =
+    door:
+    let
+      o = {
+        type = gm.types.str;
+        default = "x";
+      };
+    in
+    {
+      options.foo =
+        if door == "gm" then
+          gm.mkOption o
+        else if door == "lp" then
+          lib.mkOption o
+        else
+          o // { _type = "option"; };
+    };
+  ownRecord = door: {
+    __moduleKey = "M";
+    __keyEq = {
+      meeting = "M";
+      key = "M#ref";
+      subject = {
+        mark = "M";
+        sealed = { };
+      };
+      decide = a: b: a.sealed == b.sealed && a.mark == b.mark;
+    };
+    __functionArgs = {
+      config = false;
+    };
+    __functor = _: { config, ... }: fooDecl door;
+  };
+  foo =
+    ms:
+    let
+      ev = gm.evalModuleTree { } ms;
+    in
+    try "${toString (builtins.length ev.options.foo.declarations)}:${ev.config.foo}";
+  definer = {
+    foo = "y";
+  };
+  ownCells =
+    door:
+    builtins.concatMap
+      (
+        n:
+        [ (foo (builtins.genList (_: ownRecord door) n)) ]
+        ++ builtins.genList (p: foo (builtins.genList (i: if i == p then definer else ownRecord door) n)) n
+      )
+      [
+        2
+        3
+        4
+      ];
+  ownExpected = builtins.concatMap (n: [ "1:x" ] ++ builtins.genList (_: "1:y") n) [
+    2
+    3
+    4
+  ];
+
+  # removal names a node with no result key positionally, as nixpkgs does, where the graph is read
+  rmMods = [
+    (record {
+      tag = "a";
+      rkey = "rk#m1";
+    })
+    { disabledModules = [ "/nothing-here" ]; }
+    { _module.args.zz = "z"; }
+  ];
+  files =
+    ev: map (d: builtins.baseNameOf (toString d.file)) ev.options._module.args.definitionsWithLocations;
+in
+
+{
+  flake.tests.key-record-protocol = {
+    # A record stating its reference key on the record and none in its result loads.
+    test-a-record-stating-its-key-on-the-record-only-loads = {
+      expr = l [ (record { tag = "a"; }) ];
+      expected = [ "a" ];
+    };
+    # The record's key is read, never the result's: distinct record keys under one result key are two
+    # refinements, which both compose; reading the result's would decide them as one key.
+    test-the-record-key-is-read-not-the-result-key = {
+      expr = {
+        ab = l [
+          (record {
+            tag = "a";
+            rkey = "rk#m1";
+            result = "rk#same";
+          })
+          (record {
+            tag = "b";
+            node = "n2";
+            rkey = "rk#m2";
+            result = "rk#same";
+          })
+        ];
+        ba = l [
+          (record {
+            tag = "b";
+            node = "n2";
+            rkey = "rk#m2";
+            result = "rk#same";
+          })
+          (record {
+            tag = "a";
+            rkey = "rk#m1";
+            result = "rk#same";
+          })
+        ];
+      };
+      expected = {
+        ab = [
+          "a"
+          "b"
+        ];
+        ba = [
+          "b"
+          "a"
+        ];
+      };
+    };
+    # The record key is tested by presence at load: a lone record whose key would throw if read loads.
+    test-a-lone-records-key-is-never-read = {
+      expr = l [
+        (record {
+          tag = "a";
+          rkey = throw "the record key was read at load";
+        })
+      ];
+      expected = [ "a" ];
+    };
+    # The fold, at one key: the construction reached again is one module; a distinct construction is
+    # kept unless `conflicts` says it collides, which is refused; in either order.
+    test-the-fold-decides-then-refuses-on-conflict = {
+      expr = {
+        again = l [
+          (fold { tag = "a"; })
+          (fold { tag = "a"; })
+        ];
+        distinct = l [
+          (fold { tag = "a"; })
+          (fold { tag = "b"; })
+        ];
+        conflict = l [
+          (fold { tag = "a"; })
+          (fold {
+            tag = "b";
+            x = true;
+          })
+        ];
+        conflictRev = l [
+          (fold {
+            tag = "b";
+            x = true;
+          })
+          (fold { tag = "a"; })
+        ];
+        deep = l [
+          (fold { tag = "a"; })
+          { imports = [ (fold { tag = "a"; }) ]; }
+          { imports = [ { imports = [ (fold { tag = "b"; }) ]; } ]; }
+        ];
+      };
+      expected = {
+        again = [ "a" ];
+        distinct = [
+          "a"
+          "b"
+        ];
+        conflict = "REFUSED";
+        conflictRev = "REFUSED";
+        deep = [
+          "a"
+          "b"
+        ];
+      };
+    };
+    # One construction of OQ-V5's shape reached N = 2..4 times, alone and beside a definer at every
+    # position, through each door: one declaration kept.
+    test-a-record-naming-its-node-reached-n-times-is-one-module = {
+      expr = {
+        gm = ownCells "gm";
+        lp = ownCells "lp";
+        raw = ownCells "raw";
+      };
+      expected = {
+        gm = ownExpected;
+        lp = ownExpected;
+        raw = ownExpected;
+      };
+    };
+    # Removal reads the graph's node names: a node with no result key is named positionally, so the
+    # read is the engines' common value.
+    test-removal-names-a-keyless-record-node-positionally = {
+      expr = {
+        gen = files (gm.evalModuleTree { } rmMods);
+        nixpkgs = files (lib.evalModules { modules = rmMods; });
+      };
+      expected = {
+        gen = [
+          "modules.nix"
+          "<unknown-file>"
+        ];
+        nixpkgs = [
+          "modules.nix"
+          "<unknown-file>"
+        ];
+      };
+    };
+  };
+}

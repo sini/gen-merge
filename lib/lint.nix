@@ -20,12 +20,12 @@
 #                            null; gen-merge departs by refusing, where a fold step's gen-native
 #                            relation refuses or a foreign join drops a name an operand states, or
 #                            by keeping one shared value declared twice (README "Known byte-mode
-#                            boundaries"). They part on the OTHER fields — nixpkgs refuses the
-#                            redeclaration outright when both declarations carry any of
-#                            `default`/`example`/`description`/`apply` (its `bothHave` guard, which
-#                            fires ahead of the functor), where gen-merge right-biases them under a
-#                            stated rule. The flag is therefore an OVER-APPROXIMATION: it fires on
-#                            every typed redeclaration, and only the field-colliding ones diverge.
+#                            boundaries"). Both refuse the redeclaration outright when both
+#                            declarations carry any of `default`/`example`/`description`/`apply`
+#                            (nixpkgs' `bothHave` guard, which fires ahead of the functor, and
+#                            gen-merge's twin of it). The flag is an OVER-APPROXIMATION: it fires on
+#                            every typed redeclaration, which both engines serve where the types
+#                            merge and no guarded field is stated twice.
 #   4. function-to         — an option `type` named `functionTo`, intentionally omitted from the type
 #                            surface (7-item primitive item 7 — guard functions are carried as data).
 #   +. unverifiable        — a `type` record too deeply nested to walk within the fixed fuel. A
@@ -373,7 +373,7 @@ let
         v:
         optional (length v.files >= 2) (
           mkFinding "type-merge" v.loc v.files
-            "option `${showLoc v.loc}' is declared with a type in more than one module; on the TYPE the engines agree on every declaration list of foreign types (both fold the declared types as the reference engine brackets them, the later type deciding, and refuse when it answers nothing; gen-merge also refuses where a gen-native relation does), but the reference engine ALSO refuses the redeclaration outright when both declarations carry any of `default'/`example'/`description'/`apply' (its `bothHave' guard, which runs BEFORE the types are combined at all), where gen-merge right-biases those fields — so a field-colliding pair is accepted here and rejected there"
+            "option `${showLoc v.loc}' is declared with a type in more than one module; on the TYPE the engines agree on every declaration list of foreign types (both fold the declared types as the reference engine brackets them, the later type deciding, and refuse when it answers nothing; gen-merge also refuses where a gen-native relation does), and both engines refuse the redeclaration outright when both declarations carry any of `default'/`example'/`description'/`apply' (the reference engine's `bothHave' guard, which runs BEFORE the types are combined at all, and this engine's twin of it)"
         )
       ) (attrValues byLoc);
 

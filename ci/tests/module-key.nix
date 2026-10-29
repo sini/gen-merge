@@ -548,20 +548,22 @@ in
         "Q"
       ];
     };
-    # Two modules' `apply`s on one owned key keep the later, as every redeclaration in this engine
-    # right-biases a doubled field (ADR-0029's ordered fold). nixpkgs refuses the pair.
-    test-two-applies-on-an-owned-key-keep-the-later = {
+    # Two modules' `apply`s on one owned key are refused, as nixpkgs refuses the pair (`bothHave`:
+    # two declarations both stating `apply`).
+    test-two-applies-on-an-owned-key-are-refused = {
       expr =
-        (cfgOf [
-          decl
-          { options._module.args = mkOption { apply = a: a // { pkgs = "Q1"; }; }; }
-          {
-            options._module.args = mkOption { apply = a: a // { pkgs = "Q2"; }; };
-            config._module.args.pkgs = "P";
-          }
-          readPkgs
-        ]).r;
-      expected = "Q2";
+        (builtins.tryEval
+          (cfgOf [
+            decl
+            { options._module.args = mkOption { apply = a: a // { pkgs = "Q1"; }; }; }
+            {
+              options._module.args = mkOption { apply = a: a // { pkgs = "Q2"; }; };
+              config._module.args.pkgs = "P";
+            }
+            readPkgs
+          ]).r
+        ).success;
+      expected = false;
     };
     # A nixpkgs `submodule` leaf is judged by nixpkgs with the engine's own declarations taking part,
     # and an untyped `apply` there merges with them, so it maps the merged set as nixpkgs' does.

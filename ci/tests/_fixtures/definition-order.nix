@@ -680,17 +680,18 @@ in
         config.o.x = [ "def2" ];
       }
     ]).config.o.x;
-  # the same, the untyped declaration's field shadowed (the record carries `overridden`, the type stays raw)
+  # the same, the untyped declaration's field shadowed (the record carries `overridden`, the type stays raw);
+  # the field is `defaultText`, outside the four both engines refuse two declarations stating
   utShadow =
     (ev [
       {
         _file = "decl.nix";
-        options.o = mkOption { description = "d"; };
+        options.o = mkOption { defaultText = "d"; };
       }
       {
         _file = "decl2.nix";
         options.o = mkOption {
-          description = "e";
+          defaultText = "e";
           type = N.submodule (own leafList [ "q" ]);
         };
       }
