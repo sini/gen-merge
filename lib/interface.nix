@@ -3887,25 +3887,30 @@ let
                     isAttrs r
                     && (r.getSubModules or null) == null
                     && (
-                      r ? _checkWitness && r.check == r._checkWitness
-                      || isV2 r && (r.check.isV2MergeCoherent or false)
+                      r ? _checkWitness && r.check == r._checkWitness || isV2 r && (r.check.isV2MergeCoherent or false)
                     )
                   then
                     !(
                       (
                         if isV2 r then
-                          (r.merge.v2 {
-                            loc = [ "<base>" ];
-                            inherit defs;
-                          }).headError == null
+                          (
+                            let
+                              m2 = r.merge.v2 {
+                                loc = [ "<base>" ];
+                                inherit defs;
+                              };
+                              x = builtins.tryEval (builtins.deepSeq m2.value true);
+                            in
+                            (r.check v) && x.success && x.value
+                          )
                         else
                           r.check v
-                      )
-                      && (
-                        let
-                          x = builtins.tryEval (builtins.deepSeq (r.merge [ "<base>" ] defs) true);
-                        in
-                        x.success && x.value
+                          && (
+                            let
+                              x = builtins.tryEval (builtins.deepSeq (r.merge [ "<base>" ] defs) true);
+                            in
+                            x.success && x.value
+                          )
                       )
                     )
                   else
@@ -4020,7 +4025,13 @@ let
                     let
                       j = x.typeMergeRel f;
                     in
-                    if isAttrs (j.merged or null) then j // { merged = (if params then close (rebuiltOverAt j.merged) j.merged else close joined j.merged); } else j;
+                    if isAttrs (j.merged or null) then
+                      j
+                      // {
+                        merged = (if params then close (rebuiltOverAt j.merged) j.merged else close joined j.merged);
+                      }
+                    else
+                      j;
                 };
               }
             else if x ? typeMergeRel then
@@ -4030,7 +4041,13 @@ let
                   let
                     j = x.typeMergeRel f;
                   in
-                  if isAttrs (j.merged or null) then j // { merged = (if params then close (rebuiltOverAt j.merged) j.merged else close joined j.merged); } else j;
+                  if isAttrs (j.merged or null) then
+                    j
+                    // {
+                      merged = (if params then close (rebuiltOverAt j.merged) j.merged else close joined j.merged);
+                    }
+                  else
+                    j;
               }
             else
               { }
@@ -6998,24 +7015,29 @@ let
                     isAttrs j
                     && (j.getSubModules or null) == null
                     && (
-                      j ? _checkWitness && j.check == j._checkWitness
-                      || isV2 j && (j.check.isV2MergeCoherent or false)
+                      j ? _checkWitness && j.check == j._checkWitness || isV2 j && (j.check.isV2MergeCoherent or false)
                     )
                   then
                     (
                       if isV2 j then
-                        (j.merge.v2 {
-                          loc = [ "<stock>" ];
-                          inherit defs;
-                        }).headError == null
+                        (
+                          let
+                            m2 = j.merge.v2 {
+                              loc = [ "<stock>" ];
+                              inherit defs;
+                            };
+                            r = builtins.tryEval (builtins.deepSeq m2.value true);
+                          in
+                          (j.check v) && r.success && r.value
+                        )
                       else
                         j.check v
-                    )
-                    && (
-                      let
-                        r = builtins.tryEval (builtins.deepSeq (j.merge [ "<stock>" ] defs) true);
-                      in
-                      r.success && r.value
+                        && (
+                          let
+                            r = builtins.tryEval (builtins.deepSeq (j.merge [ "<stock>" ] defs) true);
+                          in
+                          r.success && r.value
+                        )
                     )
                   else
                     s.check v
