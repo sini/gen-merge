@@ -3936,11 +3936,11 @@ let
                             if isV2 j then
                               (
                                 let
-                                  m2 = j.merge.v2 {
+                                  result = j.merge.v2 {
                                     loc = [ "<base>" ];
                                     inherit defs;
                                   };
-                                  x = builtins.tryEval (builtins.deepSeq m2.value true);
+                                  x = builtins.tryEval (builtins.deepSeq result.value true);
                                 in
                                 (j.check v) && x.success && x.value
                               )
@@ -7015,11 +7015,11 @@ let
                       if isV2 j then
                         (
                           let
-                            m2 = j.merge.v2 {
+                            result = j.merge.v2 {
                               loc = [ "<stock>" ];
                               inherit defs;
                             };
-                            r = builtins.tryEval (builtins.deepSeq m2.value true);
+                            r = builtins.tryEval (builtins.deepSeq result.value true);
                           in
                           (j.check v) && r.success && r.value
                         )
