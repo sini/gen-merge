@@ -134,6 +134,39 @@ let
     3
     4
   ];
+  # nixpkgs' engine on the same records (its own types): it keys a module by its RESULT's `key` only, so a
+  # record stating its key on the record alone is N anonymous modules, and two of them both state `default`.
+  # gen serves where nixpkgs refuses: a serve beyond nixpkgs with no (b′) ruling, OPEN (pinned so it moves
+  # visibly; den-hoag-xh14j).
+  npRecord = ownRecord "lp" // {
+    __functor =
+      _:
+      { config, ... }:
+      {
+        options.foo = lib.mkOption {
+          type = lib.types.str;
+          default = "x";
+        };
+      };
+  };
+  npFoo =
+    ms:
+    let
+      ev = lib.evalModules { modules = ms; };
+    in
+    try "${toString (builtins.length ev.options.foo.declarations)}:${ev.config.foo}";
+  npOwnCells =
+    builtins.concatMap
+      (
+        n:
+        [ (npFoo (builtins.genList (_: npRecord) n)) ]
+        ++ builtins.genList (p: npFoo (builtins.genList (i: if i == p then definer else npRecord) n)) n
+      )
+      [
+        2
+        3
+        4
+      ];
 
   # removal names a node with no result key positionally, as nixpkgs does, where the graph is read
   rmMods = [
@@ -261,11 +294,18 @@ in
         gm = ownCells "gm";
         lp = ownCells "lp";
         raw = ownCells "raw";
+        nixpkgs = npOwnCells;
       };
       expected = {
         gm = ownExpected;
         lp = ownExpected;
         raw = ownExpected;
+        nixpkgs = [
+          "REFUSED"
+          "1:y"
+          "1:y"
+        ]
+        ++ builtins.genList (_: "REFUSED") 9;
       };
     };
     # Removal reads the graph's node names: a node with no result key is named positionally, so the
