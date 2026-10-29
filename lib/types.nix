@@ -2653,17 +2653,19 @@ in
   # Completing it would publish a `check` derived from a gen datum it does not state, over its own
   # (den-hoag-ukitj); a relation alone is no such datum, since a caller's record can borrow gen's relation over
   # its own `check`, and the witness is the field that says which `check` is gen's (den-hoag-23u3j). A `//`
-  # copy of a completed record states both, whichever side of it the record is. A foreign record comes back
-  # closed under its own rebuilds (`interface.rebuildClosed`): its `substSubModules` and `typeMerge` answer
-  # with its checks carried, so a nixpkgs evaluation that rebuilds it keeps them; a constant constructor's own
-  # record comes back as itself.
+  # copy of a completed record states both, whichever side of it the record is. The two are tested first, so
+  # a completed record pays two attribute tests and nothing more, and `_type` before the call, so a gen
+  # descriptor (which states a relation and no witness) pays no call. A foreign record comes back closed under
+  # its own rebuilds (`interface.rebuildClosed`): its `substSubModules` and `typeMerge` answer with its checks
+  # carried, so a nixpkgs evaluation that rebuilds it keeps them; a constant constructor's own record comes
+  # back as itself.
   # A `//` copy of a completed record departing only where its carrier still reads it as that completion is
   # returned as it is (`interface.carriedCopy`, den-hoag-5kzqp); its `verify` presence test is restated here so
   # a record stating none (gen-aspects' per-instance submodule copies) pays one attribute test and no call,
   # and `carriedCopy` is bound under that test, so it is asked once and a binding costs only a record stating `verify`.
   defineType =
     t:
-    if !(t ? typeMergeRel && t ? _checkWitness) && interface.isOptionType t then
+    if !(t ? typeMergeRel && t ? _checkWitness) && t ? _type && interface.isOptionType t then
       interface.rebuildClosed t
     # a descriptor not yet completed stating the foreign protocol's `check` beside gen's words is imported, as the
     # import door imports a `check` (as `admits`, its fold checked), and completed under this door's relation
