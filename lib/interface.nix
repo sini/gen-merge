@@ -3927,8 +3927,27 @@ let
                             value = v;
                           }
                         ];
+                        # the element-check precheck `metWith`'s `__stockCheck` states, asked first
+                        roles = statedRoles b;
+                        name = (b.functor or { }).name or null;
+                        r = builtins.tryEval (
+                          if roles ? alternatives then
+                            prelude.any (a: a.check v) roles.alternatives
+                          else if !(roles ? element) then
+                            true
+                          else if name == "nullOr" then
+                            v == null || roles.element.check v
+                          else if name == "listOf" then
+                            isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
+                          else if name == "attrsWith" then
+                            isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
+                          else
+                            true
+                        );
                         verdict =
-                          if p == null then
+                          if r.success && !r.value then
+                            member && p == null
+                          else if p == null then
                             member
                           else
                             let
@@ -3937,21 +3956,8 @@ let
                                   constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
                                 else
                                   constructors.${p.container} p.element;
-                              # the element-check precheck `metWith`'s `__stockCheck` states
-                              r = builtins.tryEval (
-                                if p.container == "either" then
-                                  prelude.any (a: a.check v) p.alternatives
-                                else if p.container == "nullOr" then
-                                  v == null || p.element.check v
-                                else if p.container == "listOf" then
-                                  isList v && all (x: isAttrs x && x ? _type || p.element.check x) v
-                                else
-                                  isAttrs v && all (x: isAttrs x && x ? _type || p.element.check x) (builtins.attrValues v)
-                              );
                             in
-                            if r.success && !r.value then
-                              false
-                            else if isV2 j then
+                            if isV2 j then
                               (
                                 let
                                   result = j.merge.v2 {
@@ -7029,23 +7035,31 @@ let
                       }
                     ];
                     # a member passes its element's check at every element (nixpkgs merges only checked definitions),
-                    # so a value with an element failing it is decided without building the judge; a check that throws,
-                    # and an element stating a property, are left to the judge
+                    # so a value with an element failing it is decided without building the judge, read off the roles
+                    # the recognition reads and asked first; the recognition is then asked only where the stock's own
+                    # check (main's answer for an unrecognised name) admits the value. A check that throws, and an
+                    # element stating a property, are left to the judge
+                    roles = statedRoles s;
+                    name = (s.functor or { }).name or null;
                     r = builtins.tryEval (
-                      if p.container == "either" then
-                        prelude.any (a: a.check v) p.alternatives
-                      else if p.container == "nullOr" then
-                        v == null || p.element.check v
-                      else if p.container == "listOf" then
-                        isList v && all (x: isAttrs x && x ? _type || p.element.check x) v
+                      if roles ? alternatives then
+                        prelude.any (a: a.check v) roles.alternatives
+                      else if !(roles ? element) then
+                        true
+                      else if name == "nullOr" then
+                        v == null || roles.element.check v
+                      else if name == "listOf" then
+                        isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
+                      else if name == "attrsWith" then
+                        isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
                       else
-                        isAttrs v && all (x: isAttrs x && x ? _type || p.element.check x) (builtins.attrValues v)
+                        true
                     );
                   in
-                  if p == null then
+                  if r.success && !r.value then
+                    s.check v && p == null
+                  else if p == null then
                     s.check v
-                  else if r.success && !r.value then
-                    false
                   else
                     (
                       if isV2 j then
