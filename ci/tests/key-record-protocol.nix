@@ -25,9 +25,16 @@ let
       r = builtins.tryEval (builtins.deepSeq v v);
     in
     if r.success then r.value else "REFUSED";
-  l = mods: try (gm.evalModuleTree { } ([ decl ] ++ mods)).config.l;
-  # a record: node `node`, record key `rkey` (absent where null), result key `result` (absent where
-  # null); `c` names its construction, `x` whether it conflicts with a distinct one
+  # sorted: which module is collected first is not this file's subject
+  l =
+    mods:
+    let
+      v = try (gm.evalModuleTree { } ([ decl ] ++ mods)).config.l;
+    in
+    if builtins.isList v then builtins.sort builtins.lessThan v else v;
+  # a record: node `node`, record key `rkey` (never compared, so a throwing key stays unread), result
+  # key `result` (absent where null); `c` names its construction, `x` whether it conflicts with a
+  # distinct one
   record =
     {
       tag,
@@ -44,8 +51,8 @@ let
         meeting = "rk";
         subject = { inherit c x; };
         decide = a: b: a.c == b.c;
+        key = rkey;
       }
-      // (if rkey == null then { } else { key = rkey; })
       // (
         if onDistinct == null then
           { }
@@ -130,6 +137,7 @@ let
 
   # removal names a node with no result key positionally, as nixpkgs does, where the graph is read
   rmMods = [
+    decl
     (record {
       tag = "a";
       rkey = "rk#m1";
@@ -185,8 +193,8 @@ in
           "b"
         ];
         ba = [
-          "b"
           "a"
+          "b"
         ];
       };
     };
