@@ -425,6 +425,11 @@ in
     test-a-module-set-carried-over-another-declarations-check-is-minted =
       let
         w = np.addCheck gSub (v: v.a != 3);
+        # the values read over a module set whose option states no `default`: the two declarations'
+        # module sets merge into one, and two copies of one option both stating `default` are refused
+        # (nixpkgs' `bothHave`), so the check is read where nothing else refuses
+        gSubBare = t.submodule { options.a = gm.mkOption { type = t.int; }; };
+        wBare = np.addCheck gSubBare (v: v.a != 3);
       in
       {
         expr =
@@ -444,7 +449,7 @@ in
                   gSub
                 ])
             );
-            values = map (v: val [ gSub w ] { a = v; }) [
+            values = map (v: val [ gSubBare wBare ] { a = v; }) [
               2
               3
             ];

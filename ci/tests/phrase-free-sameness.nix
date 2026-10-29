@@ -135,13 +135,7 @@ let
   forgedTree =
     tys:
     gm.evalModuleTree { } (
-      map (ty: {
-        options.s = gm.mkOption {
-          type = ty;
-          default = { };
-        };
-      }) tys
-      ++ [ { s.a = 3; } ]
+      map (ty: { options.s = gm.mkOption { type = ty; }; }) tys ++ [ { s.a = 3; } ]
     );
   forgedRead =
     tys:
