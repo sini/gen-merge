@@ -981,6 +981,15 @@ let
       "gLA npg PT xaaA"
       "gLA raw TP xaaA"
       "gLA raw PT xaaA"
+      # through gen's door: a door that serves the partner's own-parameter values beside a widening `attrsOf` must
+      # still refuse the one its check rejects
+      "gLA door TP xaaA"
+      "gLA door PT xaaA"
+      "gLA door PTU xaaA"
+      "gLA door PUT xaaA"
+      "gLA door PTPU xaaA"
+      "gLA door PPTU xaaA"
+      "gLA door PUTP xaaA"
       "gLc door PT xaa"
       "gLg npg TP xaa"
       # N >= 3
