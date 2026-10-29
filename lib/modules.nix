@@ -2875,6 +2875,13 @@ let
       else
         !(keyedDrop class callM a3.noRefined r x);
   };
+  # whether a level holds exactly one entry naming a node key
+  loneKeyed =
+    l:
+    l != [ ]
+    && (
+      if nodeKeyOf (head l) != null then !(any (e: nodeKeyOf e != null) (tail l)) else loneKeyed (tail l)
+    );
   moduleLevels =
     class: callM: seen: level:
     if level == [ ] then
@@ -2948,8 +2955,14 @@ let
               keep = { };
             }
             at;
+        # A level holding ONE keyed entry and reached with nothing seen drops nothing: every unkeyed entry is
+        # kept, and the keyed one is its key's first holder (`meetKeyOf` names a key only where `nodeKeyOf`
+        # does), so the level is its own kept list without the per-entry tests. The scan stops at the second
+        # keyed entry.
         kept =
-          if keyed then
+          if keyed && seen == { } && loneKeyed level then
+            level
+          else if keyed then
             map (x: x.e) (
               filter (
                 x:
