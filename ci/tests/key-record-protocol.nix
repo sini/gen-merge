@@ -168,6 +168,62 @@ let
         4
       ];
 
+  # THE SERVE BEYOND NIXPKGS, (b′) (ADR-0039; den-hoag-xh14j, orchestrator reading 2026-10-29): one record
+  # construction reached N times is one module, where nixpkgs, reading identity from the result `key` alone,
+  # refuses N anonymous declarations. The merge law is ADR-0012's "a diamond is two edges to one node, so
+  # deduplication holds BY CONSTRUCTION", the node named by the record's key. Two oracles per cell, N = 2..4,
+  # each door, the declaration in the record's own content (`own`) and imported (`imp`):
+  #   VALUE: the served value and declarations equal the ONE construction's, declared once (`once`);
+  #   CHECK: a planted definition the construction's own type rejects (an int for a `str`) is refused.
+  # Scope: one construction only; two distinct constructions served once are not this law.
+  spelledRecord =
+    door: spelling:
+    let
+      r = ownRecord door;
+    in
+    if spelling == "own" then
+      r
+    else
+      r // { __functor = _: { config, ... }: { imports = [ (fooDecl door) ]; }; };
+  served = ms: foo ms;
+  onceValue = door: spelling: served [ (spelledRecord door spelling) ];
+  valueRows =
+    door: spelling:
+    builtins.concatMap
+      (
+        n:
+        [ (served (builtins.genList (_: spelledRecord door spelling) n)) ]
+        ++ builtins.genList (
+          p: served (builtins.genList (i: if i == p then definer else spelledRecord door spelling) n)
+        ) n
+      )
+      [
+        2
+        3
+        4
+      ];
+  checkRows =
+    door: spelling:
+    map (n: served (builtins.genList (_: spelledRecord door spelling) n ++ [ { foo = 5; } ])) [
+      2
+      3
+      4
+    ];
+  serveBeyond = door: spelling: {
+    once = onceValue door spelling;
+    value = valueRows door spelling;
+    check = checkRows door spelling;
+  };
+  serveBeyondExpected = {
+    once = "1:x";
+    value = ownExpected;
+    check = [
+      "REFUSED"
+      "REFUSED"
+      "REFUSED"
+    ];
+  };
+
   # removal names a node with no result key positionally, as nixpkgs does, where the graph is read
   rmMods = [
     decl
@@ -307,6 +363,15 @@ in
         ]
         ++ builtins.genList (_: "REFUSED") 9;
       };
+    };
+    # (b′): VALUE and CHECK oracles for one record construction reached N times, every door and spelling.
+    test-b-prime-one-record-construction-reached-n-times-value-and-check = {
+      expr = lib.genAttrs [ "gm" "lp" "raw" ] (
+        door: lib.genAttrs [ "own" "imp" ] (spelling: serveBeyond door spelling)
+      );
+      expected = lib.genAttrs [ "gm" "lp" "raw" ] (
+        _: lib.genAttrs [ "own" "imp" ] (_: serveBeyondExpected)
+      );
     };
     # Removal reads the graph's node names: a node with no result key is named positionally, so the
     # read is the engines' common value.
