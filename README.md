@@ -2061,7 +2061,12 @@ fresh join that widens a constructor's own parameters keeps that
 constructor's law over them (two `enum`s union their values), and each operand stays owed for the
 values its own parameters admit, so a wrapper over an `enum` is kept. Where an operand's functor
 states no coherent type at its own parameters (a v2 ad-hoc override it rebuilds), those parameters are
-the ones its v2 merge was built at, read from that merge's `headError`. A container's element is one of
+the ones its v2 merge was built at, read from that merge's `headError`. Where a foreign operand states no
+v2 merge and its functor rebuilds the operand itself, whose check is then the one owed, its parameters are
+judged by gen's own constructor for its functor name, since nixpkgs names a constructor by its functor
+name, over the element or alternatives it states: beside a widening `listOf`, `["a" "a"]` is refused for a
+`listOf (enum ["a"])` whose check rejects it, and `["a" "b"]` is served. A foreign operand of a name gen
+does not recognise as one of its containers keeps its own check, an open defect. A container's element is one of
 its parameters, read as the meet reads its roles (an element type, or a pair of alternatives), so
 `nullOr`, `uniq`/`unique`, `either` and `oneOf` over an `enum`, and their nests, union as the bare
 `enum` does, a gen `enum` under them included; a foreign union of three members is not a pair the meet

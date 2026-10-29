@@ -20,14 +20,21 @@
 #    the redeclaration, so these values are served beyond nixpkgs, under this law;
 #  - the OVERRIDE-JOIN cells: a v2 ad-hoc override whose functor rebuilds it, judged at the join nixpkgs asks for: a
 #    join that is the override again is refused as the twin refuses it, and a coherent join is served with the twin's
-#    value, the override's check owed inside the parameters its v2 merge was built at.
+#    value, the override's check owed inside the parameters its v2 merge was built at;
+#  - the OWN-PARAMETERS cells: a NON-v2 record whose functor rebuilds itself at its own payload is the record whose
+#    check is the debt, so its own parameters are judged by gen's constructor for its functor name at its payload
+#    (nixpkgs names a constructor by its functor name): a value inside them its check rejects is refused by name, in
+#    every engine and order, and one outside them is served with the twin's value, whatever record the partner's
+#    functor returns away from its own payload.
 # Red: every check cell with `imported` reverted to `t: r: r`; the `elemG` cells with `substructure` left out; the
 # widening cells with the join's check taken whole; the container widening cells outside the parameters with
 # membership read by the base's `check` alone; the verify and element cells with the closure built from the
 # door's return instead of the caller's record (P11); the override-join refusals with `close` owing `oc` on every
 # join, or with the base's membership read by its `check`; the door-column refusals with a refused join rebuilt over its
 # met roles (`relationMergeWithin`), and the door-column check oracle with an override's stock read by its own `check`
-# (`metWith`); the override-join values with the check owed on every value.
+# (`metWith`); the override-join values with the check owed on every value; the own-parameters refusals with the
+# stock's membership read by its own `check` (`metWith`) and the base's by its own merge (`rebuildClosed.own`), each
+# site partitioning them; the own-parameters values with the check owed on every value at both sites.
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -37,6 +44,7 @@ let
   inherit (builtins)
     all
     concatMap
+    elemAt
     isAttrs
     isInt
     isList
@@ -750,11 +758,324 @@ let
         }
       ]
     );
+  # a NON-v2 record (plain merge) over `c (enum ["a"])` with check `p`, whose functor returns itself at its own payload
+  # and `other`'s record at any other: rebuilt by its own functor, it is the record whose check is the debt, so its own
+  # parameters are judged by gen's constructor for its functor name at its payload, and a value inside them its check
+  # rejects is refused by name where the all-nixpkgs twin serves it. A value outside them is served with the twin's value
+  legacyAt =
+    c: p: merge: other: elem:
+    np.mkOptionType {
+      inherit ((c elem)) name;
+      check = p;
+      inherit merge;
+      functor = (c elem).functor // {
+        type = q: if isA q then legacyAt c p merge other q.elemType else other q.elemType;
+      };
+      nestedTypes.elemType = elem;
+    };
+  plain = _: defs: concatMap (d: d.value) defs;
+  shortA = v: isAttrs v && length (builtins.attrNames v) < 2;
+  lax =
+    elem:
+    np.mkOptionType {
+      name = "listOf";
+      check = isList;
+      merge = plain;
+      functor = (np.listOf elem).functor // {
+        type = q: lax q.elemType;
+      };
+      nestedTypes.elemType = elem;
+    };
+  # the lax record in nixpkgs' v2 protocol, its `isList` check marked coherent (it is: `headError` is `isList`)
+  laxV =
+    elem:
+    np.mkOptionType {
+      name = "listOf";
+      check = {
+        __functor = _: isList;
+        isV2MergeCoherent = true;
+      };
+      merge = {
+        __functor =
+          self: loc: defs:
+          (self.v2 { inherit loc defs; }).value;
+        v2 =
+          { loc, defs }:
+          {
+            headError = if all (d: isList d.value) defs then null else { message = "not a list"; };
+            value = plain loc defs;
+            valueMeta = { };
+          };
+      };
+      functor = (np.listOf elem).functor // {
+        type = q: laxV q.elemType;
+      };
+      nestedTypes.elemType = elem;
+    };
+  gLcAt = legacyAt np.listOf short plain gLcAt;
+  stocksOf = c: {
+    np = {
+      T = c.np (np.enum [ "b" ]);
+      U = c.np (np.enum [ "c" ]);
+    };
+    gt = {
+      T = c.gt (np.enum [ "b" ]);
+      U = c.gt (np.enum [ "c" ]);
+    };
+  };
+  L = {
+    np = np.listOf;
+    gt = gt.listOf;
+  };
+  N = {
+    np = np.nullOr;
+    gt = gt.nullOr;
+  };
+  A = {
+    np = np.attrsOf;
+    gt = gt.attrsOf;
+  };
+  # an author record named `either`, nixpkgs' member-wise relation, itself at its own members and nixpkgs' `either`
+  # elsewhere; beside nixpkgs' `either` stocks in every column
+  eitherAt =
+    l: r:
+    np.mkOptionType rec {
+      name = "either";
+      check = v: v == "a";
+      merge = nl.mergeEqualOption;
+      functor = (np.either l r).functor // {
+        type =
+          a: b:
+          if
+            (a.functor.payload.values or null) == [ "a" ] && (b.functor.payload.values or null) == [ "x" ]
+          then
+            eitherAt a b
+          else
+            np.either a b;
+      };
+      typeMerge =
+        f':
+        let
+          mt1 = l.typeMerge (builtins.head f'.payload.elemType).functor;
+          mt2 = r.typeMerge (builtins.elemAt f'.payload.elemType 1).functor;
+        in
+        if f'.name == "either" && mt1 != null && mt2 != null then functor.type mt1 mt2 else null;
+      nestedTypes.left = l;
+      nestedTypes.right = r;
+    };
+  owns = {
+    gL = {
+      p = legacyAt np.listOf short plain np.listOf ea;
+      beside = stocksOf L;
+    };
+    gLN = {
+      p = legacyAt np.nullOr (v: v != null) (_: defs: (builtins.head defs).value) np.nullOr ea;
+      beside = stocksOf N;
+    };
+    gLA = {
+      p = legacyAt np.attrsOf shortA (
+        _: defs: builtins.foldl' (a: d: a // d.value) { } defs
+      ) np.attrsOf ea;
+      beside = stocksOf A;
+    };
+    gLc = {
+      p = gLcAt ea;
+      beside = stocksOf L;
+    };
+    gLg = {
+      p = legacyAt np.listOf short plain gt.listOf ea;
+      beside = stocksOf L;
+    };
+    gLw = {
+      p = legacyAt np.listOf short plain lax ea;
+      beside = stocksOf L;
+    };
+    gLv = {
+      p = legacyAt np.listOf short plain laxV ea;
+      beside = stocksOf L;
+    };
+    # the lax record completed by gen's door; its twin is the raw lax record, whose semantics the completion keeps
+    gLd = {
+      p = legacyAt np.listOf short plain (elem: gm.mkOptionType (lax elem)) ea;
+      twin = legacyAt np.listOf short plain lax ea;
+      beside = stocksOf L;
+    };
+    gE = {
+      p = eitherAt (np.enum [ "a" ]) (np.enum [ "x" ]);
+      beside = rec {
+        np = {
+          T = nl.types.either (nl.types.enum [ "b" ]) (nl.types.enum [ "y" ]);
+          U = nl.types.either (nl.types.enum [ "c" ]) (nl.types.enum [ "z" ]);
+        };
+        gt = np;
+      };
+    };
+  };
+  ownVals = joinVals // {
+    bb = [
+      "b"
+      "b"
+    ];
+    xaaA = {
+      k = "a";
+      j = "a";
+    };
+    x = "x";
+  };
+  # `cell`: "<partner> <engine> <order> <value>", the order a word over T, U (the stocks) and P (the partner); engines
+  # `npg` (nixpkgs' fold over the door's return), `door` (gen's), `raw` (gen's, the record undoored), and `npg2` / `door2`
+  # through the second door (`types.mkOptionType`). `expect` is "REFUSED", "twin" or "control" (a twin cell the
+  # partner's own check admits, which never reaches the judge)
+  ownJoin =
+    expect: cell:
+    let
+      w = builtins.filter builtins.isString (builtins.split " " cell);
+      pn = elemAt w 0;
+      engine = elemAt w 1;
+      order = elemAt w 2;
+      h = owns.${pn};
+      at =
+        S: P:
+        builtins.genList (
+          i:
+          let
+            l = builtins.substring i 1 order;
+          in
+          if l == "P" then P else S.${l}
+        ) (builtins.stringLength order);
+      D =
+        {
+          npg = gm.mkOptionType h.p;
+          door = gm.mkOptionType h.p;
+          raw = h.p;
+          npg2 = gt.mkOptionType h.p;
+          door2 = gt.mkOptionType h.p;
+        }
+        .${engine};
+      v = ownVals.${elemAt w 3};
+    in
+    {
+      name = "test-mkOptionType-own-parameters-${pn}-${engine}-${order}-${elemAt w 3}${
+        if expect == "control" then "-control" else ""
+      }";
+      value = {
+        expr = (if engine == "npg" || engine == "npg2" then run else runGen) (at h.beside.gt D) [ v ];
+        expected = if expect == "REFUSED" then expect else run (at h.beside.np (h.twin or h.p)) [ v ];
+      };
+    };
+  ownParameters =
+    map (ownJoin "REFUSED") [
+      "gL npg TP xaa"
+      "gL npg PT xaa"
+      "gL door TP xaa"
+      "gL door PT xaa"
+      "gL raw TP xaa"
+      "gL raw PT xaa"
+      "gLN npg TP xnull"
+      "gLN npg PT xnull"
+      "gLN door TP xnull"
+      "gLN door PT xnull"
+      "gLN raw TP xnull"
+      "gLN raw PT xnull"
+      "gLA npg TP xaaA"
+      "gLA npg PT xaaA"
+      "gLA raw TP xaaA"
+      "gLA raw PT xaaA"
+      "gLc door PT xaa"
+      "gLg npg TP xaa"
+      # N >= 3
+      "gL door TPU xaa"
+      "gL npg UTPP xaa"
+      "gLN door UPT xnull"
+      "gLA npg TPUP xaaA"
+      "gLN raw TPU xnull"
+      # a functor returning a lax record away from its own payload: non-v2, v2 coherence-marked, gen-completed
+      "gLw door TP xaa"
+      "gLw npg PT xaa"
+      "gLw npg TP xaa"
+      "gLv door TP xaa"
+      "gLv npg TP xaa"
+      "gLd door TP xaa"
+      "gLd npg TP xaa"
+      # the alternatives role
+      "gE door TP x"
+      "gE npg TP x"
+      # the second door
+      "gL door2 TP xaa"
+      "gL door2 PT xaa"
+      "gL npg2 TP xaa"
+      "gL npg2 PT xaa"
+    ]
+    # outside the partner's own parameters: no lax join stands in for its domain
+    ++ map (ownJoin "twin") (
+      concatMap
+        (o: [
+          "gLv ${o} ab"
+          "gLv ${o} bb"
+        ])
+        [
+          "npg TP"
+          "npg PT"
+          "npg TPU"
+          "npg PTU"
+          "npg UPT"
+          "npg TPUP"
+          "npg PTPU"
+          "door TP"
+        ]
+      ++ [ "gLv door TPUP bb" ]
+      ++
+        concatMap
+          (
+            pn:
+            concatMap
+              (o: [
+                "${pn} ${o} ab"
+                "${pn} ${o} bb"
+              ])
+              [
+                "door TP"
+                "npg PT"
+                "npg PTU"
+                "npg UPT"
+              ]
+          )
+          [
+            "gLw"
+            "gLd"
+          ]
+      ++
+        concatMap
+          (o: [
+            "gL ${o} ab"
+            "gL ${o} bb"
+          ])
+          [
+            "npg TP"
+            "npg PT"
+            "door TP"
+            "door PT"
+          ]
+    )
+    ++ map (ownJoin "control") (
+      concatMap
+        (o: [
+          "gL ${o} a"
+          "gL ${o} b"
+        ])
+        [
+          "npg TP"
+          "npg PT"
+          "door TP"
+          "door PT"
+        ]
+    );
 in
 {
   flake.tests.door-return-closed = listToAttrs (
     checkCells
     ++ overrideJoins
+    ++ ownParameters
     ++ map widened [
       "none"
       "addCheck"

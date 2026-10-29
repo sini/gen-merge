@@ -3921,7 +3921,6 @@ let
                     || !(
                       let
                         p = importedRehomeAt recognitionDoor null b;
-                        e = b.functor.payload.elemType;
                         defs = [
                           {
                             file = "<base>";
@@ -3935,11 +3934,24 @@ let
                             let
                               j =
                                 if p.container == "either" then
-                                  constructors.either (elemAt e 0) (elemAt e 1)
+                                  constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
                                 else
-                                  constructors.${p.container} e;
+                                  constructors.${p.container} p.element;
+                              # the element-check precheck `metWith`'s `__stockCheck` states
+                              r = builtins.tryEval (
+                                if p.container == "either" then
+                                  prelude.any (a: a.check v) p.alternatives
+                                else if p.container == "nullOr" then
+                                  v == null || p.element.check v
+                                else if p.container == "listOf" then
+                                  isList v && all (x: isAttrs x && x ? _type || p.element.check x) v
+                                else
+                                  isAttrs v && all (x: isAttrs x && x ? _type || p.element.check x) (builtins.attrValues v)
+                              );
                             in
-                            if isV2 j then
+                            if r.success && !r.value then
+                              false
+                            else if isV2 j then
                               (
                                 let
                                   result = j.merge.v2 {
@@ -6990,8 +7002,9 @@ let
               # a non-v2 container stock whose check is not its completion's witness rebuilds the operand, whose check is
               # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
               # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
-              # container `importedRehomeAt` recognises it as, `homedAt`'s gen rebuild, at its payload; a stock of no
-              # recognised name keeps its own check. Asked only of a value the operand's check rejects (`meetOf`)
+              # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
+              # level); a stock of no recognised name keeps its own check. Asked only of a value the operand's check
+              # rejects (`meetOf`)
               __stockCheck =
                 if s.check.isV2MergeCoherent or false then
                   s.check
@@ -7004,20 +7017,36 @@ let
                   v:
                   let
                     p = importedRehomeAt recognitionDoor null s;
-                    e = s.functor.payload.elemType;
                     j =
                       if p.container == "either" then
-                        constructors.either (elemAt e 0) (elemAt e 1)
+                        constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
                       else
-                        constructors.${p.container} e;
+                        constructors.${p.container} p.element;
                     defs = [
                       {
                         file = "<stock>";
                         value = v;
                       }
                     ];
+                    # a member passes its element's check at every element (nixpkgs merges only checked definitions),
+                    # so a value with an element failing it is decided without building the judge; a check that throws,
+                    # and an element stating a property, are left to the judge
+                    r = builtins.tryEval (
+                      if p.container == "either" then
+                        prelude.any (a: a.check v) p.alternatives
+                      else if p.container == "nullOr" then
+                        v == null || p.element.check v
+                      else if p.container == "listOf" then
+                        isList v && all (x: isAttrs x && x ? _type || p.element.check x) v
+                      else
+                        isAttrs v && all (x: isAttrs x && x ? _type || p.element.check x) (builtins.attrValues v)
+                    );
                   in
-                  if p != null then
+                  if p == null then
+                    s.check v
+                  else if r.success && !r.value then
+                    false
+                  else
                     (
                       if isV2 j then
                         (
@@ -7039,8 +7068,6 @@ let
                           r.success && r.value
                         )
                     )
-                  else
-                    s.check v
                 else if
                   s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
                 then
