@@ -148,12 +148,20 @@ in
     test-lib-from-specialArgs-in-two-declarations-merges = {
       expr =
         let
+          # `forcesLib` with its read as a definition: the two declarations' module sets merge, and two
+          # copies of one option both stating `default` are refused (nixpkgs' `bothHave`)
+          forcesLibDefined =
+            { lib, ... }:
+            {
+              options.seen = mkOption { type = t.str; };
+              config.seen = if lib ? version then "LIB-ARRIVED" else "NOT-A-LIB";
+            };
           declares =
             file:
             { lib, ... }:
             {
               _file = file;
-              options.o = mkOption { type = (t.submodule [ forcesLib ]).withArgs { inherit lib; }; };
+              options.o = mkOption { type = (t.submodule [ forcesLibDefined ]).withArgs { inherit lib; }; };
             };
         in
         (evalModuleTree { specialArgs.lib = nixpkgsLib; } [

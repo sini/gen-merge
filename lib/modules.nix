@@ -1193,11 +1193,13 @@ let
   # not invented here: it ships as the advisory lint kind `type-merge` (lib/lint.nix), whose own
   # finding text is a standing admission that the library knew the answer and declined to give it.
   #
-  # THE NON-TYPE FIELDS STAY RIGHT-BIASED, and the ground is ADR-0029: positional authority is the
-  # substrate's, and this fold is an ORDERED fold over the authored module order — a later
-  # declaration is a later contribution, not a stronger one. gen-schema's ref-binding modules are the
-  # deliberate consumer: a module layering `apply` onto an earlier typed leaf carries no `type` of
-  # its own, so it never reaches the algebra above.
+  # TWO DECLARATIONS BOTH STATING `default`, `example`, `description` OR `apply` ARE REFUSED, as
+  # nixpkgs' `mergeOptionDecls` refuses them (`bothHave`), by presence and ahead of the type decision.
+  # The other non-type fields (`visible`, `readOnly`, `defaultText`, …) stay right-biased, and the
+  # ground is ADR-0029: positional authority is the substrate's, and this fold is an ORDERED fold over
+  # the authored module order — a later declaration is a later contribution, not a stronger one.
+  # gen-schema's ref-binding modules are the deliberate consumer of a field stated on one side: a
+  # module layering `apply` onto an earlier typed leaf states none of the four the earlier one does.
   #
   # AN ORDERED BIAS IS A RULE ONLY WHILE THE LOSER STAYS REACHABLE. Bracha & Cook 1990 keep the
   # overridden parent behind `super`; Leijen 2005's scoped labels retain a shadowed field "both in
@@ -2044,9 +2046,8 @@ let
   # A module re-declaring an engine-owned `_module.<k>`, judged as nixpkgs' `mergeOptionDecls` judges
   # it where the engine's own declaration takes part: refused by name when a declared type does not
   # merge with the engine's own, or when a declaration states a field the engine's own states
-  # (`moduleOwnDecls`). Between two modules' declarations the non-type fields right-bias, as every
-  # redeclaration in this engine does (ADR-0029's ordered fold, owner-ruled on den-hoag-00g), so two
-  # `apply`s keep the later one; nixpkgs refuses that pair.
+  # (`moduleOwnDecls`). Between two modules' declarations the guard of every redeclaration holds:
+  # two `apply`s are refused, as nixpkgs refuses that pair (`bothHave`).
   #
   # Of what an accepted re-declaration may carry, nixpkgs reads `apply` and `readOnly` into a value,
   # and at `specialArgs` (which declares no type of its own) a `type`. This engine runs `apply` where

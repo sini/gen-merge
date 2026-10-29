@@ -264,22 +264,34 @@ in
     # on the element's merged value.
     test-a-nixpkgs-container-over-a-verify-copy-redeclared-keeps-the-verify-on-its-element =
       let
+        # no `default`: the two declarations' module sets merge, and two copies of one option both
+        # stating `default` are refused (nixpkgs' `bothHave`), so each value defines both options
         gSubAB = gt.submodule {
-          options.a = gm.mkOption {
-            type = gt.int;
-            default = 0;
-          };
-          options.b = gm.mkOption {
-            type = gt.int;
-            default = 0;
-          };
+          options.a = gm.mkOption { type = gt.int; };
+          options.b = gm.mkOption { type = gt.int; };
         };
         copy = gm.mkOptionType (np.attrsOf (gSubAB // { verify = notTwo; }));
       in
       {
         expr = {
-          bad = run "np" [ (np.attrsOf gSubAB) copy ] [ { k.a = 2; } ];
-          ok = run "np" [ (np.attrsOf gSubAB) copy ] [ { k.a = 1; } ];
+          bad =
+            run "np"
+              [ (np.attrsOf gSubAB) copy ]
+              [
+                {
+                  k.a = 2;
+                  k.b = 0;
+                }
+              ];
+          ok =
+            run "np"
+              [ (np.attrsOf gSubAB) copy ]
+              [
+                {
+                  k.a = 1;
+                  k.b = 0;
+                }
+              ];
         };
         expected = {
           bad = "REFUSED";

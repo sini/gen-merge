@@ -47,9 +47,9 @@ let
   gm = on "gm";
   br = on "br";
   gmnp = on "gmnp";
-  # nixpkgs refuses an untyped declaration restating a field the typed one states; gen serves it (the
-  # ordered declaration fold, ADR-0029), and the type is still the typed declaration's, located by the root
-  beyond = [ "utShadow" ];
+  # every shape is a twin: an untyped declaration restating a field the typed one states outside nixpkgs'
+  # guarded four is served by both engines, the type located by the root
+  beyond = [ ];
   g = genMerge;
   t = g.types;
   lf = {
@@ -334,7 +334,7 @@ in
         expr = declAtOrder false;
         expected = np.sub;
       };
-      # beyond nixpkgs: the untyped-then-typed order, a field shadowed (`ut` without the shadow is a twin)
+      # the untyped-then-typed order, a field shadowed, reads the order `ut` reads without the shadow
       test-gm-utShadow-reads-the-located-order = {
         expr = gm.utShadow;
         expected = np.ut;
