@@ -3863,68 +3863,14 @@ let
           else
             null;
         # a non-v2 container base whose check is not its completion's witness is `t` again, whose check is the debt:
-        # `t`'s own parameters are its payload, judged by each join's constructor rebuilt there where that rebuild is a
-        # faithful judge, as `metWith`'s stock (`params`); `joined` judges any other value, as before
+        # `t`'s own parameters are its payload, judged by its constructor as its foreign protocol names one, as
+        # `metWith`'s `__stockCheck` judges a stock (`joined`); a base of no recognised name keeps its own membership
         params =
           isAttrs b
           && !(b ? _checkWitness && b.check == b._checkWitness)
           && !(isV2 b)
           && (b.getSubModules or null) == null
           && ((t.functor or { }).payload or null) ? elemType;
-        rebuiltOverAt =
-          j:
-          o
-          // {
-            check = {
-              __functor =
-                _: v:
-                t.check v
-                || (
-                  let
-                    r = importedPartner ((j.functor or { }) // { inherit (t.functor) payload; });
-                    defs = [
-                      {
-                        file = "<base>";
-                        value = v;
-                      }
-                    ];
-                  in
-                  if
-                    isAttrs r
-                    && (r.getSubModules or null) == null
-                    && (
-                      r ? _checkWitness && r.check == r._checkWitness || isV2 r && (r.check.isV2MergeCoherent or false)
-                    )
-                  then
-                    !(
-                      (
-                        if isV2 r then
-                          (
-                            let
-                              m2 = r.merge.v2 {
-                                loc = [ "<base>" ];
-                                inherit defs;
-                              };
-                              x = builtins.tryEval (builtins.deepSeq m2.value true);
-                            in
-                            (r.check v) && x.success && x.value
-                          )
-                        else
-                          r.check v
-                          && (
-                            let
-                              x = builtins.tryEval (builtins.deepSeq (r.merge [ "<base>" ] defs) true);
-                            in
-                            x.success && x.value
-                          )
-                      )
-                    )
-                  else
-                    joined.check v
-                );
-              isV2MergeCoherent = true;
-            };
-          };
         joined =
           if !(isAttrs b) || !(b ? check) then
             o
@@ -3938,6 +3884,44 @@ let
                 __functor =
                   _: v:
                   let
+                    p = importedRehomeAt recognitionDoor null b;
+                    e = b.functor.payload.elemType;
+                    defs = [
+                      {
+                        file = "<base>";
+                        value = v;
+                      }
+                    ];
+                    verdict =
+                      if p == null then
+                        member
+                      else
+                        let
+                          j =
+                            if p.container == "either" then
+                              constructors.either (elemAt e 0) (elemAt e 1)
+                            else
+                              constructors.${p.container} e;
+                        in
+                        if isV2 j then
+                          (
+                            let
+                              m2 = j.merge.v2 {
+                                loc = [ "<base>" ];
+                                inherit defs;
+                              };
+                              x = builtins.tryEval (builtins.deepSeq m2.value true);
+                            in
+                            (j.check v) && x.success && x.value
+                          )
+                        else
+                          j.check v
+                          && (
+                            let
+                              x = builtins.tryEval (builtins.deepSeq (j.merge [ "<base>" ] defs) true);
+                            in
+                            x.success && x.value
+                          );
                     member =
                       (
                         if adHocChecked b then
@@ -3970,7 +3954,7 @@ let
                         r.success && r.value
                       );
                   in
-                  !member || t.check v;
+                  if params then t.check v || !verdict else !member || t.check v;
                 isV2MergeCoherent = true;
               };
             };
@@ -4013,7 +3997,7 @@ let
                   let
                     j = x.typeMerge f;
                   in
-                  if j == null then null else (if params then close (rebuiltOverAt j) j else close joined j);
+                  if j == null then null else close joined j;
               }
             else
               { }
@@ -4034,7 +4018,7 @@ let
                     if isAttrs (j.merged or null) then
                       j
                       // {
-                        merged = (if params then close (rebuiltOverAt j.merged) j.merged else close joined j.merged);
+                        merged = close joined j.merged;
                       }
                     else
                       j;
@@ -4050,7 +4034,7 @@ let
                   if isAttrs (j.merged or null) then
                     j
                     // {
-                      merged = (if params then close (rebuiltOverAt j.merged) j.merged else close joined j.merged);
+                      merged = close joined j.merged;
                     }
                   else
                     j;
@@ -4067,7 +4051,7 @@ let
                     let
                       j = x.retainedRelation.typeMerge f;
                     in
-                    if j == null then null else (if params then close (rebuiltOverAt j) j else close joined j);
+                    if j == null then null else close joined j;
                 };
               }
             else
@@ -6996,9 +6980,10 @@ let
               # membership is its v2 merge's, `headError` and the forced merge, as `rebuildClosed.own` reads a base.
               # (`adHocChecked`, restated inline: this is asked of every widened operand of every meet)
               # a non-v2 container stock whose check is not its completion's witness rebuilds the operand, whose check is
-              # the debt: its own parameters are its payload, judged by the join's constructor rebuilt there where that
-              # rebuild is a faithful judge (a gen completion, or a v2 record whose check is coherent), at every depth;
-              # asked only of a value the operand's check rejects (`meetOf`), so an accepted value pays nothing
+              # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
+              # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
+              # container `importedRehomeAt` recognises it as, `homedAt`'s gen rebuild, at its payload; a stock of no
+              # recognised name keeps its own check. Asked only of a value the operand's check rejects (`meetOf`)
               __stockCheck =
                 if s.check.isV2MergeCoherent or false then
                   s.check
@@ -7010,7 +6995,13 @@ let
                 then
                   v:
                   let
-                    j = importedPartner ((m.functor or { }) // { inherit ((wrappedBase o).functor) payload; });
+                    p = importedRehomeAt recognitionDoor null s;
+                    e = s.functor.payload.elemType;
+                    j =
+                      if p.container == "either" then
+                        constructors.either (elemAt e 0) (elemAt e 1)
+                      else
+                        constructors.${p.container} e;
                     defs = [
                       {
                         file = "<stock>";
@@ -7018,13 +7009,7 @@ let
                       }
                     ];
                   in
-                  if
-                    isAttrs j
-                    && (j.getSubModules or null) == null
-                    && (
-                      j ? _checkWitness && j.check == j._checkWitness || isV2 j && (j.check.isV2MergeCoherent or false)
-                    )
-                  then
+                  if p != null then
                     (
                       if isV2 j then
                         (
