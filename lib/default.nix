@@ -680,7 +680,19 @@ in
     structured = core.structuredKeys;
     shorthandMeta = core.shorthandMetaKeys;
     functorRecord = core.functorRecordKeys;
-    inherit (core) keyEqFields;
+    # The fields the engine reads off a record's key comparison (`__keyEq`; `moduleSyntaxChecked`,
+    # `a3.refineOf` and the seal-decided fold, lib/modules.nix), published as data for the reason
+    # `functorRecord` is: a library riding `key`, `onDistinct` or `conflicts` there can refuse an
+    # engine that would never read them. Spelled here, not on `core`: the engine reads the fields by
+    # name and no binding of it enforces with the list.
+    keyEqFields = [
+      "conflicts"
+      "decide"
+      "key"
+      "meeting"
+      "onDistinct"
+      "subject"
+    ];
   };
 
   # The option names the engine serves in an option tree beside the declared ones, per shape:
