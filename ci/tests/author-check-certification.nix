@@ -41,6 +41,10 @@ in
       ] 1;
       expected = 1;
     };
+    test-a-borrowed-relation-through-definetype-serves-a-value-its-check-admits = {
+      expr = gen [ (t.defineType (borrowing (v: isInt v && v < 3))) ] 1;
+      expected = 1;
+    };
     test-a-same-name-definetype-serves-a-value-every-check-admits = {
       expr = gen [
         T

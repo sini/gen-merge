@@ -12334,6 +12334,27 @@ in
               (t.listOf t.int)
             ]
             [ 5 ];
+        # the same record through the published door, which returns it as itself: a borrowed relation is no completion
+        # (den-hoag-23u3j). The door's return reads as the record raw does, whatever nixpkgs serves. RED: foreignness
+        # read from the relation alone, so the door completed the record and published `check` from gen's words, which
+        # it states none of, and the value was served.
+        test-a-borrowed-relation-through-definetype-keeps-its-author-check-declared-alone = refused "int" [
+          (t.defineType borrow)
+        ] 5;
+        test-a-borrowed-relation-through-definetype-keeps-its-author-check-after-gen-int =
+          refused "signed integer"
+            [
+              t.int
+              (t.defineType borrow)
+            ]
+            5;
+        test-a-borrowed-relation-through-definetype-keeps-its-author-check-before-gen-int =
+          refused "signed integer"
+            [
+              (t.defineType borrow)
+              t.int
+            ]
+            5;
         test-a-same-name-definetype-keeps-its-check-before-gen-int = refused "signed integer" [
           (t.defineType auth)
           t.int
