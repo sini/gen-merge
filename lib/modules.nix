@@ -1610,17 +1610,6 @@ let
     "__keyEq"
     "__moduleKey"
   ];
-  # The fields this engine reads off a record's key comparison (`__keyEq`), published as data
-  # (moduleSyntax.keyEqFields) for the same reason: a library riding `key`, `onDistinct` or `conflicts`
-  # there can refuse an engine that would never read them.
-  keyEqFields = [
-    "conflicts"
-    "decide"
-    "key"
-    "meeting"
-    "onDistinct"
-    "subject"
-  ];
   # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
   # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
   # restating it (den-hoag-4kh.53.55; den-hoag-1n12c).
@@ -2861,29 +2850,31 @@ let
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
   # THE SEAL-DECIDED FOLD (`__keyEq.onDistinct = "refuse-on-conflict"`, the one value; `moduleSyntaxChecked`
-  # refuses any other). Bound here, never per level, so a level allocates none of them.
-  lvComposes = e: ((e.m0.__keyEq or null).onDistinct or null) == "refuse-on-conflict";
-  # A distinct construction is kept unless its record's `conflicts` says it collides with a kept one, which
-  # is refused by name.
-  lvRefusesOn =
-    r: x:
-    (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict"
-    && lvComposes r.e
-    && x.e.m0.__keyEq.conflicts r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
-  sameConstructionIn =
-    class: callM: r: x:
-    if lvComposes r.e then
-      let
-        same = r.e.m0.__keyEq.decide r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
-      in
-      if builtins.isBool same then
-        same
+  # refuses any other). One binding, never per level: a level allocates none of it, and an evaluation one thunk.
+  keyFold = rec {
+    composes = e: ((e.m0.__keyEq or null).onDistinct or null) == "refuse-on-conflict";
+    # A distinct construction is kept unless its record's `conflicts` says it collides with a kept one, which
+    # is refused by name.
+    refusesOn =
+      r: x:
+      (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict"
+      && composes r.e
+      && x.e.m0.__keyEq.conflicts r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
+    sameConstructionIn =
+      class: callM: r: x:
+      if composes r.e then
+        let
+          same = r.e.m0.__keyEq.decide r.e.m0.__keyEq.subject x.e.m0.__keyEq.subject;
+        in
+        if builtins.isBool same then
+          same
+        else
+          throw "gen-merge: the key comparison (`__keyEq.decide') of `${x.e._file}' returned ${builtins.typeOf same}, not a boolean."
+      else if a3.distinctAt r x then
+        false
       else
-        throw "gen-merge: the key comparison (`__keyEq.decide') of `${x.e._file}' returned ${builtins.typeOf same}, not a boolean."
-    else if a3.distinctAt r x then
-      false
-    else
-      !(keyedDrop class callM a3.noRefined r x);
+        !(keyedDrop class callM a3.noRefined r x);
+  };
   moduleLevels =
     class: callM: seen: level:
     if level == [ ] then
@@ -2924,7 +2915,7 @@ let
               # later occurrence of its key reads as a rep
               if x.k == null || (!(seen ? ${x.k}) && first.${x.k}.p == x.p) then
                 acc
-              else if !(lvComposes x.e) then
+              else if !(keyFold.composes x.e) then
                 acc
               else
                 let
@@ -2935,8 +2926,8 @@ let
                       ((seen."~" or { }).${x.k} or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
                       ++ (if !(seen ? ${x.k}) && first.${x.k}.p != x.p then [ first.${x.k} ] else [ ])
                     );
-                  dup = any (r: sameConstructionIn class callM r x) rs;
-                  clash = if dup then [ ] else builtins.filter (r: lvRefusesOn r x) rs;
+                  dup = any (r: keyFold.sameConstructionIn class callM r x) rs;
+                  clash = if dup then [ ] else builtins.filter (r: keyFold.refusesOn r x) rs;
                 in
                 if clash != [ ] then
                   throw "gen-merge: modules `${(builtins.head clash).e._file}' and `${x.e._file}' share the key '${
@@ -2966,7 +2957,7 @@ let
                 || (
                   if !(seen ? ${x.k}) && first.${x.k}.p == x.p then
                     true
-                  else if lvComposes x.e then
+                  else if keyFold.composes x.e then
                     opt.keep.${toString x.p} or true
                   else if seen ? ${x.k} || first.${x.k}.p != x.p then
                     keyedDrop class callM (
@@ -9734,7 +9725,6 @@ in
     structuredKeys
     shorthandMetaKeys
     functorRecordKeys
-    keyEqFields
     configOf
     moduleSyntaxChecked
     notAModule
