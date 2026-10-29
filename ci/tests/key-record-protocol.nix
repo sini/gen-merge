@@ -136,8 +136,8 @@ let
   ];
   # nixpkgs' engine on the same records (its own types): it keys a module by its RESULT's `key` only, so a
   # record stating its key on the record alone is N anonymous modules, and two of them both state `default`.
-  # gen serves where nixpkgs refuses: a serve beyond nixpkgs with no (b′) ruling, OPEN (pinned so it moves
-  # visibly; den-hoag-xh14j).
+  # gen serves where nixpkgs refuses: the (b′) serve beyond nixpkgs whose value and check oracles are
+  # `test-b-prime-…` below (ADR-0039, merge law ADR-0012); nixpkgs' column is pinned so it stays visible.
   npRecord = ownRecord "lp" // {
     __functor =
       _:
