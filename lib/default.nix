@@ -680,6 +680,7 @@ in
     structured = core.structuredKeys;
     shorthandMeta = core.shorthandMetaKeys;
     functorRecord = core.functorRecordKeys;
+    inherit (core) keyEqFields;
   };
 
   # The option names the engine serves in an option tree beside the declared ones, per shape:

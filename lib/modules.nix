@@ -1608,6 +1608,17 @@ let
     "__keyEq"
     "__moduleKey"
   ];
+  # The fields this engine reads off a record's key comparison (`__keyEq`), published as data
+  # (moduleSyntax.keyEqFields) for the same reason: a library riding `key`, `onDistinct` or `conflicts`
+  # there can refuse an engine that would never read them.
+  keyEqFields = [
+    "conflicts"
+    "decide"
+    "key"
+    "meeting"
+    "onDistinct"
+    "subject"
+  ];
   # The reader's own structuring test, published as data (moduleSyntax.structuring, lib/default.nix)
   # so a consumer's structured/shorthand guard reads the rule this engine enforces instead of
   # restating it (den-hoag-4kh.53.55; den-hoag-1n12c).
@@ -2200,7 +2211,11 @@ let
       }"
     else if (m ? config || m ? options) && builtins.removeAttrs m structuredKeys != { } then
       throw "gen-merge: module `${e._file}' has an unsupported attribute `${head (attrNames (builtins.removeAttrs m structuredKeys))}'. A module carrying a top-level `config' or `options' reads only the module keys; move ${concatStringsSep ", " (attrNames (builtins.removeAttrs m structuredKeys))} into its explicit `config', or drop `config'/`options' and write every configuration key at the top level."
-    else if (m ? __keyEq || (e.m0.__keyEq or null) != null) && !(m ? key) && !((e.m0.__keyEq or null) ? key) then
+    else if (e.m0.__keyEq or null) ? onDistinct && e.m0.__keyEq.onDistinct != "refuse-on-conflict" then
+      throw "gen-merge: module `${e._file}' publishes the key comparison's `onDistinct' as ${builtins.toJSON e.m0.__keyEq.onDistinct}. The one value this engine reads is \"refuse-on-conflict\": state it, or drop `onDistinct' to keep this engine's meeting path."
+    else if
+      (m ? __keyEq || (e.m0.__keyEq or null) != null) && !(m ? key) && !((e.m0.__keyEq or null) ? key)
+    then
       throw "gen-merge: module `${e._file}' publishes a key comparison (`__keyEq') but no `key'. The comparison decides between two occurrences of one key, so a module without a key has nothing for it to decide: give the module its `key', or remove `__keyEq'."
     else if isAttrs m then
       e
@@ -2542,7 +2557,8 @@ let
   # importer is expanded once. So the only occurrences that can lose are keyed and path ones, and
   # the merge path spells a node key for those alone (`nodeKeyOf`, the key group of `moduleKeyOf`),
   # strictly, where a level holds one. A level with none keeps every entry. A PLAIN LIST, with no
-  # path and no module naming `imports`, `require`, `key` or `disabledModules`, is its own closure,
+  # path, no module naming `imports`, `require`, `key` or `disabledModules` and no record naming its
+  # node (`__moduleKey`, a node key `nodeKeyOf` reads), is its own closure,
   # and most trees are one (a submodule's own module and its definitions): it is collected as its
   # entries alone. Any other list is walked, and then filtered by `removal`.
   #
@@ -2615,8 +2631,9 @@ let
   # (or a key computed from one) names its node, and the context is not part of the name.
   # THE RECORD-CHANNEL KEY (den-hoag-9zyp7 OQ2 (a2)): a `__functor` module may name its NODE on its
   # record (`__moduleKey`), read before it is applied, and this engine never forces the result's `key`
-  # to identify it. The result's `key` stays the module's REFERENCE key: what a foreign evaluator keys
-  # by, and what a `disabledModules` item names here too (`removal`, nixpkgs' `moduleKey`).
+  # to identify it. Its REFERENCE key is `__keyEq.key` where the record states one (the result's `key`
+  # is then the foreign evaluator's own), else the result's `key`; a `disabledModules` item names a
+  # record node by its result's `key` (`removal`, nixpkgs' `moduleKey`).
   nodeKeyOf =
     { m0, content, ... }:
     if builtins.isPath m0 || isPathString m0 then
@@ -2630,8 +2647,8 @@ let
   # THE MERGE PATH MEETS BY A KEY'S MEETING (den-hoag-9zyp7 OQ2 v3): nixpkgs dedups by the reference
   # key, and two occurrences may share it under two node keys (two declaration nodes of one mark), so
   # the merge path cannot meet by node key. A key `<meeting>#<refinement>` meets every key sharing
-  # `<meeting>`. A record states its meeting apart (`__keyEq.meeting`; its reference key, the result's
-  # `key`, must be `<meeting>#<refinement>`), so its key, which may read the declaration it keys, is
+  # `<meeting>`. A record states its meeting apart (`__keyEq.meeting`; its reference key, `__keyEq.key`
+  # or else the result's `key`, must be `<meeting>#<refinement>`), so its key, which may read the declaration it keys, is
   # demanded only where another occurrence shares its meeting (`a3.refineOf`); a record stating no
   # meeting meets by its result's `key`, as a plain module does. The stated meeting is trusted: a
   # record whose key it does not prefix is refused only where it meets. A key with no `#` is its
@@ -2679,8 +2696,8 @@ let
   a3 = rec {
     # built from its JSON escape: a `#` inside a string would break the purity scan's strip premise
     sep = builtins.fromJSON "\"\\u0023\"";
-    # A record's reference key is its result's `key`, forced here only (at a meeting), and it must be
-    # `<meeting>#<refinement>`, or a plain key equal to it would never meet it.
+    # A record's reference key (`__keyEq.key`, else its result's `key`) is forced here only (at a
+    # meeting), and it must be `<meeting>#<refinement>`, or a plain key equal to it would never meet it.
     refineOf =
       e:
       let
@@ -2689,7 +2706,7 @@ let
           if !record then
             nodeKeyOf e
           # a record stating its reference key (`__keyEq.key`) is read by it, never by its result's `key`,
-          # which is the foreign evaluator's (v1.4: the result may carry nixpkgs' key)
+          # which is the foreign evaluator's and may differ from it
           else if (e.m0.__keyEq.key or null) != null then
             "k" + builtins.unsafeDiscardStringContext (toString e.m0.__keyEq.key)
           else if isAttrs e.content && e.content ? key then
@@ -2741,23 +2758,16 @@ let
     collidedOf =
       flat:
       prelude.filterAttrs (_: v: length v > 1) (
-        builtins.groupBy nodeKeyOf (filter (e: nodeKeyOf e != null) flat)
+        builtins.groupBy (k: k) (
+          concatMap (
+            e:
+            let
+              k = nodeKeyOf e;
+            in
+            if k == null then [ ] else [ k ]
+          ) flat
+        )
       );
-    # PROTO (S): a record composing on distinct (`__keyEq.onDistinct = "compose"`) is a graph node refined by its
-    # construction's POSITION among its node key's kept constructions (`flat`'s order), found by its `decide`;
-    # never by its mark.
-    composesM = m0: ((m0.__keyEq or null).onDistinct or null) == "compose";
-    consIndex =
-      entries: m0:
-      let
-        hits = builtins.filter (i: let e = builtins.elemAt entries i; in e.m0.__keyEq.decide e.m0.__keyEq.subject m0.__keyEq.subject) (
-          prelude.genList (i: i) (length entries)
-        );
-      in
-      if hits == [ ] then
-        throw "gen-merge: a construction kept under a shared node key is not among its key's kept constructions"
-      else
-        builtins.head hits;
     levelC =
       C: callM: importer: mods:
       prelude.imap0 (
@@ -2767,9 +2777,7 @@ let
           k0 = moduleKeyOf importer i m0 m;
           self = {
             key =
-              if C ? ${k0} && composesM m0 then
-                k0 + sep + "c" + toString (consIndex C.${k0} m0)
-              else if C ? ${k0} then
+              if C ? ${k0} then
                 refinedKeyOf k0 {
                   content = m;
                   inherit m0;
@@ -2851,15 +2859,11 @@ let
         throw "gen-merge: modules `${w.e._file}' and `${x.e._file}' share the key '${key}' and are not equal under its key comparison (`__keyEq'). One key is one declaration: give them different keys, or import one of them."
       else
         throw "gen-merge: the key comparison (`__keyEq.decide') of key '${key}' returned ${builtins.typeOf same}, not a boolean. `decide' answers whether two occurrences of one key are one module: true or false.";
-  # v1.6: hoisted out of `moduleLevels`, so a level allocates none of them
-  lvComposes =
-    e:
-    builtins.elem ((e.m0.__keyEq or null).onDistinct or null) [
-      "compose"
-      "refuse-on-conflict"
-    ];
-  # v1.5 lever (O by seal): `onDistinct = "refuse-on-conflict"` keeps a distinct construction unless its
-  # record's `conflicts` says it collides with a kept one, which is refused by name
+  # THE SEAL-DECIDED FOLD (`__keyEq.onDistinct = "refuse-on-conflict"`, the one value; `moduleSyntaxChecked`
+  # refuses any other). Bound here, never per level, so a level allocates none of them.
+  lvComposes = e: ((e.m0.__keyEq or null).onDistinct or null) == "refuse-on-conflict";
+  # A distinct construction is kept unless its record's `conflicts` says it collides with a kept one, which
+  # is refused by name.
   lvRefusesOn =
     r: x:
     (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict"
@@ -2905,49 +2909,53 @@ let
               ]
           ) at
         );
-        # PROTO (S), den-hoag-xh14j key spec v1.4: a record publishing `__keyEq.onDistinct = "compose"` (gen-schema's
-        # kinds and plain bases; never an aspect core) is decided against EVERY distinct construction its meeting has
-        # kept, in collection order, by its `decide` alone (no refinement read, so no mark): equal to one of them is
-        # that construction reached again and is dropped; distinct from all is another construction and is kept.
-        # `seen."~<k>"` carries a meeting's kept constructions into deeper levels.
-        opt = builtins.foldl' (
-          acc: x:
-          # the collision pre-check FIRST (v1.6): a lone first holder (no deeper holder, first in its level) is
-          # kept without a fold step and without reading its record; it is the level's `first`, which every
-          # later occurrence of its key reads as a rep
-          if x.k == null || (!(seen ? ${x.k}) && first.${x.k}.p == x.p) then
-            acc
-          else if !(lvComposes x.e) then
-            acc
-          else
-            let
-              # the level's first holder of the key is a rep too where it does not compose (a plain module or
-              # a record stating the key without opting in), so the pair is decided, never skipped
-              rs =
-                acc.reps.${x.k} or (
-                  ((seen."~" or { }).${x.k} or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
-                  ++ (if !(seen ? ${x.k}) && first.${x.k}.p != x.p then [ first.${x.k} ] else [ ])
-                );
-              dup = any (r: sameConstructionIn class callM r x) rs;
-              clash = if dup then [ ] else builtins.filter (r: lvRefusesOn r x) rs;
-            in
-            if clash != [ ] then
-              throw "gen-merge: modules `${(builtins.head clash).e._file}' and `${x.e._file}' share the key '${
-                builtins.substring 1 (builtins.stringLength x.k) x.k
-              }' and are two constructions its key comparison (`__keyEq') refuses to compose. One key is one declaration: give them different keys, or import one of them."
-            else
+        # A record publishing `__keyEq.onDistinct = "refuse-on-conflict"` (gen-schema's kinds and plain bases;
+        # never an aspect core) is decided against EVERY construction its key has kept, in collection order, by
+        # its `decide`: equal to one of them is that construction reached again and is dropped; otherwise its
+        # `conflicts` against a kept one is refused by name, and a construction distinct from all is kept.
+        # `seen."~"` carries a key's kept constructions into deeper levels.
+        opt =
+          builtins.foldl'
+            (
+              acc: x:
+              # the collision pre-check FIRST: a lone first holder (no deeper holder, first in its level) is
+              # kept without a fold step and without reading its record; it is the level's `first`, which every
+              # later occurrence of its key reads as a rep
+              if x.k == null || (!(seen ? ${x.k}) && first.${x.k}.p == x.p) then
+                acc
+              else if !(lvComposes x.e) then
+                acc
+              else
+                let
+                  # the level's first holder of the key is a rep too where it does not compose (a plain module or
+                  # a record stating the key without opting in), so the pair is decided, never skipped
+                  rs =
+                    acc.reps.${x.k} or (
+                      ((seen."~" or { }).${x.k} or (if seen ? ${x.k} then [ seen.${x.k} ] else [ ]))
+                      ++ (if !(seen ? ${x.k}) && first.${x.k}.p != x.p then [ first.${x.k} ] else [ ])
+                    );
+                  dup = any (r: sameConstructionIn class callM r x) rs;
+                  clash = if dup then [ ] else builtins.filter (r: lvRefusesOn r x) rs;
+                in
+                if clash != [ ] then
+                  throw "gen-merge: modules `${(builtins.head clash).e._file}' and `${x.e._file}' share the key '${
+                    builtins.substring 1 (builtins.stringLength x.k) x.k
+                  }' and are two constructions its key comparison (`__keyEq') refuses to compose. One key is one declaration: give them different keys, or import one of them."
+                else
+                  {
+                    reps = acc.reps // {
+                      ${x.k} = if dup then rs else rs ++ [ x ];
+                    };
+                    keep = acc.keep // {
+                      ${toString x.p} = !dup;
+                    };
+                  }
+            )
             {
-              reps = acc.reps // {
-                ${x.k} = if dup then rs else rs ++ [ x ];
-              };
-              keep = acc.keep // {
-                ${toString x.p} = !dup;
-              };
+              reps = { };
+              keep = { };
             }
-        ) {
-          reps = { };
-          keep = { };
-        } at;
+            at;
         kept =
           if keyed then
             map (x: x.e) (
@@ -3012,7 +3020,14 @@ let
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
       && all (
-        e: !(e.content ? imports || e.content ? require || e.content ? key || e.content ? disabledModules)
+        e:
+        !(
+          e.content ? imports
+          || e.content ? require
+          || e.content ? key
+          || e.content ? disabledModules
+          || (e.m0.__moduleKey or null) != null
+        )
       ) plain
     then
       plain
@@ -3111,7 +3126,8 @@ let
       else
         let
           dis = (head flat).dis;
-          # a record-keyed node is named by its REFERENCE key, the one a removal item states
+          # a record-keyed node is named by its result's `key`, the one a removal item states and a foreign
+          # evaluator keys by; one with no result key is named positionally, as nixpkgs names it
           nk =
             g:
             if (g.m0.__moduleKey or null) != null && g.m ? key then
@@ -3303,7 +3319,6 @@ let
   alignedGraph =
     what: flat: graph:
     let
-      collided = a3.collidedOf flat;
       n = length flat;
       agrees =
         i:
@@ -3319,18 +3334,10 @@ let
           else
             k == g.key
             || (
-              a3.composesM e.m0
-              && collided ? ${k}
-              && g.key == k + a3.sep + "c" + toString (a3.consIndex collided.${k} e.m0)
-            )
-            || (
-              !(a3.composesM e.m0)
-              && (
-                let
-                  r = a3.refineOf e;
-                in
-                r != null && g.key == k + a3.sep + r
-              )
+              let
+                r = a3.refineOf e;
+              in
+              r != null && g.key == k + a3.sep + r
             )
         )
         && moduleShape e.m0 == moduleShape g.m0;
@@ -9726,6 +9733,7 @@ in
     structuredKeys
     shorthandMetaKeys
     functorRecordKeys
+    keyEqFields
     configOf
     moduleSyntaxChecked
     notAModule
