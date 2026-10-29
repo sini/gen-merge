@@ -612,9 +612,9 @@ let
   # other ENTRY to a gen relation asks it too: `declaredPair`'s veto below, and `exportType`'s
   # `typeMerge` and `binOp` (`lib/interface.nix`), which a foreign engine calls.
   relationMergeWithin =
-    a: b:
+    ops: a: b:
     if b ? wraps && interface.wrapsKeyOf b a then
-      relationMergeWithin b a
+      relationMergeWithin ops b a
     else if a ? typeMergeRel then
       let
         answer = a.typeMergeRel b;
@@ -630,27 +630,48 @@ let
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it
           if answer.holds or false then
-            interface.metWith "holds"
-              (
-                if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-                  r
-                else
-                  rolesMet r a b
-              )
-              [
-                a
-                b
-              ]
+            opsMet ops (
+              interface.metWith "holds"
+                (
+                  if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
+                    r
+                  else
+                    rolesMet ops r a b
+                )
+                (
+                  if ops == null then
+                    [
+                      a
+                      b
+                    ]
+                  else
+                    ops.xs
+                )
+            )
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith true r [
-              a
-              b
-            ]
+            (opsMet ops (
+              interface.metWith (if ops != null && ops.held then "holds" else true) r (
+                if ops == null then
+                  [
+                    a
+                    b
+                  ]
+                else
+                  ops.xs
+              )
+            ))
           else
-            interface.metWith true (rolesMet r a b) [
-              a
-              b
-            ]
+            (opsMet ops (
+              interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet ops r a b) (
+                if ops == null then
+                  [
+                    a
+                    b
+                  ]
+                else
+                  ops.xs
+              )
+            ))
         )
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
       # payload states even where its witness took the join: the witness compares names, never checks, so a
@@ -665,7 +686,7 @@ let
             a ? retainedRelation
             && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
-            rolesMet answer.merged a b
+            rolesMet ops answer.merged a b
           else
             answer.merged
         )
@@ -680,19 +701,45 @@ let
       # a join taken past the witness (it renames an operand, `importedMerge`'s answer `holds`) is met here
       # holding every operand's fold
       else if r.holds or false then
-        interface.metWith "holds" (rolesMet r.merged a b) [
-          a
-          b
-        ]
+        (opsMet ops (
+          interface.metWith "holds" (rolesMet ops r.merged a b) (
+            if ops == null then
+              [
+                a
+                b
+              ]
+            else
+              ops.xs
+          )
+        ))
       else
-        rolesMet r.merged a b;
+        rolesMet ops r.merged a b;
+  # a step owing `ops` marks the answers its relation already met with them, so `mergeTypesBy` meets only a bare join
+  opsMet = ops: x: if ops == null || x == null then x else { __opsMet = x; };
   # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
   # records carry (an element; a union's two members) its own carried type is met with the operands'
   # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
   # caller (`mergeTypesBy`).
   rolesMet =
-    r: a: b:
+    ops: r: a: b:
     let
+      # a step owing `ops` owes, at a role, the role each owed declaration carries (`roleOps`), never the accumulated
+      # carrier's own met role
+      roleOps =
+        f:
+        if ops == null then
+          null
+        else
+          {
+            xs = builtins.concatMap (
+              d:
+              let
+                x = f d;
+              in
+              if x == null then [ ] else [ x ]
+            ) ops.xs;
+            held = false;
+          };
       at =
         role:
         map (interface.carriedAt role) [
@@ -711,23 +758,37 @@ let
       pick = l: i: builtins.elemAt l i;
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
-        r': a': b':
-        interface.metWith false (rolesMet r' a' b') [
-          a'
-          b'
-        ];
+        o: r': a': b':
+        interface.metWith false (rolesMet o r' a' b') (
+          if o == null then
+            [
+              a'
+              b'
+            ]
+          else
+            o.xs
+        );
     in
     if builtins.all (x: x != null) el then
       (
         let
-          m = innerMet (pick el 0) (pick el 1) (pick el 2);
+          m = innerMet (roleOps (interface.carriedAt "element")) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
     else if builtins.all (x: x != null) al then
       (
         let
-          m = builtins.genList (i: innerMet (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)) 2;
+          m = builtins.genList (
+            i:
+            innerMet (roleOps (
+              d:
+              let
+                x = interface.carriedAt "alternatives" d;
+              in
+              if x == null then null else pick x i
+            )) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+          ) 2;
         in
         if
           interface.sameValue (pick m 0) (pick (pick al 0) 0)
@@ -755,7 +816,7 @@ let
               if length ds == 2 then
                 let
                   vs = filter (d: d ? verify) ds;
-                  c = innerMet o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
+                  c = innerMet null o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
                   verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
                 in
                 if vs == [ ] then
@@ -803,7 +864,7 @@ let
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then
       null
     else
-      relationMergeWithin a b;
+      relationMergeWithin null a b;
 
   # ★★ A REDECLARED OPTION ACCEPTS A DEFINITION ONLY IF EVERY DECLARED CHECK DOES: EVERY TYPE MERGE IS
   # MET (den-hoag-l1j4q, owner-ruled 2026-10-06, the meet reading of a redeclaration). nixpkgs'
@@ -857,12 +918,16 @@ let
     )
     && !(interface.sameValue m o);
   mergeTypesBy =
-    relation: a: b:
+    ops: relation: a: b:
     let
       m = relation a b;
     in
     if m == null then
       null
+    else if ops != null then
+      (
+        if m ? __opsMet then m.__opsMet else interface.metWith (if ops.held then "held" else false) m ops.xs
+      )
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer carries a certified operand where it is that operand's own construction (one
       # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s
@@ -903,8 +968,8 @@ let
         a
         b
       ];
-  mergeTypes = mergeTypesBy relationMerge;
-  mergeTypesWithin = mergeTypesBy relationMergeWithin;
+  mergeTypes = mergeTypesBy null relationMerge;
+  mergeTypesWithin = mergeTypesBy null (relationMergeWithin null);
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -929,7 +994,7 @@ let
   mergeTypesReasonBy =
     within: a: b:
     let
-      m = (if within then relationMergeWithin else relationMerge) a b;
+      m = (if within then relationMergeWithin null else relationMerge) a b;
       dA = m != null && dropsWrappedCheck m a;
       dB = m != null && dropsWrappedCheck m b;
     in
@@ -986,7 +1051,7 @@ let
   # for a foreign pair that is one shared value, by keeping it: README "Known byte-mode boundaries
   # (deliberate)".
   declaredPair =
-    earlier: later:
+    ops: earlier: later:
     let
       # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
       decidable = interface.importedDecidable earlier && interface.importedDecidable later;
@@ -1004,12 +1069,15 @@ let
         else if veto ? refused then
           (
             let
-              tried = builtins.tryEval (mergeTypesWithin later earlier);
+              tried = builtins.tryEval (
+                (if ops == null then mergeTypesWithin else mergeTypesBy ops (relationMergeWithin ops)) later earlier
+              );
             in
             if tried.success then tried.value else null
           )
         else
-          mergeTypesWithin later earlier;
+          (if ops == null then mergeTypesWithin else mergeTypesBy ops (relationMergeWithin ops)) later
+            earlier;
     in
     if veto.meets or false then
       {
@@ -1026,22 +1094,38 @@ let
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
                 else
-                  rolesMet r earlier later
+                  rolesMet ops r earlier later
               )
-              [
-                earlier
-                later
-              ]
+              (
+                if ops == null then
+                  [
+                    earlier
+                    later
+                  ]
+                else
+                  ops.xs
+              )
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith true r [
-              earlier
-              later
-            ]
+            interface.metWith (if ops != null && ops.held then "holds" else true) r (
+              if ops == null then
+                [
+                  earlier
+                  later
+                ]
+              else
+                ops.xs
+            )
           else
-            interface.metWith true (rolesMet r earlier later) [
-              earlier
-              later
-            ];
+            interface.metWith (if ops != null && ops.held then "holds" else true) (rolesMet ops r earlier later)
+              (
+                if ops == null then
+                  [
+                    earlier
+                    later
+                  ]
+                else
+                  ops.xs
+              );
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
@@ -1082,11 +1166,135 @@ let
     else
       interface.carriedAtDepth true r.declaredTypes (sub.rebuild (concatMap own r.prior));
   # The list, in AUTHORED order; stops at the first refusing step. A one-element list is itself.
+  #
+  # ★ THE ACCUMULATOR'S DEBT IS THE FOLD'S, NOT THE RECORD'S (den-hoag-meet-carrier-join-check-reowed-15va3). A met record
+  # this fold built (`met`) answers for the declarations folded so far, never for its carrier's own check: nixpkgs' next
+  # step asks the carrier's relation and drops a check no declaration made (ADR-0039 THE MEET owes DECLARED checks). So
+  # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`debt`, one per value) and
+  # the earlier one. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
+  # owed whole by its own check, and keeps its own relation. A held accumulator holds the next step again (`held`): its
+  # declarations' folds are demanded as its own were.
   mergeDeclaredTypes =
     ts:
-    foldl' (acc: earlier: if acc ? refused then acc else declaredPair earlier acc.merged) {
-      merged = prelude.last ts;
-    } (reverse (prelude.init ts));
+    let
+      last = prelude.last ts;
+    in
+    foldl'
+      (
+        acc: earlier:
+        if acc ? refused then
+          acc
+        else
+          let
+            k = interface.closuresFirst [ earlier ] earlier;
+            # every declaration folded so far, one per value (`closuresFirst` key, as `metWith`'s one-value test
+            # reads it); forced only by a step that owes it
+            debt =
+              if builtins.elem k acc.debt.keys then
+                acc.debt
+              else
+                {
+                  decls = acc.debt.decls ++ [ earlier ];
+                  keys = acc.debt.keys ++ [ k ];
+                };
+            r =
+              if acc.met then
+                declaredPair {
+                  xs = debt.decls;
+                  held = acc.merged ? holds;
+                } earlier acc.carrier
+              else
+                declaredPair null earlier acc.carrier;
+            t = r.merged;
+            # a met record is built by this step where it is neither operand (an operand that is one is a declaration)
+            met =
+              t ? __meetJoin
+              && (
+                !(earlier ? __meetJoin || acc.carrier ? __meetJoin)
+                || (
+                  let
+                    kt = interface.closuresFirst [ t ] t;
+                  in
+                  kt != k && kt != interface.closuresFirst [ acc.carrier ] acc.carrier
+                )
+              );
+          in
+          if r ? refused then
+            r
+          else
+            {
+              merged = t;
+              inherit met debt;
+              # a step that built no met record leaves the next step owing nothing (`met` false), so a role it met keeps
+              # its meet: unwound there, that role's declared checks would be owed by nobody
+              carrier =
+                if !met then
+                  t
+                else
+                  let
+                    keyOf = x: interface.closuresFirst [ x ] x;
+                    kl = keyOf acc.carrier;
+                    operandMet = earlier ? __meetJoin || acc.carrier ? __meetJoin;
+                    ownMet = x: x ? __meetJoin && (!operandMet || keyOf x != k && keyOf x != kl);
+                    # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
+                    # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
+                    # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
+                    # (`declaredAt`), at `element` and at either `alternatives` member
+                    unwrap = x: if ownMet x then unwrap x.__meetJoin else x;
+                    declaredAt =
+                      roleOf: x:
+                      builtins.any (
+                        d:
+                        let
+                          y = roleOf d;
+                        in
+                        y != null && keyOf y == keyOf x
+                      ) debt.decls;
+                    altAt =
+                      i: d:
+                      let
+                        a = interface.carriedAt "alternatives" d;
+                      in
+                      if a == null then null else builtins.elemAt a i;
+                    u = unwrap t;
+                    e = interface.carriedAt "element" u;
+                    al = interface.carriedAt "alternatives" u;
+                    re =
+                      if e != null && e ? __meetJoin && !(declaredAt (interface.carriedAt "element") e) then
+                        interface.rebuiltOverAt "element" (unwrap e) u
+                      else
+                        null;
+                  in
+                  if re != null then
+                    re
+                  else if al != null && builtins.any (y: y ? __meetJoin) al then
+                    (
+                      let
+                        al' = builtins.genList (
+                          i:
+                          let
+                            y = builtins.elemAt al i;
+                          in
+                          if y ? __meetJoin && !(declaredAt (altAt i) y) then unwrap y else y
+                        ) 2;
+                        x = interface.rebuiltOverAt "alternatives" al' u;
+                      in
+                      if x == null then u else x
+                    )
+                  else
+                    u;
+            }
+      )
+      {
+        merged = last;
+        carrier = last;
+        met = false;
+        debt = {
+          decls = [ last ];
+          keys = [ (interface.closuresFirst [ last ] last) ];
+        };
+      }
+      (reverse (prelude.init ts));
   # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
   # first; only the null-reason fallback is spelled here, and it names the pair in authored order,
   # through the library's one total name reader (`interface.nameOf`). Where the two state functor

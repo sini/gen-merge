@@ -6897,11 +6897,13 @@ let
             so = shapeOf importedTypeWalkFuel o;
           in
           so != sm && widensAt so sm;
-        maybe = if meets == false then filter mayOwe os else os;
+        # `held`: a step meeting a held accumulator's declarations (lib/modules.nix `mergeDeclaredTypes`) is held again
+        maybe = if meets == false || meets == "held" then filter mayOwe os else os;
         # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
         # compared inline so the meet binds nothing for it
-        notM = filter (o: closuresFirst [ m ] m != closuresFirst [ o ] o) maybe;
-        fresh = builtins.all (o: closuresFirst [ m ] m != closuresFirst [ o ] o) os;
+        km = closuresFirst [ m ] m;
+        notM = filter (o: km != closuresFirst [ o ] o) maybe;
+        fresh = builtins.all (o: km != closuresFirst [ o ] o) os;
         relativised =
           o:
           let
@@ -6966,6 +6968,7 @@ let
       # before this branch
       else if
         meets == "holds"
+        || meets == "held"
         || builtins.catAttrs "holds" once != [ ]
         ||
           !(m ? typeMergeRel)
@@ -6986,7 +6989,7 @@ let
         let
           met = meetOf m once;
           kept =
-            if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+            if meets == "holds" || meets == "held" || builtins.catAttrs "holds" once != [ ] then
               # a step taken past the witness holds such an operand whole, by its unchecked fold
               once
             else if !(m ? typeMergeRel) then
