@@ -2915,7 +2915,7 @@ let
               # later occurrence of its key reads as a rep
               if x.k == null || (!(seen ? ${x.k}) && first.${x.k}.p == x.p) then
                 acc
-              else if !(keyFold.composes x.e) then
+              else if !((x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict") then
                 acc
               else
                 let
@@ -2957,7 +2957,7 @@ let
                 || (
                   if !(seen ? ${x.k}) && first.${x.k}.p == x.p then
                     true
-                  else if keyFold.composes x.e then
+                  else if (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict" then
                     opt.keep.${toString x.p} or true
                   else if seen ? ${x.k} || first.${x.k}.p != x.p then
                     keyedDrop class callM (
@@ -2981,11 +2981,9 @@ let
             if keyed then
               first
               // seen
-              # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
               // {
+                # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
                 "~" = (seen."~" or { }) // opt.reps;
-              }
-              // {
                 "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
               }
             else
