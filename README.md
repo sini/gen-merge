@@ -1456,8 +1456,7 @@ Two rules that look like details and are not:
   questions: one submodule binding declared twice is one type (`typeEq` `true`), and its
   redeclaration is still decided by the type's own relation, so its module set is evaluated twice, as
   nixpkgs `lib.evalModules` does (a doubled list option reads `[ 1 1 ]` in both; with a `default` on
-  the doubled option nixpkgs refuses `already declared` and
-  gen-merge keeps its right-biased non-type fields, the shadowed declaration still reachable (below)).
+  the doubled option both refuse `already declared` (below)).
   Two module sets still union and two `listOf` over joinable elements still join. Two
   submodules over different module sets share a mark and differ at the sealed module set, so `typeEq`
   of the pair refuses by name. A `//` copy of a composite fails the completion stamp, as a leaf's
@@ -1859,16 +1858,22 @@ Two modules may declare the same option loc. The merge splits the record in two:
   (later) type first: `submodule` declared beside `int` reads `` (`submodule' and `int') ``, and a
   tree type beside a `submodule` names the reading that differs, since both are named `submodule`. The outcome the routing removes is one declaration's field
   surviving beside the *other's* type on a record that then disagrees with itself.
-- **The non-type fields are right-biased, and what they shadow stays reachable.** Later declarations
-  win field by field: this fold is an *ordered* fold over the authored module order, so a later
-  declaration is a later contribution rather than a stronger one, and a module layering `apply` onto
-  an earlier typed leaf composes exactly as it reads. An ordered bias is a rule only while the loser
-  is still reachable, so a merged record that actually shadowed a field carries what it shadowed:
+- **Two declarations both stating `default`, `example`, `description` or `apply` are refused**, by
+  presence and ahead of the type decision, as nixpkgs' `mergeOptionDecls` refuses them (`bothHave`):
+  `` gen-merge: The option `x' in `a.nix' is already declared in `b.nix': both declarations state `default' ``,
+  naming the earliest declaration stating the field, so a pair need not be adjacent. A module
+  layering `apply` onto an earlier typed leaf states none of the four the leaf does, and composes
+  exactly as it reads.
+- **The other non-type fields are right-biased, and what they shadow stays reachable.** Later
+  declarations win field by field (`visible`, `readOnly`, `defaultText`, …): this fold is an
+  *ordered* fold over the authored module order, so a later declaration is a later contribution
+  rather than a stronger one. An ordered bias is a rule only while the loser is still reachable, so
+  a merged record that actually shadowed a field carries what it shadowed:
 
 ```nix
 (evalModuleTree { } [ a b ]).options.x
-# ⇒ { _type = "option"; type = <str>; default = "from-B";
-#     overridden = [ { file = "a.nix"; declaration = { type = <str>; default = "from-A"; }; } ]; }
+# ⇒ { _type = "option"; type = <str>; default = "from-B"; defaultText = "text-B";
+#     overridden = [ { file = "a.nix"; declaration = { type = <str>; defaultText = "text-A"; }; } ]; }
 ```
 
 Each entry's `file` names the module that most recently **contributed** to the record being
@@ -2108,13 +2113,12 @@ the `//` accumulator they replace read 1.51, 1.69 and 1.47 (`ci/bench/redeclarat
 inherent to keeping the provenance. `n` distinct submodule-typed options, one
 per module, read 1.49 in bytes (nixpkgs 1.61) with thunks and calls at 0.98.
 
-**Against nixpkgs, on the other fields.** The engines part on the **other** fields — nixpkgs refuses a redeclaration
-outright when both declarations carry any of `default`/`example`/`description`/`apply` (its
-`bothHave` guard, which fires ahead of the functor), where gen-merge right-biases them under the
-stated rule above. So the divergence runs one way: gen-merge accepts field-colliding redeclarations
-that nixpkgs rejects. Note that nixpkgs prints the **same** `already declared` text on both of its
-paths, so the message does not tell you which one refused — the `str`/`str` case merging is what
-separates them.
+**Against nixpkgs, on the other fields.** Both engines refuse a redeclaration outright when both
+declarations carry any of `default`/`example`/`description`/`apply` (nixpkgs' `bothHave` guard,
+which fires ahead of the functor, and gen-merge's twin of it), and gen-merge's text keeps nixpkgs'
+`already declared in` and adds the field. Note that nixpkgs prints the **same** `already declared`
+text on both of its paths, so the message does not tell you which one refused — the `str`/`str`
+case merging is what separates them.
 
 `overridden` is oldest-first and appears **only** where a declaration really was shadowed — a module
 that merely adds fields (the `apply`-layering shape) leaves the record exactly what a plain field
@@ -2846,18 +2850,32 @@ same modules.
   gen-merge applies the kept occurrence's `decide`. A throw inside `decide` propagates. Where neither
   publishes it, nixpkgs' rule holds and the later occurrence is dropped. Two occurrences of one
   spelled path are the one file and keep nixpkgs' rule; two different path files sharing an in-file
-  key, or a path import sharing its key with a content module, are decided like any other pair. A module publishing `__keyEq` without a `key` is refused by name. gen-schema keys a
-  kind with parents by its mark and publishes its sealed comparison on the kind value's record
-  (`ci/tests/key-eq.nix`).
+  key, or a path import sharing its key with a content module, are decided like any other pair. A module publishing `__keyEq` without a `key` (in its result, or `__keyEq.key` on its record)
+  is refused by name. gen-schema keys every kind by its declaration node and publishes its sealed
+  comparison on the kind value's record (`ci/tests/key-eq.nix`).
 
 - **A `__functor` module may name its graph node on its record, `__moduleKey`, and its meeting,
   `__keyEq.meeting`.** The node key is read before the module is applied, and keys the module graph
-  (node ids, the warm origin split, declaration anchors); the result's `key` stays the REFERENCE key,
-  which every evaluator dedups by and a `disabledModules` item names. The merge path meets
+  (node ids, the warm origin split, declaration anchors). Its REFERENCE key is `__keyEq.key` where
+  the record states one, else the result's `key`; a record stating it there may carry no result key,
+  or a result key that is a foreign evaluator's own, which this engine never reads. The key is tested
+  by presence at load and read only where two occurrences meet. A `disabledModules` item names a
+  record node by its result's `key`, and one with none positionally (`<importer>:anon-<i>`), as
+  nixpkgs names it. A record naming its node is always walked, so one construction reached twice is
+  one module whether or not its result states a key (`ci/tests/key-record-protocol.nix`). The merge path meets
   occurrences by meeting: a key `<meeting>#<refinement>` meets every key sharing `<meeting>`, so a
   record's reference key is forced only where another occurrence shares its meeting, and every pair
   sharing a reference key still meets and is decided as above. A record stating no meeting meets by
-  its result's `key`, as a plain module does. **The stated meeting is trusted:** a record whose key
+  its result's `key`, as a plain module does.
+
+- **A record may opt into the seal-decided fold, `__keyEq.onDistinct = "refuse-on-conflict"`,
+  with `__keyEq.conflicts`.** An occurrence sharing the key is decided against every construction its
+  key has kept, at this level and deeper: `decide` true against one is that construction reached
+  again, and is dropped; otherwise `conflicts` true against one is refused by name (`` … share the key '<key>' and are two constructions its key comparison (`__keyEq') refuses to compose ``); otherwise
+  both compose. `onDistinct` admits that one value, and any other is refused by name at load. The
+  fields this engine reads off `__keyEq` are published as `moduleSyntax.keyEqFields` (`conflicts`,
+  `decide`, `key`, `meeting`, `onDistinct`, `subject`), so a library riding one can refuse an engine
+  that would never read it. **The stated meeting is trusted:** a record whose key
   it does not prefix is refused by name where it meets, but a plain module stating that key never
   meets it, and both compose where nixpkgs keeps one, because detecting the mismatch would force the
   key at every import (`ci/tests/key-meeting.nix`).
@@ -3207,8 +3225,8 @@ same modules.
   declaration taking part: a type that does not merge with the engine's own, or a field the engine's
   own declaration states (`` gen-merge: the option `_module.<k>' in `<file>' is already declared by the engine's own `_module' options ``); a nixpkgs `submodule` leaf is judged by nixpkgs itself, in
   its words, with the engine's declarations folded first. An owned key declared as a group of
-  options is refused as the parent of options its type cannot carry. Two modules' fields right-bias,
-  as every redeclaration does. An accepted `apply` maps the value where the engine reads the key,
+  options is refused as the parent of options its type cannot carry. Two modules' declarations
+  are guarded as every redeclaration is: two `apply`s are refused, as nixpkgs refuses them. An accepted `apply` maps the value where the engine reads the key,
   and on `args` the set it maps holds a nested child's `name`, so the `name` its modules receive is
   the applied one; an accepted `readOnly` refuses a second definition (nixpkgs' own module defines
   `args`, and a re-declaration's `default` counts). The departures from nixpkgs, each with its
@@ -3407,7 +3425,8 @@ nixpkgs' `shorthandAttrsToRemove` and reads every other key as config (`require`
 `meta` on a structured module is folded into config). Both lists also carry gen-merge's engine keys
 `__pureModule`, `__reservedKeys` and `__keyEq`, and the shorthand list carries `_module`, which a shorthand module reads as config.
 `__reservedKeys`, `__keyEq` and `__moduleKey` are read off the RECORD of a `__functor` module, its unapplied
-value, published as `moduleSyntax.functorRecord`: nixpkgs applies a functor and collects only its
+value, published as `moduleSyntax.functorRecord` (and the fields read off `__keyEq` as
+`moduleSyntax.keyEqFields`): nixpkgs applies a functor and collects only its
 result, so a key carried there reaches no foreign evaluator, where in a module's content it is an
 unsupported attribute (structured) or a configuration key (shorthand). Such a module classifies as
 `dirty` for warm reuse, as every function module does.
@@ -3482,13 +3501,13 @@ These boundaries are mechanically checkable — see [Portable-subset lint](#port
 step outside the byte-mode surface, so the "runs on gen-merge and `lib.evalModules` byte-identically"
 claim is verifiable, not asserted. The flagged kinds:
 
-| kind                    | what it catches                                                                        | why it diverges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ----------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `order-pass`            | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale                                                                                                                                                                                                                                                   |
-| `options-introspection` | a module **function** whose formals include `options`                                  | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `type-merge`            | the same option loc declared **with a `type`** in more than one module                 | on the type the engines agree on every all-foreign declaration list whose joins keep their operands' names (both fold it as nixpkgs brackets it, the later type deciding), and gen-merge departs by refusing where an earlier relation's refusal ends a fold step, a foreign join drops a name an operand states or a merge drops a gen record's added check, or by keeping one shared value declared twice (Known byte-mode boundaries); nixpkgs *additionally* refuses outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor), where gen-merge right-biases those fields. The flag over-approximates on purpose — only the field-colliding pairs actually diverge |
-| `function-to`           | an option type named `functionTo`                                                      | intentionally omitted from the type surface (wrap guard functions as data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `unverifiable`          | an option type nested deeper than the type-walk fuel                                   | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| kind                    | what it catches                                                                        | why it diverges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `order-pass`            | a config def carrying an `_type = "order"` marker (`mkOrder` / `mkBefore` / `mkAfter`) | ⚠ **STALE — the divergence this row names is CLOSED.** It was true while the order pass was absent (the marker was carried as an ordinary value and mis-ordered); the pass now ships and the two engines agree on order-marked defs. The finding still fires, so a module using `mkBefore`/`mkAfter` is reported non-portable when it is not. Retiring the finding moves shipped lint cells and is therefore held for its own change, not folded into the landing that made it stale                                                                                                                                                                          |
+| `options-introspection` | a module **function** whose formals include `options`                                  | byte-mode `.options` is a minimal descriptor map (the merged decl tree), not the nixpkgs-shaped `options` structure                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `type-merge`            | the same option loc declared **with a `type`** in more than one module                 | on the type the engines agree on every all-foreign declaration list whose joins keep their operands' names (both fold it as nixpkgs brackets it, the later type deciding), and gen-merge departs by refusing where an earlier relation's refusal ends a fold step, a foreign join drops a name an operand states or a merge drops a gen record's added check, or by keeping one shared value declared twice (Known byte-mode boundaries); both refuse outright when both declarations carry any of `default`/`example`/`description`/`apply` (`bothHave`, ahead of the functor). The flag over-approximates on purpose: it fires on every typed redeclaration |
+| `function-to`           | an option type named `functionTo`                                                      | intentionally omitted from the type surface (wrap guard functions as data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `unverifiable`          | an option type nested deeper than the type-walk fuel                                   | can't decide `functionTo` at that depth — reported rather than silently accepted (a portability lint must not false-negative)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 Each finding is `{ kind; loc; file; detail }` — `loc` is the option/config path (`[]` for a whole-module
 finding like `options-introspection`); `file` is the def/decl provenance (`_file`), a **list** of files

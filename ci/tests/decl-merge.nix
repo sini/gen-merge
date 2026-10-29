@@ -63,14 +63,15 @@ let
 
   # Two declarations that both carry a `default` and a `description` — the ordered fold's bias, and
   # what it shadows. `str`/`str` merge, so this arm is about the bias rather than about the refusal.
+  # Two modules both stating `default`, `example`, `description` or `apply` are refused (nixpkgs'
+  # `bothHave`), so a shadow is of a field outside those four: here `defaultText`.
   shadowing = {
     modules = [
       {
         _file = "a.nix";
         options.x = mkOption {
           type = t.str;
-          default = "from-A";
-          description = "desc-A";
+          defaultText = "text-A";
         };
       }
       {
@@ -78,7 +79,7 @@ let
         options.x = mkOption {
           type = t.str;
           default = "from-B";
-          description = "desc-B";
+          defaultText = "text-B";
         };
       }
     ];
@@ -102,7 +103,7 @@ let
   };
   loserOf = o: {
     inherit (o) file;
-    inherit (o.declaration) default;
+    inherit (o.declaration) defaultText;
   };
 in
 {
@@ -3744,23 +3745,22 @@ in
         in
         {
           winner = {
-            inherit (decl) default description;
+            inherit (decl) default defaultText;
           };
           losers = map (o: {
             inherit (o) file;
-            inherit (o.declaration) default description;
+            inherit (o.declaration) defaultText;
           }) decl.overridden;
         };
       expected = {
         winner = {
           default = "from-B";
-          description = "desc-B";
+          defaultText = "text-B";
         };
         losers = [
           {
             file = "a.nix";
-            default = "from-A";
-            description = "desc-A";
+            defaultText = "text-A";
           }
         ];
       };
@@ -3777,27 +3777,27 @@ in
                 _file = "a.nix";
                 options.x = mkOption {
                   type = t.str;
-                  default = "A";
+                  defaultText = "A";
                 };
               }
               {
                 _file = "b.nix";
                 options.x = mkOption {
                   type = t.str;
-                  default = "B";
+                  defaultText = "B";
                 };
               }
               {
                 _file = "c.nix";
                 options.x = mkOption {
                   type = t.str;
-                  default = "C";
+                  defaultText = "C";
                 };
               }
             ]).options.x;
         in
         {
-          winner = decl.default;
+          winner = decl.defaultText;
           losers = map loserOf decl.overridden;
         };
       expected = {
@@ -3805,20 +3805,20 @@ in
         losers = [
           {
             file = "a.nix";
-            default = "A";
+            defaultText = "A";
           }
           {
             file = "b.nix";
-            default = "B";
+            defaultText = "B";
           }
         ];
       };
     };
     # ATTRIBUTION ACROSS A NON-SHADOWING DECLARATION — the shape that separates "which module
     # contributed the field being shadowed" from "which declaration of the option is this". `b.nix`
-    # only ADDS a description, so it shadows nothing and records no entry of its own; `c.nix` then
-    # restates that description, and the entry for it must name `b.nix`, which wrote it, and not
-    # `a.nix`, which declared the option and never had a description at all. Counting entries rather
+    # only ADDS a `defaultText`, so it shadows nothing and records no entry of its own; `c.nix` then
+    # restates it, and the entry for it must name `b.nix`, which wrote it, and not `a.nix`, which
+    # declared the option and never had one at all. Counting entries rather
     # than declaring modules gets this wrong by exactly one module, and only here — the chain cell
     # above, where every merge shadows, cannot tell the two apart.
     test-attribution-follows-the-contributing-module-not-the-entry-count = {
@@ -3835,31 +3835,36 @@ in
               }
               {
                 _file = "b.nix";
-                options.x = mkOption { description = "desc-from-B"; };
+                options.x = mkOption { defaultText = "text-from-B"; };
               }
               {
                 _file = "c.nix";
-                options.x = mkOption { description = "desc-from-C"; };
+                options.x = mkOption { defaultText = "text-from-C"; };
               }
               {
                 _file = "d.nix";
-                options.x = mkOption { default = "D"; };
+                options.x = mkOption { visible = false; };
+              }
+              {
+                _file = "e.nix";
+                options.x = mkOption { visible = true; };
               }
             ]).options.x;
         in
         {
           winner = {
-            inherit (decl) default description;
+            inherit (decl) default defaultText visible;
           };
           losers = map (o: {
             inherit (o) file;
-            inherit (o.declaration) default description;
+            inherit (o.declaration) default defaultText;
           }) decl.overridden;
         };
       expected = {
         winner = {
-          default = "D";
-          description = "desc-from-C";
+          default = "A";
+          defaultText = "text-from-C";
+          visible = true;
         };
         # Two entries, not three: `b.nix` shadowed nothing, so it contributes no entry — it appears
         # as the ATTRIBUTION of the entry `c.nix` created.
@@ -3867,12 +3872,12 @@ in
           {
             file = "b.nix";
             default = "A";
-            description = "desc-from-B";
+            defaultText = "text-from-B";
           }
           {
-            file = "c.nix";
+            file = "d.nix";
             default = "A";
-            description = "desc-from-C";
+            defaultText = "text-from-C";
           }
         ];
       };
@@ -4103,7 +4108,7 @@ in
         };
     };
     # `overridden` in authored order when the LAST declaration shadows nothing: `p2` shadows `p1`'s
-    # type, `p3` adds a field, `p4` shadows `p3`'s description and `p5` only adds `apply`. The list is
+    # type, `p3` adds a field, `p4` shadows `p3`'s `defaultText` and `p5` only adds `apply`. The list is
     # published at the last step, which here records no entry of its own.
     test-overridden-is-published-when-the-last-declaration-shadows-nothing = {
       expr =
@@ -4114,7 +4119,7 @@ in
                 _file = "p1";
                 options.p = mkOption {
                   type = t.str;
-                  description = "a";
+                  defaultText = "a";
                 };
               }
               {
@@ -4127,7 +4132,7 @@ in
               }
               {
                 _file = "p4";
-                options.p = mkOption { description = "b"; };
+                options.p = mkOption { defaultText = "b"; };
               }
               {
                 _file = "p5";
@@ -4137,16 +4142,16 @@ in
         in
         map (o: {
           inherit (o) file;
-          description = o.declaration.description or null;
+          defaultText = o.declaration.defaultText or null;
         }) decl.overridden;
       expected = [
         {
           file = "p1";
-          description = "a";
+          defaultText = "a";
         }
         {
           file = "p3";
-          description = "a";
+          defaultText = "a";
         }
       ];
     };
