@@ -2829,7 +2829,8 @@ in
     # The tree reads every definition as a module, `submodule` reads an attribute set as config, so
     # one option declared with both is refused, in either order, in gen's evaluation and abroad, as
     # nixpkgs refuses its own pair ("conflicting shorthandOnlyDefinesConfig values"). The control:
-    # two trees declared for one option union their module sets.
+    # two trees declared for one option union their module sets (over an option stating no `default`:
+    # two copies of one option both stating it are refused, as nixpkgs' `bothHave` refuses them).
     test-a-tree-and-a-submodule-declared-for-one-option-refuse =
       let
         np = nixpkgsLib.types;
@@ -2842,6 +2843,8 @@ in
           }
         ];
         tree = (genMerge.evalModuleTree { } (mods genMerge.mkOption gmT)).type;
+        bareTree =
+          (genMerge.evalModuleTree { } [ { options.known = genMerge.mkOption { type = gmT.str; }; } ]).type;
         sub = gmT.submodule (mods genMerge.mkOption gmT);
         treeN = (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption np; }).type;
         subN = np.submodule (mods nixpkgsLib.mkOption np);
@@ -2881,8 +2884,8 @@ in
             (foreign subN treeN)
           ];
           treeTwiceControl = [
-            (gen tree tree)
-            (foreign tree tree)
+            (gen bareTree bareTree)
+            (foreign bareTree bareTree)
           ];
         };
         expected = {

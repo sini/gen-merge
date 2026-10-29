@@ -153,10 +153,8 @@ let
           type = t.submodule [
             {
               _file = "sub-a.nix";
-              options.inner = gm.mkOption {
-                type = t.str;
-                default = "A";
-              };
+              # no `default`: two declarations both stating it are refused (nixpkgs' `bothHave`)
+              options.inner = gm.mkOption { type = t.str; };
             }
             {
               _file = "sub-b.nix";
@@ -10100,6 +10098,32 @@ in
             msg = "^gen-merge: module `/fx/c\\.nix' publishes a key comparison \\(`__keyEq'\\) but no `key'\\. .*$";
           };
         };
+        # `onDistinct' admits one value; any other is refused by name at load, where it would otherwise
+        # fall silently to the meeting path (the control states the value and loads).
+        test-an-unknown-on-distinct-refused-by-name = {
+          expr =
+            let
+              rec' = od: {
+                _file = "/fx/d.nix";
+                __moduleKey = "n";
+                __keyEq = {
+                  meeting = "rk";
+                  key = "rk#m";
+                  subject = 1;
+                  decide = _: _: true;
+                  onDistinct = od;
+                  conflicts = _: _: false;
+                };
+                __functor = _: _: { l = [ "d" ]; };
+              };
+            in
+            assert l [ (rec' "refuse-on-conflict") ] == [ "d" ];
+            builtins.deepSeq (l [ (rec' "refuse-on-conflit") ]) null;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: module `/fx/d\\.nix' publishes the key comparison's `onDistinct' as \"refuse-on-conflit\"\\. The one value this engine reads is \"refuse-on-conflict\": .*$";
+          };
+        };
       };
 
     # A type merge that would drop a wrapper's added check MEETS it (den-hoag-l1j4q, owner-ruled
@@ -13311,6 +13335,10 @@ in
               a = 1;
               b = 2;
             };
+            # declared twice through `mkOptionType` in nixpkgs' engine, the two copies' module sets are
+            # concatenated, and the options both stating `default` are refused at their declarations
+            # before any value (nixpkgs' `bothHave`), as nixpkgs refuses its own submodule's pair
+            declaredTwice.mk-option-type.nixpkgs = "^gen-merge: The option `x\\.b' in `<unknown-file>' is already declared in `<unknown-file>': both declarations state `default'$";
           };
           # a `deferredModule` copy declared twice through `defineType` is refused at its declarations, before any
           # value, as nixpkgs' `addCheck` of it is through the same door
@@ -14205,6 +14233,161 @@ in
           expr = x [ (t.mkOptionType (np.attrsOf shortList)) (t.attrsOf (t.listOf np.int)) ] { k = [ 2 ]; };
           expectedError = undeclared (overrides "`attrsOf' over `listOf' and a partner over `listOf'");
         };
+      };
+
+    # nixpkgs' `bothHave` guard: two declarations both stating `default`, `example`, `description` or
+    # `apply` are refused, naming the field, the earliest declaration stating it and the one that states it
+    # again, ahead of the type decision; the text keeps nixpkgs' "is already declared in", so modules.sh's
+    # own pattern matches it. The values both engines read are `ci/tests/bothhave-guard.nix`'s.
+    flake.testsError.bothhave-guard =
+      let
+        deep =
+          decls:
+          builtins.deepSeq
+            (gm.evalModuleTree { } (
+              map (d: {
+                _file = d.file;
+                options.deep = d.opt;
+              }) decls
+              ++ [ { config.deep = 1; } ]
+            )).config.deep
+            null;
+        d = file: opt: { inherit file opt; };
+        text =
+          earlier: later: k:
+          "^"
+          + prelude.escapeRegex "gen-merge: The option `deep' in `${earlier}' is already declared in `${later}': both declarations state `${k}'"
+          + "$";
+        refuses = expr: msg: {
+          inherit expr;
+          expectedError = {
+            type = "ThrownError";
+            inherit msg;
+          };
+        };
+      in
+      {
+        test-two-defaults-refused-by-name = refuses (deep [
+          (d "dup-a.nix" (
+            gm.mkOption {
+              type = t.int;
+              default = 2;
+            }
+          ))
+          (d "dup-b.nix" (
+            gm.mkOption {
+              type = t.int;
+              default = 2;
+            }
+          ))
+        ]) (text "dup-a.nix" "dup-b.nix" "default");
+        test-two-descriptions-refused-by-name = refuses (deep [
+          (d "dup-a.nix" (
+            gm.mkOption {
+              type = t.int;
+              description = "a";
+            }
+          ))
+          (d "dup-b.nix" (
+            gm.mkOption {
+              type = t.int;
+              description = "b";
+            }
+          ))
+        ]) (text "dup-a.nix" "dup-b.nix" "description");
+        test-two-examples-refused-by-name = refuses (deep [
+          (d "dup-a.nix" (
+            gm.mkOption {
+              type = t.int;
+              example = 1;
+            }
+          ))
+          (d "dup-b.nix" (
+            gm.mkOption {
+              type = t.int;
+              example = 2;
+            }
+          ))
+        ]) (text "dup-a.nix" "dup-b.nix" "example");
+        test-two-applies-refused-by-name = refuses (deep [
+          (d "dup-a.nix" (
+            gm.mkOption {
+              type = t.int;
+              apply = x: x + 1;
+            }
+          ))
+          (d "dup-b.nix" (gm.mkOption { apply = x: x * 10; }))
+        ]) (text "dup-a.nix" "dup-b.nix" "apply");
+        # the raw form, no `mkOption` door on either side
+        test-two-raw-defaults-refused-by-name = refuses (deep [
+          (d "dup-a.nix" {
+            _type = "option";
+            type = t.int;
+            default = 2;
+          })
+          (d "dup-b.nix" {
+            _type = "option";
+            type = t.int;
+            default = 2;
+          })
+        ]) (text "dup-a.nix" "dup-b.nix" "default");
+        # nixpkgs' `lib.mkOption` door
+        test-two-nixpkgs-door-defaults-refused-by-name = refuses (deep [
+          (d "dup-a.nix" (
+            nixpkgsLib.mkOption {
+              type = t.int;
+              default = 2;
+            }
+          ))
+          (d "dup-b.nix" (
+            nixpkgsLib.mkOption {
+              type = t.int;
+              default = 2;
+            }
+          ))
+        ]) (text "dup-a.nix" "dup-b.nix" "default");
+        # N = 3, the pair not adjacent, and adjacent at the end; N = 4, the pair at the ends
+        test-a-non-adjacent-pair-names-both-ends = refuses (deep [
+          (d "dup-a.nix" (
+            gm.mkOption {
+              type = t.int;
+              default = 2;
+            }
+          ))
+          (d "dup-b.nix" (gm.mkOption { type = t.int; }))
+          (d "dup-c.nix" (gm.mkOption { default = 3; }))
+        ]) (text "dup-a.nix" "dup-c.nix" "default");
+        test-an-adjacent-pair-at-the-end-names-it = refuses (deep [
+          (d "dup-a.nix" (gm.mkOption { type = t.int; }))
+          (d "dup-b.nix" (gm.mkOption { default = 2; }))
+          (d "dup-c.nix" (gm.mkOption { default = 3; }))
+        ]) (text "dup-b.nix" "dup-c.nix" "default");
+        test-a-pair-at-the-ends-of-four-names-them = refuses (deep [
+          (d "dup-a.nix" (
+            gm.mkOption {
+              type = t.int;
+              default = 2;
+            }
+          ))
+          (d "dup-b.nix" (gm.mkOption { type = t.int; }))
+          (d "dup-c.nix" (gm.mkOption { description = "c"; }))
+          (d "dup-d.nix" (gm.mkOption { default = 4; }))
+        ]) (text "dup-a.nix" "dup-d.nix" "default");
+        # both state `default` over types that do not merge: the guard fires first, as nixpkgs' does
+        test-the-guard-fires-ahead-of-the-type-decision = refuses (deep [
+          (d "dup-a.nix" (
+            gm.mkOption {
+              type = t.int;
+              default = 2;
+            }
+          ))
+          (d "dup-b.nix" (
+            gm.mkOption {
+              type = t.str;
+              default = "x";
+            }
+          ))
+        ]) (text "dup-a.nix" "dup-b.nix" "default");
       };
   };
 }
