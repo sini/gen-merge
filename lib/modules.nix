@@ -1170,131 +1170,136 @@ let
   # ★ THE ACCUMULATOR'S DEBT IS THE FOLD'S, NOT THE RECORD'S (den-hoag-meet-carrier-join-check-reowed-15va3). A met record
   # this fold built (`met`) answers for the declarations folded so far, never for its carrier's own check: nixpkgs' next
   # step asks the carrier's relation and drops a check no declaration made (ADR-0039 THE MEET owes DECLARED checks). So
-  # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`debt`, one per value) and
-  # the earlier one. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
+  # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`debt`, one per value), the
+  # earlier one included. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
   # owed whole by its own check, and keeps its own relation. A held accumulator holds the next step again (`held`): its
   # declarations' folds are demanded as its own were.
   mergeDeclaredTypes =
     ts:
     let
-      last = prelude.last ts;
+      n = length ts;
+      # each declaration's one-value key (`closuresFirst`, as `metWith`'s one-value test reads it), read only by a met
+      # step
+      ks = map (x: interface.closuresFirst [ x ] x) ts;
+      # a debt extended by the declaration at `j`, one per value, in folding order
+      add =
+        o: j:
+        let
+          kd = builtins.elemAt ks j;
+        in
+        if builtins.elem kd o.ks then
+          o
+        else
+          {
+            ds = o.ds ++ [ (builtins.elemAt ts j) ];
+            ks = o.ks ++ [ kd ];
+          };
     in
-    foldl'
-      (
-        acc: earlier:
-        if acc ? refused then
-          acc
+    foldl' (
+      acc: i:
+      if acc ? refused then
+        acc
+      else
+        let
+          earlier = builtins.elemAt ts i;
+          # a step that built no met record hands on the relation's record itself (`declaredPair`'s answer), so a
+          # fold that never meets allocates nothing more than before; `carrier` and `debt` are a met step's own
+          r =
+            if acc ? debt then
+              declaredPair {
+                # a met accumulator owes its debt and this step's earlier
+                xs = (add acc.debt i).ds;
+                held = acc.merged ? holds;
+              } earlier acc.carrier
+            else
+              declaredPair null earlier acc.merged;
+        in
+        # the last step hands on nothing, so its record is not read for a met one
+        if i == 0 || r ? refused || !(r.merged ? __meetJoin) then
+          r
         else
           let
-            k = interface.closuresFirst [ earlier ] earlier;
-            # every declaration folded so far, one per value (`closuresFirst` key, as `metWith`'s one-value test
-            # reads it); forced only by a step that owes it
-            debt =
-              if builtins.elem k acc.debt.keys then
-                acc.debt
-              else
-                {
-                  decls = acc.debt.decls ++ [ earlier ];
-                  keys = acc.debt.keys ++ [ k ];
-                };
-            r =
-              if acc.met then
-                declaredPair {
-                  xs = debt.decls;
-                  held = acc.merged ? holds;
-                } earlier acc.carrier
-              else
-                declaredPair null earlier acc.carrier;
             t = r.merged;
+            later = acc.carrier or acc.merged;
+            keyOf = x: interface.closuresFirst [ x ] x;
+            k = builtins.elemAt ks i;
+            kl = keyOf later;
+            operandMet = earlier ? __meetJoin || later ? __meetJoin;
             # a met record is built by this step where it is neither operand (an operand that is one is a declaration)
-            met =
-              t ? __meetJoin
-              && (
-                !(earlier ? __meetJoin || acc.carrier ? __meetJoin)
-                || (
-                  let
-                    kt = interface.closuresFirst [ t ] t;
-                  in
-                  kt != k && kt != interface.closuresFirst [ acc.carrier ] acc.carrier
-                )
-              );
+            ownMet = x: x ? __meetJoin && (!operandMet || keyOf x != k && keyOf x != kl);
           in
-          if r ? refused then
+          if !(ownMet t) then
             r
           else
+            let
+              # every declaration folded so far, this step's earlier included: the next step's debt. A met
+              # accumulator extends its own; a step meeting after one that did not reads the declarations from the list
+              debt =
+                if acc ? debt then
+                  add acc.debt i
+                else
+                  builtins.foldl' add {
+                    ds = [ ];
+                    ks = [ ];
+                  } (builtins.genList (j: n - 1 - j) (n - i));
+              # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
+              # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
+              # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
+              # (`declaredAt`), at `element` and at either `alternatives` member. A step that built no met record
+              # (above) leaves the next step owing nothing, so a role it met keeps its meet: unwound there, that
+              # role's declared checks would be owed by nobody
+              unwrap = x: if ownMet x then unwrap x.__meetJoin else x;
+              declaredAt =
+                roleOf: x:
+                let
+                  kx = keyOf x;
+                in
+                builtins.any (
+                  d:
+                  let
+                    y = roleOf d;
+                  in
+                  y != null && keyOf y == kx
+                ) debt.ds;
+              altAt =
+                i': d:
+                let
+                  a = interface.carriedAt "alternatives" d;
+                in
+                if a == null then null else builtins.elemAt a i';
+              u = unwrap t;
+              e = interface.carriedAt "element" u;
+              al = interface.carriedAt "alternatives" u;
+              re =
+                if e != null && e ? __meetJoin && !(declaredAt (interface.carriedAt "element") e) then
+                  interface.rebuiltOverAt "element" (unwrap e) u
+                else
+                  null;
+            in
             {
               merged = t;
-              inherit met debt;
-              # a step that built no met record leaves the next step owing nothing (`met` false), so a role it met keeps
-              # its meet: unwound there, that role's declared checks would be owed by nobody
+              inherit debt;
               carrier =
-                if !met then
-                  t
-                else
-                  let
-                    keyOf = x: interface.closuresFirst [ x ] x;
-                    kl = keyOf acc.carrier;
-                    operandMet = earlier ? __meetJoin || acc.carrier ? __meetJoin;
-                    ownMet = x: x ? __meetJoin && (!operandMet || keyOf x != k && keyOf x != kl);
-                    # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
-                    # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
-                    # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
-                    # (`declaredAt`), at `element` and at either `alternatives` member
-                    unwrap = x: if ownMet x then unwrap x.__meetJoin else x;
-                    declaredAt =
-                      roleOf: x:
-                      builtins.any (
-                        d:
+                if re != null then
+                  re
+                else if al != null && builtins.any (y: y ? __meetJoin) al then
+                  (
+                    let
+                      al' = builtins.genList (
+                        i':
                         let
-                          y = roleOf d;
+                          y = builtins.elemAt al i';
                         in
-                        y != null && keyOf y == keyOf x
-                      ) debt.decls;
-                    altAt =
-                      i: d:
-                      let
-                        a = interface.carriedAt "alternatives" d;
-                      in
-                      if a == null then null else builtins.elemAt a i;
-                    u = unwrap t;
-                    e = interface.carriedAt "element" u;
-                    al = interface.carriedAt "alternatives" u;
-                    re =
-                      if e != null && e ? __meetJoin && !(declaredAt (interface.carriedAt "element") e) then
-                        interface.rebuiltOverAt "element" (unwrap e) u
-                      else
-                        null;
-                  in
-                  if re != null then
-                    re
-                  else if al != null && builtins.any (y: y ? __meetJoin) al then
-                    (
-                      let
-                        al' = builtins.genList (
-                          i:
-                          let
-                            y = builtins.elemAt al i;
-                          in
-                          if y ? __meetJoin && !(declaredAt (altAt i) y) then unwrap y else y
-                        ) 2;
-                        x = interface.rebuiltOverAt "alternatives" al' u;
-                      in
-                      if x == null then u else x
-                    )
-                  else
-                    u;
+                        if y ? __meetJoin && !(declaredAt (altAt i') y) then unwrap y else y
+                      ) 2;
+                      x = interface.rebuiltOverAt "alternatives" al' u;
+                    in
+                    if x == null then u else x
+                  )
+                else
+                  u;
             }
-      )
-      {
-        merged = last;
-        carrier = last;
-        met = false;
-        debt = {
-          decls = [ last ];
-          keys = [ (interface.closuresFirst [ last ] last) ];
-        };
-      }
-      (reverse (prelude.init ts));
+    ) { merged = prelude.last ts; } (builtins.genList (j: n - 2 - j) (n - 1));
   # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
   # first; only the null-reason fallback is spelled here, and it names the pair in authored order,
   # through the library's one total name reader (`interface.nameOf`). Where the two state functor
