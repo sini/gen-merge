@@ -3884,44 +3884,6 @@ let
                 __functor =
                   _: v:
                   let
-                    p = importedRehomeAt recognitionDoor null b;
-                    e = b.functor.payload.elemType;
-                    defs = [
-                      {
-                        file = "<base>";
-                        value = v;
-                      }
-                    ];
-                    verdict =
-                      if p == null then
-                        member
-                      else
-                        let
-                          j =
-                            if p.container == "either" then
-                              constructors.either (elemAt e 0) (elemAt e 1)
-                            else
-                              constructors.${p.container} e;
-                        in
-                        if isV2 j then
-                          (
-                            let
-                              m2 = j.merge.v2 {
-                                loc = [ "<base>" ];
-                                inherit defs;
-                              };
-                              x = builtins.tryEval (builtins.deepSeq m2.value true);
-                            in
-                            (j.check v) && x.success && x.value
-                          )
-                        else
-                          j.check v
-                          && (
-                            let
-                              x = builtins.tryEval (builtins.deepSeq (j.merge [ "<base>" ] defs) true);
-                            in
-                            x.success && x.value
-                          );
                     member =
                       (
                         if adHocChecked b then
@@ -3954,7 +3916,53 @@ let
                         r.success && r.value
                       );
                   in
-                  if params then t.check v || !verdict else !member || t.check v;
+                  if params then
+                    t.check v
+                    || !(
+                      let
+                        p = importedRehomeAt recognitionDoor null b;
+                        e = b.functor.payload.elemType;
+                        defs = [
+                          {
+                            file = "<base>";
+                            value = v;
+                          }
+                        ];
+                        verdict =
+                          if p == null then
+                            member
+                          else
+                            let
+                              j =
+                                if p.container == "either" then
+                                  constructors.either (elemAt e 0) (elemAt e 1)
+                                else
+                                  constructors.${p.container} e;
+                            in
+                            if isV2 j then
+                              (
+                                let
+                                  m2 = j.merge.v2 {
+                                    loc = [ "<base>" ];
+                                    inherit defs;
+                                  };
+                                  x = builtins.tryEval (builtins.deepSeq m2.value true);
+                                in
+                                (j.check v) && x.success && x.value
+                              )
+                            else
+                              j.check v
+                              && (
+                                let
+                                  x = builtins.tryEval (builtins.deepSeq (j.merge [ "<base>" ] defs) true);
+                                in
+                                x.success && x.value
+                              );
+                      in
+                      verdict
+                    )
+                  else
+                    !member || t.check v;
                 isV2MergeCoherent = true;
               };
             };
