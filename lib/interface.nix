@@ -465,7 +465,7 @@ let
     kept =
       m: a: b:
       if adHocChecked a then
-        metWith false m [
+        metWith.nulls false m [
           a
           b
         ]
@@ -6787,7 +6787,7 @@ let
               asked = builtins.tryEval (callerTypeMerge j f);
               r = if asked.success then asked.value else null;
             in
-            if r == null then null else metWith false r [ met ];
+            if r == null then null else metWith.nulls false r [ met ];
           ${if types ? mkIdentity && j ? __mint then "__mint" else null} = ids.__mint;
           ${if types ? mkIdentity && j ? __mint then "__payload" else null} = ids.__payload;
           ${if types ? mkIdentity && j ? __mint then "__sealed" else null} = ids.__sealed;
@@ -6903,12 +6903,13 @@ let
     && !(o ? typeMergeRel.exact)
     && !(o ? __stockCheck)
     && !(o ? carries.element || o ? carries.alternatives || (o.functor.payload or null) ? elemType);
-  # the meet: called as `metWith meets m os`; its members are the meet with a fold step's `thread` and the helpers it and
+  # the meet: called as `metWith.nulls meets m os`; its members are the meet with a fold step's `thread` and the helpers it and
   # the declaration fold read, thunked only by an evaluation that meets
   metWith = {
-    __functor =
-      self: meets: m: os:
-      self.metWith meets m os null;
+    __functor = self: self.nulls;
+    # the meet with no fold-step thread, applied once: a call through the functor, or `metWith.nulls`, is main's three
+    # applications
+    nulls = metWith.metWith null;
     # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
     # alternatives; any other `elemType` states no element of the tree
     elementsOf =
@@ -7091,7 +7092,7 @@ let
     # `thread` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `thread.xs` = `thread.ds` (the
     # debt, each record already relativised at its own step, owed as it is) ++ `thread.own` (the step's own earlier operand)
     metWith =
-      meets: m: os: thread:
+      thread: meets: m: os:
       if
         meets == false
         && m ? typeMergeRel
@@ -7330,7 +7331,7 @@ let
                     asked = builtins.tryEval (callerTypeMerge m f);
                     r = if asked.success then asked.value else null;
                   in
-                  if r == null then null else metWith false r [ h ];
+                  if r == null then null else metWith.nulls false r [ h ];
                 merge =
                   if met.merge ? v2 then
                     met.merge
@@ -7884,9 +7885,9 @@ let
                 null
               # a module set's join is rebuilt again by the fixup, so the join carries the verify on its merged value
               else if replacesVerify x && x ? carries && isList (x.getSubModules or null) then
-                rebuildClosed.rebuilt x.verify (metWith false r [ s ])
+                rebuildClosed.rebuilt x.verify (metWith.nulls false r [ s ])
               else
-                metWith false r [ s ];
+                metWith.nulls false r [ s ];
             # the functor names this copy as the declaration (`__declared`) beside its completion's `type`: nixpkgs hands
             # a redeclaration's relation only the partner's functor; `type` stays the completion
             ${if replacesVerify x && x ? functor then "functor" else null} = x.functor // {
@@ -8858,7 +8859,7 @@ let
             meet =
               meets: j: os: d:
               let
-                m = metWith meets j os;
+                m = metWith.nulls meets j os;
               in
               if isAttrs d && d ? verify && d ? carries && isList (d.getSubModules or null) then
                 rebuildClosed.rebuilt d.verify m

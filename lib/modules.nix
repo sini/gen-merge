@@ -631,7 +631,7 @@ let
           # call, so a meet that does not hold allocates nothing for it
           if answer.holds or false then
             interface.metWith.metElem thread (
-              interface.metWith.metWith "holds"
+              interface.metWith.metWith thread "holds"
                 (
                   if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                     r
@@ -647,11 +647,10 @@ let
                   else
                     thread.xs
                 )
-                thread
             )
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
             (interface.metWith.metElem thread (
-              interface.metWith.metWith true r (
+              interface.metWith.metWith thread true r (
                 if thread == null then
                   [
                     a
@@ -659,11 +658,11 @@ let
                   ]
                 else
                   thread.xs
-              ) thread
+              )
             ))
           else
             (interface.metWith.metElem thread (
-              interface.metWith.metWith true (rolesMet thread r a b) (
+              interface.metWith.metWith thread true (rolesMet thread r a b) (
                 if thread == null then
                   [
                     a
@@ -671,7 +670,7 @@ let
                   ]
                 else
                   thread.xs
-              ) thread
+              )
             ))
         )
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
@@ -705,7 +704,7 @@ let
       # holding every operand's fold
       else if r.holds or false then
         (interface.metWith.metElem thread (
-          interface.metWith.metWith "holds" (rolesMet thread r.merged a b) (
+          interface.metWith.metWith thread "holds" (rolesMet thread r.merged a b) (
             if thread == null then
               [
                 a
@@ -713,7 +712,7 @@ let
               ]
             else
               thread.xs
-          ) thread
+          )
         ))
       else
         rolesMet thread r.merged a b;
@@ -739,7 +738,7 @@ let
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
-        interface.metWith false (rolesMet o r' a' b') (
+        interface.metWith.nulls false (rolesMet o r' a' b') (
           if o == null then
             [
               a'
@@ -935,14 +934,14 @@ let
       then
         m
       else
-        interface.metWith false m [
+        interface.metWith.nulls false m [
           a
           b
         ]
     else if interface.sameValue a b then
       interface.sameValue.kept m a b
     else
-      interface.metWith false m [
+      interface.metWith.nulls false m [
         a
         b
       ];
@@ -1062,7 +1061,7 @@ let
                     else if x ? metFirst then
                       x.metFirst
                     else
-                      interface.metWith.metWith false x thread.xs thread
+                      interface.metWith.metWith thread false x thread.xs
                   )
               );
             in
@@ -1080,12 +1079,11 @@ let
             else if x ? metFirst then
               x.metFirst
             else
-              interface.metWith.metWith false x thread.xs thread
+              interface.metWith.metWith thread false x thread.xs
           );
     in
     if veto.meets or false then
       {
-        inherit later;
         # met as `relationMergeWithin` meets a `meets` answer: a roleless join at the top alone
         merged =
           let
@@ -1094,7 +1092,7 @@ let
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it
           if veto.holds or false then
-            interface.metWith.metWith "holds"
+            interface.metWith.metWith thread "holds"
               (
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
@@ -1110,9 +1108,8 @@ let
                 else
                   thread.xs
               )
-              thread
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWith.metWith true r (
+            interface.metWith.metWith thread true r (
               if thread == null then
                 [
                   earlier
@@ -1120,9 +1117,9 @@ let
                 ]
               else
                 thread.xs
-            ) thread
+            )
           else
-            interface.metWith.metWith true (rolesMet thread r earlier later) (
+            interface.metWith.metWith thread true (rolesMet thread r earlier later) (
               if thread == null then
                 [
                   earlier
@@ -1130,7 +1127,7 @@ let
                 ]
               else
                 thread.xs
-            ) thread;
+            );
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
@@ -1143,10 +1140,7 @@ let
         inherit earlier later;
       }
     else
-      {
-        merged = m;
-        inherit later;
-      };
+      { merged = m; };
   # nixpkgs `fixupOptionType`: the merged type rebuilt over the AUTHORED concatenation of every
   # declaration's own module set, replacing whatever module list the join's `binOp` built, and
   # restricted by every check a declaration states that the rebuild cannot carry, at every depth
@@ -1365,7 +1359,7 @@ let
         else
           # the step before built it, and neither of its operands carried `__meetJoin` (`later`: `declaredPair`'s record
           # states it)
-          foldWith.foldE (foldWith.judgeTree acc (i + 1) acc.later (foldWith.elemsOf (i + 2))) i
+          foldWith.foldE (foldWith.judgeTree acc (i + 1) { } (foldWith.elemsOf (i + 2))) i
       ) { merged = prelude.last ts; } steps
     else
       foldl' (
