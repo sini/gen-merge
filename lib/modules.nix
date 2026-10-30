@@ -744,15 +744,6 @@ let
         in
         if x == null then r else x;
       pick = l: i: builtins.elemAt l i;
-      # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree
-      witnessedCheck =
-        functorRecord: f:
-        if rewrites == null then
-          null
-        else if rewrites ? readers then
-          rewrites.readers rewrites functorRecord f
-        else
-          interface.metWith.anything.functorRecord rewrites f;
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
@@ -771,9 +762,15 @@ let
     if builtins.all (x: x != null) el then
       (
         let
-          m = innerMet (witnessedCheck (t: t.el) (interface.carriedAt "element")) (pick el 0) (pick el 1) (
-            pick el 2
-          );
+          # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree
+          m = innerMet (
+            if rewrites == null then
+              null
+            else if rewrites ? readers then
+              rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")
+            else
+              interface.metWith.anything.functorRecord rewrites (interface.carriedAt "element")
+          ) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
@@ -782,13 +779,26 @@ let
         let
           m = builtins.genList (
             i:
-            innerMet (witnessedCheck (t: pick t.allowlist i) (
-              d:
-              let
-                x = interface.carriedAt "alternatives" d;
-              in
-              if x == null then null else pick x i
-            )) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+            innerMet (
+              if rewrites == null then
+                null
+              else if rewrites ? readers then
+                rewrites.readers rewrites (t: pick t.allowlist i) (
+                  d:
+                  let
+                    x = interface.carriedAt "alternatives" d;
+                  in
+                  if x == null then null else pick x i
+                )
+              else
+                interface.metWith.anything.functorRecord rewrites (
+                  d:
+                  let
+                    x = interface.carriedAt "alternatives" d;
+                  in
+                  if x == null then null else pick x i
+                )
+            ) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
           ) 2;
         in
         if
