@@ -2154,7 +2154,7 @@ let
           if rewrites == null then
             mergeElemTypes x y
           else
-            rewrites.exports (rewrites.readers rewrites (t: elemAt t.allowlist i) (
+            rewrites.exports (rewrites.readers rewrites (t: elemAt t.attrVals i) (
               d:
               let
                 mkOrder = interface.carriedAt "alternatives" d;

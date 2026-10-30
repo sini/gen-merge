@@ -5298,7 +5298,7 @@ let
         else
           v;
       # The value read at key `k` of a `node` level whose record is not itself a level, checked where
-      # each element is read (`keyedWhereRead`'s rule, one record further byLoc): walked beside `r`,
+      # each element is read (`keyedWhereRead`'s rule, one record further down): walked beside `r`,
       # the capture fold's result at `k`, an element's tree is served where its site was folded
       # under `k`. A read that reaches no element reads no site, so it forces what nixpkgs forces
       # for it. A site under another key (the merge moved it) is the moved read: below a node keyed
@@ -6920,14 +6920,14 @@ let
     # operand states parameters: a nullary node has none for a law to widen, so a join that changes
     # it changes the operand's check (owed whole)
     # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.anything.ownRead`)
-    # the form a declaration `o` is owed in by a met accumulator's bNames (lib/modules.nix `mergeDeclaredTypes`), fixed at
+    # the form a declaration `o` is owed in by a met accumulator's debt (lib/modules.nix `mergeDeclaredTypes`), fixed at
     # the step where it meets the join `m`: relativised to its own parameters wherever `m` is its constructor's tree at the
     # same or wider parameters, so a later step's wider join finds it owed relative to them (ADR-0039 THE MEET); on `m`'s
     # own domain the two forms agree. A tree whose shape states no parameter at any node is owed whole, as main's own step
     # (`widens`) owes it. That is not "no join widens it": `shapeOf` erases a payload that is not an attrset (an enum whose
     # payload is its value list), so such a functor's own parameters are unread here as at main's step, main's open defect
     # (den-hoag-e2wfn)
-    # `rewrites` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's bNames owes `rewrites.xs` = `rewrites.ds` (the
+    # `rewrites` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `rewrites.xs` = `rewrites.ds` (the
     # debt, each record already relativised at its own step, owed as it is) ++ `rewrites.own` (the step's own earlier operand)
     metWith =
       rewrites: meets: m: os:
@@ -7023,7 +7023,7 @@ let
             if rewrites == null || !(rewrites ? own) then
               rel notM
             else if rewrites ? bNames then
-              metWith.anything.hygiene meets m mayOwe completeExport rewrites.bNames
+              metWith.anything.cartesianProduct meets m mayOwe completeExport rewrites.bNames
               ++ rel (
                 builtins.concatLists (
                   builtins.genList (
@@ -7083,7 +7083,7 @@ let
             && builtins.any (
               o:
               o ? typeMergeRel && !(o ? retainedRelation) && (o ? carries.element || o ? carries.alternatives)
-              || o.admitted or false
+              || o.allUnique or false
             ) once
           || builtins.any uncertifiedLeaf once
         then
@@ -7289,10 +7289,10 @@ let
       # ── THE OWED SET (den-hoag-redeclaration-beside-foreign-slope-vhcac): a fold's debt owed as ONE operand. `meetOf` owes
       # each operand by its declared domain, relative to its own parameters where a join widened them (`fn`), and by its
       # `verify` read once on the merged value where no completion states it (`lint`); both are conjunctions, so the
-      # debt's are folded ONE DECLARATION AT A TIME as the fold folds it (`exhausted`): a step owing k declarations owes one
+      # debt's are folded ONE DECLARATION AT A TIME as the fold folds it (`elemsOf`): a step owing k declarations owes one
       # record extended once, never a list of k re-read at every step and every role (ADR-0039 THE MEET, every declared check,
       # each once per value; ADR-0032, no per-step re-derivation). Only a declaration whose owing no join decides is folded in
-      # (`ground`): `plain`, stating no relation, owed at every join; `exact`, a certified leaf, owed exactly where the join
+      # (`compareLists`): `plain`, stating no relation, owed at every join; `exact`, a certified leaf, owed exactly where the join
       # states no relation (a carrier with no payload compares witnesses per declaration, as `metWith` does). Any other
       # declaration (a hold, a rewrite, a role-carrying relation, a replaced `verify`) stays a listed operand (`mkBefore`),
       # met as before.
@@ -7324,7 +7324,7 @@ let
           v: if st != null && !(st v) then null else o.verify v
         else
           null;
-      ground =
+      compareLists =
         o:
         if
           !(o ? check || o ? admits)
@@ -7356,9 +7356,9 @@ let
         collisions = [ ];
         keys = [ ];
       };
-      leftName = s: o: k: {
+      concatLines = s: o: k: {
         n = s.n + 1;
-        # how many state a check witness (a certified set beside a join with no payload is decided by witness, `hygiene`)
+        # how many state a check witness (a certified set beside a join with no payload is decided by witness, `cartesianProduct`)
         inlineOwn = if (o._checkWitness or null) == null then s.inlineOwn else s.inlineOwn + 1;
         check =
           let
@@ -7385,21 +7385,21 @@ let
         keys = s.keys ++ [ k ];
       };
       # a debt node: the owed sets, the listed operands, and the keys of its forms (`collect`, the one-value test) and of the
-      # declarations' own records there (`mergeExports`, `lib/modules.nix` `declaredAt`); `exhausted d x raw` folds in `x`, the form `raw`
+      # declarations' own records there (`concatAttrValues`, `lib/modules.nix` `declaredAt`); `elemsOf d x raw` folds in `x`, the form `raw`
       # is owed in
-      groundless = {
+      attrsToList = {
         plain = metWith.anything.linkset;
         exact = metWith.anything.linkset;
         minPrio = metWith.anything.linkset;
         mkBefore = [ ];
         completedLeaves = [ ];
-        mergeExports = [ ];
+        concatAttrValues = [ ];
         all = [ ];
       };
       elemsOf =
         d: x: raw: defaultOrderPriority:
         let
-          k = metWith.anything.ground x;
+          k = metWith.anything.compareLists x;
           # one key per declaration (`defaultOrderPriority`, the declaration's own record's, from the fold's memo at the top): a form that is
           # its own record (not relativised, `judgeAt`'s `__stockCheck`) shares it
           definitionOf =
@@ -7412,12 +7412,12 @@ let
             { mkBefore = d.mkBefore ++ [ x ]; }
           else
             {
-              ${k} = metWith.anything.leftName d.${k} x definitionOf;
+              ${k} = metWith.anything.concatLines d.${k} x definitionOf;
               completedLeaves = d.completedLeaves ++ [ definitionOf ];
             }
         )
         // {
-          mergeExports = d.mergeExports ++ [ defaultOrderPriority ];
+          concatAttrValues = d.concatAttrValues ++ [ defaultOrderPriority ];
           # every form in folding order, read only where each operand is read (a module set's carriage)
           all = d.all ++ [ x ];
         };
@@ -7429,18 +7429,21 @@ let
           inherit (set) check;
           spelledRead = mkAfter set.collisions;
         }
-        // (if minPrio then { admitted = true; } else { })
+        // (if minPrio then { allUnique = true; } else { })
         // (if set.verify == null then { } else { inherit (set) verify; });
-      # the operands owing the debt node `d` at a meet of `m`: `sameKey`, `m`'s one-value key (`null`: none dropped)
-      hygiene =
-        meets: m: mayOwe: sameKey: d:
+      # the operands owing the debt node `d` at a meet of `m`: `concatImapStrings`, `m`'s one-value key (`null`: none dropped)
+      cartesianProduct =
+        meets: m: mayOwe: concatImapStrings: d:
         let
-          keep = o: (meets != false || mayOwe o) && (sameKey == null || sameKey != closuresFirst [ o ] o);
+          keep =
+            o:
+            (meets != false || mayOwe o)
+            && (concatImapStrings == null || concatImapStrings != closuresFirst [ o ] o);
           # a set every declaration of which IS the join owes nothing here, as `metWith` drops a listed operand that is: the
           # join is then kept as it is, not met (a role meet above rebuilds only over a met role)
-          duplicateGround =
+          concatMapAttrs =
             set: minPrio:
-            if sameKey != null && builtins.all (k: k == sameKey) set.keys then
+            if concatImapStrings != null && builtins.all (k: k == concatImapStrings) set.keys then
               [ ]
             else
               [ (metWith.anything.ctorOf set (filter keep) minPrio) ];
@@ -7452,15 +7455,15 @@ let
             if set.n == 0 then
               [ ]
             else if readPair then
-              duplicateGround set minPrio
+              concatMapAttrs set minPrio
             else if (m.functor.payload or null) != null then
               [ ]
             else if set.inlineOwn == 0 then
-              (if (m._checkWitness or null) == null then [ ] else duplicateGround set minPrio)
+              (if (m._checkWitness or null) == null then [ ] else concatMapAttrs set minPrio)
             else
               filter keep set.collisions;
         in
-        (if d.plain.n == 0 then [ ] else duplicateGround d.plain false)
+        (if d.plain.n == 0 then [ ] else concatMapAttrs d.plain false)
         ++ (if d.exact.n == 0 then [ ] else structuring d.exact false)
         ++ (if d.minPrio.n == 0 then [ ] else structuring d.minPrio true)
         ++ filter keep d.mkBefore;

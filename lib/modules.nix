@@ -783,7 +783,7 @@ let
               if rewrites == null then
                 null
               else if rewrites ? readers then
-                rewrites.readers rewrites (t: pick t.allowlist i) (
+                rewrites.readers rewrites (t: pick t.attrVals i) (
                   d:
                   let
                     x = interface.carriedAt "alternatives" d;
@@ -888,7 +888,7 @@ let
   # conjunction stays stricter). `declaredPair`'s veto arm routes a relation's `meets` answer through
   # the same function, and the foreign arm meets role by role (`rolesMet`).
   #  - A gen x gen step whose answer carries both operands owes nothing, so it is answered before
-  #    `metWith` is called and allocates nothing. A attrsetEntries operand (`typeMergeRel.exact`) is carried
+  #    `metWith` is called and allocates nothing. A certified operand (`typeMergeRel.exact`) is carried
   #    only where the answer is its own construction or a join stating parameters (`metWith`'s reading,
   #    with its scope); a leaf answer beside another construction's record meets it.
   #  - A pair that is ONE value keeps it (`x ⊔ x = x ⊓ x = x`): the same wrapped binding declared
@@ -911,7 +911,7 @@ let
   #
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
-  # `listOf int` drops it one level byLoc, inside `elementRel`, which `declaredPair` never sees.
+  # `listOf int` drops it one level down, inside `elementRel`, which `declaredPair` never sees.
   # "One value" is `interface.sameValue`: Nix `==` over `closuresFirst`'s subject, because an exported
   # record is cyclic, with the record's PHRASE left out (display data, and for a nesting type an output of
   # its own module set), and on a record stating a module set its own evaluation's outputs too
@@ -1263,7 +1263,7 @@ let
         # relativisation to its own parameters is the step's where it meets), one per value (`ks`, the declarations' keys),
         # in folding order; a later step owes them as they are (`rewrites.ds`, `interface.metWith.metWith`)
         # THE DEBT AT EVERY ROLE: beside the forms (`ds`) and the declarations' keys (`ks`), a tree (`bNames`) whose node at the
-        # top and at each role down (`el`, each `allowlist`) is an owed set (`interface.metWith.anything.exhausted`): the forms owed
+        # top and at each role down (`el`, each `attrVals`) is an owed set (`interface.metWith.anything.elemsOf`): the forms owed
         # there, each declaration added once, in the form its own step's meet owes it at that node (relativised against that
         # step's join there, `interface.metWith.anything.ownRead`, never re-relativised later: ADR-0039 THE MEET as owed at
         # the step where it meets). A step owes each node's set as one operand: it pays one extension per node it descends,
@@ -1283,9 +1283,9 @@ let
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
-          node = interface.metWith.anything.groundless;
+          node = interface.metWith.anything.attrsToList;
           el = inlineOwn;
-          allowlist = [
+          attrVals = [
             inlineOwn
             inlineOwn
           ];
@@ -1294,18 +1294,18 @@ let
         structuring =
           t: x: raw: completedLeaves: defaultOrderPriority:
           let
-            check' = y: if y == null then null else y.__meetJoin or y;
+            attrByPath = y: if y == null then null else y.__meetJoin or y;
             markShared =
-              importLeaf: mergeConfigAttrs: copied:
+              importLeaf: mergeConfigAttrs: commonPrefix:
               if mergeConfigAttrs == null then
                 importLeaf
               else
                 structuring importLeaf (
-                  if copied == null then
+                  if commonPrefix == null then
                     mergeConfigAttrs
                   else
-                    interface.metWith.anything.ownRead copied mergeConfigAttrs
-                ) mergeConfigAttrs copied (keyOf mergeConfigAttrs);
+                    interface.metWith.anything.ownRead commonPrefix mergeConfigAttrs
+                ) mergeConfigAttrs commonPrefix (keyOf mergeConfigAttrs);
             re = interface.carriedAt "element" raw;
             ra = interface.carriedAt "alternatives" raw;
             completeParametric =
@@ -1314,13 +1314,13 @@ let
           {
             node = interface.metWith.anything.elemsOf t.node x raw defaultOrderPriority;
             el = markShared t.el re (
-              if completedLeaves == null then null else check' (interface.carriedAt "element" completedLeaves)
+              if completedLeaves == null then null else attrByPath (interface.carriedAt "element" completedLeaves)
             );
-            allowlist = builtins.genList (
+            attrVals = builtins.genList (
               allow:
-              markShared (builtins.elemAt t.allowlist allow) (
-                if ra == null then null else builtins.elemAt ra allow
-              ) (if completeParametric == null then null else check' (builtins.elemAt completeParametric allow))
+              markShared (builtins.elemAt t.attrVals allow)
+                (if ra == null then null else builtins.elemAt ra allow)
+                (if completeParametric == null then null else attrByPath (builtins.elemAt completeParametric allow))
             ) 2;
           };
         # the empty debt
@@ -1337,7 +1337,7 @@ let
           builtins.foldl' (
             o: x: defineEmbedded o x (interface.metWith.anything.ownRead j (builtins.elemAt ts x)) j
           ) completeType (builtins.genList (x: n - 1 - x) (n - i));
-        # step `i`'s record `r`, over operands `earlier` and `later`, behind the bNames `checkedScope` (a
+        # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
         # met accumulator's, or `elemsOf`'s, read against this step's join):
         # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; sealed }`,
         # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.anything.ownRead`)
@@ -1367,8 +1367,8 @@ let
               # (above) leaves the next step owing nothing, so a role it met keeps its meet: unwound there, that
               # role's declared checks would be owed by nobody
               inline = x: if ctorOf x then inline x.__meetJoin else x;
-              # a role is a declaration's own where its record is one of the debt's at that role (`mergeExports`)
-              declaredAt = node: x: builtins.elem (keyOf x) node.mergeExports;
+              # a role is a declaration's own where its record is one of the debt's at that role (`concatAttrValues`)
+              declaredAt = node: x: builtins.elem (keyOf x) node.concatAttrValues;
               u = inline t;
               e = interface.carriedAt "element" u;
               al = interface.carriedAt "alternatives" u;
@@ -1392,7 +1392,7 @@ let
                         let
                           y = builtins.elemAt al allow;
                         in
-                        if y ? __meetJoin && !(declaredAt (builtins.elemAt checkedTypes.bNames.allowlist allow).node y) then
+                        if y ? __meetJoin && !(declaredAt (builtins.elemAt checkedTypes.bNames.attrVals allow).node y) then
                           inline y
                         else
                           y
