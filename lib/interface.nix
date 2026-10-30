@@ -7077,8 +7077,10 @@ let
     # the form a declaration `o` is owed in by a met accumulator's debt (lib/modules.nix `mergeDeclaredTypes`), fixed at
     # the step where it meets the join `m`: relativised to its own parameters wherever `m` is its constructor's tree at the
     # same or wider parameters, so a later step's wider join finds it owed relative to them (ADR-0039 THE MEET); on `m`'s
-    # own domain the two forms agree. A tree stating no parameter at any node is never relativised: no join widens it
-    # (`widensAt` holds there only between equal trees), so a later step owes it whole either way
+    # own domain the two forms agree. A tree whose shape states no parameter at any node is owed whole, as main's own step
+    # (`widens`) owes it. That is not "no join widens it": `shapeOf` erases a payload that is not an attrset (an enum whose
+    # payload is its value list), so such a functor's own parameters are unread here as at main's step, main's open defect
+    # (den-hoag-e2wfn)
     ownRead =
       m: o:
       let
@@ -7406,6 +7408,8 @@ let
         else
           meetOf m once;
     # a step owing `thread` marks the answers its relation already met with them, so `mergeTypesBy` meets only a bare join
+    # `metFirst` is a field-name tag on a type-or-wrapper union, read only by `declaredPair`: a foreign type carrying a
+    # `metFirst` attribute would be misread there (no such input is known)
     metElem = thread: x: if thread == null || x == null then x else { metFirst = x; };
     # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
     # records carry (an element; a union's two members) its own carried type is met with the operands'
