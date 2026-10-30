@@ -6933,10 +6933,7 @@ let
       let
         f = (wrappedBase t).functor or { };
         p = f.payload or null;
-      in
-      {
-        n = f.name or null;
-        p =
+        q =
           if isAttrs p then
             builtins.removeAttrs p [
               "elemType"
@@ -6945,6 +6942,13 @@ let
           else
             { };
         e = if fuel == 0 then [ ] else map (metWith.shapeOf (fuel - 1)) (metWith.elementsOf p);
+      in
+      {
+        n = f.name or null;
+        p = q;
+        inherit e;
+        # whether the tree states a parameter at any node (`ownRead`'s `carriesSub`): one stating none is never relativised
+        cs = q != { } || builtins.any (x: x.cs) e;
       };
     # the same constructor at every node, and every node where the trees differ is one where the
     # operand states parameters: a nullary node has none for a law to widen, so a join that changes
@@ -6967,10 +6971,10 @@ let
         es = if n == length b.e then builtins.genList (i: metWith.shapeCmp (elemAt a.e i) (elemAt b.e i)) n else [ ];
       in
       {
-        inherit a es;
+        inherit a b es;
         same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
         # `ownRead`'s `carriesSub` of `a` (read only beside `wid`, which a length mismatch already falsifies)
-        cs = a.p != { } || builtins.any (c: c.cs) es;
+        inherit (a) cs;
         wid = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.wid) es;
       };
     # the comparison one role down, for the operand `x` that role carries: the node `c.es` holds at `i` where it is `x`'s own
@@ -7190,6 +7194,7 @@ let
       check = null;
       verify = null;
       items = [ ];
+      keys = [ ];
     };
     owedSetAdd = s: o: {
       n = s.n + 1;
@@ -7217,6 +7222,7 @@ let
             if e != null then e else f v
           );
       items = s.items ++ [ o ];
+      keys = s.keys ++ [ (closuresFirst [ o ] o) ];
     };
     # a debt node: the owed sets, the listed operands, and the keys of its forms (`fks`, the one-value test) and of the
     # declarations' own records there (`rks`, `lib/modules.nix` `declaredAt`); `owedAdd d x raw` folds in `x`, the form `raw`
@@ -7229,6 +7235,9 @@ let
       fks = [ ];
       rks = [ ];
       all = [ ];
+      # one role down, the declarations whose tree states a parameter, each with its tree (`{ o; s; }`): the role meet
+      # relativises each against its own join, at every step, as it did before the debt was a set (`metWith`'s `rel`)
+      params = [ ];
     };
     owedAdd =
       d: x: raw:
@@ -7244,7 +7253,18 @@ let
         rks = d.rks ++ [ (closuresFirst [ raw ] raw) ];
         # every form in folding order, read only where each operand is read (a module set's carriage)
         all = d.all ++ [ x ];
+        inherit (d) params;
       };
+    owedAddParam = d: o: so: d // {
+      params = d.params ++ [
+        {
+          inherit o;
+          s = so;
+        }
+      ];
+      rks = d.rks ++ [ (closuresFirst [ o ] o) ];
+      all = d.all ++ [ o ];
+    };
     # the set as the one operand `meetOf` owes; `__owedItems` is the declarations it stands for at this meet (owed, and not the
     # join itself, as `metWith` selects a listed operand), read only by what reads each operand (the meet's identity, a hold)
     owedOp =
@@ -7260,6 +7280,14 @@ let
       meets: m: mayOwe: sameKey: d:
       let
         keep = o: (meets != false || mayOwe o) && (sameKey == null || sameKey != closuresFirst [ o ] o);
+        # a set every declaration of which IS the join owes nothing here, as `metWith` drops a listed operand that is: the
+        # join is then kept as it is, not met (a role meet above rebuilds only over a met role)
+        op =
+          set: roled:
+          if sameKey != null && builtins.all (k: k == sameKey) set.keys then
+            [ ]
+          else
+            [ (metWith.owedOp set (filter keep) roled) ];
         exactOwed = meets != false || !(m ? typeMergeRel);
         # a certified set: owed whole beside a join stating no relation, carried whole by a join stating a payload, and
         # otherwise decided by witness: a set stating none is carried exactly by a join stating none
@@ -7268,15 +7296,15 @@ let
           if set.n == 0 then
             [ ]
           else if exactOwed then
-            [ (metWith.owedOp set (filter keep) roled) ]
+            op set roled
           else if (m.functor.payload or null) != null then
             [ ]
           else if set.nWit == 0 then
-            (if (m._checkWitness or null) == null then [ ] else [ (metWith.owedOp set (filter keep) roled) ])
+            (if (m._checkWitness or null) == null then [ ] else op set roled)
           else
             filter keep set.items;
       in
-      (if d.plain.n == 0 then [ ] else [ (metWith.owedOp d.plain (filter keep) false) ])
+      (if d.plain.n == 0 then [ ] else op d.plain false)
       ++ certified d.exact false
       ++ certified d.roled true
       ++ filter keep d.specials;
@@ -7303,7 +7331,12 @@ let
           && !(rewritesCheck o)
           && !(replacesVerify o)
           && !(o ? holds)
-        ) (if thread != null && thread ? debt then thread.debt.specials ++ thread.own else os)
+        ) (
+          if thread != null && thread ? debt then
+            thread.debt.specials ++ map (x: x.o) thread.debt.params ++ thread.own
+          else
+            os
+        )
         && (
           thread == null
           || !(thread ? debt)
@@ -7338,9 +7371,18 @@ let
             in
             so != sm && metWith.widensAt so sm;
           debt = if thread == null then null else thread.debt or null;
+          # a parameterised declaration one role down, relativised against this meet's join (`rel`), its tree read from the debt
+          # and the join's from the role above (`thread.msh`)
+          relParam =
+            x:
+            let
+              c = if thread.msh or null == null then null else metWith.shapeCmp x.s thread.msh;
+            in
+            if fresh && (if c == null then widens x.o else !c.same && c.wid) then metWith.judgeAt m x.o else x.o;
           maybe =
             if debt != null then
               metWith.owedOps meets m mayOwe null debt
+              ++ (if meets == false then filter mayOwe (map (x: x.o) debt.params) else map (x: x.o) debt.params)
               ++ (if meets == false then filter mayOwe thread.own else thread.own)
             else if meets == false then
               filter mayOwe os
@@ -7353,7 +7395,7 @@ let
           fresh =
             if debt != null then
               !(builtins.elem sameKey debt.fks)
-              && builtins.all (o: sameKey != closuresFirst [ o ] o) (debt.specials ++ thread.own)
+              && builtins.all (o: sameKey != closuresFirst [ o ] o) (debt.specials ++ map (x: x.o) debt.params ++ thread.own)
             else
               builtins.all (o: sameKey != closuresFirst [ o ] o) os;
           # the step's own earlier operand, by the comparison handed down with it where there is one (`thread.ownCmps`)
@@ -7394,6 +7436,9 @@ let
               rel notM
             else if debt != null then
               metWith.owedOps meets m mayOwe sameKey debt
+              ++ map relParam (
+                builtins.filter (x: (meets != false || mayOwe x.o) && sameKey != closuresFirst [ x.o ] x.o) debt.params
+              )
               ++ relOwn (
                 builtins.filter (o: (meets != false || mayOwe o) && sameKey != closuresFirst [ o ] o) thread.own
               )
