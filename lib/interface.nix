@@ -7076,12 +7076,15 @@ let
     # the form a declaration `o` is owed in by a met accumulator's debt (lib/modules.nix `mergeDeclaredTypes`), fixed at
     # the step where it meets the join `m`: relativised to its own parameters wherever `m` is its constructor's tree at the
     # same or wider parameters, so a later step's wider join finds it owed relative to them (ADR-0039 THE MEET); on `m`'s
-    # own domain the two forms agree
+    # own domain the two forms agree. A tree stating no parameter at any node is never relativised: no join widens it
+    # (`widensAt` holds there only between equal trees), so a later step owes it whole either way
     ownRead =
       m: o:
-      if
-        metWith.widensAt (metWith.shapeOf importedTypeWalkFuel o) (metWith.shapeOf importedTypeWalkFuel m)
-      then
+      let
+        so = metWith.shapeOf importedTypeWalkFuel o;
+        carriesSub = t: t.p != { } || builtins.any carriesSub t.e;
+      in
+      if carriesSub so && metWith.widensAt so (metWith.shapeOf importedTypeWalkFuel m) then
         metWith.judgeAt m o
       else
         o;
