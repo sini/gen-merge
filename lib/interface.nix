@@ -7127,8 +7127,8 @@ let
     # `thread` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `thread.xs` = `thread.ds` (the
     # debt, each record already relativised at its own step, owed as it is) ++ `thread.own` (the step's own earlier operand)
     metWith = metWith.metWithS null;
-    # `sx` (`lib/modules.nix` `rolesMet`, one role down): each operand's tree comparison with the join's, by position in `os`
-    # (`shapeCmpAt`; `null` where it has none), read instead of walking that operand's and the join's trees again
+    # `sx` (`lib/modules.nix` `rolesMet`, one role down): the two operands' tree comparisons with the join's, `{ a; b; }` by
+    # position in `os` (`shapeCmpAt`; `null` where it has none), read instead of walking those trees again
     metWithS =
       sx: meets: m: os: thread:
       if
@@ -7184,7 +7184,7 @@ let
           relAt =
             i: o:
             let
-              c = elemAt sx i;
+              c = if i == 0 then sx.a else sx.b;
             in
             if fresh && (if c == null then widens o else !c.same && c.wid) then metWith.judgeAt m o else o;
           # a step owing a met accumulator's debt (`thread.ds`, each declaration in its own-step form) relativises only its own
