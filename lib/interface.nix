@@ -7140,8 +7140,27 @@ let
           # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
           # compared inline so the meet binds nothing for it
           sameKey = closuresFirst [ m ] m;
-          notM = filter (o: sameKey != closuresFirst [ o ] o) maybe;
-          fresh = builtins.all (o: sameKey != closuresFirst [ o ] o) os;
+          # a thread stating its operands' keys (`marks`, the fold's memo, `lib/modules.nix` `foldElement`): parallel to `os`
+          # for a role's debt, to `thread.ds` for a step's
+          notM =
+            if thread != null && thread ? marks && !(thread ? own) then
+              builtins.concatLists (
+                builtins.genList (
+                  i:
+                  let
+                    o = elemAt os i;
+                  in
+                  if (meets != false || mayOwe o) && sameKey != elemAt thread.marks i then [ o ] else [ ]
+                ) (length os)
+              )
+            else
+              filter (o: sameKey != closuresFirst [ o ] o) maybe;
+          fresh =
+            if thread != null && thread ? marks then
+              builtins.all (k: sameKey != k) thread.marks
+              && builtins.all (o: sameKey != closuresFirst [ o ] o) (thread.own or [ ])
+            else
+              builtins.all (o: sameKey != closuresFirst [ o ] o) os;
           rel = map (o: if fresh && widens o then metWith.judgeAt m o else o);
           # a step owing a met accumulator's debt (`thread.ds`, each declaration in its own-step form) relativises only its own
           # earlier operand (`thread.own`); the debt is owed as it is
@@ -7149,8 +7168,14 @@ let
             if thread == null || !(thread ? own) then
               rel notM
             else
-              filter (o: sameKey != closuresFirst [ o ] o) (
-                if meets == false then filter mayOwe thread.ds else thread.ds
+              builtins.concatLists (
+                builtins.genList (
+                  i:
+                  let
+                    o = elemAt thread.ds i;
+                  in
+                  if (meets != false || mayOwe o) && sameKey != elemAt thread.marks i then [ o ] else [ ]
+                ) (length thread.ds)
               )
               ++ rel (
                 filter (o: sameKey != closuresFirst [ o ] o) (

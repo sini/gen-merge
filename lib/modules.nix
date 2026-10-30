@@ -738,22 +738,27 @@ let
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
-        interface.metWith.nulls false (rolesMet o r' a' b') (
-          if o == null then
-            [
-              a'
-              b'
-            ]
-          else
-            o.xs
-        );
+        (if o != null && o ? marks then interface.metWith.metWith o else interface.metWith.nulls) false
+          (rolesMet o r' a' b')
+          (
+            if o == null then
+              [
+                a'
+                b'
+              ]
+            else
+              o.xs
+          );
     in
     if builtins.all (x: x != null) el then
       (
         let
-          m = innerMet (interface.metWith.subOf thread (
-            interface.carriedAt "element"
-          )) (pick el 0) (pick el 1) (pick el 2);
+          m = innerMet (
+            if thread != null && thread ? elements then
+              thread.elements.element
+            else
+              interface.metWith.subOf thread (interface.carriedAt "element")
+          ) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
@@ -762,13 +767,18 @@ let
         let
           m = builtins.genList (
             i:
-            innerMet (interface.metWith.subOf thread (
-              d:
-              let
-                x = interface.carriedAt "alternatives" d;
-              in
-              if x == null then null else pick x i
-            )) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+            innerMet (
+              if thread != null && thread ? elements then
+                pick thread.elements.alternatives i
+              else
+                interface.metWith.subOf thread (
+                  d:
+                  let
+                    x = interface.carriedAt "alternatives" d;
+                  in
+                  if x == null then null else pick x i
+                )
+            ) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
           ) 2;
         in
         if
@@ -1190,6 +1200,9 @@ let
         # a debt extended by the declaration at `j`, owed as `d` (its own-step form, ADR-0039 THE MEET: a declaration's
         # relativisation to its own parameters is the step's where it meets), one per value (`ks`, the declarations' keys),
         # in folding order; a later step owes them as they are (`thread.ds`, `interface.metWith.metWith`)
+        # Beside each owed form the debt keeps its one-value key (`marks`) and, lazily, its role projections with their keys
+        # (`elements`: at `element` and at each `alternatives` member, nulls dropped), each computed once per declaration:
+        # nixpkgs folds a role once per step and keys nothing, so no step re-keys or re-projects what an earlier one did
         foldElement =
           o: j: d:
           let
@@ -1201,16 +1214,57 @@ let
             {
               ds = o.ds ++ [ d ];
               ks = o.ks ++ [ od ];
+              marks = o.marks ++ [ (keyOf d) ];
+              elements = threadElement o.elements d;
             };
+        # a role memo (`foldElement`'s `elements`) extended by the owed form `d`'s projections
+        threadElement =
+          r: d:
+          let
+            a = interface.carriedAt "alternatives" d;
+          in
+          {
+            element = embeddedElem r.element (interface.carriedAt "element" d);
+            alternatives = builtins.genList (
+              ev':
+              embeddedElem (builtins.elemAt r.alternatives ev') (
+                if a == null then null else builtins.elemAt a ev'
+              )
+            ) 2;
+          };
+        embeddedElem =
+          p: x:
+          if x == null then
+            p
+          else
+            {
+              xs = p.xs ++ [ x ];
+              marks = p.marks ++ [ (keyOf x) ];
+            };
+        # the empty debt
+        emptyList = {
+          ds = [ ];
+          ks = [ ];
+          marks = [ ];
+          elements = rec {
+            element = {
+              xs = [ ];
+              marks = [ ];
+            };
+            alternatives = [
+              element
+              element
+            ];
+          };
+        };
         # the debt behind the first step that meets: every declaration from index `i` to the last, one per value, each in
         # the form that step's meet (join `j`) owes it. None was owed at its own step (each step since built
         # no met record), so each meets here, carried by this step's later operand
         elemsOf =
           i: j:
-          builtins.foldl' (o: x: foldElement o x (interface.metWith.ownRead j (builtins.elemAt ts x))) {
-            ds = [ ];
-            ks = [ ];
-          } (builtins.genList (x: n - 1 - x) (n - i));
+          builtins.foldl' (
+            o: x: foldElement o x (interface.metWith.ownRead j (builtins.elemAt ts x))
+          ) emptyList (builtins.genList (x: n - 1 - x) (n - i));
         # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
         # met accumulator's, or `elemsOf`'s, read against this step's join):
         # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; ownJoin }`,
@@ -1242,28 +1296,16 @@ let
               # role's declared checks would be owed by nobody
               lift = x: if joinOver x then lift x.__meetJoin else x;
               declaredAt =
-                roleOf: x:
+                p: x:
                 let
                   embedKey = keyOf x;
                 in
-                builtins.any (
-                  d:
-                  let
-                    y = roleOf d;
-                  in
-                  y != null && keyOf y == embedKey
-                ) checkedTypes.ds;
-              partnerElem =
-                ev': d:
-                let
-                  a = interface.carriedAt "alternatives" d;
-                in
-                if a == null then null else builtins.elemAt a ev';
+                builtins.any (k: k == embedKey) p.marks;
               u = lift t;
               e = interface.carriedAt "element" u;
               al = interface.carriedAt "alternatives" u;
               re =
-                if e != null && e ? __meetJoin && !(declaredAt (interface.carriedAt "element") e) then
+                if e != null && e ? __meetJoin && !(declaredAt checkedTypes.elements.element e) then
                   interface.rebuiltOverAt "element" (lift e) u
                 else
                   null;
@@ -1282,7 +1324,10 @@ let
                         let
                           y = builtins.elemAt al ev';
                         in
-                        if y ? __meetJoin && !(declaredAt (partnerElem ev') y) then lift y else y
+                        if y ? __meetJoin && !(declaredAt (builtins.elemAt checkedTypes.elements.alternatives ev') y) then
+                          lift y
+                        else
+                          y
                       ) 2;
                       x = interface.rebuiltOverAt "alternatives" fieldList u;
                     in
@@ -1303,7 +1348,8 @@ let
             r = declaredPair (
               {
                 inherit xs own;
-                inherit (acc.checkedTypes) ds;
+                inherit (acc.checkedTypes) ds marks;
+                elements = builtins.foldl' threadElement acc.checkedTypes.elements own;
               }
               # a held accumulator: this step holds its earlier and the accumulator's own unchecked fold, as main's step
               # held them (the debt is owed as a check only)
