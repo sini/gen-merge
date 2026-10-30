@@ -842,7 +842,7 @@ let
         if x == null then r else x
       );
   relationMerge =
-    _: a: b:
+    a: b:
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then
       null
     else
@@ -902,7 +902,7 @@ let
   mergeTypesBy =
     thread: relation: a: b:
     let
-      m = relation thread a b;
+      m = relation a b;
     in
     if m == null then
       null
@@ -949,7 +949,7 @@ let
         b
       ];
   mergeTypes = mergeTypesBy null relationMerge;
-  mergeTypesWithin = mergeTypesBy null relationMergeWithin;
+  mergeTypesWithin = mergeTypesBy null (relationMergeWithin null);
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -974,7 +974,7 @@ let
   mergeTypesReasonBy =
     within: a: b:
     let
-      m = (if within then relationMergeWithin else relationMerge) null a b;
+      m = (if within then relationMergeWithin null else relationMerge) a b;
       dA = m != null && dropsWrappedCheck m a;
       dB = m != null && dropsWrappedCheck m b;
     in
@@ -1049,12 +1049,19 @@ let
         else if veto ? refused then
           (
             let
-              tried = builtins.tryEval ((mergeTypesBy thread relationMergeWithin) later earlier);
+              tried = builtins.tryEval (
+                if thread == null then
+                  mergeTypesWithin later earlier
+                else
+                  mergeTypesBy thread (relationMergeWithin thread) later earlier
+              );
             in
             if tried.success then tried.value else null
           )
+        else if thread == null then
+          mergeTypesWithin later earlier
         else
-          (mergeTypesBy thread relationMergeWithin) later earlier;
+          mergeTypesBy thread (relationMergeWithin thread) later earlier;
     in
     if veto.meets or false then
       {
@@ -1160,155 +1167,158 @@ let
     ts:
     let
       n = length ts;
-      keyOf = x: interface.closuresFirst [ x ] x;
-      # each declaration's one-value key (`closuresFirst`, as `metWith`'s one-value test reads it), read only by a met
-      # step and shared by every step that reads it
-      ks = map keyOf ts;
-      # a debt extended by the declaration at `j`, owed as `d` (its own-step form, ADR-0039 THE MEET: a declaration's
-      # relativisation to its own parameters is the step's where it meets), one per value (`ks`, the declarations' keys),
-      # in folding order; a later step owes them as they are (`thread.ds`, `interface.metWith.metWith`)
-      foldElement =
-        o: j: d:
-        let
-          od = builtins.elemAt ks j;
-        in
-        if builtins.elem od o.ks then
-          o
-        else
-          {
-            ds = o.ds ++ [ d ];
-            ks = o.ks ++ [ od ];
-          };
-      # the debt behind the first step that meets: every declaration from index `i` to the last, one per value, each in
-      # the form that step's meet (join `j`) owes it. None was owed at its own step (each step since built
-      # no met record), so each meets here, carried by this step's later operand
-      elemsOf =
-        i: j:
-        builtins.foldl' (o: x: foldElement o x (interface.metWith.ownRead j (builtins.elemAt ts x))) {
-          ds = [ ];
-          ks = [ ];
-        } (builtins.genList (x: n - 1 - x) (n - i));
-      # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
-      # met accumulator's, or `elemsOf`'s, read against this step's join):
-      # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; ownJoin }`,
-      # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.ownRead`)
-      judgeTree =
-        r: i: later: checkedScope:
-        let
-          t = r.merged;
-          earlier = builtins.elemAt ts i;
-          k = builtins.elemAt ks i;
-          pb = keyOf later;
-          carriesSub = earlier ? __meetJoin || later ? __meetJoin;
-          # a met record is built by this step where it is neither operand (an operand that is one is a declaration)
-          joinOver = x: x ? __meetJoin && (!carriesSub || keyOf x != k && keyOf x != pb);
-        in
-        if !(joinOver t) then
-          r
-        else
+      # the fold's met-step machinery, thunked only by a fold whose step builds a met record
+      foldWith = rec {
+        keyOf = x: interface.closuresFirst [ x ] x;
+        # each declaration's one-value key (`closuresFirst`, as `metWith`'s one-value test reads it), read only by a met
+        # step and shared by every step that reads it
+        ks = map keyOf ts;
+        # a debt extended by the declaration at `j`, owed as `d` (its own-step form, ADR-0039 THE MEET: a declaration's
+        # relativisation to its own parameters is the step's where it meets), one per value (`ks`, the declarations' keys),
+        # in folding order; a later step owes them as they are (`thread.ds`, `interface.metWith.metWith`)
+        foldElement =
+          o: j: d:
           let
-            j = t.__meetJoin or t;
-            checkedTypes = foldElement (
-              if builtins.isFunction checkedScope then checkedScope j else checkedScope
-            ) i (interface.metWith.ownRead j earlier);
-            # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
-            # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
-            # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
-            # (`declaredAt`), at `element` and at either `alternatives` member. A step that built no met record
-            # (above) leaves the next step owing nothing, so a role it met keeps its meet: unwound there, that
-            # role's declared checks would be owed by nobody
-            lift = x: if joinOver x then lift x.__meetJoin else x;
-            declaredAt =
-              roleOf: x:
-              let
-                embedKey = keyOf x;
-              in
-              builtins.any (
-                d:
-                let
-                  y = roleOf d;
-                in
-                y != null && keyOf y == embedKey
-              ) checkedTypes.ds;
-            partnerElem =
-              ev': d:
-              let
-                a = interface.carriedAt "alternatives" d;
-              in
-              if a == null then null else builtins.elemAt a ev';
-            u = lift t;
-            e = interface.carriedAt "element" u;
-            al = interface.carriedAt "alternatives" u;
-            re =
-              if e != null && e ? __meetJoin && !(declaredAt (interface.carriedAt "element") e) then
-                interface.rebuiltOverAt "element" (lift e) u
-              else
-                null;
+            od = builtins.elemAt ks j;
           in
-          {
-            merged = t;
-            inherit checkedTypes;
-            ownJoin =
-              if re != null then
-                re
-              else if al != null && builtins.any (y: y ? __meetJoin) al then
-                (
-                  let
-                    fieldList = builtins.genList (
-                      ev':
-                      let
-                        y = builtins.elemAt al ev';
-                      in
-                      if y ? __meetJoin && !(declaredAt (partnerElem ev') y) then lift y else y
-                    ) 2;
-                    x = interface.rebuiltOverAt "alternatives" fieldList u;
-                  in
-                  if x == null then u else x
-                )
-              else
-                u;
-          };
-      # the step over a met accumulator: asks its carrier and owes its debt and this step's earlier; the last step's
-      # record is not read for a met one
-      foldE =
-        acc: i:
-        let
-          earlier = builtins.elemAt ts i;
-          # this step owes its earlier as this step's meet relativises it, and the debt as owed at each one's own step
-          own = if builtins.elem (builtins.elemAt ks i) acc.checkedTypes.ks then [ ] else [ earlier ];
-          xs = acc.checkedTypes.ds ++ own;
-          r = declaredPair (
+          if builtins.elem od o.ks then
+            o
+          else
             {
-              inherit xs own;
-              inherit (acc.checkedTypes) ds;
-            }
-            # a held accumulator: this step holds its earlier and the accumulator's own unchecked fold, as main's step
-            # held them (the debt is owed as a check only)
-            // (
-              if acc.merged ? holds then
-                {
-                  holdsType = [
-                    earlier
-                    acc.merged
-                  ];
-                }
-              else
-                { }
-            )
-          ) earlier acc.ownJoin;
-        in
-        if i == 0 || r ? refused then r else markShared (judgeTree r i acc.ownJoin acc.checkedTypes);
-      # a record that built no met record yet carries `__meetJoin` passed an operand on: marked, so the next step does
-      # not take it for one its step built
-      markShared =
-        x:
-        if x ? checkedTypes || !(x.merged ? __meetJoin) then
-          x
-        else
-          {
-            inherit (x) merged;
-            markShared = true;
-          };
+              ds = o.ds ++ [ d ];
+              ks = o.ks ++ [ od ];
+            };
+        # the debt behind the first step that meets: every declaration from index `i` to the last, one per value, each in
+        # the form that step's meet (join `j`) owes it. None was owed at its own step (each step since built
+        # no met record), so each meets here, carried by this step's later operand
+        elemsOf =
+          i: j:
+          builtins.foldl' (o: x: foldElement o x (interface.metWith.ownRead j (builtins.elemAt ts x))) {
+            ds = [ ];
+            ks = [ ];
+          } (builtins.genList (x: n - 1 - x) (n - i));
+        # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
+        # met accumulator's, or `elemsOf`'s, read against this step's join):
+        # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; ownJoin }`,
+        # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.ownRead`)
+        judgeTree =
+          r: i: later: checkedScope:
+          let
+            t = r.merged;
+            earlier = builtins.elemAt ts i;
+            k = builtins.elemAt ks i;
+            pb = keyOf later;
+            carriesSub = earlier ? __meetJoin || later ? __meetJoin;
+            # a met record is built by this step where it is neither operand (an operand that is one is a declaration)
+            joinOver = x: x ? __meetJoin && (!carriesSub || keyOf x != k && keyOf x != pb);
+          in
+          if !(joinOver t) then
+            r
+          else
+            let
+              j = t.__meetJoin or t;
+              checkedTypes = foldElement (
+                if builtins.isFunction checkedScope then checkedScope j else checkedScope
+              ) i (interface.metWith.ownRead j earlier);
+              # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
+              # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
+              # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
+              # (`declaredAt`), at `element` and at either `alternatives` member. A step that built no met record
+              # (above) leaves the next step owing nothing, so a role it met keeps its meet: unwound there, that
+              # role's declared checks would be owed by nobody
+              lift = x: if joinOver x then lift x.__meetJoin else x;
+              declaredAt =
+                roleOf: x:
+                let
+                  embedKey = keyOf x;
+                in
+                builtins.any (
+                  d:
+                  let
+                    y = roleOf d;
+                  in
+                  y != null && keyOf y == embedKey
+                ) checkedTypes.ds;
+              partnerElem =
+                ev': d:
+                let
+                  a = interface.carriedAt "alternatives" d;
+                in
+                if a == null then null else builtins.elemAt a ev';
+              u = lift t;
+              e = interface.carriedAt "element" u;
+              al = interface.carriedAt "alternatives" u;
+              re =
+                if e != null && e ? __meetJoin && !(declaredAt (interface.carriedAt "element") e) then
+                  interface.rebuiltOverAt "element" (lift e) u
+                else
+                  null;
+            in
+            {
+              merged = t;
+              inherit checkedTypes;
+              ownJoin =
+                if re != null then
+                  re
+                else if al != null && builtins.any (y: y ? __meetJoin) al then
+                  (
+                    let
+                      fieldList = builtins.genList (
+                        ev':
+                        let
+                          y = builtins.elemAt al ev';
+                        in
+                        if y ? __meetJoin && !(declaredAt (partnerElem ev') y) then lift y else y
+                      ) 2;
+                      x = interface.rebuiltOverAt "alternatives" fieldList u;
+                    in
+                    if x == null then u else x
+                  )
+                else
+                  u;
+            };
+        # the step over a met accumulator: asks its carrier and owes its debt and this step's earlier; the last step's
+        # record is not read for a met one
+        foldE =
+          acc: i:
+          let
+            earlier = builtins.elemAt ts i;
+            # this step owes its earlier as this step's meet relativises it, and the debt as owed at each one's own step
+            own = if builtins.elem (builtins.elemAt ks i) acc.checkedTypes.ks then [ ] else [ earlier ];
+            xs = acc.checkedTypes.ds ++ own;
+            r = declaredPair (
+              {
+                inherit xs own;
+                inherit (acc.checkedTypes) ds;
+              }
+              # a held accumulator: this step holds its earlier and the accumulator's own unchecked fold, as main's step
+              # held them (the debt is owed as a check only)
+              // (
+                if acc.merged ? holds then
+                  {
+                    holdsType = [
+                      earlier
+                      acc.merged
+                    ];
+                  }
+                else
+                  { }
+              )
+            ) earlier acc.ownJoin;
+          in
+          if i == 0 || r ? refused then r else markShared (judgeTree r i acc.ownJoin acc.checkedTypes);
+        # a record that built no met record yet carries `__meetJoin` passed an operand on: marked, so the next step does
+        # not take it for one its step built
+        markShared =
+          x:
+          if x ? checkedTypes || !(x.merged ? __meetJoin) then
+            x
+          else
+            {
+              inherit (x) merged;
+              markShared = true;
+            };
+      };
       steps = builtins.genList (j: n - 2 - j) (n - 1);
     in
     # No declaration is a met record (the common fold): an accumulator that carries `__meetJoin` was then built by the
@@ -1321,18 +1331,21 @@ let
         if acc ? refused then
           acc
         else if acc ? checkedTypes then
-          foldE acc i
+          foldWith.foldE acc i
         else if acc ? markShared then
           let
             r = declaredPair null (builtins.elemAt ts i) acc.merged;
           in
-          if i == 0 || r ? refused then r else markShared (judgeTree r i acc.merged (elemsOf (i + 1)))
+          if i == 0 || r ? refused then
+            r
+          else
+            foldWith.markShared (foldWith.judgeTree r i acc.merged (foldWith.elemsOf (i + 1)))
         else if !(acc.merged ? __meetJoin) then
           declaredPair null (builtins.elemAt ts i) acc.merged
         else
           # the step before built it, and neither of its operands carried `__meetJoin` (`later`: `declaredPair`'s record
           # states it)
-          foldE (judgeTree acc (i + 1) acc.later (elemsOf (i + 2))) i
+          foldWith.foldE (foldWith.judgeTree acc (i + 1) acc.later (foldWith.elemsOf (i + 2))) i
       ) { merged = prelude.last ts; } steps
     else
       foldl' (
@@ -1340,12 +1353,15 @@ let
         if acc ? refused then
           acc
         else if acc ? checkedTypes then
-          foldE acc i
+          foldWith.foldE acc i
         else
           let
             r = declaredPair null (builtins.elemAt ts i) acc.merged;
           in
-          if i == 0 || r ? refused then r else markShared (judgeTree r i acc.merged (elemsOf (i + 1)))
+          if i == 0 || r ? refused then
+            r
+          else
+            foldWith.markShared (foldWith.judgeTree r i acc.merged (foldWith.elemsOf (i + 1)))
       ) { merged = prelude.last ts; } steps;
   # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
   # first; only the null-reason fallback is spelled here, and it names the pair in authored order,
