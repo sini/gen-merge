@@ -757,7 +757,7 @@ let
             if rewrites != null && rewrites ? readers then
               rewrites.readers.element
             else
-              interface.metWith.functorRecord rewrites (interface.carriedAt "element")
+              interface.metWith.anything.functorRecord rewrites (interface.carriedAt "element")
           ) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
@@ -771,7 +771,7 @@ let
               if rewrites != null && rewrites ? readers then
                 pick rewrites.readers.alternatives i
               else
-                interface.metWith.functorRecord rewrites (
+                interface.metWith.anything.functorRecord rewrites (
                   d:
                   let
                     x = interface.carriedAt "alternatives" d;
@@ -1185,7 +1185,7 @@ let
   # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`checkedTypes`, one per value), the
   # earlier one included. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
   # owed whole by its own check, and keeps its own relation. Each folded declaration is owed relative to its own parameters,
-  # its form fixed at its own step (`interface.metWith.ownRead`), and is owed by its check alone; a step over a held accumulator
+  # its form fixed at its own step (`interface.metWith.anything.ownRead`), and is owed by its check alone; a step over a held accumulator
   # holds its earlier operand and the accumulator itself, the pair a step with no debt holds (`answers`).
   mergeDeclaredTypes =
     ts:
@@ -1263,12 +1263,12 @@ let
         elemsOf =
           i: j:
           builtins.foldl' (
-            o: x: defineEmbedded o x (interface.metWith.ownRead j (builtins.elemAt ts x))
+            o: x: defineEmbedded o x (interface.metWith.anything.ownRead j (builtins.elemAt ts x))
           ) completeType (builtins.genList (x: n - 1 - x) (n - i));
         # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
         # met accumulator's, or `elemsOf`'s, read against this step's join):
         # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; sealed }`,
-        # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.ownRead`)
+        # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.anything.ownRead`)
         spelledRead =
           r: i: later: checkedScope:
           let
@@ -1287,7 +1287,7 @@ let
               j = t.__meetJoin or t;
               checkedTypes = defineEmbedded (
                 if builtins.isFunction checkedScope then checkedScope j else checkedScope
-              ) i (interface.metWith.ownRead j earlier);
+              ) i (interface.metWith.anything.ownRead j earlier);
               # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
               # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
               # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept

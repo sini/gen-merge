@@ -6912,168 +6912,14 @@ let
     core = metWith.metWith null;
     # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
     # alternatives; any other `elemType` states no element of the tree
-    elementsOf =
-      p:
-      if isAttrs p && p ? elemType then
-        (
-          if isList p.elemType then
-            (if length p.elemType == 2 then p.elemType else [ ])
-          else if isAttrs p.elemType then
-            [ p.elemType ]
-          else
-            [ ]
-        )
-      else
-        [ ];
     # the parameter TREE: each constructor's name and payload less its roles, and its elements' trees
     # (an element's parameters are its container's: `nullOr (enum [a])` is parameterised by `[a]`).
     # Past the walk's fuel a tree states nothing more, so a change that deep is owed whole.
     # a record declaring the record it `wraps` is parameterised by that record (`wrappedBase`)
-    shapeOf =
-      fuel: t:
-      let
-        f = (wrappedBase t).functor or { };
-        p = f.payload or null;
-      in
-      {
-        n = f.name or null;
-        p =
-          if isAttrs p then
-            builtins.removeAttrs p [
-              "elemType"
-              "modules"
-            ]
-          else
-            { };
-        e = if fuel == 0 then [ ] else map (metWith.shapeOf (fuel - 1)) (metWith.elementsOf p);
-      };
     # the same constructor at every node, and every node where the trees differ is one where the
     # operand states parameters: a nullary node has none for a law to widen, so a join that changes
     # it changes the operand's check (owed whole)
-    widensAt =
-      a: b:
-      a.n == b.n
-      && length a.e == length b.e
-      && (a.p == b.p || a.p != { })
-      && builtins.all (i: metWith.widensAt (elemAt a.e i) (elemAt b.e i)) (
-        builtins.genList (i: i) (length a.e)
-      );
-    # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.ownRead`)
-    witnessedCheck =
-      m: o:
-      let
-        s = importedPartner ((wrappedBase o).functor or null);
-      in
-      if isAttrs s && s ? check then
-        o
-        // {
-          # an ad-hoc override's functor rebuilds the override, whose check is the debt, never its parameters:
-          # membership is its v2 merge's, `headError` and the forced merge, as `rebuildClosed.own` reads a base.
-          # (`adHocChecked`, restated inline: this is asked of every widened operand of every meet)
-          # a non-v2 container stock whose check is not its completion's witness rebuilds the operand, whose check is
-          # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
-          # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
-          # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
-          # level); a stock of no recognised name keeps its own check. Asked only of a value the operand's check
-          # rejects (`meetOf`)
-          __stockCheck =
-            if s.check.isV2MergeCoherent or false then
-              s.check
-            else if
-              ((m.functor or { }).payload or null) ? elemType
-              && !(s ? _checkWitness && s.check == s._checkWitness)
-              && !(isV2 s)
-              && (s.getSubModules or null) == null
-            then
-              v:
-              let
-                p = importedRehomeAt recognitionDoor null s;
-                j =
-                  if p.container == "either" then
-                    constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
-                  else
-                    constructors.${p.container} p.element;
-                defs = [
-                  {
-                    file = "<stock>";
-                    value = v;
-                  }
-                ];
-                # a member passes its element's check at every element (nixpkgs merges only checked definitions),
-                # so a value with an element failing it is decided without building the judge, read off the roles
-                # the recognition reads and asked first; the recognition is then asked only where the stock's own
-                # check (main's answer for an unrecognised name) admits the value. A check that throws, and an
-                # element stating a property, are left to the judge
-                roles = statedRoles s;
-                name = (s.functor or { }).name or null;
-                r = builtins.tryEval (
-                  if roles ? alternatives then
-                    prelude.any (a: a.check v) roles.alternatives
-                  else if !(roles ? element) then
-                    true
-                  else if name == "nullOr" then
-                    v == null || roles.element.check v
-                  else if name == "listOf" then
-                    isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
-                  else if name == "attrsWith" then
-                    isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
-                  else
-                    true
-                );
-              in
-              if r.success && !r.value then
-                s.check v && p == null
-              else if p == null then
-                s.check v
-              else
-                (
-                  if isV2 j then
-                    (
-                      let
-                        result = j.merge.v2 {
-                          loc = [ "<stock>" ];
-                          inherit defs;
-                        };
-                        r = builtins.tryEval (builtins.deepSeq result.value true);
-                      in
-                      (j.check v) && r.success && r.value
-                    )
-                  else
-                    j.check v
-                    && (
-                      let
-                        r = builtins.tryEval (builtins.deepSeq (j.merge [ "<stock>" ] defs) true);
-                      in
-                      r.success && r.value
-                    )
-                )
-            else if
-              s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
-            then
-              s.check
-            else
-              v:
-              let
-                defs = [
-                  {
-                    file = "<stock>";
-                    value = v;
-                  }
-                ];
-              in
-              (s.merge.v2 {
-                loc = [ "<stock>" ];
-                inherit defs;
-              }).headError == null
-              && (
-                let
-                  r = builtins.tryEval (builtins.deepSeq (s.merge [ "<stock>" ] defs) true);
-                in
-                r.success && r.value
-              );
-        }
-      else
-        o;
+    # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.anything.ownRead`)
     # the form a declaration `o` is owed in by a met accumulator's debt (lib/modules.nix `mergeDeclaredTypes`), fixed at
     # the step where it meets the join `m`: relativised to its own parameters wherever `m` is its constructor's tree at the
     # same or wider parameters, so a later step's wider join finds it owed relative to them (ADR-0039 THE MEET); on `m`'s
@@ -7081,18 +6927,6 @@ let
     # (`widens`) owes it. That is not "no join widens it": `shapeOf` erases a payload that is not an attrset (an enum whose
     # payload is its value list), so such a functor's own parameters are unread here as at main's step, main's open defect
     # (den-hoag-e2wfn)
-    ownRead =
-      m: o:
-      let
-        so = metWith.shapeOf importedTypeWalkFuel o;
-        # a payload that is itself a type is the container's element (nixpkgs' `binOp` delegates to the element's
-        # `typeMerge`), never its parameters
-        structured = t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any structured t.e;
-      in
-      if structured so && metWith.widensAt so (metWith.shapeOf importedTypeWalkFuel m) then
-        metWith.witnessedCheck m o
-      else
-        o;
     # `rewrites` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `rewrites.xs` = `rewrites.ds` (the
     # debt, each record already relativised at its own step, owed as it is) ++ `rewrites.own` (the step's own earlier operand)
     metWith =
@@ -7133,13 +6967,13 @@ let
             || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
             || replacesVerify o
             || o ? holds;
-          sm = metWith.shapeOf importedTypeWalkFuel m;
+          sm = metWith.anything.shapeOf importedTypeWalkFuel m;
           widens =
             o:
             let
-              so = metWith.shapeOf importedTypeWalkFuel o;
+              so = metWith.anything.shapeOf importedTypeWalkFuel o;
             in
-            so != sm && metWith.widensAt so sm;
+            so != sm && metWith.anything.widensAt so sm;
           maybe = if meets == false then filter mayOwe os else os;
           # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
           # compared inline so the meet binds nothing for it
@@ -7165,7 +6999,7 @@ let
               && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
             else
               builtins.all (o: completeExport != closuresFirst [ o ] o) os;
-          rel = map (o: if fresh && widens o then metWith.witnessedCheck m o else o);
+          rel = map (o: if fresh && widens o then metWith.anything.witnessedCheck m o else o);
           # a step owing a met accumulator's debt (`rewrites.ds`, each declaration in its own-step form) relativises only its own
           # earlier operand (`rewrites.own`); the debt is owed as it is
           owed =
@@ -7416,20 +7250,195 @@ let
     # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
     # caller (`mergeTypesBy`).
     # a step owing `rewrites` owes, at a role, the role each owed declaration carries, never the accumulated carrier's own met role
-    functorRecord =
-      rewrites: f:
-      if rewrites == null then
-        null
-      else
+    # the helpers the meet with a thread and the fold read, a set forced only where one is read
+    anything = {
+      elementsOf =
+        p:
+        if isAttrs p && p ? elemType then
+          (
+            if isList p.elemType then
+              (if length p.elemType == 2 then p.elemType else [ ])
+            else if isAttrs p.elemType then
+              [ p.elemType ]
+            else
+              [ ]
+          )
+        else
+          [ ];
+      shapeOf =
+        fuel: t:
+        let
+          f = (wrappedBase t).functor or { };
+          p = f.payload or null;
+        in
         {
-          xs = builtins.concatMap (
-            d:
-            let
-              x = f d;
-            in
-            if x == null then [ ] else [ x ]
-          ) rewrites.xs;
+          n = f.name or null;
+          p =
+            if isAttrs p then
+              builtins.removeAttrs p [
+                "elemType"
+                "modules"
+              ]
+            else
+              { };
+          e =
+            if fuel == 0 then
+              [ ]
+            else
+              map (metWith.anything.shapeOf (fuel - 1)) (metWith.anything.elementsOf p);
         };
+      widensAt =
+        a: b:
+        a.n == b.n
+        && length a.e == length b.e
+        && (a.p == b.p || a.p != { })
+        && builtins.all (i: metWith.anything.widensAt (elemAt a.e i) (elemAt b.e i)) (
+          builtins.genList (i: i) (length a.e)
+        );
+      witnessedCheck =
+        m: o:
+        let
+          s = importedPartner ((wrappedBase o).functor or null);
+        in
+        if isAttrs s && s ? check then
+          o
+          // {
+            # an ad-hoc override's functor rebuilds the override, whose check is the debt, never its parameters:
+            # membership is its v2 merge's, `headError` and the forced merge, as `rebuildClosed.own` reads a base.
+            # (`adHocChecked`, restated inline: this is asked of every widened operand of every meet)
+            # a non-v2 container stock whose check is not its completion's witness rebuilds the operand, whose check is
+            # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
+            # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
+            # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
+            # level); a stock of no recognised name keeps its own check. Asked only of a value the operand's check
+            # rejects (`meetOf`)
+            __stockCheck =
+              if s.check.isV2MergeCoherent or false then
+                s.check
+              else if
+                ((m.functor or { }).payload or null) ? elemType
+                && !(s ? _checkWitness && s.check == s._checkWitness)
+                && !(isV2 s)
+                && (s.getSubModules or null) == null
+              then
+                v:
+                let
+                  p = importedRehomeAt recognitionDoor null s;
+                  j =
+                    if p.container == "either" then
+                      constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
+                    else
+                      constructors.${p.container} p.element;
+                  defs = [
+                    {
+                      file = "<stock>";
+                      value = v;
+                    }
+                  ];
+                  # a member passes its element's check at every element (nixpkgs merges only checked definitions),
+                  # so a value with an element failing it is decided without building the judge, read off the roles
+                  # the recognition reads and asked first; the recognition is then asked only where the stock's own
+                  # check (main's answer for an unrecognised name) admits the value. A check that throws, and an
+                  # element stating a property, are left to the judge
+                  roles = statedRoles s;
+                  name = (s.functor or { }).name or null;
+                  r = builtins.tryEval (
+                    if roles ? alternatives then
+                      prelude.any (a: a.check v) roles.alternatives
+                    else if !(roles ? element) then
+                      true
+                    else if name == "nullOr" then
+                      v == null || roles.element.check v
+                    else if name == "listOf" then
+                      isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
+                    else if name == "attrsWith" then
+                      isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
+                    else
+                      true
+                  );
+                in
+                if r.success && !r.value then
+                  s.check v && p == null
+                else if p == null then
+                  s.check v
+                else
+                  (
+                    if isV2 j then
+                      (
+                        let
+                          result = j.merge.v2 {
+                            loc = [ "<stock>" ];
+                            inherit defs;
+                          };
+                          r = builtins.tryEval (builtins.deepSeq result.value true);
+                        in
+                        (j.check v) && r.success && r.value
+                      )
+                    else
+                      j.check v
+                      && (
+                        let
+                          r = builtins.tryEval (builtins.deepSeq (j.merge [ "<stock>" ] defs) true);
+                        in
+                        r.success && r.value
+                      )
+                  )
+              else if
+                s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
+              then
+                s.check
+              else
+                v:
+                let
+                  defs = [
+                    {
+                      file = "<stock>";
+                      value = v;
+                    }
+                  ];
+                in
+                (s.merge.v2 {
+                  loc = [ "<stock>" ];
+                  inherit defs;
+                }).headError == null
+                && (
+                  let
+                    r = builtins.tryEval (builtins.deepSeq (s.merge [ "<stock>" ] defs) true);
+                  in
+                  r.success && r.value
+                );
+          }
+        else
+          o;
+      ownRead =
+        m: o:
+        let
+          so = metWith.anything.shapeOf importedTypeWalkFuel o;
+          # a payload that is itself a type is the container's element (nixpkgs' `binOp` delegates to the element's
+          # `typeMerge`), never its parameters
+          structured = t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any structured t.e;
+        in
+        if
+          structured so && metWith.anything.widensAt so (metWith.anything.shapeOf importedTypeWalkFuel m)
+        then
+          metWith.anything.witnessedCheck m o
+        else
+          o;
+      functorRecord =
+        rewrites: f:
+        if rewrites == null then
+          null
+        else
+          {
+            xs = builtins.concatMap (
+              d:
+              let
+                x = f d;
+              in
+              if x == null then [ ] else [ x ]
+            ) rewrites.xs;
+          };
+    };
   };
   # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
   # functor as `joinInRebuiltPartner` rebuilds it, through `tryEval` (nixpkgs' default asserts); `null`
