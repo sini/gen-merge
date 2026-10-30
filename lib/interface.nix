@@ -7083,7 +7083,9 @@ let
       m: o:
       let
         so = metWith.shapeOf importedTypeWalkFuel o;
-        carriesSub = t: t.p != { } || builtins.any carriesSub t.e;
+        # a payload that is itself a type is the container's element (nixpkgs' `binOp` delegates to the element's
+        # `typeMerge`), never its parameters
+        carriesSub = t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any carriesSub t.e;
       in
       if carriesSub so && metWith.widensAt so (metWith.shapeOf importedTypeWalkFuel m) then
         metWith.judgeAt m o
