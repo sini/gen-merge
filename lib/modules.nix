@@ -685,8 +685,9 @@ let
         (
           if
             ops != null
-            || a ? retainedRelation
-            && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
+            ||
+              a ? retainedRelation
+              && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
             rolesMet ops answer.merged a b
           else
@@ -1171,8 +1172,9 @@ let
   # step asks the carrier's relation and drops a check no declaration made (ADR-0039 THE MEET owes DECLARED checks). So
   # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`debt`, one per value), the
   # earlier one included. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
-  # owed whole by its own check, and keeps its own relation. A held accumulator holds the next step again (`held`): its
-  # declarations' folds are demanded as its own were.
+  # owed whole by its own check, and keeps its own relation. Each folded declaration is owed relative to its own parameters,
+  # its form fixed at its own step (`interface.owedAs`), and is owed by its check alone; a step over a held accumulator
+  # holds its earlier operand and the accumulator itself, the pair a step with no debt holds (`hold`).
   mergeDeclaredTypes =
     ts:
     let
@@ -1197,20 +1199,20 @@ let
             ks = o.ks ++ [ kd ];
           };
       # the debt behind the first step that meets: every declaration from index `i` to the last, one per value, each in
-      # the form that step's meet (join `j`, operands `os`) owes it. None was owed at its own step (each step since built
+      # the form that step's meet (join `j`) owes it. None was owed at its own step (each step since built
       # no met record), so each meets here, carried by this step's later operand
       debtFrom =
-        i: os: j:
-        builtins.foldl' (o: x: add o x (interface.owedAs j os (builtins.elemAt ts x))) {
+        i: j:
+        builtins.foldl' (o: x: add o x (interface.owedAs j (builtins.elemAt ts x))) {
           ds = [ ];
           ks = [ ];
         } (builtins.genList (x: n - 1 - x) (n - i));
-      # step `i`'s record `r`, over operands `earlier` and `later` (the meet's operands `os`), behind the debt `debt0` (a
+      # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `debt0` (a
       # met accumulator's, or `debtFrom`'s, read against this step's join):
       # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; debt; carrier }`,
       # the debt extended by this step's earlier in the form this step's meet owed it (`interface.owedAs`)
       classify =
-        r: i: later: os: debt0:
+        r: i: later: debt0:
         let
           t = r.merged;
           earlier = builtins.elemAt ts i;
@@ -1225,9 +1227,7 @@ let
         else
           let
             j = t.__meetJoin or t;
-            debt = add (if builtins.isFunction debt0 then debt0 os j else debt0) i (
-              interface.owedAs j os earlier
-            );
+            debt = add (if builtins.isFunction debt0 then debt0 j else debt0) i (interface.owedAs j earlier);
             # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
             # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
             # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
@@ -1314,7 +1314,7 @@ let
             )
           ) earlier acc.carrier;
         in
-        if i == 0 || r ? refused then r else opnd (classify r i acc.carrier xs acc.debt);
+        if i == 0 || r ? refused then r else opnd (classify r i acc.carrier acc.debt);
       # a record that built no met record yet carries `__meetJoin` passed an operand on: marked, so the next step does
       # not take it for one its step built
       opnd =
@@ -1343,24 +1343,13 @@ let
           let
             r = declaredPair null (builtins.elemAt ts i) acc.merged;
           in
-          if i == 0 || r ? refused then
-            r
-          else
-            opnd (
-              classify r i acc.merged [
-                (builtins.elemAt ts i)
-                acc.merged
-              ] (debtFrom (i + 1))
-            )
+          if i == 0 || r ? refused then r else opnd (classify r i acc.merged (debtFrom (i + 1)))
         else if !(acc.merged ? __meetJoin) then
           declaredPair null (builtins.elemAt ts i) acc.merged
         else
           # the step before built it, and neither of its operands carried `__meetJoin` (`later`: `declaredPair`'s record
           # states it)
-          metStep (classify acc (i + 1) acc.later [
-            (builtins.elemAt ts (i + 1))
-            acc.later
-          ] (debtFrom (i + 2))) i
+          metStep (classify acc (i + 1) acc.later (debtFrom (i + 2))) i
       ) { merged = prelude.last ts; } steps
     else
       foldl' (
@@ -1373,15 +1362,7 @@ let
           let
             r = declaredPair null (builtins.elemAt ts i) acc.merged;
           in
-          if i == 0 || r ? refused then
-            r
-          else
-            opnd (
-              classify r i acc.merged [
-                (builtins.elemAt ts i)
-                acc.merged
-              ] (debtFrom (i + 1))
-            )
+          if i == 0 || r ? refused then r else opnd (classify r i acc.merged (debtFrom (i + 1)))
       ) { merged = prelude.last ts; } steps;
   # A relation-supplied reason is that relation's own text and names the DECIDING (later) type
   # first; only the null-reason fallback is spelled here, and it names the pair in authored order,

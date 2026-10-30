@@ -7065,19 +7065,13 @@ let
       }
     else
       o;
-  # the form an operand `o` is owed in at a meet of the join `m` over the operands `os`, as `metWith` owes it: relativised
-  # to its own parameters where the join is fresh and widens it (lib/modules.nix `mergeDeclaredTypes` records a
-  # declaration's own-step form in a met accumulator's debt)
+  # the form a declaration `o` is owed in by a met accumulator's debt (lib/modules.nix `mergeDeclaredTypes`), fixed at
+  # the step where it meets the join `m`: relativised to its own parameters wherever `m` is its constructor's tree at the
+  # same or wider parameters, so a later step's wider join finds it owed relative to them (ADR-0039 THE MEET); on `m`'s
+  # own domain the two forms agree
   owedAs =
-    m: os: o:
-    let
-      so = shapeOf importedTypeWalkFuel o;
-      sm = shapeOf importedTypeWalkFuel m;
-    in
-    # the shape test first: a declaration its own join does not widen is owed as it is, and no key is compared
-    if
-      so != sm && widensAt so sm && builtins.all (x: closuresFirst [ m ] m != closuresFirst [ x ] x) os
-    then
+    m: o:
+    if widensAt (shapeOf importedTypeWalkFuel o) (shapeOf importedTypeWalkFuel m) then
       relativisedOver m o
     else
       o;
@@ -7108,8 +7102,9 @@ let
       m
     else
       let
-        # a step over a held accumulator (lib/modules.nix `mergeDeclaredTypes`) holds what main's step held: its
-        # earlier operand and the accumulator's unchecked fold, never the debt's own folds
+        # a step over a held accumulator (lib/modules.nix `mergeDeclaredTypes`) holds what main's step held over the
+        # same pair: its earlier operand and the accumulator, by `own`'s read of each (the accumulator's `mergeDefs`, which
+        # demands its own kept folds); the debt is owed by its checks alone
         hd = if ops == null then null else ops.hold or null;
         mayOwe =
           o:
@@ -7193,7 +7188,8 @@ let
           met = meetOf m once;
           kept =
             if hd != null then
-              hd
+              # main's own selection over what its step met: owed (`mayOwe`, the meet not holding), never the join
+              (if meets == false then filter mayOwe hd else hd)
             else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
               # a step taken past the witness holds such an operand whole, by its unchecked fold
               once
