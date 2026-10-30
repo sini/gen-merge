@@ -769,7 +769,23 @@ let
             debtT = t';
             debt = t'.node;
             inherit own;
-            ownCmps = map (x: interface.metWith.shapeCmpAt cmps.b i x) own;
+            # the earlier's comparison one role down, from its own comparison above (a role thread's `ownCmps`), or made here
+            # against the join's tree at a descent's top: never read off `cmps.a` / `cmps.b`, whose order is the caller's
+            ownCmps =
+              let
+                above =
+                  if thread ? ownCmps then
+                    thread.ownCmps
+                  else
+                    let
+                      sr = interface.metWith.shapeOf interface.importedTypeWalkFuel r;
+                    in
+                    map (o: interface.metWith.shapeCmp (interface.metWith.shapeOf interface.importedTypeWalkFuel o) sr) thread.own;
+              in
+              if length above != length thread.own || length own != length thread.own then
+                map (_: null) own
+              else
+                builtins.genList (j: interface.metWith.shapeCmpAt (builtins.elemAt above j) i (builtins.elemAt own j)) (length own);
             xs = t'.node.all ++ own;
           };
       at =
