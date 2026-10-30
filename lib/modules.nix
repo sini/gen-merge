@@ -754,7 +754,9 @@ let
       (
         let
           m = innerMet (
-            if rewrites != null && rewrites ? readers then
+            if rewrites == null then
+              null
+            else if rewrites ? readers then
               rewrites.readers.element
             else
               interface.metWith.anything.functorRecord rewrites (interface.carriedAt "element")
@@ -768,7 +770,9 @@ let
           m = builtins.genList (
             i:
             innerMet (
-              if rewrites != null && rewrites ? readers then
+              if rewrites == null then
+                null
+              else if rewrites ? readers then
                 pick rewrites.readers.alternatives i
               else
                 interface.metWith.anything.functorRecord rewrites (
