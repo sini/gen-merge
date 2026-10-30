@@ -944,7 +944,9 @@ let
             if rewrites == null then
               mergeElemTypes element partnerElem
             else
-              core.exports (core.readers rewrites (t: t.el) (interface.carriedAt "element")) element partnerElem;
+              rewrites.exports (rewrites.readers rewrites (t: t.el) (
+                interface.carriedAt "element"
+              )) element partnerElem;
         in
         if merged == null then
           elementRefusal partnerElem
@@ -1461,7 +1463,7 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (elementRel "listOf" listOf element);
-          rewrites = th: elementRelIn th null "listOf" listOf element;
+          rewrites = mkMerge: elementRelIn mkMerge null "listOf" listOf element;
         };
         # Descend to the element type under the positional placeholder segment. A container's module
         # set IS its element's, and substituting one rebuilds the container over the substituted
@@ -1689,7 +1691,7 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (rel tyName (attrsOfWith tyName) element);
-          rewrites = th: elementRelIn th row tyName (attrsOfWith tyName) element;
+          rewrites = mkMerge: elementRelIn mkMerge row tyName (attrsOfWith tyName) element;
         };
         # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
         # registry exposes its INSTANCE option surface to an introspecting consumer.
@@ -2082,7 +2084,7 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (elementRel "nullOr" nullOr element);
-          rewrites = th: elementRelIn th null "nullOr" nullOr element;
+          rewrites = mkMerge: elementRelIn mkMerge null "nullOr" nullOr element;
         };
         # Pass straight through to the element, adding NO path segment. A nullable introduces no path
         # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
@@ -2152,12 +2154,12 @@ let
           if rewrites == null then
             mergeElemTypes x y
           else
-            core.exports (core.readers rewrites (t: elemAt t.alt i) (
+            rewrites.exports (rewrites.readers rewrites (t: elemAt t.allowlist i) (
               d:
               let
-                z = interface.carriedAt "alternatives" d;
+                mkOrder = interface.carriedAt "alternatives" d;
               in
-              if z == null then null else elemAt z i
+              if mkOrder == null then null else elemAt mkOrder i
             )) x y;
         left = at 0 a (head alts);
         right = at 1 b (elemAt alts 1);
@@ -2308,11 +2310,11 @@ let
           # a fold step owing a debt (`elementRelIn`'s `rewrites`): a gen partner's members are met with the debt there
           # (asked only of a gen partner, `lib/modules.nix` `relationMergeWithin`)
           rewrites =
-            th: other:
+            mkMerge: other:
             if keyOf other != "either" then
               { refused = "`either' and `${nameOf other}'"; }
             else
-              eitherMemberwise th a b other;
+              eitherMemberwise mkMerge a b other;
         };
         substructure = {
           # A union's members introduce no path level, so it declares nothing of its own — stated

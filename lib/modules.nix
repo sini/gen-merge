@@ -611,45 +611,8 @@ let
   # walked, so asking again would re-walk every sub-tree once per level, quadratic in depth. Every
   # other ENTRY to a gen relation asks it too: `declaredPair`'s veto below, and `exportType`'s
   # `typeMerge` and `binOp` (`lib/interface.nix`), which a foreign engine calls.
-  # (a step thread's thread one role down: `rolesMet`, and a gen container relation's element meet, `lib/types.nix`)
   # one role down, a step owing a debt owes the debt tree's node there (one operand per owed set) and the role its own
   # earlier operand carries; a thread with no debt tree is read as before (`interface.metWith.anything.functorRecord`)
-  readers =
-    rewrites: pickT: f:
-    if rewrites == null then
-      null
-    else if !(rewrites ? debtT) then
-      interface.metWith.anything.functorRecord rewrites f
-    else
-      let
-        t' = pickT rewrites.debtT;
-        own = builtins.concatMap (
-          d:
-          let
-            x = f d;
-          in
-          if x == null then [ ] else [ x ]
-        ) rewrites.own;
-      in
-      {
-        debtT = t';
-        debt = t'.node;
-        inherit own;
-        xs = t'.node.all ++ own;
-      };
-  # a step thread's meet of one role pair (`th` the role thread): the relation's answer met with the thread once, unless
-  # the relation met it (`replaced`); the one descent a gen container relation's element meet takes under a debt
-  exports =
-    th: a: b:
-    let
-      x = relationMergeWithin th a b;
-    in
-    if x == null then
-      null
-    else if x ? replaced then
-      x.replaced
-    else
-      interface.metWith.metWith th false x th.xs;
   relationMergeWithin =
     rewrites: a: b:
     if b ? wraps && interface.wrapsKeyOf b a then
@@ -658,9 +621,7 @@ let
       let
         # a gen container relation taking a step's debt meets its role pair with it, one descent (`rewrites`)
         answer =
-          if
-            rewrites != null && rewrites ? debtT && a.typeMergeRel ? rewrites && isAttrs b && b ? carries
-          then
+          if rewrites != null && rewrites ? band && a.typeMergeRel ? rewrites && isAttrs b && b ? carries then
             a.typeMergeRel.rewrites rewrites b
           else
             a.typeMergeRel b;
@@ -783,11 +744,19 @@ let
         in
         if x == null then r else x;
       pick = l: i: builtins.elemAt l i;
-      subThread = readers rewrites;
+      # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree
+      witnessedCheck =
+        functorRecord: f:
+        if rewrites == null then
+          null
+        else if rewrites ? readers then
+          rewrites.readers rewrites functorRecord f
+        else
+          interface.metWith.anything.functorRecord rewrites f;
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
-        (if o != null && o ? debt then interface.metWith.metWith o else interface.metWith.core) false
+        (if o != null && o ? bNames then interface.metWith.metWith o else interface.metWith.core) false
           (rolesMet o r' a' b')
           (
             if o == null then
@@ -802,7 +771,7 @@ let
     if builtins.all (x: x != null) el then
       (
         let
-          m = innerMet (subThread (t: t.el) (interface.carriedAt "element")) (pick el 0) (pick el 1) (
+          m = innerMet (witnessedCheck (t: t.el) (interface.carriedAt "element")) (pick el 0) (pick el 1) (
             pick el 2
           );
         in
@@ -813,7 +782,7 @@ let
         let
           m = builtins.genList (
             i:
-            innerMet (subThread (t: pick t.alt i) (
+            innerMet (witnessedCheck (t: pick t.allowlist i) (
               d:
               let
                 x = interface.carriedAt "alternatives" d;
@@ -909,7 +878,7 @@ let
   # conjunction stays stricter). `declaredPair`'s veto arm routes a relation's `meets` answer through
   # the same function, and the foreign arm meets role by role (`rolesMet`).
   #  - A gen x gen step whose answer carries both operands owes nothing, so it is answered before
-  #    `metWith` is called and allocates nothing. A certified operand (`typeMergeRel.exact`) is carried
+  #    `metWith` is called and allocates nothing. A attrsetEntries operand (`typeMergeRel.exact`) is carried
   #    only where the answer is its own construction or a join stating parameters (`metWith`'s reading,
   #    with its scope); a leaf answer beside another construction's record meets it.
   #  - A pair that is ONE value keeps it (`x ⊔ x = x ⊓ x = x`): the same wrapped binding declared
@@ -932,7 +901,7 @@ let
   #
   # The step lives HERE rather than at `declaredPair`, because a check is dropped wherever a type
   # merge runs and this is the binding every stratum reaches: `listOf (addCheck int p)` beside
-  # `listOf int` drops it one level down, inside `elementRel`, which `declaredPair` never sees.
+  # `listOf int` drops it one level byLoc, inside `elementRel`, which `declaredPair` never sees.
   # "One value" is `interface.sameValue`: Nix `==` over `closuresFirst`'s subject, because an exported
   # record is cyclic, with the record's PHRASE left out (display data, and for a nesting type an output of
   # its own module set), and on a record stating a module set its own evaluation's outputs too
@@ -1078,7 +1047,10 @@ let
   # refuses, or where a foreign join drops a name an operand states (`interface.joinRenames`) — or,
   # for a foreign pair that is one shared value, by keeping it: README "Known byte-mode boundaries
   # (deliberate)".
-  declaredPair =
+  # the step with no thread, applied once (owner, 2026-10-30, D.4: the null step's per-step env equals main's on Lix, at
+  # one load thunk)
+  declaredPair = bandedLeaves null;
+  bandedLeaves =
     rewrites: earlier: later:
     let
       # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
@@ -1234,6 +1206,45 @@ let
       n = length ts;
       # the fold's met-step machinery, thunked only by a fold whose step builds a met record
       library = rec {
+        # one role down, a step thread's thread (`rolesMet`, and a gen container relation's element meet, `lib/types.nix`),
+        # and the meet of one role pair with it, carried by the thread: a fold that never meets binds neither
+        readers =
+          rewrites: functorRecord: f:
+          if rewrites == null then
+            null
+          else if !(rewrites ? band) then
+            interface.metWith.anything.functorRecord rewrites f
+          else
+            let
+              importLeaf = functorRecord rewrites.band;
+              own = builtins.concatMap (
+                d:
+                let
+                  x = f d;
+                in
+                if x == null then [ ] else [ x ]
+              ) rewrites.own;
+            in
+            {
+              band = importLeaf;
+              bNames = importLeaf.node;
+              inherit (rewrites) readers exports;
+              inherit own;
+              xs = importLeaf.node.all ++ own;
+            };
+        # a step thread's meet of one role pair (`mkMerge` the role thread): the relation's answer met with the thread once, unless
+        # the relation met it (`replaced`); the one descent a gen container relation's element meet takes under a debt
+        exports =
+          mkMerge: a: b:
+          let
+            x = relationMergeWithin mkMerge a b;
+          in
+          if x == null then
+            null
+          else if x ? replaced then
+            x.replaced
+          else
+            interface.metWith.metWith mkMerge false x mkMerge.xs;
         keyOf = x: interface.closuresFirst [ x ] x;
         # each declaration's one-value key (`closuresFirst`, as `metWith`'s one-value test reads it), read only by a met
         # step and shared by every step that reads it
@@ -1241,14 +1252,14 @@ let
         # a debt extended by the declaration at `j`, owed as `d` (its own-step form, ADR-0039 THE MEET: a declaration's
         # relativisation to its own parameters is the step's where it meets), one per value (`ks`, the declarations' keys),
         # in folding order; a later step owes them as they are (`rewrites.ds`, `interface.metWith.metWith`)
-        # THE DEBT AT EVERY ROLE: beside the forms (`ds`) and the declarations' keys (`ks`), a tree (`debt`) whose node at the
-        # top and at each role down (`el`, each `alt`) is an owed set (`interface.metWith.anything.owedAdd`): the forms owed
+        # THE DEBT AT EVERY ROLE: beside the forms (`ds`) and the declarations' keys (`ks`), a tree (`bNames`) whose node at the
+        # top and at each role down (`el`, each `allowlist`) is an owed set (`interface.metWith.anything.exhausted`): the forms owed
         # there, each declaration added once, in the form its own step's meet owes it at that node (relativised against that
         # step's join there, `interface.metWith.anything.ownRead`, never re-relativised later: ADR-0039 THE MEET as owed at
         # the step where it meets). A step owes each node's set as one operand: it pays one extension per node it descends,
-        # never the debt re-read per step and per role (`d` the form at the top, `jn` the step's join)
+        # never the debt re-read per step and per role (`d` the form at the top, `completedLeaves` the step's join)
         defineEmbedded =
-          o: j: d: jn:
+          o: j: d: completedLeaves:
           let
             link = builtins.elemAt ks j;
           in
@@ -1258,49 +1269,55 @@ let
             {
               ds = o.ds ++ [ d ];
               ks = o.ks ++ [ link ];
-              debt = structuring o.debt d (builtins.elemAt ts j) jn link;
+              bNames = structuring o.bNames d (builtins.elemAt ts j) completedLeaves link;
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
-          node = interface.metWith.anything.owedNil;
+          node = interface.metWith.anything.groundless;
           el = inlineOwn;
-          alt = [
+          allowlist = [
             inlineOwn
             inlineOwn
           ];
         };
-        # the tree `t` extended by the declaration `raw`, owed as `x` at this node, over the step's join `jn` there
+        # the tree `t` extended by the declaration `raw`, owed as `x` at this node, over the step's join `completedLeaves` there
         structuring =
-          t: x: raw: jn: kr:
+          t: x: raw: completedLeaves: defaultOrderPriority:
           let
-            inline' = y: if y == null then null else y.__meetJoin or y;
-            down =
-              t': raw': jn':
-              if raw' == null then
-                t'
+            check' = y: if y == null then null else y.__meetJoin or y;
+            markShared =
+              importLeaf: mergeConfigAttrs: copied:
+              if mergeConfigAttrs == null then
+                importLeaf
               else
-                structuring t' (
-                  if jn' == null then raw' else interface.metWith.anything.ownRead jn' raw'
-                ) raw' jn' (keyOf raw');
+                structuring importLeaf (
+                  if copied == null then
+                    mergeConfigAttrs
+                  else
+                    interface.metWith.anything.ownRead copied mergeConfigAttrs
+                ) mergeConfigAttrs copied (keyOf mergeConfigAttrs);
             re = interface.carriedAt "element" raw;
             ra = interface.carriedAt "alternatives" raw;
-            ja = if jn == null then null else interface.carriedAt "alternatives" jn;
+            completeParametric =
+              if completedLeaves == null then null else interface.carriedAt "alternatives" completedLeaves;
           in
           {
-            node = interface.metWith.anything.owedAdd t.node x raw kr;
-            el = down t.el re (if jn == null then null else inline' (interface.carriedAt "element" jn));
-            alt = builtins.genList (
+            node = interface.metWith.anything.elemsOf t.node x raw defaultOrderPriority;
+            el = markShared t.el re (
+              if completedLeaves == null then null else check' (interface.carriedAt "element" completedLeaves)
+            );
+            allowlist = builtins.genList (
               allow:
-              down (builtins.elemAt t.alt allow) (if ra == null then null else builtins.elemAt ra allow) (
-                if ja == null then null else inline' (builtins.elemAt ja allow)
-              )
+              markShared (builtins.elemAt t.allowlist allow) (
+                if ra == null then null else builtins.elemAt ra allow
+              ) (if completeParametric == null then null else check' (builtins.elemAt completeParametric allow))
             ) 2;
           };
         # the empty debt
         completeType = {
           ds = [ ];
           ks = [ ];
-          debt = inlineOwn;
+          bNames = inlineOwn;
         };
         # the debt behind the first step that meets: every declaration from index `i` to the last, one per value, each in
         # the form that step's meet (join `j`) owes it. None was owed at its own step (each step since built
@@ -1310,7 +1327,7 @@ let
           builtins.foldl' (
             o: x: defineEmbedded o x (interface.metWith.anything.ownRead j (builtins.elemAt ts x)) j
           ) completeType (builtins.genList (x: n - 1 - x) (n - i));
-        # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
+        # step `i`'s record `r`, over operands `earlier` and `later`, behind the bNames `checkedScope` (a
         # met accumulator's, or `elemsOf`'s, read against this step's join):
         # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; sealed }`,
         # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.anything.ownRead`)
@@ -1340,13 +1357,13 @@ let
               # (above) leaves the next step owing nothing, so a role it met keeps its meet: unwound there, that
               # role's declared checks would be owed by nobody
               inline = x: if ctorOf x then inline x.__meetJoin else x;
-              # a role is a declaration's own where its record is one of the debt's at that role (`rks`)
-              declaredAt = node: x: builtins.elem (keyOf x) node.rks;
+              # a role is a declaration's own where its record is one of the debt's at that role (`mergeExports`)
+              declaredAt = node: x: builtins.elem (keyOf x) node.mergeExports;
               u = inline t;
               e = interface.carriedAt "element" u;
               al = interface.carriedAt "alternatives" u;
               re =
-                if e != null && e ? __meetJoin && !(declaredAt checkedTypes.debt.el.node e) then
+                if e != null && e ? __meetJoin && !(declaredAt checkedTypes.bNames.el.node e) then
                   interface.rebuiltOverAt "element" (inline e) u
                 else
                   null;
@@ -1365,7 +1382,7 @@ let
                         let
                           y = builtins.elemAt al allow;
                         in
-                        if y ? __meetJoin && !(declaredAt (builtins.elemAt checkedTypes.debt.alt allow).node y) then
+                        if y ? __meetJoin && !(declaredAt (builtins.elemAt checkedTypes.bNames.allowlist allow).node y) then
                           inline y
                         else
                           y
@@ -1386,12 +1403,14 @@ let
             # this step owes its earlier as this step's meet relativises it, and the debt as owed at each one's own step
             own = if builtins.elem (builtins.elemAt ks i) acc.checkedTypes.ks then [ ] else [ earlier ];
             xs = acc.checkedTypes.ds ++ own;
-            r = declaredPair (
+            r = bandedLeaves (
               {
                 inherit xs own;
                 inherit (acc.checkedTypes) ds;
-                debtT = acc.checkedTypes.debt;
-                debt = acc.checkedTypes.debt.node;
+                # the role thread and its meet, for a gen container relation's element meet (`lib/types.nix`)
+                inherit readers exports;
+                band = acc.checkedTypes.bNames;
+                bNames = acc.checkedTypes.bNames.node;
               }
               # a held accumulator: this step holds its earlier and the accumulator's own unchecked fold, as main's step
               # held them (the debt is owed as a check only)
@@ -1436,14 +1455,14 @@ let
           library.readPair acc i
         else if acc ? markShared then
           let
-            r = declaredPair null (builtins.elemAt ts i) acc.merged;
+            r = declaredPair (builtins.elemAt ts i) acc.merged;
           in
           if i == 0 || r ? refused then
             r
           else
             library.markShared (library.spelledRead r i acc.merged (library.elemsOf (i + 1)))
         else if !(acc.merged ? __meetJoin) then
-          declaredPair null (builtins.elemAt ts i) acc.merged
+          declaredPair (builtins.elemAt ts i) acc.merged
         else
           # the step before built it, and neither of its operands carried `__meetJoin` (`later`: `declaredPair`'s record
           # states it)
@@ -1458,7 +1477,7 @@ let
           library.readPair acc i
         else
           let
-            r = declaredPair null (builtins.elemAt ts i) acc.merged;
+            r = declaredPair (builtins.elemAt ts i) acc.merged;
           in
           if i == 0 || r ? refused then
             r
@@ -9994,8 +10013,6 @@ in
     # Their descent past the pre-flight, for a relation's own recursion (`lib/types.nix`
     # `mergeElemTypes`): an operand there is a sub-tree of one the entry already walked.
     mergeTypesWithin
-    readers
-    exports
     mergeTypesReasonWithin
     # A nested tree's position record and the report mode its child evaluates in (den-hoag-n6dh7),
     # on the internal seam for the key walk that mints the children.
