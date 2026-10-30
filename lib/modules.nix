@@ -651,7 +651,7 @@ let
             )
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
             (opsMet ops (
-              interface.metWithOps (if ops != null && ops.held then "holds" else true) r (
+              interface.metWithOps true r (
                 if ops == null then
                   [
                     a
@@ -663,7 +663,7 @@ let
             ))
           else
             (opsMet ops (
-              interface.metWithOps (if ops != null && ops.held then "holds" else true) (rolesMet ops r a b) (
+              interface.metWithOps true (rolesMet ops r a b) (
                 if ops == null then
                   [
                     a
@@ -735,7 +735,6 @@ let
           in
           if x == null then [ ] else [ x ]
         ) ops.xs;
-        held = false;
       };
   rolesMet =
     ops: r: a: b:
@@ -925,12 +924,7 @@ let
     if m == null then
       null
     else if ops != null then
-      (
-        if m ? __opsMet then
-          m.__opsMet
-        else
-          interface.metWithOps (if ops.held then "held" else false) m ops.xs ops
-      )
+      (if m ? __opsMet then m.__opsMet else interface.metWithOps false m ops.xs ops)
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer carries a certified operand where it is that operand's own construction (one
       # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s
@@ -1108,7 +1102,7 @@ let
               )
               ops
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.metWithOps (if ops != null && ops.held then "holds" else true) r (
+            interface.metWithOps true r (
               if ops == null then
                 [
                   earlier
@@ -1118,18 +1112,15 @@ let
                 ops.xs
             ) ops
           else
-            interface.metWithOps (if ops != null && ops.held then "holds" else true)
-              (rolesMet ops r earlier later)
-              (
-                if ops == null then
-                  [
-                    earlier
-                    later
-                  ]
-                else
-                  ops.xs
-              )
-              ops;
+            interface.metWithOps true (rolesMet ops r earlier later) (
+              if ops == null then
+                [
+                  earlier
+                  later
+                ]
+              else
+                ops.xs
+            ) ops;
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
@@ -1307,11 +1298,25 @@ let
               acc.debt.ds
             else
               acc.debt.ds ++ [ earlier ];
-          r = declaredPair {
-            inherit xs;
-            inherit (acc.debt) fz;
-            held = false;
-          } earlier acc.carrier;
+          r = declaredPair (
+            {
+              inherit xs;
+              inherit (acc.debt) fz;
+            }
+            # a held accumulator: this step holds its earlier and the accumulator's own unchecked fold, as main's step
+            # held them (the debt is owed as a check only)
+            // (
+              if acc.merged ? holds then
+                {
+                  hold = [
+                    earlier
+                    acc.merged
+                  ];
+                }
+              else
+                { }
+            )
+          ) earlier acc.carrier;
         in
         if i == 0 || r ? refused then r else opnd (classify r i acc.carrier xs acc.debt);
       # a record that built no met record yet carries `__meetJoin` passed an operand on: marked, so the next step does

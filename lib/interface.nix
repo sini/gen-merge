@@ -7073,9 +7073,12 @@ let
     let
       km = closuresFirst [ m ] m;
       so = shapeOf importedTypeWalkFuel o;
-      sm = shapeOf importedTypeWalkFuel m;
     in
-    if builtins.all (x: km != closuresFirst [ x ] x) os && so != sm && widensAt so sm then
+    if
+      builtins.all (x: km != closuresFirst [ x ] x) os
+      && so != shapeOf importedTypeWalkFuel m
+      && widensAt so (shapeOf importedTypeWalkFuel m)
+    then
       relativisedOver m o
     else
       o;
@@ -7083,7 +7086,7 @@ let
     meets: m: os:
     metWithOps meets m os null;
   # `ops` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt names the owed records already
-  # in their own-step form (`ops.fz`, their one-value keys), which this meet owes as they are, never relativised again
+  # relativised at their own step (`ops.fz`, their one-value keys), which this meet owes as they are
   metWithOps =
     meets: m: os: ops:
     if
@@ -7101,10 +7104,14 @@ let
         && !(replacesVerify o)
         && !(o ? holds)
       ) os
+      && (ops == null || !(ops ? hold))
     then
       m
     else
       let
+        # a step over a held accumulator (lib/modules.nix `mergeDeclaredTypes`) holds what main's step held: its
+        # earlier operand and the accumulator's unchecked fold, never the debt's own folds
+        hd = if ops == null then null else ops.hold or null;
         mayOwe =
           o:
           !(
@@ -7124,8 +7131,7 @@ let
             so = shapeOf importedTypeWalkFuel o;
           in
           so != sm && widensAt so sm;
-        # `held`: a step meeting a held accumulator's declarations (lib/modules.nix `mergeDeclaredTypes`) is held again
-        maybe = if meets == false || meets == "held" then filter mayOwe os else os;
+        maybe = if meets == false then filter mayOwe os else os;
         # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
         # compared inline so the meet binds nothing for it
         km = closuresFirst [ m ] m;
@@ -7142,11 +7148,11 @@ let
           else
             owed;
       in
-      if maybe == [ ] then
+      if maybe == [ ] && hd == null then
         m
       else if (importedSubstructure m).modules != null then
         carriedAtDepth true os m
-      else if owed == [ ] then
+      else if owed == [ ] && hd == null then
         m
       # a held operand (a record met holding, `holds`) is held again wherever it is met. So is an operand stating a
       # relation gen did not construct (a `typeMergeRel` with no `exact` witness) and not relativised to its own
@@ -7157,7 +7163,7 @@ let
       # before this branch
       else if
         meets == "holds"
-        || meets == "held"
+        || hd != null
         || builtins.catAttrs "holds" once != [ ]
         ||
           !(m ? typeMergeRel)
@@ -7178,7 +7184,9 @@ let
         let
           met = meetOf m once;
           kept =
-            if meets == "holds" || meets == "held" || builtins.catAttrs "holds" once != [ ] then
+            if hd != null then
+              hd
+            else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
               # a step taken past the witness holds such an operand whole, by its unchecked fold
               once
             else if !(m ? typeMergeRel) then
