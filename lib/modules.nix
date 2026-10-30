@@ -717,27 +717,29 @@ let
         ))
       else
         rolesMet thread r.merged a b;
-  rolesMet = rolesMetS null;
-  # `sh`: the operands' tree comparisons (`{ a; b; }`, each `null` where it has none) with the join's (`interface.metWith.shapeCmp`), handed down from the role above, or
+  # `rolesMet.below sh`: the same, handed the operands' tree comparisons (`sh`) by the role above
+  # `sh`: the operands' tree comparisons (`{ a; b; }`, each `null` where it has none) with the join's (`interface.metWith.node`), handed down from the role above, or
   # `null` at a descent's top, which makes them here once for every role below it
-  rolesMetS =
+  rolesMet = {
+    __functor = self: self.below null;
+    below =
     sh: thread: r: a: b:
     let
-      cmps =
+      pairs =
         if sh != null then
           sh
         else
           let
-            sr = interface.metWith.shapeOf interface.importedTypeWalkFuel r;
+            tree = interface.metWith.shapeOf interface.importedTypeWalkFuel r;
           in
           {
-            a = interface.metWith.shapeCmp (interface.metWith.shapeOf interface.importedTypeWalkFuel a) sr;
-            b = interface.metWith.shapeCmp (interface.metWith.shapeOf interface.importedTypeWalkFuel b) sr;
+            a = interface.metWith.node (interface.metWith.shapeOf interface.importedTypeWalkFuel a) tree;
+            b = interface.metWith.node (interface.metWith.shapeOf interface.importedTypeWalkFuel b) tree;
           };
       # lazy: a role meet forces its node's comparison only where it relativises an operand, as it would walk one
-      subSh = i: a': b': {
-        a = interface.metWith.shapeCmpAt cmps.a i a';
-        b = interface.metWith.shapeCmpAt cmps.b i b';
+      sub = i: a': b': {
+        a = interface.metWith.below pairs.a i a';
+        b = interface.metWith.below pairs.b i b';
       };
       at =
         role:
@@ -757,9 +759,9 @@ let
       pick = l: i: builtins.elemAt l i;
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
-        o: s': r': a': b':
-        interface.metWith.metWithS s' false
-          (rolesMetS s' o r' a' b')
+        o: o': r': a': b':
+        interface.metWith.step o' false
+          (rolesMet.below o' o r' a' b')
           (
             if o == null then
               [
@@ -775,7 +777,7 @@ let
       (
         let
           o = interface.metWith.subOf thread (interface.carriedAt "element");
-          m = innerMet o (if o == null then subSh 0 (pick el 1) (pick el 2) else null) (pick el 0) (pick el 1) (pick el 2);
+          m = innerMet o (if o == null then sub 0 (pick el 1) (pick el 2) else null) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
@@ -793,7 +795,7 @@ let
                 if x == null then null else pick x i
               );
             in
-            innerMet o (if o == null then subSh i (pick (pick al 1) i) (pick (pick al 2) i) else null) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+            innerMet o (if o == null then sub i (pick (pick al 1) i) (pick (pick al 2) i) else null) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
           ) 2;
         in
         if
@@ -865,6 +867,7 @@ let
         in
         if x == null then r else x
       );
+  };
   relationMerge =
     a: b:
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then

@@ -6966,25 +6966,25 @@ let
       && builtins.all (i: metWith.widensAt (elemAt a.e i) (elemAt b.e i)) (
         builtins.genList (i: i) (length a.e)
       );
-    # the two trees compared ONCE, node by node: `same` is `a == b` and `wid` is `widensAt a b`, each a node's own test over
+    # the two trees compared ONCE, node by node: `same` is `a == b` and `holds` is `widensAt a b`, each a node's own test over
     # its elements' answers (`es`), so the meet one role down reads its node's answer (`metWith`'s `sx`, handed down by
     # `lib/modules.nix` `rolesMet`) instead of walking its subtree again: a step pays its trees once, not once per level
-    shapeCmp =
+    node =
       a: b:
       let
         n = length a.e;
-        es = if n == length b.e then builtins.genList (i: metWith.shapeCmp (elemAt a.e i) (elemAt b.e i)) n else [ ];
+        es = if n == length b.e then builtins.genList (i: metWith.node (elemAt a.e i) (elemAt b.e i)) n else [ ];
       in
       {
         inherit a b es;
         same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
-        wid = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.wid) es;
+        holds = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.holds) es;
       };
     # the constructor's name a node's tree states for `x` (`shapeOf`'s `n`)
-    nodeName = x: ((wrappedBase x).functor or { }).name or null;
+    own = x: ((wrappedBase x).functor or { }).name or null;
     # the comparison one role down, for the operand `x` that role carries: the node `c.es` holds at `i` where it is `x`'s own
     # node (its constructor's name), else `null` (the meet there walks `x` itself)
-    shapeCmpAt =
+    below =
       c: i: x:
       if c == null || i >= length c.es then
         null
@@ -6992,7 +6992,7 @@ let
         let
           ci = elemAt c.es i;
         in
-        if ci.a.n == metWith.nodeName x then ci else null;
+        if ci.a.n == metWith.own x then ci else null;
     # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.ownRead`)
     judgeAt =
       m: o:
@@ -7126,11 +7126,11 @@ let
         o;
     # `thread` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `thread.xs` = `thread.ds` (the
     # debt, each record already relativised at its own step, owed as it is) ++ `thread.own` (the step's own earlier operand)
-    metWith = metWith.metWithS null;
+    metWith = metWith.step null;
     # `sx` (`lib/modules.nix` `rolesMet`, one role down): the two operands' tree comparisons with the join's, `{ a; b; }` by
-    # position in `os` (`shapeCmpAt`; `null` where it has none), read instead of walking those trees again
-    metWithS =
-      sx: meets: m: os: thread:
+    # position in `os` (`below`; `null` where it has none), read instead of walking those trees again
+    step =
+      tag: meets: m: os: thread:
       if
         meets == false
         && m ? typeMergeRel
@@ -7181,23 +7181,23 @@ let
           notM = filter (o: sameKey != closuresFirst [ o ] o) maybe;
           fresh = builtins.all (o: sameKey != closuresFirst [ o ] o) os;
           rel = map (o: if fresh && widens o then metWith.judgeAt m o else o);
-          relAt =
+          seen =
             i: o:
             let
-              c = if i == 0 then sx.a else sx.b;
+              c = if i == 0 then tag.a else tag.b;
             in
-            if fresh && (if c == null then widens o else !c.same && c.wid) then metWith.judgeAt m o else o;
+            if fresh && (if c == null then widens o else !c.same && c.holds) then metWith.judgeAt m o else o;
           # a step owing a met accumulator's debt (`thread.ds`, each declaration in its own-step form) relativises only its own
           # earlier operand (`thread.own`); the debt is owed as it is
           owed =
-            if (thread == null || !(thread ? own)) && sx != null then
+            if (thread == null || !(thread ? own)) && tag != null then
               builtins.concatLists (
                 builtins.genList (
                   i:
                   let
                     o = elemAt os i;
                   in
-                  if (meets != false || mayOwe o) && sameKey != closuresFirst [ o ] o then [ (relAt i o) ] else [ ]
+                  if (meets != false || mayOwe o) && sameKey != closuresFirst [ o ] o then [ (seen i o) ] else [ ]
                 ) (length os)
               )
             else if thread == null || !(thread ? own) then
