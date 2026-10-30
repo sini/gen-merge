@@ -859,7 +859,7 @@ let
         if x == null then r else x
       );
   relationMerge =
-    a: b:
+    _: a: b:
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then
       null
     else
@@ -919,7 +919,7 @@ let
   mergeTypesBy =
     ops: relation: a: b:
     let
-      m = relation a b;
+      m = relation ops a b;
     in
     if m == null then
       null
@@ -968,7 +968,7 @@ let
         b
       ];
   mergeTypes = mergeTypesBy null relationMerge;
-  mergeTypesWithin = mergeTypesBy null (relationMergeWithin null);
+  mergeTypesWithin = mergeTypesBy null relationMergeWithin;
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -993,7 +993,7 @@ let
   mergeTypesReasonBy =
     within: a: b:
     let
-      m = (if within then relationMergeWithin null else relationMerge) a b;
+      m = (if within then relationMergeWithin else relationMerge) null a b;
       dA = m != null && dropsWrappedCheck m a;
       dB = m != null && dropsWrappedCheck m b;
     in
@@ -1068,15 +1068,12 @@ let
         else if veto ? refused then
           (
             let
-              tried = builtins.tryEval (
-                (if ops == null then mergeTypesWithin else mergeTypesBy ops (relationMergeWithin ops)) later earlier
-              );
+              tried = builtins.tryEval ((mergeTypesBy ops relationMergeWithin) later earlier);
             in
             if tried.success then tried.value else null
           )
         else
-          (if ops == null then mergeTypesWithin else mergeTypesBy ops (relationMergeWithin ops)) later
-            earlier;
+          (mergeTypesBy ops relationMergeWithin) later earlier;
     in
     if veto.meets or false then
       {
