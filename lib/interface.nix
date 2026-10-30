@@ -6749,6 +6749,7 @@ let
               conj;
           _checkWitness = j._checkWitness or j.check;
           __meetJoin = j;
+          __shapeTree = metWith.shapeOf importedTypeWalkFuel j;
           merge =
             if v2 then
               {
@@ -6928,8 +6929,14 @@ let
     # (an element's parameters are its container's: `nullOr (enum [a])` is parameterised by `[a]`).
     # Past the walk's fuel a tree states nothing more, so a change that deep is owed whole.
     # a record declaring the record it `wraps` is parameterised by that record (`wrappedBase`)
+    # a met record states its tree (`__shapeTree`, its join's, made once and only where read): a foreign relation asked of a
+    # carrier whose roles are met records asks each role's exported `typeMerge` (nixpkgs' `binOp` recursion), and that
+    # meet reads the record's tree at every level; read off the record, it is walked once, not once per level above it
     shapeOf =
       fuel: t:
+      if t ? __shapeTree then
+        t.__shapeTree
+      else
       let
         f = (wrappedBase t).functor or { };
         p = f.payload or null;
