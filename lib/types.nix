@@ -794,11 +794,14 @@ let
   # (`interface.joinCarriedInStatedRelation`), so the merged type is that partner's record and not a
   # gen one, whichever declaration came first. Every other pair is row-free as above. The test for a
   # gen partner sits here, not in the binding, so a gen × gen pair builds nothing for it.
-  elementRel = elementRelIn null;
+  elementRel = elementRelIn null null;
   # `embedding`: the `interface.embeddings` row the container's constructor states, applied once per
   # constructor (`attrsOfWith`).
+  # `rewrites` (`lib/modules.nix` `relationMergeWithin`): a fold step owing a debt hands its thread to the relation, which
+  # meets the element pair with the debt one role down (`core.readers`, `core.exports`) and says so (`rolesMet`): the step
+  # descends once, never a role meet again after the relation's own element meet
   elementRelIn =
-    embedding: name: rebuild: element: other:
+    rewrites: embedding: name: rebuild: element: other:
     if !(isAttrs other) || (keyOf other) != name then
       { refused = "`${name}' and `${nameOf other}'"; }
     else
@@ -937,13 +940,18 @@ let
           }
       else
         let
-          merged = mergeElemTypes element partnerElem;
+          merged =
+            if rewrites == null then
+              mergeElemTypes element partnerElem
+            else
+              core.exports (core.readers rewrites (t: t.el) (interface.carriedAt "element")) element partnerElem;
         in
         if merged == null then
           elementRefusal partnerElem
         else
           {
             merged = rebuild merged;
+            ${if rewrites == null then null else "rolesMet"} = true;
             # the element pair's join the twin refuses, carried up as `vetoes` is (read by a foreign engine's ask)
             twinRefuses = element ? typeMergeRel && ((element.typeMergeRel partnerElem).twinRefuses or false);
           };
@@ -1453,6 +1461,7 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (elementRel "listOf" listOf element);
+          rewrites = th: elementRelIn th null "listOf" listOf element;
         };
         # Descend to the element type under the positional placeholder segment. A container's module
         # set IS its element's, and substituting one rebuilds the container over the substituted
@@ -1523,7 +1532,7 @@ let
       # the row this constructor states, applied once per constructor rather than per construction
       row = interface.embeddings.${tyName};
       define = defineEmbedded row;
-      rel = elementRelIn row;
+      rel = elementRelIn null row;
     in
     element:
     let
@@ -1680,6 +1689,7 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (rel tyName (attrsOfWith tyName) element);
+          rewrites = th: elementRelIn th row tyName (attrsOfWith tyName) element;
         };
         # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
         # registry exposes its INSTANCE option surface to an introspecting consumer.
@@ -2072,6 +2082,7 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (elementRel "nullOr" nullOr element);
+          rewrites = th: elementRelIn th null "nullOr" nullOr element;
         };
         # Pass straight through to the element, adding NO path segment. A nullable introduces no path
         # level — `nullOr (submodule …)` declares exactly what the submodule declares, at the same
@@ -2128,7 +2139,7 @@ let
   # pairwise or the pair refuses. Bound at file level, not inside `either`, so it costs a gen × gen
   # pair no thunk per construction or per call.
   eitherMemberwise =
-    a: b: other:
+    rewrites: a: b: other:
     let
       alts = interface.importedOffered "alternatives" other;
     in
@@ -2136,13 +2147,28 @@ let
       { refused = "`either' and a partner that states no member pair"; }
     else
       let
-        left = mergeElemTypes a (head alts);
-        right = mergeElemTypes b (elemAt alts 1);
+        at =
+          i: x: y:
+          if rewrites == null then
+            mergeElemTypes x y
+          else
+            core.exports (core.readers rewrites (t: elemAt t.alt i) (
+              d:
+              let
+                z = interface.carriedAt "alternatives" d;
+              in
+              if z == null then null else elemAt z i
+            )) x y;
+        left = at 0 a (head alts);
+        right = at 1 b (elemAt alts 1);
       in
       if left == null || right == null then
         { refused = "`either' and `either', whose members do not merge pairwise"; }
       else
-        { merged = either left right; };
+        {
+          merged = either left right;
+          ${if rewrites == null then null else "rolesMet"} = true;
+        };
 
   # either A B — recursion-safe lazy union: merge through the member that accepts EVERY definition,
   # or refuse by name (byte-mode best-effort; the surface's only use is aspectOrFn where A's domain
@@ -2263,7 +2289,7 @@ let
               if !(isAttrs other) || (keyOf other) != "either" then
                 { refused = "`either' and `${nameOf other}'"; }
               else if other ? carries then
-                eitherMemberwise a b other
+                eitherMemberwise null a b other
               else
                 let
                   foreignJoin = interface.joinInRebuiltPartner {
@@ -2277,8 +2303,16 @@ let
                     meets = true;
                   }
                 else
-                  eitherMemberwise a b other
+                  eitherMemberwise null a b other
             );
+          # a fold step owing a debt (`elementRelIn`'s `rewrites`): a gen partner's members are met with the debt there
+          # (asked only of a gen partner, `lib/modules.nix` `relationMergeWithin`)
+          rewrites =
+            th: other:
+            if keyOf other != "either" then
+              { refused = "`either' and `${nameOf other}'"; }
+            else
+              eitherMemberwise th a b other;
         };
         substructure = {
           # A union's members introduce no path level, so it declares nothing of its own — stated

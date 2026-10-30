@@ -611,13 +611,59 @@ let
   # walked, so asking again would re-walk every sub-tree once per level, quadratic in depth. Every
   # other ENTRY to a gen relation asks it too: `declaredPair`'s veto below, and `exportType`'s
   # `typeMerge` and `binOp` (`lib/interface.nix`), which a foreign engine calls.
+  # (a step thread's thread one role down: `rolesMet`, and a gen container relation's element meet, `lib/types.nix`)
+  # one role down, a step owing a debt owes the debt tree's node there (one operand per owed set) and the role its own
+  # earlier operand carries; a thread with no debt tree is read as before (`interface.metWith.anything.functorRecord`)
+  readers =
+    rewrites: pickT: f:
+    if rewrites == null then
+      null
+    else if !(rewrites ? debtT) then
+      interface.metWith.anything.functorRecord rewrites f
+    else
+      let
+        t' = pickT rewrites.debtT;
+        own = builtins.concatMap (
+          d:
+          let
+            x = f d;
+          in
+          if x == null then [ ] else [ x ]
+        ) rewrites.own;
+      in
+      {
+        debtT = t';
+        debt = t'.node;
+        inherit own;
+        xs = t'.node.all ++ own;
+      };
+  # a step thread's meet of one role pair (`th` the role thread): the relation's answer met with the thread once, unless
+  # the relation met it (`replaced`); the one descent a gen container relation's element meet takes under a debt
+  exports =
+    th: a: b:
+    let
+      x = relationMergeWithin th a b;
+    in
+    if x == null then
+      null
+    else if x ? replaced then
+      x.replaced
+    else
+      interface.metWith.metWith th false x th.xs;
   relationMergeWithin =
     rewrites: a: b:
     if b ? wraps && interface.wrapsKeyOf b a then
       relationMergeWithin rewrites b a
     else if a ? typeMergeRel then
       let
-        answer = a.typeMergeRel b;
+        # a gen container relation taking a step's debt meets its role pair with it, one descent (`rewrites`)
+        answer =
+          if
+            rewrites != null && rewrites ? debtT && a.typeMergeRel ? rewrites && isAttrs b && b ? carries
+          then
+            a.typeMergeRel.rewrites rewrites b
+          else
+            a.typeMergeRel b;
       in
       # a `meets` answer is the carrier: met at every role it carries and at the top. A join carrying no role
       # (no element, no alternatives, no payload to hold an option) is met at the top alone, so it pays no
@@ -682,7 +728,9 @@ let
       # the mark tells the two apart
       else if answer ? merged then
         (
-          if
+          if answer.rolesMet or false then
+            answer.merged
+          else if
             rewrites != null
             ||
               a ? retainedRelation
@@ -735,31 +783,7 @@ let
         in
         if x == null then r else x;
       pick = l: i: builtins.elemAt l i;
-      # one role down, a step owing a debt owes the debt tree's node there (one operand per owed set) and the role its own
-      # earlier operand carries; a thread with no debt tree is read as before (`interface.metWith.anything.functorRecord`)
-      subThread =
-        pickT: f:
-        if rewrites == null then
-          null
-        else if !(rewrites ? debtT) then
-          interface.metWith.anything.functorRecord rewrites f
-        else
-          let
-            t' = pickT rewrites.debtT;
-            own = builtins.concatMap (
-              d:
-              let
-                x = f d;
-              in
-              if x == null then [ ] else [ x ]
-            ) rewrites.own;
-          in
-          {
-            debtT = t';
-            debt = t'.node;
-            inherit own;
-            xs = t'.node.all ++ own;
-          };
+      subThread = readers rewrites;
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
@@ -9970,6 +9994,8 @@ in
     # Their descent past the pre-flight, for a relation's own recursion (`lib/types.nix`
     # `mergeElemTypes`): an operand there is a sub-tree of one the entry already walked.
     mergeTypesWithin
+    readers
+    exports
     mergeTypesReasonWithin
     # A nested tree's position record and the report mode its child evaluates in (den-hoag-n6dh7),
     # on the internal seam for the key walk that mints the children.
