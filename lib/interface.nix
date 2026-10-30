@@ -6979,10 +6979,9 @@ let
               so = metWith.anything.shapeOf importedTypeWalkFuel o;
             in
             so != sm && metWith.anything.widensAt so sm;
-          bNames = if rewrites == null then null else rewrites.bNames or null;
           # a step owing a debt: what it owes is decided once (`owed`); the empty test reads that, as main's reads `maybe`
           maybe =
-            if bNames != null then
+            if rewrites != null && rewrites ? bNames then
               owed
             else if meets == false then
               filter mayOwe os
@@ -7006,12 +7005,12 @@ let
               )
             else
               filter (o: completeExport != closuresFirst [ o ] o) maybe;
-          lintLib = if bNames == null then [ ] else map (o: closuresFirst [ o ] o) rewrites.own;
           fresh =
-            if bNames != null then
-              !(builtins.elem completeExport bNames.completedLeaves)
-              && !(builtins.elem completeExport lintLib)
-              && builtins.all (o: completeExport != closuresFirst [ o ] o) bNames.mkBefore
+            # (a step owing a debt reads it off the thread here and below, binding nothing on a meet that owes none)
+            if rewrites != null && rewrites ? bNames then
+              !(builtins.elem completeExport rewrites.bNames.completedLeaves)
+              && builtins.all (o: completeExport != closuresFirst [ o ] o) rewrites.own
+              && builtins.all (o: completeExport != closuresFirst [ o ] o) rewrites.bNames.mkBefore
             else if rewrites != null && rewrites ? exports then
               builtins.all (k: completeExport != k) rewrites.exports
               && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
@@ -7023,8 +7022,8 @@ let
           owed =
             if rewrites == null || !(rewrites ? own) then
               rel notM
-            else if bNames != null then
-              metWith.anything.hygiene meets m mayOwe completeExport bNames
+            else if rewrites ? bNames then
+              metWith.anything.hygiene meets m mayOwe completeExport rewrites.bNames
               ++ rel (
                 builtins.concatLists (
                   builtins.genList (
@@ -7032,7 +7031,7 @@ let
                     let
                       o = elemAt rewrites.own i;
                     in
-                    if (meets != false || mayOwe o) && completeExport != elemAt lintLib i then [ o ] else [ ]
+                    if (meets != false || mayOwe o) && completeExport != closuresFirst [ o ] o then [ o ] else [ ]
                   ) (length rewrites.own)
                 )
               )
