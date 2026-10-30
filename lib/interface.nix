@@ -398,7 +398,7 @@ let
     # ★ THE MODULE SET A DECLARATION STATES (den-hoag-y4w78). nixpkgs reads a declaration's module set off its
     # `getSubModules` alone (`mergeOptionDecls` collects a declaration's set only where it is not `null`, and
     # `fixupOptionType` mounts a type stating `null` as it is), so a declaration stating `null` contributes no module
-    # to its option. A `//` copy that nulls a record's module set (`// { getSubModules = null; }`) carries its base's
+    # to its option. A `//` copy that core a record's module set (`// { getSubModules = null; }`) carries its base's
     # `substructure`, which still states the set, so the five readers of a declaration's contribution to its option
     # (`modules.nix` `fixupModuleSets`' own sets and mount test, `spineModules`, `sameValue.kept`, the published
     # doors, `homedRootFixed`'s rebuild over the fold's list) read the statement, not the carried substructure. A copy stating another list is not read here.
@@ -465,7 +465,7 @@ let
     kept =
       m: a: b:
       if adHocChecked a then
-        metWith.nulls false m [
+        metWith.core false m [
           a
           b
         ]
@@ -806,7 +806,7 @@ let
   # foreign `check`, every definition passes that `check` before the fold sees it — nixpkgs
   # `mergeDefinitions`' `checkedAndMerged`. The check wraps the descriptor's OWN fold, whichever
   # spelling states it, and reaches `leafFold` only for a descriptor that states none. A `verify`
-  # beside the `check` marks a gen leaf, whose `check` is curried and which the spine already
+  # beside the `check` exports a gen leaf, whose `check` is curried and which the spine already
   # applies, only on a record that carries gen's check witness or completion stamp. A FOREIGN
   # record carrying a `verify` (`np.attrs // { verify }`) carries neither, and its `check` is still
   # the foreign one: `verify` judges the MERGED value, so it cannot stand in for the
@@ -2330,7 +2330,7 @@ let
     in
     # a container whose constructor ships a v2 merge, stating none, is a `//` override of its fold, which reads its
     # element as it chooses; it is not walked. Whether the constructor ships one is a fact of the release in hand
-    # (`nullOr` ships none on nixos-26.05), so it is read off the record: nixpkgs marks its `check`
+    # (`nullOr` ships none on nixos-26.05), so it is read off the record: nixpkgs exports its `check`
     # `isV2MergeCoherent` beside every v2 merge it ships, and a merge override keeps that check; an override of the
     # check too is told by the functor's own rebuild (`coercedTo`'s rebuilds nothing, its check states it). The row is
     # selected in place at each read: a binding for it, or an argument to a call, costs a thunk on every option's
@@ -2434,7 +2434,7 @@ let
       )
     # a v2 container with no copy on its frontier keeps its own fold, its value guarded through its metadata; one
     # holding a copy is rebuilt by its functor over its element completed, as nixpkgs rebuilds it; one whose functor
-    # rebuilds nothing (`attrListOf`) keeps its fold; over a copy its elements are judged by the copy's `verify`
+    # rebuilds nothing (`attrListOf`) keeps its fold; over a copy its readers are judged by the copy's `verify`
     else if t ? merge.v2 && !(frontierAt judgedAt t) then
       metaGuarded t
     else if frontierOf t != [ ] then
@@ -4639,7 +4639,7 @@ let
                     # the `coercedType` of each `coercedTo` above the step at this level (`levels`)
                     list = [ ];
                     # the level `lv` over the definitions `ds` the step folds and the fold's result
-                    # `r`: the level carrying the split's elements (`es`) and the result as a view
+                    # `r`: the level carrying the split's readers (`es`) and the result as a view
                     # keyed by their segments, or the eager walk (`lv = null`) where a definition is
                     # not a list, one is a `coercedType`'s, or the result is not a list
                     at =
@@ -6778,7 +6778,7 @@ let
           # asked by a foreign engine, which hands over a FUNCTOR only: the join is met with this record again,
           # through `metWith` like every other step, so a join widening this record's own parameters (enum)
           # owes it relativised. Where every step's relation answers at the top constructor, the fold is then
-          # the same in every order; `lib/types.nix`'s `metElem` still meets through `meetOf` directly, which
+          # the same in every order; `lib/types.nix`'s `importLeaf` still meets through `meetOf` directly, which
           # can only over-refuse.
           typeMerge =
             f:
@@ -6787,7 +6787,7 @@ let
               asked = builtins.tryEval (callerTypeMerge j f);
               r = if asked.success then asked.value else null;
             in
-            if r == null then null else metWith.nulls false r [ met ];
+            if r == null then null else metWith.core false r [ met ];
           ${if types ? mkIdentity && j ? __mint then "__mint" else null} = ids.__mint;
           ${if types ? mkIdentity && j ? __mint then "__payload" else null} = ids.__payload;
           ${if types ? mkIdentity && j ? __mint then "__sealed" else null} = ids.__sealed;
@@ -6903,13 +6903,13 @@ let
     && !(o ? typeMergeRel.exact)
     && !(o ? __stockCheck)
     && !(o ? carries.element || o ? carries.alternatives || (o.functor.payload or null) ? elemType);
-  # the meet: called as `metWith.nulls meets m os`; its members are the meet with a fold step's `thread` and the helpers it and
+  # the meet: called as `metWith.core meets m os`; its members are the meet with a fold step's `rewrites` and the helpers it and
   # the declaration fold read, thunked only by an evaluation that meets
   metWith = {
-    __functor = self: self.nulls;
-    # the meet with no fold-step thread, applied once: a call through the functor, or `metWith.nulls`, is main's three
+    __functor = self: self.core;
+    # the meet with no fold-step thread, applied once: a call through the functor, or `metWith.core`, is main's three
     # applications
-    nulls = metWith.metWith null;
+    core = metWith.metWith null;
     # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
     # alternatives; any other `elemType` states no element of the tree
     elementsOf =
@@ -6959,7 +6959,7 @@ let
         builtins.genList (i: i) (length a.e)
       );
     # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.ownRead`)
-    judgeAt =
+    witnessedCheck =
       m: o:
       let
         s = importedPartner ((wrappedBase o).functor or null);
@@ -7087,16 +7087,16 @@ let
         so = metWith.shapeOf importedTypeWalkFuel o;
         # a payload that is itself a type is the container's element (nixpkgs' `binOp` delegates to the element's
         # `typeMerge`), never its parameters
-        carriesSub = t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any carriesSub t.e;
+        structured = t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any structured t.e;
       in
-      if carriesSub so && metWith.widensAt so (metWith.shapeOf importedTypeWalkFuel m) then
-        metWith.judgeAt m o
+      if structured so && metWith.widensAt so (metWith.shapeOf importedTypeWalkFuel m) then
+        metWith.witnessedCheck m o
       else
         o;
-    # `thread` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `thread.xs` = `thread.ds` (the
-    # debt, each record already relativised at its own step, owed as it is) ++ `thread.own` (the step's own earlier operand)
+    # `rewrites` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `rewrites.xs` = `rewrites.ds` (the
+    # debt, each record already relativised at its own step, owed as it is) ++ `rewrites.own` (the step's own earlier operand)
     metWith =
-      thread: meets: m: os:
+      rewrites: meets: m: os:
       if
         meets == false
         && m ? typeMergeRel
@@ -7112,7 +7112,7 @@ let
           && !(replacesVerify o)
           && !(o ? holds)
         ) os
-        && (thread == null || !(thread ? holdsType))
+        && (rewrites == null || !(rewrites ? answers))
       then
         m
       else
@@ -7120,7 +7120,7 @@ let
           # a step over a held accumulator (lib/modules.nix `mergeDeclaredTypes`) holds what main's step held over the
           # same pair: its earlier operand and the accumulator, by `own`'s read of each (the accumulator's `mergeDefs`, which
           # demands its own kept folds); the debt is owed by its checks alone
-          holdsType = if thread == null then null else thread.holdsType or null;
+          answers = if rewrites == null then null else rewrites.answers or null;
           mayOwe =
             o:
             !(
@@ -7143,47 +7143,47 @@ let
           maybe = if meets == false then filter mayOwe os else os;
           # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
           # compared inline so the meet binds nothing for it
-          sameKey = closuresFirst [ m ] m;
-          # a thread stating its operands' keys (`marks`, the fold's memo, `lib/modules.nix` `foldElement`): parallel to `os`
-          # for a role's debt, to `thread.ds` for a step's
+          completeExport = closuresFirst [ m ] m;
+          # a thread stating its operands' keys (`exports`, the fold's memo, `lib/modules.nix` `defineEmbedded`): parallel to `os`
+          # for a role's debt, to `rewrites.ds` for a step's
           notM =
-            if thread != null && thread ? marks && !(thread ? own) then
+            if rewrites != null && rewrites ? exports && !(rewrites ? own) then
               builtins.concatLists (
                 builtins.genList (
                   i:
                   let
                     o = elemAt os i;
                   in
-                  if (meets != false || mayOwe o) && sameKey != elemAt thread.marks i then [ o ] else [ ]
+                  if (meets != false || mayOwe o) && completeExport != elemAt rewrites.exports i then [ o ] else [ ]
                 ) (length os)
               )
             else
-              filter (o: sameKey != closuresFirst [ o ] o) maybe;
+              filter (o: completeExport != closuresFirst [ o ] o) maybe;
           fresh =
-            if thread != null && thread ? marks then
-              builtins.all (k: sameKey != k) thread.marks
-              && builtins.all (o: sameKey != closuresFirst [ o ] o) (thread.own or [ ])
+            if rewrites != null && rewrites ? exports then
+              builtins.all (k: completeExport != k) rewrites.exports
+              && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
             else
-              builtins.all (o: sameKey != closuresFirst [ o ] o) os;
-          rel = map (o: if fresh && widens o then metWith.judgeAt m o else o);
-          # a step owing a met accumulator's debt (`thread.ds`, each declaration in its own-step form) relativises only its own
-          # earlier operand (`thread.own`); the debt is owed as it is
+              builtins.all (o: completeExport != closuresFirst [ o ] o) os;
+          rel = map (o: if fresh && widens o then metWith.witnessedCheck m o else o);
+          # a step owing a met accumulator's debt (`rewrites.ds`, each declaration in its own-step form) relativises only its own
+          # earlier operand (`rewrites.own`); the debt is owed as it is
           owed =
-            if thread == null || !(thread ? own) then
+            if rewrites == null || !(rewrites ? own) then
               rel notM
             else
               builtins.concatLists (
                 builtins.genList (
                   i:
                   let
-                    o = elemAt thread.ds i;
+                    o = elemAt rewrites.ds i;
                   in
-                  if (meets != false || mayOwe o) && sameKey != elemAt thread.marks i then [ o ] else [ ]
-                ) (length thread.ds)
+                  if (meets != false || mayOwe o) && completeExport != elemAt rewrites.exports i then [ o ] else [ ]
+                ) (length rewrites.ds)
               )
               ++ rel (
-                filter (o: sameKey != closuresFirst [ o ] o) (
-                  if meets == false then filter mayOwe thread.own else thread.own
+                filter (o: completeExport != closuresFirst [ o ] o) (
+                  if meets == false then filter mayOwe rewrites.own else rewrites.own
                 )
               );
           once =
@@ -7195,11 +7195,11 @@ let
             else
               owed;
         in
-        if maybe == [ ] && holdsType == null then
+        if maybe == [ ] && answers == null then
           m
         else if (importedSubstructure m).modules != null then
           carriedAtDepth true os m
-        else if owed == [ ] && holdsType == null then
+        else if owed == [ ] && answers == null then
           m
         # a held operand (a record met holding, `holds`) is held again wherever it is met. So is an operand stating a
         # relation gen did not construct (a `typeMergeRel` with no `exact` witness) and not relativised to its own
@@ -7210,7 +7210,7 @@ let
         # before this branch
         else if
           meets == "holds"
-          || holdsType != null
+          || answers != null
           || builtins.catAttrs "holds" once != [ ]
           ||
             !(m ? typeMergeRel)
@@ -7221,7 +7221,7 @@ let
         then
           # The join was taken PAST the witness (it renames an operand: the carrier is not that operand's own
           # constructor), so the carrier's fold is not that operand's. A declaration's admission is its `check` AND
-          # its `merge` (nixpkgs' containers judge their elements in `merge`; a fold may refuse what its check
+          # its `merge` (nixpkgs' containers judge their readers in `merge`; a fold may refuse what its check
           # accepts), so each held operand's unchecked fold runs beside the carrier's over the same definitions, and
           # its value is demanded position by position as the served value is: an attribute or list element of the
           # served value forces the same position of each operand's value, and a leaf forces it whole. The met value
@@ -7231,9 +7231,9 @@ let
           let
             met = meetOf m once;
             kept =
-              if holdsType != null then
+              if answers != null then
                 # main's own selection over what its step met: owed (`mayOwe`, the meet not holding), never the join
-                (if meets == false then filter mayOwe holdsType else holdsType)
+                (if meets == false then filter mayOwe answers else answers)
               else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
                 # a step taken past the witness holds such an operand whole, by its unchecked fold
                 once
@@ -7360,7 +7360,7 @@ let
                     asked = builtins.tryEval (callerTypeMerge m f);
                     r = if asked.success then asked.value else null;
                   in
-                  if r == null then null else metWith.nulls false r [ h ];
+                  if r == null then null else metWith.core false r [ h ];
                 merge =
                   if met.merge ? v2 then
                     met.merge
@@ -7407,18 +7407,18 @@ let
           if kept == [ ] then met else h
         else
           meetOf m once;
-    # a step owing `thread` marks the answers its relation already met with them, so `mergeTypesBy` meets only a bare join
-    # `metFirst` is a field-name tag on a type-or-wrapper union, read only by `declaredPair`: a foreign type carrying a
-    # `metFirst` attribute would be misread there (no such input is known)
-    metElem = thread: x: if thread == null || x == null then x else { metFirst = x; };
+    # a step owing `rewrites` exports the answers its relation already met with them, so `mergeTypesBy` meets only a bare join
+    # `replaced` is a field-name tag on a type-or-wrapper union, read only by `declaredPair`: a foreign type carrying a
+    # `replaced` attribute would be misread there (no such input is known)
+    importLeaf = rewrites: x: if rewrites == null || x == null then x else { replaced = x; };
     # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
     # records carry (an element; a union's two members) its own carried type is met with the operands'
     # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
     # caller (`mergeTypesBy`).
-    # a step owing `thread` owes, at a role, the role each owed declaration carries, never the accumulated carrier's own met role
-    subOf =
-      thread: f:
-      if thread == null then
+    # a step owing `rewrites` owes, at a role, the role each owed declaration carries, never the accumulated carrier's own met role
+    functorRecord =
+      rewrites: f:
+      if rewrites == null then
         null
       else
         {
@@ -7428,7 +7428,7 @@ let
               x = f d;
             in
             if x == null then [ ] else [ x ]
-          ) thread.xs;
+          ) rewrites.xs;
         };
   };
   # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
@@ -7916,9 +7916,9 @@ let
                 null
               # a module set's join is rebuilt again by the fixup, so the join carries the verify on its merged value
               else if replacesVerify x && x ? carries && isList (x.getSubModules or null) then
-                rebuildClosed.rebuilt x.verify (metWith.nulls false r [ s ])
+                rebuildClosed.rebuilt x.verify (metWith.core false r [ s ])
               else
-                metWith.nulls false r [ s ];
+                metWith.core false r [ s ];
             # the functor names this copy as the declaration (`__declared`) beside its completion's `type`: nixpkgs hands
             # a redeclaration's relation only the partner's functor; `type` stays the completion
             ${if replacesVerify x && x ? functor then "functor" else null} = x.functor // {
@@ -8890,7 +8890,7 @@ let
             meet =
               meets: j: os: d:
               let
-                m = metWith.nulls meets j os;
+                m = metWith.core meets j os;
               in
               if isAttrs d && d ? verify && d ? carries && isList (d.getSubModules or null) then
                 rebuildClosed.rebuilt d.verify m
