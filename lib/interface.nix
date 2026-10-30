@@ -7009,7 +7009,7 @@ let
             # (a step owing a debt reads it off the thread here and below, binding nothing on a meet that owes none)
             if rewrites != null && rewrites ? bNames then
               !(builtins.elem completeExport rewrites.bNames.completedLeaves)
-              && builtins.all (o: completeExport != closuresFirst [ o ] o) rewrites.own
+              && !(builtins.elem completeExport rewrites.keys)
               && builtins.all (o: completeExport != closuresFirst [ o ] o) rewrites.bNames.mkBefore
             else if rewrites != null && rewrites ? exports then
               builtins.all (k: completeExport != k) rewrites.exports
@@ -7031,7 +7031,7 @@ let
                     let
                       o = elemAt rewrites.own i;
                     in
-                    if (meets != false || mayOwe o) && completeExport != closuresFirst [ o ] o then [ o ] else [ ]
+                    if (meets != false || mayOwe o) && completeExport != elemAt rewrites.keys i then [ o ] else [ ]
                   ) (length rewrites.own)
                 )
               )

@@ -1240,6 +1240,7 @@ let
               bNames = importLeaf.node;
               inherit (rewrites) readers exports;
               inherit own;
+              keys = map keyOf own;
               xs = importLeaf.node.all ++ own;
             };
         # a step thread's meet of one role pair (`mkMerge` the role thread): the relation's answer met with the thread once, unless
@@ -1416,6 +1417,8 @@ let
             r = bandedLeaves (
               {
                 inherit xs own;
+                # `own`'s one-value keys, the fold's memo
+                keys = if own == [ ] then [ ] else [ (builtins.elemAt ks i) ];
                 inherit (acc.checkedTypes) ds;
                 # the role thread and its meet, for a gen container relation's element meet (`lib/types.nix`)
                 inherit readers exports;
