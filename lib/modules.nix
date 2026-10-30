@@ -1310,7 +1310,7 @@ let
           r = declaredPair {
             inherit xs;
             inherit (acc.debt) fz;
-            held = builtins.trace "15va3 held=${builtins.toJSON (acc.merged ? holds)}" false;
+            held = false;
           } earlier acc.carrier;
         in
         if i == 0 || r ? refused then r else opnd (classify r i acc.carrier xs acc.debt);
