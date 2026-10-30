@@ -900,14 +900,12 @@ let
     )
     && !(interface.sameValue m o);
   mergeTypesBy =
-    thread: relation: a: b:
+    relation: a: b:
     let
       m = relation a b;
     in
     if m == null then
       null
-    else if thread != null then
-      (if m ? metFirst then m.metFirst else interface.metWith.metWith false m thread.xs thread)
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer carries a certified operand where it is that operand's own construction (one
       # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s
@@ -948,8 +946,8 @@ let
         a
         b
       ];
-  mergeTypes = mergeTypesBy null relationMerge;
-  mergeTypesWithin = mergeTypesBy null (relationMergeWithin null);
+  mergeTypes = mergeTypesBy relationMerge;
+  mergeTypesWithin = mergeTypesBy (relationMergeWithin null);
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -1053,7 +1051,19 @@ let
                 if thread == null then
                   mergeTypesWithin later earlier
                 else
-                  mergeTypesBy thread (relationMergeWithin thread) later earlier
+                  # a step owing a met accumulator's debt: the relation's answer met with the step's thread, unless the
+                  # relation met it already (`metFirst`)
+                  (
+                    let
+                      x = relationMergeWithin thread later earlier;
+                    in
+                    if x == null then
+                      null
+                    else if x ? metFirst then
+                      x.metFirst
+                    else
+                      interface.metWith.metWith false x thread.xs thread
+                  )
               );
             in
             if tried.success then tried.value else null
@@ -1061,7 +1071,17 @@ let
         else if thread == null then
           mergeTypesWithin later earlier
         else
-          mergeTypesBy thread (relationMergeWithin thread) later earlier;
+          (
+            let
+              x = relationMergeWithin thread later earlier;
+            in
+            if x == null then
+              null
+            else if x ? metFirst then
+              x.metFirst
+            else
+              interface.metWith.metWith false x thread.xs thread
+          );
     in
     if veto.meets or false then
       {
