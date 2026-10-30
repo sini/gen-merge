@@ -7205,7 +7205,7 @@ let
       items = [ ];
       keys = [ ];
     };
-    owedSetAdd = s: o: {
+    owedSetAdd = s: o: k: {
       n = s.n + 1;
       # how many state a check witness (a certified set beside a join with no payload is decided by witness, `owedOps`)
       nWit = if (o._checkWitness or null) == null then s.nWit else s.nWit + 1;
@@ -7231,7 +7231,7 @@ let
             if e != null then e else f v
           );
       items = s.items ++ [ o ];
-      keys = s.keys ++ [ (closuresFirst [ o ] o) ];
+      keys = s.keys ++ [ k ];
     };
     # a debt node: the owed sets, the listed operands, and the keys of its forms (`fks`, the one-value test) and of the
     # declarations' own records there (`rks`, `lib/modules.nix` `declaredAt`); `owedAdd d x raw` folds in `x`, the form `raw`
@@ -7249,14 +7249,17 @@ let
       d: x: raw:
       let
         k = metWith.owedKind x;
+        # one key per declaration: a form that is its own record (not relativised, `judgeAt`'s `__stockCheck`) shares it
+        kr = closuresFirst [ raw ] raw;
+        kx = if x ? __stockCheck && !(raw ? __stockCheck) then closuresFirst [ x ] x else kr;
       in
       {
-        plain = if k == "plain" then metWith.owedSetAdd d.plain x else d.plain;
-        exact = if k == "exact" then metWith.owedSetAdd d.exact x else d.exact;
-        roled = if k == "roled" then metWith.owedSetAdd d.roled x else d.roled;
+        plain = if k == "plain" then metWith.owedSetAdd d.plain x kx else d.plain;
+        exact = if k == "exact" then metWith.owedSetAdd d.exact x kx else d.exact;
+        roled = if k == "roled" then metWith.owedSetAdd d.roled x kx else d.roled;
         specials = if k == "specials" then d.specials ++ [ x ] else d.specials;
-        fks = if k == "specials" then d.fks else d.fks ++ [ (closuresFirst [ x ] x) ];
-        rks = d.rks ++ [ (closuresFirst [ raw ] raw) ];
+        fks = if k == "specials" then d.fks else d.fks ++ [ kx ];
+        rks = d.rks ++ [ kr ];
         # every form in folding order, read only where each operand is read (a module set's carriage)
         all = d.all ++ [ x ];
       };
@@ -7378,10 +7381,13 @@ let
           # compared inline so the meet binds nothing for it
           sameKey = closuresFirst [ m ] m;
           notM = filter (o: sameKey != closuresFirst [ o ] o) maybe;
+          # the step's own earlier operand's key, read by `fresh` and by its own filter
+          ownK = map (o: closuresFirst [ o ] o) thread.own;
           fresh =
             if debt != null then
               !(builtins.elem sameKey debt.fks)
-              && builtins.all (o: sameKey != closuresFirst [ o ] o) (debt.specials ++ thread.own)
+              && !(builtins.elem sameKey ownK)
+              && builtins.all (o: sameKey != closuresFirst [ o ] o) debt.specials
             else
               builtins.all (o: sameKey != closuresFirst [ o ] o) os;
           # the step's own earlier operand, by the comparison handed down with it where there is one (`thread.ownCmps`)
@@ -7423,7 +7429,15 @@ let
             else if debt != null then
               metWith.owedOps meets m mayOwe sameKey debt
               ++ relOwn (
-                builtins.filter (o: (meets != false || mayOwe o) && sameKey != closuresFirst [ o ] o) thread.own
+                builtins.concatLists (
+                  builtins.genList (
+                    i:
+                    let
+                      o = elemAt thread.own i;
+                    in
+                    if (meets != false || mayOwe o) && sameKey != elemAt ownK i then [ o ] else [ ]
+                  ) (length thread.own)
+                )
               )
             else
               filter (o: sameKey != closuresFirst [ o ] o) (
@@ -7437,6 +7451,8 @@ let
           once =
             if
               length owed == 2
+              && !(head owed ? __owedItems)
+              && !(elemAt owed 1 ? __owedItems)
               && closuresFirst [ (head owed) ] (head owed) == closuresFirst [ (elemAt owed 1) ] (elemAt owed 1)
             then
               [ (head owed) ]
