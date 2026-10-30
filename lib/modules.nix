@@ -630,8 +630,8 @@ let
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it
           if answer.holds or false then
-            interface.sameValue.metElem thread (
-              interface.sameValue.metWith "holds"
+            interface.metWith.metElem thread (
+              interface.metWith.metWith "holds"
                 (
                   if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                     r
@@ -650,8 +650,8 @@ let
                 thread
             )
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            (interface.sameValue.metElem thread (
-              interface.sameValue.metWith true r (
+            (interface.metWith.metElem thread (
+              interface.metWith.metWith true r (
                 if thread == null then
                   [
                     a
@@ -662,8 +662,8 @@ let
               ) thread
             ))
           else
-            (interface.sameValue.metElem thread (
-              interface.sameValue.metWith true (rolesMet thread r a b) (
+            (interface.metWith.metElem thread (
+              interface.metWith.metWith true (rolesMet thread r a b) (
                 if thread == null then
                   [
                     a
@@ -704,8 +704,8 @@ let
       # a join taken past the witness (it renames an operand, `importedMerge`'s answer `holds`) is met here
       # holding every operand's fold
       else if r.holds or false then
-        (interface.sameValue.metElem thread (
-          interface.sameValue.metWith "holds" (rolesMet thread r.merged a b) (
+        (interface.metWith.metElem thread (
+          interface.metWith.metWith "holds" (rolesMet thread r.merged a b) (
             if thread == null then
               [
                 a
@@ -752,7 +752,7 @@ let
     if builtins.all (x: x != null) el then
       (
         let
-          m = innerMet (interface.sameValue.subOf thread (
+          m = innerMet (interface.metWith.subOf thread (
             interface.carriedAt "element"
           )) (pick el 0) (pick el 1) (pick el 2);
         in
@@ -763,7 +763,7 @@ let
         let
           m = builtins.genList (
             i:
-            innerMet (interface.sameValue.subOf thread (
+            innerMet (interface.metWith.subOf thread (
               d:
               let
                 x = interface.carriedAt "alternatives" d;
@@ -907,7 +907,7 @@ let
     if m == null then
       null
     else if thread != null then
-      (if m ? metFirst then m.metFirst else interface.sameValue.metWith false m thread.xs thread)
+      (if m ? metFirst then m.metFirst else interface.metWith.metWith false m thread.xs thread)
     else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
       # a gen relation's answer carries a certified operand where it is that operand's own construction (one
       # check witness) or a join stating parameters: nothing is owed, and nothing is allocated (`metWith`'s
@@ -1067,7 +1067,7 @@ let
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it
           if veto.holds or false then
-            interface.sameValue.metWith "holds"
+            interface.metWith.metWith "holds"
               (
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
@@ -1085,7 +1085,7 @@ let
               )
               thread
           else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
-            interface.sameValue.metWith true r (
+            interface.metWith.metWith true r (
               if thread == null then
                 [
                   earlier
@@ -1095,7 +1095,7 @@ let
                 thread.xs
             ) thread
           else
-            interface.sameValue.metWith true (rolesMet thread r earlier later) (
+            interface.metWith.metWith true (rolesMet thread r earlier later) (
               if thread == null then
                 [
                   earlier
@@ -1184,7 +1184,7 @@ let
       # no met record), so each meets here, carried by this step's later operand
       elemsOf =
         i: j:
-        builtins.foldl' (o: x: foldElement o x (interface.sameValue.ownRead j (builtins.elemAt ts x))) {
+        builtins.foldl' (o: x: foldElement o x (interface.metWith.ownRead j (builtins.elemAt ts x))) {
           ds = [ ];
           ks = [ ];
         } (builtins.genList (x: n - 1 - x) (n - i));
@@ -1210,7 +1210,7 @@ let
             j = t.__meetJoin or t;
             checkedTypes = foldElement (
               if builtins.isFunction checkedScope then checkedScope j else checkedScope
-            ) i (interface.sameValue.ownRead j earlier);
+            ) i (interface.metWith.ownRead j earlier);
             # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
             # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
             # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
