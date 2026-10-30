@@ -1182,7 +1182,7 @@ let
       ks = map keyOf ts;
       # a debt extended by the declaration at `j`, owed as `d` (its own-step form, ADR-0039 THE MEET: a declaration's
       # relativisation to its own parameters is the step's where it meets), one per value (`ks`, the declarations' keys),
-      # in folding order; `fz` names the owed forms, which a later step owes as they are (`interface.metWithOps`)
+      # in folding order; a later step owes them as they are (`ops.ds`, `interface.metWithOps`)
       add =
         o: j: d:
         let
@@ -1194,7 +1194,6 @@ let
           {
             ds = o.ds ++ [ d ];
             ks = o.ks ++ [ kd ];
-            fz = o.fz ++ [ (keyOf d) ];
           };
       # the debt behind the first step that meets: every declaration from index `i` to the last, one per value, each in
       # the form that step's meet (join `j`, operands `os`) owes it. None was owed at its own step (each step since built
@@ -1204,7 +1203,6 @@ let
         builtins.foldl' (o: x: add o x (interface.owedAs j os (builtins.elemAt ts x))) {
           ds = [ ];
           ks = [ ];
-          fz = [ ];
         } (builtins.genList (x: n - 1 - x) (n - i));
       # step `i`'s record `r`, over operands `earlier` and `later` (the meet's operands `os`), behind the debt `debt0` (a
       # met accumulator's, or `debtFrom`'s, read against this step's join):
@@ -1293,15 +1291,12 @@ let
         let
           earlier = builtins.elemAt ts i;
           # this step owes its earlier as this step's meet relativises it, and the debt as owed at each one's own step
-          xs =
-            if builtins.elem (builtins.elemAt ks i) acc.debt.ks then
-              acc.debt.ds
-            else
-              acc.debt.ds ++ [ earlier ];
+          own = if builtins.elem (builtins.elemAt ks i) acc.debt.ks then [ ] else [ earlier ];
+          xs = acc.debt.ds ++ own;
           r = declaredPair (
             {
-              inherit xs;
-              inherit (acc.debt) fz;
+              inherit xs own;
+              inherit (acc.debt) ds;
             }
             # a held accumulator: this step holds its earlier and the accumulator's own unchecked fold, as main's step
             # held them (the debt is owed as a check only)

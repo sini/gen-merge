@@ -7071,13 +7071,12 @@ let
   owedAs =
     m: os: o:
     let
-      km = closuresFirst [ m ] m;
       so = shapeOf importedTypeWalkFuel o;
+      sm = shapeOf importedTypeWalkFuel m;
     in
+    # the shape test first: a declaration its own join does not widen is owed as it is, and no key is compared
     if
-      builtins.all (x: km != closuresFirst [ x ] x) os
-      && so != shapeOf importedTypeWalkFuel m
-      && widensAt so (shapeOf importedTypeWalkFuel m)
+      so != sm && widensAt so sm && builtins.all (x: closuresFirst [ m ] m != closuresFirst [ x ] x) os
     then
       relativisedOver m o
     else
@@ -7085,8 +7084,8 @@ let
   metWith =
     meets: m: os:
     metWithOps meets m os null;
-  # `ops` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt names the owed records already
-  # relativised at their own step (`ops.fz`, their one-value keys), which this meet owes as they are
+  # `ops` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `ops.xs` = `ops.ds` (the
+  # debt, each record already relativised at its own step, owed as it is) ++ `ops.own` (the step's own earlier operand)
   metWithOps =
     meets: m: os: ops:
     if
@@ -7137,8 +7136,17 @@ let
         km = closuresFirst [ m ] m;
         notM = filter (o: km != closuresFirst [ o ] o) maybe;
         fresh = builtins.all (o: km != closuresFirst [ o ] o) os;
-        frozen = o: ops != null && (ops.fz or null) != null && builtins.elem (closuresFirst [ o ] o) ops.fz;
-        owed = map (o: if fresh && widens o && !(frozen o) then relativisedOver m o else o) notM;
+        rel = map (o: if fresh && widens o then relativisedOver m o else o);
+        # a step owing a met accumulator's debt (`ops.ds`, each declaration in its own-step form) relativises only its own
+        # earlier operand (`ops.own`); the debt is owed as it is
+        owed =
+          if ops == null || !(ops ? own) then
+            rel notM
+          else
+            filter (o: km != closuresFirst [ o ] o) (if meets == false then filter mayOwe ops.ds else ops.ds)
+            ++ rel (
+              filter (o: km != closuresFirst [ o ] o) (if meets == false then filter mayOwe ops.own else ops.own)
+            );
         once =
           if
             length owed == 2
