@@ -6954,8 +6954,6 @@ let
         n = f.name or null;
         p = q;
         inherit e;
-        # whether the tree states a parameter at any node (`ownRead`'s `carriesSub`): one stating none is never relativised
-        cs = q != { } || builtins.any (x: x.cs) e;
       };
     # the same constructor at every node, and every node where the trees differ is one where the
     # operand states parameters: a nullary node has none for a law to widen, so a join that changes
@@ -6980,8 +6978,6 @@ let
       {
         inherit a b es;
         same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
-        # `ownRead`'s `carriesSub` of `a` (read only beside `wid`, which a length mismatch already falsifies)
-        inherit (a) cs;
         wid = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.wid) es;
       };
     # the constructor's name a node's tree states for `x` (`shapeOf`'s `n`)

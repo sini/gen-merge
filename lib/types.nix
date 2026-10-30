@@ -915,6 +915,9 @@ let
           {
             merged = if over != null then over else rebuild metElem;
             meets = true;
+            # the element is the pair's own met here (`metFirst`, these two operands' elements through the meeting merge), so a
+            # fold step owing no debt does not meet it again (`lib/modules.nix` `rolesMet`): the one descent is this one
+            ${if metFirst != null then "rolesMet" else null} = true;
             twinRefuses = element ? typeMergeRel && ((element.typeMergeRel stated).twinRefuses or false);
           }
       else if partnerElem == null then

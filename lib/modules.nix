@@ -636,7 +636,7 @@ let
                   if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                     r
                   else
-                    rolesMet thread r a b
+                    (if (answer.rolesMet or false) && thread == null then r else rolesMet thread r a b)
                 )
                 (
                   if thread == null then
@@ -663,7 +663,7 @@ let
             ))
           else
             (interface.metWith.metElem thread (
-              interface.metWith.metWith true (rolesMet thread r a b) (
+              interface.metWith.metWith true ((if (answer.rolesMet or false) && thread == null then r else rolesMet thread r a b)) (
                 if thread == null then
                   [
                     a
@@ -734,19 +734,11 @@ let
             a = interface.metWith.shapeCmp (interface.metWith.shapeOf interface.importedTypeWalkFuel a) sr;
             b = interface.metWith.shapeCmp (interface.metWith.shapeOf interface.importedTypeWalkFuel b) sr;
           };
-      subSh =
-        i: a': b':
-        let
-          ca = interface.metWith.shapeCmpAt cmps.a i a';
-          cb = interface.metWith.shapeCmpAt cmps.b i b';
-        in
-        if ca == null || cb == null then
-          null
-        else
-          {
-            a = ca;
-            b = cb;
-          };
+      # lazy: a role meet forces its node's comparison only where it relativises an operand, as it would walk one
+      subSh = i: a': b': {
+        a = interface.metWith.shapeCmpAt cmps.a i a';
+        b = interface.metWith.shapeCmpAt cmps.b i b';
+      };
       at =
         role:
         map (interface.carriedAt role) [
@@ -1139,7 +1131,7 @@ let
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
                 else
-                  rolesMet thread r earlier later
+                  (if (veto.rolesMet or false) && thread == null then r else rolesMet thread r earlier later)
               )
               (
                 if thread == null then
@@ -1162,7 +1154,7 @@ let
                 thread.xs
             ) thread
           else
-            interface.metWith.metWith true (rolesMet thread r earlier later) (
+            interface.metWith.metWith true ((if (veto.rolesMet or false) && thread == null then r else rolesMet thread r earlier later)) (
               if thread == null then
                 [
                   earlier
