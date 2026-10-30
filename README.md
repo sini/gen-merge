@@ -2351,8 +2351,8 @@ reads a type's rejection from `merge.v2`'s `headError` alone, and a `check` mark
 `isV2MergeCoherent` promises that it is stated there; a `//` copy can keep such a mark beside a merge
 that does not state it. So every return that publishes the caller's own `merge` states the caller's
 whole `check` in its `headError`, as nixpkgs' `addCheck` does: a completed container or nesting
-record re-homed as itself, a foreign record stating no relation or that is its own constructor's
-record, a foreign record stating no module set, a carried `verify` copy's base merge, and a re-home
+record re-homed as itself, a foreign record stating no relation or no check witness, or that is its
+own constructor's record, a foreign record stating no module set, a carried `verify` copy's base merge, and a re-home
 that returns the caller's record. For a coherent record this is the identity. Its price is that the
 check runs again on each definition under a nixpkgs fold, because the door cannot tell a truthful
 mark from a forged one without comparing functions. Pinned by
