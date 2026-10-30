@@ -6749,6 +6749,7 @@ let
               conj;
           _checkWitness = j._checkWitness or j.check;
           __meetJoin = j;
+          __shapeTree = metWith.shapeOf importedTypeWalkFuel j;
           merge =
             if v2 then
               {
@@ -6928,15 +6929,18 @@ let
     # (an element's parameters are its container's: `nullOr (enum [a])` is parameterised by `[a]`).
     # Past the walk's fuel a tree states nothing more, so a change that deep is owed whole.
     # a record declaring the record it `wraps` is parameterised by that record (`wrappedBase`)
+    # a met record states its tree (`__shapeTree`, its join's, made once and only where read): a foreign relation asked of a
+    # carrier whose roles are met records asks each role's exported `typeMerge` (nixpkgs' `binOp` recursion), and that
+    # meet reads the record's tree at every level; read off the record, it is walked once, not once per level above it
     shapeOf =
       fuel: t:
+      if t ? __shapeTree then
+        t.__shapeTree
+      else
       let
         f = (wrappedBase t).functor or { };
         p = f.payload or null;
-      in
-      {
-        n = f.name or null;
-        p =
+        q =
           if isAttrs p then
             builtins.removeAttrs p [
               "elemType"
@@ -6945,6 +6949,13 @@ let
           else
             { };
         e = if fuel == 0 then [ ] else map (metWith.shapeOf (fuel - 1)) (metWith.elementsOf p);
+      in
+      {
+        n = f.name or null;
+        p = q;
+        inherit e;
+        # whether the tree states a parameter at any node (`ownRead`'s `carriesSub`): one stating none is never relativised
+        cs = q != { } || builtins.any (x: x.cs) e;
       };
     # the same constructor at every node, and every node where the trees differ is one where the
     # operand states parameters: a nullary node has none for a law to widen, so a join that changes
@@ -6957,6 +6968,35 @@ let
       && builtins.all (i: metWith.widensAt (elemAt a.e i) (elemAt b.e i)) (
         builtins.genList (i: i) (length a.e)
       );
+    # the two trees compared ONCE, node by node: `same` is `a == b` and `wid` is `widensAt a b`, each a node's own test over
+    # its elements' answers (`es`), so the meet one role down reads its node's answer (`metWith`'s `sx`, handed down by
+    # `lib/modules.nix` `rolesMet`) instead of walking its subtree again: a step pays its trees once, not once per level
+    shapeCmp =
+      a: b:
+      let
+        n = length a.e;
+        es = if n == length b.e then builtins.genList (i: metWith.shapeCmp (elemAt a.e i) (elemAt b.e i)) n else [ ];
+      in
+      {
+        inherit a b es;
+        same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
+        # `ownRead`'s `carriesSub` of `a` (read only beside `wid`, which a length mismatch already falsifies)
+        inherit (a) cs;
+        wid = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.wid) es;
+      };
+    # the constructor's name a node's tree states for `x` (`shapeOf`'s `n`)
+    nodeName = x: ((wrappedBase x).functor or { }).name or null;
+    # the comparison one role down, for the operand `x` that role carries: the node `c.es` holds at `i` where it is `x`'s own
+    # node (its constructor's name), else `null` (the meet there walks `x` itself)
+    shapeCmpAt =
+      c: i: x:
+      if c == null || i >= length c.es then
+        null
+      else
+        let
+          ci = elemAt c.es i;
+        in
+        if ci.a.n == metWith.nodeName x then ci else null;
     # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.ownRead`)
     judgeAt =
       m: o:
@@ -7090,8 +7130,11 @@ let
         o;
     # `thread` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `thread.xs` = `thread.ds` (the
     # debt, each record already relativised at its own step, owed as it is) ++ `thread.own` (the step's own earlier operand)
-    metWith =
-      meets: m: os: thread:
+    metWith = metWith.metWithS null;
+    # `sx` (`lib/modules.nix` `rolesMet`, one role down): each operand's tree comparison with the join's, by position in `os`
+    # (`shapeCmpAt`; `null` where it has none), read instead of walking that operand's and the join's trees again
+    metWithS =
+      sx: meets: m: os: thread:
       if
         meets == false
         && m ? typeMergeRel
@@ -7142,10 +7185,26 @@ let
           notM = filter (o: sameKey != closuresFirst [ o ] o) maybe;
           fresh = builtins.all (o: sameKey != closuresFirst [ o ] o) os;
           rel = map (o: if fresh && widens o then metWith.judgeAt m o else o);
+          relAt =
+            i: o:
+            let
+              c = elemAt sx i;
+            in
+            if fresh && (if c == null then widens o else !c.same && c.wid) then metWith.judgeAt m o else o;
           # a step owing a met accumulator's debt (`thread.ds`, each declaration in its own-step form) relativises only its own
           # earlier operand (`thread.own`); the debt is owed as it is
           owed =
-            if thread == null || !(thread ? own) then
+            if (thread == null || !(thread ? own)) && sx != null then
+              builtins.concatLists (
+                builtins.genList (
+                  i:
+                  let
+                    o = elemAt os i;
+                  in
+                  if (meets != false || mayOwe o) && sameKey != closuresFirst [ o ] o then [ (relAt i o) ] else [ ]
+                ) (length os)
+              )
+            else if thread == null || !(thread ? own) then
               rel notM
             else
               filter (o: sameKey != closuresFirst [ o ] o) (

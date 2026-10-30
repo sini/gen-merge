@@ -717,9 +717,36 @@ let
         ))
       else
         rolesMet thread r.merged a b;
-  rolesMet =
-    thread: r: a: b:
+  rolesMet = rolesMetS null;
+  # `sh`: the operands' tree comparisons with the join's (`interface.metWith.shapeCmp`), handed down from the role above, or
+  # `null` at a descent's top, which makes them here once for every role below it
+  rolesMetS =
+    sh: thread: r: a: b:
     let
+      cmps =
+        if sh != null then
+          sh
+        else
+          let
+            sr = interface.metWith.shapeOf interface.importedTypeWalkFuel r;
+          in
+          {
+            a = interface.metWith.shapeCmp (interface.metWith.shapeOf interface.importedTypeWalkFuel a) sr;
+            b = interface.metWith.shapeCmp (interface.metWith.shapeOf interface.importedTypeWalkFuel b) sr;
+          };
+      subSh =
+        i: a': b':
+        let
+          ca = interface.metWith.shapeCmpAt cmps.a i a';
+          cb = interface.metWith.shapeCmpAt cmps.b i b';
+        in
+        if ca == null || cb == null then
+          null
+        else
+          {
+            a = ca;
+            b = cb;
+          };
       at =
         role:
         map (interface.carriedAt role) [
@@ -738,23 +765,36 @@ let
       pick = l: i: builtins.elemAt l i;
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
-        o: r': a': b':
-        interface.metWith false (rolesMet o r' a' b') (
-          if o == null then
-            [
-              a'
-              b'
-            ]
-          else
-            o.xs
-        );
+        o: s': r': a': b':
+        interface.metWith.metWithS
+          (
+            if o == null && s' != null then
+              [
+                s'.a
+                s'.b
+              ]
+            else
+              null
+          )
+          false
+          (rolesMetS s' o r' a' b')
+          (
+            if o == null then
+              [
+                a'
+                b'
+              ]
+            else
+              o.xs
+          )
+          null;
     in
     if builtins.all (x: x != null) el then
       (
         let
           m = innerMet (interface.metWith.subOf thread (
             interface.carriedAt "element"
-          )) (pick el 0) (pick el 1) (pick el 2);
+          )) (subSh 0 (pick el 1) (pick el 2)) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
@@ -769,7 +809,7 @@ let
                 x = interface.carriedAt "alternatives" d;
               in
               if x == null then null else pick x i
-            )) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+            )) (subSh i (pick (pick al 1) i) (pick (pick al 2) i)) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
           ) 2;
         in
         if
@@ -798,7 +838,7 @@ let
               if length ds == 2 then
                 let
                   vs = filter (d: d ? verify) ds;
-                  c = innerMet null o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
+                  c = innerMet null null o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
                   verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
                 in
                 if vs == [ ] then
