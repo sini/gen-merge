@@ -684,7 +684,8 @@ let
       else if answer ? merged then
         (
           if
-            a ? retainedRelation
+            ops != null
+            || a ? retainedRelation
             && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
             rolesMet ops answer.merged a b
