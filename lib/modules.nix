@@ -751,7 +751,7 @@ let
       # own earlier operand carries (`b`, relativised by the comparison handed down with it); a thread with no debt tree is
       # read as before (`interface.metWith.subOf`)
       subThread =
-        pickT: f: i: rr:
+        pickT: f: i:
         if thread == null || !(thread ? debtT) then
           interface.metWith.subOf thread f
         else
@@ -770,15 +770,6 @@ let
             debt = t'.node;
             inherit own;
             ownCmps = map (x: interface.metWith.shapeCmpAt cmps.b i x) own;
-            # the join's tree at this role, from the comparison above, where it names the join's own constructor there
-            msh =
-              if i >= length cmps.b.es then
-                null
-              else
-                let
-                  x = (builtins.elemAt cmps.b.es i).b;
-                in
-                if x.n == interface.metWith.nodeName rr then x else null;
             xs = t'.node.all ++ own;
           };
       at =
@@ -826,7 +817,7 @@ let
     if builtins.all (x: x != null) el then
       (
         let
-          m = innerMet (subThread (t: t.el) (interface.carriedAt "element") 0 (pick el 0)) (subSh 0 (pick el 1) (pick el 2)) (pick el 0) (pick el 1) (pick el 2);
+          m = innerMet (subThread (t: t.el) (interface.carriedAt "element") 0) (subSh 0 (pick el 1) (pick el 2)) (pick el 0) (pick el 1) (pick el 2);
         in
         if interface.sameValue m (pick el 0) then r else rebuilt "element" m
       )
@@ -841,7 +832,7 @@ let
                 x = interface.carriedAt "alternatives" d;
               in
               if x == null then null else pick x i
-            ) i (pick (pick al 0) i)) (subSh i (pick (pick al 1) i) (pick (pick al 2) i)) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+            ) i) (subSh i (pick (pick al 1) i) (pick (pick al 2) i)) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
           ) 2;
         in
         if
@@ -1303,18 +1294,10 @@ let
             debtNil
           ];
         };
-        # one role down: a declaration whose tree states no parameter is never relativised by a role meet (`widensAt` holds
-        # there only between equal trees), so it is folded into the set as it is; one stating a parameter is kept with its
-        # tree, relativised by each step's role meet against that step's join (`interface.metWith`'s `relParam`)
-        debtExtAt =
-          t: raw: jn: c:
-          let
-            so = if c != null then c.a else interface.metWith.shapeOf interface.importedTypeWalkFuel raw;
-          in
-          if !so.cs then
-            debtExt t raw raw jn c
-          else
-            debtExt' t (interface.metWith.owedAddParam t.node raw so) raw jn c;
+        # one role down, a declaration is owed in its own step's form there, as at the top (`interface.metWith.ownReadC`):
+        # relativised to its own parameters wherever that step's join at that role is its constructor's tree at the same or
+        # wider parameters, so a later step's wider join finds it owed relative to them, and never re-relativised
+        debtExtAt = t: raw: jn: c: debtExt t (if jn == null then raw else interface.metWith.ownReadC jn raw c) raw jn c;
         debtExt = t: x: raw: jn: c: debtExt' t (interface.metWith.owedAdd t.node x raw) raw jn c;
         debtExt' =
           t: node: raw: jn: c:

@@ -7244,9 +7244,6 @@ let
       fks = [ ];
       rks = [ ];
       all = [ ];
-      # one role down, the declarations whose tree states a parameter, each with its tree (`{ o; s; }`): the role meet
-      # relativises each against its own join, at every step, as it did before the debt was a set (`metWith`'s `rel`)
-      params = [ ];
     };
     owedAdd =
       d: x: raw:
@@ -7262,18 +7259,7 @@ let
         rks = d.rks ++ [ (closuresFirst [ raw ] raw) ];
         # every form in folding order, read only where each operand is read (a module set's carriage)
         all = d.all ++ [ x ];
-        inherit (d) params;
       };
-    owedAddParam = d: o: so: d // {
-      params = d.params ++ [
-        {
-          inherit o;
-          s = so;
-        }
-      ];
-      rks = d.rks ++ [ (closuresFirst [ o ] o) ];
-      all = d.all ++ [ o ];
-    };
     # the set as the one operand `meetOf` owes; `__owedItems` is the declarations it stands for at this meet (owed, and not the
     # join itself, as `metWith` selects a listed operand), read only by what reads each operand (the meet's identity, a hold)
     owedOp =
@@ -7342,7 +7328,7 @@ let
           && !(o ? holds)
         ) (
           if thread != null && thread ? debt then
-            thread.debt.specials ++ map (x: x.o) thread.debt.params ++ thread.own
+            thread.debt.specials ++ thread.own
           else
             os
         )
@@ -7380,18 +7366,9 @@ let
             in
             so != sm && metWith.widensAt so sm;
           debt = if thread == null then null else thread.debt or null;
-          # a parameterised declaration one role down, relativised against this meet's join (`rel`), its tree read from the debt
-          # and the join's from the role above (`thread.msh`)
-          relParam =
-            x:
-            let
-              c = if thread.msh or null == null then null else metWith.shapeCmp x.s thread.msh;
-            in
-            if fresh && (if c == null then widens x.o else !c.same && c.wid) then metWith.judgeAt m x.o else x.o;
           maybe =
             if debt != null then
               metWith.owedOps meets m mayOwe null debt
-              ++ (if meets == false then filter mayOwe (map (x: x.o) debt.params) else map (x: x.o) debt.params)
               ++ (if meets == false then filter mayOwe thread.own else thread.own)
             else if meets == false then
               filter mayOwe os
@@ -7404,7 +7381,7 @@ let
           fresh =
             if debt != null then
               !(builtins.elem sameKey debt.fks)
-              && builtins.all (o: sameKey != closuresFirst [ o ] o) (debt.specials ++ map (x: x.o) debt.params ++ thread.own)
+              && builtins.all (o: sameKey != closuresFirst [ o ] o) (debt.specials ++ thread.own)
             else
               builtins.all (o: sameKey != closuresFirst [ o ] o) os;
           # the step's own earlier operand, by the comparison handed down with it where there is one (`thread.ownCmps`)
@@ -7445,9 +7422,6 @@ let
               rel notM
             else if debt != null then
               metWith.owedOps meets m mayOwe sameKey debt
-              ++ map relParam (
-                builtins.filter (x: (meets != false || mayOwe x.o) && sameKey != closuresFirst [ x.o ] x.o) debt.params
-              )
               ++ relOwn (
                 builtins.filter (o: (meets != false || mayOwe o) && sameKey != closuresFirst [ o ] o) thread.own
               )
