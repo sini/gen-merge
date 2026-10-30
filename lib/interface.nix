@@ -6977,6 +6977,8 @@ let
         inherit (a) cs;
         wid = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.wid) es;
       };
+    # the constructor's name a node's tree states for `x` (`shapeOf`'s `n`)
+    nodeName = x: ((wrappedBase x).functor or { }).name or null;
     # the comparison one role down, for the operand `x` that role carries: the node `c.es` holds at `i` where it is `x`'s own
     # node (its constructor's name), else `null` (the meet there walks `x` itself)
     shapeCmpAt =
@@ -6987,7 +6989,7 @@ let
         let
           ci = elemAt c.es i;
         in
-        if ci.a.n == ((wrappedBase x).functor or { }).name or null then ci else null;
+        if ci.a.n == metWith.nodeName x then ci else null;
     # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.ownRead`)
     judgeAt =
       m: o:

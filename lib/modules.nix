@@ -778,7 +778,7 @@ let
                 let
                   x = (builtins.elemAt cmps.b.es i).b;
                 in
-                if x.n == ((interface.wrappedBase rr).functor or { }).name or null then x else null;
+                if x.n == interface.metWith.nodeName rr then x else null;
             xs = t'.node.all ++ own;
           };
       at =
