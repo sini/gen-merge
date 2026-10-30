@@ -533,8 +533,8 @@ let
       && builtins.all (i: sameValue.widensAt (elemAt a.e i) (elemAt b.e i)) (
         builtins.genList (i: i) (length a.e)
       );
-    # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `sameValue.owedAs`)
-    relativisedOver =
+    # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.ownRead`)
+    judgeAt =
       m: o:
       let
         s = importedPartner ((wrappedBase o).functor or null);
@@ -653,20 +653,20 @@ let
     # the step where it meets the join `m`: relativised to its own parameters wherever `m` is its constructor's tree at the
     # same or wider parameters, so a later step's wider join finds it owed relative to them (ADR-0039 THE MEET); on `m`'s
     # own domain the two forms agree
-    owedAs =
+    ownRead =
       m: o:
       if
         sameValue.widensAt (sameValue.shapeOf importedTypeWalkFuel o) (
           sameValue.shapeOf importedTypeWalkFuel m
         )
       then
-        sameValue.relativisedOver m o
+        sameValue.judgeAt m o
       else
         o;
-    # `ops` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `ops.xs` = `ops.ds` (the
-    # debt, each record already relativised at its own step, owed as it is) ++ `ops.own` (the step's own earlier operand)
-    metWithOps =
-      meets: m: os: ops:
+    # `thread` (lib/modules.nix `mergeDeclaredTypes`): a step owing a met accumulator's debt owes `thread.xs` = `thread.ds` (the
+    # debt, each record already relativised at its own step, owed as it is) ++ `thread.own` (the step's own earlier operand)
+    metWith =
+      meets: m: os: thread:
       if
         meets == false
         && m ? typeMergeRel
@@ -682,7 +682,7 @@ let
           && !(replacesVerify o)
           && !(o ? holds)
         ) os
-        && (ops == null || !(ops ? hold))
+        && (thread == null || !(thread ? holdsType))
       then
         m
       else
@@ -690,7 +690,7 @@ let
           # a step over a held accumulator (lib/modules.nix `mergeDeclaredTypes`) holds what main's step held over the
           # same pair: its earlier operand and the accumulator, by `own`'s read of each (the accumulator's `mergeDefs`, which
           # demands its own kept folds); the debt is owed by its checks alone
-          hd = if ops == null then null else ops.hold or null;
+          holdsType = if thread == null then null else thread.holdsType or null;
           mayOwe =
             o:
             !(
@@ -713,19 +713,23 @@ let
           maybe = if meets == false then filter mayOwe os else os;
           # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
           # compared inline so the meet binds nothing for it
-          km = closuresFirst [ m ] m;
-          notM = filter (o: km != closuresFirst [ o ] o) maybe;
-          fresh = builtins.all (o: km != closuresFirst [ o ] o) os;
-          rel = map (o: if fresh && widens o then sameValue.relativisedOver m o else o);
-          # a step owing a met accumulator's debt (`ops.ds`, each declaration in its own-step form) relativises only its own
-          # earlier operand (`ops.own`); the debt is owed as it is
+          sameKey = closuresFirst [ m ] m;
+          notM = filter (o: sameKey != closuresFirst [ o ] o) maybe;
+          fresh = builtins.all (o: sameKey != closuresFirst [ o ] o) os;
+          rel = map (o: if fresh && widens o then sameValue.judgeAt m o else o);
+          # a step owing a met accumulator's debt (`thread.ds`, each declaration in its own-step form) relativises only its own
+          # earlier operand (`thread.own`); the debt is owed as it is
           owed =
-            if ops == null || !(ops ? own) then
+            if thread == null || !(thread ? own) then
               rel notM
             else
-              filter (o: km != closuresFirst [ o ] o) (if meets == false then filter mayOwe ops.ds else ops.ds)
+              filter (o: sameKey != closuresFirst [ o ] o) (
+                if meets == false then filter mayOwe thread.ds else thread.ds
+              )
               ++ rel (
-                filter (o: km != closuresFirst [ o ] o) (if meets == false then filter mayOwe ops.own else ops.own)
+                filter (o: sameKey != closuresFirst [ o ] o) (
+                  if meets == false then filter mayOwe thread.own else thread.own
+                )
               );
           once =
             if
@@ -736,11 +740,11 @@ let
             else
               owed;
         in
-        if maybe == [ ] && hd == null then
+        if maybe == [ ] && holdsType == null then
           m
         else if (importedSubstructure m).modules != null then
           carriedAtDepth true os m
-        else if owed == [ ] && hd == null then
+        else if owed == [ ] && holdsType == null then
           m
         # a held operand (a record met holding, `holds`) is held again wherever it is met. So is an operand stating a
         # relation gen did not construct (a `typeMergeRel` with no `exact` witness) and not relativised to its own
@@ -751,7 +755,7 @@ let
         # before this branch
         else if
           meets == "holds"
-          || hd != null
+          || holdsType != null
           || builtins.catAttrs "holds" once != [ ]
           ||
             !(m ? typeMergeRel)
@@ -772,9 +776,9 @@ let
           let
             met = meetOf m once;
             kept =
-              if hd != null then
+              if holdsType != null then
                 # main's own selection over what its step met: owed (`mayOwe`, the meet not holding), never the join
-                (if meets == false then filter mayOwe hd else hd)
+                (if meets == false then filter mayOwe holdsType else holdsType)
               else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
                 # a step taken past the witness holds such an operand whole, by its unchecked fold
                 once
@@ -948,16 +952,16 @@ let
           if kept == [ ] then met else h
         else
           meetOf m once;
-    # a step owing `ops` marks the answers its relation already met with them, so `mergeTypesBy` meets only a bare join
-    opsMet = ops: x: if ops == null || x == null then x else { __opsMet = x; };
+    # a step owing `thread` marks the answers its relation already met with them, so `mergeTypesBy` meets only a bare join
+    metElem = thread: x: if thread == null || x == null then x else { metFirst = x; };
     # THE FOREIGN ARM MEETS AT EVERY ROLE: the foreign join `r` is the carrier, and at each role the three
     # records carry (an element; a union's two members) its own carried type is met with the operands'
     # (`innerMet`), then `r` is rebuilt over the met roles by its own constructor. The top is met by the
     # caller (`mergeTypesBy`).
-    # a step owing `ops` owes, at a role, the role each owed declaration carries, never the accumulated carrier's own met role
-    roleOpsOf =
-      ops: f:
-      if ops == null then
+    # a step owing `thread` owes, at a role, the role each owed declaration carries, never the accumulated carrier's own met role
+    subOf =
+      thread: f:
+      if thread == null then
         null
       else
         {
@@ -967,7 +971,7 @@ let
               x = f d;
             in
             if x == null then [ ] else [ x ]
-          ) ops.xs;
+          ) thread.xs;
         };
   };
   closuresFirst = records: v: [
@@ -7390,7 +7394,7 @@ let
     && !(o ? carries.element || o ? carries.alternatives || (o.functor.payload or null) ? elemType);
   metWith =
     meets: m: os:
-    sameValue.metWithOps meets m os null;
+    sameValue.metWith meets m os null;
   # The join a RAW partner's own relation answers for `self`, the partner rebuilt from its published
   # functor as `joinInRebuiltPartner` rebuilds it, through `tryEval` (nixpkgs' default asserts); `null`
   # where it declines or renames.
