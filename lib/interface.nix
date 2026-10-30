@@ -6797,7 +6797,7 @@ let
           ${if types ? mkIdentity && j ? __mint then "__stampReads" else null} = stampReads;
         }
         // (if fold == null then { } else { mergeDefs = fold; });
-      ids = metIdentity j os { } met;
+      ids = metIdentity j (metWith.anything.owedItemsOf os) { } met;
     in
     # a `verify` no completion's check states: a foreign operand's, or a gen `//` copy's that replaced its completion's
     # (`replacesVerify`). A definition alone is not the value it refines (den-hoag-5f99v). The test is spelled inline
@@ -6848,7 +6848,7 @@ let
           ${if types ? mkIdentity && j ? __mint then "__witness" else null} = metWitness;
           ${if types ? mkIdentity && j ? __mint then "__stampReads" else null} = stampReads;
         };
-        vids = metIdentity j os { verify = true; } verified;
+        vids = metIdentity j (metWith.anything.owedItemsOf os) { verify = true; } verified;
       in
       verified;
   # The answer of every type merge: `m` met with each operand whose check it does not carry.
@@ -6945,7 +6945,12 @@ let
           && !(rewritesCheck o)
           && !(replacesVerify o)
           && !(o ? holds)
-        ) os
+        ) (if rewrites != null && rewrites ? debt then rewrites.debt.specials ++ rewrites.own else os)
+        && (
+          rewrites == null
+          || !(rewrites ? debt)
+          || rewrites.debt.plain.n == 0 && rewrites.debt.exact.n == 0 && rewrites.debt.roled.n == 0
+        )
         && (rewrites == null || !(rewrites ? answers))
       then
         m
@@ -6974,7 +6979,15 @@ let
               so = metWith.anything.shapeOf importedTypeWalkFuel o;
             in
             so != sm && metWith.anything.widensAt so sm;
-          maybe = if meets == false then filter mayOwe os else os;
+          debt = if rewrites == null then null else rewrites.debt or null;
+          # a step owing a debt: what it owes is decided once (`owed`); the empty test reads that, as main's reads `maybe`
+          maybe =
+            if debt != null then
+              owed
+            else if meets == false then
+              filter mayOwe os
+            else
+              os;
           # one value is the WHOLE record here, phrase included (`sameValue` leaves it out for the merge steps),
           # compared inline so the meet binds nothing for it
           completeExport = closuresFirst [ m ] m;
@@ -6993,8 +7006,13 @@ let
               )
             else
               filter (o: completeExport != closuresFirst [ o ] o) maybe;
+          ownK = if debt == null then [ ] else map (o: closuresFirst [ o ] o) rewrites.own;
           fresh =
-            if rewrites != null && rewrites ? exports then
+            if debt != null then
+              !(builtins.elem completeExport debt.fks)
+              && !(builtins.elem completeExport ownK)
+              && builtins.all (o: completeExport != closuresFirst [ o ] o) debt.specials
+            else if rewrites != null && rewrites ? exports then
               builtins.all (k: completeExport != k) rewrites.exports
               && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
             else
@@ -7005,6 +7023,19 @@ let
           owed =
             if rewrites == null || !(rewrites ? own) then
               rel notM
+            else if debt != null then
+              metWith.anything.owedOps meets m mayOwe completeExport debt
+              ++ rel (
+                builtins.concatLists (
+                  builtins.genList (
+                    i:
+                    let
+                      o = elemAt rewrites.own i;
+                    in
+                    if (meets != false || mayOwe o) && completeExport != elemAt ownK i then [ o ] else [ ]
+                  ) (length rewrites.own)
+                )
+              )
             else
               builtins.concatLists (
                 builtins.genList (
@@ -7023,6 +7054,8 @@ let
           once =
             if
               length owed == 2
+              && !(head owed ? __owedItems)
+              && !(elemAt owed 1 ? __owedItems)
               && closuresFirst [ (head owed) ] (head owed) == closuresFirst [ (elemAt owed 1) ] (elemAt owed 1)
             then
               [ (head owed) ]
@@ -7049,7 +7082,9 @@ let
           ||
             !(m ? typeMergeRel)
             && builtins.any (
-              o: o ? typeMergeRel && !(o ? retainedRelation) && (o ? carries.element || o ? carries.alternatives)
+              o:
+              o ? typeMergeRel && !(o ? retainedRelation) && (o ? carries.element || o ? carries.alternatives)
+              || o.__owedRoled or false
             ) once
           || builtins.any uncertifiedLeaf once
         then
@@ -7070,7 +7105,7 @@ let
                 (if meets == false then filter mayOwe answers else answers)
               else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
                 # a step taken past the witness holds such an operand whole, by its unchecked fold
-                once
+                metWith.anything.owedItemsOf once
               else if !(m ? typeMergeRel) then
                 let
                   # beside a carrier gen did not construct, an operand owed relativised to its own parameters (the union
@@ -7126,7 +7161,7 @@ let
                       && !(o ? retainedRelation)
                       && (o ? carries.element || o ? carries.alternatives)
                       && !(go importedTypeWalkFuel o)
-                  ) once
+                  ) (metWith.anything.owedItemsOf once)
                 )
               else
                 filter uncertifiedLeaf once;
@@ -7236,7 +7271,7 @@ let
                     };
                   }
               );
-            hids = metIdentity m once { holds = true; } h;
+            hids = metIdentity m (metWith.anything.owedItemsOf once) { holds = true; } h;
           in
           if kept == [ ] then met else h
         else
@@ -7252,6 +7287,185 @@ let
     # a step owing `rewrites` owes, at a role, the role each owed declaration carries, never the accumulated carrier's own met role
     # the helpers the meet with a thread and the fold read, a set forced only where one is read
     anything = {
+      # ── THE OWED SET (den-hoag-redeclaration-beside-foreign-slope-vhcac): a fold's debt owed as ONE operand. `meetOf` owes
+      # each operand by its declared domain, relative to its own parameters where a join widened them (`owedCheck`), and by its
+      # `verify` read once on the merged value where no completion states it (`owedVerify`); both are conjunctions, so the
+      # debt's are folded ONE DECLARATION AT A TIME as the fold folds it (`owedAdd`): a step owing k declarations owes one
+      # record extended once, never a list of k re-read at every step and every role (ADR-0039 THE MEET, every declared check,
+      # each once per value; ADR-0032, no per-step re-derivation). Only a declaration whose owing no join decides is folded in
+      # (`owedKind`): `plain`, stating no relation, owed at every join; `exact`, a certified leaf, owed exactly where the join
+      # states no relation (a carrier with no payload compares witnesses per declaration, as `metWith` does). Any other
+      # declaration (a hold, a rewrite, a role-carrying relation, a replaced `verify`) stays a listed operand (`specials`),
+      # met as before.
+      owedCheck =
+        o:
+        let
+          direct = c: if isAttrs c && c ? _fn then c._fn else c;
+          c = direct (o.check.__verifyProjection or (o.check or o.admits));
+          d =
+            if !(o ? verify) || !(o ? typeMergeRel) || replacesVerify o then
+              c
+            else if o ? _checkWitness && o.check == o._checkWitness then
+              (v: o.verify v == null)
+            else
+              (v: c v && o.verify v == null);
+          st = if o ? __stockCheck then direct o.__stockCheck else null;
+        in
+        if st == null then d else (v: d v || !(st v));
+      owedVerify =
+        o:
+        if o ? verify && (!(o ? typeMergeRel) || replacesVerify o) then
+          let
+            st =
+              if o ? __stockCheck then
+                (if isAttrs o.__stockCheck && o.__stockCheck ? _fn then o.__stockCheck._fn else o.__stockCheck)
+              else
+                null;
+          in
+          v: if st != null && !(st v) then null else o.verify v
+        else
+          null;
+      owedKind =
+        o:
+        if
+          !(o ? check || o ? admits)
+          || o ? holds
+          || replacesVerify o
+          || rewritesCheck o
+          || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
+        then
+          "specials"
+        else if !(o ? typeMergeRel) then
+          "plain"
+        else if !(o ? typeMergeRel.exact) then
+          "specials"
+        else if
+          !(o ? carries.element || o ? carries.alternatives || (o.functor.payload or null) ? elemType)
+        then
+          "exact"
+        # a certified container: owed exactly where a certified leaf is, and where owed beside a join stating no relation it is
+        # what makes the meet hold (`metWith`'s role-carrying trigger)
+        else if (o ? carries.element || o ? carries.alternatives) && !(o ? retainedRelation) then
+          "roled"
+        else
+          "specials";
+      owedSetNil = {
+        n = 0;
+        nWit = 0;
+        check = null;
+        verify = null;
+        items = [ ];
+        keys = [ ];
+      };
+      owedSetAdd = s: o: k: {
+        n = s.n + 1;
+        # how many state a check witness (a certified set beside a join with no payload is decided by witness, `owedOps`)
+        nWit = if (o._checkWitness or null) == null then s.nWit else s.nWit + 1;
+        check =
+          let
+            c = metWith.anything.owedCheck o;
+          in
+          if s.check == null then c else (v: s.check v && c v);
+        verify =
+          let
+            f = metWith.anything.owedVerify o;
+          in
+          if f == null then
+            s.verify
+          else if s.verify == null then
+            f
+          else
+            (
+              v:
+              let
+                e = s.verify v;
+              in
+              if e != null then e else f v
+            );
+        items = s.items ++ [ o ];
+        keys = s.keys ++ [ k ];
+      };
+      # a debt node: the owed sets, the listed operands, and the keys of its forms (`fks`, the one-value test) and of the
+      # declarations' own records there (`rks`, `lib/modules.nix` `declaredAt`); `owedAdd d x raw` folds in `x`, the form `raw`
+      # is owed in
+      owedNil = {
+        plain = metWith.anything.owedSetNil;
+        exact = metWith.anything.owedSetNil;
+        roled = metWith.anything.owedSetNil;
+        specials = [ ];
+        fks = [ ];
+        rks = [ ];
+        all = [ ];
+      };
+      owedAdd =
+        d: x: raw: kr:
+        let
+          k = metWith.anything.owedKind x;
+          # one key per declaration (`kr`, the declaration's own record's, from the fold's memo at the top): a form that is
+          # its own record (not relativised, `judgeAt`'s `__stockCheck`) shares it
+          kx = if x ? __stockCheck && !(raw ? __stockCheck) then closuresFirst [ x ] x else kr;
+        in
+        # one update over the node: only the set `x`'s kind names is rebuilt; the others are the node's own
+        d
+        // (
+          if k == "specials" then
+            { specials = d.specials ++ [ x ]; }
+          else
+            {
+              ${k} = metWith.anything.owedSetAdd d.${k} x kx;
+              fks = d.fks ++ [ kx ];
+            }
+        )
+        // {
+          rks = d.rks ++ [ kr ];
+          # every form in folding order, read only where each operand is read (a module set's carriage)
+          all = d.all ++ [ x ];
+        };
+      # the set as the one operand `meetOf` owes; `__owedItems` is the declarations it stands for at this meet (owed, and not the
+      # join itself, as `metWith` selects a listed operand), read only by what reads each operand (the meet's identity, a hold)
+      owedOp =
+        set: sel: roled:
+        {
+          inherit (set) check;
+          __owedItems = sel set.items;
+        }
+        // (if roled then { __owedRoled = true; } else { })
+        // (if set.verify == null then { } else { inherit (set) verify; });
+      # the operands owing the debt node `d` at a meet of `m`: `sameKey`, `m`'s one-value key (`null`: none dropped)
+      owedOps =
+        meets: m: mayOwe: sameKey: d:
+        let
+          keep = o: (meets != false || mayOwe o) && (sameKey == null || sameKey != closuresFirst [ o ] o);
+          # a set every declaration of which IS the join owes nothing here, as `metWith` drops a listed operand that is: the
+          # join is then kept as it is, not met (a role meet above rebuilds only over a met role)
+          op =
+            set: roled:
+            if sameKey != null && builtins.all (k: k == sameKey) set.keys then
+              [ ]
+            else
+              [ (metWith.anything.owedOp set (filter keep) roled) ];
+          exactOwed = meets != false || !(m ? typeMergeRel);
+          # a certified set: owed whole beside a join stating no relation, carried whole by a join stating a payload, and
+          # otherwise decided by witness: a set stating none is carried exactly by a join stating none
+          certified =
+            set: roled:
+            if set.n == 0 then
+              [ ]
+            else if exactOwed then
+              op set roled
+            else if (m.functor.payload or null) != null then
+              [ ]
+            else if set.nWit == 0 then
+              (if (m._checkWitness or null) == null then [ ] else op set roled)
+            else
+              filter keep set.items;
+        in
+        (if d.plain.n == 0 then [ ] else op d.plain false)
+        ++ (if d.exact.n == 0 then [ ] else certified d.exact false)
+        ++ (if d.roled.n == 0 then [ ] else certified d.roled true)
+        ++ filter keep d.specials;
+      # each operand as the declarations it stands for
+      owedItemsOf = builtins.concatMap (o: o.__owedItems or [ o ]);
       elementsOf =
         p:
         if isAttrs p && p ? elemType then
