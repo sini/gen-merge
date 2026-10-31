@@ -6906,9 +6906,7 @@ let
   # the meet: called as `metWith.core meets m os`; its members are the meet with a fold step's `rewrites` and the helpers it and
   # the declaration fold read, thunked only by an evaluation that meets
   metWith = {
-    __functor = self: self.core;
-    # the meet with no fold-step thread, applied once: a call through the functor, or `metWith.core`, is main's three
-    # applications
+    # the meet with no fold-step thread, applied once: `metWith.core` is main's three applications
     core = metWith.metWith null;
     # the roles the meet meets, read as `carriedAt` reads a payload: an element type, or a pair of
     # alternatives; any other `elemType` states no element of the tree
