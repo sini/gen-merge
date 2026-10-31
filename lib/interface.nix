@@ -6749,6 +6749,7 @@ let
               conj;
           _checkWitness = j._checkWitness or j.check;
           __meetJoin = j;
+          __shapeTree = metWith.anything.shapeOf importedTypeWalkFuel j;
           merge =
             if v2 then
               {
@@ -7018,7 +7019,30 @@ let
           # a step owing a met accumulator's debt (`rewrites.ds`, each declaration in its own-step form) relativises only its own
           # earlier operand (`rewrites.own`); the debt is owed as it is
           owed =
-            if rewrites == null || !(rewrites ? own) then
+            # one role down a step owing no debt (lib/modules.nix `rolesMet`): each operand's tree comparison with the join's is
+            # the node handed down (`rewrites.sx`, by position in `os`; `null` walks), so neither tree is walked again
+            if rewrites ? sx then
+              builtins.concatLists (
+                builtins.genList (
+                  i:
+                  let
+                    o = elemAt os i;
+                    c = if i == 0 then rewrites.sx.a else rewrites.sx.b;
+                  in
+                  if (meets != false || mayOwe o) && completeExport != closuresFirst [ o ] o then
+                    [
+                      (
+                        if fresh && (if c == null then widens o else !c.same && c.holds) then
+                          metWith.anything.witnessedCheck m o
+                        else
+                          o
+                      )
+                    ]
+                  else
+                    [ ]
+                ) (length os)
+              )
+            else if rewrites == null || !(rewrites ? own) then
               rel notM
             else if rewrites ? bNames then
               metWith.anything.refuseUnreconciledMint meets m mayOwe completeExport rewrites.bNames
@@ -7480,28 +7504,34 @@ let
           )
         else
           [ ];
+      # a met record states its join's tree (`__shapeTree`, made once and only where read): a foreign relation asked of a
+      # carrier whose roles are met records asks each role's exported `typeMerge` (nixpkgs' `binOp` recursion), whose meet
+      # reads that role's tree; read off the record, it is walked once, not once per level above it
       shapeOf =
         fuel: t:
-        let
-          f = (wrappedBase t).functor or { };
-          p = f.payload or null;
-        in
-        {
-          n = f.name or null;
-          p =
-            if isAttrs p then
-              builtins.removeAttrs p [
-                "elemType"
-                "modules"
-              ]
-            else
-              { };
-          e =
-            if fuel == 0 then
-              [ ]
-            else
-              map (metWith.anything.shapeOf (fuel - 1)) (metWith.anything.elementsOf p);
-        };
+        if t ? __shapeTree then
+          t.__shapeTree
+        else
+          let
+            f = (wrappedBase t).functor or { };
+            p = f.payload or null;
+          in
+          {
+            n = f.name or null;
+            p =
+              if isAttrs p then
+                builtins.removeAttrs p [
+                  "elemType"
+                  "modules"
+                ]
+              else
+                { };
+            e =
+              if fuel == 0 then
+                [ ]
+              else
+                map (metWith.anything.shapeOf (fuel - 1)) (metWith.anything.elementsOf p);
+          };
       widensAt =
         a: b:
         a.n == b.n
@@ -7510,6 +7540,39 @@ let
         && builtins.all (i: metWith.anything.widensAt (elemAt a.e i) (elemAt b.e i)) (
           builtins.genList (i: i) (length a.e)
         );
+      # two trees compared ONCE, node by node: `same` is `a == b` and `holds` is `widensAt a b`, each a node's own test over
+      # its elements' answers (`es`), so a role meet below reads its node (`below`) instead of walking its subtree again
+      node =
+        a: b:
+        let
+          n = length a.e;
+          es =
+            if n == length b.e then
+              builtins.genList (i: metWith.anything.node (elemAt a.e i) (elemAt b.e i)) n
+            else
+              [ ];
+        in
+        {
+          inherit es;
+          same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
+          holds = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.holds) es;
+        };
+      # the comparison `c` of `x`'s tree with the join `r`'s, one role down at `i`: the node there, where `x` and `r` state no
+      # `wraps` and no gen `carries`, so the role `carriedAt` reads is the payload element `shapeOf` walked (and a role join
+      # met or rebuilt over met roles keeps its tree, `__shapeTree`, `rebuiltOverAt`'s functor); else `null` (it walks)
+      below =
+        r: c: i: x:
+        if
+          c == null
+          || x ? wraps
+          || r ? wraps
+          || x ? carries && !(x ? retainedRelation)
+          || r ? carries && !(r ? retainedRelation)
+          || i >= length c.es
+        then
+          null
+        else
+          elemAt c.es i;
       witnessedCheck =
         m: o:
         let

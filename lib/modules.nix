@@ -669,15 +669,19 @@ let
             ))
           else
             (interface.metWith.importLeaf rewrites (
-              interface.metWith.metWith rewrites true (rolesMet rewrites r a b) (
-                if rewrites == null then
-                  [
-                    a
-                    b
-                  ]
-                else
-                  rewrites.xs
-              )
+              interface.metWith.metWith rewrites true
+                # a relation whose element is the pair's own met element (`rolesMet`, `lib/types.nix`) descended once
+                # already; a step owing a debt still meets its roles with it
+                (if (answer.rolesMet or false) && rewrites == null then r else rolesMet rewrites r a b)
+                (
+                  if rewrites == null then
+                    [
+                      a
+                      b
+                    ]
+                  else
+                    rewrites.xs
+                )
             ))
         )
       # a foreign author's relation the door retained (`retainedRelation`) is met at every role its functor
@@ -728,6 +732,26 @@ let
   rolesMet =
     rewrites: r: a: b:
     let
+      # the operands' tree comparisons with the join's (`interface.metWith.anything.node`): made once at a descent's top, read
+      # one role down off the node handed down (`rewrites.sx`); a step owing a debt hands down none
+      pairs =
+        if rewrites == null then
+          let
+            tree = interface.metWith.anything.shapeOf interface.importedTypeWalkFuel r;
+          in
+          {
+            a = interface.metWith.anything.node (interface.metWith.anything.shapeOf interface.importedTypeWalkFuel a) tree;
+            b = interface.metWith.anything.node (interface.metWith.anything.shapeOf interface.importedTypeWalkFuel b) tree;
+          }
+        else
+          rewrites.sx or null;
+      # a role's thread where the step owes no debt: the nodes that role reads, forced only where its meet relativises
+      sub = i: {
+        sx = {
+          a = interface.metWith.anything.below r pairs.a i a;
+          b = interface.metWith.anything.below r pairs.b i b;
+        };
+      };
       at =
         role:
         map (interface.carriedAt role) [
@@ -747,10 +771,10 @@ let
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
-        (if o != null && o ? bNames then interface.metWith.metWith o else interface.metWith.core) false
+        (if o ? sx || o ? bNames then interface.metWith.metWith o else interface.metWith.core) false
           (rolesMet o r' a' b')
           (
-            if o == null then
+            if o == null || o ? sx then
               [
                 a'
                 b'
@@ -764,8 +788,8 @@ let
         let
           # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree
           m = innerMet (
-            if rewrites == null then
-              null
+            if rewrites == null || rewrites ? sx then
+              sub 0
             else if rewrites ? readers then
               rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")
             else
@@ -780,8 +804,8 @@ let
           m = builtins.genList (
             i:
             innerMet (
-              if rewrites == null then
-                null
+              if rewrites == null || rewrites ? sx then
+                sub i
               else if rewrites ? readers then
                 rewrites.readers rewrites (t: pick t.priorityBand i) (
                   d:
@@ -1152,15 +1176,17 @@ let
                 rewrites.xs
             )
           else
-            interface.metWith.metWith rewrites true (rolesMet rewrites r earlier later) (
-              if rewrites == null then
-                [
-                  earlier
-                  later
-                ]
-              else
-                rewrites.xs
-            );
+            interface.metWith.metWith rewrites true
+              (if (veto.rolesMet or false) && rewrites == null then r else rolesMet rewrites r earlier later)
+              (
+                if rewrites == null then
+                  [
+                    earlier
+                    later
+                  ]
+                else
+                  rewrites.xs
+              );
       }
     else if veto ? refused && (veto.vetoes or true) then
       {
