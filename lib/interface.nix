@@ -7023,8 +7023,8 @@ let
           # earlier operand (`rewrites.own`); the debt is owed as it is
           owed =
             # one role down a step owing no debt (lib/modules.nix `rolesMet`, `os` its two operands): each operand's tree comparison
-            # with the join's is the node handed down (`rewrites.sx`; `null` walks), so neither tree is walked again
-            if rewrites ? sx then
+            # with the join's is the node handed down (`rewrites.tag`; `null` walks), so neither tree is walked again
+            if rewrites ? tag then
               let
                 x = elemAt os 0;
                 y = elemAt os 1;
@@ -7034,7 +7034,7 @@ let
                   [
                     (
                       if
-                        fresh && (if rewrites.sx.a == null then widens x else !rewrites.sx.a.same && rewrites.sx.a.holds)
+                        fresh && (if rewrites.tag.a == null then widens x else !rewrites.tag.a.same && rewrites.tag.a.holds)
                       then
                         metWith.anything.witnessedCheck m x
                       else
@@ -7049,7 +7049,7 @@ let
                   [
                     (
                       if
-                        fresh && (if rewrites.sx.b == null then widens y else !rewrites.sx.b.same && rewrites.sx.b.holds)
+                        fresh && (if rewrites.tag.b == null then widens y else !rewrites.tag.b.same && rewrites.tag.b.holds)
                       then
                         metWith.anything.witnessedCheck m y
                       else
@@ -7590,7 +7590,7 @@ let
             || a.e != [ ] && builtins.any (c: c.structured) es;
         };
       # the operands' trees compared with the join `r`'s, at a descent's top
-      pairOf =
+      pairs =
         r: a: b:
         let
           tree = metWith.anything.shapeOf importedTypeWalkFuel r;
@@ -7602,7 +7602,7 @@ let
       # whether the role `carriedAt` reads on `x` is the payload element `shapeOf` walks: `x` states no `wraps` (`shapeOf` reads
       # `wrappedBase`), and a gen `carries` it states (read first by `carriedAt`) is its payload's `elemType` (a gen
       # constructor's own; `==` answers at once on the one value)
-      readsPayload =
+      direct =
         x:
         !(x ? wraps)
         && (
@@ -7615,23 +7615,21 @@ let
           )
         );
       # the node of the comparison `c` one role down at `i`, for the operand `x` beside the join `r`: the comparison of the
-      # role trees where both read their payload element there (`readsPayload`; a role join met or rebuilt over met roles keeps
+      # role trees where both read their payload element there (`direct`; a role join met or rebuilt over met roles keeps
       # its tree: `__shapeTree`, `rebuiltOverAt`'s functor), else `null` (the meet there walks it)
       nodeAt =
         r: c: i: x:
         # (`false`, a tree stating no parameter, holds for the role's tree only where that role is `x`'s payload element)
         if c == false then
-          (if metWith.anything.readsPayload x then false else null)
-        else if
-          c != null && i < length c.es && metWith.anything.readsPayload x && metWith.anything.readsPayload r
-        then
+          (if metWith.anything.direct x then false else null)
+        else if c != null && i < length c.es && metWith.anything.direct x && metWith.anything.direct r then
           elemAt c.es i
         else
           null;
       # a step thread's role thread `t` (`readers`) one role down at `i` (`f`, the role each record carries there) beside the join
       # `r`, stating its own operands' comparisons with the role join's (`oc`, parallel to `t.own`): made once at the step's
       # descent top (`rewrites.own` against `r`) and read node by node below it, so a debt-owing step's role meet walks no tree
-      ownAt =
+      inner =
         rewrites: r: i: f: t:
         if t == null || !(t ? own) then
           t
@@ -7661,7 +7659,7 @@ let
             );
           };
       # `ownRead` read off the comparison `c` of `o`'s tree with `m`'s (`node`), walking only where `c` is `null`
-      ownReadAt =
+      seen =
         c: m: o:
         if c == false then
           o
@@ -7671,12 +7669,12 @@ let
           metWith.anything.witnessedCheck m o
         else
           o;
-      # the comparisons of the operands `a`, `b` with the join `r` one role down at `i` (`pairOf` at a descent's top, where
-      # `rewrites` is `null`, else the role above's, `rewrites.sx`)
+      # the comparisons of the operands `a`, `b` with the join `r` one role down at `i` (`pairs` at a descent's top, where
+      # `rewrites` is `null`, else the role above's, `rewrites.tag`)
       below =
         rewrites: r: i: a: b:
         let
-          c = if rewrites == null then metWith.anything.pairOf r a b else rewrites.sx;
+          c = if rewrites == null then metWith.anything.pairs r a b else rewrites.tag;
         in
         {
           a = metWith.anything.nodeAt r c.a i a;
@@ -7799,17 +7797,15 @@ let
           o;
       # a tree stating a parameter at some node; a payload that is itself a type is the container's element (nixpkgs' `binOp`
       # delegates to the element's `typeMerge`), never its parameters
-      statesParameters =
-        t:
-        t.p != { } && (t.p._type or null) != "option-type"
-        || builtins.any metWith.anything.statesParameters t.e;
+      stated =
+        t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any metWith.anything.stated t.e;
       ownRead =
         m: o:
         let
           so = metWith.anything.shapeOf importedTypeWalkFuel o;
         in
         if
-          metWith.anything.statesParameters so
+          metWith.anything.stated so
           && metWith.anything.widensAt so (metWith.anything.shapeOf importedTypeWalkFuel m)
         then
           metWith.anything.witnessedCheck m o

@@ -746,10 +746,10 @@ let
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
-        (if o ? sx || o ? bNames then interface.metWith.metWith o else interface.metWith.core) false
+        (if o ? tag || o ? bNames then interface.metWith.metWith o else interface.metWith.core) false
           (rolesMet o r' a' b')
           (
-            if o == null || o ? sx then
+            if o == null || o ? tag then
               [
                 a'
                 b'
@@ -762,13 +762,13 @@ let
       (
         let
           # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree;
-          # a step owing no debt hands the role its operands' tree comparisons with the join's (`sx`), made once at the descent's
+          # a step owing no debt hands the role its operands' tree comparisons with the join's (`tag`), made once at the descent's
           # top and read node by node below it (`interface.metWith.anything.below`), forced only where a role meet relativises
           m = innerMet (
-            if rewrites == null || rewrites ? sx then
-              { sx = interface.metWith.anything.below rewrites r 0 a b; }
+            if rewrites == null || rewrites ? tag then
+              { tag = interface.metWith.anything.below rewrites r 0 a b; }
             else if rewrites ? readers then
-              interface.metWith.anything.ownAt rewrites r 0 (interface.carriedAt "element") (
+              interface.metWith.anything.inner rewrites r 0 (interface.carriedAt "element") (
                 rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")
               )
             else
@@ -792,10 +792,10 @@ let
             i:
             innerMet
               (
-                if rewrites == null || rewrites ? sx then
-                  { sx = interface.metWith.anything.below rewrites r i a b; }
+                if rewrites == null || rewrites ? tag then
+                  { tag = interface.metWith.anything.below rewrites r i a b; }
                 else if rewrites ? readers then
-                  interface.metWith.anything.ownAt rewrites r i
+                  interface.metWith.anything.inner rewrites r i
                     (
                       d:
                       let
@@ -1310,15 +1310,15 @@ let
             # the declaration's tree compared with the step's join's ONCE: its own-step form here (`ownRead`'s test, read off
             # it) and at every node down the debt tree (`structuring`); a tree stating no parameter at any node is relativised
             # at none (`false`), so it builds no comparison
-            cmp =
-              if interface.metWith.anything.statesParameters so then
+            deep =
+              if interface.metWith.anything.stated so then
                 interface.metWith.anything.node so (
                   interface.metWith.anything.shapeOf interface.importedTypeWalkFuel completedLeaves
                 )
               else
                 false;
             d =
-              if cmp != false && cmp.holds then
+              if deep != false && deep.holds then
                 interface.metWith.anything.witnessedCheck completedLeaves raw
               else
                 raw;
@@ -1329,7 +1329,7 @@ let
             {
               ds = o.ds ++ [ d ];
               ks = o.ks ++ [ link ];
-              bNames = structuring o.bNames d raw completedLeaves link cmp;
+              bNames = structuring o.bNames d raw completedLeaves link deep;
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
@@ -1341,10 +1341,10 @@ let
           ];
         };
         # the tree `t` extended by the declaration `raw`, owed as `x` at this node, over the step's join `completedLeaves` there
-        # (`cmp`: `raw`'s tree compared with `completedLeaves`' at this node, `interface.metWith.anything.node`; `null` walks;
+        # (`deep`: `raw`'s tree compared with `completedLeaves`' at this node, `interface.metWith.anything.node`; `null` walks;
         # `false`: no node of `raw`'s tree states a parameter, so none is relativised)
         structuring =
-          t: x: raw: completedLeaves: defaultOrderPriority: cmp:
+          t: x: raw: completedLeaves: defaultOrderPriority: deep:
           let
             protocolNames = y: if y == null then null else y.__meetJoin or y;
             markShared =
@@ -1353,13 +1353,13 @@ let
                 importLeaf
               else
                 let
-                  c = interface.metWith.anything.nodeAt completedLeaves cmp allow raw;
+                  c = interface.metWith.anything.nodeAt completedLeaves deep allow raw;
                 in
                 structuring importLeaf (
                   if lintLib == null then
                     mergeConfigAttrs
                   else
-                    interface.metWith.anything.ownReadAt c lintLib mergeConfigAttrs
+                    interface.metWith.anything.seen c lintLib mergeConfigAttrs
                 ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs) c;
             re = interface.carriedAt "element" raw;
             ra = interface.carriedAt "alternatives" raw;
