@@ -1522,6 +1522,7 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.fresh-editor.defaultEditor","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.fresh-editor.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.fresh-editor.extraPackages","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.fresh-editor.mutableSettings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.fresh-editor.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.fresh-editor.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.fuzzel.enable","n":0},"verdict":"PASS"}
@@ -1688,6 +1689,9 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.gnome-terminal.profile.<name>.visibleName","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.gnome-terminal.showMenubar","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.gnome-terminal.themeVariant","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.go-musicfox.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.go-musicfox.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.go-musicfox.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.go.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.go.env","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.go.env.GOPATH","n":0},"verdict":"PASS"}
@@ -2456,6 +2460,7 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.neomutt.extraConfig","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.neomutt.macros","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.neomutt.macros.*.action","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.neomutt.macros.*.description","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.neomutt.macros.*.key","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.neomutt.macros.*.map","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.neomutt.package","n":0},"verdict":"PASS"}
@@ -2615,6 +2620,7 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.nushell.extraConfig","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.nushell.extraEnv","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.nushell.extraLogin","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.nushell.loadSessionVariables","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.nushell.loginFile","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.nushell.loginFile.source","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.nushell.loginFile.text","n":0},"verdict":"PASS"}
@@ -2725,6 +2731,7 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.opam.enableZshIntegration","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opam.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.agents","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.opencode.cli","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.commands","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.context","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.enable","n":0},"verdict":"PASS"}
@@ -2738,6 +2745,7 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.tools","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.tui","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.validateFiles","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.opencode.validateFiles.cli","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.validateFiles.config","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.validateFiles.tui","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opencode.web.enable","n":0},"verdict":"PASS"}
@@ -2806,6 +2814,7 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.pi-coding-agent.extraPackages","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pi-coding-agent.keybindings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pi-coding-agent.models","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.pi-coding-agent.mutableSettings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pi-coding-agent.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pi-coding-agent.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pianobar.enable","n":0},"verdict":"PASS"}
@@ -2942,6 +2951,11 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.qutebrowser.quickmarks","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.qutebrowser.searchEngines","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.qutebrowser.settings","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.radare2.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.radare2.extraConfig","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.radare2.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.radare2.plugins","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.radare2.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.radicle.cli.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.radicle.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.radicle.settings","n":0},"verdict":"PASS"}
@@ -3300,6 +3314,9 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.mutableKeybindings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.mutableUserSettings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.t3code.server.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.t3code.server.environmentFile","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.t3code.server.extraArgs","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.userSettings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.taskwarrior.colorTheme","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.taskwarrior.config","n":0},"verdict":"PASS"}
@@ -5655,9 +5672,9 @@
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.useUserPackages","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.users","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"nixos","name":"home-manager.verbose","n":0},"verdict":"PASS"}
-{"key":{"kind":"docs-walk","set":"darwin"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":94989,"bytes":34739169,"ms":142},"ref":{"thunks":92217,"bytes":34608617,"ms":131}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":94989,"bytes":35936416,"ms":409},"ref":{"thunks":92217,"bytes":35748464,"ms":235}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":94168,"bytes":37245864,"ms":239},"ref":{"thunks":91396,"bytes":37126704,"ms":215}}}}
-{"key":{"kind":"docs-walk","set":"hm"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":3034622,"bytes":205685978,"ms":866},"ref":{"thunks":2211026,"bytes":147332072,"ms":597}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":3035234,"bytes":207488760,"ms":1679},"ref":{"thunks":2211026,"bytes":148986264,"ms":1151}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":3034426,"bytes":153704481,"ms":1378},"ref":{"thunks":2210037,"bytes":117601327,"ms":950}}}}
-{"key":{"kind":"docs-walk","set":"nixos"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":95235,"bytes":34755502,"ms":150},"ref":{"thunks":92415,"bytes":34619419,"ms":131}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":95235,"bytes":35953624,"ms":271},"ref":{"thunks":92415,"bytes":35760136,"ms":240}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":94414,"bytes":37257109,"ms":240},"ref":{"thunks":91594,"bytes":37134898,"ms":205}}}}
+{"key":{"kind":"docs-walk","set":"darwin"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":94307,"bytes":34890795,"ms":154},"ref":{"thunks":91535,"bytes":34760243,"ms":138}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":94307,"bytes":36090592,"ms":221},"ref":{"thunks":91535,"bytes":35902640,"ms":196}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":93486,"bytes":37365762,"ms":227},"ref":{"thunks":90714,"bytes":37246602,"ms":200}}}}
+{"key":{"kind":"docs-walk","set":"hm"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":3040392,"bytes":206206977,"ms":903},"ref":{"thunks":2214617,"bytes":147708233,"ms":607}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":3041004,"bytes":208014856,"ms":1328},"ref":{"thunks":2214617,"bytes":149367456,"ms":887}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":3040196,"bytes":154076824,"ms":1287},"ref":{"thunks":2213628,"bytes":117887120,"ms":976}}}}
+{"key":{"kind":"docs-walk","set":"nixos"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":94553,"bytes":34907128,"ms":158},"ref":{"thunks":91733,"bytes":34771045,"ms":132}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":94553,"bytes":36107800,"ms":247},"ref":{"thunks":91733,"bytes":35914312,"ms":191}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":93732,"bytes":37377007,"ms":217},"ref":{"thunks":90912,"bytes":37254796,"ms":208}}}}
 {"key":{"kind":"test","name":"abaddon-example-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"abook-no-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"abook-with-settings"},"verdict":"PASS"}
@@ -5916,6 +5933,7 @@
 {"key":{"kind":"test","name":"codex-legacy-custom-instructions"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"codex-mcp-integration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"codex-mcp-integration-with-override"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"codex-mutable-mcp-transport"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"codex-mutable-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"codex-mutable-transition"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"codex-plugins"},"verdict":"PASS"}
@@ -6170,6 +6188,11 @@
 {"key":{"kind":"test","name":"formiko-example-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"freetube-basic-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"fresh-editor"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"fresh-editor-immutable-empty"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"fresh-editor-mutable"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"fresh-editor-mutable-custom-xdg"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"fresh-editor-mutable-disabled"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"fresh-editor-mutable-empty"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"fusuma-example-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"fusuma-systemd-user-service"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"fuzzel-empty-settings"},"verdict":"PASS"}
@@ -6278,6 +6301,10 @@
 {"key":{"kind":"test","name":"gnome-terminal-1"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"gnome-terminal-bad-profile-name"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"go-example-config"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"go-musicfox-disable-xdg"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"go-musicfox-empty-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"go-musicfox-normal"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"go-musicfox-null-package"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"go-packages-custom-gopath"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"go-packages-default-gopath"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"go-packages-invalid-main-gopath"},"verdict":"PASS"}
@@ -6631,6 +6658,7 @@
 {"key":{"kind":"test","name":"man-mandoc"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"man-no-caches-without-package"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"man-no-manpath"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"man-no-pages"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"mangohud-basic-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"manual"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"mblaze-basic"},"verdict":"PASS"}
@@ -6796,6 +6824,11 @@
 {"key":{"kind":"test","name":"numlock"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"nushell-config-dir"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"nushell-example-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"nushell-session-variables"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"nushell-session-variables-current"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"nushell-session-variables-legacy"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"nushell-session-variables-opt-in"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"nushell-session-variables-opt-out"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"nvchecker-basic-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"nvchecker-empty-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"nvibrant-dithering"},"verdict":"PASS"}
@@ -6822,6 +6855,9 @@
 {"key":{"kind":"test","name":"opencode-agents-inline"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-agents-path"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-assertions"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"opencode-cli-empty"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"opencode-cli-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"opencode-cli-v1-warning"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-commands-bulk-directory"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-commands-inline"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-commands-path"},"verdict":"PASS"}
@@ -6829,6 +6865,7 @@
 {"key":{"kind":"test","name":"opencode-context-path"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-empty-context"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-empty-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"opencode-layer-cli"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-layer-empty"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-layer-file-disabled"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-layer-home-file-service"},"verdict":"PASS"}
@@ -6841,6 +6878,7 @@
 {"key":{"kind":"test","name":"opencode-mixed-content"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-settings-ordered-permissions"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"opencode-settings-tui-key-v2-warning"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-skills-bulk-directory"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-skills-directory"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-skills-inline"},"verdict":"PASS"}
@@ -6855,7 +6893,9 @@
 {"key":{"kind":"test","name":"opencode-tools-path"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-tui-empty"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-tui-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"opencode-tui-v2-warning"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-tui-with-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"opencode-validate-tui-v2"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-web-service"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opencode-web-service-environment-file"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"openlinkhub-assert-gamepad"},"verdict":"PASS"}
@@ -6921,9 +6961,12 @@
 {"key":{"kind":"test","name":"pi-coding-agent-context-inline"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pi-coding-agent-context-path"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pi-coding-agent-custom-config-dir"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"pi-coding-agent-disabled"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"pi-coding-agent-empty"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pi-coding-agent-empty-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pi-coding-agent-keybindings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pi-coding-agent-models"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"pi-coding-agent-mutable"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pi-coding-agent-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pianobar-extra-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pianobar-minimally-required-configs"},"verdict":"PASS"}
@@ -7016,6 +7059,12 @@
 {"key":{"kind":"test","name":"qutebrowser-quickmarks"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"qutebrowser-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"qutebrowser-url-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"radare2-basic-configuration"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"radare2-disabled-configuration"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"radare2-no-plugins"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"radare2-null-package"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"radare2-plugins"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"radare2-xdg-disabled"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"radicle-basic-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"radio-active-AppConfig"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"radio-active-AppConfig_all"},"verdict":"PASS"}
@@ -7099,6 +7148,7 @@
 {"key":{"kind":"test","name":"senpai-empty-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"senpai-example-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"sesh-basic-configuration"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"sesh-null-package"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"sftpman-assert-on-no-sshkey"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"sftpman-example-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"sherlock-basic-configuration"},"verdict":"PASS"}
@@ -7210,6 +7260,8 @@
 {"key":{"kind":"test","name":"systemd-user-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"t3code-immutable-disabled"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"t3code-immutable-ownership"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"t3code-server"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"t3code-server-environment-file"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"t3code-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"t3code-settings-empty"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"t3code-settings-immutable"},"verdict":"PASS"}
@@ -7522,4 +7574,4 @@
 {"key":{"kind":"test","name":"zsh-xdg-disabled"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"zsh-zprof"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"zshrc-contents-priorities"},"verdict":"PASS"}
-{"key":{"kind":"tests"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":1531202642,"bytes":114820506344,"ms":685010,"set":{"processes":37,"sha":"c8d45b636f1e0b7a915734b241aa4b96f0dde0dccbe7bd6401f77632dbbfcba0"}},"ref":{"thunks":625099715,"bytes":49935505498,"ms":246883,"set":{"processes":37,"sha":"c8d45b636f1e0b7a915734b241aa4b96f0dde0dccbe7bd6401f77632dbbfcba0"}}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":1531794303,"bytes":115014530992,"ms":1474255,"set":{"processes":37,"sha":"c8d45b636f1e0b7a915734b241aa4b96f0dde0dccbe7bd6401f77632dbbfcba0"}},"ref":{"thunks":625099715,"bytes":50061460008,"ms":467486,"set":{"processes":37,"sha":"c8d45b636f1e0b7a915734b241aa4b96f0dde0dccbe7bd6401f77632dbbfcba0"}}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":1532323655,"bytes":79345453139,"ms":1143052,"set":{"processes":37,"sha":"c8d45b636f1e0b7a915734b241aa4b96f0dde0dccbe7bd6401f77632dbbfcba0"}},"ref":{"thunks":624880377,"bytes":36464328877,"ms":420085,"set":{"processes":37,"sha":"c8d45b636f1e0b7a915734b241aa4b96f0dde0dccbe7bd6401f77632dbbfcba0"}}}}}
+{"key":{"kind":"tests"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":1564957309,"bytes":117869615424,"ms":765780,"set":{"processes":37,"sha":"b4929811886a11e0b64626d4c273d8683d5bf16518e80627c8f9688ee558d928"}},"ref":{"thunks":637646441,"bytes":51461828101,"ms":276310,"set":{"processes":37,"sha":"b4929811886a11e0b64626d4c273d8683d5bf16518e80627c8f9688ee558d928"}}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":1565560380,"bytes":118067551336,"ms":1139576,"set":{"processes":37,"sha":"b4929811886a11e0b64626d4c273d8683d5bf16518e80627c8f9688ee558d928"}},"ref":{"thunks":637646441,"bytes":51590375016,"ms":372913,"set":{"processes":37,"sha":"b4929811886a11e0b64626d4c273d8683d5bf16518e80627c8f9688ee558d928"}}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":1566090542,"bytes":81679245739,"ms":1124635,"set":{"processes":37,"sha":"b4929811886a11e0b64626d4c273d8683d5bf16518e80627c8f9688ee558d928"}},"ref":{"thunks":637413465,"bytes":37768225320,"ms":402443,"set":{"processes":37,"sha":"b4929811886a11e0b64626d4c273d8683d5bf16518e80627c8f9688ee558d928"}}}}}
