@@ -6971,8 +6971,11 @@ let
             || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
             || replacesVerify o
             || o ? holds;
-          sm = metWith.anything.shapeOf importedTypeWalkFuel m;
+          # the join's tree is walked only by a meet that asks whether an operand widens
           widens =
+            let
+              sm = metWith.anything.shapeOf importedTypeWalkFuel m;
+            in
             o:
             let
               so = metWith.anything.shapeOf importedTypeWalkFuel o;
@@ -7019,28 +7022,42 @@ let
           # a step owing a met accumulator's debt (`rewrites.ds`, each declaration in its own-step form) relativises only its own
           # earlier operand (`rewrites.own`); the debt is owed as it is
           owed =
-            # one role down a step owing no debt (lib/modules.nix `rolesMet`): each operand's tree comparison with the join's is
-            # the node handed down (`rewrites.sx`, by position in `os`; `null` walks), so neither tree is walked again
+            # one role down a step owing no debt (lib/modules.nix `rolesMet`, `os` its two operands): each operand's tree comparison
+            # with the join's is the node handed down (`rewrites.sx`; `null` walks), so neither tree is walked again
             if rewrites ? sx then
-              builtins.concatLists (
-                builtins.genList (
-                  i:
-                  let
-                    o = elemAt os i;
-                    c = if i == 0 then rewrites.sx.a else rewrites.sx.b;
-                  in
-                  if (meets != false || mayOwe o) && completeExport != closuresFirst [ o ] o then
-                    [
-                      (
-                        if fresh && (if c == null then widens o else !c.same && c.holds) then
-                          metWith.anything.witnessedCheck m o
-                        else
-                          o
-                      )
-                    ]
-                  else
-                    [ ]
-                ) (length os)
+              let
+                x = elemAt os 0;
+                y = elemAt os 1;
+              in
+              (
+                if (meets != false || mayOwe x) && completeExport != closuresFirst [ x ] x then
+                  [
+                    (
+                      if
+                        fresh && (if rewrites.sx.a == null then widens x else !rewrites.sx.a.same && rewrites.sx.a.holds)
+                      then
+                        metWith.anything.witnessedCheck m x
+                      else
+                        x
+                    )
+                  ]
+                else
+                  [ ]
+              )
+              ++ (
+                if (meets != false || mayOwe y) && completeExport != closuresFirst [ y ] y then
+                  [
+                    (
+                      if
+                        fresh && (if rewrites.sx.b == null then widens y else !rewrites.sx.b.same && rewrites.sx.b.holds)
+                      then
+                        metWith.anything.witnessedCheck m y
+                      else
+                        y
+                    )
+                  ]
+                else
+                  [ ]
               )
             else if rewrites == null || !(rewrites ? own) then
               rel notM
@@ -7557,22 +7574,31 @@ let
           same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
           holds = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.holds) es;
         };
-      # the comparison `c` of `x`'s tree with the join `r`'s, one role down at `i`: the node there, where `x` and `r` state no
-      # `wraps` and no gen `carries`, so the role `carriedAt` reads is the payload element `shapeOf` walked (and a role join
-      # met or rebuilt over met roles keeps its tree, `__shapeTree`, `rebuiltOverAt`'s functor); else `null` (it walks)
+      # the operands' trees compared with the join `r`'s, at a descent's top
+      pairOf =
+        r: a: b:
+        let
+          tree = metWith.anything.shapeOf importedTypeWalkFuel r;
+        in
+        {
+          a = metWith.anything.node (metWith.anything.shapeOf importedTypeWalkFuel a) tree;
+          b = metWith.anything.node (metWith.anything.shapeOf importedTypeWalkFuel b) tree;
+        };
+      # the comparisons of the operands `a`, `b` with the join `r` (`pairOf` at a descent's top, where `rewrites` is `null`, else
+      # the role above's, `rewrites.sx`), one role down at `i`: the node there, where the operand and `r` state no `wraps` and
+      # no gen `carries`, so the role `carriedAt` reads is the payload element `shapeOf` walked (a role join met or rebuilt
+      # over met roles keeps its tree: `__shapeTree`, `rebuiltOverAt`'s functor); else `null` (the meet there walks it)
       below =
-        r: c: i: x:
-        if
-          c == null
-          || x ? wraps
-          || r ? wraps
-          || x ? carries && !(x ? retainedRelation)
-          || r ? carries && !(r ? retainedRelation)
-          || i >= length c.es
-        then
-          null
-        else
-          elemAt c.es i;
+        rewrites: r: i: a: b:
+        let
+          c = if rewrites == null then metWith.anything.pairOf r a b else rewrites.sx;
+          direct = x: !(x ? wraps) && !(x ? carries && !(x ? retainedRelation));
+          at = n: x: if n != null && direct x && direct r && i < length n.es then elemAt n.es i else null;
+        in
+        {
+          a = at c.a a;
+          b = at c.b b;
+        };
       witnessedCheck =
         m: o:
         let

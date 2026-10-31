@@ -732,42 +732,17 @@ let
   rolesMet =
     rewrites: r: a: b:
     let
-      # the operands' tree comparisons with the join's (`interface.metWith.anything.node`): made once at a descent's top, read
-      # one role down off the node handed down (`rewrites.sx`); a step owing a debt hands down none
-      pairs =
-        if rewrites == null then
-          let
-            tree = interface.metWith.anything.shapeOf interface.importedTypeWalkFuel r;
-          in
-          {
-            a = interface.metWith.anything.node (interface.metWith.anything.shapeOf interface.importedTypeWalkFuel a) tree;
-            b = interface.metWith.anything.node (interface.metWith.anything.shapeOf interface.importedTypeWalkFuel b) tree;
-          }
-        else
-          rewrites.sx or null;
-      # a role's thread where the step owes no debt: the nodes that role reads, forced only where its meet relativises
-      sub = i: {
-        sx = {
-          a = interface.metWith.anything.below r pairs.a i a;
-          b = interface.metWith.anything.below r pairs.b i b;
-        };
-      };
-      at =
-        role:
-        map (interface.carriedAt role) [
-          r
-          a
-          b
-        ];
-      el = at "element";
-      al = at "alternatives";
-      rebuilt =
-        role: carried:
-        let
-          x = interface.rebuiltOverAt role carried r;
-        in
-        if x == null then r else x;
-      pick = l: i: builtins.elemAt l i;
+      # (each role's three records, and the helpers below, written where they are read: a binding is a thunk per call)
+      el = map (interface.carriedAt "element") [
+        r
+        a
+        b
+      ];
+      al = map (interface.carriedAt "alternatives") [
+        r
+        a
+        b
+      ];
       # a carried role's own join met with the operands' at that role, and at every role below it
       innerMet =
         o: r': a': b':
@@ -786,52 +761,71 @@ let
     if builtins.all (x: x != null) el then
       (
         let
-          # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree
+          # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree;
+          # a step owing no debt hands the role its operands' tree comparisons with the join's (`sx`), made once at the descent's
+          # top and read node by node below it (`interface.metWith.anything.below`), forced only where a role meet relativises
           m = innerMet (
             if rewrites == null || rewrites ? sx then
-              sub 0
+              { sx = interface.metWith.anything.below rewrites r 0 a b; }
             else if rewrites ? readers then
               rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")
             else
               interface.metWith.anything.functorRecord rewrites (interface.carriedAt "element")
-          ) (pick el 0) (pick el 1) (pick el 2);
+          ) (builtins.elemAt el 0) (builtins.elemAt el 1) (builtins.elemAt el 2);
         in
-        if interface.sameValue m (pick el 0) then r else rebuilt "element" m
+        if interface.sameValue m (builtins.elemAt el 0) then
+          r
+        else
+          (
+            let
+              x = interface.rebuiltOverAt "element" m r;
+            in
+            if x == null then r else x
+          )
       )
     else if builtins.all (x: x != null) al then
       (
         let
           m = builtins.genList (
             i:
-            innerMet (
-              if rewrites == null || rewrites ? sx then
-                sub i
-              else if rewrites ? readers then
-                rewrites.readers rewrites (t: pick t.priorityBand i) (
-                  d:
-                  let
-                    x = interface.carriedAt "alternatives" d;
-                  in
-                  if x == null then null else pick x i
-                )
-              else
-                interface.metWith.anything.functorRecord rewrites (
-                  d:
-                  let
-                    x = interface.carriedAt "alternatives" d;
-                  in
-                  if x == null then null else pick x i
-                )
-            ) (pick (pick al 0) i) (pick (pick al 1) i) (pick (pick al 2) i)
+            innerMet
+              (
+                if rewrites == null || rewrites ? sx then
+                  { sx = interface.metWith.anything.below rewrites r i a b; }
+                else if rewrites ? readers then
+                  rewrites.readers rewrites (t: builtins.elemAt t.priorityBand i) (
+                    d:
+                    let
+                      x = interface.carriedAt "alternatives" d;
+                    in
+                    if x == null then null else builtins.elemAt x i
+                  )
+                else
+                  interface.metWith.anything.functorRecord rewrites (
+                    d:
+                    let
+                      x = interface.carriedAt "alternatives" d;
+                    in
+                    if x == null then null else builtins.elemAt x i
+                  )
+              )
+              (builtins.elemAt (builtins.elemAt al 0) i)
+              (builtins.elemAt (builtins.elemAt al 1) i)
+              (builtins.elemAt (builtins.elemAt al 2) i)
           ) 2;
         in
         if
-          interface.sameValue (pick m 0) (pick (pick al 0) 0)
-          && interface.sameValue (pick m 1) (pick (pick al 0) 1)
+          interface.sameValue (builtins.elemAt m 0) (builtins.elemAt (builtins.elemAt al 0) 0)
+          && interface.sameValue (builtins.elemAt m 1) (builtins.elemAt (builtins.elemAt al 0) 1)
         then
           r
         else
-          rebuilt "alternatives" m
+          (
+            let
+              x = interface.rebuiltOverAt "alternatives" m r;
+            in
+            if x == null then r else x
+          )
       )
     else
       # a held option (`attrTag`'s tag) is met as an element is: the join's option with both operands'
