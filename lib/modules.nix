@@ -783,7 +783,7 @@ let
               if rewrites == null then
                 null
               else if rewrites ? readers then
-                rewrites.readers rewrites (t: pick t.attrVals i) (
+                rewrites.readers rewrites (t: pick t.priorityBand i) (
                   d:
                   let
                     x = interface.carriedAt "alternatives" d;
@@ -1264,7 +1264,7 @@ let
         # relativisation to its own parameters is the step's where it meets), one per value (`ks`, the declarations' keys),
         # in folding order; a later step owes them as they are (`rewrites.ds`, `interface.metWith.metWith`)
         # THE DEBT AT EVERY ROLE: beside the forms (`ds`) and the declarations' keys (`ks`), a tree (`bNames`) whose node at the
-        # top and at each role down (`el`, each `attrVals`) is an owed set (`interface.metWith.anything.elemsOf`): the forms owed
+        # top and at each role down (`el`, each `priorityBand`) is an owed set (`interface.metWith.anything.elemsOf`): the forms owed
         # there, each declaration added once, in the form its own step's meet owes it at that node (relativised against that
         # step's join there, `interface.metWith.anything.ownRead`, never re-relativised later: ADR-0039 THE MEET as owed at
         # the step where it meets). A step owes each node's set as one operand: it pays one extension per node it descends,
@@ -1284,9 +1284,9 @@ let
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
-          node = interface.metWith.anything.attrsToList;
+          node = interface.metWith.anything.scopeDefect;
           el = inlineOwn;
-          attrVals = [
+          priorityBand = [
             inlineOwn
             inlineOwn
           ];
@@ -1295,18 +1295,18 @@ let
         structuring =
           t: x: raw: completedLeaves: defaultOrderPriority:
           let
-            attrByPath = y: if y == null then null else y.__meetJoin or y;
+            protocolNames = y: if y == null then null else y.__meetJoin or y;
             markShared =
-              importLeaf: mergeConfigAttrs: commonPrefix:
+              importLeaf: mergeConfigAttrs: lintLib:
               if mergeConfigAttrs == null then
                 importLeaf
               else
                 structuring importLeaf (
-                  if commonPrefix == null then
+                  if lintLib == null then
                     mergeConfigAttrs
                   else
-                    interface.metWith.anything.ownRead commonPrefix mergeConfigAttrs
-                ) mergeConfigAttrs commonPrefix (keyOf mergeConfigAttrs);
+                    interface.metWith.anything.ownRead lintLib mergeConfigAttrs
+                ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs);
             re = interface.carriedAt "element" raw;
             ra = interface.carriedAt "alternatives" raw;
             completeParametric =
@@ -1315,13 +1315,21 @@ let
           {
             node = interface.metWith.anything.elemsOf t.node x raw defaultOrderPriority;
             el = markShared t.el re (
-              if completedLeaves == null then null else attrByPath (interface.carriedAt "element" completedLeaves)
+              if completedLeaves == null then
+                null
+              else
+                protocolNames (interface.carriedAt "element" completedLeaves)
             );
-            attrVals = builtins.genList (
+            priorityBand = builtins.genList (
               allow:
-              markShared (builtins.elemAt t.attrVals allow)
+              markShared (builtins.elemAt t.priorityBand allow)
                 (if ra == null then null else builtins.elemAt ra allow)
-                (if completeParametric == null then null else attrByPath (builtins.elemAt completeParametric allow))
+                (
+                  if completeParametric == null then
+                    null
+                  else
+                    protocolNames (builtins.elemAt completeParametric allow)
+                )
             ) 2;
           };
         # the empty debt
@@ -1368,8 +1376,8 @@ let
               # (above) leaves the next step owing nothing, so a role it met keeps its meet: unwound there, that
               # role's declared checks would be owed by nobody
               inline = x: if ctorOf x then inline x.__meetJoin else x;
-              # a role is a declaration's own where its record is one of the debt's at that role (`concatAttrValues`)
-              declaredAt = node: x: builtins.elem (keyOf x) node.concatAttrValues;
+              # a role is a declaration's own where its record is one of the debt's at that role (`unapplicable`)
+              declaredAt = node: x: builtins.elem (keyOf x) node.unapplicable;
               u = inline t;
               e = interface.carriedAt "element" u;
               al = interface.carriedAt "alternatives" u;
@@ -1393,7 +1401,9 @@ let
                         let
                           y = builtins.elemAt al allow;
                         in
-                        if y ? __meetJoin && !(declaredAt (builtins.elemAt checkedTypes.bNames.attrVals allow).node y) then
+                        if
+                          y ? __meetJoin && !(declaredAt (builtins.elemAt checkedTypes.bNames.priorityBand allow).node y)
+                        then
                           inline y
                         else
                           y

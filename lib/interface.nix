@@ -7023,7 +7023,7 @@ let
             if rewrites == null || !(rewrites ? own) then
               rel notM
             else if rewrites ? bNames then
-              metWith.anything.cartesianProduct meets m mayOwe completeExport rewrites.bNames
+              metWith.anything.refuseUnreconciledMint meets m mayOwe completeExport rewrites.bNames
               ++ rel (
                 builtins.concatLists (
                   builtins.genList (
@@ -7083,7 +7083,7 @@ let
             && builtins.any (
               o:
               o ? typeMergeRel && !(o ? retainedRelation) && (o ? carries.element || o ? carries.alternatives)
-              || o.allUnique or false
+              || o.notBool or false
             ) once
           || builtins.any uncertifiedLeaf once
         then
@@ -7292,7 +7292,7 @@ let
       # debt's are folded ONE DECLARATION AT A TIME as the fold folds it (`elemsOf`): a step owing k declarations owes one
       # record extended once, never a list of k re-read at every step and every role (ADR-0039 THE MEET, every declared check,
       # each once per value; ADR-0032, no per-step re-derivation). Only a declaration whose owing no join decides is folded in
-      # (`compareLists`): `plain`, stating no relation, owed at every join; `exact`, a certified leaf, owed exactly where the join
+      # (`refuseSharedMark`): `plain`, stating no relation, owed at every join; `exact`, a certified leaf, owed exactly where the join
       # states no relation (a carrier with no payload compares witnesses per declaration, as `metWith` does). Any other
       # declaration (a hold, a rewrite, a role-carrying relation, a replaced `verify`) stays a listed operand (`mkBefore`),
       # met as before.
@@ -7324,7 +7324,7 @@ let
           v: if st != null && !(st v) then null else o.verify v
         else
           null;
-      compareLists =
+      refuseSharedMark =
         o:
         if
           !(o ? check || o ? admits)
@@ -7356,9 +7356,9 @@ let
         collisions = [ ];
         keys = [ ];
       };
-      concatLines = s: o: k: {
+      shorthandMeta = s: o: k: {
         n = s.n + 1;
-        # how many state a check witness (a certified set beside a join with no payload is decided by witness, `cartesianProduct`)
+        # how many state a check witness (a certified set beside a join with no payload is decided by witness, `refuseUnreconciledMint`)
         inlineOwn = if (o._checkWitness or null) == null then s.inlineOwn else s.inlineOwn + 1;
         check =
           let
@@ -7385,21 +7385,21 @@ let
         keys = s.keys ++ [ k ];
       };
       # a debt node: the owed sets, the listed operands, and the keys of its forms (`collect`, the one-value test) and of the
-      # declarations' own records there (`concatAttrValues`, `lib/modules.nix` `declaredAt`); `elemsOf d x raw` folds in `x`, the form `raw`
+      # declarations' own records there (`unapplicable`, `lib/modules.nix` `declaredAt`); `elemsOf d x raw` folds in `x`, the form `raw`
       # is owed in
-      attrsToList = {
+      scopeDefect = {
         plain = metWith.anything.linkset;
         exact = metWith.anything.linkset;
         minPrio = metWith.anything.linkset;
         mkBefore = [ ];
         completedLeaves = [ ];
-        concatAttrValues = [ ];
+        unapplicable = [ ];
         all = [ ];
       };
       elemsOf =
         d: x: raw: defaultOrderPriority:
         let
-          k = metWith.anything.compareLists x;
+          k = metWith.anything.refuseSharedMark x;
           # one key per declaration (`defaultOrderPriority`, the declaration's own record's, from the fold's memo at the top): a form that is
           # its own record (not relativised, `judgeAt`'s `__stockCheck`) shares it
           definitionOf =
@@ -7412,12 +7412,12 @@ let
             { mkBefore = d.mkBefore ++ [ x ]; }
           else
             {
-              ${k} = metWith.anything.concatLines d.${k} x definitionOf;
+              ${k} = metWith.anything.shorthandMeta d.${k} x definitionOf;
               completedLeaves = d.completedLeaves ++ [ definitionOf ];
             }
         )
         // {
-          concatAttrValues = d.concatAttrValues ++ [ defaultOrderPriority ];
+          unapplicable = d.unapplicable ++ [ defaultOrderPriority ];
           # every form in folding order, read only where each operand is read (a module set's carriage)
           all = d.all ++ [ x ];
         };
@@ -7429,21 +7429,21 @@ let
           inherit (set) check;
           spelledRead = mkAfter set.collisions;
         }
-        // (if minPrio then { allUnique = true; } else { })
+        // (if minPrio then { notBool = true; } else { })
         // (if set.verify == null then { } else { inherit (set) verify; });
-      # the operands owing the debt node `d` at a meet of `m`: `concatImapStrings`, `m`'s one-value key (`null`: none dropped)
-      cartesianProduct =
-        meets: m: mayOwe: concatImapStrings: d:
+      # the operands owing the debt node `d` at a meet of `m`: `vocabularyDefect`, `m`'s one-value key (`null`: none dropped)
+      refuseUnreconciledMint =
+        meets: m: mayOwe: vocabularyDefect: d:
         let
           keep =
             o:
             (meets != false || mayOwe o)
-            && (concatImapStrings == null || concatImapStrings != closuresFirst [ o ] o);
+            && (vocabularyDefect == null || vocabularyDefect != closuresFirst [ o ] o);
           # a set every declaration of which IS the join owes nothing here, as `metWith` drops a listed operand that is: the
           # join is then kept as it is, not met (a role meet above rebuilds only over a met role)
-          concatMapAttrs =
+          refuseParametricMerge =
             set: minPrio:
-            if concatImapStrings != null && builtins.all (k: k == concatImapStrings) set.keys then
+            if vocabularyDefect != null && builtins.all (k: k == vocabularyDefect) set.keys then
               [ ]
             else
               [ (metWith.anything.ctorOf set (filter keep) minPrio) ];
@@ -7455,15 +7455,15 @@ let
             if set.n == 0 then
               [ ]
             else if readPair then
-              concatMapAttrs set minPrio
+              refuseParametricMerge set minPrio
             else if (m.functor.payload or null) != null then
               [ ]
             else if set.inlineOwn == 0 then
-              (if (m._checkWitness or null) == null then [ ] else concatMapAttrs set minPrio)
+              (if (m._checkWitness or null) == null then [ ] else refuseParametricMerge set minPrio)
             else
               filter keep set.collisions;
         in
-        (if d.plain.n == 0 then [ ] else concatMapAttrs d.plain false)
+        (if d.plain.n == 0 then [ ] else refuseParametricMerge d.plain false)
         ++ (if d.exact.n == 0 then [ ] else structuring d.exact false)
         ++ (if d.minPrio.n == 0 then [ ] else structuring d.minPrio true)
         ++ filter keep d.mkBefore;
