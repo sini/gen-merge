@@ -881,7 +881,7 @@ let
   # MET (den-hoag-l1j4q, owner-ruled 2026-10-06, the meet reading of a redeclaration). nixpkgs'
   # `addCheck` is `elemType // { check = …; }`: it keeps its base's name and relation, so a relation
   # answers its base's own `self`, a type that no longer holds the added check, and nixpkgs serves the
-  # value the wrapper refuses. Each step here answers `interface.metWith m [ a b ]`: the relation's join
+  # value the wrapper refuses. Each step here answers `interface.metWith.core false m [ a b ]`: the relation's join
   # `m` (the carrier: its fold, name and functor, decided by nixpkgs' later-operand rule) restricted by
   # each operand's check it does not carry. By induction over the fold, the declared type accepts only
   # what every declaration accepts, a lower bound, not the greatest one (a join stricter than the
