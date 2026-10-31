@@ -766,7 +766,11 @@ let
           # top and read node by node below it (`interface.metWith.anything.below`), forced only where a role meet relativises
           m = innerMet (
             if rewrites == null || rewrites ? tag then
-              { tag = interface.metWith.anything.below rewrites r 0 a b; }
+              {
+                tag =
+                  interface.metWith.anything.below rewrites r 0 a b (builtins.elemAt el 0) (builtins.elemAt el 1)
+                    (builtins.elemAt el 2);
+              }
             else if rewrites ? readers then
               interface.metWith.anything.inner rewrites r 0 (interface.carriedAt "element") (
                 rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")
@@ -793,7 +797,12 @@ let
             innerMet
               (
                 if rewrites == null || rewrites ? tag then
-                  { tag = interface.metWith.anything.below rewrites r i a b; }
+                  {
+                    tag =
+                      interface.metWith.anything.below rewrites r i a b (builtins.elemAt (builtins.elemAt al 0) i)
+                        (builtins.elemAt (builtins.elemAt al 1) i)
+                        (builtins.elemAt (builtins.elemAt al 2) i);
+                  }
                 else if rewrites ? readers then
                   interface.metWith.anything.inner rewrites r i
                     (
