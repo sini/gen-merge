@@ -768,7 +768,9 @@ let
             if rewrites == null || rewrites ? sx then
               { sx = interface.metWith.anything.below rewrites r 0 a b; }
             else if rewrites ? readers then
-              rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")
+              interface.metWith.anything.ownAt rewrites r 0 (interface.carriedAt "element") (
+                rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")
+              )
             else
               interface.metWith.anything.functorRecord rewrites (interface.carriedAt "element")
           ) (builtins.elemAt el 0) (builtins.elemAt el 1) (builtins.elemAt el 2);
@@ -793,13 +795,23 @@ let
                 if rewrites == null || rewrites ? sx then
                   { sx = interface.metWith.anything.below rewrites r i a b; }
                 else if rewrites ? readers then
-                  rewrites.readers rewrites (t: builtins.elemAt t.priorityBand i) (
-                    d:
-                    let
-                      x = interface.carriedAt "alternatives" d;
-                    in
-                    if x == null then null else builtins.elemAt x i
-                  )
+                  interface.metWith.anything.ownAt rewrites r i
+                    (
+                      d:
+                      let
+                        x = interface.carriedAt "alternatives" d;
+                      in
+                      if x == null then null else builtins.elemAt x i
+                    )
+                    (
+                      rewrites.readers rewrites (t: builtins.elemAt t.priorityBand i) (
+                        d:
+                        let
+                          x = interface.carriedAt "alternatives" d;
+                        in
+                        if x == null then null else builtins.elemAt x i
+                      )
+                    )
                 else
                   interface.metWith.anything.functorRecord rewrites (
                     d:
@@ -1290,9 +1302,26 @@ let
         # the step where it meets). A step owes each node's set as one operand: it pays one extension per node it descends,
         # never the debt re-read per step and per role (`d` the form at the top, `completedLeaves` the step's join)
         defineEmbedded =
-          o: j: d: completedLeaves:
+          o: j: completedLeaves:
           let
             link = builtins.elemAt ks j;
+            raw = builtins.elemAt ts j;
+            so = interface.metWith.anything.shapeOf interface.importedTypeWalkFuel raw;
+            # the declaration's tree compared with the step's join's ONCE: its own-step form here (`ownRead`'s test, read off
+            # it) and at every node down the debt tree (`structuring`); a tree stating no parameter at any node is relativised
+            # at none (`false`), so it builds no comparison
+            cmp =
+              if interface.metWith.anything.statesParameters so then
+                interface.metWith.anything.node so (
+                  interface.metWith.anything.shapeOf interface.importedTypeWalkFuel completedLeaves
+                )
+              else
+                false;
+            d =
+              if cmp != false && cmp.holds then
+                interface.metWith.anything.witnessedCheck completedLeaves raw
+              else
+                raw;
           in
           if builtins.elem link o.ks then
             o
@@ -1300,7 +1329,7 @@ let
             {
               ds = o.ds ++ [ d ];
               ks = o.ks ++ [ link ];
-              bNames = structuring o.bNames d (builtins.elemAt ts j) completedLeaves link;
+              bNames = structuring o.bNames d raw completedLeaves link cmp;
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
@@ -1312,21 +1341,26 @@ let
           ];
         };
         # the tree `t` extended by the declaration `raw`, owed as `x` at this node, over the step's join `completedLeaves` there
+        # (`cmp`: `raw`'s tree compared with `completedLeaves`' at this node, `interface.metWith.anything.node`; `null` walks;
+        # `false`: no node of `raw`'s tree states a parameter, so none is relativised)
         structuring =
-          t: x: raw: completedLeaves: defaultOrderPriority:
+          t: x: raw: completedLeaves: defaultOrderPriority: cmp:
           let
             protocolNames = y: if y == null then null else y.__meetJoin or y;
             markShared =
-              importLeaf: mergeConfigAttrs: lintLib:
+              importLeaf: mergeConfigAttrs: lintLib: allow:
               if mergeConfigAttrs == null then
                 importLeaf
               else
+                let
+                  c = interface.metWith.anything.nodeAt completedLeaves cmp allow raw;
+                in
                 structuring importLeaf (
                   if lintLib == null then
                     mergeConfigAttrs
                   else
-                    interface.metWith.anything.ownRead lintLib mergeConfigAttrs
-                ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs);
+                    interface.metWith.anything.ownReadAt c lintLib mergeConfigAttrs
+                ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs) c;
             re = interface.carriedAt "element" raw;
             ra = interface.carriedAt "alternatives" raw;
             completeParametric =
@@ -1339,7 +1373,7 @@ let
                 null
               else
                 protocolNames (interface.carriedAt "element" completedLeaves)
-            );
+            ) 0;
             priorityBand = builtins.genList (
               allow:
               markShared (builtins.elemAt t.priorityBand allow)
@@ -1350,6 +1384,7 @@ let
                   else
                     protocolNames (builtins.elemAt completeParametric allow)
                 )
+                allow
             ) 2;
           };
         # the empty debt
@@ -1363,9 +1398,7 @@ let
         # no met record), so each meets here, carried by this step's later operand
         elemsOf =
           i: j:
-          builtins.foldl' (
-            o: x: defineEmbedded o x (interface.metWith.anything.ownRead j (builtins.elemAt ts x)) j
-          ) completeType (builtins.genList (x: n - 1 - x) (n - i));
+          builtins.foldl' (o: x: defineEmbedded o x j) completeType (builtins.genList (x: n - 1 - x) (n - i));
         # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
         # met accumulator's, or `elemsOf`'s, read against this step's join):
         # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; sealed }`,
@@ -1388,7 +1421,7 @@ let
               j = t.__meetJoin or t;
               checkedTypes = defineEmbedded (
                 if builtins.isFunction checkedScope then checkedScope j else checkedScope
-              ) i (interface.metWith.anything.ownRead j earlier) j;
+              ) i j;
               # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
               # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
               # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
