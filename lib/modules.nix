@@ -1302,10 +1302,9 @@ let
         # the step where it meets). A step owes each node's set as one operand: it pays one extension per node it descends,
         # never the debt re-read per step and per role (`d` the form at the top, `completedLeaves` the step's join)
         defineEmbedded =
-          o: j: completedLeaves:
+          o: j: raw: completedLeaves:
           let
             link = builtins.elemAt ks j;
-            raw = builtins.elemAt ts j;
             so = interface.metWith.anything.shapeOf interface.importedTypeWalkFuel raw;
             # the declaration's tree compared with the step's join's ONCE: its own-step form here (`ownRead`'s test, read off
             # it) and at every node down the debt tree (`structuring`); a tree stating no parameter at any node is relativised
@@ -1398,7 +1397,9 @@ let
         # no met record), so each meets here, carried by this step's later operand
         elemsOf =
           i: j:
-          builtins.foldl' (o: x: defineEmbedded o x j) completeType (builtins.genList (x: n - 1 - x) (n - i));
+          builtins.foldl' (o: x: defineEmbedded o x (builtins.elemAt ts x) j) completeType (
+            builtins.genList (x: n - 1 - x) (n - i)
+          );
         # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
         # met accumulator's, or `elemsOf`'s, read against this step's join):
         # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; sealed }`,
@@ -1421,7 +1422,7 @@ let
               j = t.__meetJoin or t;
               checkedTypes = defineEmbedded (
                 if builtins.isFunction checkedScope then checkedScope j else checkedScope
-              ) i j;
+              ) i earlier j;
               # the step's carrier under every meet it built (a relation's meet, then the step's own), and at each
               # role the carrier's own met role likewise: a foreign relation asked of the carrier asks its roles'
               # exported `typeMerge`, which would meet them again. A role that is a declaration's own role is kept
