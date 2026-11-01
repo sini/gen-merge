@@ -5615,7 +5615,7 @@ let
       # PROBE (ien5k T3): the single-definition statement — a lone definition carrying no property
       # outranks the declared default (100 < 1500), so the fold reads that definition alone.
       withDefault =
-        if !readOnly && length rawDefs == 1 && !((head rawDefs).value ? _type) then
+        if length rawDefs == 1 then
           rawDefs
         else
           withDeclaredDefault optDecl rawDefs;
