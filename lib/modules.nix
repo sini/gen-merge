@@ -2101,18 +2101,6 @@ let
     "options"
   ];
   isStructured = m: m ? config || m ? options;
-  # The content keys that send a module set through the closure (`moduleClosure`'s fast path is the
-  # set with none of them), published as data (moduleSyntax.closure, lib/default.nix) so a consumer
-  # deciding that a module reads no sibling (gen-schema's layered introspection, den-hoag-f1iza)
-  # reads the rule this engine enforces instead of restating it (den-hoag-1n12c). `moduleClosure`'s fast
-  # path spells these four as inline `?` tests beside it in this file: reading the list there costs one
-  # thunk per module entry, over the graph-cost bound (16 -> 17). `ci/tests/key-eq.nix` pins the list.
-  closureKeys = [
-    "disabledModules"
-    "imports"
-    "key"
-    "require"
-  ];
   configOf =
     e:
     let
@@ -3520,7 +3508,8 @@ let
       && all (
         e:
         !(
-          # `closureKeys`, spelled as `?` tests: reading the list here costs a thunk per entry (graph-cost)
+          # published as `moduleSyntax.closure` (lib/default.nix), spelled here as `?` tests: a list read
+          # here costs a thunk per module entry (graph-cost), and a let slot for it one per evaluation
           e.content ? disabledModules
           || e.content ? imports
           || e.content ? key
@@ -10223,7 +10212,6 @@ in
     # public `moduleSyntax` record (lib/default.nix) can be built from the SAME bindings `configOf`
     # enforces with, never a second spelling of them.
     structuringKeys
-    closureKeys
     moduleDefOf
     # The option names the engine serves beside the declared ones, for the public record of the
     # same name (lib/default.nix), built from the constructors that serve them.

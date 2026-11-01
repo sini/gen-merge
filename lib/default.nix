@@ -682,8 +682,17 @@ in
     functorRecord = core.functorRecordKeys;
     # The content keys that take a module through the import closure, where siblings meet (a
     # `key` dedups, `imports` / `require` reach more modules, `disabledModules` removes one); a
-    # module with none of them reaches no other module.
-    closure = core.closureKeys;
+    # module with none of them reaches no other module. Read by a consumer deciding that a module
+    # reads no sibling (gen-schema's layered introspection, den-hoag-f1iza) instead of restating it
+    # (den-hoag-1n12c). Spelled here, as `keyEqFields` is: `moduleClosure`'s fast path (lib/modules.nix)
+    # tests the same four names inline, since reading a list there costs a thunk per module entry;
+    # `ci/tests/key-eq.nix` pins the list and the `key` member's dedup.
+    closure = [
+      "disabledModules"
+      "imports"
+      "key"
+      "require"
+    ];
     # The fields the engine reads off a record's key comparison (`__keyEq`; `moduleSyntaxChecked`,
     # `a3.refineOf` and the seal-decided fold, lib/modules.nix), published as data for the reason
     # `functorRecord` is: a library riding `key`, `onDistinct` or `conflicts` there can refuse an
