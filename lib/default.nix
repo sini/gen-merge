@@ -680,6 +680,10 @@ in
     structured = core.structuredKeys;
     shorthandMeta = core.shorthandMetaKeys;
     functorRecord = core.functorRecordKeys;
+    # The content keys that take a module through the import closure, where siblings meet (a
+    # `key` dedups, `imports` / `require` reach more modules, `disabledModules` removes one); a
+    # module with none of them reaches no other module.
+    closure = core.closureKeys;
     # The fields the engine reads off a record's key comparison (`__keyEq`; `moduleSyntaxChecked`,
     # `a3.refineOf` and the seal-decided fold, lib/modules.nix), published as data for the reason
     # `functorRecord` is: a library riding `key`, `onDistinct` or `conflicts` there can refuse an

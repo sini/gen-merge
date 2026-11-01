@@ -152,6 +152,27 @@ in
           pathThenContent = "REFUSED";
         };
       };
+    # The content keys the closure reads, published for a consumer that decides a module meets no
+    # sibling (gen-schema's layered introspection): `key` among them, so two plain modules naming
+    # one key meet in the closure and one is dropped (`plain` above, every cell reading one element).
+    test-closure-keys-are-published = {
+      expr = {
+        inherit (gm.moduleSyntax) closure;
+        oneModule = l [
+          (plain "a")
+          (plain "b")
+        ];
+      };
+      expected = {
+        closure = [
+          "disabledModules"
+          "imports"
+          "key"
+          "require"
+        ];
+        oneModule = [ "a" ];
+      };
+    };
     test-key-eq-is-a-module-key-in-both-lists = {
       expr = {
         structured = builtins.elem "__keyEq" gm.moduleSyntax.structured;

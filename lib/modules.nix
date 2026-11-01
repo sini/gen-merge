@@ -2101,6 +2101,22 @@ let
     "options"
   ];
   isStructured = m: m ? config || m ? options;
+  # The content keys that send a module set through the closure (`moduleClosure`'s fast path is the
+  # set with none of them), published as data (moduleSyntax.closure, lib/default.nix) so a consumer
+  # deciding that a module reads no sibling (gen-schema's layered introspection, den-hoag-f1iza)
+  # reads the rule this engine enforces instead of restating it (den-hoag-1n12c).
+  closureKeys = [
+    "disabledModules"
+    "imports"
+    "key"
+    "require"
+  ];
+  closureKeySet = listToAttrs (
+    map (name: {
+      inherit name;
+      value = null;
+    }) closureKeys
+  );
   configOf =
     e:
     let
@@ -3508,10 +3524,7 @@ let
       && all (
         e:
         !(
-          e.content ? imports
-          || e.content ? require
-          || e.content ? key
-          || e.content ? disabledModules
+          (isAttrs e.content && builtins.intersectAttrs closureKeySet e.content != { })
           || (e.m0.__moduleKey or null) != null
         )
       ) plain
@@ -10210,6 +10223,7 @@ in
     # public `moduleSyntax` record (lib/default.nix) can be built from the SAME bindings `configOf`
     # enforces with, never a second spelling of them.
     structuringKeys
+    closureKeys
     moduleDefOf
     # The option names the engine serves beside the declared ones, for the public record of the
     # same name (lib/default.nix), built from the constructors that serve them.
