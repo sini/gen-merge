@@ -5612,7 +5612,13 @@ let
     let
       hasApply = optDecl ? apply;
       readOnly = optDecl.readOnly or false;
-      withDefault = withDeclaredDefault optDecl rawDefs;
+      # PROBE (ien5k T3): the single-definition statement — a lone definition carrying no property
+      # outranks the declared default (100 < 1500), so the fold reads that definition alone.
+      withDefault =
+        if !readOnly && length rawDefs == 1 && !((head rawDefs).value ? _type) then
+          rawDefs
+        else
+          withDeclaredDefault optDecl rawDefs;
       merged =
         # An empty-able type is NOT an error when undefined — fall through to the fold, whose
         # `winners == [ ]` arm is the single place `emptyValue` is consulted (nixpkgs answers both
