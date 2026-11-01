@@ -2104,19 +2104,14 @@ let
   # The content keys that send a module set through the closure (`moduleClosure`'s fast path is the
   # set with none of them), published as data (moduleSyntax.closure, lib/default.nix) so a consumer
   # deciding that a module reads no sibling (gen-schema's layered introspection, den-hoag-f1iza)
-  # reads the rule this engine enforces instead of restating it (den-hoag-1n12c).
+  # reads the rule this engine enforces instead of restating it (den-hoag-1n12c). The fast path tests the
+  # names by `?` inside `any`, so the clean path allocates no thunk per entry (the graph-cost bound).
   closureKeys = [
     "disabledModules"
     "imports"
     "key"
     "require"
   ];
-  closureKeySet = listToAttrs (
-    map (name: {
-      inherit name;
-      value = null;
-    }) closureKeys
-  );
   configOf =
     e:
     let
@@ -3522,11 +3517,7 @@ let
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
       && all (
-        e:
-        !(
-          (isAttrs e.content && builtins.intersectAttrs closureKeySet e.content != { })
-          || (e.m0.__moduleKey or null) != null
-        )
+        e: !(builtins.any (k: e.content ? ${k}) closureKeys || (e.m0.__moduleKey or null) != null)
       ) plain
     then
       plain
