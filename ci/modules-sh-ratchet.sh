@@ -98,6 +98,16 @@ control() {
   echo "modules-sh-ratchet: CONTROL FAILED: $*" >&2
   exit 2
 }
+# A tracker row id as a trailer cites it: the tracker's ids are slugs (`den-hoag-lock-currency-ruling-ez1yq`) as
+# well as short ids (`den-hoag-uccyi`). One pattern for every class that names a row, checked before any history
+# is read, so a pattern that stops matching the tracker's ids fails as a control, never as a wall of REFUSED.
+row='den-hoag-[a-z0-9.-]+'
+for c in den-hoag-uccyi den-hoag-lock-currency-ruling-ez1yq; do
+  grep -qE "^relock $row\$" <<<"relock $c" || control "the row pattern does not match the row id $c"
+done
+for c in 'den-hoag-' 'den-hoag-UPPER' 'den-hoag-a b'; do
+  ! grep -qE "^relock $row\$" <<<"relock $c" || control "the row pattern matches the malformed id '$c'"
+done
 if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
   # CI checks out at depth 1; the property needs the register's whole history.
   git fetch --quiet --unshallow origin || control "could not unshallow"
@@ -156,7 +166,7 @@ judge() {
       h=$(hashOf "$key")
       # Every trailer naming the hash is read, and ANY valid one admits: a later invalid trailer for the
       # same key (another change's) never shadows a valid one.
-      mapfile -t cands < <(grep -E "^$h (relock den-hoag-[a-z0-9.]+|correction .+)\$" <<<"$trailers" || true)
+      mapfile -t cands < <(grep -E "^$h (relock $row|correction .+)\$" <<<"$trailers" || true)
       adm="" why="no $decrease: $h trailer in $*"
       for c in "${cands[@]}"; do
         if [[ "$c" == "$h relock "* && "$moved" == no ]]; then
@@ -184,7 +194,7 @@ judge() {
   if [ "$moved" = yes ] && [ "$same" = yes ]; then env=yes; fi
   while IFS=$'\t' read -r key e was now par above setmv; do
     h=$(hashOf "$key"$'\t'"$e")
-    mapfile -t cands < <(grep -E "^(($h|$arm:\\*) (reanchor|parity|floor den-hoag-[a-z0-9.]+|owner den-hoag-[a-z0-9.]+)|$h set)\$" <<<"$ptrailers" || true)
+    mapfile -t cands < <(grep -E "^(($h|$arm:\\*) (reanchor|parity|floor $row|owner $row)|$h set)\$" <<<"$ptrailers" || true)
     adm="" why="no $rise: $h (or $arm:*) trailer in $*"
     for c in "${cands[@]}"; do
       if [[ "${c#* }" == set && "$setmv" != yes ]]; then
