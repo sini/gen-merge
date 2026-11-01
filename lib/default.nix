@@ -726,6 +726,8 @@ in
     # vocabulary censuses (the linkset, the p5 scan, the tree-type census) enumerate as nixpkgs-shaped types.
     mergeDefsPartial
     mergeOneOption
+    # PROBE (ien5k T3): the option fold over a caller's definitions (default seed, priority, type fold, apply)
+    mergeOption
     showOption
     # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; } modules`.
     mkCoreValue
