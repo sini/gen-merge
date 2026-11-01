@@ -2104,8 +2104,9 @@ let
   # The content keys that send a module set through the closure (`moduleClosure`'s fast path is the
   # set with none of them), published as data (moduleSyntax.closure, lib/default.nix) so a consumer
   # deciding that a module reads no sibling (gen-schema's layered introspection, den-hoag-f1iza)
-  # reads the rule this engine enforces instead of restating it (den-hoag-1n12c). The fast path tests the
-  # names by `?` inside `any`, so the clean path allocates no thunk per entry (the graph-cost bound).
+  # reads the rule this engine enforces instead of restating it (den-hoag-1n12c). `moduleClosure`'s fast
+  # path spells these four as inline `?` tests beside it in this file: reading the list there costs one
+  # thunk per module entry, over the graph-cost bound (16 -> 17). `ci/tests/key-eq.nix` pins the list.
   closureKeys = [
     "disabledModules"
     "imports"
@@ -3517,7 +3518,15 @@ let
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
       && all (
-        e: !(builtins.any (k: e.content ? ${k}) closureKeys || (e.m0.__moduleKey or null) != null)
+        e:
+        !(
+          # `closureKeys`, spelled as `?` tests: reading the list here costs a thunk per entry (graph-cost)
+          e.content ? disabledModules
+          || e.content ? imports
+          || e.content ? key
+          || e.content ? require
+          || (e.m0.__moduleKey or null) != null
+        )
       ) plain
     then
       plain
