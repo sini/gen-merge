@@ -179,7 +179,7 @@ in
     test-closure-keys-are-the-fast-paths-tests =
       let
         src = builtins.readFile ../../lib/modules.nix;
-        after = builtins.elemAt (builtins.split "\n  moduleClosure =\n" src) 2;
+        after = builtins.elemAt (builtins.split "\n  moduleClosureWith =\n" src) 2;
         body = builtins.head (builtins.split "removal[.]closure specialArgs" after);
         tested = builtins.filter builtins.isList (builtins.split "e[.]content [?] ([A-Za-z_]+)" body);
       in
