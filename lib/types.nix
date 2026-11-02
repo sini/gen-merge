@@ -234,8 +234,6 @@ let
                 # the protocol's key (nixpkgs keys a redeclaration on the FUNCTOR name, `defaultTypeMerge`), read on both sides:
                 # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
                 sameKey = isAttrs other && (interface.protocolReaders.keyOf other) == interface.protocolReaders.keyOf self;
-                # this type's NAME keys the partner (the pre-existing population, den-hoag-0ismp)
-                named = isAttrs other && (keyOf other) == name;
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
                   embedding = e;
@@ -277,7 +275,7 @@ let
                   meet carriedJoin
                 else
                   { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-              else if embedKey && !named then
+              else if embedKey && (keyOf other) != name then
                 if leafJoin != null then
                   meet leafJoin
                 else
@@ -292,7 +290,7 @@ let
               # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
               # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
               # only as the later declaration
-              else if sameKey && named then
+              else if sameKey && (keyOf other) == name then
                 {
                   merged = if leafJoin == null then self else leafJoin;
                   meets = true;
