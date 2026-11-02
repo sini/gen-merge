@@ -1099,6 +1099,12 @@ let
   # the step with no thread, applied once (owner, 2026-10-30, D.4: the null step's per-step env equals main's on Lix, at
   # one load thunk)
   declaredPair = bandedLeaves null;
+  # the earlier relation's answer where it defers (`defers`): a decider-only meet stated without its join, so the later
+  # declaration's relation decides the step (`m`), and one that cannot answer is refused by name
+  defersStep = {
+    meets = true;
+    vetoes = false;
+  };
   bandedLeaves =
     rewrites: earlier: later:
     let
@@ -1108,7 +1114,15 @@ let
         if
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
-          earlier.typeMergeRel later
+          # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked
+          if
+            (later ? retainedRelation || !(later ? typeMergeRel))
+            && earlier.typeMergeRel ? defers
+            && earlier.typeMergeRel.defers later
+          then
+            defersStep
+          else
+            earlier.typeMergeRel later
         else
           { };
       # read only where the veto did not end the step, so a refusal seen here is one that defers
