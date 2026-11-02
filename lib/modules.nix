@@ -3550,8 +3550,13 @@ let
   # `root.collected`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by the
   # own-module count (`childTree`). A root whose `collected` is not that permutation of `mods` drops or invents
   # modules silently, so a caller holding other modules (a re-evaluation) passes no `collected`.
-  moduleClosure =
-    specialArgs: class: callM: root: mods:
+  #
+  # `moduleClosureWith class`: the collection under an evaluation's stated `class`, which only the removal walk's load
+  # check reads (`removal.walk.checked`). `moduleClosure` is its null specialisation, bound once, so a tree stating no
+  # class applies the collection to its four arguments and pays nothing per evaluation for a class it never states.
+  moduleClosure = moduleClosureWith null;
+  moduleClosureWith =
+    class: specialArgs: callM: root: mods:
     let
       plain =
         if root ? collected then moduleEntries callM root root.collected else moduleEntries callM root mods;
@@ -5188,10 +5193,10 @@ let
     else
       (positionArgsAt prefix).name;
 
-  declarationStratum = declarationStratumWith false redeclareDecl;
-  declarationStratumPositioned = declarationStratumWith true redeclareDecl;
-  declarationSpine = declarationStratumWith false spineRedeclare;
-  declarationSpinePositioned = declarationStratumWith true spineRedeclare;
+  declarationStratum = declarationStratumWith false redeclareDecl null;
+  declarationStratumPositioned = declarationStratumWith true redeclareDecl null;
+  declarationSpine = declarationStratumWith false spineRedeclare null;
+  declarationSpinePositioned = declarationStratumWith true spineRedeclare null;
   # The guard's leaf: the LAST of a loc's k declarations, which is what a fold keeping the later
   # operand answers, so no step is folded. Its arity is `redeclareDecl`'s (sitesAt, loc, the loc's
   # declarations); the merge of k leaves is a leaf by construction, so the spine needs no merged
@@ -5230,9 +5235,8 @@ let
   # now reached at any pass rather than only at pass 0. One binding, because a top-level binding is a
   # load thunk the hub perf-bench prices.
   stagedDeclarations =
-    positioned: args: s0:
+    stratum: args: s0:
     let
-      stratum = if positioned then declarationSpinePositioned else declarationSpine;
       prefix = args.prefix;
       pendingIn =
         p: t:
@@ -6737,18 +6741,19 @@ let
   #
   # `class`: the evaluation's, as at `evalModuleTreeWith`. It is the `_class` every declaring module
   # reads unless a caller's `specialArgs._class` overrides that argument, and always the class the
-  # collection's load check (`removal.walk.checked`) holds modules to. It is its own field, threaded to
-  # the check, rather than a key the guard adds to `specialArgs`, because `declArgs` serves
-  # `specialArgs` itself, and nixpkgs serves the caller's set there.
+  # collection's load check (`removal.walk.checked`) holds modules to. It is curried after `onRedeclare`, as
+  # `positioned` is, and never a key of the argument set, because `declArgs` serves `specialArgs` itself
+  # (nixpkgs serves the caller's set there) and a key on the set is paid by every nested evaluation's
+  # guard. The four bindings are its null specialisations, applied once per evaluation; a stated class
+  # applies `declarationStratumWith` per evaluation, and reads `moduleClosureWith class`.
   declarationStratumWith =
-    positioned: onRedeclare:
+    positioned: onRedeclare: class:
     {
       modules,
       specialArgs ? { },
       prefix ? [ ],
       optionsView ? null,
       root ? null,
-      class ? null,
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -6763,7 +6768,9 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = moduleClosure specialArgs class (m: m) root modules;
+        flat = (if class == null then moduleClosure else moduleClosureWith class) specialArgs (
+          m: m
+        ) root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -6902,7 +6909,9 @@ let
           else
             notAModule m;
 
-        flat = moduleClosure specialArgs class callD root modules;
+        flat =
+          (if class == null then moduleClosure else moduleClosureWith class) specialArgs callD root
+            modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -7712,15 +7721,21 @@ let
               t: all (v: !(isAttrs v) || (v._type or null) == "option" || spine v) (builtins.attrValues t);
           in
           let
-            s = (if knot.positioned then declarationSpinePositioned else declarationSpine) ({
-              inherit
-                specialArgs
-                prefix
-                root
-                class
-                ;
-              modules = modList;
-            });
+            s =
+              (
+                if class == null then
+                  (if knot.positioned then declarationSpinePositioned else declarationSpine)
+                else
+                  declarationStratumWith knot.positioned spineRedeclare class
+              )
+                {
+                  inherit
+                    specialArgs
+                    prefix
+                    root
+                    ;
+                  modules = modList;
+                };
           in
           if s ? flat then
             builtins.seq (spine s.options) s
@@ -7728,12 +7743,20 @@ let
             s
           else
             (r: if r == true then s else s // r) (
-              stagedDeclarations knot.positioned ({
-                # no `root`: the passes decide admission only, and a refusal naming a module's file is
-                # raised first by the spine's own collection (`s`)
-                inherit specialArgs prefix class;
-                modules = modList;
-              }) s
+              stagedDeclarations
+                (
+                  if class == null then
+                    (if knot.positioned then declarationSpinePositioned else declarationSpine)
+                  else
+                    declarationStratumWith knot.positioned spineRedeclare class
+                )
+                ({
+                  # no `root`: the passes decide admission only, and a refusal naming a module's file is
+                  # raised first by the spine's own collection (`s`)
+                  inherit specialArgs prefix;
+                  modules = modList;
+                })
+                s
             );
 
       typeOver =
@@ -8128,7 +8151,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (moduleClosure specialArgs class callM root modList)
+                  builtins.seq declarationGuard (moduleClosure specialArgs callM root modList)
               )
             else
               let
@@ -8136,7 +8159,7 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (moduleClosure specialArgs class callM root modList);
+                    builtins.seq declarationGuard (moduleClosureWith class specialArgs callM root modList);
               in
               # nixpkgs' `checkModule` over the collection; a removed or losing module is checked where
               # the guard collects (`removal.walk.checked`)
