@@ -1149,7 +1149,24 @@ let
           (
             let
               tried = builtins.tryEval (
-                if rewrites == null then
+                # a deferred step's pair is never one value (the earlier states `typeMergeRel` and no `retainedRelation`, the later
+                # `retainedRelation` or no `typeMergeRel`), so `mergeTypesBy` meets a join stating no relation whole: met here directly
+                if rewrites == null && veto ? deferred then
+                  (
+                    let
+                      x = relationMergeWithin null later earlier;
+                    in
+                    if x == null then
+                      null
+                    else if x ? typeMergeRel then
+                      mergeTypesWithin later earlier
+                    else
+                      interface.metWith.core false x [
+                        later
+                        earlier
+                      ]
+                  )
+                else if rewrites == null then
                   mergeTypesWithin later earlier
                 else
                   # a step owing a met accumulator's debt: the relation's answer met with the step's thread, unless the
