@@ -258,6 +258,18 @@ let
 in
 {
   flake.tests.interface = {
+    # `closuresFirst`'s prefix reads exactly the fourteen less the phrase (`description`, `descriptionClass`): its field
+    # set is spelled as a literal beside `exportFields`, so a field added to one and not the other reds here
+    test-the-one-value-prefix-reads-the-fourteen-less-the-phrase = {
+      expr = builtins.elemAt (builtins.head (
+        builtins.head (
+          ifc.closuresFirst [ (builtins.listToAttrs (map (n: lib.nameValuePair n (_: null)) fourteen)) ] null
+        )
+      )) 1;
+      expected = builtins.sort builtins.lessThan (
+        builtins.filter (n: n != "description" && n != "descriptionClass") fourteen
+      );
+    };
     # ── T3 ────────────────────────────────────────────────────────────────────────────────────────
     # EXACT SET, not presence: the answer is the file list, so a second file naming a protocol field
     # fails with that file's name in the diff rather than flipping a boolean.

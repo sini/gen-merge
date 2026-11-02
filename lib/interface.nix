@@ -289,22 +289,25 @@ let
   # (den-hoag-6b5ia). Such a value has no back-edge, so the `==` over `v` decides it.
   closuresOf =
     let
-      # never `description` or `descriptionClass`: a type's PHRASE is data by the protocol, and a nesting type's phrase
-      # reads its own evaluation's declarations (`unroledNested`), so testing it for a closure would evaluate the module
-      # set it describes (den-hoag-olrmz). Bound inside this binding, so an evaluation that compares no record allocates
-      # nothing for it
-      fields =
-        builtins.removeAttrs
-          (builtins.listToAttrs (
-            map (n: {
-              name = n;
-              value = null;
-            }) exportFields
-          ))
-          [
-            "description"
-            "descriptionClass"
-          ];
+      # `exportFields` less `description` and `descriptionClass`: a type's PHRASE is data by the protocol, and a nesting
+      # type's phrase reads its own evaluation's declarations (`unroledNested`), so testing it for a closure would evaluate
+      # the module set it describes (den-hoag-olrmz). A literal, as the `assert` below spells the same twelve, and bound
+      # inside this binding: built from `exportFields` it cost an evaluation that compares a record ~1.8 KB, and as a slot
+      # beside it one thunk per evaluation
+      fields = {
+        _type = null;
+        name = null;
+        deprecationMessage = null;
+        check = null;
+        merge = null;
+        emptyValue = null;
+        getSubOptions = null;
+        getSubModules = null;
+        substSubModules = null;
+        typeMerge = null;
+        nestedTypes = null;
+        functor = null;
+      };
     in
     r:
     if !(isAttrs r) then
