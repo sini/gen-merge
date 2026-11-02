@@ -227,7 +227,7 @@ let
                 # the row this type's constructor stated, never one its name collides with
                 e = row;
                 embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
-                sameKey = isAttrs other && (interface.protocolReaders.keyOf other) == name;
+                sameKey = isAttrs other && (interface.protocolReaders.keyOf other) == interface.protocolReaders.keyOf self;
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
                   embedding = e;
