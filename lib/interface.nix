@@ -292,22 +292,23 @@ let
     if !(isAttrs r) then
       { }
     else
-      builtins.intersectAttrs (builtins.listToAttrs (
-        map
-          (n: {
-            name = n;
-            value = null;
-            # never `description` or `descriptionClass`: a type's PHRASE is data by the protocol, and a nesting
-            # type's phrase reads its own evaluation's declarations (`unroledNested`), so testing it for a closure
-            # would evaluate the module set it describes (den-hoag-olrmz). Against probing them, the one answer
-            # this moves is a throwing phrase's: THROW becomes `false` (not one value), the fail-closed answer
-          })
-          (
-            builtins.filter (
-              n: n != "description" && n != "descriptionClass" && r ? ${n} && isFunction r.${n}
-            ) exportFields
-          )
-      )) r;
+      # never `description` or `descriptionClass` (`closureFields`): a type's PHRASE is data by the protocol, and a nesting
+      # type's phrase reads its own evaluation's declarations (`unroledNested`), so testing it for a closure would evaluate
+      # the module set it describes (den-hoag-olrmz). By primops alone: the function-valued fields' values in name order
+      # (forcing each present field to WHNF, first), then the present fields' names and which of them are functions, so
+      # two prefixes are equal exactly where the function-valued fields agree by name and value
+      let
+        vs = builtins.attrValues (builtins.intersectAttrs closureFields r);
+      in
+      [
+        (builtins.filter isFunction vs)
+        (builtins.attrNames (builtins.intersectAttrs closureFields r))
+        (map isFunction vs)
+      ];
+  closureFields = builtins.removeAttrs (builtins.listToAttrs (map (n: { name = n; value = null; }) exportFields)) [
+    "description"
+    "descriptionClass"
+  ];
   # ONE VALUE, AS THE ENGINE ASKS IT OF TWO TYPE RECORDS (`modules.nix`'s merge steps): Nix `==` over
   # `closuresFirst`'s subject over the record WITHOUT ITS PHRASE (`description`, `descriptionClass`) and, on a record
   # stating a module set, without its own evaluation's outputs (`sameValue.subject`). The phrase is
