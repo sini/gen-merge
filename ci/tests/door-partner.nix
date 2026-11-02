@@ -979,5 +979,88 @@ in
         LT = configOf (npV [ staticA np.deferredModule ] { a = 2; });
       };
     };
+    # A door return whose own constructor is the door (`functor.type` rebuilds through it) joins to a door return, so a
+    # later step owing a debt meets the accumulator on the door arm of gen `attrsOf`'s relation, threaded
+    # (`lib/types.nix` `elementRelIn`, `metFirst`). Its element is `addCheck`-ed to reject `[ [ 7 ] ]`, which every
+    # count and order refuses through both doors, where nixpkgs' twin serves it, dropping the check. RED (served) where
+    # the threaded step meets the element pair without the debt and then skips the role meet that owed it
+    test-a-door-return-rebuilt-through-its-door-is-met-with-a-later-step-debt =
+      let
+        nest = n: t: if n == 0 then t else np.listOf (nest (n - 1) t);
+        through =
+          d: payload:
+          d (
+            let
+              t = np.attrsWith payload;
+            in
+            t
+            // rec {
+              functor = t.functor // {
+                type = through d;
+              };
+              typeMerge = np.defaultTypeMerge functor;
+            }
+          );
+        partner =
+          d:
+          through d {
+            elemType = np.addCheck (nest 2 np.int) (l: l != [ [ 7 ] ]);
+            lazy = false;
+          };
+        letters = w: builtins.filter (c: builtins.isString c && c != "") (builtins.split "" w);
+        rows =
+          f:
+          builtins.listToAttrs (
+            builtins.concatMap
+              (w: [
+                {
+                  name = "${w}/7";
+                  value = f w 7;
+                }
+                {
+                  name = "${w}/8";
+                  value = f w 8;
+                }
+              ])
+              [
+                "GGP"
+                "PGG"
+                "GPG"
+                "GGGP"
+                "PGGG"
+                "GPGG"
+                "GGPG"
+              ]
+          );
+      in
+      {
+        expr = rows (
+          w: v:
+          map
+            (
+              d:
+              gen (map (c: if c == "G" then gt.attrsOf (nest 2 np.int) else partner d) (letters w)) {
+                k = [ [ v ] ];
+              }
+            )
+            [
+              door
+              tdoor
+            ]
+        );
+        expected = rows (
+          _: v:
+          if v == 7 then
+            [
+              "REFUSED"
+              "REFUSED"
+            ]
+          else
+            [
+              ''{"k":[[8]]}''
+              ''{"k":[[8]]}''
+            ]
+        );
+      };
   };
 }

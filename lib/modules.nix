@@ -619,9 +619,17 @@ let
       relationMergeWithin rewrites b a
     else if a ? typeMergeRel then
       let
-        # a gen container relation taking a step's debt meets its role pair with it, one descent (`rewrites`)
+        # a gen container relation taking a step's debt meets its role pair with it, one descent (`rewrites`): a gen
+        # partner's, and an element container's foreign partner's (`lib/types.nix` `elementRelIn`, whose foreign arm meets
+        # the element pair with the debt); a union's threaded form is a gen partner's alone
         answer =
-          if rewrites != null && rewrites ? band && a.typeMergeRel ? rewrites && isAttrs b && b ? carries then
+          if
+            rewrites != null
+            && rewrites ? band
+            && a ? typeMergeRel.rewrites
+            && isAttrs b
+            && (b ? carries || a ? carries.element)
+          then
             a.typeMergeRel.rewrites rewrites b
           else
             a.typeMergeRel b;
@@ -672,7 +680,23 @@ let
               interface.metWith.metWith rewrites true
                 # a relation whose element is the pair's own met element (`rolesMet`, `lib/types.nix`) descended once
                 # already; a step owing a debt still meets its roles with it
-                (if (answer.rolesMet or false) && rewrites == null then r else rolesMet rewrites r a b)
+                (
+                  if
+                    (answer.rolesMet or false)
+                    && (
+                      rewrites == null
+                      ||
+                        rewrites != null
+                        && rewrites ? band
+                        && a ? typeMergeRel.rewrites
+                        && isAttrs b
+                        && (b ? carries || a ? carries.element)
+                    )
+                  then
+                    r
+                  else
+                    rolesMet rewrites r a b
+                )
                 (
                   if rewrites == null then
                     [
@@ -1104,11 +1128,24 @@ let
     let
       # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
       decidable = interface.importedDecidable earlier && interface.importedDecidable later;
+      # a step owing a debt hands it to a gen container relation, which meets its role pair with it (`rolesMet`): a gen
+      # partner's, and an element container's foreign partner's (`relationMergeWithin` above)
       veto =
         if
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
-          earlier.typeMergeRel later
+          (
+            if
+              rewrites != null
+              && rewrites ? band
+              && earlier ? typeMergeRel.rewrites
+              && isAttrs later
+              && (later ? carries || earlier ? carries.element)
+            then
+              earlier.typeMergeRel.rewrites rewrites later
+            else
+              earlier.typeMergeRel later
+          )
         else
           { };
       # read only where the veto did not end the step, so a refusal seen here is one that defers
@@ -1192,7 +1229,23 @@ let
             )
           else
             interface.metWith.metWith rewrites true
-              (if (veto.rolesMet or false) && rewrites == null then r else rolesMet rewrites r earlier later)
+              (
+                if
+                  (veto.rolesMet or false)
+                  && (
+                    rewrites == null
+                    ||
+                      rewrites != null
+                      && rewrites ? band
+                      && earlier ? typeMergeRel.rewrites
+                      && isAttrs later
+                      && (later ? carries || earlier ? carries.element)
+                  )
+                then
+                  r
+                else
+                  rolesMet rewrites r earlier later
+              )
               (
                 if rewrites == null then
                   [
