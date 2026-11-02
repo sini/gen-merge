@@ -1248,7 +1248,11 @@ let
       && !(interface.protocolReaders.answers later)
     then
       {
-        refused = interface.protocolReaders.unanswerable later earlier;
+        refused =
+          if veto ? deferred then
+            (earlier.typeMergeRel later).refused or (interface.protocolReaders.unanswerable later earlier)
+          else
+            interface.protocolReaders.unanswerable later earlier;
         inherit earlier later;
       }
     else if m == null then
