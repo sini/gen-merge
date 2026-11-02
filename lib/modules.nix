@@ -1119,6 +1119,7 @@ let
   defersStep = {
     meets = true;
     vetoes = false;
+    deferred = true;
   };
   bandedLeaves =
     rewrites: earlier: later:
@@ -1252,7 +1253,12 @@ let
       }
     else if m == null then
       {
-        refused = veto.refused or (mergeTypesReason later earlier);
+        # a deferred step's refusal names the pair in the earlier relation's words where it has them, as the asked veto did
+        refused =
+          if veto ? deferred then
+            (earlier.typeMergeRel later).refused or (mergeTypesReason later earlier)
+          else
+            veto.refused or (mergeTypesReason later earlier);
         inherit earlier later;
       }
     else
