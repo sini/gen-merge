@@ -701,7 +701,17 @@ let
               a ? retainedRelation
               && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
-            rolesMet rewrites answer.merged a b
+            # a join stating no payload and carrying no role has no role to meet
+            (
+              if
+                !(interface.statesPayload answer.merged)
+                && !(answer.merged ? carries.element)
+                && !(answer.merged ? carries.alternatives)
+              then
+                answer.merged
+              else
+                rolesMet rewrites answer.merged a b
+            )
           else
             answer.merged
         )
@@ -727,6 +737,11 @@ let
               rewrites.xs
           )
         ))
+      # a join stating no payload and carrying no role has no role to meet (`declaredPair`'s meets arm reads it so)
+      else if
+        !(interface.statesPayload r.merged) && !(r.merged ? carries.element) && !(r.merged ? carries.alternatives)
+      then
+        r.merged
       else
         rolesMet rewrites r.merged a b;
   rolesMet =
