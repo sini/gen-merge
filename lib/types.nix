@@ -819,7 +819,9 @@ let
             mergeElemTypes element stated
           else
             # a fold step owing a debt meets the element pair with it, one role down (`core.readers`, `core.exports`)
-            rewrites.exports (rewrites.readers rewrites (t: t.el) (interface.carriedAt "element")) element stated;
+            rewrites.exports (rewrites.readers rewrites (t: t.el) (
+              interface.carriedAt "element"
+            )) element stated;
         joinOver = if metFirst != null then stated else element;
         # a partner whose payload is its element alone states no parameters to agree on: it is rebuilt
         # over the met element by its own constructor, and its relation is not asked. A door return is joined so

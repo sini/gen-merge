@@ -623,7 +623,11 @@ let
         # partner's, and an element container's foreign partner's (`lib/types.nix` `elementRelIn`, whose foreign arm meets
         # the element pair with the debt); a union's threaded form is a gen partner's alone
         threaded =
-          rewrites != null && rewrites ? band && a ? typeMergeRel.rewrites && isAttrs b && (b ? carries || a ? carries.element);
+          rewrites != null
+          && rewrites ? band
+          && a ? typeMergeRel.rewrites
+          && isAttrs b
+          && (b ? carries || a ? carries.element);
         answer = if threaded then a.typeMergeRel.rewrites rewrites b else a.typeMergeRel b;
       in
       # a `meets` answer is the carrier: met at every role it carries and at the top. A join carrying no role
@@ -672,7 +676,9 @@ let
               interface.metWith.metWith rewrites true
                 # a relation whose element is the pair's own met element (`rolesMet`, `lib/types.nix`) descended once
                 # already; a step owing a debt still meets its roles with it
-                (if (answer.rolesMet or false) && (rewrites == null || threaded) then r else rolesMet rewrites r a b)
+                (
+                  if (answer.rolesMet or false) && (rewrites == null || threaded) then r else rolesMet rewrites r a b
+                )
                 (
                   if rewrites == null then
                     [
@@ -1200,7 +1206,12 @@ let
             )
           else
             interface.metWith.metWith rewrites true
-              (if (veto.rolesMet or false) && (rewrites == null || threaded) then r else rolesMet rewrites r earlier later)
+              (
+                if (veto.rolesMet or false) && (rewrites == null || threaded) then
+                  r
+                else
+                  rolesMet rewrites r earlier later
+              )
               (
                 if rewrites == null then
                   [

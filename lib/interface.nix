@@ -305,10 +305,18 @@ let
         (builtins.attrNames (builtins.intersectAttrs closureFields r))
         (map isFunction vs)
       ];
-  closureFields = builtins.removeAttrs (builtins.listToAttrs (map (n: { name = n; value = null; }) exportFields)) [
-    "description"
-    "descriptionClass"
-  ];
+  closureFields =
+    builtins.removeAttrs
+      (builtins.listToAttrs (
+        map (n: {
+          name = n;
+          value = null;
+        }) exportFields
+      ))
+      [
+        "description"
+        "descriptionClass"
+      ];
   # ONE VALUE, AS THE ENGINE ASKS IT OF TWO TYPE RECORDS (`modules.nix`'s merge steps): Nix `==` over
   # `closuresFirst`'s subject over the record WITHOUT ITS PHRASE (`description`, `descriptionClass`) and, on a record
   # stating a module set, without its own evaluation's outputs (`sameValue.subject`). The phrase is
