@@ -233,7 +233,12 @@ let
                 embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
                 # the protocol's key (nixpkgs keys a redeclaration on the FUNCTOR name, `defaultTypeMerge`), read on both sides:
                 # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
-                sameKey = isAttrs other && (interface.protocolReaders.keyOf other) == interface.protocolReaders.keyOf self;
+                # a type whose own functor states a payload (`number` is functor `either` over its members) keys only a
+                # partner stating one: the protocol's relation over a payload-less partner aborts (nixpkgs' `either`)
+                sameKey =
+                  isAttrs other
+                  && (interface.protocolReaders.keyOf other) == interface.protocolReaders.keyOf self
+                  && (interface.statesPayload other || !(interface.statesPayload self));
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
                   embedding = e;
