@@ -211,6 +211,10 @@ let
         # `mkOptionType` door retains its author's relation and is joined here as its raw form is.
         nullaryRel = {
           exact = true;
+          # the partners this relation answers as the DECIDER only, stated before any join so that the step asks the
+          # later declaration alone (`lib/modules.nix` `declaredPair`): a FOREIGN partner this leaf's NAME does not key.
+          # A name-keyed one keeps the step-deciding meet (den-hoag-0ismp)
+          defers = other: isAttrs other && (other ? retainedRelation || !(other ? typeMergeRel)) && keyOf other != name;
           __functor =
             _: other:
             if
@@ -2304,6 +2308,14 @@ let
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
         typeMergeRel = {
           exact = true;
+          # the partners this relation answers as the DECIDER only, before any join (`lib/modules.nix` `declaredPair`):
+          # a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
+          defers =
+            other:
+            isAttrs other
+            && (other ? retainedRelation || !(other ? typeMergeRel))
+            && !(other ? carries)
+            && ((keyOf other) == "either" || (interface.protocolReaders.keyOf other) == "either");
           __functor =
             _:
             (
