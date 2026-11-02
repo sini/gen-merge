@@ -685,8 +685,7 @@ in
     # module with none of them reaches no other module. Read by a consumer deciding that a module
     # reads no sibling (gen-schema's layered introspection, den-hoag-f1iza) instead of restating it
     # (den-hoag-1n12c). Spelled here, as `keyEqFields` is: `moduleClosure`'s fast path (lib/modules.nix)
-    # tests the same four names inline, since reading a list there costs a thunk per module entry;
-    # `ci/tests/key-eq.nix` pins the list and the `key` member's dedup.
+    # tests the same four names inline, since reading a list there costs a thunk per module entry.
     closure = [
       "disabledModules"
       "imports"

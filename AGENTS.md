@@ -185,6 +185,12 @@ first line of each).
   true refuses it by name, else both compose; any other `onDistinct` is refused by name at load
   (den-hoag-xh14j §6.3.2; cells `key-record-protocol`, te `key-eq` unknown-onDistinct). The field list
   is published as `moduleSyntax.keyEqFields`, which gen-schema's `mergeReadsKeyEq` requires.
+- `moduleSyntax.closure` — writer `lib/default.nix` (the public `moduleSyntax` record), reader gen-schema's layered
+  introspection (`plainLayerDecl`, den-hoag-f1iza): the content keys that take a module through the import closure.
+  `moduleClosure`'s fast path (`lib/modules.nix`) spells the same four names as inline `?` tests, because reading
+  the list there costs a thunk per module entry (the tests-process `graph-cost` cell's bound). Cells:
+  `key-eq.test-closure-keys-are-published` (the list, and the `key` member's dedup) and
+  `key-eq.test-closure-keys-are-the-fast-paths-tests` (the list equals the fast path's inline names).
 - `__moduleKey` — writer gen-schema `mkSchemaEntryType` (`lib/entry-type.nix`, binding `keyEqRecord`, on the kind value's functor record), reader `nodeKeyOf` and `meetKeyOf` (`lib/modules.nix`):
   a `__functor` module's graph node, read before the module is applied (`null` names no node). The
   reference key is `__keyEq.key` where stated, else the result's `key`; `disabledModules` names a

@@ -3509,7 +3509,7 @@ let
         e:
         !(
           # published as `moduleSyntax.closure` (lib/default.nix), spelled here as `?` tests: a list read
-          # here costs a thunk per module entry (graph-cost), and a let slot for it one per evaluation
+          # here costs a thunk per module entry, and a let slot for it one per evaluation
           e.content ? disabledModules
           || e.content ? imports
           || e.content ? key

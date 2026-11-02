@@ -173,6 +173,20 @@ in
         oneModule = [ "a" ];
       };
     };
+    # The published list is the fast path's own: the names `moduleClosure` tests inline by `?` (read off
+    # the source between its binding and the closure it falls to) are exactly `moduleSyntax.closure`, so
+    # neither side moves alone.
+    test-closure-keys-are-the-fast-paths-tests =
+      let
+        src = builtins.readFile ../../lib/modules.nix;
+        after = builtins.elemAt (builtins.split "\n  moduleClosure =\n" src) 2;
+        body = builtins.head (builtins.split "removal[.]closure specialArgs" after);
+        tested = builtins.filter builtins.isList (builtins.split "e[.]content [?] ([A-Za-z_]+)" body);
+      in
+      {
+        expr = builtins.sort builtins.lessThan (map builtins.head tested);
+        expected = builtins.sort builtins.lessThan gm.moduleSyntax.closure;
+      };
     test-key-eq-is-a-module-key-in-both-lists = {
       expr = {
         structured = builtins.elem "__keyEq" gm.moduleSyntax.structured;
