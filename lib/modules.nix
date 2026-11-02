@@ -622,13 +622,17 @@ let
         # a gen container relation taking a step's debt meets its role pair with it, one descent (`rewrites`): a gen
         # partner's, and an element container's foreign partner's (`lib/types.nix` `elementRelIn`, whose foreign arm meets
         # the element pair with the debt); a union's threaded form is a gen partner's alone
-        threaded =
-          rewrites != null
-          && rewrites ? band
-          && a ? typeMergeRel.rewrites
-          && isAttrs b
-          && (b ? carries || a ? carries.element);
-        answer = if threaded then a.typeMergeRel.rewrites rewrites b else a.typeMergeRel b;
+        answer =
+          if
+            rewrites != null
+            && rewrites ? band
+            && a ? typeMergeRel.rewrites
+            && isAttrs b
+            && (b ? carries || a ? carries.element)
+          then
+            a.typeMergeRel.rewrites rewrites b
+          else
+            a.typeMergeRel b;
       in
       # a `meets` answer is the carrier: met at every role it carries and at the top. A join carrying no role
       # (no element, no alternatives, no payload to hold an option) is met at the top alone, so it pays no
@@ -677,7 +681,21 @@ let
                 # a relation whose element is the pair's own met element (`rolesMet`, `lib/types.nix`) descended once
                 # already; a step owing a debt still meets its roles with it
                 (
-                  if (answer.rolesMet or false) && (rewrites == null || threaded) then r else rolesMet rewrites r a b
+                  if
+                    (answer.rolesMet or false)
+                    && (
+                      rewrites == null
+                      ||
+                        rewrites != null
+                        && rewrites ? band
+                        && a ? typeMergeRel.rewrites
+                        && isAttrs b
+                        && (b ? carries || a ? carries.element)
+                    )
+                  then
+                    r
+                  else
+                    rolesMet rewrites r a b
                 )
                 (
                   if rewrites == null then
@@ -1112,17 +1130,22 @@ let
       decidable = interface.importedDecidable earlier && interface.importedDecidable later;
       # a step owing a debt hands it to a gen container relation, which meets its role pair with it (`rolesMet`): a gen
       # partner's, and an element container's foreign partner's (`relationMergeWithin` above)
-      threaded =
-        rewrites != null
-        && rewrites ? band
-        && earlier ? typeMergeRel.rewrites
-        && isAttrs later
-        && (later ? carries || earlier ? carries.element);
       veto =
         if
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
-          (if threaded then earlier.typeMergeRel.rewrites rewrites later else earlier.typeMergeRel later)
+          (
+            if
+              rewrites != null
+              && rewrites ? band
+              && earlier ? typeMergeRel.rewrites
+              && isAttrs later
+              && (later ? carries || earlier ? carries.element)
+            then
+              earlier.typeMergeRel.rewrites rewrites later
+            else
+              earlier.typeMergeRel later
+          )
         else
           { };
       # read only where the veto did not end the step, so a refusal seen here is one that defers
@@ -1207,7 +1230,18 @@ let
           else
             interface.metWith.metWith rewrites true
               (
-                if (veto.rolesMet or false) && (rewrites == null || threaded) then
+                if
+                  (veto.rolesMet or false)
+                  && (
+                    rewrites == null
+                    ||
+                      rewrites != null
+                      && rewrites ? band
+                      && earlier ? typeMergeRel.rewrites
+                      && isAttrs later
+                      && (later ? carries || earlier ? carries.element)
+                  )
+                then
                   r
                 else
                   rolesMet rewrites r earlier later
