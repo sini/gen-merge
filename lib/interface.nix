@@ -297,10 +297,13 @@ let
       # the module set it describes (den-hoag-olrmz). By primops alone: the function-valued fields' values in name order
       # (forcing each present field to WHNF, first), then the present fields' names and which of them are functions, so
       # two prefixes are equal exactly where the function-valued fields agree by name and value
+      let
+        vs = builtins.attrValues (builtins.intersectAttrs closureFields r);
+      in
       [
-        (builtins.filter isFunction (builtins.attrValues (builtins.intersectAttrs closureFields r)))
+        (builtins.filter isFunction vs)
         (builtins.attrNames (builtins.intersectAttrs closureFields r))
-        (map isFunction (builtins.attrValues (builtins.intersectAttrs closureFields r)))
+        (map isFunction vs)
       ];
   closureFields =
     builtins.removeAttrs
