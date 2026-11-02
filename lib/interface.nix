@@ -4083,7 +4083,18 @@ let
                     let
                       j = x.typeMergeRel f;
                     in
-                    if isAttrs (j.merged or null) then
+                    # gen's engine alone reads this slot, and its step meets a FOREIGN join with every operand
+                    # (`lib/modules.nix` `mergeTypesBy`, `relationMergeWithin`), so the closure is owed there already; closed,
+                    # the join would carry this closure into the met carrier and every later step would close it again
+                    if
+                      isAttrs (j.merged or null)
+                      && !(
+                        !(j.merged ? typeMergeRel)
+                        && !(t ? verify)
+                        && (j.merged.getSubModules or null) == null
+                        && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
+                      )
+                    then
                       j
                       // {
                         merged = close joined j.merged;
@@ -4099,7 +4110,16 @@ let
                   let
                     j = x.typeMergeRel f;
                   in
-                  if isAttrs (j.merged or null) then
+                  # as the exact slot above: a foreign join the step meets is served unclosed
+                  if
+                    isAttrs (j.merged or null)
+                    && !(
+                      !(j.merged ? typeMergeRel)
+                      && !(t ? verify)
+                      && (j.merged.getSubModules or null) == null
+                      && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
+                    )
+                  then
                     j
                     // {
                       merged = close joined j.merged;
@@ -8066,8 +8086,11 @@ let
   foreignRel =
     t: other:
     let
-      f = if isAttrs other then other.functor or null else null;
-      joined = if f == null then null else callerTypeMerge t f;
+      joined =
+        if isAttrs other && other ? functor && other.functor != null then
+          callerTypeMerge t other.functor
+        else
+          null;
       # a join the step can apply states the check and the fold an operand states; any other answer is
       # named, never applied
       whole =
@@ -8075,8 +8098,6 @@ let
         && (joined ? check || !(t ? check || other ? check))
         && (joined ? merge || !(t ? merge || other ? merge));
       answer = if whole then joinKeepingOperands t other joined else null;
-      functorNames = functorNamesOf t other;
-      pair = "`${nameOf t}' and `${nameOf other}'";
     in
     if answer == null && whole then
       {
@@ -8086,19 +8107,26 @@ let
       }
     else if joined != null && !whole then
       {
-        refused = "${pair}, which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
-        vetoes = false;
-      }
-    else if answer == null && functorNames != null then
-      {
-        refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
+        refused = "`${nameOf t}' and `${nameOf other}', which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
         vetoes = false;
       }
     else if answer == null then
-      {
-        refused = "${pair}, which the first type's own `functor' does not reconcile";
-        vetoes = false;
-      }
+      (
+        let
+          functorNames = functorNamesOf t other;
+          pair = "`${nameOf t}' and `${nameOf other}'";
+        in
+        if functorNames != null then
+          {
+            refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
+            vetoes = false;
+          }
+        else
+          {
+            refused = "${pair}, which the first type's own `functor' does not reconcile";
+            vetoes = false;
+          }
+      )
     else
       { merged = answer; };
 
