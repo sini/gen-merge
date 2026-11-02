@@ -168,5 +168,24 @@ in
         ];
       };
     };
+
+    # The prefix tells apart two records holding ONE closure under DIFFERENT export names: equal there, `==` would go on
+    # to the records themselves and reach the cyclic `functor.type`, an abort beside `closuresOf`'s two enumerated ones.
+    # The same closure under the same name is one prefix.
+    test-one-closure-under-two-names-is-two-prefixes = {
+      expr =
+        let
+          f = _: true;
+          pre = r: builtins.head (genMerge.closuresFirst [ r ] r);
+        in
+        {
+          twoNames = pre { check = f; } == pre { merge = f; };
+          oneName = pre { check = f; } == pre { check = f; };
+        };
+      expected = {
+        twoNames = false;
+        oneName = true;
+      };
+    };
   };
 }

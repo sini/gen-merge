@@ -499,6 +499,25 @@ in
 {
   config = {
     flake.testsError.refusal-messages = {
+      # OF TWO THROWING EXPORT FIELDS, THE EARLIER ONE IN `exportFields` ORDER SURFACES: `closuresFirst`'s prefix forces
+      # each present field in that order (`lib/interface.nix` `closuresOf`), never in attribute-name order, where
+      # `functor` precedes `merge`. Which throw surfaces decides whether a comparison is a caught refusal or an
+      # uncatchable abort (ADR-0025 item 1), so the prefix moves neither.
+      test-the-prefix-forces-export-fields-in-protocol-order = {
+        expr =
+          let
+            r = {
+              check = _: true;
+              merge = throw "MERGE-first";
+              functor = throw "FUNCTOR-first";
+            };
+          in
+          force (gm.closuresFirst [ r ] r);
+        expectedError = {
+          type = "ThrownError";
+          msg = "^MERGE-first$";
+        };
+      };
       # The message NAMES THE FULL PATH of the key it could not place — `rack.stray`, not `rack`
       # and not a count. A refusal that only said "undeclared key" would leave the caller to
       # re-derive which one, over a tree the engine has already walked.

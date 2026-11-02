@@ -253,7 +253,7 @@ let
   # Nix `==` walks an attrset in symbol-interning order, so a bare `==` between two distinct records
   # recurses until the evaluator aborts, uncatchably, whenever `functor` is interned before the first
   # attribute on which they differ. The subject puts each record's CLOSURES first: the fields of
-  # `exportFields` that the record holds as functions, one attrset per record, ahead of the value
+  # `exportFields` that the record holds as functions, one prefix per record, ahead of the value
   # itself. List `==` decides index 0 before index 1, and `==` on two functions never enters either
   # closure, so two constructions — which differ in a closure, every `exportType` call deriving its
   # own `typeMerge` — answer `false` before the back-edge can be reached. The prefix selects from the
@@ -288,26 +288,57 @@ let
   # spelling), and `intersectAttrs` over it is an evaluator type error that `tryEval` does not catch
   # (den-hoag-6b5ia). Such a value has no back-edge, so the `==` over `v` decides it.
   closuresOf =
+    let
+      # never `description` or `descriptionClass`: a type's PHRASE is data by the protocol, and a nesting type's phrase
+      # reads its own evaluation's declarations (`unroledNested`), so testing it for a closure would evaluate the module
+      # set it describes (den-hoag-olrmz). Bound inside this binding, so an evaluation that compares no record allocates
+      # nothing for it
+      fields =
+        builtins.removeAttrs
+          (builtins.listToAttrs (
+            map (n: {
+              name = n;
+              value = null;
+            }) exportFields
+          ))
+          [
+            "description"
+            "descriptionClass"
+          ];
+    in
     r:
     if !(isAttrs r) then
       { }
     else
-      builtins.intersectAttrs (builtins.listToAttrs (
-        map
-          (n: {
-            name = n;
-            value = null;
-            # never `description` or `descriptionClass`: a type's PHRASE is data by the protocol, and a nesting
-            # type's phrase reads its own evaluation's declarations (`unroledNested`), so testing it for a closure
-            # would evaluate the module set it describes (den-hoag-olrmz). Against probing them, the one answer
-            # this moves is a throwing phrase's: THROW becomes `false` (not one value), the fail-closed answer
-          })
-          (
-            builtins.filter (
-              n: n != "description" && n != "descriptionClass" && r ? ${n} && isFunction r.${n}
-            ) exportFields
-          )
-      )) r;
+      # By primops alone: the function-valued fields' values in name order, the present fields' names, and which of
+      # them are functions. Two prefixes are equal exactly where the present fields agree by name and the
+      # function-valued ones by value: finer than the function-valued fields alone (one closure under two names is two
+      # prefixes), and the same `==` over the subject wherever `r` is drawn from `v`, since a present-name difference
+      # among `r`'s fields is one in `v` as well. Each present field is forced to WHNF first, in `exportFields` order
+      # (the `assert`, whose `==` against `null` decides on the type alone and allocates nothing), so of two throwing
+      # fields the earlier one's throw surfaces, never the earlier name's (ADR-0025 item 1)
+      let
+        c = builtins.intersectAttrs fields r;
+        vs = builtins.attrValues c;
+      in
+      assert
+        ((r._type or null) == null || true)
+        && ((r.name or null) == null || true)
+        && ((r.deprecationMessage or null) == null || true)
+        && ((r.check or null) == null || true)
+        && ((r.merge or null) == null || true)
+        && ((r.emptyValue or null) == null || true)
+        && ((r.getSubOptions or null) == null || true)
+        && ((r.getSubModules or null) == null || true)
+        && ((r.substSubModules or null) == null || true)
+        && ((r.typeMerge or null) == null || true)
+        && ((r.nestedTypes or null) == null || true)
+        && ((r.functor or null) == null || true);
+      [
+        (builtins.filter isFunction vs)
+        (builtins.attrNames c)
+        (map isFunction vs)
+      ];
   # ONE VALUE, AS THE ENGINE ASKS IT OF TWO TYPE RECORDS (`modules.nix`'s merge steps): Nix `==` over
   # `closuresFirst`'s subject over the record WITHOUT ITS PHRASE (`description`, `descriptionClass`) and, on a record
   # stating a module set, without its own evaluation's outputs (`sameValue.subject`). The phrase is
