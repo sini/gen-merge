@@ -3411,20 +3411,57 @@ let
       else
         !(keyedDrop class callM a3.noRefined r x);
   };
-  # whether a level holds exactly one entry naming a node key
+  # Whether an entry names a node key: `nodeKeyOf e != null`, with a record answered by its `__moduleKey`'s presence
+  # (`nodeKeyOf` reads a non-path record's `__moduleKey` first, and a path has none), so no record's key text is built
+  # to answer it. A level reads that text only once it is keyed, in `first` (`meetKeyOf`), as a record's reference key
+  # is read only at a meeting. Every other entry is asked by `nodeKeyOf`, whose text forces a path's or a content
+  # `key`'s as nixpkgs' `unifyModuleSyntax` does.
+  namesNodeKey = e: (e.m0.__moduleKey or null) != null || nodeKeyOf e != null;
+  # Whether a keyed level holds exactly one entry naming a node key. The level's head decides the scan, so no level is
+  # copied once per entry: a keyed head whose successor visibly names a key (a content `key` or a `__moduleKey`, read
+  # by presence alone; `filter`'s path forces both texts in `first`) answers at once, with no copy of a long keyed
+  # level; any other keyed head scans its tail once; an unkeyed head is scanned by index and stops at the second keyed
+  # entry, so no entry past it has its key text built twice (once here, once in `meetKeyOf`).
   loneKeyed =
     l:
-    l != [ ]
-    && (
-      if nodeKeyOf (head l) != null then !(any (e: nodeKeyOf e != null) (tail l)) else loneKeyed (tail l)
-    );
+    if namesNodeKey (head l) then
+      !(
+        length l > 1
+        && ((builtins.elemAt l 1).content ? key || ((builtins.elemAt l 1).m0.__moduleKey or null) != null)
+      )
+      && !(any namesNodeKey (tail l))
+    else
+      let
+        n = length l;
+        go =
+          i: c:
+          if i == n then
+            c == 1
+          else if namesNodeKey (builtins.elemAt l i) then
+            c == 0 && go (i + 1) 1
+          else
+            go (i + 1) c;
+      in
+      go 1 0;
   moduleLevels =
     class: callM: seen: level:
     if level == [ ] then
       [ ]
+    # a level naming no node key drops nothing and meets nothing: it is its own kept list, binds none of the
+    # keyed level's `at`, `first`, `opt` and `kept`, and hands `seen` on unchanged
+    else if !(any namesNodeKey level) then
+      level
+      ++ moduleLevels class callM seen (
+        concatMap (
+          { content, ... }@e:
+          if e ? dis then
+            removal.walk.keptEntries e.dis callM e (importsOf content)
+          else
+            moduleEntries callM e (importsOf content)
+        ) level
+      )
     else
       let
-        keyed = any (e: nodeKeyOf e != null) level;
         at = prelude.imap0 (p: e: {
           inherit p e;
           k = meetKeyOf e;
@@ -3496,9 +3533,9 @@ let
         # does), so the level is its own kept list without the per-entry tests. The scan stops at the second
         # keyed entry.
         kept =
-          if keyed && seen == { } && loneKeyed level then
+          if seen == { } && loneKeyed level then
             level
-          else if keyed then
+          else
             map (x: x.e) (
               filter (
                 x:
@@ -3516,9 +3553,7 @@ let
                     true
                 )
               ) at
-            )
-          else
-            level;
+            );
       in
       kept
       # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
@@ -3527,16 +3562,13 @@ let
       ++
         moduleLevels class callM
           (
-            if keyed then
-              first
-              // seen
-              // {
-                # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
-                "~" = (seen."~" or { }) // opt.reps;
-                "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
-              }
-            else
-              seen
+            first
+            // seen
+            // {
+              # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
+              "~" = (seen."~" or { }) // opt.reps;
+              "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+            }
           )
           (
             concatMap (

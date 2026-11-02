@@ -10,6 +10,7 @@
   genMerge,
   genMergeCore,
   genScope,
+  nixpkgsLib,
   ...
 }:
 
@@ -437,5 +438,97 @@ in
         "a"
       ];
     };
+    # A record whose `__moduleKey` has no string form names a node by presence: its level is keyed, and its
+    # key text is read only where the level meets (`first`), so it is served where it is its level's first
+    # keyed entry, or its second with nothing seen, as nixpkgs serves it (nixpkgs never reads `__moduleKey`).
+    # Past a level's second keyed entry it was served already: the two controls.
+    test-a-node-key-with-no-string-form-is-served-as-nixpkgs-serves-it =
+      let
+        r = {
+          __moduleKey = {
+            __toString = _: throw "no string form";
+          };
+          __functor = _: _: { config.l = [ "r" ]; };
+        };
+        b = {
+          key = "b";
+          config.l = [ "b" ];
+        };
+        c = {
+          key = "c";
+          config.l = [ "c" ];
+        };
+        u.config.l = [ "u" ];
+        levels = {
+          lone = [ r ];
+          afterUnkeyed = [
+            u
+            r
+          ];
+          firstOfTwo = [
+            r
+            b
+          ];
+          secondOfTwo = [
+            b
+            r
+          ];
+          thirdOfThree = [
+            b
+            c
+            r
+          ];
+          noRecord = [
+            b
+            c
+          ];
+        };
+        np =
+          mods:
+          let
+            d.options.l = nixpkgsLib.mkOption {
+              type = nixpkgsLib.types.listOf nixpkgsLib.types.str;
+              default = [ ];
+            };
+            v = (nixpkgsLib.evalModules { modules = [ d ] ++ mods; }).config.l;
+            t = builtins.tryEval (builtins.deepSeq v v);
+          in
+          if t.success then t.value else "REFUSED";
+        on = f: builtins.mapAttrs (_: level: f [ { imports = level; } ]) levels;
+        served = {
+          lone = [ "r" ];
+          afterUnkeyed = [
+            "r"
+            "u"
+          ];
+          firstOfTwo = [
+            "b"
+            "r"
+          ];
+          secondOfTwo = [
+            "r"
+            "b"
+          ];
+          thirdOfThree = [
+            "r"
+            "c"
+            "b"
+          ];
+          noRecord = [
+            "c"
+            "b"
+          ];
+        };
+      in
+      {
+        expr = {
+          gen = on l;
+          nixpkgs = on np;
+        };
+        expected = {
+          gen = served;
+          nixpkgs = served;
+        };
+      };
   };
 }

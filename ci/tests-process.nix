@@ -127,6 +127,17 @@
             [ -n "$thunks" ] || die "$1" "the evaluator wrote no nrThunks to $TMPDIR/stats: cannot measure"
           }
 
+          # listBytesOf <arm>: as callsOf, leaving the process's own list.bytes in `bytes`.
+          listBytesOf() {
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            rm -f "$TMPDIR/stats"
+            evalArm "$1"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die "$1" "expected exit 0, got $rc"
+            bytes=$(tr -d ' \n' < "$TMPDIR/stats" | grep -o '"list":{[^}]*}' | grep -o '"bytes":[0-9]*' | cut -d: -f2 || true)
+            [ -n "$bytes" ] || die "$1" "the evaluator wrote no list.bytes to $TMPDIR/stats: cannot measure"
+          }
+
           # den-hoag-xzchx C3 — the outer fixpoint reading the evaluation's own `options` from a
           # plain attrset DIVERGES: non-zero exit, the infinite-recursion channel, no value. An
           # admission that skips the declaration guard for a formal-free module answers here.
@@ -305,6 +316,19 @@
           done
           [ $((kw1600 - kw400)) -lt $((5 * (kw400 - kw100))) ] || die key-walk-wide-1600 "function calls grow faster than linear in the definitions: $kw100 / $kw400 / $kw1600"
 
+          # den-hoag-xrh86: a level's lone-keyed test is linear in the unkeyed entries before its keyed one: one level
+          # of n unkeyed modules and one keyed module, at n = 500, 2000, 8000. Linear growth makes the second difference
+          # in list bytes 4x the first; it must stay under 5x. A lone test copying the level once per unkeyed entry
+          # read 15.8x (list bytes 2133184 / 32517184 / 514053184 on Nix 2.35.4; this lone test reads
+          # 129200 / 501200 / 1989200).
+          for n in 500 2000 8000; do
+            listBytesOf "prefix-keyed-$n"
+            [ "$val" = "$((n + 1))" ] || die "prefix-keyed-$n" "expected value $((n + 1)), got '$val'"
+            eval "pk$n=$bytes"
+          done
+          [ $((pk8000 - pk2000)) -lt $((5 * (pk2000 - pk500))) ] || die prefix-keyed-8000 "list bytes grow faster than linear in the unkeyed entries: $pk500 / $pk2000 / $pk8000"
+          echo "prefix-keyed: list bytes $pk500 / $pk2000 / $pk8000 at n = 500 / 2000 / 8000"
+
           # den-hoag-hnd82 (ADR-0032): the cost of a met record, as thunks per option between n = 100 and
           # 200, n options each declared twice and defined. The bounds are the landed figures, in THUNKS: they
           # read the same on Nix, Determinate and Lix, while allocated bytes move with the loading route. An
@@ -400,8 +424,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "80" ] || die runner "expected 80 evaluations, ran $ran"
-          echo "tests-process: 80 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "83" ] || die runner "expected 83 evaluations, ran $ran"
+          echo "tests-process: 83 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

@@ -194,6 +194,27 @@ let
   # den-hoag-qbrq9: `attrsOf (attrsOf sub)` with n modules each defining `o.a.k<i>`, so the inner
   # `attrsOf sub` at `o.a` is keyed over-approximately over n definitions with n distinct keys. The
   # whole value is forced; the cell answers its key count, n.
+  # den-hoag-xrh86: one level of n unkeyed modules before one keyed module; the served list is forced. The runner
+  # reads the process's list bytes at three sizes.
+  prefixKeyed =
+    n:
+    builtins.length
+      (eval [
+        {
+          options.l = m.mkOption {
+            type = m.types.listOf m.types.str;
+            default = [ ];
+          };
+        }
+        {
+          imports = builtins.genList (i: { config.l = [ "v${toString i}" ]; }) n ++ [
+            {
+              key = "the-one-keyed";
+              config.l = [ "k" ];
+            }
+          ];
+        }
+      ]).config.l;
   keyWalkWide =
     n:
     let
@@ -549,6 +570,10 @@ let
     key-walk-wide-100 = keyWalkWide 100;
     key-walk-wide-400 = keyWalkWide 400;
     key-walk-wide-1600 = keyWalkWide 1600;
+    # den-hoag-xrh86: an unkeyed prefix before a level's one keyed entry, read by the runner as list bytes.
+    prefix-keyed-500 = prefixKeyed 500;
+    prefix-keyed-2000 = prefixKeyed 2000;
+    prefix-keyed-8000 = prefixKeyed 8000;
     # den-hoag-hnd82: a met record's cost, read by the runner as thunks per option.
     met-cost-val-100 = metCost "val" 100;
     met-cost-val-200 = metCost "val" 200;
