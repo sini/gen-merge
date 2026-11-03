@@ -26,6 +26,11 @@
 #    (nixpkgs names a constructor by its functor name): a value inside them its check rejects is refused by name, in
 #    every engine and order, and one outside them is served with the twin's value, whatever record the partner's
 #    functor returns away from its own payload.
+#  - the DECLARED cells: a door's return declared before gen's container, where nixpkgs' fold asks the CONTAINER's
+#    exported relation and hands it the return's functor only: the return names itself there as the declaration, so its
+#    check is owed (relativised to its own parameters: a coherent foreign stock beside a join stating an element is
+#    judged by gen's constructor for its name), and a later step of the same fold owes the declarations its
+#    accumulator folded, as checks, never the accumulator; each REFUSED row has a served control in its own order.
 # Red: every check cell with `imported` reverted to `t: r: r`; the `elemG` cells with `substructure` left out; the
 # widening cells with the join's check taken whole; the container widening cells outside the parameters with
 # membership read by the base's `check` alone; the verify and element cells with the closure built from the
@@ -34,7 +39,10 @@
 # met roles (`relationMergeWithin`), and the door-column check oracle with an override's stock read by its own `check`
 # (`metWith`); the override-join values with the check owed on every value; the own-parameters refusals with the
 # stock's membership read by its own `check` (`metWith`) and the base's by its own merge (`rebuildClosed.own`), each
-# site partitioning them; the own-parameters values with the check owed on every value at both sites.
+# site partitioning them; the own-parameters values with the check owed on every value at both sites; the declared
+# refusals with the door's return naming no declaration in its functor; the declared values with a coherent foreign
+# stock read by its one-level `check` (`metWith`); the declared refusal at four declarations (`gM`) with a held
+# accumulator's exemption left without the declarations it met (`metWith`'s held record).
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -911,6 +919,50 @@ let
       };
     };
   };
+  intStocks = {
+    np = {
+      T = np.listOf np.int;
+      U = np.listOf np.int;
+    };
+    gt = {
+      T = gt.listOf np.int;
+      U = gt.listOf np.int;
+    };
+  };
+  # v2, merge built at `listOf str`, payload `enum ["a"]`: its own parameters are its merge's
+  gMAt =
+    elem:
+    np.mkOptionType {
+      name = "listOf";
+      check = v: isList v && all (x: x == "a") v && length v < 2;
+      inherit (np.listOf np.str) merge;
+      functor = (np.listOf elem).functor // {
+        type = q: if isA q then gMAt q.elemType else np.listOf q.elemType;
+      };
+      nestedTypes.elemType = elem;
+    };
+  declared = {
+    aC = {
+      p = np.addCheck (np.listOf ea) short;
+      beside = stocksOf L;
+    };
+    hzR = {
+      inherit (overrides.hzR) p;
+      beside = stocksOf L;
+    };
+    shortC = {
+      p = np.addCheck listInt.np short;
+      beside = intStocks;
+    };
+    shortOver = {
+      inherit (overrides.shortOver) p;
+      beside = intStocks;
+    };
+    gM = {
+      p = gMAt ea;
+      beside = stocksOf L;
+    };
+  };
   ownVals = joinVals // {
     bb = [
       "b"
@@ -933,7 +985,7 @@ let
       pn = elemAt w 0;
       engine = elemAt w 1;
       order = elemAt w 2;
-      h = owns.${pn};
+      h = (owns // declared).${pn};
       at =
         S: P:
         builtins.genList (
@@ -1079,12 +1131,52 @@ let
           "door PT"
         ]
     );
+  declaredJoins =
+    map (ownJoin "REFUSED") [
+      "aC npg PT xaa"
+      "aC npg2 PT xaa"
+      "hzR npg PT xaa"
+      "hzR npg2 PT xaa"
+      "shortC npg PT long"
+      "shortC npg2 PT long"
+      "shortOver npg PT long"
+      "shortOver npg2 PT long"
+      # N >= 3
+      "aC npg PTU xaa"
+      "hzR npg UPT xaa"
+      "shortC npg PPTU long"
+      "shortOver npg2 UPPT long"
+      # a later step owes the declarations the accumulator folded
+      "gM npg PTPU b"
+      "gM npg2 PTPU bb"
+    ]
+    ++ map (ownJoin "twin") [
+      "aC npg PT ab"
+      "aC npg2 PT bb"
+      "hzR npg PT ab"
+      "aC npg PTU ab"
+      "aC door PT ab"
+      "aC door2 TP bb"
+      "aC raw PT ab"
+    ]
+    # a value no check rejects, served with the twin's value, in each REFUSED row's own order: a refusal for the
+    # declaration set itself reds these
+    ++ map (ownJoin "control") [
+      "shortC npg PT ok"
+      "shortOver npg2 PT ok"
+      "shortC npg PPTU ok"
+      "shortOver npg2 UPPT ok"
+      "gM npg PTPU a"
+      "gM npg2 PTPU a"
+      "hzR npg UPT a"
+    ];
 in
 {
   flake.tests.door-return-closed = listToAttrs (
     checkCells
     ++ overrideJoins
     ++ ownParameters
+    ++ declaredJoins
     ++ map widened [
       "none"
       "addCheck"

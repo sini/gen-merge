@@ -4138,21 +4138,32 @@ let
             else
               { }
           );
+        # the declaration this closure returns, named in its functor (`__declared`) as `carriedCopy` names a copy:
+        # nixpkgs hands a redeclaration's relation only the partner's functor, whose `type` at `t`'s own payload need
+        # not rebuild `t`
+        res =
+          r
+          // rebuild o r
+          // {
+            ${if r ? merge then "merge" else null} =
+              if
+                isV2 r && builtins.intersectAttrs { merge = null; } r == builtins.intersectAttrs { merge = null; } t
+              then
+                rebuildClosed.verifiedMerge.lifted o.check r.merge
+              else
+                r.merge;
+            # a module set's return is rebuilt by the fixup, whose own carriage owes its check (`door`): left as it is
+            ${if isAttrs (r.functor or null) && !isList (r.getSubModules or null) then "functor" else null} =
+              r.functor
+              // {
+                __declared = res;
+              };
+          };
       in
-      r
-      // rebuild o r
-      # a return that publishes `t`'s own `merge` (a re-home returning `t` as itself) states `t`'s check where nixpkgs'
-      # fold reads it (den-hoag-v4cw1); told by the slot as `kept` tells a rebuild that IS the record, an `==` over the
-      # `merge` slot that is equal by its pointer, so a spurious equal only states the check again
-      // {
-        ${if r ? merge then "merge" else null} =
-          if
-            isV2 r && builtins.intersectAttrs { merge = null; } r == builtins.intersectAttrs { merge = null; } t
-          then
-            rebuildClosed.verifiedMerge.lifted o.check r.merge
-          else
-            r.merge;
-      };
+      res
+    # a return that publishes `t`'s own `merge` (a re-home returning `t` as itself) states `t`'s check where nixpkgs'
+    # fold reads it (den-hoag-v4cw1), inside `res` above
+    ;
     # ★ A STAMPED NESTING RECORD A PUBLISHED DOOR RETURNS AS ITSELF, FACING NIXPKGS' EVALUATION (den-hoag-olrmz). A
     # record the doors return with no `carriedCopy` admission, stating a `verify` over a module set below it, publishes
     # the foreign half `carriedCopy` publishes: the one-definition projection as its union-dispatch `check`, the `verify`
@@ -7293,11 +7304,13 @@ let
               walk v (map (own loc defs) kept);
             fold = met.mergeDefs or null;
             # the held record, named so its exported `typeMerge` meets a later join with IT (and so holds again), not
-            # with the unheld `met` that `meetOf`'s own `typeMerge` names
+            # with the unheld `met` that `meetOf`'s own `typeMerge` names; it names the declarations it met (`__heldOnce`),
+            # which its relativisation at that join owes as checks, never held (`witnessedCheck`; ADR-0039 THE MEET)
             h =
               met
               // {
                 holds = true;
+                __heldOnce = once;
                 ${if types ? mkIdentity && m ? __mint then "__mint" else null} = hids.__mint;
                 ${if types ? mkIdentity && m ? __mint then "__payload" else null} = hids.__payload;
                 ${if types ? mkIdentity && m ? __mint then "__sealed" else null} = hids.__sealed;
@@ -7718,6 +7731,7 @@ let
         let
           s = importedPartner ((wrappedBase o).functor or null);
         in
+        # a foreign fold's held accumulator states its own relativised check (`metWith`'s held record): never again
         if isAttrs s && s ? check then
           o
           // {
@@ -7730,13 +7744,36 @@ let
             # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
             # level); a stock of no recognised name keeps its own check. Asked only of a value the operand's check
             # rejects (`meetOf`)
+            # a held accumulator (`metWith`'s held record) is outside its own parameters only where every declaration it
+            # met also admits the value: the debt, owed as checks. A declaration no join widens, and one of no recognised
+            # stock, has no relativised form and is owed whole (a refusal, never a silent pass)
             __stockCheck =
-              if s.check.isV2MergeCoherent or false then
+              if o ? __heldOnce then
+                (
+                  let
+                    sc = (metWith.anything.witnessedCheck m (builtins.removeAttrs o [ "__heldOnce" ])).__stockCheck;
+                  in
+                  v:
+                  sc v
+                  || !builtins.all (
+                    x:
+                    (x.check.__verifyProjection or (x.check or x.admits)) v
+                    || (
+                      let
+                        y = if x ? __stockCheck then x else metWith.anything.ownRead m x;
+                      in
+                      y ? __stockCheck && !(y.__stockCheck v)
+                    )
+                  ) o.__heldOnce
+                )
+              else if s.check.isV2MergeCoherent or false && foreignValueMeta.own s then
                 s.check
               else if
                 ((m.functor or { }).payload or null) ? elemType
                 && !(s ? _checkWitness && s.check == s._checkWitness)
-                && !(isV2 s)
+                # a coherent v2 stock's own `check` reads its own level only, so it is judged here too, by gen's
+                # canonical constructor for its name; an override's is its merge's (below)
+                && (!(isV2 s) || s.check.isV2MergeCoherent or false)
                 && (s.getSubModules or null) == null
               then
                 v:
@@ -9331,7 +9368,11 @@ let
             let
               j = t.retainedRelation.typeMerge f;
             in
-            if j == null || !(isAttrs f && f ? __declared) then
+            if
+              j == null
+              || !(isAttrs f && f ? __declared)
+              || (j.merge or { }) ? v2 && !(j.check.isV2MergeCoherent or false)
+            then
               j
             else
               meet false j [ f.__declared ] f.__declared
