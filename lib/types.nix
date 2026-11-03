@@ -183,6 +183,8 @@ let
     else
       let
         name = t.name or "raw";
+        # the keys this relation reads a foreign partner by, applied once per type (`interface.keyed.leaf`)
+        keys = interface.keyed.leaf { inherit name self row; };
         # THE LEAF RELATION. A gen partner is asked first and with no binding (the embedding is a fact
         # about a FOREIGN partner, and a gen x gen redeclaration, the fan-in of one loc, pays nothing for
         # it): the same key answers `self`. A RAW foreign partner is joined in its own published functor,
@@ -214,12 +216,7 @@ let
           # the partners this relation answers as the DECIDER only, stated before any join so that the step asks the
           # later declaration alone (`lib/modules.nix` `declaredPair`): a FOREIGN partner this leaf's NAME does not key.
           # A name-keyed one keeps the step-deciding meet (den-hoag-0ismp)
-          # (`keyOf` restated inline in this relation's foreign arms: a call per step)
-          later =
-            other:
-            isAttrs other
-            && (other ? retainedRelation || !(other ? typeMergeRel))
-            && (other ? __derivation || (other.name or null) != name);
+          later = keys.later;
           __functor =
             _: other:
             if
@@ -234,15 +231,7 @@ let
             # a FOREIGN partner this type's NAME keys, stating no payload beside a type stating none, where no embedding
             # row could answer it first: the step-deciding meet (den-hoag-0ismp) below, answered before its bindings,
             # which this pair would allocate and never read
-            else if
-              (row == null || !(row ? members || row ? params))
-              && isAttrs other
-              && !(other ? __derivation)
-              && (other.name or null) == name
-              && !(interface.statesPayload other)
-              && !(interface.statesPayload self)
-              && (if other ? functor.name then other.functor.name else name) == (self.functor.name or name)
-            then
+            else if keys.holds other then
               (
                 let
                   j = interface.joinLeafInStatedRelation {
@@ -264,11 +253,7 @@ let
                 # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
                 # a type whose own functor states a payload (`number` is functor `either` over its members) keys only a
                 # partner stating one: the protocol's relation over a payload-less partner aborts (nixpkgs' `either`)
-                sameKey =
-                  isAttrs other
-                  && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other)
-                    == (self.functor.name or name)
-                  && (interface.statesPayload other || !(interface.statesPayload self));
+                sameKey = keys.sameKey other;
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
                   embedding = e;
@@ -309,7 +294,7 @@ let
                   meet carriedJoin
                 else
                   { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-              else if embedKey && (other ? __derivation || (other.name or null) != name) then
+              else if embedKey && (keyOf other) != name then
                 if leafJoin != null then
                   meet leafJoin
                 else
@@ -324,7 +309,7 @@ let
               # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
               # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
               # only as the later declaration
-              else if sameKey && !(other ? __derivation) && (other.name or null) == name then
+              else if sameKey && (keyOf other) == name then
                 {
                   merged = if leafJoin == null then self else leafJoin;
                   meets = true;
@@ -1524,19 +1509,7 @@ let
           exact = true;
           # a FOREIGN partner of this key whose element this element's relation answers as the decider only: the
           # container's meet is built on that answer, so it is the decider's only too (`nullaryRel`'s `deferred`, one role down)
-          later =
-            other:
-            isAttrs other
-            && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? __derivation)
-            && (other.name or null) == "listOf"
-            && element ? typeMergeRel.later
-            && (
-              let
-                s = interface.carriedAt "element" other;
-              in
-              s != null && element.typeMergeRel.later s
-            );
+          later = interface.keyed.container "listOf" element;
           __functor = _: (elementRel "listOf" listOf element);
           rewrites = mkMerge: elementRelIn mkMerge null "listOf" listOf element;
         };
@@ -1766,19 +1739,7 @@ let
         typeMergeRel = {
           exact = true;
           # as `listOf`'s, the partner's element read under the construction this one embeds in where it states none
-          later =
-            other:
-            isAttrs other
-            && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? __derivation)
-            && (other.name or null) == tyName
-            && element ? typeMergeRel.later
-            && (
-              let
-                s = interface.carriedAt "element" other;
-              in
-              s != null && element.typeMergeRel.later s
-            );
+          later = interface.keyed.container tyName element;
           __functor = _: (rel tyName (attrsOfWith tyName) element);
           rewrites = mkMerge: elementRelIn mkMerge row tyName (attrsOfWith tyName) element;
         };
@@ -2173,19 +2134,7 @@ let
         typeMergeRel = {
           exact = true;
           # as `listOf`'s
-          later =
-            other:
-            isAttrs other
-            && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? __derivation)
-            && (other.name or null) == "nullOr"
-            && element ? typeMergeRel.later
-            && (
-              let
-                s = interface.carriedAt "element" other;
-              in
-              s != null && element.typeMergeRel.later s
-            );
+          later = interface.keyed.container "nullOr" element;
           __functor = _: (elementRel "nullOr" nullOr element);
           rewrites = mkMerge: elementRelIn mkMerge null "nullOr" nullOr element;
         };
@@ -2389,12 +2338,7 @@ let
           exact = true;
           # the partners this relation answers as the DECIDER only, before any join (`lib/modules.nix` `declaredPair`):
           # a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
-          later =
-            other:
-            isAttrs other
-            && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? carries)
-            && ((keyOf other) == "either" || !(other ? __derivation) && (other.functor.name or null) == "either");
+          later = interface.keyed.either;
           __functor =
             _:
             (
@@ -2406,7 +2350,7 @@ let
                 ||
                   (keyOf other) != "either"
                   && (
-                    !(!(other ? __derivation) && (other.functor.name or null) == "either")
+                    !(interface.keyed.protocol other)
                     || other ? typeMergeRel && !(other ? retainedRelation)
                   )
               then
