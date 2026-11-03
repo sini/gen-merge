@@ -606,6 +606,51 @@ in
         ];
         at = l: v: map (o: ev o v) (orders l);
         all6 = r: builtins.genList (_: r) 6;
+        # two constructions of one name and payload beside gen's `int`, at three and four declarations: the first step's
+        # join is a declaration's own tree, so the declaration it meets is owed whole there, and the value either
+        # refinement rejects is rejected in every order (den-hoag-ob4k0), at the top and one role down
+        refinedAt =
+          let
+            shapes = {
+              leaf = {
+                d = {
+                  G = gt.int;
+                  A = rejInt 7;
+                  B = rejInt 9;
+                };
+                v = x: x;
+              };
+              listOf = {
+                d = {
+                  G = gt.listOf gt.int;
+                  A = t.listOf (rejInt 7);
+                  B = t.listOf (rejInt 9);
+                };
+                v = x: [ x ];
+              };
+            };
+            letters = w: builtins.filter (c: builtins.isString c && c != "") (builtins.split "" w);
+          in
+          builtins.mapAttrs (
+            _: s:
+            builtins.listToAttrs (
+              map
+                (w: {
+                  name = w;
+                  value = map (x: ev (map (c: s.d.${c}) (letters w)) (s.v x)) [
+                    7
+                    9
+                    8
+                  ];
+                })
+                [
+                  "GAB"
+                  "GBA"
+                  "BAB"
+                  "GABA"
+                ]
+            )
+          ) shapes;
       in
       {
         expr = {
@@ -623,6 +668,7 @@ in
                 (t.either (t.listOf (rejInt 9)) t.str)
               ]
               [ 7 ];
+          refined = refinedAt;
         };
         expected = {
           a = all6 "MERGED enum / ACCEPTED";
@@ -632,6 +678,25 @@ in
           wrappedB = all6 "MERGED enum / ACCEPTED";
           wrappedOverlapB = all6 "MERGED enum / REJECTED";
           unionOfLists = "MERGED either / REJECTED";
+          refined =
+            let
+              # at 7, 9 and 8: each refinement's rejected value, then the value both admit
+              word = n: [
+                "MERGED ${n} / REJECTED"
+                "MERGED ${n} / REJECTED"
+                "MERGED ${n} / ACCEPTED"
+              ];
+              words = n: {
+                GAB = word n;
+                GBA = word n;
+                BAB = word n;
+                GABA = word n;
+              };
+            in
+            {
+              leaf = words "int";
+              listOf = words "listOf";
+            };
         };
       };
 
