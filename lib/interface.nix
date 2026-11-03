@@ -1613,10 +1613,13 @@ let
         name,
         self,
         row,
+        t,
       }:
       let
         own = self.functor.name or name;
         plain = !(statesPayload self);
+        bare = row == null || !(row ? members || row ? params);
+        named = row != null && row.name != name;
       in
       {
         later =
@@ -1624,27 +1627,128 @@ let
           isAttrs other
           && (other ? retainedRelation || !(other ? typeMergeRel))
           && (other ? __derivation || (other.name or null) != name);
-        bare = row == null || !(row ? members || row ? params);
-        embeds = other: isAttrs other && row != null && !(other ? __derivation) && (other.name or null) == row.name;
-        holds =
+        # the relation's step (`lib/types.nix` `nullaryRel.__functor` is `_: keys.step`): the partner is read in the
+        # step's own call, so no reader is applied to it per step
+        step =
           other:
-          isAttrs other
+        if
+          isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name
+        then
+          { merged = self; }
+        else if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
+          {
+            refused = "`${nameOf t}' and `${nameOf other}'";
+            vetoes = true;
+          }
+        # a FOREIGN partner this type's NAME keys, stating no payload beside a type stating none, where no embedding
+        # row could answer it first: the step-deciding meet (den-hoag-0ismp) below, answered before its bindings,
+        # which this pair would allocate and never read
+        else if
+          bare
+          && isAttrs other
           && !(other ? __derivation)
           && (other.name or null) == name
           && !(statesPayload other)
           && plain
-          && (if other ? functor.name then other.functor.name else name) == own;
-        named = row != null && row.name != name;
-        sameKey =
-          other:
-          if
-            isAttrs other
-          && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other) == own
-          && (statesPayload other || plain)
-          then
-            (if !(other ? __derivation) && (other.name or null) == name then 1 else 2)
+          && (if other ? functor.name then other.functor.name else name) == own
+        then
+          (
+            let
+              j = joinLeafInStatedRelation {
+                inherit name self;
+                embedding = row;
+              } other;
+            in
+            {
+              merged = if j == null then self else j;
+              meets = true;
+            }
+          )
+        else
+          let
+            # the row this type's constructor stated, never one its name collides with
+            e = row;
+            embedKey = isAttrs other && row != null && !(other ? __derivation) && (other.name or null) == row.name;
+            # the protocol's key (nixpkgs keys a redeclaration on the FUNCTOR name, `defaultTypeMerge`), read on both sides:
+            # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
+            # a type whose own functor states a payload (`number` is functor `either` over its members) keys only a
+            # partner stating one: the protocol's relation over a payload-less partner aborts (nixpkgs' `either`)
+            sameKey =
+              if
+                isAttrs other
+                && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other) == own
+                && (statesPayload other || plain)
+              then
+                (if !(other ? __derivation) && (other.name or null) == name then 1 else 2)
+              else
+                0;
+            carriedJoin = joinCarriedInStatedRelation {
+              inherit name self;
+              embedding = e;
+              role = null;
+              carried = null;
+            } other;
+            leafJoin = joinLeafInStatedRelation {
+              inherit name self;
+              embedding = e;
+            } other;
+            # a join with a foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`), and it
+            # is this relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later
+            # declaration, whose own relation decides where it is later (`declaredPair`)
+            meet = j: {
+              merged = j;
+              meets = true;
+            };
+            ownJoin = joinInPartnerRelation self other;
+          in
+          # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
+          # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
+          # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
+          if embedKey && e ? members then
+            let
+              unionJoin = joinInRebuiltPartner {
+                role = "alternatives";
+                inherit self;
+              } other;
+            in
+            if unionJoin != null then
+              meet unionJoin
+            else
+              {
+                refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
+              }
+          else if embedKey && e ? params then
+            if carriedJoin != null then
+              meet carriedJoin
+            else
+              { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
+          else if embedKey && named then
+            if leafJoin != null then
+              meet leafJoin
+            else
+              { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+          else if sameKey != 0 && statesPayload other && ownJoin != null then
+            meet ownJoin // { twinRefuses = true; }
+          else if sameKey != 0 && statesPayload other then
+            {
+              refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
+              vetoes = false;
+            }
+          # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
+          # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
+          # only as the later declaration
+          else if sameKey == 1 then
+            {
+              merged = if leafJoin == null then self else leafJoin;
+              meets = true;
+            }
+          else if sameKey != 0 then
+            meet (if leafJoin == null then self else leafJoin) // { vetoes = false; }
           else
-            0;
+            {
+              refused = "`${nameOf t}' and `${nameOf other}'";
+              vetoes = false;
+            };
       };
     # a container of key `key`: a partner of this key whose element `element`'s relation answers as the decider only
     container =
@@ -6000,7 +6104,22 @@ let
               null;
         in
         if k != null then
-          { merged = k; }
+          # a join stating no payload and carrying no role beside a gen later operand has no role to meet
+          # (`lib/modules.nix` `relationMergeWithin`): said here, where the join is read, so the step applies no reader to it
+          (
+            if
+              b ? typeMergeRel
+              && ((k.functor or { }).payload or null) == null
+              && !(k ? carries.element)
+              && !(k ? carries.alternatives)
+            then
+              {
+                merged = k;
+                rolesMet = true;
+              }
+            else
+              { merged = k; }
+          )
         else if
           isAttrs j && (j ? check || !(a ? check || b ? check)) && (j ? merge || !(a ? merge || b ? merge))
         then

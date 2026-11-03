@@ -765,12 +765,7 @@ let
         ))
       # a join stating no payload and carrying no role has no role to meet (`declaredPair`'s meets arm reads it so), asked as
       # the retained arm above asks it
-      else if
-        b ? typeMergeRel
-        && !(interface.statesPayload r.merged)
-        && !(r.merged ? carries.element)
-        && !(r.merged ? carries.alternatives)
-      then
+      else if r.rolesMet or false then
         r.merged
       else
         rolesMet rewrites r.merged a b;

@@ -184,7 +184,7 @@ let
       let
         name = t.name or "raw";
         # the keys this relation reads a foreign partner by, applied once per type (`interface.keyed.leaf`)
-        keys = interface.keyed.leaf { inherit name self row; };
+        keys = interface.keyed.leaf { inherit name self row t; };
         # THE LEAF RELATION. A gen partner is asked first and with no binding (the embedding is a fact
         # about a FOREIGN partner, and a gen x gen redeclaration, the fan-in of one loc, pays nothing for
         # it): the same key answers `self`. A RAW foreign partner is joined in its own published functor,
@@ -217,110 +217,7 @@ let
           # later declaration alone (`lib/modules.nix` `declaredPair`): a FOREIGN partner this leaf's NAME does not key.
           # A name-keyed one keeps the step-deciding meet (den-hoag-0ismp)
           later = keys.later;
-          __functor =
-            _: other:
-            if
-              isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name
-            then
-              { merged = self; }
-            else if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
-              {
-                refused = "`${nameOf t}' and `${nameOf other}'";
-                vetoes = true;
-              }
-            # a FOREIGN partner this type's NAME keys, stating no payload beside a type stating none, where no embedding
-            # row could answer it first: the step-deciding meet (den-hoag-0ismp) below, answered before its bindings,
-            # which this pair would allocate and never read
-            else if keys.bare && keys.holds other then
-              (
-                let
-                  j = interface.joinLeafInStatedRelation {
-                    inherit name self;
-                    embedding = row;
-                  } other;
-                in
-                {
-                  merged = if j == null then self else j;
-                  meets = true;
-                }
-              )
-            else
-              let
-                # the row this type's constructor stated, never one its name collides with
-                e = row;
-                embedKey = keys.embeds other;
-                # the protocol's key (nixpkgs keys a redeclaration on the FUNCTOR name, `defaultTypeMerge`), read on both sides:
-                # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
-                # a type whose own functor states a payload (`number` is functor `either` over its members) keys only a
-                # partner stating one: the protocol's relation over a payload-less partner aborts (nixpkgs' `either`)
-                sameKey = keys.sameKey other;
-                carriedJoin = interface.joinCarriedInStatedRelation {
-                  inherit name self;
-                  embedding = e;
-                  role = null;
-                  carried = null;
-                } other;
-                leafJoin = interface.joinLeafInStatedRelation {
-                  inherit name self;
-                  embedding = e;
-                } other;
-                # a join with a foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`), and it
-                # is this relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later
-                # declaration, whose own relation decides where it is later (`declaredPair`)
-                meet = j: {
-                  merged = j;
-                  meets = true;
-                };
-                ownJoin = interface.joinInPartnerRelation self other;
-              in
-              # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
-              # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
-              # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
-              if embedKey && e ? members then
-                let
-                  unionJoin = interface.joinInRebuiltPartner {
-                    role = "alternatives";
-                    inherit self;
-                  } other;
-                in
-                if unionJoin != null then
-                  meet unionJoin
-                else
-                  {
-                    refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
-                  }
-              else if embedKey && e ? params then
-                if carriedJoin != null then
-                  meet carriedJoin
-                else
-                  { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-              else if embedKey && keys.named then
-                if leafJoin != null then
-                  meet leafJoin
-                else
-                  { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
-              else if sameKey != 0 && interface.statesPayload other && ownJoin != null then
-                meet ownJoin // { twinRefuses = true; }
-              else if sameKey != 0 && interface.statesPayload other then
-                {
-                  refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
-                  vetoes = false;
-                }
-              # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
-              # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
-              # only as the later declaration
-              else if sameKey == 1 then
-                {
-                  merged = if leafJoin == null then self else leafJoin;
-                  meets = true;
-                }
-              else if sameKey != 0 then
-                meet (if leafJoin == null then self else leafJoin) // { vetoes = false; }
-              else
-                {
-                  refused = "`${nameOf t}' and `${nameOf other}'";
-                  vetoes = false;
-                };
+          __functor = _: keys.step;
         };
       in
       t
