@@ -1602,6 +1602,68 @@ let
   keyOf =
     x: if isAttrs x && x ? __derivation then "derivation:${x.__derivation.id}" else x.name or null;
 
+  # THE KEYS A GEN RELATION READS A FOREIGN PARTNER BY, each applied once per type so that a step asks the predicate
+  # itself: the type-name key with derivations kept out (`keyOf`'s own definition) and the protocol's functor-name
+  # key, read here and nowhere else (`lib/types.nix` names neither).
+  keyed = {
+    # a leaf: `later` (a FOREIGN partner its name does not key), the name-keyed hold (den-hoag-0ismp) and the protocol
+    # key; this type's own functor name and payload are read once
+    leaf =
+      {
+        name,
+        self,
+        row,
+      }:
+      let
+        selfKey = self.functor.name or name;
+        selfBare = !(statesPayload self);
+      in
+      {
+        later =
+          other:
+          isAttrs other
+          && (other ? retainedRelation || !(other ? typeMergeRel))
+          && (other ? __derivation || (other.name or null) != name);
+        holds =
+          other:
+          (row == null || !(row ? members || row ? params))
+          && isAttrs other
+          && !(other ? __derivation)
+          && (other.name or null) == name
+          && !(statesPayload other)
+          && selfBare
+          && (if other ? functor.name then other.functor.name else name) == selfKey;
+        sameKey =
+          other:
+          isAttrs other
+          && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other) == selfKey
+          && (statesPayload other || selfBare);
+      };
+    # a container of key `key`: a partner of this key whose element `element`'s relation answers as the decider only
+    container =
+      key: element: other:
+      isAttrs other
+      && (other ? retainedRelation || !(other ? typeMergeRel))
+      && !(other ? __derivation)
+      && (other.name or null) == key
+      && element ? typeMergeRel.later
+      && (
+        let
+          s = carriedAt "element" other;
+        in
+        s != null && element.typeMergeRel.later s
+      );
+    # `either`'s: a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
+    either =
+      other:
+      isAttrs other
+      && (other ? retainedRelation || !(other ? typeMergeRel))
+      && !(other ? carries)
+      && ((keyOf other) == "either" || !(other ? __derivation) && (other.functor.name or null) == "either");
+    # a FOREIGN partner keyed `either` by the protocol's key
+    protocol = other: !(other ? __derivation) && (other.functor.name or null) == "either";
+  };
+
   # ── THE NAME THAT GOVERNED ──────────────────────────────────────────────────────────────────────
   # The foreign protocol keys a redeclaration on the FUNCTOR name, not the type name (`protoTypeMerge'
   # below, and the derived `typeMerge' in `exportType'). A type derived from another keeps its base's
@@ -9520,6 +9582,7 @@ in
     replacesVerify
     departsWithinCarrier
     keyOf
+    keyed
     wrapsKeyOf
     nameOf
     functorNamesOf
