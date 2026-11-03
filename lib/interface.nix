@@ -1598,7 +1598,10 @@ let
   # relation reading the name would merge it with its base and drop it silently. Every gen relation
   # that decides by identity reads it here — one total reader, as `nameOf` is for a refusal's wording
   # — and `exportType` publishes the same identity as the functor name a foreign engine keys on. On
-  # a record without the datum it is the name, so nothing built otherwise moves.
+  # a record without the datum it is the name, so nothing built otherwise moves. `keyed` below is its
+  # per-type restatement, inline for cost and held to it by `ci/tests/derive-type.nix`'s K1: each
+  # partner `.name` read there sits beside a `__derivation` exclusion. It departs from this only at a
+  # gen type named `derivation:<id>`, which this key collides with and the restatement does not.
   keyOf =
     x: if isAttrs x && x ? __derivation then "derivation:${x.__derivation.id}" else x.name or null;
 

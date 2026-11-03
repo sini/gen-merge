@@ -147,6 +147,57 @@ let
     builtins.match ".*\\.name( or [^)]*)?\\)? *(==|!=).*" l != null
     || builtins.match ".*(==|!=) *\\(?[a-zA-Z_.]*\\.name([^a-zA-Z_].*)?" l != null;
 
+  # `interface.keyed`, `keyOf`'s per-type restatement: the lines of its binding in `lib/interface.nix`,
+  # from `  keyed = {` to its closing `  };`, comments excluded. A missing anchor throws, never reads empty.
+  keyedSpanLines =
+    let
+      span =
+        builtins.foldl'
+          (
+            s: l:
+            if s.done then
+              s
+            else if s.inside then
+              (if l == "  };" then s // { done = true; } else s // { acc = s.acc ++ [ l ]; })
+            else
+              s // { inside = l == "  keyed = {"; }
+          )
+          {
+            inside = false;
+            done = false;
+            acc = [ ];
+          }
+          (
+            builtins.filter builtins.isString (builtins.split "\n" (builtins.readFile ../../lib/interface.nix))
+          );
+    in
+    assert span.done && span.acc != [ ];
+    builtins.filter (l: builtins.match " *#.*" l == null) span.acc;
+  excludesDerivation = l: builtins.match ".*other \\? __derivation.*" l != null;
+  # a line comparing a partner's `.name` (self's `row.name` exempt) with no `__derivation` exclusion in
+  # its conjunct: on the line itself, or on the line before where the conjunction is split over lines
+  unguardedKeyedLines =
+    let
+      n = builtins.length keyedSpanLines;
+      at = builtins.elemAt keyedSpanLines;
+    in
+    builtins.filter (l: l != null) (
+      builtins.genList (
+        i:
+        let
+          l = at i;
+        in
+        if
+          comparesName (builtins.replaceStrings [ "row.name" ] [ "" ] l)
+          && !(excludesDerivation l)
+          && !(i > 0 && excludesDerivation (at (i - 1)))
+        then
+          l
+        else
+          null
+      ) n
+    );
+
   keyed = k: deriveType (tagged // { key = k; }) "tagged" t.str;
   minted = deriveType (tagged // { mint.minted = "tagged-over-str"; }) "tagged" t.str;
 in
@@ -386,10 +437,24 @@ in
     };
     # K1 — a relation decides by `keyOf`, never by comparing a `.name`: a relation that did would
     # absorb a derivation keeping its base's name. Read over the source, comments excluded, so a
-    # fourth literal-name relation fails here by line.
+    # fourth literal-name relation fails here by line. `lib/types.nix`, the vocabulary, compares no
+    # `.name` at all; `interface.keyed`, `keyOf`'s restatement, compares a partner's `.name` only
+    # beside a `__derivation` exclusion, so a dropped guard there fails here by line too.
     test-no-relation-in-the-vocabulary-compares-a-name = {
-      expr = builtins.filter comparesName vocabularyLines;
+      expr = builtins.filter comparesName vocabularyLines ++ unguardedKeyedLines;
       expected = [ ];
+    };
+    test-control-the-keyed-guard-admits-only-a-derivation-excluding-conjunct = {
+      expr = map excludesDerivation [
+        "&& !(other ? __derivation) && (other.name or null) == name"
+        "&& (other ? __derivation || (other.name or null) != name);"
+        "&& (other.name or null) == name"
+      ];
+      expected = [
+        true
+        true
+        false
+      ];
     };
     test-control-the-name-comparison-predicate-fires = {
       expr = map comparesName [
