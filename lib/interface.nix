@@ -1624,20 +1624,27 @@ let
           isAttrs other
           && (other ? retainedRelation || !(other ? typeMergeRel))
           && (other ? __derivation || (other.name or null) != name);
+        bare = row == null || !(row ? members || row ? params);
+        embed = other: isAttrs other && row != null && !(other ? __derivation) && (other.name or null) == row.name;
         holds =
           other:
-          (row == null || !(row ? members || row ? params))
-          && isAttrs other
+          isAttrs other
           && !(other ? __derivation)
           && (other.name or null) == name
           && !(statesPayload other)
           && selfBare
           && (if other ? functor.name then other.functor.name else name) == selfKey;
+        renamed = row != null && row.name != name;
         sameKey =
           other:
-          isAttrs other
+          if
+            isAttrs other
           && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other) == selfKey
-          && (statesPayload other || selfBare);
+          && (statesPayload other || selfBare)
+          then
+            (if !(other ? __derivation) && (other.name or null) == name then 1 else 2)
+          else
+            0;
       };
     # a container of key `key`: a partner of this key whose element `element`'s relation answers as the decider only
     container =
@@ -1661,7 +1668,14 @@ let
       && !(other ? carries)
       && ((keyOf other) == "either" || !(other ? __derivation) && (other.functor.name or null) == "either");
     # a FOREIGN partner keyed `either` by the protocol's key
-    protocol = other: !(other ? __derivation) && (other.functor.name or null) == "either";
+    protocol =
+      other:
+      !(isAttrs other)
+      || (if other ? __derivation then "derivation:${other.__derivation.id}" else other.name or null) != "either"
+        && (
+          !(!(other ? __derivation) && (other.functor.name or null) == "either")
+          || other ? typeMergeRel && !(other ? retainedRelation)
+        );
   };
 
   # ── THE NAME THAT GOVERNED ──────────────────────────────────────────────────────────────────────

@@ -231,7 +231,7 @@ let
             # a FOREIGN partner this type's NAME keys, stating no payload beside a type stating none, where no embedding
             # row could answer it first: the step-deciding meet (den-hoag-0ismp) below, answered before its bindings,
             # which this pair would allocate and never read
-            else if keys.holds other then
+            else if keys.bare && keys.holds other then
               (
                 let
                   j = interface.joinLeafInStatedRelation {
@@ -248,7 +248,7 @@ let
               let
                 # the row this type's constructor stated, never one its name collides with
                 e = row;
-                embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
+                embedKey = keys.embed other;
                 # the protocol's key (nixpkgs keys a redeclaration on the FUNCTOR name, `defaultTypeMerge`), read on both sides:
                 # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
                 # a type whose own functor states a payload (`number` is functor `either` over its members) keys only a
@@ -294,14 +294,14 @@ let
                   meet carriedJoin
                 else
                   { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-              else if embedKey && (keyOf other) != name then
+              else if embedKey && keys.renamed then
                 if leafJoin != null then
                   meet leafJoin
                 else
                   { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
-              else if sameKey && interface.statesPayload other && ownJoin != null then
+              else if sameKey != 0 && interface.statesPayload other && ownJoin != null then
                 meet ownJoin // { twinRefuses = true; }
-              else if sameKey && interface.statesPayload other then
+              else if sameKey != 0 && interface.statesPayload other then
                 {
                   refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
                   vetoes = false;
@@ -309,12 +309,12 @@ let
               # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
               # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
               # only as the later declaration
-              else if sameKey && (keyOf other) == name then
+              else if sameKey == 1 then
                 {
                   merged = if leafJoin == null then self else leafJoin;
                   meets = true;
                 }
-              else if sameKey then
+              else if sameKey != 0 then
                 meet (if leafJoin == null then self else leafJoin) // { vetoes = false; }
               else
                 {
@@ -2346,13 +2346,7 @@ let
               # a partner keyed `either` by identity, or a FOREIGN one by the protocol's key: a gen record keeps its
               # identity, since a foreign engine hands this relation a functor and never a `//` copy's own check
               if
-                !(isAttrs other)
-                ||
-                  (keyOf other) != "either"
-                  && (
-                    !(interface.keyed.protocol other)
-                    || other ? typeMergeRel && !(other ? retainedRelation)
-                  )
+                interface.keyed.protocol other
               then
                 { refused = "`either' and `${nameOf other}'"; }
               else if other ? carries then
