@@ -725,10 +725,12 @@ let
               a ? retainedRelation
               && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
-            # a join stating no payload and carrying no role has no role to meet
+            # a join stating no payload and carrying no role has no role to meet; asked only where the earlier operand is
+            # gen's (a step the later's relation decides), so a foreign pair pays nothing for it
             (
               if
-                !(interface.statesPayload answer.merged)
+                b ? typeMergeRel
+                && !(interface.statesPayload answer.merged)
                 && !(answer.merged ? carries.element)
                 && !(answer.merged ? carries.alternatives)
               then
@@ -761,9 +763,13 @@ let
               rewrites.xs
           )
         ))
-      # a join stating no payload and carrying no role has no role to meet (`declaredPair`'s meets arm reads it so)
+      # a join stating no payload and carrying no role has no role to meet (`declaredPair`'s meets arm reads it so), asked as
+      # the retained arm above asks it
       else if
-        !(interface.statesPayload r.merged) && !(r.merged ? carries.element) && !(r.merged ? carries.alternatives)
+        b ? typeMergeRel
+        && !(interface.statesPayload r.merged)
+        && !(r.merged ? carries.element)
+        && !(r.merged ? carries.alternatives)
       then
         r.merged
       else
@@ -1138,13 +1144,6 @@ let
   # the step with no thread, applied once (owner, 2026-10-30, D.4: the null step's per-step env equals main's on Lix, at
   # one load thunk)
   declaredPair = bandedLeaves null;
-  # the earlier relation's answer where it defers (`defers`): a decider-only meet stated without its join, so the later
-  # declaration's relation decides the step (`m`), and one that cannot answer is refused by name
-  defersStep = {
-    meets = true;
-    vetoes = false;
-    deferred = true;
-  };
   bandedLeaves =
     rewrites: earlier: later:
     let
@@ -1159,10 +1158,19 @@ let
           # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked
           if
             (later ? retainedRelation || !(later ? typeMergeRel))
-            && earlier.typeMergeRel ? defers
-            && earlier.typeMergeRel.defers later
+            && earlier.typeMergeRel ? later
+            && earlier.typeMergeRel.later later
+            # a record whose check a wrapper rewrote carries its base's relation, which speaks for the base, so it is asked as any
+            # relation is (gen-types' `rewritesCheck`, restated inline: a call per step)
+            && !(earlier ? _checkWitness && earlier ? check && earlier.check != earlier._checkWitness)
           then
-            defersStep
+            # the earlier relation's answer where it defers: a decider-only meet stated without its join, so the later
+            # declaration's relation decides the step (`m`); a literal, not a binding, which every load would pay
+            {
+              meets = true;
+              vetoes = false;
+              later = true;
+            }
           else if
             rewrites != null
             && rewrites ? band
@@ -1185,7 +1193,7 @@ let
               tried = builtins.tryEval (
                 # a deferred step's pair is never one value (the earlier states `typeMergeRel` and no `retainedRelation`, the later
                 # `retainedRelation` or no `typeMergeRel`), so `mergeTypesBy` meets a join stating no relation whole: met here directly
-                if rewrites == null && veto ? deferred then
+                if rewrites == null && veto ? later then
                   (
                     let
                       x = relationMergeWithin null later earlier;
@@ -1305,28 +1313,11 @@ let
         inherit (veto) refused;
         inherit earlier later;
       }
-    # a decider-only MEET hands the step to the later declaration's own relation; a later FOREIGN record that cannot
-    # answer one (`interface.protocolReaders.unanswerable`) is refused by name where the protocol's default would abort
-    # reading it (asked before `m`, which would read it)
-    else if
-      (veto.meets or false)
-      && !(veto.vetoes or true)
-      && !(later ? typeMergeRel)
-      && !(interface.protocolReaders.answers later)
-    then
-      {
-        refused =
-          if veto ? deferred then
-            (earlier.typeMergeRel later).refused or (interface.protocolReaders.unanswerable later earlier)
-          else
-            interface.protocolReaders.unanswerable later earlier;
-        inherit earlier later;
-      }
     else if m == null then
       {
         # a deferred step's refusal names the pair in the earlier relation's words where it has them, as the asked veto did
         refused =
-          if veto ? deferred then
+          if veto ? later then
             (earlier.typeMergeRel later).refused or (mergeTypesReason later earlier)
           else
             veto.refused or (mergeTypesReason later earlier);

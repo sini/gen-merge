@@ -1602,14 +1602,6 @@ let
   keyOf =
     x: if isAttrs x && x ? __derivation then "derivation:${x.__derivation.id}" else x.name or null;
 
-  # ── THE KEY THE FOREIGN PROTOCOL READS ──────────────────────────────────────────────────────────
-  # nixpkgs keys a redeclaration on the FUNCTOR name (`protoTypeMerge`), and a refinement keeps its
-  # base's functor under a name of its own: `ints.positive` is `positiveInt` over functor `int`, and
-  # gen's `number` is `number` over `either`. So whether a partner IS a relation's key is asked here,
-  # where the partner is read as the protocol reads it. A derivation keeps its own identity
-  # (`keyOf`), and a record stating no functor name is its name.
-  # (moved into `protocolReaders`)
-
   # ── THE NAME THAT GOVERNED ──────────────────────────────────────────────────────────────────────
   # The foreign protocol keys a redeclaration on the FUNCTOR name, not the type name (`protoTypeMerge'
   # below, and the derived `typeMerge' in `exportType'). A type derived from another keeps its base's
@@ -5907,7 +5899,17 @@ let
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
   importedMerge =
     a: b:
-    if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
+    if
+      a ? typeMerge
+      && b ? functor
+      # a functor stating a relation it cannot answer (`relationGaps`, restated inline: a binding is a thunk per call) is
+      # no join here, where the protocol's default would abort reading it; `importedMergeReason` names it
+      && (
+        (a.functor.binOp or null) == null || a.functor ? name && a.functor ? type
+      )
+      && importedDecidable a
+      && importedDecidable b
+    then
       (
         let
           j = a.typeMerge b.functor;
@@ -6140,8 +6142,17 @@ let
   importedMergeReason =
     a: b:
     let
-      unanswerable = protocolReaders.unanswerable a b;
-      j = if a ? typeMerge && b ? functor && unanswerable == null then a.typeMerge b.functor else null;
+      # a relation `a` states in its functor and cannot answer (`relationGaps`), which the protocol's default would
+      # abort applying: named, never applied
+      gaps = relationGaps (a.functor or null);
+      refusal =
+        if gaps == [ ] then
+          null
+        else
+          "`${nameOf a}' and `${nameOf b}', whose first type's `functor' states a merge relation but does not answer "
+          + concatStringsSep ", " (map (g: "`${g}'") gaps)
+          + ", so the protocol's own default cannot apply it";
+      j = if a ? typeMerge && b ? functor && refusal == null then a.typeMerge b.functor else null;
       dropsA = j != null && joinRenames j a;
       dropsB = j != null && joinRenames j b;
       dropped =
@@ -6152,8 +6163,8 @@ let
         else
           "the check `${nameOf a}' declares but not the check `${nameOf b}' declares";
     in
-    if unanswerable != null then
-      unanswerable
+    if refusal != null then
+      refusal
     else if
       j != null
       && !(
@@ -8025,33 +8036,6 @@ let
       (if f ? name then [ ] else [ "name" ])
       ++ (if f ? type && ((f.payload or null) == null || isFunction f.type) then [ ] else [ "type" ]);
 
-  # The pair's refusal where `a`, deciding, states a relation in its functor that it cannot answer
-  # (`relationGaps`), so the protocol's default would abort applying it; `null` where it can answer.
-  # The two readers the leaf relations and the fold step reach, as one binding (one load-time value).
-  protocolReaders = {
-    keyOf = x: if isAttrs x && !(x ? __derivation) && x ? functor.name then x.functor.name else keyOf x;
-    # whether `a`'s functor answers the relation it states (`relationGaps a.functor == [ ]`), restated as a
-    # predicate for the fold step's cost: it is asked once per decider-only step
-    answers =
-      a:
-      (a.functor.binOp or null) == null
-      ||
-        a.functor ? name
-        && a.functor ? type
-        && ((a.functor.payload or null) == null || isFunction a.functor.type);
-    unanswerable =
-      a: b:
-      let
-        gaps = relationGaps (a.functor or null);
-      in
-      if gaps == [ ] then
-        null
-      else
-        "`${nameOf a}' and `${nameOf b}', whose first type's `functor' states a merge relation but does not answer "
-        + concatStringsSep ", " (map (g: "`${g}'") gaps)
-        + ", so the protocol's own default cannot apply it";
-  };
-
   # relationRefusal — a relation STATED and unusable. It is the COMPLEMENT of `functorRefusal' over
   # the same records: the two partition "supplies a functor" on `binOp', the other answering for a
   # relation slot left empty beside a parameter this boundary cannot read, this one for a relation
@@ -9536,7 +9520,6 @@ in
     replacesVerify
     departsWithinCarrier
     keyOf
-    protocolReaders
     wrapsKeyOf
     nameOf
     functorNamesOf
