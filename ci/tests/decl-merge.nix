@@ -581,8 +581,9 @@ in
     # gen record survives into the declared type. `sig` reads whose record each level of the merged
     # spine is, through `nestedTypes`; `ref` is the same table with the gen side replaced by its
     # nixpkgs twin, live. `u8`: a join that drops a wrapper's check is never served unmet (ADR-0025
-    # item 1). Gen's engine meets the nixpkgs pair, so `u8`'s check is owed again; the mixed pair still
-    # refuses at the carried relation's witness, which the meet's routing does not reach. `lazyList` is a raw foreign
+    # item 1). Gen's engine meets the nixpkgs pair, so `u8`'s check is owed again; the mixed pair is keyed as nixpkgs keys
+    # it, on the functor name (`ints.u8` is functor `int`), so it is met as the nixpkgs pair is, over gen's met element,
+    # and its values read the meet: `[ 2 ]` served, `[ 300 ]` refused where nixpkgs drops `u8`. `lazyList` is a raw foreign
     # container named like gen's `listOf` whose payload names MORE than the element (`attrsWith`'s
     # shape): gen does not read it whole, so the pair is not joined and answers as it did before the
     # rule, in both orders under both engines. Its removal serves the gen-first gm pair.
@@ -747,6 +748,24 @@ in
               (t.listOf t.int)
             ]
           );
+          values = builtins.mapAttrs (
+            _: v:
+            let
+              r = evalRequest {
+                modules = [
+                  { options.x = mkOption { type = np.types.listOf np.types.ints.u8; }; }
+                  { options.x = mkOption { type = t.listOf t.int; }; }
+                  { x = v; }
+                ];
+              };
+              tried = builtins.tryEval (builtins.deepSeq r.config.x r.config.x);
+            in
+            if tried.success then tried.value else "REFUSED"
+          ) u8Values;
+        };
+        u8Values = {
+          v2 = [ 2 ];
+          v300 = [ 300 ];
         };
       in
       {
@@ -766,7 +785,11 @@ in
           };
           u8 = {
             ref = "N(N())";
-            mixed = "REFUSED";
+            mixed = "N(G())";
+            values = {
+              v2 = [ 2 ];
+              v300 = "REFUSED";
+            };
           };
         };
       };
@@ -2029,9 +2052,11 @@ in
     #  - `r58p8`: gen `number` beside `either P float` whose member P is keyed `int` and whose own
     #    relation accepts anything (den-hoag-r58p8's class): "s" has the twin's answer in every cell
     #    (served partner-first before the meet, gen's check dropped).
-    #  - `ownFunctor`: a partner whose `typeMerge` disagrees with its functor is joined in its
-    #    functor's relation (`interface.joinInRebuiltPartner` never calls the partner's own), so 1.5
-    #    serves in gen's engine in both orders; the partner's own `typeMerge` joins `either int str`.
+    #  - `ownFunctor`: a partner whose `typeMerge` disagrees with its functor (its own joins `either int str`). Declared
+    #    after gen `number`, it is a foreign partner gen's relation answers as the decider only (`later`), so the
+    #    partner's own relation decides, as nixpkgs lets it, and 1.5 is refused as the twin refuses it; declared first,
+    #    it is joined in its functor's relation (`interface.joinInRebuiltPartner` never calls the partner's own), and
+    #    1.5 serves. `ownFunctorTwin` is the same pair under nixpkgs' engine over nixpkgs' `number`, live.
     #  - `vocabulary`: a supplied vocabulary lacking a member forms no row, so its `number` publishes
     #    under its own name and a mixed pair is refused, catchably.
     test-mixed-number-row-members-are-gen-leaves =
@@ -2139,6 +2164,7 @@ in
             twin = forEach (Ts: read eng Ts "s") (orders np.types.number loose);
           }) engines;
           ownFunctor = forEach (Ts: read "gm" Ts 1.5) (orders t.number disagreeing);
+          ownFunctorTwin = forEach (Ts: read "np" Ts 1.5) (orders np.types.number disagreeing);
           vocabulary =
             forEach
               (k: {
@@ -2202,7 +2228,14 @@ in
                 twin = both "REFUSED";
               };
             };
-            ownFunctor = both "either v=1.5";
+            ownFunctor = {
+              aFirst = "REFUSED";
+              bFirst = "either v=1.5";
+            };
+            ownFunctorTwin = {
+              aFirst = "REFUSED";
+              bFirst = "either v=1.5";
+            };
             vocabulary = {
               int = unplaced;
               float = unplaced;
@@ -2218,9 +2251,11 @@ in
     # (`interface.joinInRebuiltPartner`). `sig` reads whose record each level is, by `typeMergeRel`,
     # which a gen LEAF states too (a `carries` test is blind at the leaf). `ref` is the gen side
     # replaced by its nixpkgs twin, live, and pinned. `hand` is a partner named `either` whose own
-    # `typeMerge` refuses everything: the rebuild never calls it, so the pair answers as the twin does.
-    # `u8` pins the refusal the witness keeps (ADR-0025 item 1); nixpkgs' engine serves it gen-first,
-    # deciding alone (zvidt §2.4 item 1).
+    # `typeMerge` refuses everything: declared first, the rebuild never calls it; declared after gen's union, it is a
+    # foreign partner gen's relation answers as the decider only (`later`), so its own relation decides and refuses, as
+    # the twin's does. `u8` (ADR-0025 item 1) is keyed on the functor name (`ints.u8` is functor `int`) and met as the
+    # nixpkgs pair is, in both orders in gen's engine and gen first in nixpkgs' engine; its values read the meet:
+    # `2` served, `300` refused where nixpkgs drops `u8`.
     test-mixed-union-redeclaration-record-is-order-independent =
       let
         engines = {
@@ -2361,6 +2396,45 @@ in
           u8 = {
             np = orders "np" u8 (t.either t.int t.bool);
             gm = orders "gm" u8 (t.either t.int t.bool);
+            values = np.genAttrs [ "np" "gm" ] (
+              eng:
+              builtins.mapAttrs
+                (
+                  _: Ts:
+                  np.genAttrs [ "v2" "v300" ] (
+                    vn:
+                    let
+                      r = engines.${eng}.ev {
+                        modules = map (T: { options.x = engines.${eng}.mk { type = T; }; }) Ts ++ [
+                          { x = if vn == "v2" then 2 else 300; }
+                        ];
+                      };
+                      tried = builtins.tryEval (builtins.deepSeq r.config.x r.config.x);
+                    in
+                    if tried.success then tried.value else "REFUSED"
+                  )
+                )
+                (
+                  if eng == "gm" then
+                    {
+                      o12 = [
+                        u8
+                        (t.either t.int t.bool)
+                      ];
+                      o21 = [
+                        (t.either t.int t.bool)
+                        u8
+                      ];
+                    }
+                  else
+                    {
+                      o12 = [
+                        u8
+                        (t.either t.int t.bool)
+                      ];
+                    }
+                )
+            );
           };
           path = {
             inherit (epath) rel union;
@@ -2399,10 +2473,10 @@ in
               o12 = "N(N,N)";
               o21 = "REFUSED";
             };
-            # gen's engine meets a foreign union join (den-hoag-l1j4q), so gen first is served
-            handMet = {
-              o12 = "N(N,N)";
-              o21 = "N(N,N)";
+            # the foreign union join gen's engine meets (den-hoag-l1j4q) and the value that meet serves
+            u8Met = {
+              v2 = 2;
+              v300 = "REFUSED";
             };
           in
           {
@@ -2410,17 +2484,24 @@ in
             ref = pinned;
             hand = {
               np = handPair;
-              gm = handMet;
+              gm = handPair;
               ref = handPair;
             };
             u8 = {
               np = {
-                o12 = "REFUSED";
+                o12 = "G(G,N)";
                 o21 = "N(N,N)";
               };
               gm = {
-                o12 = "REFUSED";
-                o21 = "REFUSED";
+                o12 = "G(G,N)";
+                o21 = "N(N,N)";
+              };
+              values = {
+                np.o12 = u8Met;
+                gm = {
+                  o12 = u8Met;
+                  o21 = u8Met;
+                };
               };
             };
             path = {

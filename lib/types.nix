@@ -209,81 +209,14 @@ let
         # the veto, held while this relation, deciding, keys such a partner by type name (den-hoag-6ylun).
         # gen's own partner is a gen record with NO retained relation; a nixpkgs leaf through a
         # `mkOptionType` door retains its author's relation and is joined here as its raw form is.
-        nullaryRel = {
-          exact = true;
-          __functor =
-            _: other:
-            if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
-              if (keyOf other) == name then
-                { merged = self; }
-              else
-                {
-                  refused = "`${nameOf t}' and `${nameOf other}'";
-                  vetoes = !(other ? retainedRelation);
-                }
-            else
-              let
-                # the row this type's constructor stated, never one its name collides with
-                e = row;
-                embedKey = isAttrs other && interface.keyedUnderEmbedding e other;
-                sameKey = isAttrs other && (keyOf other) == name;
-                carriedJoin = interface.joinCarriedInStatedRelation {
-                  inherit name self;
-                  embedding = e;
-                  role = null;
-                  carried = null;
-                } other;
-                leafJoin = interface.joinLeafInStatedRelation {
-                  inherit name self;
-                  embedding = e;
-                } other;
-                # a join with a raw foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`)
-                meet = j: {
-                  merged = j;
-                  meets = true;
-                };
-                ownJoin = interface.joinInPartnerRelation self other;
-              in
-              # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
-              # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
-              # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
-              if embedKey && e ? members then
-                let
-                  unionJoin = interface.joinInRebuiltPartner {
-                    role = "alternatives";
-                    inherit self;
-                  } other;
-                in
-                if unionJoin != null then
-                  meet unionJoin
-                else
-                  {
-                    refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
-                  }
-              else if embedKey && e ? params then
-                if carriedJoin != null then
-                  meet carriedJoin
-                else
-                  { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-              else if embedKey && !sameKey then
-                if leafJoin != null then
-                  meet leafJoin
-                else
-                  { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
-              else if sameKey && interface.statesPayload other && ownJoin != null then
-                meet ownJoin // { twinRefuses = true; }
-              else if sameKey && interface.statesPayload other then
-                {
-                  refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
-                  vetoes = false;
-                }
-              else if sameKey then
-                meet (if leafJoin == null then self else leafJoin)
-              else
-                {
-                  refused = "`${nameOf t}' and `${nameOf other}'";
-                  vetoes = false;
-                };
+        # the relation, its keys read off a foreign partner applied once per type (`interface.keyed.leaf`)
+        nullaryRel = interface.keyed.leaf {
+          inherit
+            name
+            self
+            row
+            t
+            ;
         };
       in
       t
@@ -1470,6 +1403,10 @@ let
           );
         typeMergeRel = {
           exact = true;
+          # a FOREIGN partner of this key whose element this element's relation answers as the decider only: the
+          # container's meet is built on that answer, so it is the decider's only too (the leaf's `later`,
+          # `interface.keyed.leaf`, one role down)
+          later = interface.keyed.container "listOf" element;
           __functor = _: (elementRel "listOf" listOf element);
           rewrites = mkMerge: elementRelIn mkMerge null "listOf" listOf element;
         };
@@ -1698,6 +1635,8 @@ let
         # rebuild keeps THIS container's name, so the distinction survives substitution.
         typeMergeRel = {
           exact = true;
+          # as `listOf`'s, the partner's element read under the construction this one embeds in where it states none
+          later = interface.keyed.container tyName element;
           __functor = _: (rel tyName (attrsOfWith tyName) element);
           rewrites = mkMerge: elementRelIn mkMerge row tyName (attrsOfWith tyName) element;
         };
@@ -2091,6 +2030,8 @@ let
           );
         typeMergeRel = {
           exact = true;
+          # as `listOf`'s
+          later = interface.keyed.container "nullOr" element;
           __functor = _: (elementRel "nullOr" nullOr element);
           rewrites = mkMerge: elementRelIn mkMerge null "nullOr" nullOr element;
         };
@@ -2292,11 +2233,16 @@ let
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
         typeMergeRel = {
           exact = true;
+          # the partners this relation answers as the DECIDER only, before any join (`lib/modules.nix` `declaredPair`):
+          # a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
+          later = interface.keyed.either;
           __functor =
             _:
             (
               other:
-              if !(isAttrs other) || (keyOf other) != "either" then
+              # a partner keyed `either` by identity, or a FOREIGN one by the protocol's key: a gen record keeps its
+              # identity, since a foreign engine hands this relation a functor and never a `//` copy's own check
+              if interface.keyed.protocol other then
                 { refused = "`either' and `${nameOf other}'"; }
               else if other ? carries then
                 eitherMemberwise null a b other

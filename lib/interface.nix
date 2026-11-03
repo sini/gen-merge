@@ -1602,6 +1602,196 @@ let
   keyOf =
     x: if isAttrs x && x ? __derivation then "derivation:${x.__derivation.id}" else x.name or null;
 
+  # THE KEYS A GEN RELATION READS A FOREIGN PARTNER BY, each applied once per type so that a step asks the predicate
+  # itself: the type-name key with derivations kept out (`keyOf`'s own definition) and the protocol's functor-name
+  # key, read here and nowhere else (`lib/types.nix` names neither).
+  keyed = {
+    # a leaf's relation (`lib/types.nix` `nullaryRel`): `later` (a FOREIGN partner its name does not key) and the step,
+    # whose name-keyed hold (den-hoag-0ismp), embedding and protocol key read this type's own functor name, payload and
+    # row once per type
+    leaf =
+      {
+        name,
+        self,
+        row,
+        t,
+      }:
+      let
+        own = self.functor.name or name;
+        plain = !(statesPayload self);
+        bare = row == null || !(row ? members || row ? params);
+        named = row != null && row.name != name;
+      in
+      {
+        exact = true;
+        # the partners this relation answers as the DECIDER only, stated before any join so that the step asks the
+        # later declaration alone (`lib/modules.nix` `declaredPair`): a FOREIGN partner this leaf's NAME does not key.
+        # A name-keyed one keeps the step-deciding meet (den-hoag-0ismp)
+        later =
+          other:
+          isAttrs other
+          && (other ? retainedRelation || !(other ? typeMergeRel))
+          && (other ? __derivation || (other.name or null) != name);
+        # the step: the partner is read in the step's own call, so no reader is applied to it per step
+        __functor =
+          _: other:
+          if
+            isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name
+          then
+            { merged = self; }
+          else if isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) then
+            {
+              refused = "`${nameOf t}' and `${nameOf other}'";
+              vetoes = true;
+            }
+          # a FOREIGN partner this type's NAME keys, stating no payload beside a type stating none, where no embedding
+          # row could answer it first: the step-deciding meet (den-hoag-0ismp) below, answered before its bindings,
+          # which this pair would allocate and never read
+          else if
+            bare
+            && isAttrs other
+            && !(other ? __derivation)
+            && (other.name or null) == name
+            && !(statesPayload other)
+            && plain
+            && (if other ? functor.name then other.functor.name else name) == own
+          then
+            (
+              let
+                j = joinLeafInStatedRelation {
+                  inherit name self;
+                  embedding = row;
+                } other;
+              in
+              {
+                merged = if j == null then self else j;
+                meets = true;
+              }
+            )
+          else
+            let
+              # the row this type's constructor stated, never one its name collides with
+              e = row;
+              embedKey =
+                isAttrs other && row != null && !(other ? __derivation) && (other.name or null) == row.name;
+              # the protocol's key (nixpkgs keys a redeclaration on the FUNCTOR name, `defaultTypeMerge`), read on both sides:
+              # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
+              # a type whose own functor states a payload (`number` is functor `either` over its members) keys only a
+              # partner stating one: the protocol's relation over a payload-less partner aborts (nixpkgs' `either`)
+              sameKey =
+                if
+                  isAttrs other
+                  &&
+                    (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other) == own
+                  && (statesPayload other || plain)
+                then
+                  (if !(other ? __derivation) && (other.name or null) == name then 1 else 2)
+                else
+                  0;
+              carriedJoin = joinCarriedInStatedRelation {
+                inherit name self;
+                embedding = e;
+                role = null;
+                carried = null;
+              } other;
+              leafJoin = joinLeafInStatedRelation {
+                inherit name self;
+                embedding = e;
+              } other;
+              # a join with a foreign partner: the step meets it (`lib/modules.nix` `mergeTypesBy`), and it
+              # is this relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later
+              # declaration, whose own relation decides where it is later (`declaredPair`)
+              meet = j: {
+                merged = j;
+                meets = true;
+              };
+              ownJoin = joinInPartnerRelation self other;
+            in
+            # a row whose parameters are TYPES (`number` is `either int float`) is joined in the
+            # partner's UNION relation, as gen `either`'s carve-out joins it; asked before `e ? params`,
+            # which a members row also answers (`interface.rowOver`) and whose data join aborts on it
+            if embedKey && e ? members then
+              let
+                unionJoin = joinInRebuiltPartner {
+                  role = "alternatives";
+                  inherit self;
+                } other;
+              in
+              if unionJoin != null then
+                meet unionJoin
+              else
+                {
+                  refused = "`${nameOf t}' and an `${e.name}' partner whose members are not this type's embedding";
+                }
+            else if embedKey && e ? params then
+              if carriedJoin != null then
+                meet carriedJoin
+              else
+                { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
+            else if embedKey && named then
+              if leafJoin != null then
+                meet leafJoin
+              else
+                { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
+            else if sameKey != 0 && statesPayload other && ownJoin != null then
+              meet ownJoin // { twinRefuses = true; }
+            else if sameKey != 0 && statesPayload other then
+              {
+                refused = "`${nameOf t}' and a `${name}' partner stating a payload, which a leaf does not";
+                vetoes = false;
+              }
+            # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
+            # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
+            # only as the later declaration
+            else if sameKey == 1 then
+              {
+                merged = if leafJoin == null then self else leafJoin;
+                meets = true;
+              }
+            else if sameKey != 0 then
+              meet (if leafJoin == null then self else leafJoin) // { vetoes = false; }
+            else
+              {
+                refused = "`${nameOf t}' and `${nameOf other}'";
+                vetoes = false;
+              };
+      };
+    # a container of key `key`: a partner of this key whose element `element`'s relation answers as the decider only
+    container =
+      key: element: other:
+      isAttrs other
+      && (other ? retainedRelation || !(other ? typeMergeRel))
+      && !(other ? __derivation)
+      && (other.name or null) == key
+      && element ? typeMergeRel.later
+      && (
+        let
+          s = carriedAt "element" other;
+        in
+        s != null && element.typeMergeRel.later s
+      );
+    # `either`'s: a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
+    either =
+      other:
+      isAttrs other
+      && (other ? retainedRelation || !(other ? typeMergeRel))
+      && !(other ? carries)
+      && (
+        (keyOf other) == "either" || !(other ? __derivation) && (other.functor.name or null) == "either"
+      );
+    # a FOREIGN partner keyed `either` by the protocol's key
+    protocol =
+      other:
+      !(isAttrs other)
+      ||
+        (if other ? __derivation then "derivation:${other.__derivation.id}" else other.name or null)
+        != "either"
+        && (
+          !(!(other ? __derivation) && (other.functor.name or null) == "either")
+          || other ? typeMergeRel && !(other ? retainedRelation)
+        );
+  };
+
   # ── THE NAME THAT GOVERNED ──────────────────────────────────────────────────────────────────────
   # The foreign protocol keys a redeclaration on the FUNCTOR name, not the type name (`protoTypeMerge'
   # below, and the derived `typeMerge' in `exportType'). A type derived from another keeps its base's
@@ -4075,7 +4265,20 @@ let
                     let
                       j = x.typeMergeRel f;
                     in
-                    if isAttrs (j.merged or null) then
+                    # every reader of this slot meets a FOREIGN join it serves with the closure as an operand: gen's step
+                    # (`lib/modules.nix` `mergeTypesBy`, `relationMergeWithin`) and the export's `typeMerge` for a record
+                    # stating no `retainedRelation.typeMerge` (`exportType`, met with `[ exported d ]`), so the closure is
+                    # owed there already; closed, the join would carry this closure into the met carrier and every later
+                    # step would close it again
+                    if
+                      isAttrs (j.merged or null)
+                      && !(
+                        !(j.merged ? typeMergeRel)
+                        && !(t ? verify)
+                        && (j.merged.getSubModules or null) == null
+                        && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
+                      )
+                    then
                       j
                       // {
                         merged = close joined j.merged;
@@ -4091,7 +4294,16 @@ let
                   let
                     j = x.typeMergeRel f;
                   in
-                  if isAttrs (j.merged or null) then
+                  # as the exact slot above: a foreign join the step meets is served unclosed
+                  if
+                    isAttrs (j.merged or null)
+                    && !(
+                      !(j.merged ? typeMergeRel)
+                      && !(t ? verify)
+                      && (j.merged.getSubModules or null) == null
+                      && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
+                    )
+                  then
                     j
                     // {
                       merged = close joined j.merged;
@@ -5877,7 +6089,15 @@ let
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
   importedMerge =
     a: b:
-    if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
+    if
+      a ? typeMerge
+      && b ? functor
+      # a functor stating a relation it cannot answer (`relationGaps`, restated inline: a binding is a thunk per call) is
+      # no join here, where the protocol's default would abort reading it; `importedMergeReason` names it
+      && ((a.functor.binOp or null) == null || a.functor ? name && a.functor ? type)
+      && importedDecidable a
+      && importedDecidable b
+    then
       (
         let
           j = a.typeMerge b.functor;
@@ -5892,7 +6112,22 @@ let
               null;
         in
         if k != null then
-          { merged = k; }
+          # a join stating no payload and carrying no role beside a gen later operand has no role to meet
+          # (`lib/modules.nix` `relationMergeWithin`): said here, where the join is read, so the step applies no reader to it
+          (
+            if
+              b ? typeMergeRel
+              && ((k.functor or { }).payload or null) == null
+              && !(k ? carries.element)
+              && !(k ? carries.alternatives)
+            then
+              {
+                merged = k;
+                rolesMet = true;
+              }
+            else
+              { merged = k; }
+          )
         else if
           isAttrs j && (j ? check || !(a ? check || b ? check)) && (j ? merge || !(a ? merge || b ? merge))
         then
@@ -6110,7 +6345,17 @@ let
   importedMergeReason =
     a: b:
     let
-      j = if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+      # a relation `a` states in its functor and cannot answer (`relationGaps`), which the protocol's default would
+      # abort applying: named, never applied
+      gaps = relationGaps (a.functor or null);
+      refusal =
+        if gaps == [ ] then
+          null
+        else
+          "`${nameOf a}' and `${nameOf b}', whose first type's `functor' states a merge relation but does not answer "
+          + concatStringsSep ", " (map (g: "`${g}'") gaps)
+          + ", so the protocol's own default cannot apply it";
+      j = if a ? typeMerge && b ? functor && refusal == null then a.typeMerge b.functor else null;
       dropsA = j != null && joinRenames j a;
       dropsB = j != null && joinRenames j b;
       dropped =
@@ -6121,7 +6366,9 @@ let
         else
           "the check `${nameOf a}' declares but not the check `${nameOf b}' declares";
     in
-    if
+    if refusal != null then
+      refusal
+    else if
       j != null
       && !(
         isAttrs j && (j ? check || !(a ? check || b ? check)) && (j ? merge || !(a ? merge || b ? merge))
@@ -8028,8 +8275,11 @@ let
   foreignRel =
     t: other:
     let
-      f = if isAttrs other then other.functor or null else null;
-      joined = if f == null then null else callerTypeMerge t f;
+      joined =
+        if isAttrs other && other ? functor && other.functor != null then
+          callerTypeMerge t other.functor
+        else
+          null;
       # a join the step can apply states the check and the fold an operand states; any other answer is
       # named, never applied
       whole =
@@ -8037,8 +8287,6 @@ let
         && (joined ? check || !(t ? check || other ? check))
         && (joined ? merge || !(t ? merge || other ? merge));
       answer = if whole then joinKeepingOperands t other joined else null;
-      functorNames = functorNamesOf t other;
-      pair = "`${nameOf t}' and `${nameOf other}'";
     in
     if answer == null && whole then
       {
@@ -8048,19 +8296,26 @@ let
       }
     else if joined != null && !whole then
       {
-        refused = "${pair}, which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
-        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
-      }
-    else if answer == null && functorNames != null then
-      {
-        refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
-        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
+        refused = "`${nameOf t}' and `${nameOf other}', which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
+        vetoes = false;
       }
     else if answer == null then
-      {
-        refused = "${pair}, which the first type's own `functor' does not reconcile";
-        vetoes = isAttrs other && other ? typeMergeRel && !(other ? retainedRelation);
-      }
+      (
+        let
+          functorNames = functorNamesOf t other;
+          pair = "`${nameOf t}' and `${nameOf other}'";
+        in
+        if functorNames != null then
+          {
+            refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
+            vetoes = false;
+          }
+        else
+          {
+            refused = "${pair}, which the first type's own `functor' does not reconcile";
+            vetoes = false;
+          }
+      )
     else
       { merged = answer; };
 
@@ -9468,6 +9723,7 @@ in
     replacesVerify
     departsWithinCarrier
     keyOf
+    keyed
     wrapsKeyOf
     nameOf
     functorNamesOf

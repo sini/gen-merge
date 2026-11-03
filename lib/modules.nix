@@ -725,7 +725,19 @@ let
               a ? retainedRelation
               && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
-            rolesMet rewrites answer.merged a b
+            # a join stating no payload and carrying no role has no role to meet; asked only where the earlier operand is
+            # gen's (a step the later's relation decides), so a foreign pair pays nothing for it
+            (
+              if
+                b ? typeMergeRel
+                && !(interface.statesPayload answer.merged)
+                && !(answer.merged ? carries.element)
+                && !(answer.merged ? carries.alternatives)
+              then
+                answer.merged
+              else
+                rolesMet rewrites answer.merged a b
+            )
           else
             answer.merged
         )
@@ -751,6 +763,10 @@ let
               rewrites.xs
           )
         ))
+      # a join stating no payload and carrying no role has no role to meet (`declaredPair`'s meets arm reads it so), asked as
+      # the retained arm above asks it
+      else if r.rolesMet or false then
+        r.merged
       else
         rolesMet rewrites r.merged a b;
   rolesMet =
@@ -1134,29 +1150,60 @@ let
         if
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
-          (
-            if
-              rewrites != null
-              && rewrites ? band
-              && earlier ? typeMergeRel.rewrites
-              && isAttrs later
-              && (later ? carries || earlier ? carries.element)
-            then
-              earlier.typeMergeRel.rewrites rewrites later
-            else
-              earlier.typeMergeRel later
-          )
+          # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked
+          if
+            (later ? retainedRelation || !(later ? typeMergeRel))
+            && earlier.typeMergeRel ? later
+            && earlier.typeMergeRel.later later
+            # a record whose check a wrapper rewrote carries its base's relation, which speaks for the base, so it is asked as any
+            # relation is (gen-types' `rewritesCheck`, restated inline: a call per step)
+            && !(earlier ? _checkWitness && earlier ? check && earlier.check != earlier._checkWitness)
+          then
+            # the earlier relation's answer where it defers: a decider-only meet stated without its join, so the later
+            # declaration's relation decides the step (`m`); a literal, not a binding, which every load would pay
+            {
+              meets = true;
+              vetoes = false;
+              later = true;
+            }
+          else if
+            rewrites != null
+            && rewrites ? band
+            && earlier ? typeMergeRel.rewrites
+            && isAttrs later
+            && (later ? carries || earlier ? carries.element)
+          then
+            earlier.typeMergeRel.rewrites rewrites later
+          else
+            earlier.typeMergeRel later
         else
           { };
       # read only where the veto did not end the step, so a refusal seen here is one that defers
       m =
         if !decidable then
           null
-        else if veto ? refused then
+        else if veto ? refused || !(veto.vetoes or true) then
           (
             let
               tried = builtins.tryEval (
-                if rewrites == null then
+                # a deferred step's pair is never one value (the earlier states `typeMergeRel` and no `retainedRelation`, the later
+                # `retainedRelation` or no `typeMergeRel`), so `mergeTypesBy` meets a join stating no relation whole: met here directly
+                if rewrites == null && veto ? later then
+                  (
+                    let
+                      x = relationMergeWithin null later earlier;
+                    in
+                    if x == null then
+                      null
+                    else if x ? typeMergeRel then
+                      mergeTypesWithin later earlier
+                    else
+                      interface.metWith.core false x [
+                        later
+                        earlier
+                      ]
+                  )
+                else if rewrites == null then
                   mergeTypesWithin later earlier
                 else
                   # a step owing a met accumulator's debt: the relation's answer met with the step's thread, unless the
@@ -1191,7 +1238,7 @@ let
               interface.metWith.metWith rewrites false x rewrites.xs
           );
     in
-    if veto.meets or false then
+    if (veto.meets or false) && (veto.vetoes or true) then
       {
         # met as `relationMergeWithin` meets a `meets` answer: a roleless join at the top alone
         merged =
@@ -1263,7 +1310,12 @@ let
       }
     else if m == null then
       {
-        refused = veto.refused or (mergeTypesReason later earlier);
+        # a deferred step's refusal names the pair in the earlier relation's words where it has them, as the asked veto did
+        refused =
+          if veto ? later then
+            (earlier.typeMergeRel later).refused or (mergeTypesReason later earlier)
+          else
+            veto.refused or (mergeTypesReason later earlier);
         inherit earlier later;
       }
     else
