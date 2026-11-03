@@ -1615,8 +1615,8 @@ let
         row,
       }:
       let
-        selfKey = self.functor.name or name;
-        selfBare = !(statesPayload self);
+        own = self.functor.name or name;
+        plain = !(statesPayload self);
       in
       {
         later =
@@ -1625,22 +1625,22 @@ let
           && (other ? retainedRelation || !(other ? typeMergeRel))
           && (other ? __derivation || (other.name or null) != name);
         bare = row == null || !(row ? members || row ? params);
-        embed = other: isAttrs other && row != null && !(other ? __derivation) && (other.name or null) == row.name;
+        embeds = other: isAttrs other && row != null && !(other ? __derivation) && (other.name or null) == row.name;
         holds =
           other:
           isAttrs other
           && !(other ? __derivation)
           && (other.name or null) == name
           && !(statesPayload other)
-          && selfBare
-          && (if other ? functor.name then other.functor.name else name) == selfKey;
-        renamed = row != null && row.name != name;
+          && plain
+          && (if other ? functor.name then other.functor.name else name) == own;
+        named = row != null && row.name != name;
         sameKey =
           other:
           if
             isAttrs other
-          && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other) == selfKey
-          && (statesPayload other || selfBare)
+          && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other) == own
+          && (statesPayload other || plain)
           then
             (if !(other ? __derivation) && (other.name or null) == name then 1 else 2)
           else
