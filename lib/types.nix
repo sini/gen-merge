@@ -217,9 +217,7 @@ let
           # (`keyOf` restated inline in this relation's foreign arms: a call per step)
           later =
             other:
-            isAttrs other
-            && (other ? retainedRelation || !(other ? typeMergeRel))
-            && (other ? __derivation || (other.name or null) != name);
+            isAttrs other && (other ? retainedRelation || !(other ? typeMergeRel)) && (keyOf other) != name;
           __functor =
             _: other:
             if
@@ -237,11 +235,10 @@ let
             else if
               (row == null || !(row ? members || row ? params))
               && isAttrs other
-              && !(other ? __derivation)
-              && (other.name or null) == name
+              && (keyOf other) == name
               && !(interface.statesPayload other)
               && !(interface.statesPayload self)
-              && (if other ? functor.name then other.functor.name else name) == (self.functor.name or name)
+              && interface.functorNamesOf self other == null
             then
               (
                 let
@@ -266,8 +263,7 @@ let
                 # partner stating one: the protocol's relation over a payload-less partner aborts (nixpkgs' `either`)
                 sameKey =
                   isAttrs other
-                  && (if !(other ? __derivation) && other ? functor.name then other.functor.name else keyOf other)
-                    == (self.functor.name or name)
+                  && interface.functorNamesOf self other == null
                   && (interface.statesPayload other || !(interface.statesPayload self));
                 carriedJoin = interface.joinCarriedInStatedRelation {
                   inherit name self;
@@ -309,7 +305,7 @@ let
                   meet carriedJoin
                 else
                   { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-              else if embedKey && (other ? __derivation || (other.name or null) != name) then
+              else if embedKey && (keyOf other) != name then
                 if leafJoin != null then
                   meet leafJoin
                 else
@@ -324,7 +320,7 @@ let
               # a partner this type's NAME already keys keeps the step-deciding meet (the pre-existing population;
               # releasing it waits on the meet carrier, den-hoag-0ismp); one only the protocol key reaches decides
               # only as the later declaration
-              else if sameKey && !(other ? __derivation) && (other.name or null) == name then
+              else if sameKey && (keyOf other) == name then
                 {
                   merged = if leafJoin == null then self else leafJoin;
                   meets = true;
@@ -1528,8 +1524,7 @@ let
             other:
             isAttrs other
             && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? __derivation)
-            && (other.name or null) == "listOf"
+            && keyOf other == "listOf"
             && element ? typeMergeRel.later
             && (
               let
@@ -1770,8 +1765,7 @@ let
             other:
             isAttrs other
             && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? __derivation)
-            && (other.name or null) == tyName
+            && keyOf other == tyName
             && element ? typeMergeRel.later
             && (
               let
@@ -2177,8 +2171,7 @@ let
             other:
             isAttrs other
             && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? __derivation)
-            && (other.name or null) == "nullOr"
+            && keyOf other == "nullOr"
             && element ? typeMergeRel.later
             && (
               let
@@ -2387,29 +2380,11 @@ let
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
         typeMergeRel = {
           exact = true;
-          # the partners this relation answers as the DECIDER only, before any join (`lib/modules.nix` `declaredPair`):
-          # a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
-          later =
-            other:
-            isAttrs other
-            && (other ? retainedRelation || !(other ? typeMergeRel))
-            && !(other ? carries)
-            && ((keyOf other) == "either" || !(other ? __derivation) && (other.functor.name or null) == "either");
           __functor =
             _:
             (
               other:
-              # a partner keyed `either` by identity, or a FOREIGN one by the protocol's key: a gen record keeps its
-              # identity, since a foreign engine hands this relation a functor and never a `//` copy's own check
-              if
-                !(isAttrs other)
-                ||
-                  (keyOf other) != "either"
-                  && (
-                    !(!(other ? __derivation) && (other.functor.name or null) == "either")
-                    || other ? typeMergeRel && !(other ? retainedRelation)
-                  )
-              then
+              if !(isAttrs other) || (keyOf other) != "either" then
                 { refused = "`either' and `${nameOf other}'"; }
               else if other ? carries then
                 eitherMemberwise null a b other
