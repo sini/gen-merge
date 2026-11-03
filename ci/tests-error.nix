@@ -518,6 +518,21 @@ in
           msg = "^MERGE-first$";
         };
       };
+      # and a second pair, `name` before `check`, so a chain reordered only in part reds one of the two
+      test-the-prefix-forces-name-before-check = {
+        expr =
+          let
+            r = {
+              name = throw "NAME-first";
+              check = throw "CHECK-first";
+            };
+          in
+          force (gm.closuresFirst [ r ] r);
+        expectedError = {
+          type = "ThrownError";
+          msg = "^NAME-first$";
+        };
+      };
       # The message NAMES THE FULL PATH of the key it could not place — `rack.stray`, not `rack`
       # and not a count. A refusal that only said "undeclared key" would leave the caller to
       # re-derive which one, over a tree the engine has already walked.
