@@ -7692,7 +7692,7 @@ let
         else if c == null then
           metWith.anything.ownRead m o
         else if c.structured && c.holds then
-          metWith.anything.witnessedCheck m o
+          metWith.anything.ownStepCheck c.same m o
         else
           o;
       # the comparisons of the operands `a`, `b` with the join `r` one role down at `i`, whose role records are `a'`, `b'`, `r'`:
@@ -7713,6 +7713,22 @@ let
             a = metWith.anything.nodeAt r rewrites.tag.a i a;
             b = metWith.anything.nodeAt r rewrites.tag.b i b;
           };
+      # a declaration's own-step form (`seen`, `ownRead`, lib/modules.nix `defineEmbedded`), relativised once and owed at
+      # every later step. Where the step's join `m` has the declaration's own tree (`same`), that join widened nothing: on its
+      # domain the declaration is owed whole, and only a value a later, wider join admits beyond it is owed relativised
+      # (ADR-0039 THE MEET, "wherever a widening join reaches it"). Relativising there against the stock alone holds only
+      # where `m` is that stock: a foreign functor whose `type` rebuilds the refinement itself (`_: self`) makes the stock
+      # the declaration, its form `c v || !(c v)`, and a second construction of the same name and payload as `m` then
+      # drops it (den-hoag-ob4k0)
+      ownStepCheck =
+        same: m: o:
+        let
+          w = metWith.anything.witnessedCheck m o;
+          direct = c: if isAttrs c && c ? _fn then c._fn else c;
+          s = direct w.__stockCheck;
+          j = direct m.check;
+        in
+        if same && w ? __stockCheck then w // { __stockCheck = v: s v || j v; } else w;
       witnessedCheck =
         m: o:
         let
@@ -7836,12 +7852,10 @@ let
         m: o:
         let
           so = metWith.anything.shapeOf importedTypeWalkFuel o;
+          sm = metWith.anything.shapeOf importedTypeWalkFuel m;
         in
-        if
-          metWith.anything.stated so
-          && metWith.anything.widensAt so (metWith.anything.shapeOf importedTypeWalkFuel m)
-        then
-          metWith.anything.witnessedCheck m o
+        if metWith.anything.stated so && metWith.anything.widensAt so sm then
+          metWith.anything.ownStepCheck (so == sm) m o
         else
           o;
       functorRecord =
