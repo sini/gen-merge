@@ -248,7 +248,7 @@ let
               let
                 # the row this type's constructor stated, never one its name collides with
                 e = row;
-                embedKey = keys.embed other;
+                embedKey = keys.embeds other;
                 # the protocol's key (nixpkgs keys a redeclaration on the FUNCTOR name, `defaultTypeMerge`), read on both sides:
                 # a partner's functor name against this type's own, never against its type name (`string' is functor `str')
                 # a type whose own functor states a payload (`number` is functor `either` over its members) keys only a
@@ -294,7 +294,7 @@ let
                   meet carriedJoin
                 else
                   { refused = "`${nameOf t}' and a `${e.name}' partner whose payload is not this type's embedding"; }
-              else if embedKey && keys.renamed then
+              else if embedKey && keys.named then
                 if leafJoin != null then
                   meet leafJoin
                 else
