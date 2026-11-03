@@ -4055,7 +4055,20 @@ let
                 typeMerge =
                   f:
                   let
-                    j = x.typeMerge f;
+                    # every join this closure answers owes `t`'s check (`close joined`), so a declaration arriving with
+                    # this return's own check at its own payload (the door declared again, by any door call over `t`;
+                    # both read in place and equal by pointer, so the step binds nothing) is owed already: the relation
+                    # is handed the functor nixpkgs states, without the declaration
+                    j =
+                      if
+                        isAttrs f
+                        && f ? __declared
+                        && f.__declared.check or null == res.check
+                        && f.payload or null == r.functor.payload or null
+                      then
+                        x.typeMerge bare
+                      else
+                        x.typeMerge f;
                   in
                   if j == null then null else close joined j;
               }
@@ -4138,6 +4151,9 @@ let
             else
               { }
           );
+        # the functor nixpkgs states for this return, without the declaration: what its own closure hands a relation
+        # for a declaration it owes already
+        bare = r.functor;
         # the declaration this closure returns, named in its functor (`__declared`) as `carriedCopy` names a copy:
         # nixpkgs hands a redeclaration's relation only the partner's functor, whose `type` at `t`'s own payload need
         # not rebuild `t`
