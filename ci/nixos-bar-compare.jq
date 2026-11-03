@@ -45,6 +45,8 @@
 # no shared throw, silently.
 def id: .key | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
+# counts: a perf entry's figures without its wall `ms`, which is recorded, never compared.
+def counts: if type == "object" then map_values(if type == "object" then del(.ms) else . end) else . end;
 def perfKind: .key.kind | IN("toplevel", "options", "docs-walk", "tests", "unit", "memo", "template", "flake", "flake-drv");
 def identityKind: .key.kind | IN("toplevel", "options", "flake-drv");
 def hits($c): . as $e | $c | all(. as $l | $e | contains($l));
@@ -77,7 +79,9 @@ def parity: if .gen == null or .ref == null then null
   | ($mine | map(select(.word != "IMPROVED" or $V[.id] != .now) | .line) | unique) as $refused
   | if ($refused | length) > 0 then error("verdict lines --fold does not adopt (only an IMPROVED line from three distinct evaluators): \($refused)") else . end
   | $base[]
-  | if perfKind then .perf = ((.perf // { }) + ($P[id] // { })) else . end
+  # A column whose counts are the register's keeps its entry, so a fold moving no count is byte-stable.
+  | if perfKind then (.perf // { }) as $o | .perf = ($o + (($P[id] // { })
+      | with_entries(if ($o[.key] | counts) == (.value | counts) then .value = $o[.key] else . end))) else . end
   | .verdict = ($V[id] // .verdict)
   | tojson
 else

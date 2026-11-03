@@ -244,6 +244,8 @@
         # fixture per evaluator process. Exposed as `apps.<system>.tests-process` and run by
         # `ci --tests-process` under the column's evaluator, never as a sandboxed check.
         ./tests-process.nix
+        # Every bar's `--fold`, run with no evaluator: a sandboxed check (`checks.bar-fold`).
+        ./bar-fold.nix
       ];
     };
 }

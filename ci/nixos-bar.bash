@@ -48,6 +48,7 @@ if [ "${1:-}" = --fold ]; then
   out=$2
   shift 2
   : >"$tmp/moves.jsonl"
+  : >"$tmp/cols.jsonl"
   for log in "$@"; do
     [ -r "$log" ] || control "cannot read $log"
     n=$(grep -c "PERF $BAR_NAME {" "$log" || true)
@@ -58,12 +59,24 @@ if [ "${1:-}" = --fold ]; then
       control "cannot read the evaluator of $log"
     [ "$(jq length <<<"$col")" -eq 1 ] || control "$log's PERF lines name $col, not one evaluator"
     col=$(jq -c '.[0]' <<<"$col")
+    echo "$col" >>"$tmp/cols.jsonl"
     verdicts "$col" "$log" >>"$tmp/moves.jsonl" || control "cannot read the verdict lines of $log"
     echo "$BAR_NAME: $log: $n PERF lines, evaluator $col, $(jq -c --argjson c "$col" 'select(.col == $c)' "$tmp/moves.jsonl" | wc -l) verdict lines (every stage's)"
   done
-  cols=$(jq -rs 'map(.evaluator) | unique | length' "$tmp/perf.jsonl") || control "cannot count the evaluators of the logs"
+  # The fold reads CI's three columns, one log each, by the column each log names: a log passed twice, or two
+  # logs of one evaluator, would keep one figure of a doubled column and leave a missing one stale, silently.
+  cols=$(jq -s 'unique | length' "$tmp/cols.jsonl") || control "cannot count the evaluators of the logs"
+  if [ "$#" -ne 3 ] || [ "$cols" -ne 3 ]; then
+    control "--fold reads three logs naming three distinct evaluators: $# logs name $cols, $((cols < 3 ? 3 - cols : 0)) missing: $(jq -sc 'group_by(.) | map({evaluator: .[0], logs: length})' "$tmp/cols.jsonl")"
+  fi
   jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
-    --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$cols" -f "$BAR_COMPARE" >"$out"
+    --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$cols" -f "$BAR_COMPARE" >"$out.fold.$$" || {
+    rc=$?
+    rm -f "$out.fold.$$"
+    exit "$rc"
+  }
+  # The register is replaced only by a whole fold: a refused one leaves it as it was.
+  mv "$out.fold.$$" "$out"
   echo "$BAR_NAME: wrote $(wc -l <"$out") rows to $out"
   admissions "$out"
   exit 0
