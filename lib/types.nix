@@ -183,8 +183,6 @@ let
     else
       let
         name = t.name or "raw";
-        # the keys this relation reads a foreign partner by, applied once per type (`interface.keyed.leaf`)
-        keys = interface.keyed.leaf { inherit name self row t; };
         # THE LEAF RELATION. A gen partner is asked first and with no binding (the embedding is a fact
         # about a FOREIGN partner, and a gen x gen redeclaration, the fan-in of one loc, pays nothing for
         # it): the same key answers `self`. A RAW foreign partner is joined in its own published functor,
@@ -211,14 +209,8 @@ let
         # the veto, held while this relation, deciding, keys such a partner by type name (den-hoag-6ylun).
         # gen's own partner is a gen record with NO retained relation; a nixpkgs leaf through a
         # `mkOptionType` door retains its author's relation and is joined here as its raw form is.
-        nullaryRel = {
-          exact = true;
-          # the partners this relation answers as the DECIDER only, stated before any join so that the step asks the
-          # later declaration alone (`lib/modules.nix` `declaredPair`): a FOREIGN partner this leaf's NAME does not key.
-          # A name-keyed one keeps the step-deciding meet (den-hoag-0ismp)
-          later = keys.later;
-          __functor = _: keys.step;
-        };
+        # the relation, its keys read off a foreign partner applied once per type (`interface.keyed.leaf`)
+        nullaryRel = interface.keyed.leaf { inherit name self row t; };
       in
       t
       // {

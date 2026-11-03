@@ -1606,8 +1606,9 @@ let
   # itself: the type-name key with derivations kept out (`keyOf`'s own definition) and the protocol's functor-name
   # key, read here and nowhere else (`lib/types.nix` names neither).
   keyed = {
-    # a leaf: `later` (a FOREIGN partner its name does not key), the name-keyed hold (den-hoag-0ismp) and the protocol
-    # key; this type's own functor name and payload are read once
+    # a leaf's relation (`lib/types.nix` `nullaryRel`): `later` (a FOREIGN partner its name does not key) and the step,
+    # whose name-keyed hold (den-hoag-0ismp), embedding and protocol key read this type's own functor name, payload and
+    # row once per type
     leaf =
       {
         name,
@@ -1622,15 +1623,18 @@ let
         named = row != null && row.name != name;
       in
       {
+        exact = true;
+        # the partners this relation answers as the DECIDER only, stated before any join so that the step asks the
+        # later declaration alone (`lib/modules.nix` `declaredPair`): a FOREIGN partner this leaf's NAME does not key.
+        # A name-keyed one keeps the step-deciding meet (den-hoag-0ismp)
         later =
           other:
           isAttrs other
           && (other ? retainedRelation || !(other ? typeMergeRel))
           && (other ? __derivation || (other.name or null) != name);
-        # the relation's step (`lib/types.nix` `nullaryRel.__functor` is `_: keys.step`): the partner is read in the
-        # step's own call, so no reader is applied to it per step
-        step =
-          other:
+        # the step: the partner is read in the step's own call, so no reader is applied to it per step
+        __functor =
+          _: other:
         if
           isAttrs other && other ? typeMergeRel && !(other ? retainedRelation) && (keyOf other) == name
         then
