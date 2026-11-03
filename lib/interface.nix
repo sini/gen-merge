@@ -4083,9 +4083,11 @@ let
                     let
                       j = x.typeMergeRel f;
                     in
-                    # gen's engine alone reads this slot, and its step meets a FOREIGN join with every operand
-                    # (`lib/modules.nix` `mergeTypesBy`, `relationMergeWithin`), so the closure is owed there already; closed,
-                    # the join would carry this closure into the met carrier and every later step would close it again
+                    # every reader of this slot meets a FOREIGN join it serves with the closure as an operand: gen's step
+                    # (`lib/modules.nix` `mergeTypesBy`, `relationMergeWithin`) and the export's `typeMerge` for a record
+                    # stating no `retainedRelation.typeMerge` (`exportType`, met with `[ exported d ]`), so the closure is
+                    # owed there already; closed, the join would carry this closure into the met carrier and every later
+                    # step would close it again
                     if
                       isAttrs (j.merged or null)
                       && !(
