@@ -19,7 +19,10 @@ reportFailure() { ((++fail)); }
 # otherwise search PATH on every call, and a vanished evaluator would be answered by the next one.
 # Each evaluation writes its counters (`NIX_SHOW_STATS`). NIX_PATH is emptied by `nixos-bar.bash`'s rule:
 # its entries are allocated into every evaluation, CI's columns have none, so the count is CI's.
-nix-instantiate() { NIX_PATH="" NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$MODULES_SH_CAP.stats" timeout 120 "$MODULES_SH_NIX_INSTANTIATE" "$@"; }
+# Counted, so serial: the runner's resolved options (`modules-sh.nix`), split back into argv once, at load. An
+# unset variable is a runner that resolved none, and modules.sh dies before its summary line (CONTROL FAILED).
+read -ra SERIAL_EVAL <<<"${MODULES_SH_SERIAL_EVAL?the modules-sh runner exports the serial options}"
+nix-instantiate() { NIX_PATH="" NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$MODULES_SH_CAP.stats" timeout 120 "$MODULES_SH_NIX_INSTANTIATE" "${SERIAL_EVAL[@]}" "$@"; }
 
 local-nix-instantiate() {
   local rc=0

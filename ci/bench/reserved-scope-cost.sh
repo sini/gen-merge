@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # THE RESERVATION SCOPE'S COST PER SCOPED ENTRY, as a THUNK-COUNT instrument with a bound.
 #
-#   ./ci/bench/reserved-scope-cost.sh   -> per-arm readings, then WITHIN BOUND | OVER BOUND | INVALID
+#   nix develop ./ci --command ./ci/bench/reserved-scope-cost.sh   -> per-arm readings, then WITHIN BOUND | OVER BOUND | INVALID
 #
 # Two arms of one construction (`reserved-scope-cost.nix`) at two sizes each. What each must read:
 #
@@ -16,6 +16,16 @@
 # only; no cpu row is read. Exit status is read UNPIPED.
 set -u
 cd "$(dirname "$0")/../.." || exit 99
+# The counted evaluations are serial (gen-harness `lib.serialEval`, which the ci devshell exports): a thunk
+# count is defined only for a serial run. Outside the devshell this refuses, rather than read unpinned.
+[ -n "${GEN_SERIAL_EVAL:-}" ] || {
+  echo "reserved-scope-cost: CONTROL FAILED: GEN_SERIAL_EVAL is unset; run under nix develop ./ci" >&2
+  exit 2
+}
+# shellcheck disable=SC1090
+source "$GEN_SERIAL_EVAL"
+serialEvalOptions "$(command -v nix-instantiate)" || exit 2
+echo "reserved-scope-cost: serial options: ${SERIAL_EVAL[*]:-(none)}"
 
 STATS_DIR=$(mktemp -d)
 trap 'rm -rf "$STATS_DIR"' EXIT
@@ -29,7 +39,7 @@ value() {
 thunks() {
   local sp="$STATS_DIR/$1-$2.json"
   NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$sp" \
-    nix-instantiate --eval --strict --json \
+    nix-instantiate "${SERIAL_EVAL[@]}" --eval --strict --json \
     --argstr arm "$1" --argstr n "$2" ./ci/bench/reserved-scope-cost.nix >/dev/null
   local rc=$?
   [ "$rc" -ne 0 ] && { echo "-1"; return; }

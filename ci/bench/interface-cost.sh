@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # O5 — the per-instance cost of the protocol boundary, as a THUNK-COUNT instrument.
 #
-#   ./ci/bench/interface-cost.sh   -> per-arm readings, then MEASURED | INVALID
+#   nix develop ./ci --command ./ci/bench/interface-cost.sh   -> per-arm readings, then MEASURED | INVALID
 #
 # Two arms of one construction (`interface-cost.nix`) at two sizes each. What each must read:
 #
@@ -23,6 +23,16 @@
 # that resolved to something else is not a saving, and an arm that threw would be cheapest of all.
 set -u
 cd "$(dirname "$0")/../.." || exit 99
+# The counted evaluations are serial (gen-harness `lib.serialEval`, which the ci devshell exports): a thunk
+# count is defined only for a serial run. Outside the devshell this refuses, rather than read unpinned.
+[ -n "${GEN_SERIAL_EVAL:-}" ] || {
+  echo "interface-cost: CONTROL FAILED: GEN_SERIAL_EVAL is unset; run under nix develop ./ci" >&2
+  exit 2
+}
+# shellcheck disable=SC1090
+source "$GEN_SERIAL_EVAL"
+serialEvalOptions "$(command -v nix-instantiate)" || exit 2
+echo "interface-cost: serial options: ${SERIAL_EVAL[*]:-(none)}"
 
 STATS_DIR=$(mktemp -d)
 trap 'rm -rf "$STATS_DIR"' EXIT
@@ -38,7 +48,7 @@ value() {
 thunks() {
   local sp="$STATS_DIR/$1-$2.json"
   NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$sp" \
-    nix-instantiate --eval --strict --json \
+    nix-instantiate "${SERIAL_EVAL[@]}" --eval --strict --json \
     --argstr arm "$1" --argstr n "$2" ./ci/bench/interface-cost.nix >/dev/null 2>&1
   local rc=$?
   [ "$rc" -ne 0 ] && { echo "-1"; return; }

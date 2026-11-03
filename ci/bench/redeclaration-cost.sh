@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A REDECLARATION'S COST PER DECLARING MODULE, as a THUNK-COUNT instrument with a bound.
 #
-#   ./ci/bench/redeclaration-cost.sh   -> per-arm readings, then WITHIN BOUND | OVER BOUND | INVALID
+#   nix develop ./ci --command ./ci/bench/redeclaration-cost.sh   -> per-arm readings, then WITHIN BOUND | OVER BOUND | INVALID
 #
 # Two arms of `redeclaration-cost.nix` at two sizes each. What each must read:
 #
@@ -23,6 +23,16 @@
 # its absolute bytes. Exit status is read UNPIPED.
 set -u
 cd "$(dirname "$0")/../.." || exit 99
+# The counted evaluations are serial (gen-harness `lib.serialEval`, which the ci devshell exports): a thunk
+# count is defined only for a serial run. Outside the devshell this refuses, rather than read unpinned.
+[ -n "${GEN_SERIAL_EVAL:-}" ] || {
+  echo "redeclaration-cost: CONTROL FAILED: GEN_SERIAL_EVAL is unset; run under nix develop ./ci" >&2
+  exit 2
+}
+# shellcheck disable=SC1090
+source "$GEN_SERIAL_EVAL"
+serialEvalOptions "$(command -v nix-instantiate)" || exit 2
+echo "redeclaration-cost: serial options: ${SERIAL_EVAL[*]:-(none)}"
 
 STATS_DIR=$(mktemp -d)
 trap 'rm -rf "$STATS_DIR"' EXIT
@@ -34,7 +44,7 @@ stat() {
   local sp="$STATS_DIR/$1-$2.json"
   if [ ! -s "$sp" ]; then
     NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$sp" \
-      nix-instantiate --eval --strict --json \
+      nix-instantiate "${SERIAL_EVAL[@]}" --eval --strict --json \
       --argstr arm "$1" --argstr n "$2" ./ci/bench/redeclaration-cost.nix >/dev/null
     local rc=$?
     [ "$rc" -ne 0 ] && {

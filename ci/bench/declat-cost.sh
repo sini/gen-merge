@@ -2,7 +2,7 @@
 # A SEED'S DECLARATION ADDRESS IS LINEAR IN DEPTH AND BREADTH, as a THUNK-COUNT instrument with
 # bounds (den-hoag-mg94o).
 #
-#   ./ci/bench/declat-cost.sh   -> per-shape readings, then WITHIN BOUND | OVER BOUND | INVALID
+#   nix develop ./ci --command ./ci/bench/declat-cost.sh   -> per-shape readings, then WITHIN BOUND | OVER BOUND | INVALID
 #
 # The address cost is `flag=true − flag=false` of `declat-cost.nix` (nrThunks), at each size:
 #
@@ -19,6 +19,16 @@
 # UNPIPED.
 set -u
 cd "$(dirname "$0")/../.." || exit 99
+# The counted evaluations are serial (gen-harness `lib.serialEval`, which the ci devshell exports): a thunk
+# count is defined only for a serial run. Outside the devshell this refuses, rather than read unpinned.
+[ -n "${GEN_SERIAL_EVAL:-}" ] || {
+  echo "declat-cost: CONTROL FAILED: GEN_SERIAL_EVAL is unset; run under nix develop ./ci" >&2
+  exit 2
+}
+# shellcheck disable=SC1090
+source "$GEN_SERIAL_EVAL"
+serialEvalOptions "$(command -v nix-instantiate)" || exit 2
+echo "declat-cost: serial options: ${SERIAL_EVAL[*]:-(none)}"
 
 STATS_DIR=$(mktemp -d)
 trap 'rm -rf "$STATS_DIR"' EXIT
@@ -35,7 +45,7 @@ note() {
 run() {
   local sp="$STATS_DIR/$1-$2-$3-$4.json" out
   out=$(NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$sp" \
-    nix-instantiate --eval --strict --json \
+    nix-instantiate "${SERIAL_EVAL[@]}" --eval --strict --json \
     --argstr shape "$1" --argstr flag "$2" --argstr d "$3" --argstr n "$4" \
     ./ci/bench/declat-cost.nix)
   local rc=$?

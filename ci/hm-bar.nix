@@ -121,6 +121,8 @@ pkgs.writeShellApplication {
     # shellcheck disable=SC1091
     source ${./hm-bar-cells.bash}
     # shellcheck disable=SC1091
+    source ${inputs.gen-harness.lib.serialEval { inherit pkgs; }}
+    # shellcheck disable=SC1091
     source ${./nixos-bar.bash}
   '';
 }

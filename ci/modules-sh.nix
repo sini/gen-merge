@@ -149,9 +149,17 @@ pkgs.writeShellApplication {
       control "the evaluator is pinned to '$MODULES_SH_EVALUATOR_VERSION', but $ni reports '$line'"
     fi
     export MODULES_SH_NIX_INSTANTIATE=$ni
+    # Every assertion's evaluation is counted, so every one is serial (gen-harness `lib.serialEval`, resolved
+    # once for the binary above). modules.sh is a child bash and an array does not export, so the hook splits
+    # this string back into its argv: the options are fixed words with no space inside one.
+    # shellcheck disable=SC1091
+    source ${inputs.gen-harness.lib.serialEval { inherit pkgs; }}
+    serialEvalOptions "$ni" || control "the serial options of $ni could not be resolved"
+    export MODULES_SH_SERIAL_EVAL="''${SERIAL_EVAL[*]}"
     echo "modules-sh: evaluator $line ($ni), nixpkgs lib ${
       inputs.nixpkgs.rev or inputs.nixpkgs.narHash
     }"
+    echo "modules-sh: serial options: ''${MODULES_SH_SERIAL_EVAL:-(none)}"
 
     # THE GEN TREE RUNS GEN: gen-merge's evaluation answers a field nixpkgs' does not (stage 2's control).
     # Read-write as modules.sh's own evaluations are: the gen tree's sources are copied at evaluation, which

@@ -81,6 +81,11 @@ if [ -n "${BAR_EVALUATOR_VERSION:-}" ] && [ "$evl" != "$BAR_EVALUATOR_VERSION" ]
   control "the evaluator is pinned to '$BAR_EVALUATOR_VERSION', but $ni reports '$evl'"
 fi
 echo "$BAR_NAME: evaluator $evl ($ni), nixpkgs $BAR_NIXPKGS"
+# EVERY EVALUATION HERE IS COUNTED, so every one is serial: a thunk count is defined only for a serial run, and
+# Determinate's parallel evaluator (`eval-cores`) makes it a random sample. The options are resolved once, for
+# the binary above, by gen-harness `lib.serialEval`, and each evaluation carries them as argv.
+serialEvalOptions "$ni" || control "the serial options of $ni could not be resolved"
+echo "$BAR_NAME: serial options: ${SERIAL_EVAL[*]:-(none)}"
 # The stage's subject roots, the shared-throw rule's T2 (`nixos-bar-compare.jq`), which refuses without them.
 jq -e 'type == "array" and length > 0' <<<"${BAR_ROOTS:-}" >/dev/null || control "BAR_ROOTS is not a non-empty JSON list: '${BAR_ROOTS:-}'"
 echo "$BAR_NAME: subject roots $BAR_ROOTS"
@@ -104,7 +109,7 @@ evalArm() {
   # attributed bytes the bound is exact on (measured: +112 B per cell on a host with one entry), and no
   # cell reads a `<…>` path. CI's columns run with none, so this is the same count there.
   # shellcheck disable=SC2086
-  NIX_PATH="" NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$tmp/$n.stats" timeout -k 10 "$left" "$ni" --eval --strict --json \
+  NIX_PATH="" NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$tmp/$n.stats" timeout -k 10 "$left" "$ni" "${SERIAL_EVAL[@]}" --eval --strict --json \
     "${BAR_FLAGS[@]}" "$BAR_EVAL" --arg srcs "$BAR_SRCS" --argstr engine "$eng" "$@" >"$tmp/$n.out" 2>"$tmp/$n.err" || rc=$?
   ms=$((($(date +%s%N) - t0) / 1000000))
   # An evaluation that ran out of its memory, or lost its connection to the store, is the instrument's
