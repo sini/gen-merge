@@ -6978,7 +6978,7 @@ let
           && !(rewritesCheck o)
           && !(replacesVerify o)
           && !(o ? holds)
-        ) (if rewrites != null && rewrites ? bNames then rewrites.bNames.mkBefore ++ rewrites.own else os)
+        ) (if rewrites != null && rewrites ? bNames then rewrites.bNames.mkBefore ++ map (p: p.__pendingOf) rewrites.bNames.pending ++ rewrites.own else os)
         && (
           rewrites == null
           || !(rewrites ? bNames)
@@ -7047,6 +7047,7 @@ let
               !(builtins.elem completeExport rewrites.bNames.completedLeaves)
               && !(builtins.elem completeExport rewrites.keys)
               && builtins.all (o: completeExport != closuresFirst [ o ] o) rewrites.bNames.mkBefore
+              && builtins.all (p: completeExport != closuresFirst [ p.__pendingOf ] p.__pendingOf) rewrites.bNames.pending
             else if rewrites != null && rewrites ? exports then
               builtins.all (k: completeExport != k) rewrites.exports
               && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
@@ -7474,6 +7475,7 @@ let
         exact = metWith.anything.linkset;
         minPrio = metWith.anything.linkset;
         mkBefore = [ ];
+        pending = [ ];
         completedLeaves = [ ];
         unapplicable = [ ];
         all = [ ];
@@ -7487,8 +7489,17 @@ let
           definitionOf =
             if x ? __stockCheck && !(raw ? __stockCheck) then closuresFirst [ x ] x else defaultOrderPriority;
         in
-        # one update over the node: only the set `x`'s kind names is rebuilt; the others are the node's own
-        d
+        # one update over the node: only the set `x`'s kind names is rebuilt; the others are the node's own; a pending
+        # declaration (`pendingOf`) is listed, owed whole or relativised by each later step's join
+        if x ? __pendingOf then
+          d
+          // {
+            pending = d.pending ++ [ x ];
+            unapplicable = d.unapplicable ++ [ defaultOrderPriority ];
+            all = d.all ++ [ x.__pendingOf ];
+          }
+        else
+          d
         // (
           if k == "mkBefore" then
             { mkBefore = d.mkBefore ++ [ x ]; }
@@ -7548,7 +7559,24 @@ let
         (if d.plain.n == 0 then [ ] else refuseParametricMerge d.plain false)
         ++ (if d.exact.n == 0 then [ ] else structuring d.exact false)
         ++ (if d.minPrio.n == 0 then [ ] else structuring d.minPrio true)
-        ++ filter keep d.mkBefore;
+        ++ filter keep d.mkBefore
+        ++ (
+          if d.pending == [ ] then
+            [ ]
+          else
+            let
+              sm = metWith.anything.shapeOf importedTypeWalkFuel m;
+            in
+            builtins.concatMap (
+              p:
+              if !(keep p.__pendingOf) then
+                [ ]
+              else if p.tree != sm && metWith.anything.widensAt p.tree sm then
+                [ p.widened ]
+              else
+                [ p.__pendingOf ]
+            ) d.pending
+        );
       # each operand as the declarations it stands for
       freeformLeaf = builtins.concatMap (o: o.spelledRead or [ o ]);
       elementsOf =
@@ -7596,7 +7624,7 @@ let
         a: b:
         a.n == b.n
         && length a.e == length b.e
-        && (a.p == b.p || a.p != { })
+        && (a.p == b.p || a.p != { } && b.p != { })
         && builtins.all (i: metWith.anything.widensAt (elemAt a.e i) (elemAt b.e i)) (
           builtins.genList (i: i) (length a.e)
         );
@@ -7615,7 +7643,7 @@ let
         {
           inherit es;
           same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
-          holds = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { }) && builtins.all (c: c.holds) es;
+          holds = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { } && b.p != { }) && builtins.all (c: c.holds) es;
           # `ownRead`'s `structured` over `a`, read first (a tree with no parameters reads no join) and decisive only where `holds`
           # (so `es` are all of `a`'s elements)
           structured =
@@ -7691,7 +7719,7 @@ let
         else if c == null then
           metWith.anything.ownRead m o
         else if c.structured && c.holds then
-          metWith.anything.relativised c m o
+          (if c.same then metWith.anything.pendingOf o else metWith.anything.witnessedCheck m o)
         else
           o;
       # the comparisons of the operands `a`, `b` with the join `r` one role down at `i`, whose role records are `a'`, `b'`, `r'`:
@@ -7712,19 +7740,11 @@ let
             a = metWith.anything.nodeAt r rewrites.tag.a i a;
             b = metWith.anything.nodeAt r rewrites.tag.b i b;
           };
-      # `o` owed relativised to its own parameters beside the join `m` (`relativised null`). A declaration's own-step form
-      # (`seen`, `ownRead`, lib/modules.nix `defineEmbedded`) hands the comparison `c` of its tree with `m`'s, and where
-      # `c.same` the join's check is OR-ed into the stock: that join widened nothing, so on its domain the declaration is
-      # owed whole, and only a value a later, wider join admits beyond it is owed relativised (ADR-0039 THE MEET,
-      # "wherever a widening join reaches it"). The stock alone holds that only where it admits what `m` admits: a foreign
-      # functor whose `type` rebuilds the refinement itself (`_: self`) makes the stock the declaration, its form
-      # `c v || !(c v)`, and a second construction of the same name and payload as `m` would drop it (den-hoag-ob4k0).
-      # `c.same` is `==` over the payload trees, so a payload holding a function is the same tree on Lix only (gen-merge
-      # AGENTS.md, the vocabulary row), and the OR reaches it there alone. `c.same` and `m`'s check are read only after the
-      # stock rejects, so an admitted value forces neither
-      witnessedCheck = metWith.anything.relativised null;
-      relativised =
-        c: m: o:
+      # `o` owed relativised to its own parameters beside the join `m`, which it reads only to ask whether that join is a
+      # container (`m.functor.payload ? elemType`); a join of `o`'s own tree answers that as `o` does, so a declaration
+      # pending since its own step is relativised against itself (`pendingOf`)
+      witnessedCheck =
+        m: o:
         let
           s = importedPartner ((wrappedBase o).functor or null);
         in
@@ -7743,12 +7763,7 @@ let
             # operand's check rejects (`meetOf`)
             __stockCheck =
               if s.check.isV2MergeCoherent or false then
-                (
-                  if c == null then
-                    s.check
-                  else
-                    (v: (s.check._fn or s.check) v || c.same && (m.check._fn or m.check) v)
-                )
+                s.check
               else if
                 ((m.functor or { }).payload or null) ? elemType
                 && !(s ? _checkWitness && s.check == s._checkWitness)
@@ -7819,16 +7834,10 @@ let
                         )
                     )
                 )
-                || c != null && c.same && (m.check._fn or m.check) v
               else if
                 s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
               then
-                (
-                  if c == null then
-                    s.check
-                  else
-                    (v: (s.check._fn or s.check) v || c.same && (m.check._fn or m.check) v)
-                )
+                s.check
               else
                 v:
                 (
@@ -7850,8 +7859,7 @@ let
                     in
                     r.success && r.value
                   )
-                )
-                || c != null && c.same && (m.check._fn or m.check) v;
+                );
           }
         else
           o;
@@ -7859,6 +7867,15 @@ let
       # delegates to the element's `typeMerge`), never its parameters
       stated =
         t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any metWith.anything.stated t.e;
+      # a declaration met at its own step by a join of its own tree: that join widened none of its parameters, so it is owed
+      # whole until a later join widens them, and from that join on relativised once, against its own parameters, which no
+      # later step changes (ADR-0039 THE MEET, "relativised once, at the join that widens it"); its tree and that form are
+      # each built once, where first read (`refuseUnreconciledMint`)
+      pendingOf = o: {
+        __pendingOf = o;
+        tree = metWith.anything.shapeOf importedTypeWalkFuel o;
+        widened = metWith.anything.witnessedCheck o o;
+      };
       ownRead =
         m: o:
         let
@@ -7866,12 +7883,7 @@ let
           sm = metWith.anything.shapeOf importedTypeWalkFuel m;
         in
         if metWith.anything.stated so && metWith.anything.widensAt so sm then
-          (
-            if so == sm then
-              metWith.anything.relativised { same = true; } m o
-            else
-              metWith.anything.witnessedCheck m o
-          )
+          (if so == sm then metWith.anything.pendingOf o else metWith.anything.witnessedCheck m o)
         else
           o;
       functorRecord =
