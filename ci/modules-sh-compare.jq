@@ -31,6 +31,10 @@
 # clause `nixos-bar-compare.jq`'s over this register's id: above it is COST-REGRESSED, below it COST-RATCHET,
 # no entry for $ev UNANCHORED, perf on another row INVALID-PERF; each is a disagreement.
 #
+# THE REFUSAL TEXT (den-hoag-pvy24), `nixos-bar-compare.jq`'s rule over this register's id: a FAIL or PASS-CLASS
+# row whose gen evaluation refused (non-zero exit) records its last `error:` line, store paths `<store>`, per
+# evaluator in `refusal.<$ev>`, written by `--fold` only; REFUSAL-MOVED and UNRECORDED-REFUSAL are disagreements.
+#
 # $mode "check" emits one line per disagreement and a summary · "perf" one `PERF modules-sh <json>` line per
 # perf row, the line `--fold` reads · "write" the new baseline's verdicts, every perf entry the committed one's
 # (`--fold` is the sole perf writer) · "fold" $base with
@@ -40,6 +44,12 @@ def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
 # counts: a perf entry's figures without its wall `ms`, which is recorded, never compared.
 def counts: if type == "object" then map_values(if type == "object" then del(.ms) else . end) else . end;
 def perfKind: .key.kind | IN("checkConfigOutput", "checkExpression");
+def lastErr: (. // "") | split("\n") | map(select(test("^ *error:"))) | last // "(no error line)" | sub("^ +"; "");
+def storeFree: gsub("/nix/store/[0-9a-z]{32}-[^/\\s'`\"):]*"; "<store>");
+def refusalOf: if (.got == "FAIL" or .got == "PASS-CLASS") and .rc != 0 then .err | lastErr | storeFree else null end;
+def validRefusal: .refusal == null or ((.refusal | type) == "object" and .verdict != "PASS"
+  and (.refusal | to_entries | all(.value | type == "string" and (contains("/nix/store/") | not))));
+def sortedObj: to_entries | sort_by(.key) | from_entries;
 def parity: if .gen == null or .ref == null then null
   elif .gen.thunks <= .ref.thunks and .gen.bytes <= .ref.bytes then "at-parity" else "above-parity" end;
 ($ARGS.named.ev // "") as $ev
@@ -49,6 +59,11 @@ def parity: if .gen == null or .ref == null then null
   | ($base | map({ key: (.key | id), value: true }) | from_entries) as $ids
   | ($P | keys | map(select($ids[.] | not))) as $stray
   | if ($stray | length) > 0 then error("PERF lines for rows the register lacks: \($stray)") else . end
+  # $refusals: the logs' REFUSAL lines, folded as `nixos-bar-compare.jq`'s fold folds them.
+  | (($ARGS.named.refusals // []) | group_by(.key | id) | map({ key: (.[0].key | id), value: map({ key: .evaluator, value: .text }) | from_entries }) | from_entries) as $T
+  | ($T | keys | map(select($ids[.] | not))) as $tstray
+  | if ($tstray | length) > 0 then error("REFUSAL lines for rows the register lacks: \($tstray)") else . end
+  | ($ARGS.named.cols // []) as $cols
   # $moves: the logs' verdict lines, adopted as `nixos-bar-compare.jq`'s fold adopts them.
   | ($base | map({ key: (.key | id), value: .verdict }) | from_entries) as $was
   | (($ARGS.named.moves // []) | map(select($was[.id] != null))) as $mine
@@ -62,6 +77,8 @@ def parity: if .gen == null or .ref == null then null
   | if perfKind then (.perf // { }) as $o | .perf = ($o + (($P[.key | id] // { })
       | with_entries(if ($o[.key] | counts) == (.value | counts) then .value = $o[.key] else . end))) else . end
   | .verdict = ($V[.key | id] // .verdict)
+  | (((.refusal // { }) | with_entries(select(.key as $k | $cols | index($k) | not))) + ($T[.key | id] // { }) | sortedObj) as $r
+  | if .verdict == "PASS" or $r == { } then del(.refusal) else .refusal = $r end
   | tojson
 else
 . as $recs
@@ -88,18 +105,21 @@ else
   )) as $runs
 | ($runs | map(.id)) as $seen
 | if $mode == "perf" then
-    $runs[]
+    ($runs[]
     | select(perfKind)
     | { gen: .perf, ref: .ref.perf } as $p
     | "PERF modules-sh " + ({ key, evaluator: $ev, gen: $p.gen, ref: $p.ref, parity: ($p | parity),
-        ratio: (if ($p | parity) == null then null else { thunks: ($p.gen.thunks / $p.ref.thunks), bytes: ($p.gen.bytes / $p.ref.bytes) } end) } | tojson)
+        ratio: (if ($p | parity) == null then null else { thunks: ($p.gen.thunks / $p.ref.thunks), bytes: ($p.gen.bytes / $p.ref.bytes) } end) } | tojson)),
+    ([ $runs[] | refusalOf as $t | select($t != null) | { key, evaluator: $ev, text: $t } ] as $rs
+      | ($rs[] | "REFUSAL modules-sh \(tojson)"), "REFUSALS modules-sh \($rs | length)")
   elif $mode == "write" then
     $runs
     | sort_by(.id)
     | map({ key, verdict: .got }
         + ((.base // { }) | with_entries(select(.key == "class" or .key == "overreach")))
         # Perf is the committed baseline's, never this run's: `--fold` is the sole perf writer (`nixos-bar-compare.jq`).
-        + (if perfKind and .base.perf != null then { perf: .base.perf } else { } end))
+        + (if perfKind and .base.perf != null then { perf: .base.perf } else { } end)
+        + (if .got != "PASS" and .base.refusal != null then { refusal: .base.refusal } else { } end))
     | .[]
     | tojson
   else
@@ -119,6 +139,11 @@ else
             elif ($hits | length) == 0 and .overreach != null then "STALE-OVERREACH \(.key | id)"
             else empty end ]
       + [ $base[] | select(.class == null and .overreach != null) | "INVALID-CLASS overreach without class \(.key | id)" ]
+      + [ $base[] | select(validRefusal | not) | "INVALID-REFUSAL \(.key | id)" ]
+      + [ $runs[] | select(.base != null and .base.verdict == .got) | (refusalOf) as $t | (.base.refusal[$ev] // null) as $a
+          | select($t != $a)
+          | if $a == null then "UNRECORDED-REFUSAL L\(.line) \(.id) '\($t)' (fold the register in this change)"
+            else "REFUSAL-MOVED L\(.line) \(.id) '\($a)' -> '\($t // "(no refusal)")' (fold the register in this change)" end ]
       + [ $runs[] | select(.base == null) | "UNBASELINED L\(.line) \(.got) \(.id)" ]
       + [ $runs[] | select(.base != null and .base.verdict != .got)
           | (if .got == "FAIL" then "REGRESSED" elif .base.verdict == "FAIL" then "IMPROVED" else "MOVED" end) + " L\(.line) \(.base.verdict) -> \(.got) \(.id)"

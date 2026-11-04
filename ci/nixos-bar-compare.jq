@@ -38,6 +38,15 @@
 # read only where the run summed the same processes as the anchor: a perf entry carrying `set` (stage 3's
 # `tests` row) whose set moved reads SET-MOVED instead of a COST line.
 #
+# THE REFUSAL TEXT (den-hoag-pvy24). A FAIL or PASS-CLASS row whose gen arm refuses records that refusal's text,
+# per evaluator `--version` line, in `refusal.<$ev>`: its last `error:` line (the line a REGRESSED line quotes),
+# every store path `<store>`, or `(text not read: chunk)` where the arm's read keeps no text. A row whose refusal
+# moved (a new message from a landing that did not yet fix it) then reads differently in the register, so the
+# move is visible. It is written as perf is, from CI's columns by `--fold` and never by `--write-baseline`, and
+# checked as perf is: a text other than the committed one is REFUSAL-MOVED, none committed for $ev
+# UNRECORDED-REFUSAL, each a disagreement whose cure is the fold. The ratchet reads verdicts and perf only, so a
+# text move on an unchanged verdict is never a fall.
+#
 # $mode "check": one line per disagreement and a summary · "perf": one `PERF <label> <json>` line per perf row,
 # the line `--fold` reads · "write": the new register's verdicts, every perf entry the committed register's (the
 # fold is the sole perf writer) · "fold": $base with $perf's
@@ -58,6 +67,14 @@ def shared($roots): (.ref.trace | site) as $s | (.ref.trace | final) as $f
   | .ref.caught == true and .gen.caught == true
     and $s != null and $s == (.gen.trace | site) and ($roots | any(. as $p | $s | startswith($p + "/")))
     and $f != null and $f == (.gen.trace | final);
+def storeFree: gsub("/nix/store/[0-9a-z]{32}-[^/\\s'`\"):]*"; "<store>");
+# refusalOf: the record's refusal text, or null where the row records none (a PASS row, or gen serving).
+def refusalOf: if (.got == "FAIL" or .got == "PASS-CLASS") and .gen != null and .gen.refused == true
+  then (if .gen.err == null then "(text not read: chunk)" else .gen.err | lastErr | storeFree end) else null end;
+# validRefusal: a committed `refusal` is an object of store-path-free strings, on a FAIL or PASS-CLASS row.
+def validRefusal: .refusal == null or ((.refusal | type) == "object" and .verdict != "PASS"
+  and (.refusal | to_entries | all(.value | type == "string" and (contains("/nix/store/") | not))));
+def sortedObj: to_entries | sort_by(.key) | from_entries;
 def parity: if .gen == null or .ref == null then null
   elif .gen.thunks <= .ref.thunks and .gen.bytes <= .ref.bytes then "at-parity" else "above-parity" end;
 ($ARGS.named.ev // "") as $ev
@@ -67,6 +84,12 @@ def parity: if .gen == null or .ref == null then null
   | ($base | map({ key: id, value: true }) | from_entries) as $ids
   | ($P | keys | map(select($ids[.] | not))) as $stray
   | if ($stray | length) > 0 then error("PERF lines for rows the register lacks: \($stray)") else . end
+  # $refusals: the logs' REFUSAL lines, `{key, evaluator, text}`. Each of the fold's columns ($cols) owns its own
+  # entry: a row it printed none for loses that column's text, and an older evaluator's entry is kept, as perf's is.
+  | (($ARGS.named.refusals // []) | group_by(.key | tojson) | map({ key: (.[0].key | tojson), value: map({ key: .evaluator, value: .text }) | from_entries }) | from_entries) as $T
+  | ($T | keys | map(select($ids[.] | not))) as $tstray
+  | if ($tstray | length) > 0 then error("REFUSAL lines for rows the register lacks: \($tstray)") else . end
+  | ($ARGS.named.cols // []) as $cols
   # $moves: the logs' verdict lines, `{col, word, was, now, id, line}`. This register's are those naming
   # its rows (a log carries every stage's). A column is the evaluator its log's PERF lines name, never the
   # log's position, so one log passed three times is one column. An IMPROVED move is adopted only when
@@ -84,6 +107,8 @@ def parity: if .gen == null or .ref == null then null
   | if perfKind then (.perf // { }) as $o | .perf = ($o + (($P[id] // { })
       | with_entries(if ($o[.key] | counts) == (.value | counts) then .value = $o[.key] else . end))) else . end
   | .verdict = ($V[id] // .verdict)
+  | (((.refusal // { }) | with_entries(select(.key as $k | $cols | index($k) | not))) + ($T[id] // { }) | sortedObj) as $r
+  | if .verdict == "PASS" or $r == { } then del(.refusal) else .refusal = $r end
   | tojson
 else
 ($ARGS.named.roots // null) as $roots
@@ -114,11 +139,15 @@ else
   )) as $runs
 | ($runs | map({ key: .id, value: true }) | from_entries) as $seen
 | if $mode == "perf" then
-    $runs[]
+    ($runs[]
     | select(perfKind)
     | { gen: .gen.perf, ref: .ref.perf } as $p
     | "PERF \($ARGS.named.label) " + ({ key, evaluator: $ev, gen: $p.gen, ref: $p.ref, parity: ($p | parity),
-        ratio: (if ($p | parity) == null then null else { thunks: ($p.gen.thunks / $p.ref.thunks), bytes: ($p.gen.bytes / $p.ref.bytes) } end) } | tojson)
+        ratio: (if ($p | parity) == null then null else { thunks: ($p.gen.thunks / $p.ref.thunks), bytes: ($p.gen.bytes / $p.ref.bytes) } end) } | tojson)),
+    # One REFUSAL line per refusing row, then their count: `--fold` reads a log with no count line as a column
+    # that did not print refusals, never as one with none.
+    ([ $runs[] | refusalOf as $t | select($t != null) | { key, evaluator: $ev, text: $t } ] as $rs
+      | ($rs[] | "REFUSAL \($ARGS.named.label) \(tojson)"), "REFUSALS \($ARGS.named.label) \($rs | length)")
   elif $mode == "write" then
     $runs
     | sort_by(.id)
@@ -127,7 +156,9 @@ else
         + ((.base // { }) | with_entries(select(.key == "class" or .key == "overreach")))
         # Perf is the committed register's, never this run's: CI's column logs, through `--fold`, are the sole perf
         # writer (den-hoag-perf-key-noncl-evaluator-0cy5s), so a local evaluator's key cannot enter the register.
-        + (if perfKind and .base.perf != null then { perf: .base.perf } else { } end))
+        + (if perfKind and .base.perf != null then { perf: .base.perf } else { } end)
+        # The refusal texts, as perf, are the committed register's (a PASS row keeps none).
+        + (if .got != "PASS" and .base.refusal != null then { refusal: .base.refusal } else { } end))
     | .[]
     | tojson
   else
@@ -147,6 +178,11 @@ else
             elif ($w | length) == 0 and .overreach != null then "STALE-OVERREACH \(id)"
             else empty end ]
       + [ $base[] | select(.class == null and .overreach != null) | "INVALID-CLASS overreach without class \(id)" ]
+      + [ $base[] | select(validRefusal | not) | "INVALID-REFUSAL \(id)" ]
+      + [ $runs[] | select(.base != null and .base.verdict == .got) | (refusalOf) as $t | (.base.refusal[$ev] // null) as $a
+          | select($t != $a)
+          | if $a == null then "UNRECORDED-REFUSAL \(.id) '\($t)' (fold the register in this change)"
+            else "REFUSAL-MOVED \(.id) '\($a)' -> '\($t // "(no refusal)")' (fold the register in this change)" end ]
       + [ $runs[] | select(.base == null) | "UNBASELINED \(.got) \(.id)" ]
       + [ $runs[] | select(.base != null and .base.verdict != .got)
           | (if .got == "FAIL" then "REGRESSED" elif .base.verdict == "FAIL" then "IMPROVED" else "MOVED" end) + " \(.base.verdict) -> \(.got) \(.id)"

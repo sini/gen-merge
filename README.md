@@ -3656,7 +3656,11 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
 - **The register's perf** is written from CI's own columns, as stage 2's is (`--fold`), and nowhere
   else: `--write-baseline` writes verdicts and keeps every perf entry as committed. The local process
   plane reads it only on an evaluator whose `--version` line is one of CI's (gen-harness
-  `evaluators.yml`'s pins); any other reads 259 `UNANCHORED` by construction. A change that moves per-evaluation cost moves every row,
+  `evaluators.yml`'s pins); any other reads 259 `UNANCHORED` by construction.
+
+- **The refusal text** of every `PASS-CLASS` or `FAIL` row whose gen evaluation refused is recorded
+  per evaluator, as stage 2's is (below): `refusal.<evaluator>`, written by `--fold` from the
+  `REFUSAL modules-sh {…}` lines each run prints. A change that moves per-evaluation cost moves every row,
   259 per evaluator: one arm-scoped trailer, `Bar-Perf-Rise: modules-sh:* parity`, admits them all (see
   the ratchet guard below).
 
@@ -3727,6 +3731,17 @@ green because the ratchet admitted its rise: admitted is not approved.
 nix run ./ci#nixos-bar -- --write-baseline F      # verdicts only; every perf entry stays as committed
 nix run ./ci#nixos-bar -- --fold F A.log B.log C.log  # merge CI's three column logs' PERF lines
 ```
+
+Every `FAIL` or `PASS-CLASS` row whose gen arm refuses also records that refusal's text, per evaluator
+`--version` line, in `refusal`: its last `error:` line, every store path written `<store>` (or
+`(text not read: chunk)` where the arm's read keeps none). A row whose refusal moves, a landing that
+changes what gen refuses with but does not yet fix the row, then reads differently in the register,
+so the move is visible where a verdict alone reads the same. Each run prints one
+`REFUSAL <program> {…}` line per refusing row and a `REFUSALS <program> <n>` count, and `--fold`
+writes the texts from CI's three columns (a column log without the count line is refused, never read
+as none). A text other than the committed one is `REFUSAL-MOVED`, and a refusing row with none for
+the evaluator `UNRECORDED-REFUSAL`, each a disagreement whose cure is the fold in the same change. The
+ratchet guard reads verdicts and perf only, so a moved text on an unchanged verdict needs no trailer.
 
 The register's perf is written from CI's own columns and nowhere else: `--write-baseline` keeps every
 perf entry as committed, so a local evaluator's `--version` line, which no CI column re-reads, never

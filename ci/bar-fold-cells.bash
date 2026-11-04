@@ -19,11 +19,16 @@ det2=$(jq -r --arg d "$det" '[.perf | keys[] | select(contains("(Determinate ") 
 for e in "$det" "$lix" "$nix" "$det2"; do
   [ -n "$e" ] && [ "$e" != null ] || { echo "FAIL $name fixture: the perf row lacks a column of each family and two Determinate ones"; exit 1; }
 done
-# log <file> <column> <jq over the column's perf entry>: one column's log, its PERF line for the row.
+# log <file> <column> <jq over the column's perf entry>: one column's log, its PERF line for the row, then the
+# column's REFUSAL line for every register row carrying a text for it, and their count line (den-hoag-pvy24).
 log() {
   jq -r --arg c "$2" --arg bar "$name" ".key as \$k | .perf | to_entries | map(select(.key == \$c)) | .[0] | $3
     | \"2026-11-03T00:00:00.0000000Z PERF \(\$bar) \" + ({key: \$k, evaluator: .key, gen: .value.gen, ref: .value.ref} | tojson)" \
     <<<"$row" >"$w/$1"
+  jq -r --arg c "$2" --arg bar "$name" 'select(.refusal[$c] != null)
+    | "2026-11-03T00:00:00.0000000Z REFUSAL \($bar) " + ({key, evaluator: $c, text: .refusal[$c]} | tojson)' "$reg" >"$w/$1.r"
+  cat "$w/$1.r" >>"$w/$1"
+  echo "2026-11-03T00:00:00.0000000Z REFUSALS $name $(wc -l <"$w/$1.r")" >>"$w/$1"
 }
 # fold <cell> <log>...: the bar's --fold into a copy of the register; leaves rc, and the copy's md5 in got.
 fold() {
@@ -46,6 +51,8 @@ for e in "$det" "$lix" "$nix"; do
 done
 log moved0.log "$det" '.value.gen.thunks += 1'
 log det2.log "$det2" .
+# A column's log with its REFUSALS count line gone (den-hoag-pvy24).
+grep -v " REFUSALS $name " "$w/c0.log" >"$w/nocount0.log"
 
 # Three distinct columns carrying the register's own figures: the register, byte for byte.
 fold same "$w/c0.log" "$w/c1.log" "$w/c2.log"
@@ -57,6 +64,9 @@ say ms "$([ "$rc" = 0 ] && [ "$got" = "$want" ] && echo ok || echo "a fold movin
 fold moved "$w/moved0.log" "$w/c1.log" "$w/c2.log"
 d=$(jq -n --slurpfile a "$reg" --slurpfile b "$w/moved.reg" '[range($a | length) as $i | select($a[$i] != $b[$i])] | length')
 say moved "$([ "$rc" = 0 ] && [ "$d" = 1 ] && echo ok || echo "$d rows changed, want 1")"
+# A log with no REFUSALS count line is a column that printed no refusals, never one with none: refused, register untouched.
+fold nocount "$w/nocount0.log" "$w/c1.log" "$w/c2.log"
+say nocount "$([ "$rc" = 2 ] && grep -q "count lines, not one" "$w/nocount.err" && [ "$got" = "$want" ] && echo ok || echo "not refused for its missing count line with the register untouched")"
 # One log passed three times is one column: refused, by the count of evaluators, and the register untouched.
 fold dup "$w/c0.log" "$w/c0.log" "$w/c0.log"
 say dup "$([ "$rc" != 0 ] && grep -q 'missing' "$w/dup.err" && [ "$got" = "$want" ] && echo ok || echo "not refused by evaluator count with the register untouched")"

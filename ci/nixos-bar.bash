@@ -49,6 +49,7 @@ if [ "${1:-}" = --fold ]; then
   shift 2
   : >"$tmp/moves.jsonl"
   : >"$tmp/cols.jsonl"
+  : >"$tmp/refusals.jsonl"
   for log in "$@"; do
     [ -r "$log" ] || control "cannot read $log"
     n=$(grep -c "PERF $BAR_NAME {" "$log" || true)
@@ -61,7 +62,19 @@ if [ "${1:-}" = --fold ]; then
     col=$(jq -c '.[0]' <<<"$col")
     echo "$col" >>"$tmp/cols.jsonl"
     verdicts "$col" "$log" >>"$tmp/moves.jsonl" || control "cannot read the verdict lines of $log"
-    echo "$BAR_NAME: $log: $n PERF lines, evaluator $col, $(jq -c --argjson c "$col" 'select(.col == $c)' "$tmp/moves.jsonl" | wc -l) verdict lines (every stage's)"
+    # The column's refusal texts (`nixos-bar-compare.jq`, den-hoag-pvy24) and their count line: a log with no
+    # count line is one whose instrument printed no refusals, never one that had none.
+    k=$(grep -c "REFUSALS $BAR_NAME [0-9]*\$" "$log" || true)
+    [ "$k" -eq 1 ] || control "$log carries $k 'REFUSALS $BAR_NAME' count lines, not one"
+    want=$(grep -o "REFUSALS $BAR_NAME [0-9]*\$" "$log" | sed 's/.* //')
+    got=$(grep -c "REFUSAL $BAR_NAME {" "$log" || true)
+    [ "$got" = "$want" ] || control "$log carries $got REFUSAL $BAR_NAME lines, its count line says $want"
+    { grep -o "REFUSAL $BAR_NAME {.*}\$" "$log" || [ $? -eq 1 ]; } | sed "s/^REFUSAL $BAR_NAME //" >"$tmp/log-refusals.jsonl"
+    other=$(jq -s --argjson c "$col" 'map(select(.evaluator != $c)) | length' "$tmp/log-refusals.jsonl") ||
+      control "cannot read the REFUSAL lines of $log"
+    [ "$other" -eq 0 ] || control "$other of $log's REFUSAL lines name an evaluator other than its PERF lines' $col"
+    cat "$tmp/log-refusals.jsonl" >>"$tmp/refusals.jsonl"
+    echo "$BAR_NAME: $log: $n PERF lines, $got REFUSAL lines, evaluator $col, $(jq -c --argjson c "$col" 'select(.col == $c)' "$tmp/moves.jsonl" | wc -l) verdict lines (every stage's)"
   done
   # The fold reads CI's three columns, one log from each evaluator family, by the column each log names: a log
   # passed twice, or two versions of one family, would keep a doubled column and leave a missing one stale,
@@ -74,7 +87,8 @@ if [ "${1:-}" = --fold ]; then
     control "--fold reads one log from each evaluator family, Nix, Determinate and Lix: $# logs name $(jq -sc 'group_by(.) | map({evaluator: .[0], logs: length})' "$tmp/cols.jsonl"); missing: ${missing:-none}"
   fi
   jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
-    --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$cols" -f "$BAR_COMPARE" >"$out.fold.$$" || {
+    --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$cols" --slurpfile refusals "$tmp/refusals.jsonl" \
+    --argjson cols "$(jq -sc unique "$tmp/cols.jsonl")" -f "$BAR_COMPARE" >"$out.fold.$$" || {
     rc=$?
     rm -f "$out.fold.$$"
     exit "$rc"
