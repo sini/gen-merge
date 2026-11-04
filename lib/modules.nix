@@ -1151,12 +1151,12 @@ let
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
           # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked. A gen
-          # container's later is asked too where its element chain reaches, within two roles, a node a relation can answer so
-          # (foreign or a door return), or a third element carrier: the earlier container's join would be built on its
-          # element's decider-only answer and never read. A gen leaf, gen `either` or a derivation in the chain is answered
-          # by no earlier relation as the decider only (`interface.keyed`), so the chain stops there. A carrier's own deferral
-          # is read off its role (`carries`), never stated per type: a container rebuilt at every gen × gen step would pay it
-          # (arm S, unadopted; den-ag-design spec FK v4 §4 Q3)
+          # container's later is asked too where its element chain reaches a node a relation can answer so (foreign or a door
+          # return) through gen element carriers, read inline two roles down and walked past them (`interface.keyed.reaches`):
+          # the earlier container's join would be built on its element's decider-only answer and never read. A gen leaf, gen
+          # `either` or a derivation in the chain is answered by no earlier relation as the decider only, so the chain stops
+          # there. A carrier's deferral is asked of what its relation states about itself (`interface.keyed.element`), and no
+          # carrier states a `later` of its own: a container is rebuilt at every gen × gen step, and a field on it is paid there
           if
             (
               later ? retainedRelation
@@ -1172,17 +1172,18 @@ let
                     && (
                       later.carries.element.carries.element ? retainedRelation
                       || !(later.carries.element.carries.element ? typeMergeRel)
-                      || later.carries.element.carries.element ? carries.element
+                      ||
+                        later.carries.element.carries.element ? carries.element
+                        && !(later.carries.element.carries.element ? __derivation)
+                        && interface.keyed.reaches later.carries.element.carries.element.carries.element
                     )
                 )
             )
             && (
-              if earlier ? carries.element then
-                !(earlier ? retainedRelation)
-                && !(earlier ? __derivation)
-                && interface.keyed.container earlier later
-              else if earlier ? carries.alternatives then
-                !(earlier ? retainedRelation) && !(earlier ? __derivation) && interface.keyed.either later
+              if earlier ? typeMergeRel.rewrites && earlier ? carries.element then
+                interface.keyed.container earlier later
+              else if earlier ? typeMergeRel.exact && earlier ? carries.alternatives then
+                interface.keyed.either later
               else
                 earlier.typeMergeRel ? later && earlier.typeMergeRel.later later
             )

@@ -1759,32 +1759,49 @@ let
                 vetoes = false;
               };
       };
-    # a gen container `c` carrying an element (`lib/types.nix` `elementRelIn`, the relation every type parameterised by one
-    # element shares): a partner of its key, gen or foreign, whose element its element answers as the decider only; a gen
-    # partner's element is read off its own carrier. Read off the record, not stated per type (arm S, unadopted)
+    # a container `c` whose relation meets its element pair one role down (`element` below): a partner of its key, gen or
+    # foreign, whose element `c`'s element answers as the decider only, a leaf element by its own `later` inline; a gen
+    # partner's element is read off its own carrier
     container =
       c: other:
       isAttrs other
       && !(other ? __derivation)
       && (other.name or null) == c.name
-      && keyed.element c.carries.element (
-        if other ? carries && !(other ? retainedRelation) then
-          other.carries.element or null
+      && (
+        if c.carries.element ? carries then
+          keyed.element c.carries.element (
+            if other ? carries && !(other ? retainedRelation) then
+              other.carries.element or null
+            else
+              carriedAt "element" other
+          )
         else
-          carriedAt "element" other
+          c.carries.element ? typeMergeRel.later
+          && c.carries.element.typeMergeRel.later (
+            if other ? carries && !(other ? retainedRelation) then
+              other.carries.element or null
+            else
+              carriedAt "element" other
+          )
       );
-    # a gen relation's deferral of `other`, read off the record `t`: a gen container carrying an element through its
-    # element (`container`), gen `either` by its key (`either`), a leaf by its own relation's `later`
+    # a relation's deferral of `other`, asked of what the relation states about itself: a relation meeting its element
+    # pair one role down (`rewrites`, `lib/types.nix` `elementRelIn`) through its element (`container`), gen's relation
+    # over alternatives (`exact`, gen `either`) by its key (`either`), any other by its own `later`
     element =
       t: other:
-      if t ? retainedRelation || t ? __derivation || !(t ? typeMergeRel) then
-        false
-      else if t ? carries.element then
+      if t ? typeMergeRel.rewrites && t ? carries.element then
         keyed.container t other
-      else if t ? carries.alternatives then
+      else if t ? typeMergeRel.exact && t ? carries.alternatives then
         keyed.either other
       else
-        t.typeMergeRel ? later && t.typeMergeRel.later other;
+        t ? typeMergeRel.later && t.typeMergeRel.later other;
+    # a later element chain that reaches a node an earlier relation may answer as the decider only (foreign or a door
+    # return) through gen element carriers alone
+    reaches =
+      t:
+      t ? retainedRelation
+      || !(t ? typeMergeRel)
+      || t ? carries.element && !(t ? __derivation) && keyed.reaches t.carries.element;
     # `either`'s: a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
     either =
       other:
