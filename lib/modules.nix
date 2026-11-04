@@ -9761,12 +9761,12 @@ let
                       # asked where the set sits, and one holding it below its position is not walked.
                       if ty ? substructure || interface.importedHeldAt loc decl then go loc decl v else [ ];
               entries = go [ ] declTree cfg;
-              firstWins = listToAttrs entries;
+              merged = listToAttrs entries;
             in
             # The LAST entry of a name wins, as a `//` fold keeps it, and `listToAttrs` keeps the first:
             # two locs can print one name, since `showOption` prints a `<…>` segment verbatim. Only a
             # map that lost an entry to such a name is rebuilt reversed.
-            if length (attrNames firstWins) == length entries then firstWins else listToAttrs (reverse entries);
+            if length (attrNames merged) == length entries then merged else listToAttrs (reverse entries);
 
           identityHeld =
             if !warmActive then
