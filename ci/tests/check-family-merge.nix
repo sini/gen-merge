@@ -628,6 +628,15 @@ in
                 };
                 v = x: [ x ];
               };
+              # gen's container at both levels: the inner role is read off the outer role's tree, two roles down
+              listOfListOf = {
+                d = {
+                  G = gt.listOf (gt.listOf gt.int);
+                  A = t.listOf (t.listOf (rejInt 7));
+                  B = t.listOf (t.listOf (rejInt 9));
+                };
+                v = x: [ [ x ] ];
+              };
             };
             letters = w: builtins.filter (c: builtins.isString c && c != "") (builtins.split "" w);
           in
@@ -696,6 +705,7 @@ in
             {
               leaf = words "int";
               listOf = words "listOf";
+              listOfListOf = words "listOf";
             };
         };
       };
