@@ -391,6 +391,20 @@
             echo "met-cost $mode: $per thunks per option (bound $max)"
           done
 
+          # den-hoag-ghvsu (ADR-0032): a door return declared four times under nixpkgs' fold, as thunks per option between
+          # n = 100 and 200. Its closure owes the declaration once (the arriving declaration is its own, or is conjoined at
+          # the join's own payload), so the cost does not grow with the declarations; a closure that hands every step's
+          # relation the declaration again costs about 116 thunks more per added declaration. The bound is the landed
+          # figure, in THUNKS; an optimization lowers it in the same change.
+          thunksOf door-cost-100
+          [ "$val" = "100" ] || die door-cost-100 "expected value 100, got '$val'"
+          t100=$thunks
+          thunksOf door-cost-200
+          [ "$val" = "200" ] || die door-cost-200 "expected value 200, got '$val'"
+          per=$(((thunks - t100) / 100))
+          [ "$per" -le "341" ] || die door-cost-200 "a door return declared four times costs $per thunks per option, over its bound 341; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
+          echo "door-cost: $per thunks per option (bound 341)"
+
           # den-hoag-y4w78 (ADR-0032): the spine's cost over a chain of `listOf` over a submodule, as the thunks to read
           # its module set at depth 30 over depth 1. A gen container answers its own `getSubModules = null` once the rest
           # of its chain bottoms out, and for a container stating none of its own that field is its own walk of the rest,
@@ -458,8 +472,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "86" ] || die runner "expected 86 evaluations, ran $ran"
-          echo "tests-process: 86 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "88" ] || die runner "expected 88 evaluations, ran $ran"
+          echo "tests-process: 88 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

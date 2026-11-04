@@ -348,6 +348,44 @@ let
           [ { new = 3; } ]
       )
     )).config.new;
+  # n options, each declared four times through one door return over a foreign `addCheck` record and defined once,
+  # under nixpkgs' own fold: the door return's closure owes its declaration once, never at every step (den-hoag-ghvsu)
+  doorCost =
+    n:
+    let
+      nl = import "${nixpkgsSrc}/lib";
+      np = nl.types;
+      p = m.mkOptionType (
+        np.addCheck (np.listOf (np.enum [ "a" ])) (v: builtins.isList v && builtins.length v < 2)
+      );
+      names = builtins.genList (i: "o${toString i}") n;
+      decl = {
+        options = builtins.listToAttrs (
+          map (o: {
+            name = o;
+            value = nl.mkOption { type = p; };
+          }) names
+        );
+      };
+      c =
+        (nl.evalModules {
+          modules = [
+            decl
+            decl
+            decl
+            decl
+            {
+              config = builtins.listToAttrs (
+                map (o: {
+                  name = o;
+                  value = [ "a" ];
+                }) names
+              );
+            }
+          ];
+        }).config;
+    in
+    builtins.foldl' (a: o: builtins.seq (builtins.deepSeq c.${o} null) (a + 1)) 0 names;
   metCost =
     mode: n:
     let
@@ -618,6 +656,9 @@ let
     met-cost-s2-200 = metCost "s2" 200;
     met-cost-s3-100 = metCost "s3" 100;
     met-cost-s3-200 = metCost "s3" 200;
+    # den-hoag-ghvsu: a door return declared four times, read by the runner as thunks per option.
+    door-cost-100 = doorCost 100;
+    door-cost-200 = doorCost 200;
     # den-hoag-8tmd5: the staged declaration passes' cost, read by the runner as the thunks the rename
     # adds over the direct definition.
     staged-cost-plain = stagedCost false;
