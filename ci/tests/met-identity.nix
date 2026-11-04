@@ -255,7 +255,7 @@ in
         let
           m = decl heldOverGen;
         in
-        minted m // { holds = m.holds or false; };
+        minted m // { holds = m ? once; };
       expected = {
         ctor = "gen-merge.meet";
         self = true;

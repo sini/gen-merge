@@ -1024,8 +1024,8 @@ let
               m ? carries || (b._checkWitness or null) == (m._checkWitness or null) || interface.statesPayload m
             )
         )
-        && !(a ? holds)
-        && !(b ? holds)
+        && !(a ? once)
+        && !(b ? once)
       then
         m
       else
@@ -1556,7 +1556,7 @@ let
               # a held accumulator: this step holds its earlier and the accumulator's own unchecked fold, as main's step
               # held them (the debt is owed as a check only)
               // (
-                if acc.merged ? holds then
+                if acc.merged ? once then
                   {
                     answers = [
                       earlier

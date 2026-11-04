@@ -2001,7 +2001,9 @@ beside `int`, refuses 3 and serves 4 in both orders. Where the join is a type st
 relation (no `typeMergeRel`), a gen container declared beside it as itself (not returned through a door)
 is held by its own fold, so its element judgement is enforced though the join's merge never reads it. The fold held is the operand's own unchecked fold
 (what it merges by without a definition check), never a refusal of how a declaration is spelled. A record met holding
-stays held when it is merged again, in gen's engine and through its exported `typeMerge`. A pair that
+stays held when it is merged again, in gen's engine and through its exported `typeMerge`. Under nixpkgs' fold
+that held record is the accumulator: it names the declarations it met (`once`, the mark a held record is read by),
+and the next join owes each of them by its check, never the accumulator's own. A pair that
 holds pays each operand's fold: measured, about 19 thunks per redeclared option for `[port, int]`. A role the join gains is not a drop,
 so a freeform submodule unioned with an option-only one, or two `attrTag`s, merge as on nixpkgs. A
 join that is a gen record is compared with each operand as the import environment reads it, so a
@@ -2073,7 +2075,8 @@ states no coherent type at its own parameters (a v2 ad-hoc override it rebuilds)
 the ones its v2 merge was built at, read from that merge's `headError`. Where a foreign operand states no
 v2 merge and its functor rebuilds the operand itself, whose check is then the one owed, its parameters are
 judged by gen's own constructor for its functor name, since nixpkgs names a constructor by its functor
-name, over the element or alternatives it states: beside a widening `listOf`, `["a" "a"]` is refused for a
+name, over the element or alternatives it states; so is a coherent v2 foreign operand (an `addCheck` over
+nixpkgs' `listOf`), whose own `check` reads its own level only: beside a widening `listOf`, `["a" "a"]` is refused for a
 `listOf (enum ["a"])` whose check rejects it, and `["a" "b"]` is served. A foreign operand of a name gen
 does not recognise as one of its containers keeps its own check, an open defect. A container's element is one of
 its parameters, read as the meet reads its roles (an element type, or a pair of alternatives), so
@@ -2369,7 +2372,11 @@ own constructor's record, a foreign record stating no module set, a carried `ver
 that returns the caller's record. For a coherent record this is the identity. Its price is that the
 check runs again on each definition under a nixpkgs fold, because the door cannot tell a truthful
 mark from a forged one without comparing functions. Pinned by
-`ci/tests/door-as-itself-states-check.nix`.
+`ci/tests/door-as-itself-states-check.nix`. A door's return names itself as the declaration in its functor
+(`__declared`), so where it is declared before a gen container, the container's exported `typeMerge`, which
+nixpkgs' fold hands that functor, owes the return's check; a declaration the return's own closure conjoins at a
+join's own payload stays owed, relativised to that join, at every later join. Pinned by
+`ci/tests/door-return-closed.nix`.
 
 **A `//` copy's `verify` is read inside a foreign container.** A copy whose `verify` no completion
 vouches for (`interface.replacesVerify`) still publishes its base's `check`, and a nixpkgs container's
