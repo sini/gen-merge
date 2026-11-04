@@ -7713,8 +7713,9 @@ let
             a = metWith.anything.nodeAt r rewrites.tag.a i a;
             b = metWith.anything.nodeAt r rewrites.tag.b i b;
           };
-      witnessedCheck =
-        m: o:
+      witnessedCheck = metWith.anything.relativised null;
+      relativised =
+        _c: m: o:
         let
           s = importedPartner ((wrappedBase o).functor or null);
         in
