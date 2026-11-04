@@ -1304,7 +1304,7 @@ let
   # the next step asks the carrier (`__meetJoin`) and owes every declaration folded so far (`checkedTypes`, one per value), the
   # earlier one included. Only the fold knows a record's ROLE: a met record DECLARED (`type = options.x.type`) is a declaration,
   # owed whole by its own check, and keeps its own relation. Each folded declaration is owed relative to its own parameters,
-  # its form fixed at its own step (`interface.metWith.anything.ownRead`), and is owed by its check alone; a step over a held accumulator
+  # its form fixed at its own step (`interface.metWith.anything.seen`), and is owed by its check alone; a step over a held accumulator
   # holds its earlier operand and the accumulator itself, the pair a step with no debt holds (`answers`).
   mergeDeclaredTypes =
     ts:
@@ -1362,7 +1362,7 @@ let
         # THE DEBT AT EVERY ROLE: beside the forms (`ds`) and the declarations' keys (`ks`), a tree (`bNames`) whose node at the
         # top and at each role down (`el`, each `priorityBand`) is an owed set (`interface.metWith.anything.elemsOf`): the forms owed
         # there, each declaration added once, in the form its own step's meet owes it at that node (relativised against that
-        # step's join there where the join widens its tree, `interface.metWith.anything.ownRead`; where the join is its own tree,
+        # step's join there where the join widens its tree, `interface.metWith.anything.seen`; where the join is its own tree,
         # pending, relativised once by the first later join that widens it: ADR-0039 THE MEET, "relativised once, at the join
         # that widens it"). A step owes each node's set as one operand: it pays one extension per node it descends,
         # never the debt re-read per step and per role (`d` the form at the top, `completedLeaves` the step's join)
@@ -1371,12 +1371,16 @@ let
           let
             link = builtins.elemAt ks j;
             so = interface.metWith.anything.shapeOf interface.importedTypeWalkFuel raw;
-            # the declaration's tree compared with the step's join's ONCE: its own-step form here (`ownRead`'s test, read off
+            # the declaration's tree compared with the step's join's ONCE: its own-step form here (`seen`'s test, read off
             # it) and at every node down the debt tree (`structuring`); a tree stating no parameter at any node is relativised
             # at none (`false`), so it builds no comparison
-            sj = interface.metWith.anything.shapeOf interface.importedTypeWalkFuel completedLeaves;
             deep =
-              if interface.metWith.anything.stated so then interface.metWith.anything.node so sj else false;
+              if interface.metWith.anything.stated so then
+                interface.metWith.anything.node so (
+                  interface.metWith.anything.shapeOf interface.importedTypeWalkFuel completedLeaves
+                )
+              else
+                false;
             d =
               if deep != false && deep.holds && !deep.same then
                 interface.metWith.anything.witnessedCheck completedLeaves raw
@@ -1389,17 +1393,7 @@ let
             {
               ds = o.ds ++ [ d ];
               ks = o.ks ++ [ link ];
-              bNames =
-                structuring o.bNames
-                  (if deep != false && deep.same then interface.metWith.anything.pendingAt so raw else d)
-                  raw
-                  completedLeaves
-                  link
-                  deep
-                  {
-                    o = so;
-                    j = sj;
-                  };
+              bNames = structuring o.bNames d raw completedLeaves link deep;
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
@@ -1413,9 +1407,8 @@ let
         # the tree `t` extended by the declaration `raw`, owed as `x` at this node, over the step's join `completedLeaves` there
         # (`deep`: `raw`'s tree compared with `completedLeaves`' at this node, `interface.metWith.anything.node`; `null` walks;
         # `false`: no node of `raw`'s tree states a parameter, so none is relativised)
-        # (`trees`: `raw`'s tree and `completedLeaves`' at this node, handed down where `deep`'s node is, else `null`)
         structuring =
-          t: x: raw: completedLeaves: defaultOrderPriority: deep: trees:
+          t: x: raw: completedLeaves: defaultOrderPriority: deep:
           let
             protocolNames = y: if y == null then null else y.__meetJoin or y;
             markShared =
@@ -1424,35 +1417,29 @@ let
                 importLeaf
               else
                 let
-                  c = interface.metWith.anything.nodeAt completedLeaves deep allow raw;
-                  # the trees at this role are the parents' subtrees exactly where `nodeAt` read the comparison there
-                  ts =
-                    if trees != null && c != null && c != false then
-                      {
-                        o = builtins.elemAt trees.o.e allow;
-                        j = builtins.elemAt trees.j.e allow;
-                      }
+                  # the role's comparison read off this node's; where none is read there (a role that is not its payload
+                  # element), its own trees compared once, and read node by node below it
+                  c =
+                    if lintLib != null && interface.metWith.anything.nodeAt completedLeaves deep allow raw == null then
+                      interface.metWith.anything.node (interface.metWith.anything.shapeOf interface.importedTypeWalkFuel mergeConfigAttrs) (
+                        interface.metWith.anything.shapeOf interface.importedTypeWalkFuel lintLib
+                      )
                     else
-                      null;
+                      interface.metWith.anything.nodeAt completedLeaves deep allow raw;
                 in
                 structuring importLeaf (
                   if lintLib == null then
                     mergeConfigAttrs
                   else
-                    interface.metWith.anything.seenAt (if ts == null then null else ts.o) c lintLib mergeConfigAttrs
-                ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs) c ts;
+                    interface.metWith.anything.seen c lintLib mergeConfigAttrs
+                ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs) c;
             re = interface.carriedAt "element" raw;
             ra = interface.carriedAt "alternatives" raw;
             completeParametric =
               if completedLeaves == null then null else interface.carriedAt "alternatives" completedLeaves;
           in
           {
-            node = interface.metWith.anything.elemsOf (
-              if trees != null && completedLeaves != null then
-                interface.metWith.anything.commitAt trees.j t.node
-              else
-                interface.metWith.anything.commit completedLeaves t.node
-            ) x raw defaultOrderPriority;
+            node = interface.metWith.anything.elemsOf t.node x raw defaultOrderPriority deep completedLeaves;
             el = markShared t.el re (
               if completedLeaves == null then
                 null
@@ -1489,7 +1476,7 @@ let
         # step `i`'s record `r`, over operands `earlier` and `later`, behind the debt `checkedScope` (a
         # met accumulator's, or `elemsOf`'s, read against this step's join):
         # `r` itself where the step built no met record (the next step owes nothing), else `{ merged; checkedTypes; sealed }`,
-        # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.anything.ownRead`)
+        # the debt extended by this step's earlier in the form this step's meet owed it (`interface.metWith.anything.seen`)
         spelledRead =
           r: i: later: checkedScope:
           let
