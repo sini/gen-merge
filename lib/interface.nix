@@ -5997,20 +5997,12 @@ let
   # A join the witness declines because it RENAMES an operand is still answered: it is the step's
   # carrier, and the one caller (`modules.nix` `relationMergeWithin`) meets it with every operand
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
-  #
-  # The second operand's functor is handed without the declaration a door names in it (`__declared`): that slot
-  # tells a fold that owes only its accumulated carrier (nixpkgs') which declaration to owe, and this fold owes
-  # every declaration it folded itself, by its debt (`metWith`; ADR-0039 THE MEET, never its accumulated
-  # carrier's check). A door return's closure handed it would conjoin the declaration into the join's check, which
-  # the debt's own-step form reads as the join's domain (den-hoag-ghvsu). TWIN of `importedMergeReason`'s call
   importedMerge =
     a: b:
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
       (
         let
-          j = a.typeMerge (
-            if b.functor ? __declared then builtins.removeAttrs b.functor [ "__declared" ] else b.functor
-          );
+          j = a.typeMerge b.functor;
           # a join the step can apply states the check and the fold an operand states; any other answer is
           # no join (the test is inline, so the pair pays no binding for it)
           k =
@@ -6240,14 +6232,7 @@ let
   importedMergeReason =
     a: b:
     let
-      # the functor handed without a door's `__declared`, as `importedMerge` hands it (TWIN)
-      j =
-        if a ? typeMerge && b ? functor then
-          a.typeMerge (
-            if b.functor ? __declared then builtins.removeAttrs b.functor [ "__declared" ] else b.functor
-          )
-        else
-          null;
+      j = if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
       dropsA = j != null && joinRenames j a;
       dropsB = j != null && joinRenames j b;
       dropped =
@@ -7854,13 +7839,16 @@ let
           };
       # `o` owed relativised to its own parameters beside the join `m` (`relativised null`). A declaration's own-step form
       # (`seen`, `ownRead`, lib/modules.nix `defineEmbedded`) hands the comparison `c` of its tree with `m`'s, and where
-      # `c.same` the join's check is OR-ed into the stock: that join widened nothing, so on its domain the declaration is
+      # `c.same` the join's domain is OR-ed into the stock: that join widened nothing, so on its domain the declaration is
       # owed whole, and only a value a later, wider join admits beyond it is owed relativised (ADR-0039 THE MEET,
-      # "wherever a widening join reaches it"). The stock alone holds that only where it admits what `m` admits: a foreign
+      # "wherever a widening join reaches it"). The join's domain is its own stock (its functor rebuilt at its payload,
+      # as the operand's is), else its check: a join's check may also owe a declaration beside its domain (a door
+      # return's closure conjoins one, den-hoag-ghvsu), which read as the domain would exempt that declaration. The
+      # stock alone holds that only where it admits what `m` admits: a foreign
       # functor whose `type` rebuilds the refinement itself (`_: self`) makes the stock the declaration, its form
       # `c v || !(c v)`, and a second construction of the same name and payload as `m` would drop it (den-hoag-ob4k0).
       # `c.same` is `==` over the payload trees, so a payload holding a function is the same tree on Lix only (gen-merge
-      # AGENTS.md, the vocabulary row), and the OR reaches it there alone. `c.same` and `m`'s check are read only after the
+      # AGENTS.md, the vocabulary row), and the OR reaches it there alone. `c.same` and `m`'s domain are read only after the
       # stock rejects, so an admitted value forces neither
       witnessedCheck = metWith.anything.relativised null;
       relativised =
@@ -7912,7 +7900,18 @@ let
                   if c == null then
                     s.check
                   else
-                    (v: (s.check._fn or s.check) v || c.same && (m.check._fn or m.check) v)
+                    (
+                      v:
+                      (s.check._fn or s.check) v
+                      ||
+                        c.same
+                        && (
+                          let
+                            ms = importedPartner ((wrappedBase m).functor or null);
+                          in
+                          if isAttrs ms && ms ? check then ms.check v else (m.check._fn or m.check) v
+                        )
+                    )
                 )
               else if
                 ((m.functor or { }).payload or null) ? elemType
@@ -7986,7 +7985,15 @@ let
                         )
                     )
                 )
-                || c != null && c.same && (m.check._fn or m.check) v
+                ||
+                  c != null
+                  && c.same
+                  && (
+                    let
+                      ms = importedPartner ((wrappedBase m).functor or null);
+                    in
+                    if isAttrs ms && ms ? check then ms.check v else (m.check._fn or m.check) v
+                  )
               else if
                 s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
               then
@@ -7994,7 +8001,18 @@ let
                   if c == null then
                     s.check
                   else
-                    (v: (s.check._fn or s.check) v || c.same && (m.check._fn or m.check) v)
+                    (
+                      v:
+                      (s.check._fn or s.check) v
+                      ||
+                        c.same
+                        && (
+                          let
+                            ms = importedPartner ((wrappedBase m).functor or null);
+                          in
+                          if isAttrs ms && ms ? check then ms.check v else (m.check._fn or m.check) v
+                        )
+                    )
                 )
               else
                 v:
@@ -8018,7 +8036,15 @@ let
                     r.success && r.value
                   )
                 )
-                || c != null && c.same && (m.check._fn or m.check) v;
+                ||
+                  c != null
+                  && c.same
+                  && (
+                    let
+                      ms = importedPartner ((wrappedBase m).functor or null);
+                    in
+                    if isAttrs ms && ms ? check then ms.check v else (m.check._fn or m.check) v
+                  );
           }
         else
           o;

@@ -31,8 +31,8 @@
 #    check is owed (relativised to its own parameters: a coherent foreign stock beside a join stating an element is
 #    judged by gen's constructor for its name), and a later step of the same fold owes the declarations its
 #    accumulator folded, as checks, never the accumulator; each REFUSED row has a served control in its own order. In
-#    gen's engine, which owes every declaration by its debt, the slot is not read, so a door's return beside a door
-#    declared twice keeps the join's check as that join's domain.
+#    gen's engine, which owes every declaration by its debt, a declaration is owed on the join's domain (its own stock),
+#    never on a check a door's closure conjoined a declaration into, at the top or inside a nixpkgs container.
 # Red: every check cell with `imported` reverted to `t: r: r`; the `elemG` cells with `substructure` left out; the
 # widening cells with the join's check taken whole; the container widening cells outside the parameters with
 # membership read by the base's `check` alone; the verify and element cells with the closure built from the
@@ -46,8 +46,8 @@
 # stock read by its one-level `check` (`metWith`); the declared refusal at four declarations (`gM`) with a held
 # accumulator's exemption left without the declarations it met (`metWith`'s held record); the redeclared door's
 # refusals with its own closure owing nothing for a declaration it skips, and the other-check door's with the skip
-# keyed on the payload alone; the `refined` refusals with gen's engine handing a door's functor its declaration
-# (`importedMerge`).
+# keyed on the payload alone; the `refined` / `refinedIn` refusals with the own-step form reading the join's check as
+# its domain (`metWith`).
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -980,7 +980,8 @@ let
       beside = intStocks;
     };
     # a foreign `int` refinement whose functor rebuilds itself (`type = _: self`), beside gen's `int` (`G`) and a door
-    # over a second refinement (`B`): gen's own fold owes each by its debt, and the join's check is that join's domain
+    # over a second refinement (`B`): gen's own fold owes each by its debt, on the join's domain, never on a check the
+    # door's closure conjoined a declaration into
     refined = {
       p = rejInt 7;
       beside = {
@@ -991,6 +992,22 @@ let
         gt = {
           G = gt.int;
           B = gm.mkOptionType (rejInt 9);
+        };
+      };
+    };
+    # the same, each door inside a nixpkgs `listOf` (engine `din`), beside gen's `listOf int`: gen's engine meets the
+    # door's return through nixpkgs' own container relation
+    refinedIn = {
+      p = rejInt 7;
+      twin = np.listOf (rejInt 7);
+      beside = {
+        np = {
+          G = np.listOf np.int;
+          B = np.listOf (rejInt 9);
+        };
+        gt = {
+          G = gt.listOf gt.int;
+          B = np.listOf (gm.mkOptionType (rejInt 9));
         };
       };
     };
@@ -1052,11 +1069,14 @@ let
     seven = 7;
     nine = 9;
     eight = 8;
+    lseven = [ 7 ];
+    leight = [ 8 ];
   };
   # `cell`: "<partner> <engine> <order> <value>", the order a word over T, U (the stocks) and P (the partner); engines
   # `npg` (nixpkgs' fold over the door's return), `door` (gen's), `raw` (gen's, the record undoored), and `npg2` / `door2`
-  # through the second door (`types.mkOptionType`). `expect` is "REFUSED", "twin" or "control" (a twin cell the
-  # partner's own check admits, which never reaches the judge)
+  # through the second door (`types.mkOptionType`), and `din` (gen's, the door's return inside a nixpkgs `listOf`).
+  # `expect` is "REFUSED", "twin" or "control" (a twin cell the partner's own check admits, which never reaches the
+  # judge)
   ownJoin =
     expect: cell:
     let
@@ -1088,6 +1108,7 @@ let
           raw = h.p;
           npg2 = gt.mkOptionType h.p;
           door2 = gt.mkOptionType h.p;
+          din = np.listOf (gm.mkOptionType h.p);
         }
         .${engine};
       D = Df null;
@@ -1264,6 +1285,7 @@ let
       "refined door GBPP nine"
       "refined door2 GPBB seven"
       "refined door2 GBPP nine"
+      "refinedIn din GPB lseven"
     ]
     ++ map (ownJoin "twin") [
       "aC npg PT ab"
@@ -1300,6 +1322,7 @@ let
       "shortList npg TPR ok"
       "refined door GPBB eight"
       "refined door GBPP eight"
+      "refinedIn din GPB leight"
     ];
 in
 {
