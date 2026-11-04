@@ -1192,9 +1192,13 @@ let
               else
                 earlier ? retainedRelation.base && interface.keyed.base earlier.retainedRelation.base later
             )
-          # (a record whose check a wrapper rewrote carries its base's relation, which answers as the base does: it defers
-          # where the base does, and the record's own check is owed by the deferred step, which meets the later's join with
-          # both operands, `m`)
+            # a CARRIER whose check a wrapper rewrote carries its base's relation, which answers as the base does: it defers
+            # where the base does, and its own check is owed by the deferred step, which meets the later's join with both
+            # operands (`m`); a LEAF so rewritten is asked as main asks it (its deferral would meet a foreign join per step)
+            && (
+              earlier ? carries
+              || !(earlier ? _checkWitness && earlier ? check && earlier.check != earlier._checkWitness)
+            )
           then
             # the earlier relation's answer where it defers: a decider-only meet stated without its join, so the later
             # declaration's relation decides the step (`m`); a literal, not a binding, which every load would pay
