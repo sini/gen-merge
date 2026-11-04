@@ -56,12 +56,13 @@
 #   lib     : the library every module receives as its `lib` argument, as nixpkgs'
 #             `lib/modules.nix` is `{ lib }:` (den-hoag-61r97, owner-ruled S4). An instantiation
 #             PARAMETER, not a dependency: nothing here reads it. Omitted, it injects no `lib`, so a
-#             module reading one is refused by name as before. Given, it is what its modules receive;
-#             a given `null` is refused by name where a module reads it, as nixpkgs' module system
-#             refuses a null instance `lib` (a caller's `specialArgs.lib = null` is still delivered,
-#             as there). Whether it was given is the argument set's key, read through `args` (an
-#             already-interned name) and never by testing the value, which would force it
-#             (den-hoag-xrh86).
+#             module reading one is refused by name as before. Given, it is what its modules receive.
+#             A given `null` is no library: nixpkgs' module system, which reads its `lib` itself, aborts
+#             every evaluation over one; this engine reads it nowhere, so it refuses it by name exactly
+#             where a module reads it, and an evaluation no module of which reads `lib` is served. A
+#             caller's `specialArgs.lib = null` is still delivered, as there. Whether it was given is the
+#             argument set's key, read through `args` (an already-interned name) and never by testing
+#             the value, which would force it (den-hoag-xrh86).
 {
   prelude,
   types,
@@ -318,9 +319,9 @@ let
               memo
               strategies
               ;
-            # nixpkgs' module system refuses a null instance `lib` (`{ lib }:` reads it as a set); here the
-            # refusal is where a module reads it, the only place this engine's `lib` is used, so a given
-            # `lib` is never forced by the engine itself (den-hoag-xrh86)
+            # nixpkgs' module system aborts over a null instance `lib`, because it reads its `lib` as a set
+            # itself; here a module's read is the only use, so the refusal sits there and the engine never
+            # forces a given `lib` (den-hoag-xrh86)
             lib =
               if lib == null then
                 throw "gen-merge: a module read the module argument `lib', and this engine was instantiated with `lib = null', a null instance the module system it replaces refuses: instantiate it with a library set, or omit `lib' for an engine that hands its modules none"

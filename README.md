@@ -798,6 +798,7 @@ that adds no path level (`nullOr`) holds its instance at its own position. Pinne
   remerged = { <loc-string> = <reason>; };        # "edited-def" | "dirty-def <file>" | "dirty-decl <file>" | "freeform-dirty <file>"
   modules  = { clean = [ file… ]; dirty = [ … ]; edited = [ … ]; };   # the classification
   uncheckedConfig = <attrs>;                      # read through this evaluation's refusal (Result surface, below)
+  priorIdentities = <attrs>;                      # its minted identities by path, as the next warm evaluation's prior; read through the same refusal
   next     = <function: options → modules → evaluation>;  # the warm continuation (Result surface, below)
 }
 ```
@@ -826,8 +827,8 @@ result let a CHAINED warm (warmFrom = a warm result) reuse the freeform layer di
 `warmDecision` (the decision trace), `freeformConfig` / `freeformProv` (the freeform memo layers) and
 `warmDecision.next` (the warm continuation a `warmFrom` evaluation runs through) are internal fields —
 additive, threaded between chained evals, not part of the byte-identity contract. `optionDefs`,
-`freeformConfig` and `warmDecision.uncheckedConfig` carry definition values, so they are read through
-the evaluation's refusal, as `config` is: its identity verdict, then its unmatched-definition check.
+`freeformConfig`, `warmDecision.uncheckedConfig` and `warmDecision.priorIdentities` carry definition
+values, so they are read through the evaluation's refusal, as `config` is: its identity verdict, then its unmatched-definition check.
 `warmDecision.next o modules` is `evalModuleTree (o // { warmFrom = r; }) modules` over this result
 `r`, under the same door and its refusals, holding `r`'s record unread through `r`'s refusal: a warm
 evaluation runs through it, so a prior's refusal is never the next evaluation's.

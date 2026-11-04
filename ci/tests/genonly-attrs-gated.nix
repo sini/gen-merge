@@ -1,5 +1,6 @@
 # A REFUSED EVALUATION SERVES NO DEFINITION VALUE THROUGH ITS GEN-ONLY ATTRIBUTES (ADR-0039 (b′)). `optionDefs`,
-# `freeformConfig` and `warmDecision.uncheckedConfig` carry definition values, so they are read through the refusal
+# `freeformConfig`, `warmDecision.uncheckedConfig` and `warmDecision.priorIdentities` carry definition values, so they
+# are read through the refusal
 # the exported `config` carries, its identity verdict then `_orphanCheck`, as `options` is
 # (`./checked-result-seam.nix`). `provenance`, `undeclared`, `deprecations`, `freeformProv` and the warm decision's
 # metadata carry none and are served past the refusal, as README states.
@@ -63,16 +64,19 @@ in
           "optionDefs.realized.unmatched"
           "freeformConfig"
           "warmDecision.uncheckedConfig"
+          "warmDecision.priorIdentities"
         ];
         s2 = every "refused" [
           "optionDefs.values"
           "freeformConfig"
           "warmDecision.uncheckedConfig"
+          "warmDecision.priorIdentities"
         ];
         idm = every "refused" [
           "optionDefs.values"
           "freeformConfig"
           "warmDecision.uncheckedConfig"
+          "warmDecision.priorIdentities"
         ];
       }
       ++ table "clean" fx.clean {
@@ -80,6 +84,7 @@ in
           "optionDefs.values" = "served";
           "optionDefs.topDefs" = "served";
           "warmDecision.uncheckedConfig.a" = 5;
+          "warmDecision.priorIdentities" = { };
           "config.a" = 5;
         };
         s2 = {
@@ -87,11 +92,13 @@ in
             free = 7;
           };
           "warmDecision.uncheckedConfig.free" = 7;
+          "warmDecision.priorIdentities" = { };
           "config.free" = 7;
         };
         idm = {
           "optionDefs.values" = "served";
           "warmDecision.uncheckedConfig.name" = "igloo";
+          "warmDecision.priorIdentities" = true;
         };
       }
       ++ table "stated" fx.stated {

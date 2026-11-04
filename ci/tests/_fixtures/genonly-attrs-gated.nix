@@ -134,16 +134,19 @@ in
       "optionDefs.realized.unmatched" = state s1.optionDefs.realized.unmatched;
       freeformConfig = state s1.freeformConfig;
       "warmDecision.uncheckedConfig" = state s1.warmDecision.uncheckedConfig;
+      "warmDecision.priorIdentities" = state s1.warmDecision.priorIdentities;
     };
     s2 = {
       "optionDefs.values" = state s2.optionDefs.values;
       freeformConfig = state s2.freeformConfig;
       "warmDecision.uncheckedConfig" = state s2.warmDecision.uncheckedConfig;
+      "warmDecision.priorIdentities" = state s2.warmDecision.priorIdentities;
     };
     idm = {
       "optionDefs.values" = state idm.optionDefs.values;
       freeformConfig = state idm.freeformConfig;
       "warmDecision.uncheckedConfig" = state idm.warmDecision.uncheckedConfig;
+      "warmDecision.priorIdentities" = state idm.warmDecision.priorIdentities;
     };
   };
   # The refusal each source carries, the control on the reads above.
@@ -158,16 +161,21 @@ in
       "optionDefs.values" = state s1clean.optionDefs.values;
       "optionDefs.topDefs" = state s1clean.optionDefs.topDefs;
       "warmDecision.uncheckedConfig.a" = s1clean.warmDecision.uncheckedConfig.a;
+      "warmDecision.priorIdentities" = s1clean.warmDecision.priorIdentities;
       "config.a" = s1clean.config.a;
     };
     s2 = {
       "freeformConfig" = s2clean.freeformConfig;
       "warmDecision.uncheckedConfig.free" = s2clean.warmDecision.uncheckedConfig.free;
+      "warmDecision.priorIdentities" = s2clean.warmDecision.priorIdentities;
       "config.free" = s2clean.config.free;
     };
     idm = {
       "optionDefs.values" = state idmClean.optionDefs.values;
       "warmDecision.uncheckedConfig.name" = idmClean.warmDecision.uncheckedConfig.name;
+      # the root's minted identity, keyed by its path
+      "warmDecision.priorIdentities" =
+        idmClean.warmDecision.priorIdentities == { "" = idmClean.config.id_hash; };
     };
   };
   # The metadata, stated as served past the refusal (README: the provenance and deprecation records, and

@@ -48,11 +48,11 @@
   # argument `lib`, never read here. `declArgs` and `baseArgs` branch on `engine ? lib` between a literal
   # without the key, the one the engine built with none uses, and the same literal with `inherit lib;`
   # (den-hoag-61r97). The branch reads the argument set's KEY and never the value: a `lib == null` test
-  # forces the instance's top-level set, 523 thunks per process on every engine built with nixpkgs' `lib`
-  # (den-hoag-xrh86). The branch is written at each site, not let-bound, because a binding here is a thunk
-  # every engine load pays. A single literal with a null-able dynamic name reserves its slot, 32 B per
-  # instance for a key that serves nothing on the no-`lib` engine; the branch costs the duplicated
-  # literal text. `engine` is an already-interned name, so the binder costs its env slot and no symbol.
+  # forces the instance's top-level set on every engine built with nixpkgs' `lib` (den-hoag-xrh86). The
+  # branch is written at each site, not let-bound, because a binding here is a thunk every engine load
+  # pays. A single literal with a null-able dynamic name still reserves its slot in every instance, for a
+  # key that serves nothing on the no-`lib` engine; the branch costs the duplicated literal text. `engine`
+  # is an already-interned name, so the binder adds no symbol.
   lib ? null,
 }@engine:
 let
@@ -9772,8 +9772,8 @@ let
                 {
                   # EACH CONFIG IS WALKED WITH ITS OWN TREE. `warmFrom` is a prior result record, and its
                   # map is its own `warmDecision.priorIdentities`, walked over its own tree once and shared by
-                  # every warm evaluation started from it: recomputing it per evaluation re-walked the
-                  # prior's minted instances each time, O(instances) per override (den-hoag-xrh86).
+                  # every warm evaluation started from it, so the prior's minted instances are not re-walked
+                  # by each evaluation started from it (den-hoag-xrh86).
                   # Using `allOptions` for both would be wrong and silently so: a decl-side edit that
                   # ADDS an option is the discrimination the warm path exists to make, and one that
                   # REMOVES an option leaves the next tree under-describing the prior config.

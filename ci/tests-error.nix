@@ -38,6 +38,7 @@
   genMergeVocab,
   genMergeWith,
   genMergeWithScope,
+  genMergeWithLib,
   genTypes,
   genTypesFlake,
   genLinkset,
@@ -5499,6 +5500,28 @@ in
             };
         };
       };
+
+    # ── AN ENGINE INSTANTIATED WITH `lib = null` NAMES THE NULL INSTANCE WHERE A MODULE READS IT ──
+    # The value plane (`tests/lib-instantiation.nix`) asserts that the read is refused; this pins which
+    # refusal fired, so a null instance never reads as an engine built with no `lib` (den-hoag-xrh86).
+    flake.testsError.lib-instantiation = {
+      test-a-given-null-lib-is-refused-by-name-where-read = {
+        expr =
+          let
+            E = genMergeWithLib null;
+          in
+          builtins.seq
+            (E.evalModuleTree { } [
+              { options.weft = E.mkOption { type = E.types.str; }; }
+              ({ lib, ... }: { config.weft = builtins.seq lib "read"; })
+            ]).config.weft
+            null;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read the module argument `lib', and this engine was instantiated with `lib = null', a null instance the module system it replaces refuses: instantiate it with a library set, or omit `lib' for an engine that hands its modules none$";
+        };
+      };
+    };
 
     # ── WHICH REFUSAL FIRED WHEN A FOREIGN SELF-MERGE IS DECLINED ───────────────────────────────
     # The containment itself is a boolean and is asserted on the value plane
