@@ -1763,10 +1763,11 @@ let
     # `elementRelIn`): a partner of its key, gen or foreign, whose element `c`'s element answers as the decider only. The
     # element is asked of what its own relation states, as `lib/modules.nix` `bandedLeaves` asks the earlier: a container
     # through this predicate, gen `either` (`exact` beside `carries.alternatives`) by its key, a leaf by its own `later`;
-    # a gen partner's element is read off its own carrier. The partner is keyed as `c`'s relation keys it, on the key
-    # that relation states in its certificate (`typeMergeRel.exact`, the constructor's name), which every record
-    # carrying the relation carries: never `c.name` or its fold's label, which a `//` copy renaming `c` or rewriting its
-    # fold changes, nor its functor's (`attrsOf` is functor `attrsWith`). A relation stating no key keys nothing
+    # a gen partner's element is read off its own carrier, and a doored element by what its base states (`base`). The
+    # partner is keyed as `c`'s relation keys it, on the key that relation states in its certificate
+    # (`typeMergeRel.exact`, the constructor's name), which every record carrying the relation carries: never `c.name` or
+    # its fold's label, which a `//` copy renaming `c` or rewriting its fold changes, nor its functor's (`attrsOf` is
+    # functor `attrsWith`). A relation stating no key keys nothing
     container =
       c: other:
       isAttrs other
@@ -1787,14 +1788,35 @@ let
             else
               carriedAt "element" other
           )
-        else
-          c.carries.element ? typeMergeRel.later
-          && c.carries.element.typeMergeRel.later (
+        else if c.carries.element ? typeMergeRel.later then
+          c.carries.element.typeMergeRel.later (
             if other ? carries && !(other ? retainedRelation) then
               other.carries.element or null
             else
               carriedAt "element" other
           )
+        else
+          c.carries.element ? typeMergeRel.base
+          && keyed.base c.carries.element.typeMergeRel.base (
+            if other ? carries && !(other ? retainedRelation) then
+              other.carries.element or null
+            else
+              carriedAt "element" other
+          )
+      );
+    # a gen type `o` through the door (`importType`'s retained relation keeps it as `base`): what its own relation states
+    # about deferral, asked as `lib/modules.nix` `bandedLeaves` asks it; a record whose check a wrapper rewrote carries
+    # its base's relation, which speaks for the base, so it states none
+    base =
+      o: other:
+      !(o ? _checkWitness && o ? check && o.check != o._checkWitness)
+      && (
+        if o ? typeMergeRel.rewrites && o ? carries.element then
+          keyed.container o other
+        else if o ? typeMergeRel.exact && o ? carries.alternatives then
+          keyed.either other
+        else
+          o.typeMergeRel ? later && o.typeMergeRel.later other
       );
     # a later element chain that reaches, below gen element carriers alone, a node an earlier relation may answer as the
     # decider only (foreign or a door return); named by an identifier the library already interns, so no load pays a symbol
@@ -8322,22 +8344,7 @@ let
         && (joined ? merge || !(t ? merge || other ? merge));
       answer = if whole then joinKeepingOperands t other joined else null;
     in
-    # a descriptor gen constructed (a gen type through this door) keeps its own word on deferral: where its relation
-    # answers the partner as the DECIDER only (`lib/modules.nix` `bandedLeaves`' three-way question), so does the door,
-    # before its join, so the join its export builds as the decider is not taken as the earlier operand's decision
-    if
-      if t ? typeMergeRel.rewrites && t ? carries.element then
-        keyed.container t other
-      else if t ? typeMergeRel.exact && t ? carries.alternatives then
-        keyed.either other
-      else
-        t ? typeMergeRel.later && t.typeMergeRel.later other
-    then
-      {
-        refused = "`${nameOf t}' and `${nameOf other}'";
-        vetoes = false;
-      }
-    else if answer == null && whole then
+    if answer == null && whole then
       {
         merged = joined;
         meets = true;
@@ -8970,7 +8977,16 @@ let
           // (
             if statesRelation t then
               {
-                typeMergeRel = foreignRel t;
+                # a descriptor gen constructed keeps its relation beside the door's, so the step asks the door, as
+                # the earlier operand, what that relation states about deferral (`keyed.base`)
+                typeMergeRel =
+                  if t ? typeMergeRel.exact then
+                    {
+                      __functor = _: foreignRel t;
+                      base = t;
+                    }
+                  else
+                    foreignRel t;
                 retainedRelation = {
                   # Verbatim, and its NAME governs: what the author called this type is the merge
                   # identity the foreign engine keys on.

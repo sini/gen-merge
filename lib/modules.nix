@@ -1184,8 +1184,11 @@ let
                 interface.keyed.container earlier later
               else if earlier ? typeMergeRel.exact && earlier ? carries.alternatives then
                 interface.keyed.either later
+              else if earlier.typeMergeRel ? later then
+                earlier.typeMergeRel.later later
+              # a gen type through the door: what its own relation states, before the door's join is built
               else
-                earlier.typeMergeRel ? later && earlier.typeMergeRel.later later
+                earlier.typeMergeRel ? base && interface.keyed.base earlier.typeMergeRel.base later
             )
             # a record whose check a wrapper rewrote carries its base's relation, which speaks for the base, so it is asked as any
             # relation is (gen-types' `rewritesCheck`, restated inline: a call per step)
