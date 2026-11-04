@@ -1808,13 +1808,16 @@ let
     # about deferral, asked as `lib/modules.nix` `bandedLeaves` asks it, for a carrier (a container, or gen `either`). A
     # doored gen LEAF is asked as main asks it: read through its door it would answer as the raw leaf, whose deferred step
     # at three declarations and more refuses where nixpkgs serves (a refusal no door may add). A record whose check a
-    # wrapper rewrote carries its base's relation, which speaks for the base, so it states none
+    # wrapper rewrote answers as its base (its check owed by the deferred step's meet), and a closed one (`rebuildClosed`)
+    # states the key its relation's certificate carries
     base =
       o: other:
       o ? carries
-      && !(o ? _checkWitness && o ? check && o.check != o._checkWitness)
       && (
-        if o ? typeMergeRel.rewrites && o ? carries.element then
+        if
+          (o ? typeMergeRel.rewrites || builtins.isString (o.typeMergeRel.exact or null))
+          && o ? carries.element
+        then
           keyed.container o other
         else if o ? typeMergeRel.exact && o ? carries.alternatives then
           keyed.either other
@@ -4317,7 +4320,9 @@ let
             if x ? typeMergeRel.exact then
               {
                 typeMergeRel = {
-                  exact = true;
+                  # the certificate, with the key the relation states (`keyed.container`): the closure answers for the
+                  # same relation, its joins closed
+                  inherit (x.typeMergeRel) exact;
                   __functor =
                     _: f:
                     let
@@ -8989,17 +8994,9 @@ let
                   # a descriptor gen constructed is kept beside the relation, built once with the door, so the step
                   # asks the door, as the earlier operand, what that descriptor's own relation states about deferral
                   # (`keyed.base`), and the door's relation stays the lambda it is asked as everywhere. A door over a door
-                  # is read through to the same descriptor (a door is transparent: door = raw), unless the inner door's
-                  # check a wrapper rewrote, which speaks for its base (V1's exclusion, on every door of the chain)
-                  ${
-                    if
-                      t ? typeMergeRel.exact
-                      || t ? retainedRelation.base && !(t ? _checkWitness && t ? check && t.check != t._checkWitness)
-                    then
-                      "base"
-                    else
-                      null
-                  } =
+                  # is read through to the same descriptor (a door is transparent: door = raw), whatever check an inner
+                  # layer states: each layer's check is owed by the deferred step's meet, never by the key
+                  ${if t ? typeMergeRel.exact || t ? retainedRelation.base then "base" else null} =
                     if t ? typeMergeRel.exact then t else t.retainedRelation.base;
                   # Theirs where they derived one, the protocol's own default over their `functor'
                   # where they did not — resolved HERE, so nothing downstream re-asks the question.
