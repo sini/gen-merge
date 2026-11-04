@@ -1159,7 +1159,9 @@ let
           # carrier states a `later` of its own: a container is rebuilt at every gen × gen step, and a field on it is paid there
           if
             (
-              later ? retainedRelation
+              # a door over a gen container is read through its carried chain, as a gen container is: only a chain
+              # reaching a foreign node or a door return asks the predicate
+              later ? retainedRelation && !(later.retainedRelation ? base && later ? carries.element)
               || !(later ? typeMergeRel)
               ||
                 later ? carries.element
@@ -1188,7 +1190,7 @@ let
                 earlier.typeMergeRel.later later
               # a gen type through the door: what its own relation states, before the door's join is built
               else
-                earlier.typeMergeRel ? base && interface.keyed.base earlier.typeMergeRel.base later
+                earlier ? retainedRelation.base && interface.keyed.base earlier.retainedRelation.base later
             )
             # a record whose check a wrapper rewrote carries its base's relation, which speaks for the base, so it is asked as any
             # relation is (gen-types' `rewritesCheck`, restated inline: a call per step)

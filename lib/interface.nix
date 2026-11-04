@@ -1796,15 +1796,15 @@ let
               carriedAt "element" other
           )
         else
-          c.carries.element ? typeMergeRel.base
-          && keyed.base c.carries.element.typeMergeRel.base (
+          c.carries.element ? retainedRelation.base
+          && keyed.base c.carries.element.retainedRelation.base (
             if other ? carries && !(other ? retainedRelation) then
               other.carries.element or null
             else
               carriedAt "element" other
           )
       );
-    # a gen type `o` through the door (`importType`'s retained relation keeps it as `base`): what its own relation states
+    # a gen type `o` through the door (`importType` keeps it as `retainedRelation.base`): what its own relation states
     # about deferral, asked as `lib/modules.nix` `bandedLeaves` asks it; a record whose check a wrapper rewrote carries
     # its base's relation, which speaks for the base, so it states none
     base =
@@ -8977,20 +8977,15 @@ let
           // (
             if statesRelation t then
               {
-                # a descriptor gen constructed keeps its relation beside the door's, so the step asks the door, as
-                # the earlier operand, what that relation states about deferral (`keyed.base`)
-                typeMergeRel =
-                  if t ? typeMergeRel.exact then
-                    {
-                      __functor = _: foreignRel t;
-                      base = t;
-                    }
-                  else
-                    foreignRel t;
+                typeMergeRel = foreignRel t;
                 retainedRelation = {
                   # Verbatim, and its NAME governs: what the author called this type is the merge
                   # identity the foreign engine keys on.
                   inherit (t) functor;
+                  # a descriptor gen constructed is kept beside the relation, built once with the door, so the step
+                  # asks the door, as the earlier operand, what that descriptor's own relation states about deferral
+                  # (`keyed.base`), and the door's relation stays the lambda it is asked as everywhere
+                  ${if t ? typeMergeRel.exact then "base" else null} = t;
                   # Theirs where they derived one, the protocol's own default over their `functor'
                   # where they did not — resolved HERE, so nothing downstream re-asks the question.
                   typeMerge = callerTypeMerge t;
