@@ -4052,25 +4052,53 @@ let
           (
             if x ? typeMerge then
               {
+                # every join this closure answers owes `t`'s check (`close joined`). A declaration arriving with this
+                # return's own check at its own payload (the door declared again, by any door call over `t`) is owed
+                # already, and one arriving at the join's own payload is owed whole, since no join widens it (`metWith`:
+                # an operand whose tree is the join's is owed as it is), so it is conjoined where the closure owes `t`;
+                # either way the relation is handed the functor without the declaration, which its consumer would meet
+                # again. Each arm binds one join, as the closure did before it: a binding beside it is a thunk per step
                 typeMerge =
                   f:
-                  let
-                    # every join this closure answers owes `t`'s check (`close joined`), so a declaration arriving with
-                    # this return's own check at its own payload (the door declared again, by any door call over `t`;
-                    # both read in place and equal by pointer, so the step binds nothing) is owed already: the relation
-                    # is handed the functor nixpkgs states, without the declaration
-                    j =
-                      if
-                        isAttrs f
-                        && f ? __declared
-                        && f.__declared.check or null == res.check
-                        && f.payload or null == r.functor.payload or null
-                      then
-                        x.typeMerge bare
+                  if
+                    isAttrs f
+                    && f ? __declared
+                    && f.__declared.check or null == res.check
+                    && f.payload or null == r.functor.payload or null
+                  then
+                    (
+                      let
+                        j = x.typeMerge bare;
+                      in
+                      if j == null then null else close joined j
+                    )
+                  else if
+                    isAttrs f
+                    && f ? __declared
+                    && !(f.__declared ? verify)
+                    && f.payload or null == (x.functor or { }).payload or null
+                  then
+                    (
+                      let
+                        j = x.typeMerge (builtins.removeAttrs f [ "__declared" ]);
+                      in
+                      if j == null then
+                        null
                       else
-                        x.typeMerge f;
-                  in
-                  if j == null then null else close joined j;
+                        close {
+                          check = {
+                            __functor = _: v: joined.check v && (f.__declared.check.__verifyProjection or f.__declared.check) v;
+                            isV2MergeCoherent = true;
+                          };
+                        } j
+                    )
+                  else
+                    (
+                      let
+                        j = x.typeMerge f;
+                      in
+                      if j == null then null else close joined j
+                    );
               }
             else
               { }
