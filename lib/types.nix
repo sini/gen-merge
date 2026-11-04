@@ -2227,7 +2227,8 @@ let
         # (`interface.joinInRebuiltPartner`), as `elementRel`'s carve-out does for a container. The
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
         typeMergeRel = {
-          exact = true;
+          # the construction certificate, stating the key this relation decides on
+          exact = "either";
           __functor =
             _:
             (

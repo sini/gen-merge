@@ -1736,7 +1736,9 @@ let
                 meet leafJoin
               else
                 { refused = "`${nameOf t}' and a `${e.name}' partner whose relation declines the join"; }
-            else if sameKey != 0 && statesPayload other && ownJoin != null then
+            # a partner this type's NAME keys, stating a payload: the step-deciding meet in its relation; one the protocol key
+            # alone reaches answers as the decider only, below (V3)
+            else if sameKey == 1 && statesPayload other && ownJoin != null then
               meet ownJoin // { twinRefuses = true; }
             else if sameKey != 0 && statesPayload other then
               {
@@ -1831,12 +1833,13 @@ let
       t ? retainedRelation
       || !(t ? typeMergeRel)
       || t ? carries.element && !(t ? __derivation) && keyed.below t.carries.element;
-    # `either`'s: a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
+    # `either`'s: a FOREIGN partner keyed `either` that states no gen role (or a door over one, whose roles are the foreign
+    # record's), which the rebuilt partner's relation joins
     either =
       other:
       isAttrs other
       && (other ? retainedRelation || !(other ? typeMergeRel))
-      && !(other ? carries)
+      && (!(other ? carries) || other ? retainedRelation)
       && (
         (keyOf other) == "either" || !(other ? __derivation) && (other.functor.name or null) == "either"
       );
@@ -8331,12 +8334,12 @@ let
   # certificate that the join keeps each operand's check, so the step meets it with every operand, at
   # every role and at the top (`lib/modules.nix` `relationMergeWithin`, `declaredPair`), as
   # `importedMerge`'s raw join is met. A join that is not a type the step can apply is named.
-  # A refusal of a FOREIGN partner (raw, or stating its author's relation: `retainedRelation`) is this
-  # relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later operand, so the
-  # step does (`declaredPair`). Against a gen-native partner it still vetoes; that is a hold while the
-  # leaf relation, deciding, keys a stated-relation partner by type name where nixpkgs keys by functor
-  # name (den-hoag-6ylun), not a law. The predicate is spelled at each refusal, so an answer allocates
-  # nothing for it.
+  # A refusal is this relation's answer AS THE DECIDER only (`vetoes = false`): nixpkgs asks the later operand, so the
+  # step does (`declaredPair`). Against a gen-native partner keyed by this record's name (the key its relation states,
+  # else its name) it vetoes, as main does: that population is den-hoag-0ismp's, the name-keyed hold, and reads as main
+  # until that row lands; a hold while the leaf relation, deciding, keys a stated-relation partner by type name where
+  # nixpkgs keys by functor name (den-hoag-6ylun), not a law. The predicate is spelled at each refusal, so an answer
+  # allocates nothing for it.
   foreignRel =
     t: other:
     let
@@ -8362,7 +8365,17 @@ let
     else if joined != null && !whole then
       {
         refused = "`${nameOf t}' and `${nameOf other}', which the first type's own `functor' joins to a value that is not a type the step can apply: it lacks the `check' or the `merge' an operand states";
-        vetoes = false;
+        vetoes =
+          isAttrs other
+          && other ? typeMergeRel
+          && !(other ? retainedRelation)
+          &&
+            (
+              if builtins.isString (other.typeMergeRel.exact or null) then
+                other.typeMergeRel.exact
+              else
+                other.name or null
+            ) == (t.name or null);
       }
     else if answer == null then
       (
@@ -8373,12 +8386,32 @@ let
         if functorNames != null then
           {
             refused = "${pair}, which the first type's own `functor' (named `${functorNames.first}') does not reconcile with the second's (named `${functorNames.second}')";
-            vetoes = false;
+            vetoes =
+              isAttrs other
+              && other ? typeMergeRel
+              && !(other ? retainedRelation)
+              &&
+                (
+                  if builtins.isString (other.typeMergeRel.exact or null) then
+                    other.typeMergeRel.exact
+                  else
+                    other.name or null
+                ) == (t.name or null);
           }
         else
           {
             refused = "${pair}, which the first type's own `functor' does not reconcile";
-            vetoes = false;
+            vetoes =
+              isAttrs other
+              && other ? typeMergeRel
+              && !(other ? retainedRelation)
+              &&
+                (
+                  if builtins.isString (other.typeMergeRel.exact or null) then
+                    other.typeMergeRel.exact
+                  else
+                    other.name or null
+                ) == (t.name or null);
           }
       )
     else
