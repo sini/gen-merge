@@ -716,7 +716,9 @@ in
     # none, at two declarations and where two constructions of one name and payload meet first: the value either
     # rejects is rejected in every order, at the top and one role down. Two constructions of one enum tree met first
     # stay owed whole there, and the later join that widens the tree relativises each once: a member of neither's own
-    # parameters is served, a member one of them refuses is rejected.
+    # parameters is served, a member one of them refuses is rejected. Two distinct own-tree meetings in one fold: a
+    # declaration relativised at the join that widened it stays relativised when a later declaration meets that join's
+    # tree as its own, so a value outside its own parameters is served and one inside them its check rejects is rejected.
     test-a-declaration-is-owed-whole-until-a-join-widens-its-parameters =
       let
         both = nixpkgsLib.mkOptionType {
@@ -783,9 +785,44 @@ in
           "a"
           "b"
         ]) (v: v != "b");
+        two = {
+          X = t.addCheck (t.enum [
+            "a"
+            "x"
+          ]) (v: v != "x");
+          x = t.enum [
+            "a"
+            "x"
+          ];
+          Y = t.enum [
+            "a"
+            "x"
+            "b"
+          ];
+          y = t.enum [
+            "a"
+            "x"
+            "b"
+          ];
+        };
+        twoWords = [
+          "YyXx"
+          "YyxX"
+          "yYXx"
+          "yYxX"
+        ];
       in
       {
         expr = {
+          twoOwnTrees = builtins.listToAttrs (
+            map (w: {
+              name = w;
+              value = map (v: ev (map (c: two.${c}) (letters w)) v) [
+                "b"
+                "x"
+              ];
+            }) twoWords
+          );
           narrow = builtins.mapAttrs (
             _: s:
             builtins.listToAttrs (
@@ -825,6 +862,15 @@ in
               ];
         };
         expected = {
+          twoOwnTrees = builtins.listToAttrs (
+            map (w: {
+              name = w;
+              value = [
+                "MERGED enum / ACCEPTED"
+                "MERGED enum / REJECTED"
+              ];
+            }) twoWords
+          );
           narrow =
             let
               # at 7, 9 and 8: A's rejected value, B's, and the value both admit
