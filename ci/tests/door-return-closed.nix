@@ -30,7 +30,9 @@
 #    exported relation and hands it the return's functor only: the return names itself there as the declaration, so its
 #    check is owed (relativised to its own parameters: a coherent foreign stock beside a join stating an element is
 #    judged by gen's constructor for its name), and a later step of the same fold owes the declarations its
-#    accumulator folded, as checks, never the accumulator; each REFUSED row has a served control in its own order.
+#    accumulator folded, as checks, never the accumulator; each REFUSED row has a served control in its own order. In
+#    gen's engine, which owes every declaration by its debt, the slot is not read, so a door's return beside a door
+#    declared twice keeps the join's check as that join's domain.
 # Red: every check cell with `imported` reverted to `t: r: r`; the `elemG` cells with `substructure` left out; the
 # widening cells with the join's check taken whole; the container widening cells outside the parameters with
 # membership read by the base's `check` alone; the verify and element cells with the closure built from the
@@ -44,7 +46,8 @@
 # stock read by its one-level `check` (`metWith`); the declared refusal at four declarations (`gM`) with a held
 # accumulator's exemption left without the declarations it met (`metWith`'s held record); the redeclared door's
 # refusals with its own closure owing nothing for a declaration it skips, and the other-check door's with the skip
-# keyed on the payload alone.
+# keyed on the payload alone; the `refined` refusals with gen's engine handing a door's functor its declaration
+# (`importedMerge`).
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -976,7 +979,55 @@ let
       p = shortListAt np.int;
       beside = intStocks;
     };
+    # a foreign `int` refinement whose functor rebuilds itself (`type = _: self`), beside gen's `int` (`G`) and a door
+    # over a second refinement (`B`): gen's own fold owes each by its debt, and the join's check is that join's domain
+    refined = {
+      p = rejInt 7;
+      beside = {
+        np = {
+          G = np.int;
+          B = rejInt 9;
+        };
+        gt = {
+          G = gt.int;
+          B = gm.mkOptionType (rejInt 9);
+        };
+      };
+    };
   };
+  # check-family-merge's `rejInt`: a foreign `int` refinement whose relation answers only its own kind
+  rejInt =
+    n:
+    let
+      self = nl.mkOptionType {
+        name = "int";
+        check = x: isInt x && x != n;
+        merge = nl.options.mergeEqualOption;
+        functor = nl.types.defaultFunctor "int" // {
+          type = _: self;
+          payload = {
+            refined = true;
+          };
+          binOp = a: _b: a;
+        };
+        typeMerge =
+          f:
+          if
+            f.name == "int"
+            && (
+              f.payload == null
+              ||
+                f.payload == {
+                  refined = true;
+                }
+            )
+          then
+            self
+          else
+            null;
+      };
+    in
+    self;
   shortListAt =
     elem:
     np.mkOptionType {
@@ -998,6 +1049,9 @@ let
       j = "a";
     };
     x = "x";
+    seven = 7;
+    nine = 9;
+    eight = 8;
   };
   # `cell`: "<partner> <engine> <order> <value>", the order a word over T, U (the stocks) and P (the partner); engines
   # `npg` (nixpkgs' fold over the door's return), `door` (gen's), `raw` (gen's, the record undoored), and `npg2` / `door2`
@@ -1205,6 +1259,11 @@ let
       "shortC npg RPR long"
       "shortList npg TPR long"
       "shortList npg TTPR long"
+      # gen's engine, the door's return beside a door declared twice: the join's check is not the declaration's debt
+      "refined door GPBB seven"
+      "refined door GBPP nine"
+      "refined door2 GPBB seven"
+      "refined door2 GBPP nine"
     ]
     ++ map (ownJoin "twin") [
       "aC npg PT ab"
@@ -1239,6 +1298,8 @@ let
       "aC npg TPR a"
       "shortC npg TPR ok"
       "shortList npg TPR ok"
+      "refined door GPBB eight"
+      "refined door GBPP eight"
     ];
 in
 {

@@ -5997,12 +5997,20 @@ let
   # A join the witness declines because it RENAMES an operand is still answered: it is the step's
   # carrier, and the one caller (`modules.nix` `relationMergeWithin`) meets it with every operand
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
+  #
+  # The second operand's functor is handed without the declaration a door names in it (`__declared`): that slot
+  # tells a fold that owes only its accumulated carrier (nixpkgs') which declaration to owe, and this fold owes
+  # every declaration it folded itself, by its debt (`metWith`; ADR-0039 THE MEET, never its accumulated
+  # carrier's check). A door return's closure handed it would conjoin the declaration into the join's check, which
+  # the debt's own-step form reads as the join's domain (den-hoag-ghvsu). TWIN of `importedMergeReason`'s call
   importedMerge =
     a: b:
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
       (
         let
-          j = a.typeMerge b.functor;
+          j = a.typeMerge (
+            if b.functor ? __declared then builtins.removeAttrs b.functor [ "__declared" ] else b.functor
+          );
           # a join the step can apply states the check and the fold an operand states; any other answer is
           # no join (the test is inline, so the pair pays no binding for it)
           k =
@@ -6232,7 +6240,14 @@ let
   importedMergeReason =
     a: b:
     let
-      j = if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+      # the functor handed without a door's `__declared`, as `importedMerge` hands it (TWIN)
+      j =
+        if a ? typeMerge && b ? functor then
+          a.typeMerge (
+            if b.functor ? __declared then builtins.removeAttrs b.functor [ "__declared" ] else b.functor
+          )
+        else
+          null;
       dropsA = j != null && joinRenames j a;
       dropsB = j != null && joinRenames j b;
       dropped =
