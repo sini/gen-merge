@@ -1165,237 +1165,476 @@ let
             }
           ) stated.sealed
       )
-        {
-          name = "submodule";
-          unroledNested = if freeform == null then { } else { freeformType = freeform; };
-          shorthandOnlyDefinesConfig = true;
-          # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
-          # nobody added to, which is what makes the union below total.
-          specialArgs = args;
-          ${if refusedKeys == [ ] then null else "refusedArgs"} = refusedKeys;
-          # THE INLET. A caller's args are forwarded and served as nixpkgs serves them; the one key
-          # refused here is one this type states, by presence, where the caller states it.
-          withArgs =
-            a:
-            if refusedKeys == [ ] || all (k: !(a ? ${k})) refusedKeys then
-              mkSubmodule partial ctor refusedKeys stated (args // a) mods
-            else
-              throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
-          inherit admits nests;
-          # With no surviving definition the value is the module set evaluated over NO definitions, as
-          # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
-          # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
-          # would there and an undefined sub-option refuses by name. Inside an evaluation that is the child
-          # with an empty seed, read through the threaded fold (`threadedAs` rebinds this field). Read
-          # here, no gen evaluation holds the type, so it is the bridge's one root evaluation, as the
-          # export's `emptyValue` reads it (den-hoag-n6dh7 item 1, narrowed by den-hoag-8qenh).
-          whenEmpty.value =
-            (interface.bridge.emptyChild {
-              position = [ ];
-              inherit nests;
-              loc = [ ];
-              defs = [ ];
-            }).config;
-          # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
-          # relation unions rather than merges: an option declared as a submodule in two modules ends up
-          # declaring the union of what they declare. On a nullary relation the second declaration would
-          # be discarded silently.
-          carries.moduleSet = mods;
-          recarry =
-            c:
-            mkSubmodule partial ctor refusedKeys null args (
-              if isAttrs c && c ? moduleSet then
-                c.moduleSet
-              else
-                throw (
-                  "gen-merge: the option type `submodule' states a `carries' gen cannot read at `moduleSet': `carries' "
-                  + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
-                  + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
-                  + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
-                  + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
-                  + "together in `types.mkType'"
-                )
-            );
-          typeMergeRel = {
-            exact = true;
-            __functor =
-              _:
-              (
-                other:
-                if !(isAttrs other) || (keyOf other) != "submodule" then
-                  { refused = "`submodule' and `${nameOf other}'"; }
-                # One name, two folds: a partial tree's value is definitions and a full one's is data, so a
-                # mixed redeclaration has no union, and the later declaration would decide which it serves.
-                else if (other.nests.partial or false) != partial then
-                  {
-                    refused = "`${ctor}' and `${if partial then "submodule" else "partialSubmodule"}'";
-                  }
-                # The one datum two `submodule' declarations must agree on beside the name: whether an
-                # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
-                # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
-                else if (other.shorthandOnlyDefinesConfig or true) != true then
-                  {
-                    refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
-                  }
+        # The record is written twice, once per answer to whether the type refuses a key: a null-named
+        # attribute still reserves its slot in every record, so the record of a type refusing nothing states
+        # no `refusedArgs` at all, and the branch costs the duplicated text (the 61r97 form, as `declArgs`).
+        # The two literals are the same text but for that one line, held so by
+        # `ci/tests/refused-args-literals.nix`.
+        (
+          if refusedKeys == [ ] then
+            {
+              name = "submodule";
+              unroledNested = if freeform == null then { } else { freeformType = freeform; };
+              shorthandOnlyDefinesConfig = true;
+              # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
+              # nobody added to, which is what makes the union below total.
+              specialArgs = args;
+              # THE INLET. A caller's args are forwarded and served as nixpkgs serves them; the one key
+              # refused here is one this type states, by presence, where the caller states it.
+              withArgs =
+                a:
+                if refusedKeys == [ ] || all (k: !(a ? ${k})) refusedKeys then
+                  mkSubmodule partial ctor refusedKeys stated (args // a) mods
                 else
-                  let
-                    partnerMods = interface.importedOffered "moduleSet" other;
-                    # A partner's base module args are read off the descriptor attribute directly, for the
-                    # reason stated above: it is an ordinary attribute and survives export.
-                    #
-                    # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
-                    # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
-                    # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
-                    # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
-                    # with themselves: no conflict can be seen there and the left declaration's args win
-                    # silently. That path is not reachable with a gen partner anyway — `importedCarried`
-                    # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
-                    # its own parameters beside it, so the arm below hands that pair to the partner's
-                    # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
-                    partnerArgs = other.specialArgs or { };
-                    # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
-                    # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
-                    # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
-                    # its WHNF on every evaluator, where comparing two selections walked the whole value
-                    # on Nix and Determinate. A key only one declaration states never conflicts.
-                    slots = builtins.zipAttrsWith (_: vs: vs) [
-                      args
-                      partnerArgs
-                    ];
-                    conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
-                  in
-                  if partnerMods == null then
-                    let
-                      joined = interface.joinInStatedRelation {
-                        name = "submodule";
-                        payload = interface.moduleSetPayload {
-                          modules = mods;
-                          specialArgs = args;
-                          shorthandOnlyDefinesConfig = true;
-                        };
-                        # a stated key the foreign partner supplies is answered by name, before its join
-                        keys = refusedKeys;
-                      } other;
-                    in
-                    if joined ? refused then
-                      { refused = refusedArgsReason "a redeclaration" joined.refused; }
-                    else if joined == null then
+                  throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
+              inherit admits nests;
+              # With no surviving definition the value is the module set evaluated over NO definitions, as
+              # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
+              # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
+              # would there and an undefined sub-option refuses by name. Inside an evaluation that is the child
+              # with an empty seed, read through the threaded fold (`threadedAs` rebinds this field). Read
+              # here, no gen evaluation holds the type, so it is the bridge's one root evaluation, as the
+              # export's `emptyValue` reads it (den-hoag-n6dh7 item 1, narrowed by den-hoag-8qenh).
+              whenEmpty.value =
+                (interface.bridge.emptyChild {
+                  position = [ ];
+                  inherit nests;
+                  loc = [ ];
+                  defs = [ ];
+                }).config;
+              # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
+              # relation unions rather than merges: an option declared as a submodule in two modules ends up
+              # declaring the union of what they declare. On a nullary relation the second declaration would
+              # be discarded silently.
+              carries.moduleSet = mods;
+              recarry =
+                c:
+                mkSubmodule partial ctor refusedKeys null args (
+                  if isAttrs c && c ? moduleSet then
+                    c.moduleSet
+                  else
+                    throw (
+                      "gen-merge: the option type `submodule' states a `carries' gen cannot read at `moduleSet': `carries' "
+                      + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                      + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                      + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                      + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                      + "together in `types.mkType'"
+                    )
+                );
+              typeMergeRel = {
+                exact = true;
+                __functor =
+                  _:
+                  (
+                    other:
+                    if !(isAttrs other) || (keyOf other) != "submodule" then
+                      { refused = "`submodule' and `${nameOf other}'"; }
+                    # One name, two folds: a partial tree's value is definitions and a full one's is data, so a
+                    # mixed redeclaration has no union, and the later declaration would decide which it serves.
+                    else if (other.nests.partial or false) != partial then
                       {
-                        refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                        refused = "`${ctor}' and `${if partial then "submodule" else "partialSubmodule"}'";
+                      }
+                    # The one datum two `submodule' declarations must agree on beside the name: whether an
+                    # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
+                    # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
+                    else if (other.shorthandOnlyDefinesConfig or true) != true then
+                      {
+                        refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
                       }
                     else
-                      { merged = joined; }
-                  # A key either declaration refuses and either one's args supply: the union would serve the
-                  # caller's value where the type states it never does. The partner's set is read off its
-                  # descriptor attribute, as its args are, never off a foreign `binOp`'s payload.
-                  else if
-                    (refusedKeys != [ ] || other ? refusedArgs)
-                    && refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs) != [ ]
-                  then
-                    {
-                      refused = refusedArgsReason "a redeclaration" (
-                        refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs)
-                      );
-                    }
-                  # The module sets UNION, so the args must too — and two declarations that disagree about
-                  # what a base module argument IS are a conflict this library names rather than resolves by
-                  # declaration order.
-                  else if conflicting != [ ] then
-                    {
-                      refused =
-                        "two `submodule' declarations stating different values for the base module argument"
-                        + (if length conflicting == 1 then " " else "s ")
-                        + concatStringsSep ", " (map (k: "`${k}'") conflicting);
-                    }
-                  # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
-                  # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
-                  # the union nixpkgs builds. Pinned by
-                  # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
-                  else if refusedKeys == [ ] && !(other ? refusedArgs) then
-                    { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (partnerMods ++ mods); }
+                      let
+                        partnerMods = interface.importedOffered "moduleSet" other;
+                        # A partner's base module args are read off the descriptor attribute directly, for the
+                        # reason stated above: it is an ordinary attribute and survives export.
+                        #
+                        # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
+                        # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
+                        # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
+                        # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
+                        # with themselves: no conflict can be seen there and the left declaration's args win
+                        # silently. That path is not reachable with a gen partner anyway — `importedCarried`
+                        # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
+                        # its own parameters beside it, so the arm below hands that pair to the partner's
+                        # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
+                        partnerArgs = other.specialArgs or { };
+                        # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
+                        # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
+                        # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
+                        # its WHNF on every evaluator, where comparing two selections walked the whole value
+                        # on Nix and Determinate. A key only one declaration states never conflicts.
+                        slots = builtins.zipAttrsWith (_: vs: vs) [
+                          args
+                          partnerArgs
+                        ];
+                        conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
+                      in
+                      if partnerMods == null then
+                        let
+                          joined = interface.joinInStatedRelation {
+                            name = "submodule";
+                            payload = interface.moduleSetPayload {
+                              modules = mods;
+                              specialArgs = args;
+                              shorthandOnlyDefinesConfig = true;
+                            };
+                            # a stated key the foreign partner supplies is answered by name, before its join
+                            keys = refusedKeys;
+                          } other;
+                        in
+                        if joined ? refused then
+                          { refused = refusedArgsReason "a redeclaration" joined.refused; }
+                        else if joined == null then
+                          {
+                            refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                          }
+                        else
+                          { merged = joined; }
+                      # A key either declaration refuses and either one's args supply: the union would serve the
+                      # caller's value where the type states it never does. The partner's set is read off its
+                      # descriptor attribute, as its args are, never off a foreign `binOp`'s payload.
+                      else if
+                        (refusedKeys != [ ] || other ? refusedArgs)
+                        && refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs) != [ ]
+                      then
+                        {
+                          refused = refusedArgsReason "a redeclaration" (
+                            refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs)
+                          );
+                        }
+                      # The module sets UNION, so the args must too — and two declarations that disagree about
+                      # what a base module argument IS are a conflict this library names rather than resolves by
+                      # declaration order.
+                      else if conflicting != [ ] then
+                        {
+                          refused =
+                            "two `submodule' declarations stating different values for the base module argument"
+                            + (if length conflicting == 1 then " " else "s ")
+                            + concatStringsSep ", " (map (k: "`${k}'") conflicting);
+                        }
+                      # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
+                      # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
+                      # the union nixpkgs builds. Pinned by
+                      # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
+                      else if refusedKeys == [ ] && !(other ? refusedArgs) then
+                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (partnerMods ++ mods); }
+                      else
+                        {
+                          merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
+                            partnerMods ++ mods
+                          );
+                        }
+                  );
+              };
+              substructure = {
+                # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
+                #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
+                # Reads `.options` off a standalone evaluation of the fold's own modules, with no defs
+                # supplied, as nixpkgs' `extendModules { prefix }` does: the two halves cannot disagree
+                # about what a submodule declares, no instance-authored value is forced, and the
+                # evaluated record (a nesting option's `value` included) can evaluate its own nested
+                # trees.
+                declares =
+                  prefix:
+                  (core.evalModuleTreeClosed {
+                    modules = mods ++ [ noCheckForDocsModule ];
+                    inherit prefix;
+                    specialArgs = args;
+                    check = null;
+                  }).options;
+                freeformType =
+                  (core.evalModuleTreeNestedClosed {
+                    modules = mods ++ [ noCheckForDocsModule ];
+                    inherit (nests.empty) prefix specialArgs check;
+                  })._module.freeformType;
+                modules = mods;
+                # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT
+                # append: a foreign module system builds the replacement as this type's OWN modules
+                # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
+                # second time, double-evaluating the base module (a readOnly config value — e.g.
+                # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
+                # A stated construction keeps its statement and seals the supplied set beside it: the set is
+                # caller content the statement does not cover (ADR-0034, per component).
+                # Decided once per type, not per rebuild: an argument computed per call is a thunk per call.
+                rebuild =
+                  if stated == null then
+                    m: mkSubmodule partial ctor refusedKeys null args m
                   else
-                    {
-                      merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
-                        partnerMods ++ mods
-                      );
-                    }
-              );
-          };
-          substructure = {
-            # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
-            #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
-            # Reads `.options` off a standalone evaluation of the fold's own modules, with no defs
-            # supplied, as nixpkgs' `extendModules { prefix }` does: the two halves cannot disagree
-            # about what a submodule declares, no instance-authored value is forced, and the
-            # evaluated record (a nesting option's `value` included) can evaluate its own nested
-            # trees.
-            declares =
-              prefix:
-              (core.evalModuleTreeClosed {
-                modules = mods ++ [ noCheckForDocsModule ];
-                inherit prefix;
-                specialArgs = args;
-                check = null;
-              }).options;
-            freeformType =
-              (core.evalModuleTreeNestedClosed {
-                modules = mods ++ [ noCheckForDocsModule ];
-                inherit (nests.empty) prefix specialArgs check;
-              })._module.freeformType;
-            modules = mods;
-            # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT
-            # append: a foreign module system builds the replacement as this type's OWN modules
-            # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
-            # second time, double-evaluating the base module (a readOnly config value — e.g.
-            # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
-            # A stated construction keeps its statement and seals the supplied set beside it: the set is
-            # caller content the statement does not cover (ADR-0034, per component).
-            # Decided once per type, not per rebuild: an argument computed per call is a thunk per call.
-            rebuild =
-              if stated == null then
-                m: mkSubmodule partial ctor refusedKeys null args m
-              else
-                m:
-                mkSubmodule partial ctor refusedKeys (
-                  stated
-                  // {
-                    args =
-                      tags:
-                      stated.args tags
+                    m:
+                    mkSubmodule partial ctor refusedKeys (
+                      stated
                       // {
-                        rebuilt = {
-                          sealed = true;
-                        };
-                      };
-                    sealed = stated.sealed ++ [
-                      {
-                        path = [ "rebuilt" ];
-                        value = m;
+                        args =
+                          tags:
+                          stated.args tags
+                          // {
+                            rebuilt = {
+                              sealed = true;
+                            };
+                          };
+                        sealed = stated.sealed ++ [
+                          {
+                            path = [ "rebuilt" ];
+                            value = m;
+                          }
+                        ];
                       }
-                    ];
-                  }
-                ) args m;
-          };
-          # A definition outside `admits` is refused here, naming the option and the file, before the
-          # module reader would refuse it without either (`refusingOutside`).
-          #
-          # `threaded` is the same fold reading the tree through the evaluation's accessor instead of
-          # evaluating it here (den-hoag-n6dh7 item 1, α's sibling): the site names this tree's `nests`,
-          # the fold's `loc` and its `defs`. It tests no `undeclared`, as the called form does not: the
-          # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
-          mergeDefs = {
-            __functor = _: called;
-            threaded =
-              ev: loc: defs:
-              if all (d: admits d.value) defs then
-                (ev.child {
-                  inherit (ev) position;
-                  inherit nests loc defs;
-                }).config
-              else
-                refusingOutside "submodule" admits null loc defs;
-          };
-        }
+                    ) args m;
+              };
+              # A definition outside `admits` is refused here, naming the option and the file, before the
+              # module reader would refuse it without either (`refusingOutside`).
+              #
+              # `threaded` is the same fold reading the tree through the evaluation's accessor instead of
+              # evaluating it here (den-hoag-n6dh7 item 1, α's sibling): the site names this tree's `nests`,
+              # the fold's `loc` and its `defs`. It tests no `undeclared`, as the called form does not: the
+              # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
+              mergeDefs = {
+                __functor = _: called;
+                threaded =
+                  ev: loc: defs:
+                  if all (d: admits d.value) defs then
+                    (ev.child {
+                      inherit (ev) position;
+                      inherit nests loc defs;
+                    }).config
+                  else
+                    refusingOutside "submodule" admits null loc defs;
+              };
+            }
+          else
+            {
+              name = "submodule";
+              unroledNested = if freeform == null then { } else { freeformType = freeform; };
+              shorthandOnlyDefinesConfig = true;
+              # What a caller supplied through `withArgs`, stated in gen's own words. Empty for a submodule
+              # nobody added to, which is what makes the union below total.
+              specialArgs = args;
+              refusedArgs = refusedKeys;
+              # THE INLET. A caller's args are forwarded and served as nixpkgs serves them; the one key
+              # refused here is one this type states, by presence, where the caller states it.
+              withArgs =
+                a:
+                if refusedKeys == [ ] || all (k: !(a ? ${k})) refusedKeys then
+                  mkSubmodule partial ctor refusedKeys stated (args // a) mods
+                else
+                  throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
+              inherit admits nests;
+              # With no surviving definition the value is the module set evaluated over NO definitions, as
+              # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
+              # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
+              # would there and an undefined sub-option refuses by name. Inside an evaluation that is the child
+              # with an empty seed, read through the threaded fold (`threadedAs` rebinds this field). Read
+              # here, no gen evaluation holds the type, so it is the bridge's one root evaluation, as the
+              # export's `emptyValue` reads it (den-hoag-n6dh7 item 1, narrowed by den-hoag-8qenh).
+              whenEmpty.value =
+                (interface.bridge.emptyChild {
+                  position = [ ];
+                  inherit nests;
+                  loc = [ ];
+                  defs = [ ];
+                }).config;
+              # What this type is parameterised BY. A submodule carries a MODULE SET, which is why its
+              # relation unions rather than merges: an option declared as a submodule in two modules ends up
+              # declaring the union of what they declare. On a nullary relation the second declaration would
+              # be discarded silently.
+              carries.moduleSet = mods;
+              recarry =
+                c:
+                mkSubmodule partial ctor refusedKeys null args (
+                  if isAttrs c && c ? moduleSet then
+                    c.moduleSet
+                  else
+                    throw (
+                      "gen-merge: the option type `submodule' states a `carries' gen cannot read at `moduleSet': `carries' "
+                      + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                      + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                      + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                      + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                      + "together in `types.mkType'"
+                    )
+                );
+              typeMergeRel = {
+                exact = true;
+                __functor =
+                  _:
+                  (
+                    other:
+                    if !(isAttrs other) || (keyOf other) != "submodule" then
+                      { refused = "`submodule' and `${nameOf other}'"; }
+                    # One name, two folds: a partial tree's value is definitions and a full one's is data, so a
+                    # mixed redeclaration has no union, and the later declaration would decide which it serves.
+                    else if (other.nests.partial or false) != partial then
+                      {
+                        refused = "`${ctor}' and `${if partial then "submodule" else "partialSubmodule"}'";
+                      }
+                    # The one datum two `submodule' declarations must agree on beside the name: whether an
+                    # attribute-set definition is config (this one) or a module (the tree-as-a-type), nixpkgs'
+                    # `shorthandOnlyDefinesConfig'. The reason names it, since the names agree.
+                    else if (other.shorthandOnlyDefinesConfig or true) != true then
+                      {
+                        refused = "`submodule' reading an attribute-set definition as config, and a `submodule' reading every definition as a module";
+                      }
+                    else
+                      let
+                        partnerMods = interface.importedOffered "moduleSet" other;
+                        # A partner's base module args are read off the descriptor attribute directly, for the
+                        # reason stated above: it is an ordinary attribute and survives export.
+                        #
+                        # ★ SCOPED TO GEN'S OWN MERGE PATH — `lib/modules.nix`'s `mergeTypes`, which is what the
+                        # declaration stratum consults when one option is declared twice. A FOREIGN engine merges
+                        # two declarations through `functor.binOp` (`lib/interface.nix:665-675`) instead, and
+                        # that arm recarries BOTH operands off the LEFT type, so it compares this type's args
+                        # with themselves: no conflict can be seen there and the left declaration's args win
+                        # silently. That path is not reachable with a gen partner anyway — `importedCarried`
+                        # requires a payload stating the module set ALONE, and a foreign `submoduleWith` states
+                        # its own parameters beside it, so the arm below hands that pair to the partner's
+                        # relation (`interface.joinInStatedRelation`), which reads both payloads whole.
+                        partnerArgs = other.specialArgs or { };
+                        # Each shared key is decided on the two declarations' OWN slots (`slotsDiffer`):
+                        # `zipAttrsWith` collects each set's attribute cell itself, so two declarations
+                        # passing one bound value (one nixpkgs `lib`, one function) agree after forcing only
+                        # its WHNF on every evaluator, where comparing two selections walked the whole value
+                        # on Nix and Determinate. A key only one declaration states never conflicts.
+                        slots = builtins.zipAttrsWith (_: vs: vs) [
+                          args
+                          partnerArgs
+                        ];
+                        conflicting = filter (k: slotsDiffer slots.${k}) (attrNames slots);
+                      in
+                      if partnerMods == null then
+                        let
+                          joined = interface.joinInStatedRelation {
+                            name = "submodule";
+                            payload = interface.moduleSetPayload {
+                              modules = mods;
+                              specialArgs = args;
+                              shorthandOnlyDefinesConfig = true;
+                            };
+                            # a stated key the foreign partner supplies is answered by name, before its join
+                            keys = refusedKeys;
+                          } other;
+                        in
+                        if joined ? refused then
+                          { refused = refusedArgsReason "a redeclaration" joined.refused; }
+                        else if joined == null then
+                          {
+                            refused = "`submodule' and a partner whose module set is stated beside parameters this one does not carry, under no relation of its own";
+                          }
+                        else
+                          { merged = joined; }
+                      # A key either declaration refuses and either one's args supply: the union would serve the
+                      # caller's value where the type states it never does. The partner's set is read off its
+                      # descriptor attribute, as its args are, never off a foreign `binOp`'s payload.
+                      else if
+                        (refusedKeys != [ ] || other ? refusedArgs)
+                        && refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs) != [ ]
+                      then
+                        {
+                          refused = refusedArgsReason "a redeclaration" (
+                            refusedArgsHit (refusedArgsUnion refusedKeys other) (args // partnerArgs)
+                          );
+                        }
+                      # The module sets UNION, so the args must too — and two declarations that disagree about
+                      # what a base module argument IS are a conflict this library names rather than resolves by
+                      # declaration order.
+                      else if conflicting != [ ] then
+                        {
+                          refused =
+                            "two `submodule' declarations stating different values for the base module argument"
+                            + (if length conflicting == 1 then " " else "s ")
+                            + concatStringsSep ", " (map (k: "`${k}'") conflicting);
+                        }
+                      # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
+                      # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
+                      # the union nixpkgs builds. Pinned by
+                      # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
+                      else if refusedKeys == [ ] && !(other ? refusedArgs) then
+                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (partnerMods ++ mods); }
+                      else
+                        {
+                          merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
+                            partnerMods ++ mods
+                          );
+                        }
+                  );
+              };
+              substructure = {
+                # What a consumer learns from this type with NO value in hand, the twin of `mergeDefs`:
+                #   declares = prefix: (evalModuleTree { inherit prefix; } modules).options
+                # Reads `.options` off a standalone evaluation of the fold's own modules, with no defs
+                # supplied, as nixpkgs' `extendModules { prefix }` does: the two halves cannot disagree
+                # about what a submodule declares, no instance-authored value is forced, and the
+                # evaluated record (a nesting option's `value` included) can evaluate its own nested
+                # trees.
+                declares =
+                  prefix:
+                  (core.evalModuleTreeClosed {
+                    modules = mods ++ [ noCheckForDocsModule ];
+                    inherit prefix;
+                    specialArgs = args;
+                    check = null;
+                  }).options;
+                freeformType =
+                  (core.evalModuleTreeNestedClosed {
+                    modules = mods ++ [ noCheckForDocsModule ];
+                    inherit (nests.empty) prefix specialArgs check;
+                  })._module.freeformType;
+                modules = mods;
+                # Rebuild this type over the module set a consumer supplies. REPLACES `mods` — it does NOT
+                # append: a foreign module system builds the replacement as this type's OWN modules
+                # (relocated) plus any sibling declarations, so concatenating would re-include `mods` a
+                # second time, double-evaluating the base module (a readOnly config value — e.g.
+                # gen-schema's `den.schema._kindNames` — then throws "defined 2 times").
+                # A stated construction keeps its statement and seals the supplied set beside it: the set is
+                # caller content the statement does not cover (ADR-0034, per component).
+                # Decided once per type, not per rebuild: an argument computed per call is a thunk per call.
+                rebuild =
+                  if stated == null then
+                    m: mkSubmodule partial ctor refusedKeys null args m
+                  else
+                    m:
+                    mkSubmodule partial ctor refusedKeys (
+                      stated
+                      // {
+                        args =
+                          tags:
+                          stated.args tags
+                          // {
+                            rebuilt = {
+                              sealed = true;
+                            };
+                          };
+                        sealed = stated.sealed ++ [
+                          {
+                            path = [ "rebuilt" ];
+                            value = m;
+                          }
+                        ];
+                      }
+                    ) args m;
+              };
+              # A definition outside `admits` is refused here, naming the option and the file, before the
+              # module reader would refuse it without either (`refusingOutside`).
+              #
+              # `threaded` is the same fold reading the tree through the evaluation's accessor instead of
+              # evaluating it here (den-hoag-n6dh7 item 1, α's sibling): the site names this tree's `nests`,
+              # the fold's `loc` and its `defs`. It tests no `undeclared`, as the called form does not: the
+              # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
+              mergeDefs = {
+                __functor = _: called;
+                threaded =
+                  ev: loc: defs:
+                  if all (d: admits d.value) defs then
+                    (ev.child {
+                      inherit (ev) position;
+                      inherit nests loc defs;
+                    }).config
+                  else
+                    refusingOutside "submodule" admits null loc defs;
+              };
+            }
+        )
     );
 
   # The published constructor — signature UNCHANGED, and args-less by construction. A caller adds
