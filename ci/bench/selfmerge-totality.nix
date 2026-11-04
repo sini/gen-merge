@@ -71,6 +71,13 @@ let
     memo = genMemo;
     scope = genScope;
     types = genTypes;
+    # The two knots `ci/flake.nix`'s `genMergeCore` ties: `lib/types.nix` over this core, and the
+    # published leaves (lazily: nothing reads them while the vocabulary is being built).
+    strategies = import ../../lib/types.nix {
+      inherit prelude core;
+      types = genTypes;
+    };
+    leaves = gm.types;
   };
   gm = import ../../lib {
     inherit prelude;

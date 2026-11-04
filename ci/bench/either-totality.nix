@@ -86,6 +86,18 @@ let
   # rather than repointed at a construct that would answer differently.
   preIsValid = ty: v: if ty ? verify then ty.verify v == null else true;
 
+  # THE LIST MEMBER'S MERGE AS IT WAS, carried for the same reason. Until 205bf0c ("structural
+  # containers refuse a wrong-kind definition by name, catchably") `listOf` merged a string by
+  # concatenating it, an evaluator type error no `tryEval` catches; since then the library's `listOf`
+  # refuses it by `throw`. The pre arms borrowed the library's member, so that landing turned their
+  # abort into a caught refusal and the sweep read INVALID (den-hoag-ci-bench-ungated-either-totality-oa9rz).
+  # The pre-remediation state is this merge, never the library's current one.
+  memberAPre = gm.mkOptionType {
+    name = "listOfPre";
+    check = _: true;
+    merge = _loc: defs: builtins.concatLists (map (d: d.value) defs);
+  };
+
   # THE PRE-REMEDIATION MERGE, carried here rather than remembered: the member comes from the FIRST
   # definition's shape and every definition is then merged through it. Parameterised by the
   # membership answer, because the two halves of the rule are separable and the sweep separates them.
@@ -97,7 +109,7 @@ let
       merge =
         loc: defs:
         gm.mergeDefs loc (
-          if defs != [ ] && valid memberA (builtins.head defs).value then memberA else memberB
+          if defs != [ ] && valid memberA (builtins.head defs).value then memberAPre else memberB
         ) defs;
     };
 

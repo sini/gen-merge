@@ -3596,12 +3596,18 @@ per unsupported construct), `interface` (the protocol boundary: T3, the C-1/C-2/
 predicates, and a mounted-in-real-`lib.evalModules` arm with its mutants), `type-merge-relation`
 (C-4 — the engine's dispatch basis), `linkset` (the declared-disjointness export merge), and `purity`.
 
-Two instruments sit outside the suites, because what they read is not an in-language assertion:
+Six sweeps sit outside the suites, because what they read is not an in-language assertion: an exit
+code (an abort that escapes `tryEval`) or a thunk count against a bound. Each is read by one evaluator
+at a time, so the process plane (`ci --tests-process`) runs all six in every CI column, under that
+column's evaluator, and a sweep reading INVALID or over its bound reds the column:
 
 ```bash
-./ci/bench/either-totality.sh    # an EXIT CODE: an abort that escapes `tryEval` and kills a runner
-./ci/bench/interface-cost.sh     # `nrThunks`: what the foreign protocol costs per type instance
+./ci/bench/either-totality.sh      # an EXIT CODE: an abort that escapes `tryEval` and kills a runner
+./ci/bench/selfmerge-totality.sh   # an EXIT CODE: the foreign self-merge the boundary declines
+./ci/bench/interface-cost.sh       # `nrThunks`: what the foreign protocol costs per type instance
 ./ci/bench/reserved-scope-cost.sh  # `nrThunks`: what `__reservedKeys` costs per scoped entry, against its bound
+./ci/bench/declat-cost.sh          # `nrThunks`: a seed's declaration address, linear in depth and breadth
+./ci/bench/redeclaration-cost.sh   # `nrThunks` and bytes: a redeclaration's marginal cost, against its bounds
 ```
 
 Running the suites directly through the nix-unit CLI (`nix-unit --flake ./ci#tests`, or the devshell

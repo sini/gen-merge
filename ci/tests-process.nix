@@ -26,6 +26,26 @@
       hmBar = import ./hm-bar.nix { inherit pkgs inputs; };
       # den-hoag-stage4-flake-parts-3qh4l stage 4: flake-parts' suite, templates and two real flakes on this engine.
       fpBar = import ./fp-bar.nix { inherit pkgs inputs; };
+      # den-hoag-ci-bench-ungated-either-totality-oa9rz: every `ci/bench` sweep, gated here, because three of the
+      # six had decayed to INVALID while no plane ran them. Each is an exit-code or thunk-count instrument whose
+      # reading is evidence only for the evaluator that took it, so it runs in every column, under that column's
+      # `nix-instantiate`, from a tree laid out as the repository is (each script runs from the root and reads
+      # `lib/`, the root and ci flake locks and its own `.nix`).
+      benches = [
+        "declat-cost"
+        "either-totality"
+        "interface-cost"
+        "redeclaration-cost"
+        "reserved-scope-cost"
+        "selfmerge-totality"
+      ];
+      benchTree = pkgs.runCommand "gen-merge-bench-tree" { } ''
+        mkdir -p $out/ci
+        cp -r ${../lib} $out/lib
+        cp ${../flake.lock} $out/flake.lock
+        cp ${./flake.lock} $out/ci/flake.lock
+        cp -r ${./bench} $out/ci/bench
+      '';
     in
     {
       apps.modules-sh.program = "${modulesSh}/bin/modules-sh";
@@ -41,6 +61,8 @@
               pkgs.coreutils
               pkgs.gnugrep
               pkgs.gnused
+              # the bench sweeps' arithmetic
+              pkgs.python3
             ]
           }:$PATH
           export cells=${./tests-process-cells.nix} libSrc=${../lib}
@@ -80,6 +102,21 @@
           ${hmBar}/bin/hm-bar || hmBarRc=$?
           fpBarRc=0
           ${fpBar}/bin/fp-bar || fpBarRc=$?
+          # The bench sweeps, each held to the end as the bars are. The counted ones read the serial options
+          # through GEN_SERIAL_EVAL, as under the ci devshell. 0/0 is a false pass, so the count is held too.
+          export GEN_SERIAL_EVAL=${inputs.gen-harness.lib.serialEval { inherit pkgs; }}
+          benchRc=0 benchRan=0
+          for b in ${pkgs.lib.concatStringsSep " " benches}; do
+            rc=0
+            ${pkgs.bash}/bin/bash ${benchTree}/ci/bench/$b.sh || rc=$?
+            benchRan=$((benchRan + 1))
+            echo "tests-process: bench $b exited $rc"
+            [ "$rc" -eq 0 ] || benchRc=1
+          done
+          [ "$benchRan" -eq ${toString (builtins.length benches)} ] || {
+            echo "tests-process: CONTROL FAILED: ran $benchRan bench sweeps, want ${toString (builtins.length benches)}" >&2
+            benchRc=2
+          }
         ''
         + ''
           export NIX_STATE_DIR=$TMPDIR/nix-state NIX_LOG_DIR=$TMPDIR/nix-log
@@ -466,7 +503,8 @@
           [ "$modulesRc" -eq 0 ] || exit "$modulesRc"
           [ "$nixosBarRc" -eq 0 ] || exit "$nixosBarRc"
           [ "$hmBarRc" -eq 0 ] || exit "$hmBarRc"
-          exit "$fpBarRc"
+          [ "$fpBarRc" -eq 0 ] || exit "$fpBarRc"
+          exit "$benchRc"
         ''
       );
     };
