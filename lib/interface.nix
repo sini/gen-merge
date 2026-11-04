@@ -4331,20 +4331,10 @@ let
                     let
                       j = x.typeMergeRel f;
                     in
-                    # every reader of this slot meets a FOREIGN join it serves with the closure as an operand: gen's step
-                    # (`lib/modules.nix` `mergeTypesBy`, `relationMergeWithin`) and the export's `typeMerge` for a record
-                    # stating no `retainedRelation.typeMerge` (`exportType`, met with `[ exported d ]`), so the closure is
-                    # owed there already; closed, the join would carry this closure into the met carrier and every later
-                    # step would close it again
-                    if
-                      isAttrs (j.merged or null)
-                      && !(
-                        !(j.merged ? typeMergeRel)
-                        && !(t ? verify)
-                        && (j.merged.getSubModules or null) == null
-                        && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
-                      )
-                    then
+                    # a join is served closed: a reader that does not meet it (den-hoag-0ismp's name-keyed hold, keying a
+                    # foreign join named as a gen leaf) would otherwise drop the closure's check; this slot served a FOREIGN
+                    # join unclosed on the ground that every reader meets it (FK v3's M4), which that hold falsifies
+                    if isAttrs (j.merged or null) then
                       j
                       // {
                         merged = close joined j.merged;
@@ -4360,16 +4350,8 @@ let
                   let
                     j = x.typeMergeRel f;
                   in
-                  # as the exact slot above: a foreign join the step meets is served unclosed
-                  if
-                    isAttrs (j.merged or null)
-                    && !(
-                      !(j.merged ? typeMergeRel)
-                      && !(t ? verify)
-                      && (j.merged.getSubModules or null) == null
-                      && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
-                    )
-                  then
+                  # as the exact slot above: the join is served closed
+                  if isAttrs (j.merged or null) then
                     j
                     // {
                       merged = close joined j.merged;
