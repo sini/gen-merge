@@ -1759,17 +1759,26 @@ let
                 vetoes = false;
               };
       };
-    # a container `c` whose relation meets its element pair one role down (`element` below): a partner of its key, gen or
-    # foreign, whose element `c`'s element answers as the decider only, a leaf element by its own `later` inline; a gen
-    # partner's element is read off its own carrier
+    # a container `c` whose relation meets its element pair one role down (`typeMergeRel.rewrites`, `lib/types.nix`
+    # `elementRelIn`): a partner of its key, gen or foreign, whose element `c`'s element answers as the decider only. The
+    # element is asked of what its own relation states, as `lib/modules.nix` `bandedLeaves` asks the earlier: a container
+    # through this predicate, gen `either` (`exact` beside `carries.alternatives`) by its key, a leaf by its own `later`;
+    # a gen partner's element is read off its own carrier
     container =
       c: other:
       isAttrs other
       && !(other ? __derivation)
       && (other.name or null) == c.name
       && (
-        if c.carries.element ? carries then
-          keyed.element c.carries.element (
+        if c.carries.element ? typeMergeRel.rewrites && c.carries.element ? carries.element then
+          keyed.container c.carries.element (
+            if other ? carries && !(other ? retainedRelation) then
+              other.carries.element or null
+            else
+              carriedAt "element" other
+          )
+        else if c.carries.element ? typeMergeRel.exact && c.carries.element ? carries.alternatives then
+          keyed.either (
             if other ? carries && !(other ? retainedRelation) then
               other.carries.element or null
             else
@@ -1784,17 +1793,6 @@ let
               carriedAt "element" other
           )
       );
-    # a relation's deferral of `other`, asked of what the relation states about itself: a relation meeting its element
-    # pair one role down (`rewrites`, `lib/types.nix` `elementRelIn`) through its element (`container`), gen's relation
-    # over alternatives (`exact`, gen `either`) by its key (`either`), any other by its own `later`
-    element =
-      t: other:
-      if t ? typeMergeRel.rewrites && t ? carries.element then
-        keyed.container t other
-      else if t ? typeMergeRel.exact && t ? carries.alternatives then
-        keyed.either other
-      else
-        t ? typeMergeRel.later && t.typeMergeRel.later other;
     # a later element chain that reaches, below gen element carriers alone, a node an earlier relation may answer as the
     # decider only (foreign or a door return); named by an identifier the library already interns, so no load pays a symbol
     below =

@@ -1155,7 +1155,7 @@ let
           # return) through gen element carriers, read inline two roles down and walked past them (`interface.keyed.below`):
           # the earlier container's join would be built on its element's decider-only answer and never read. A gen leaf, gen
           # `either` or a derivation in the chain is answered by no earlier relation as the decider only, so the chain stops
-          # there. A carrier's deferral is asked of what its relation states about itself (`interface.keyed.element`), and no
+          # there. A carrier's deferral is asked of what its relation states about itself (`rewrites`, `exact`, `later`), and no
           # carrier states a `later` of its own: a container is rebuilt at every gen × gen step, and a field on it is paid there
           if
             (
