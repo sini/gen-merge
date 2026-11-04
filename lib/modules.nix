@@ -1152,7 +1152,7 @@ let
         then
           # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked. A gen
           # container's later is asked too where its element chain reaches a node a relation can answer so (foreign or a door
-          # return) through gen element carriers, read inline two roles down and walked past them (`interface.keyed.reaches`):
+          # return) through gen element carriers, read inline two roles down and walked past them (`interface.keyed.below`):
           # the earlier container's join would be built on its element's decider-only answer and never read. A gen leaf, gen
           # `either` or a derivation in the chain is answered by no earlier relation as the decider only, so the chain stops
           # there. A carrier's deferral is asked of what its relation states about itself (`interface.keyed.element`), and no
@@ -1175,7 +1175,7 @@ let
                       ||
                         later.carries.element.carries.element ? carries.element
                         && !(later.carries.element.carries.element ? __derivation)
-                        && interface.keyed.reaches later.carries.element.carries.element.carries.element
+                        && interface.keyed.below later.carries.element.carries.element.carries.element
                     )
                 )
             )

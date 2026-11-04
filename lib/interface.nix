@@ -1795,13 +1795,13 @@ let
         keyed.either other
       else
         t ? typeMergeRel.later && t.typeMergeRel.later other;
-    # a later element chain that reaches a node an earlier relation may answer as the decider only (foreign or a door
-    # return) through gen element carriers alone
-    reaches =
+    # a later element chain that reaches, below gen element carriers alone, a node an earlier relation may answer as the
+    # decider only (foreign or a door return); named by an identifier the library already interns, so no load pays a symbol
+    below =
       t:
       t ? retainedRelation
       || !(t ? typeMergeRel)
-      || t ? carries.element && !(t ? __derivation) && keyed.reaches t.carries.element;
+      || t ? carries.element && !(t ? __derivation) && keyed.below t.carries.element;
     # `either`'s: a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
     either =
       other:
