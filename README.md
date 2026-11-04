@@ -2040,9 +2040,12 @@ carries its own construction's check alone, so an author record reusing gen's re
 check (`lib.mkOptionType { name = "int"; check = c; … } // { inherit (types.int) typeMergeRel; }`), a gen
 record holding another construction's relation, and two `defineType`s of one name each owe their own
 check beside `int` or each other, in either order and under a container: `[int, B]` refuses a value `B`'s
-check rejects, where nixpkgs serves it. So do two constructions of one foreign refinement with one name and
-payload, whose functor rebuilds the refinement itself, beside `int` at three declarations or more: each
-refinement's rejected value is refused in every order, at the top and under gen's containers to any depth.
+check rejects, where nixpkgs serves it. So does a foreign refinement whose functor rebuilds the refinement
+itself or a type narrower than itself, beside `int`, alone or beside a second construction of its name and
+payload: its rejected value is refused in every order, at the top and under gen's containers to any depth.
+A declaration met first by a join of its own tree is owed whole until a later join widens its parameters,
+and is relativised to them once there; a join stating no parameters where the declaration states some
+widens none.
 The parameter test does not ask whose parameters the answer
 states, so an answer stating a payload that is not a join over this operand's parameters still certifies
 it: beside `number` or `pathLike`, whose own answer states one, and under a container relation
