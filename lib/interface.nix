@@ -1763,12 +1763,14 @@ let
     # `elementRelIn`): a partner of its key, gen or foreign, whose element `c`'s element answers as the decider only. The
     # element is asked of what its own relation states, as `lib/modules.nix` `bandedLeaves` asks the earlier: a container
     # through this predicate, gen `either` (`exact` beside `carries.alternatives`) by its key, a leaf by its own `later`;
-    # a gen partner's element is read off its own carrier
+    # a gen partner's element is read off its own carrier. The partner is keyed as `c`'s relation keys it, on the
+    # constructor's name, which `c`'s fold carries (`mergeDefs.container`) and a `//` copy renaming `c` keeps with its
+    # relation; never `c.name`, which such a copy changes, nor its functor's (`attrsOf` is functor `attrsWith`)
     container =
       c: other:
       isAttrs other
       && !(other ? __derivation)
-      && (other.name or null) == c.name
+      && (other.name or null) == (c.mergeDefs.container or null)
       && (
         if c.carries.element ? typeMergeRel.rewrites && c.carries.element ? carries.element then
           keyed.container c.carries.element (
