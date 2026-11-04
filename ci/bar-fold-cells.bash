@@ -12,9 +12,16 @@ if [ "$name" = modules-sh ]; then idf='.key | [.kind, .env, .argv] | tojson' pre
 row=$(jq -cn 'first(inputs | select(.perf != null and (.perf | length) >= 3))' "$reg")
 pass=$(jq -rn "first(inputs | select(.verdict == \"PASS\")) | $idf" "$reg")
 [ -n "$row" ] && [ -n "$pass" ] || { echo "FAIL $name fixture: no perf row with three columns, or no PASS row"; exit 1; }
+# The row's columns: one of each evaluator family, and a second Determinate one.
+col() { jq -r --arg f "$1" '[.perf | keys[] | select(contains($f))] | .[-1]' <<<"$row"; }
+det=$(col '(Determinate ') lix=$(col '(Lix') nix=$(col '(Nix)')
+det2=$(jq -r --arg d "$det" '[.perf | keys[] | select(contains("(Determinate ") and . != $d)] | .[0]' <<<"$row")
+for e in "$det" "$lix" "$nix" "$det2"; do
+  [ -n "$e" ] && [ "$e" != null ] || { echo "FAIL $name fixture: the perf row lacks a column of each family and two Determinate ones"; exit 1; }
+done
 # log <file> <column> <jq over the column's perf entry>: one column's log, its PERF line for the row.
 log() {
-  jq -r --argjson c "$2" --arg bar "$name" ".key as \$k | .perf | to_entries | .[\$c] | $3
+  jq -r --arg c "$2" --arg bar "$name" ".key as \$k | .perf | to_entries | map(select(.key == \$c)) | .[0] | $3
     | \"2026-11-03T00:00:00.0000000Z PERF \(\$bar) \" + ({key: \$k, evaluator: .key, gen: .value.gen, ref: .value.ref} | tojson)" \
     <<<"$row" >"$w/$1"
 }
@@ -30,12 +37,15 @@ fold() {
 }
 say() { if [ "$2" = ok ]; then echo "PASS $name $1"; else echo "FAIL $name $1: $2 (rc $rc; $(tail -1 "$w/$1.err"))"; fi; }
 
-for c in 0 1 2; do
-  log "c$c.log" "$c" .
-  log "ms$c.log" "$c" '.value.gen.ms += 1 | .value.ref.ms += 1'
+c=0
+for e in "$det" "$lix" "$nix"; do
+  log "c$c.log" "$e" .
+  log "ms$c.log" "$e" '.value.gen.ms += 1 | .value.ref.ms += 1'
   { cat "$w/c$c.log"; echo "2026-11-03T00:00:00.0000000Z REGRESSED ${pre}PASS -> FAIL $pass"; } >"$w/r$c.log"
+  c=$((c + 1))
 done
-log moved0.log 0 '.value.gen.thunks += 1'
+log moved0.log "$det" '.value.gen.thunks += 1'
+log det2.log "$det2" .
 
 # Three distinct columns carrying the register's own figures: the register, byte for byte.
 fold same "$w/c0.log" "$w/c1.log" "$w/c2.log"
@@ -49,7 +59,11 @@ d=$(jq -n --slurpfile a "$reg" --slurpfile b "$w/moved.reg" '[range($a | length)
 say moved "$([ "$rc" = 0 ] && [ "$d" = 1 ] && echo ok || echo "$d rows changed, want 1")"
 # One log passed three times is one column: refused, by the count of evaluators, and the register untouched.
 fold dup "$w/c0.log" "$w/c0.log" "$w/c0.log"
-say dup "$([ "$rc" != 0 ] && grep -q '2 missing' "$w/dup.err" && [ "$got" = "$want" ] && echo ok || echo "not refused by evaluator count with the register untouched")"
+say dup "$([ "$rc" != 0 ] && grep -q 'missing' "$w/dup.err" && [ "$got" = "$want" ] && echo ok || echo "not refused by evaluator count with the register untouched")"
 # A verdict line the fold does not adopt refuses, and a refused fold leaves the register as it was.
 fold refused "$w/r0.log" "$w/r1.log" "$w/r2.log"
 say refused "$([ "$rc" != 0 ] && grep -q 'verdict lines --fold does not adopt' "$w/refused.err" && [ "$got" = "$want" ] && echo ok || echo "not refused with the register untouched ($(wc -c <"$w/refused.reg") bytes)")"
+# Three distinct versions are not three evaluators: two Determinate columns and Lix is a fold with no Nix
+# column, refused by the family it lacks, and the register untouched.
+fold fam "$w/c0.log" "$w/det2.log" "$w/c1.log"
+say fam "$([ "$rc" = 2 ] && grep -q 'missing: Nix$' "$w/fam.err" && [ "$got" = "$want" ] && echo ok || echo "not refused naming the missing Nix family with the register untouched")"

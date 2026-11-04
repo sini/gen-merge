@@ -63,11 +63,15 @@ if [ "${1:-}" = --fold ]; then
     verdicts "$col" "$log" >>"$tmp/moves.jsonl" || control "cannot read the verdict lines of $log"
     echo "$BAR_NAME: $log: $n PERF lines, evaluator $col, $(jq -c --argjson c "$col" 'select(.col == $c)' "$tmp/moves.jsonl" | wc -l) verdict lines (every stage's)"
   done
-  # The fold reads CI's three columns, one log each, by the column each log names: a log passed twice, or two
-  # logs of one evaluator, would keep one figure of a doubled column and leave a missing one stale, silently.
+  # The fold reads CI's three columns, one log from each evaluator family, by the column each log names: a log
+  # passed twice, or two versions of one family, would keep a doubled column and leave a missing one stale,
+  # silently. A column's family is a projection of its key, `nix-instantiate (<family>...) <version>`.
   cols=$(jq -s 'unique | length' "$tmp/cols.jsonl") || control "cannot count the evaluators of the logs"
-  if [ "$#" -ne 3 ] || [ "$cols" -ne 3 ]; then
-    control "--fold reads three logs naming three distinct evaluators: $# logs name $cols, $((cols < 3 ? 3 - cols : 0)) missing: $(jq -sc 'group_by(.) | map({evaluator: .[0], logs: length})' "$tmp/cols.jsonl")"
+  fams=$(jq -sc 'map((capture("^nix-instantiate \\((?<f>Determinate|Lix|Nix)[ ,)]") | .f) // error("no evaluator family in \(.)"))' "$tmp/cols.jsonl") ||
+    control "a log's evaluator names no family of Nix, Determinate and Lix: $(jq -sc . "$tmp/cols.jsonl")"
+  missing=$(jq -r '["Nix", "Determinate", "Lix"] - . | join(", ")' <<<"$fams")
+  if [ "$#" -ne 3 ] || [ "$(jq -c sort <<<"$fams")" != '["Determinate","Lix","Nix"]' ]; then
+    control "--fold reads one log from each evaluator family, Nix, Determinate and Lix: $# logs name $(jq -sc 'group_by(.) | map({evaluator: .[0], logs: length})' "$tmp/cols.jsonl"); missing: ${missing:-none}"
   fi
   jq -rn --arg mode fold --slurpfile base "$base" --slurpfile perf "$tmp/perf.jsonl" \
     --slurpfile moves "$tmp/moves.jsonl" --argjson columns "$cols" -f "$BAR_COMPARE" >"$out.fold.$$" || {

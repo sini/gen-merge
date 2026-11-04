@@ -29,7 +29,7 @@
           register = ./fp-bar-baseline.jsonl;
         }
       ];
-      cells = 5 * builtins.length bars;
+      cells = 6 * builtins.length bars;
     in
     {
       checks.bar-fold = pkgs.runCommand "gen-merge-bar-fold-cells" { nativeBuildInputs = [ pkgs.jq ]; } ''
