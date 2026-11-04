@@ -949,7 +949,11 @@ let
   declared = {
     aC = {
       p = np.addCheck (np.listOf ea) short;
-      beside = stocksOf L;
+      # `R`: a door over aC's own base, the same payload and another check
+      beside = nl.recursiveUpdate (stocksOf L) {
+        np.R = np.listOf ea;
+        gt.R = gm.mkOptionType (np.listOf ea);
+      };
     };
     hzR = {
       inherit (overrides.hzR) p;
@@ -1174,6 +1178,7 @@ let
       "aC npg2 QQQ xaa"
       "shortC npg PR long"
       "shortC npg RP long"
+      "aC npg PR xaa"
     ]
     ++ map (ownJoin "twin") [
       "aC npg PT ab"
@@ -1183,6 +1188,9 @@ let
       "aC door PT ab"
       "aC door2 TP bb"
       "aC raw PT ab"
+      # a door arriving at a join that widened past its own parameters is owed relativised, never whole
+      "aC npg PTR ab"
+      "aC npg RTP ab"
     ]
     # a value no check rejects, served with the twin's value, in each REFUSED row's own order: a refusal for the
     # declaration set itself reds these
