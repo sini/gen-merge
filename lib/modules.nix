@@ -1151,9 +1151,12 @@ let
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
           # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked. A gen
-          # container's later is asked too where its carried element is one a relation can answer so (foreign, a door return,
-          # or a carrier one role down: `interface.keyed.container`'s partner element, restated inline: a call per step), since
-          # the earlier container's join would be built on its element's decider-only answer and never read
+          # container's later is asked too where its element chain reaches, within two roles, a node a relation can answer so
+          # (foreign or a door return), or a third element carrier: the earlier container's join would be built on its
+          # element's decider-only answer and never read. A gen leaf, gen `either` or a derivation in the chain is answered
+          # by no earlier relation as the decider only (`interface.keyed`), so the chain stops there. A carrier's own deferral
+          # is read off its role (`carries`), never stated per type: a container rebuilt at every gen × gen step would pay it
+          # (arm S, unadopted; den-ag-design spec FK v4 §4 Q3)
           if
             (
               later ? retainedRelation
@@ -1163,11 +1166,26 @@ let
                 && (
                   later.carries.element ? retainedRelation
                   || !(later.carries.element ? typeMergeRel)
-                  || later.carries.element ? carries
+                  ||
+                    later.carries.element ? carries.element
+                    && !(later.carries.element ? __derivation)
+                    && (
+                      later.carries.element.carries.element ? retainedRelation
+                      || !(later.carries.element.carries.element ? typeMergeRel)
+                      || later.carries.element.carries.element ? carries.element
+                    )
                 )
             )
-            && earlier.typeMergeRel ? later
-            && earlier.typeMergeRel.later later
+            && (
+              if earlier ? carries.element then
+                !(earlier ? retainedRelation)
+                && !(earlier ? __derivation)
+                && interface.keyed.container earlier later
+              else if earlier ? carries.alternatives then
+                !(earlier ? retainedRelation) && !(earlier ? __derivation) && interface.keyed.either later
+              else
+                earlier.typeMergeRel ? later && earlier.typeMergeRel.later later
+            )
             # a record whose check a wrapper rewrote carries its base's relation, which speaks for the base, so it is asked as any
             # relation is (gen-types' `rewritesCheck`, restated inline: a call per step)
             && !(earlier ? _checkWitness && earlier ? check && earlier.check != earlier._checkWitness)

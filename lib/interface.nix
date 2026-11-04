@@ -1762,17 +1762,28 @@ let
     # a container of key `key`: a partner of this key, gen or foreign, whose element `element`'s relation answers as the
     # decider only; a gen partner's element is read off its own carrier
     container =
-      key: element: other:
+      c: other:
       isAttrs other
       && !(other ? __derivation)
-      && (other.name or null) == key
-      && element ? typeMergeRel.later
-      && element.typeMergeRel.later (
+      && (other.name or null) == c.name
+      && keyed.element c.carries.element (
         if other ? carries && !(other ? retainedRelation) then
           other.carries.element or null
         else
           carriedAt "element" other
       );
+    # a gen relation's deferral of `other`, read off the record `t`: a gen container carrying an element through its
+    # element (`container`), gen `either` by its key (`either`), a leaf by its own relation's `later`
+    element =
+      t: other:
+      if t ? retainedRelation || t ? __derivation || !(t ? typeMergeRel) then
+        false
+      else if t ? carries.element then
+        keyed.container t other
+      else if t ? carries.alternatives then
+        keyed.either other
+      else
+        t.typeMergeRel ? later && t.typeMergeRel.later other;
     # `either`'s: a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
     either =
       other:

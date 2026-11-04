@@ -1403,10 +1403,6 @@ let
           );
         typeMergeRel = {
           exact = true;
-          # a partner of this key, gen or foreign, whose element this element's relation answers as the decider only: the
-          # container's meet is built on that answer, so it is the decider's only too (the leaf's `later`,
-          # `interface.keyed.leaf`, one role down)
-          later = interface.keyed.container "listOf" element;
           __functor = _: (elementRel "listOf" listOf element);
           rewrites = mkMerge: elementRelIn mkMerge null "listOf" listOf element;
         };
@@ -1635,8 +1631,6 @@ let
         # rebuild keeps THIS container's name, so the distinction survives substitution.
         typeMergeRel = {
           exact = true;
-          # as `listOf`'s, the partner's element read under the construction this one embeds in where it states none
-          later = interface.keyed.container tyName element;
           __functor = _: (rel tyName (attrsOfWith tyName) element);
           rewrites = mkMerge: elementRelIn mkMerge row tyName (attrsOfWith tyName) element;
         };
@@ -2030,8 +2024,6 @@ let
           );
         typeMergeRel = {
           exact = true;
-          # as `listOf`'s
-          later = interface.keyed.container "nullOr" element;
           __functor = _: (elementRel "nullOr" nullOr element);
           rewrites = mkMerge: elementRelIn mkMerge null "nullOr" nullOr element;
         };
@@ -2233,9 +2225,6 @@ let
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
         typeMergeRel = {
           exact = true;
-          # the partners this relation answers as the DECIDER only, before any join (`lib/modules.nix` `declaredPair`):
-          # a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
-          later = interface.keyed.either;
           __functor =
             _:
             (
