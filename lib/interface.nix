@@ -6952,7 +6952,7 @@ let
     # the same constructor at every node, and every node where the trees differ is one where the
     # operand states parameters: a nullary node has none for a law to widen, so a join that changes
     # it changes the operand's check (owed whole)
-    # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.anything.ownRead`)
+    # an operand owed relativised to its own parameters beside the join `m` (`metWith`, `metWith.anything.seen`)
     # the form a declaration `o` is owed in by a met accumulator's debt (lib/modules.nix `mergeDeclaredTypes`), fixed at
     # the step where it meets the join `m`: relativised to its own parameters wherever `m` is its constructor's tree at the
     # same or wider parameters, so a later step's wider join finds it owed relative to them (ADR-0039 THE MEET); on `m`'s
@@ -7097,9 +7097,7 @@ let
             else if rewrites == null || !(rewrites ? own) then
               rel notM
             else if rewrites ? bNames then
-              metWith.anything.refuseUnreconciledMint meets m mayOwe completeExport (
-                metWith.anything.viewAt m rewrites.bNames
-              )
+              metWith.anything.refuseUnreconciledMint meets m mayOwe completeExport rewrites.bNames
               # the step's own operands relativised off their handed-down comparisons (`rewrites.oc`, one role down), else walked
               ++ builtins.concatLists (
                 builtins.genList (
@@ -7471,45 +7469,58 @@ let
       };
       # a debt node: the owed sets, the listed operands, and the keys of its forms (`collect`, the one-value test) and of the
       # declarations' own records there (`unapplicable`, `lib/modules.nix` `declaredAt`); `elemsOf d x raw` folds in `x`, the form `raw`
-      # is owed in
+      # is owed in. The declarations a join of their own tree met are owed whole and listed by tree (`pending`); once one is,
+      # the node keeps its widened view (`lifted`), the node before the first of them (`base`) and every entry since (`tail`)
       scopeDefect = {
         plain = metWith.anything.linkset;
         exact = metWith.anything.linkset;
         minPrio = metWith.anything.linkset;
         mkBefore = [ ];
         pending = [ ];
-        widened = null;
-        base0 = null;
+        lifted = null;
+        base = null;
         tail = [ ];
         completedLeaves = [ ];
         unapplicable = [ ];
         all = [ ];
       };
+      # (`c`: `raw`'s tree compared with the join `m`'s at this node, `node`; `m`: that join, `null` where none is there, `false`
+      # once the node is committed against it.) A node holding a pending declaration is first committed against `m` (`close`).
+      # A declaration a join of its own tree meets (`c.same`) is pending: folded whole into the node's sets, and widened into
+      # its widened view (begun as the node itself at the first pending declaration, `base`); once a view exists, each
+      # declaration enters both and is listed (`tail`), so a join widening only some pending trees refolds them (`close`)
       elemsOf =
-        d: x: raw: defaultOrderPriority:
-        # a pending declaration (`pendingOf`) is folded whole into the node's sets, and widened into its widened view
-        # (begun as the node itself at the first pending declaration, `base0`); once a view exists, each declaration enters
-        # both and is listed (`tail`), so a join widening only some pending trees refolds them (`commit`)
-        if x ? __pendingOf then
-          metWith.anything.elemsOf (d // { widened = null; }) x.__pendingOf raw defaultOrderPriority
+        d: x: raw: defaultOrderPriority: c: m:
+        if isAttrs m && d.pending != [ ] then
+          metWith.anything.elemsOf (metWith.anything.close c m d) x raw defaultOrderPriority c false
+        else if m != null && c != null && c != false && c.structured && c.same then
+          let
+            # its relativised form, made from the declaration alone (its own parameters do not change at a later step)
+            e = {
+              inherit
+                x
+                raw
+                defaultOrderPriority
+                c
+                ;
+              lifted = metWith.anything.witnessedCheck x x;
+            };
+          in
+          metWith.anything.elemsOf (d // { lifted = null; }) x raw defaultOrderPriority null null
           // {
-            widened = metWith.anything.elemsOf (
-              if d.widened == null then d else d.widened
-            ) x.widened raw defaultOrderPriority;
+            lifted = metWith.anything.elemsOf (
+              if d.lifted == null then d else d.lifted
+            ) e.lifted raw defaultOrderPriority null null;
             # `==` over shape trees: a payload holding a function is the same tree on Lix only (gen-merge AGENTS.md, the
             # vocabulary row), so elsewhere such a declaration is listed as another tree, owed whole until widened
-            pending = if builtins.elem x.tree d.pending then d.pending else d.pending ++ [ x.tree ];
-            base0 = if d.widened == null then d else d.base0;
-            tail = (if d.widened == null then [ ] else d.tail) ++ [
-              {
-                inherit x raw defaultOrderPriority;
-              }
-            ];
+            pending = if builtins.elem c.a d.pending then d.pending else d.pending ++ [ c.a ];
+            base = if d.lifted == null then d else d.base;
+            tail = (if d.lifted == null then [ ] else d.tail) ++ [ e ];
           }
-        else if d.widened != null then
-          metWith.anything.elemsOf (d // { widened = null; }) x raw defaultOrderPriority
+        else if d.lifted != null then
+          metWith.anything.elemsOf (d // { lifted = null; }) x raw defaultOrderPriority null null
           // {
-            widened = metWith.anything.elemsOf d.widened x raw defaultOrderPriority;
+            lifted = metWith.anything.elemsOf d.lifted x raw defaultOrderPriority null null;
             tail = d.tail ++ [
               {
                 inherit x raw defaultOrderPriority;
@@ -7550,74 +7561,76 @@ let
         }
         // (if minPrio then { notBool = true; } else { })
         // (if set.verify == null then { } else { inherit (set) verify; });
-      # the operands owing the debt node `d` at a meet of `m`: `vocabularyDefect`, `m`'s one-value key (`null`: none dropped)
+      # the operands owing the debt node `d` at a meet of `m`: `vocabularyDefect`, `m`'s one-value key (`null`: none dropped).
+      # A node holding a pending declaration is owed committed against `m` (`close`), as the fold records it (lib/modules.nix
+      # `structuring`); that view is read here, and never recorded
       refuseUnreconciledMint =
         meets: m: mayOwe: vocabularyDefect: d:
-        let
-          keep =
-            o:
-            (meets != false || mayOwe o)
-            && (vocabularyDefect == null || vocabularyDefect != closuresFirst [ o ] o);
-          # a set every declaration of which IS the join owes nothing here, as `metWith` drops a listed operand that is: the
-          # join is then kept as it is, not met (a role meet above rebuilds only over a met role)
-          refuseParametricMerge =
-            set: minPrio:
-            if vocabularyDefect != null && builtins.all (k: k == vocabularyDefect) set.keys then
-              [ ]
-            else
-              [ (metWith.anything.ctorOf set (filter keep) minPrio) ];
-          readPair = meets != false || !(m ? typeMergeRel);
-          # a certified set: owed whole beside a join stating no relation, carried whole by a join stating a payload, and
-          # otherwise decided by witness: a set stating none is carried exactly by a join stating none
-          structuring =
-            set: minPrio:
-            if set.n == 0 then
-              [ ]
-            else if readPair then
-              refuseParametricMerge set minPrio
-            else if (m.functor.payload or null) != null then
-              [ ]
-            else if set.inlineOwn == 0 then
-              (if (m._checkWitness or null) == null then [ ] else refuseParametricMerge set minPrio)
-            else
-              filter keep set.collisions;
-        in
-        (if d.plain.n == 0 then [ ] else refuseParametricMerge d.plain false)
-        ++ (if d.exact.n == 0 then [ ] else structuring d.exact false)
-        ++ (if d.minPrio.n == 0 then [ ] else structuring d.minPrio true)
-        ++ filter keep d.mkBefore;
-      # the debt node `d` met by the join `m`: each pending tree `m` widens is relativised there, once and for good (ADR-0039
-      # THE MEET, "relativised once, at the join that widens it"): every one widened, the widened view, pending-free; some,
-      # the entries since the first pending one refolded with those trees' entries widened; none, `d`. A step owes the node
-      # so committed (`viewAt`), and the fold records it (lib/modules.nix `structuring`), so no later join re-makes it.
-      # `==` over shape trees is the Lix-only sameness for a payload holding a function (gen-merge AGENTS.md)
-      commit =
-        m: d:
-        if d.pending == [ ] || m == null then
-          d
-        else
-          metWith.anything.commitAt (metWith.anything.shapeOf importedTypeWalkFuel m) d;
-      # `commit` against the join's tree `sm` handed down (lib/modules.nix `structuring`)
-      commitAt =
-        sm: d:
-        if d.pending == [ ] then
-          d
+        if isAttrs m && d.pending != [ ] then
+          metWith.anything.refuseUnreconciledMint meets m mayOwe vocabularyDefect (
+            metWith.anything.close null m d // { pending = [ ]; }
+          )
         else
           let
-            w = filter (t: t != sm && metWith.anything.widensAt t sm) d.pending;
+            keep =
+              o:
+              (meets != false || mayOwe o)
+              && (vocabularyDefect == null || vocabularyDefect != closuresFirst [ o ] o);
+            # a set every declaration of which IS the join owes nothing here, as `metWith` drops a listed operand that is: the
+            # join is then kept as it is, not met (a role meet above rebuilds only over a met role)
+            refuseParametricMerge =
+              set: minPrio:
+              if vocabularyDefect != null && builtins.all (k: k == vocabularyDefect) set.keys then
+                [ ]
+              else
+                [ (metWith.anything.ctorOf set (filter keep) minPrio) ];
+            readPair = meets != false || !(m ? typeMergeRel);
+            # a certified set: owed whole beside a join stating no relation, carried whole by a join stating a payload, and
+            # otherwise decided by witness: a set stating none is carried exactly by a join stating none
+            structuring =
+              set: minPrio:
+              if set.n == 0 then
+                [ ]
+              else if readPair then
+                refuseParametricMerge set minPrio
+              else if (m.functor.payload or null) != null then
+                [ ]
+              else if set.inlineOwn == 0 then
+                (if (m._checkWitness or null) == null then [ ] else refuseParametricMerge set minPrio)
+              else
+                filter keep set.collisions;
           in
-          if w == [ ] then
-            d
-          else if length w == length d.pending then
-            d.widened
-          else
-            builtins.foldl' (
-              n: e:
-              metWith.anything.elemsOf n (
-                if e.x ? __pendingOf && builtins.elem e.x.tree w then e.x.widened else e.x
-              ) e.raw e.defaultOrderPriority
-            ) d.base0 d.tail;
-      viewAt = metWith.anything.commit;
+          (if d.plain.n == 0 then [ ] else refuseParametricMerge d.plain false)
+          ++ (if d.exact.n == 0 then [ ] else structuring d.exact false)
+          ++ (if d.minPrio.n == 0 then [ ] else structuring d.minPrio true)
+          ++ filter keep d.mkBefore;
+      # the debt node `d`, holding a pending declaration, met by the join `m`: each pending tree `m` widens is relativised
+      # there, once and for good (ADR-0039 THE MEET, "relativised once, at the join that widens it"): every one widened, the
+      # widened view, pending-free; some, the entries since the first pending one refolded with those trees' entries
+      # widened; none, `d`. `m`'s tree is the comparison `c`'s where one is read at this node (`c.b`), else walked. A step
+      # owes the node so committed (`refuseUnreconciledMint`), and the fold records it (`elemsOf`, at each node it
+      # extends), so no later join re-makes it. `==` over shape trees is the Lix-only sameness for a payload holding a
+      # function (gen-merge AGENTS.md)
+      close =
+        c: m: d:
+        let
+          sm = if c == null || c == false then metWith.anything.shapeOf importedTypeWalkFuel m else c.b;
+          w = filter (t: t != sm && metWith.anything.widensAt t sm) d.pending;
+        in
+        if w == [ ] then
+          d
+        else if length w == length d.pending then
+          d.lifted
+        else
+          builtins.foldl' (
+            n: e:
+            let
+              lifted = e ? c && builtins.elem e.c.a w;
+            in
+            metWith.anything.elemsOf n (if lifted then e.lifted else e.x) e.raw e.defaultOrderPriority (
+              if lifted then null else e.c or null
+            ) false
+          ) d.base d.tail;
       # each operand as the declarations it stands for
       freeformLeaf = builtins.concatMap (o: o.spelledRead or [ o ]);
       elementsOf =
@@ -7670,7 +7683,8 @@ let
           builtins.genList (i: i) (length a.e)
         );
       # two trees compared ONCE, node by node: `same` is `a == b` and `holds` is `widensAt a b`, each a node's own test over
-      # its elements' answers (`es`), so a role meet below reads its node (`below`) instead of walking its subtree again
+      # its elements' answers (`es`), so a role meet below reads its node (`below`) instead of walking its subtree again; the
+      # node keeps the two trees it compared, so a fold reading it below reads them there too (lib/modules.nix `structuring`)
       node =
         a: b:
         let
@@ -7682,14 +7696,14 @@ let
               [ ];
         in
         {
-          inherit es;
+          inherit a b es;
           same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
           holds =
             a.n == b.n
             && n == length b.e
             && (a.p == b.p || a.p != { } && b.p != { })
             && builtins.all (c: c.holds) es;
-          # `ownRead`'s `structured` over `a`, read first (a tree with no parameters reads no join) and decisive only where `holds`
+          # `seen`'s `structured` over `a`, read first (a tree with no parameters reads no join) and decisive only where `holds`
           # (so `es` are all of `a`'s elements)
           structured =
             a.p != { } && (a.p._type or null) != "option-type"
@@ -7756,24 +7770,12 @@ let
               ) (length rewrites.own)
             );
           };
-      # `ownRead` read off the comparison `c` of `o`'s tree with `m`'s (`node`), walking only where `c` is `null`
-      # `seen` with `o`'s tree handed down (`null`: none)
-      seenAt =
-        tree: c: m: o:
-        if tree != null && c != null && c != false && c.structured && c.holds && c.same then
-          metWith.anything.pendingAt tree o
-        else
-          metWith.anything.seen c m o;
+      # a declaration `o`'s own-step form beside the join `m`, read off the comparison `c` of `o`'s tree with `m`'s (`node`;
+      # `false`: `o`'s tree states no parameter): relativised where `m` widens its tree; whole where `m` is its own tree, pending
+      # until a later join widens it (`elemsOf`, which reads `c.same`); else whole
       seen =
         c: m: o:
-        if c == false then
-          o
-        else if c == null then
-          metWith.anything.ownRead m o
-        else if c.structured && c.holds then
-          (if c.same then metWith.anything.pendingOf o else metWith.anything.witnessedCheck m o)
-        else
-          o;
+        if c != false && c.structured && c.holds && !c.same then metWith.anything.witnessedCheck m o else o;
       # the comparisons of the operands `a`, `b` with the join `r` one role down at `i`, whose role records are `a'`, `b'`, `r'`:
       # at a descent's top (`rewrites` is `null`) the role's own trees compared, which is what the meet there would walk; below
       # it the role above's node read (`rewrites.tag`, `nodeAt`)
@@ -7794,7 +7796,7 @@ let
           };
       # `o` owed relativised to its own parameters beside the join `m`, which it reads only to ask whether that join is a
       # container (`m.functor.payload ? elemType`); a join of `o`'s own tree answers that as `o` does, so a declaration
-      # pending since its own step is relativised against itself (`pendingOf`)
+      # pending since its own step is relativised against itself (`elemsOf`)
       witnessedCheck =
         m: o:
         let
@@ -7918,28 +7920,6 @@ let
       # delegates to the element's `typeMerge`), never its parameters
       stated =
         t: t.p != { } && (t.p._type or null) != "option-type" || builtins.any metWith.anything.stated t.e;
-      # a declaration met at its own step by a join of its own tree: that join widened none of its parameters, so it is owed
-      # whole until a later join widens them, and from that join on relativised once, against its own parameters, which no
-      # later step changes (ADR-0039 THE MEET, "relativised once, at the join that widens it"); its tree and that form are
-      # each built once, where first read (`refuseUnreconciledMint`)
-      pendingOf = o: metWith.anything.pendingAt (metWith.anything.shapeOf importedTypeWalkFuel o) o;
-      # `pendingOf` over `o`'s tree handed down (lib/modules.nix `structuring`)
-      pendingAt = tree: o: {
-        __pendingOf = o;
-        inherit tree;
-        widened = metWith.anything.witnessedCheck o o;
-      };
-      ownRead =
-        m: o:
-        let
-          so = metWith.anything.shapeOf importedTypeWalkFuel o;
-          sm = metWith.anything.shapeOf importedTypeWalkFuel m;
-        in
-        if metWith.anything.stated so && metWith.anything.widensAt so sm then
-          # `so == sm` is the Lix-only sameness for a payload holding a function (gen-merge AGENTS.md, the vocabulary row)
-          (if so == sm then metWith.anything.pendingOf o else metWith.anything.witnessedCheck m o)
-        else
-          o;
       functorRecord =
         rewrites: f:
         if rewrites == null then

@@ -710,7 +710,7 @@ in
         };
       };
 
-    # A DECLARATION IS OWED WHOLE UNTIL A JOIN WIDENS ITS PARAMETERS (`interface.metWith.anything.pendingOf`;
+    # A DECLARATION IS OWED WHOLE UNTIL A JOIN WIDENS ITS PARAMETERS (`interface.metWith.anything.elemsOf`;
     # ADR-0039 THE MEET, "relativised once, at the join that widens it"). A foreign `int` refinement whose functor
     # rebuilds a type narrower than itself is owed whole beside gen's `int`, which states no parameters and so widens
     # none, at two declarations and where two constructions of one name and payload meet first: the value either
