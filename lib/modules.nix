@@ -1362,8 +1362,9 @@ let
         # THE DEBT AT EVERY ROLE: beside the forms (`ds`) and the declarations' keys (`ks`), a tree (`bNames`) whose node at the
         # top and at each role down (`el`, each `priorityBand`) is an owed set (`interface.metWith.anything.elemsOf`): the forms owed
         # there, each declaration added once, in the form its own step's meet owes it at that node (relativised against that
-        # step's join there, `interface.metWith.anything.ownRead`, never re-relativised later: ADR-0039 THE MEET as owed at
-        # the step where it meets). A step owes each node's set as one operand: it pays one extension per node it descends,
+        # step's join there where the join widens its tree, `interface.metWith.anything.ownRead`; where the join is its own tree,
+        # pending, relativised once by the first later join that widens it: ADR-0039 THE MEET, "relativised once, at the join
+        # that widens it"). A step owes each node's set as one operand: it pays one extension per node it descends,
         # never the debt re-read per step and per role (`d` the form at the top, `completedLeaves` the step's join)
         defineEmbedded =
           o: j: raw: completedLeaves:
