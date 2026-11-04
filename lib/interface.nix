@@ -6982,11 +6982,7 @@ let
         && (
           rewrites == null
           || !(rewrites ? bNames)
-          ||
-            rewrites.bNames.plain.n == 0
-            && rewrites.bNames.exact.n == 0
-            && rewrites.bNames.minPrio.n == 0
-            && rewrites.bNames.pending == [ ]
+          || rewrites.bNames.plain.n == 0 && rewrites.bNames.exact.n == 0 && rewrites.bNames.minPrio.n == 0
         )
         && (rewrites == null || !(rewrites ? answers))
       then
@@ -7051,11 +7047,7 @@ let
               !(builtins.elem completeExport rewrites.bNames.completedLeaves)
               && !(builtins.elem completeExport rewrites.keys)
               && builtins.all (o: completeExport != closuresFirst [ o ] o) rewrites.bNames.mkBefore
-              && builtins.all (
-                g:
-                !(builtins.elem completeExport g.whole.completedLeaves)
-                && builtins.all (o: completeExport != closuresFirst [ o ] o) g.whole.mkBefore
-              ) rewrites.bNames.pending
+
             else if rewrites != null && rewrites ? exports then
               builtins.all (k: completeExport != k) rewrites.exports
               && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
@@ -7105,7 +7097,9 @@ let
             else if rewrites == null || !(rewrites ? own) then
               rel notM
             else if rewrites ? bNames then
-              metWith.anything.refuseUnreconciledMint meets m mayOwe completeExport rewrites.bNames
+              metWith.anything.refuseUnreconciledMint meets m mayOwe completeExport (
+                metWith.anything.viewAt m rewrites.bNames
+              )
               # the step's own operands relativised off their handed-down comparisons (`rewrites.oc`, one role down), else walked
               ++ builtins.concatLists (
                 builtins.genList (
@@ -7484,39 +7478,37 @@ let
         minPrio = metWith.anything.linkset;
         mkBefore = [ ];
         pending = [ ];
+        widened = null;
         completedLeaves = [ ];
         unapplicable = [ ];
         all = [ ];
       };
       elemsOf =
         d: x: raw: defaultOrderPriority:
-        let
-          k = metWith.anything.refuseSharedMark x;
-          # one key per declaration (`defaultOrderPriority`, the declaration's own record's, from the fold's memo at the top): a form that is
-          # its own record (not relativised, `judgeAt`'s `__stockCheck`) shares it
-          definitionOf =
-            if x ? __stockCheck && !(raw ? __stockCheck) then closuresFirst [ x ] x else defaultOrderPriority;
-        in
-        # one update over the node: only the set `x`'s kind names is rebuilt; the others are the node's own. A pending
-        # declaration (`pendingOf`) is folded into the node's group for its own tree twice, whole and widened (the second
-        # built only where a later join widens that tree), so a step owes one group record, never the declarations again
+        # a pending declaration (`pendingOf`) is folded whole into the node's sets, and widened into its widened view
+        # (begun as the node itself at the first pending declaration); once a view exists, each declaration enters both
         if x ? __pendingOf then
-          let
-            here = builtins.filter (g: g.tree == x.tree) d.pending;
-            g = if here == [ ] then metWith.anything.pendingGroup x.tree else head here;
-            g' = g // {
-              whole = metWith.anything.elemsOf g.whole x.__pendingOf raw defaultOrderPriority;
-              widened = metWith.anything.elemsOf g.widened x.widened raw defaultOrderPriority;
-            };
-          in
-          d
+          metWith.anything.elemsOf (d // { widened = null; }) x.__pendingOf raw defaultOrderPriority
           // {
-            pending =
-              if here == [ ] then d.pending ++ [ g' ] else map (h: if h.tree == x.tree then g' else h) d.pending;
-            unapplicable = d.unapplicable ++ [ defaultOrderPriority ];
-            all = d.all ++ [ x.__pendingOf ];
+            widened = metWith.anything.elemsOf (
+              if d.widened == null then d else d.widened
+            ) x.widened raw defaultOrderPriority;
+            pending = if builtins.elem x.tree d.pending then d.pending else d.pending ++ [ x.tree ];
+          }
+        else if d.widened != null then
+          metWith.anything.elemsOf (d // { widened = null; }) x raw defaultOrderPriority
+          // {
+            widened = metWith.anything.elemsOf d.widened x raw defaultOrderPriority;
           }
         else
+          let
+            k = metWith.anything.refuseSharedMark x;
+            # one key per declaration (`defaultOrderPriority`, the declaration's own record's, from the fold's memo at the top): a form that is
+            # its own record (not relativised, `judgeAt`'s `__stockCheck`) shares it
+            definitionOf =
+              if x ? __stockCheck && !(raw ? __stockCheck) then closuresFirst [ x ] x else defaultOrderPriority;
+          in
+          # one update over the node: only the set `x`'s kind names is rebuilt; the others are the node's own
           d
           // (
             if k == "mkBefore" then
@@ -7577,21 +7569,19 @@ let
         (if d.plain.n == 0 then [ ] else refuseParametricMerge d.plain false)
         ++ (if d.exact.n == 0 then [ ] else structuring d.exact false)
         ++ (if d.minPrio.n == 0 then [ ] else structuring d.minPrio true)
-        ++ filter keep d.mkBefore
-        ++ (
-          if d.pending == [ ] then
-            [ ]
-          else
-            let
-              sm = metWith.anything.shapeOf importedTypeWalkFuel m;
-            in
-            builtins.concatMap (
-              g:
-              metWith.anything.refuseUnreconciledMint meets m mayOwe vocabularyDefect (
-                if g.tree != sm && metWith.anything.widensAt g.tree sm then g.widened else g.whole
-              )
-            ) d.pending
-        );
+        ++ filter keep d.mkBefore;
+      # the debt node `d` as a step over the join `m` owes it: where `d` holds pending declarations (their trees, `pending`)
+      # and `m` widens every one, its widened view; else `d`, whose sets owe them whole (a join widening some and not
+      # others owes all whole: loud, never silent)
+      viewAt =
+        m: d:
+        if d.pending == [ ] then
+          d
+        else
+          let
+            sm = metWith.anything.shapeOf importedTypeWalkFuel m;
+          in
+          if builtins.all (t: t != sm && metWith.anything.widensAt t sm) d.pending then d.widened else d;
       # each operand as the declarations it stands for
       freeformLeaf = builtins.concatMap (o: o.spelledRead or [ o ]);
       elementsOf =
@@ -7889,11 +7879,6 @@ let
       # whole until a later join widens them, and from that join on relativised once, against its own parameters, which no
       # later step changes (ADR-0039 THE MEET, "relativised once, at the join that widens it"); its tree and that form are
       # each built once, where first read (`refuseUnreconciledMint`)
-      pendingGroup = tree: {
-        inherit tree;
-        whole = metWith.anything.scopeDefect;
-        widened = metWith.anything.scopeDefect;
-      };
       pendingOf = o: {
         __pendingOf = o;
         tree = metWith.anything.shapeOf importedTypeWalkFuel o;
