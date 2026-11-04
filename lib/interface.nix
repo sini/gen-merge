@@ -4331,10 +4331,10 @@ let
                     let
                       j = x.typeMergeRel f;
                     in
-                    # a FOREIGN join its own functor rebuilds (`kept`, as this closure's own crossing test) is served unclosed:
-                    # every reader of it meets it, or rebuilds the same record through its functor. One that rebuilds to
-                    # ANOTHER record (a narrower one named as a gen leaf) is closed: den-hoag-0ismp's name-keyed hold keys it
-                    # by that name and answers `self` without meeting it, which would drop the closure's check.
+                    # a FOREIGN join is served unclosed unless its functor's payload-free rebuild is ANOTHER record (`kept`,
+                    # this closure's own crossing test): every reader meets such a join or rebuilds it through its functor.
+                    # One rebuilding to another record (a narrower one named as a gen leaf) is closed: den-hoag-0ismp's
+                    # name-keyed hold keys it by that name and answers `self` without meeting it, dropping the closure's check
                     # every reader of this slot meets a FOREIGN join it serves with the closure as an operand: gen's step
                     # (`lib/modules.nix` `mergeTypesBy`, `relationMergeWithin`) and the export's `typeMerge` for a record
                     # stating no `retainedRelation.typeMerge` (`exportType`, met with `[ exported d ]`), so the closure is
@@ -4347,8 +4347,10 @@ let
                         && !(t ? verify)
                         && (j.merged.getSubModules or null) == null
                         && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
-                        && isAttrs (j.merged.functor.type or null)
-                        && rebuildClosed.kept j.merged == rebuildClosed.kept j.merged.functor.type
+                        && (
+                          !(isAttrs (j.merged.functor.type or null))
+                          || rebuildClosed.kept j.merged == rebuildClosed.kept j.merged.functor.type
+                        )
                       )
                     then
                       j
@@ -4374,8 +4376,10 @@ let
                       && !(t ? verify)
                       && (j.merged.getSubModules or null) == null
                       && !((j.merged.merge or { }) ? v2 && !(j.merged.check.isV2MergeCoherent or false))
-                      && isAttrs (j.merged.functor.type or null)
-                      && rebuildClosed.kept j.merged == rebuildClosed.kept j.merged.functor.type
+                      && (
+                        !(isAttrs (j.merged.functor.type or null))
+                        || rebuildClosed.kept j.merged == rebuildClosed.kept j.merged.functor.type
+                      )
                     )
                   then
                     j
