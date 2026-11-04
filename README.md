@@ -3653,10 +3653,10 @@ bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluator
   of 2343 more thunks per assertion), and its bytes at a median of ×1.883 (Nix), ×2.037 (Determinate)
   and ×2.104 (Lix).
 
-- **The register's perf** is written from CI's own columns, as stage 2's is (`--fold`). The local
-  process plane reads it only on an evaluator whose `--version` line is one of CI's (Determinate
-  3.23.3, Lix 2.96.0); any other reads 259 `UNANCHORED` by construction, and a local
-  `--write-baseline` never makes that green. A change that moves per-evaluation cost moves every row,
+- **The register's perf** is written from CI's own columns, as stage 2's is (`--fold`), and nowhere
+  else: `--write-baseline` writes verdicts and keeps every perf entry as committed. The local process
+  plane reads it only on an evaluator whose `--version` line is one of CI's (gen-harness
+  `evaluators.yml`'s pins); any other reads 259 `UNANCHORED` by construction. A change that moves per-evaluation cost moves every row,
   259 per evaluator: one arm-scoped trailer, `Bar-Perf-Rise: modules-sh:* parity`, admits them all (see
   the ratchet guard below).
 
@@ -3724,11 +3724,13 @@ recorded and never compared. Each row also prints `at-parity` or `above-parity` 
 green because the ratchet admitted its rise: admitted is not approved.
 
 ```sh
-nix run ./ci#nixos-bar -- --write-baseline F      # verdicts, and this evaluator's perf
+nix run ./ci#nixos-bar -- --write-baseline F      # verdicts only; every perf entry stays as committed
 nix run ./ci#nixos-bar -- --fold F A.log B.log C.log  # merge CI's three column logs' PERF lines
 ```
 
-The register's perf is written from CI's own columns: dispatch `ci.yml` on the branch, download each
+The register's perf is written from CI's own columns and nowhere else: `--write-baseline` keeps every
+perf entry as committed, so a local evaluator's `--version` line, which no CI column re-reads, never
+enters a register. Dispatch `ci.yml` on the branch, download each
 column's job log with `gh api --allow-escape-sequences repos/sini/gen-merge/actions/jobs/<id>/logs`,
 `--fold`, commit. The fold prints each `RISE` with its trailer hash; the hash is that of
 `<id>\t<evaluator>`, so it never changes between folds, and only which rows rise does. The commit that

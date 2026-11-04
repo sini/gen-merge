@@ -29,7 +29,7 @@
 # none in its closure. Every evaluation runs `--readonly-mode`.
 #
 #   nixos-bar                        run and score; exit 1 on any disagreement with the register
-#   nixos-bar --write-baseline F     run and write the register to F, this evaluator's perf merged
+#   nixos-bar --write-baseline F     run and write the register's verdicts to F, its perf as committed
 #   nixos-bar --fold F LOG...        no evaluation: the register with the `PERF` lines of LOG... (CI's
 #                                    three column logs) merged in and an IMPROVED verdict all three print
 #                                    adopted, written to F; any other verdict change refuses

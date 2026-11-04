@@ -39,7 +39,8 @@
 # `tests` row) whose set moved reads SET-MOVED instead of a COST line.
 #
 # $mode "check": one line per disagreement and a summary · "perf": one `PERF <label> <json>` line per perf row,
-# the line `--fold` reads · "write": the new register, $ev's perf merged in · "fold": $base with $perf's
+# the line `--fold` reads · "write": the new register's verdicts, every perf entry the committed register's (the
+# fold is the sole perf writer) · "fold": $base with $perf's
 # lines merged in and $moves' IMPROVED verdicts adopted (all three evaluators, $columns, or refused). Every
 # mode but "fold" refuses without $roots, a non-empty list of absolute store paths: an empty list would pass
 # no shared throw, silently.
@@ -124,7 +125,9 @@ else
     | map({ key, verdict: .got }
         + (if identityKind then { claim: "identity" } else { } end)
         + ((.base // { }) | with_entries(select(.key == "class" or .key == "overreach")))
-        + (if perfKind then { perf: ((.base.perf // { }) + { ($ev): { gen: .gen.perf, ref: .ref.perf } }) } else { } end))
+        # Perf is the committed register's, never this run's: CI's column logs, through `--fold`, are the sole perf
+        # writer (den-hoag-perf-key-noncl-evaluator-0cy5s), so a local evaluator's key cannot enter the register.
+        + (if perfKind and .base.perf != null then { perf: .base.perf } else { } end))
     | .[]
     | tojson
   else

@@ -513,5 +513,6 @@ git-filtered copy of the tree, so an untracked cell is silently absent and the r
 
 `ci --tests-process` scores the bar registers' perf, which is keyed by the evaluator's `--version`
 line and written from CI's columns. Read it locally on an evaluator whose line is one of CI's
-(Determinate 3.23.3 or Lix 2.96.0); any other reads every perf row `UNANCHORED` by construction, and
-a local `--write-baseline` is never the cure.
+(gen-harness `evaluators.yml`'s pins: Nix 2.35.4, Determinate 3.24.1, Lix 2.96.0); any other reads every
+perf row `UNANCHORED` by construction. `--fold` over CI's three column logs is the only perf writer: a
+local `--write-baseline` writes verdicts and keeps every perf entry as committed.

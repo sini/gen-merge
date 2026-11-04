@@ -20,8 +20,9 @@
 # even where CI is green because the ratchet admitted its rise: admitted is not approved.
 #
 #   modules-sh                     run and score; exit 1 on any disagreement with the baseline
-#   modules-sh --write-baseline F  run and write the baseline to F, this evaluator's perf merged in (the
-#                                  ratchet; review its diff and the LOWERED / RISE lines it prints)
+#   modules-sh --write-baseline F  run and write the baseline's VERDICTS to F, every perf entry kept as
+#                                  committed (`--fold` is the sole perf writer; review the diff and the
+#                                  LOWERED lines it prints)
 #   modules-sh --fold F LOG...     no evaluation: the baseline with the `PERF modules-sh` lines of LOG...
 #                                  (CI's three column logs) merged in and an IMPROVED verdict all three
 #                                  print adopted, written to F (any other verdict change refuses); the

@@ -32,7 +32,8 @@
 # no entry for $ev UNANCHORED, perf on another row INVALID-PERF; each is a disagreement.
 #
 # $mode "check" emits one line per disagreement and a summary · "perf" one `PERF modules-sh <json>` line per
-# perf row, the line `--fold` reads · "write" the new baseline, $ev's perf merged in · "fold" $base with
+# perf row, the line `--fold` reads · "write" the new baseline's verdicts, every perf entry the committed one's
+# (`--fold` is the sole perf writer) · "fold" $base with
 # $perf's lines merged in and $moves' IMPROVED verdicts adopted (all three evaluators, or refused).
 def id: [.kind, .env, .argv] | tojson;
 def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
@@ -97,7 +98,8 @@ else
     | sort_by(.id)
     | map({ key, verdict: .got }
         + ((.base // { }) | with_entries(select(.key == "class" or .key == "overreach")))
-        + (if perfKind then { perf: ((.base.perf // { }) + { ($ev): { gen: .perf, ref: .ref.perf } }) } else { } end))
+        # Perf is the committed baseline's, never this run's: `--fold` is the sole perf writer (`nixos-bar-compare.jq`).
+        + (if perfKind and .base.perf != null then { perf: .base.perf } else { } end))
     | .[]
     | tojson
   else
