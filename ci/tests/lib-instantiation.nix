@@ -87,6 +87,13 @@ let
         modules = [ (sub E [ schemaImport ]) ];
       }).config.s.weft;
   };
+  # what a module reading `lib` receives, where the instance's `lib` or a caller's may be `null`
+  nullRead =
+    E: specialArgs:
+    (at E specialArgs [
+      { options.weft = E.mkOption { type = E.types.str; }; }
+      ({ lib, ... }: { config.weft = if lib == null then "null" else "set"; })
+    ]).weft;
   # a caller's `lib` through each inlet: it wins where nixpkgs lets it, and only there
   inlets = E: {
     specialArgsAtRoot = (at E { lib = mark "caller"; } [ schemaImport ]).weft;
@@ -184,6 +191,17 @@ in
           ({ lib, ... }: { config.x = lib.optionalString true "served"; })
         ]).x;
       expected = "served";
+    };
+    # Given, the instance's `lib` is delivered as given, `null` included: whether one was given is the
+    # argument set's key (den-hoag-xrh86), and nixpkgs delivers every argument it is handed, a caller's
+    # `lib = null` reaching its modules as `null`. A refusal reads "refused".
+    test-a-given-null-lib-is-delivered-as-given = {
+      expr =
+        let
+          r = builtins.tryEval (nullRead (genMergeWithLib null) { });
+        in
+        if r.success then r.value else "refused";
+      expected = nullRead N { lib = null; };
     };
     test-with-no-lib-a-lib-read-is-still-refused = {
       expr = (builtins.tryEval (at genMerge { } [ (sub genMerge [ schemaImport ]) ]).s.weft).success;

@@ -55,15 +55,19 @@
 #             is the component. The convention `types`/`memo` state above governs here too.
 #   lib     : the library every module receives as its `lib` argument, as nixpkgs'
 #             `lib/modules.nix` is `{ lib }:` (den-hoag-61r97, owner-ruled S4). An instantiation
-#             PARAMETER, not a dependency: nothing here reads it, and `null` (the default) injects
-#             no `lib`, so a module reading one is refused by name as before.
+#             PARAMETER, not a dependency: nothing here reads it. Omitted, it injects no `lib`, so a
+#             module reading one is refused by name as before. Given, it is delivered as given, `null`
+#             included, as nixpkgs delivers every argument it is handed (a caller's `lib = null` reaches
+#             its modules as `null` there); whether it was given is the argument set's key, read
+#             through `args` (an already-interned name) and never by testing the value, which would
+#             force it (den-hoag-xrh86).
 {
   prelude,
   types,
   memo,
   scope,
   lib ? null,
-}:
+}@args:
 let
   # ── THE EVALUATOR DOOR, TOTAL, ONCE PER CONSTRUCTION ──────────────────────────────────────────
   # A published door that ADMITS a value outside its contract and then diverges inside the fixpoint
@@ -303,18 +307,34 @@ let
   # `types` without that protocol, or with one its inline test disagrees with.
   core = builtins.seq checkedScope (
     builtins.seq checkedTypes (
-      import ./modules.nix {
-        inherit
-          prelude
-          priority
-          memo
-          strategies
-          ;
-        scope = checkedScope;
-        types = checkedTypes;
-        leaves = completedLeaves;
-        inherit lib;
-      }
+      # The core sees a `lib` only where one was given, decided by the key (`lib` above).
+      import ./modules.nix (
+        if args ? lib then
+          {
+            inherit
+              prelude
+              priority
+              memo
+              strategies
+              lib
+              ;
+            scope = checkedScope;
+            types = checkedTypes;
+            leaves = completedLeaves;
+          }
+        else
+          {
+            inherit
+              prelude
+              priority
+              memo
+              strategies
+              ;
+            scope = checkedScope;
+            types = checkedTypes;
+            leaves = completedLeaves;
+          }
+      )
     )
   );
   strategies = import ./types.nix {

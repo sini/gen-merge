@@ -116,7 +116,6 @@
         # The published leaves, the knot `lib/default.nix` ties as `completedLeaves`.
         leaves = genMerge.types;
         # `genMerge`'s instantiation: no `lib`.
-        lib = null;
       };
       # The protocol boundary (lib/interface.nix) and the type VOCABULARY, on the internal seam. The
       # boundary is reached through the core rather than re-imported, so the suite reads the same

@@ -44,15 +44,17 @@
   # engine's own `_module.check` record states: nixpkgs' docs walker reads `getSubOptions` off it,
   # which the raw gen-types leaf lacks. A KNOT, tied as `strategies` is.
   leaves,
-  # The instantiating `lib` (`lib/default.nix`), or `null`: the module argument `lib`, never read here.
-  # `declArgs` and `baseArgs` branch on `lib == null` between a literal without the key, the one the
-  # engine built with none uses, and the same literal with `inherit lib;` (den-hoag-61r97). The branch
-  # is written at each site, not let-bound, because a binding here is a thunk every engine load pays. A
-  # single literal with a null-able dynamic name, `${if lib == null then null else "lib"}`, cost the
-  # no-`lib` engine every flake consumer runs 32 B per instance and 523 load thunks on the hub's gen-schema
-  # rows, for a key that serves nothing there; the branch costs the duplicated literal text.
-  lib,
-}:
+  # The instantiating `lib` (`lib/default.nix`), present only when the engine was given one: the module
+  # argument `lib`, never read here. `declArgs` and `baseArgs` branch on `engine ? lib` between a literal
+  # without the key, the one the engine built with none uses, and the same literal with `inherit lib;`
+  # (den-hoag-61r97). The branch reads the argument set's KEY and never the value: a `lib == null` test
+  # forces the instance's top-level set, 523 thunks per process on every engine built with nixpkgs' `lib`
+  # (den-hoag-xrh86). The branch is written at each site, not let-bound, because a binding here is a thunk
+  # every engine load pays. A single literal with a null-able dynamic name reserves its slot, 32 B per
+  # instance for a key that serves nothing on the no-`lib` engine; the branch costs the duplicated
+  # literal text. `engine` is an already-interned name, so the binder costs its env slot and no symbol.
+  lib ? null,
+}@engine:
 let
   inherit (prelude)
     isAttrs
@@ -6842,7 +6844,7 @@ let
         declArgs =
           (
             if positioned then
-              if lib == null then
+              if !(engine ? lib) then
                 {
                   _class = class;
                   _prefix = prefix;
@@ -6869,7 +6871,7 @@ let
                   inherit prefix specialArgs;
                   name = inadmissible "config" "read the module argument `name'";
                 }
-            else if lib == null then
+            else if !(engine ? lib) then
               {
                 _class = class;
                 _prefix = prefix;
@@ -8053,7 +8055,7 @@ let
               # applied to, so a module reading `name` takes `callM`'s elided application. Where a
               # module declares `options._module`, `moduleArgs` holds it, after any `apply`.
               if knot.positioned then
-                if lib == null then
+                if !(engine ? lib) then
                   {
                     _class = class;
                     _prefix = prefix;
@@ -8090,7 +8092,7 @@ let
                       else
                         positionNameOf prefix moduleArgs pushed;
                   }
-              else if lib == null then
+              else if !(engine ? lib) then
                 {
                   _class = class;
                   _prefix = prefix;
