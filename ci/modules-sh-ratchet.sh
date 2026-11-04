@@ -57,7 +57,9 @@
 #                        cost a cost class. Named by the row's own hash, never by the arm wildcard.
 #
 # Every trailer in range naming a key's hash is read, and any valid one admits it, so a later trailer for
-# the same key (another change's, of a class that does not hold there) never shadows a valid one.
+# the same key (another change's, of a class that does not hold there) never shadows a valid one. The
+# `admitted` line cites the OLDEST valid one, the admitting change's own: the range runs to HEAD, so a newer
+# valid trailer can be a later change's, written for a later move of the same key.
 #
 # An ARM-SCOPED trailer `Bar-Perf-Rise: <arm>:* <class>` (the register's file name before
 # `-baseline.jsonl`: `modules-sh`, `nixos-bar`, `hm-bar`, `fp-bar`) names every rise of that arm's register in the
@@ -154,8 +156,9 @@ judge() {
   fi
   [ -n "$fallen$rises" ] || return 0
   for r in "$@"; do
-    trailers+=$(git log --format="%(trailers:key=$decrease,valueonly)" "$r")$'\n'
-    [ "$rise" = - ] || ptrailers+=$(git log --format="%(trailers:key=$rise,valueonly)" "$r")$'\n'
+    # Oldest first, so the first valid candidate below is the admitting change's own trailer.
+    trailers+=$(git log --reverse --format="%(trailers:key=$decrease,valueonly)" "$r")$'\n'
+    [ "$rise" = - ] || ptrailers+=$(git log --reverse --format="%(trailers:key=$rise,valueonly)" "$r")$'\n'
   done
   a=$(refsAt "$old") || exit 2
   b=$(refsAt "$new") || exit 2
