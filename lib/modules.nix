@@ -1433,7 +1433,9 @@ let
               if completedLeaves == null then null else interface.carriedAt "alternatives" completedLeaves;
           in
           {
-            node = interface.metWith.anything.elemsOf t.node x raw defaultOrderPriority;
+            node =
+              interface.metWith.anything.elemsOf (interface.metWith.anything.commit completedLeaves t.node) x raw
+                defaultOrderPriority;
             el = markShared t.el re (
               if completedLeaves == null then
                 null

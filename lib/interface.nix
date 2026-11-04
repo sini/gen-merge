@@ -7479,6 +7479,8 @@ let
         mkBefore = [ ];
         pending = [ ];
         widened = null;
+        base0 = null;
+        tail = [ ];
         completedLeaves = [ ];
         unapplicable = [ ];
         all = [ ];
@@ -7486,19 +7488,33 @@ let
       elemsOf =
         d: x: raw: defaultOrderPriority:
         # a pending declaration (`pendingOf`) is folded whole into the node's sets, and widened into its widened view
-        # (begun as the node itself at the first pending declaration); once a view exists, each declaration enters both
+        # (begun as the node itself at the first pending declaration, `base0`); once a view exists, each declaration enters
+        # both and is listed (`tail`), so a join widening only some pending trees refolds them (`commit`)
         if x ? __pendingOf then
           metWith.anything.elemsOf (d // { widened = null; }) x.__pendingOf raw defaultOrderPriority
           // {
             widened = metWith.anything.elemsOf (
               if d.widened == null then d else d.widened
             ) x.widened raw defaultOrderPriority;
+            # `==` over shape trees: a payload holding a function is the same tree on Lix only (gen-merge AGENTS.md, the
+            # vocabulary row), so elsewhere such a declaration is listed as another tree, owed whole until widened
             pending = if builtins.elem x.tree d.pending then d.pending else d.pending ++ [ x.tree ];
+            base0 = if d.widened == null then d else d.base0;
+            tail = (if d.widened == null then [ ] else d.tail) ++ [
+              {
+                inherit x raw defaultOrderPriority;
+              }
+            ];
           }
         else if d.widened != null then
           metWith.anything.elemsOf (d // { widened = null; }) x raw defaultOrderPriority
           // {
             widened = metWith.anything.elemsOf d.widened x raw defaultOrderPriority;
+            tail = d.tail ++ [
+              {
+                inherit x raw defaultOrderPriority;
+              }
+            ];
           }
         else
           let
@@ -7570,18 +7586,32 @@ let
         ++ (if d.exact.n == 0 then [ ] else structuring d.exact false)
         ++ (if d.minPrio.n == 0 then [ ] else structuring d.minPrio true)
         ++ filter keep d.mkBefore;
-      # the debt node `d` as a step over the join `m` owes it: where `d` holds pending declarations (their trees, `pending`)
-      # and `m` widens every one, its widened view; else `d`, whose sets owe them whole (a join widening some and not
-      # others owes all whole: loud, never silent)
-      viewAt =
+      # the debt node `d` met by the join `m`: each pending tree `m` widens is relativised there, once and for good (ADR-0039
+      # THE MEET, "relativised once, at the join that widens it"): every one widened, the widened view, pending-free; some,
+      # the entries since the first pending one refolded with those trees' entries widened; none, `d`. A step owes the node
+      # so committed (`viewAt`), and the fold records it (lib/modules.nix `structuring`), so no later join re-makes it.
+      # `==` over shape trees is the Lix-only sameness for a payload holding a function (gen-merge AGENTS.md)
+      commit =
         m: d:
-        if d.pending == [ ] then
+        if d.pending == [ ] || m == null then
           d
         else
           let
             sm = metWith.anything.shapeOf importedTypeWalkFuel m;
+            w = filter (t: t != sm && metWith.anything.widensAt t sm) d.pending;
           in
-          if builtins.all (t: t != sm && metWith.anything.widensAt t sm) d.pending then d.widened else d;
+          if w == [ ] then
+            d
+          else if length w == length d.pending then
+            d.widened
+          else
+            builtins.foldl' (
+              n: e:
+              metWith.anything.elemsOf n (
+                if e.x ? __pendingOf && builtins.elem e.x.tree w then e.x.widened else e.x
+              ) e.raw e.defaultOrderPriority
+            ) d.base0 d.tail;
+      viewAt = metWith.anything.commit;
       # each operand as the declarations it stands for
       freeformLeaf = builtins.concatMap (o: o.spelledRead or [ o ]);
       elementsOf =
@@ -7891,6 +7921,7 @@ let
           sm = metWith.anything.shapeOf importedTypeWalkFuel m;
         in
         if metWith.anything.stated so && metWith.anything.widensAt so sm then
+          # `so == sm` is the Lix-only sameness for a payload holding a function (gen-merge AGENTS.md, the vocabulary row)
           (if so == sm then metWith.anything.pendingOf o else metWith.anything.witnessedCheck m o)
         else
           o;
