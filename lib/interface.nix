@@ -7778,8 +7778,7 @@ let
             # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
             # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
             # level); a stock of no recognised name keeps its own check (ADR-0039 reading 5's open defect under the
-            # parity-defect rule (3), which the join's check OR-ed in above leaves open). Asked only of a value the
-            # operand's check rejects (`meetOf`)
+            # parity-defect rule (3)). Asked only of a value the operand's check rejects (`meetOf`)
             __stockCheck =
               if s.check.isV2MergeCoherent or false then
                 s.check
