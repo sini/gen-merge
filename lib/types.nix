@@ -1402,7 +1402,8 @@ let
               )
           );
         typeMergeRel = {
-          exact = true;
+          # the construction certificate, stating the key this relation decides on (`interface.keyed.container`)
+          exact = "listOf";
           __functor = _: (elementRel "listOf" listOf element);
           rewrites = mkMerge: elementRelIn mkMerge null "listOf" listOf element;
         };
@@ -1630,7 +1631,8 @@ let
         # foreign partner in that partner's relation (`interface.embeddings`, through `elementRel`). The
         # rebuild keeps THIS container's name, so the distinction survives substitution.
         typeMergeRel = {
-          exact = true;
+          # the construction certificate, stating the key this relation decides on (`interface.keyed.container`)
+          exact = tyName;
           __functor = _: (rel tyName (attrsOfWith tyName) element);
           rewrites = mkMerge: elementRelIn mkMerge row tyName (attrsOfWith tyName) element;
         };
@@ -2023,7 +2025,8 @@ let
               )
           );
         typeMergeRel = {
-          exact = true;
+          # the construction certificate, stating the key this relation decides on (`interface.keyed.container`)
+          exact = "nullOr";
           __functor = _: (elementRel "nullOr" nullOr element);
           rewrites = mkMerge: elementRelIn mkMerge null "nullOr" nullOr element;
         };

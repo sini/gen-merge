@@ -1763,14 +1763,15 @@ let
     # `elementRelIn`): a partner of its key, gen or foreign, whose element `c`'s element answers as the decider only. The
     # element is asked of what its own relation states, as `lib/modules.nix` `bandedLeaves` asks the earlier: a container
     # through this predicate, gen `either` (`exact` beside `carries.alternatives`) by its key, a leaf by its own `later`;
-    # a gen partner's element is read off its own carrier. The partner is keyed as `c`'s relation keys it, on the
-    # constructor's name, which `c`'s fold carries (`mergeDefs.container`) and a `//` copy renaming `c` keeps with its
-    # relation; never `c.name`, which such a copy changes, nor its functor's (`attrsOf` is functor `attrsWith`)
+    # a gen partner's element is read off its own carrier. The partner is keyed as `c`'s relation keys it, on the key
+    # that relation states in its certificate (`typeMergeRel.exact`, the constructor's name), which every record
+    # carrying the relation carries: never `c.name` or its fold's label, which a `//` copy renaming `c` or rewriting its
+    # fold changes, nor its functor's (`attrsOf` is functor `attrsWith`). A relation stating no key keys nothing
     container =
       c: other:
       isAttrs other
       && !(other ? __derivation)
-      && (other.name or null) == (c.mergeDefs.container or null)
+      && (other.name or null) == (c.typeMergeRel.exact or false)
       && (
         if c.carries.element ? typeMergeRel.rewrites && c.carries.element ? carries.element then
           keyed.container c.carries.element (
@@ -7167,7 +7168,8 @@ let
       verified;
   # The answer of every type merge: `m` met with each operand whose check it does not carry.
   #  - A gen operand's construction certificate (`typeMergeRel.exact`) says its relation is gen's, not that
-  #    `m` carries its check. It is read against `m`: the operand is carried where `m` is its own construction
+  #    `m` carries its check (read by presence; an element container's also states its relation's key as its value,
+  #    `lib/types.nix` `listOf`, `attrsOfWith` and `nullOr`, read by `keyed.container`). It is read against `m`: the operand is carried where `m` is its own construction
   #    (one check witness, compared by `==` as the check-witness protocol compares it) or `m` states a payload,
   #    a join a parametric relation built over its operands' parameters. A leaf answer carries one
   #    construction's check, its own, so an author record reusing gen's relation over its own check, a gen
@@ -8320,7 +8322,22 @@ let
         && (joined ? merge || !(t ? merge || other ? merge));
       answer = if whole then joinKeepingOperands t other joined else null;
     in
-    if answer == null && whole then
+    # a descriptor gen constructed (a gen type through this door) keeps its own word on deferral: where its relation
+    # answers the partner as the DECIDER only (`lib/modules.nix` `bandedLeaves`' three-way question), so does the door,
+    # before its join, so the join its export builds as the decider is not taken as the earlier operand's decision
+    if
+      if t ? typeMergeRel.rewrites && t ? carries.element then
+        keyed.container t other
+      else if t ? typeMergeRel.exact && t ? carries.alternatives then
+        keyed.either other
+      else
+        t ? typeMergeRel.later && t.typeMergeRel.later other
+    then
+      {
+        refused = "`${nameOf t}' and `${nameOf other}'";
+        vetoes = false;
+      }
+    else if answer == null && whole then
       {
         merged = joined;
         meets = true;
