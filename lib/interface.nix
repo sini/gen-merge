@@ -1759,8 +1759,9 @@ let
                 vetoes = false;
               };
       };
-    # a container of key `key`: a partner of this key, gen or foreign, whose element `element`'s relation answers as the
-    # decider only; a gen partner's element is read off its own carrier
+    # a gen container `c` carrying an element (`lib/types.nix` `elementRelIn`, the relation every type parameterised by one
+    # element shares): a partner of its key, gen or foreign, whose element its element answers as the decider only; a gen
+    # partner's element is read off its own carrier. Read off the record, not stated per type (arm S, unadopted)
     container =
       c: other:
       isAttrs other
