@@ -3754,7 +3754,7 @@ admits it, with every trailer in its last paragraph. The ratchet guard reads thi
 `Nixos-Bar-Decrease:`, and a rise of a committed gen count needs `Bar-Perf-Rise: <hash> <class>`, the
 hash being that of `<id>\t<evaluator>`, where the class is `reanchor` (admitted only when nixpkgs'
 lock node moved and no gen member lock node, no `lib/` byte and none of the arm's own inputs
-`ci/modules-sh-lib.nix`, `ci/nixos-bar-eval.nix`, `ci/nixos-bar-cells.bash` and `ci/nixos-bar.bash` did), `parity` (the new gen figure is
+`ci/modules-sh-lib.nix`, `ci/nixos-bar-eval.nix`, `ci/bar-walk.nix` (the docs walk stages 2 and 3 share), `ci/nixos-bar-cells.bash` and `ci/nixos-bar.bash` did), `parity` (the new gen figure is
 at or under the new reference figure, or the row was already above its reference at the older
 revision), `floor <row>` or `owner <row>`. Each program prints its `PERF` lines under its own name
 (`PERF nixos-bar {…}`), and `--fold` reads only its own.

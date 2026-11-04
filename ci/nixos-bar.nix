@@ -58,6 +58,7 @@ let
     {
       nixpkgs = "${inputs.nixpkgs}";
       genLibFile = "${./modules-sh-lib.nix}";
+      walkFile = "${./bar-walk.nix}";
       libSrc = "${../lib}";
       genPreludeSrc = "${inputs.gen-prelude}";
       genIdentitySrc = "${inputs.gen-scope.inputs.gen-identity}";

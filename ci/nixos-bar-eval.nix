@@ -119,94 +119,18 @@ let
       rest
     ];
   };
-  # THE DOCS WALK. Each node is exactly the entry nixpkgs' `optionAttrSetToDocList` emits for that
-  # option: nixpkgs' own `optionAttrSetToDocList'`, called one option at a time with its sub-option
-  # recursion cut, so the walk recurses itself, under `tryEval`, and one refusing node cannot hide the
-  # rest. It reads internal and invisible options too, every entry the manual's `rawOpts` holds.
-  # A line is `<name>\tok:<sha256 of the entry's JSON>`, or `<name>\terr:<step>\t<route>` where forcing
-  # it refused; `route` is the JSON path back to it (a key, or null for a `getSubOptions` step), for the
-  # `node` read. A group whose keys refuse is `<path>.<keys>`, a sub-option set that refuses
-  # `<name>.<sub>`.
-  one =
-    opt:
-    builtins.head (
-      nplib.optionAttrSetToDocList' [ ] {
-        x = opt // {
-          type = opt.type // {
-            getSubOptions = _: { };
-          };
-        };
-      }
-    );
-  isOpt = t: nplib.isOption t;
-  nameOf = t: nplib.showOption t.loc;
-  subsOf =
-    t:
-    let
-      v = t.visible or true;
-      shown = if builtins.isBool v then v else v == "transparent";
-    in
-    if shown then t.type.getSubOptions t.loc else { };
-  forced = v: builtins.seq v v;
-  walk =
-    let
-      dot = nplib.concatStringsSep ".";
-      err = nm: step: rt: [ "${nm}\terr:${step}\t${builtins.toJSON rt}" ];
-      node =
-        pre: rt: t:
-        let
-          o = builtins.tryEval (isOpt t);
-        in
-        if !o.success then
-          err (dot pre) "isopt" rt
-        else if o.value then
-          let
-            e = builtins.tryEval (forced (builtins.toJSON (one t)));
-            n = builtins.tryEval (nameOf t);
-            nm = if n.success then n.value else dot pre;
-            ss = builtins.tryEval (
-              let
-                x = subsOf t;
-              in
-              builtins.seq (builtins.attrNames x) x
-            );
-          in
-          (if e.success then [ "${nm}\tok:${builtins.hashString "sha256" e.value}" ] else err nm "opt" rt)
-          ++ (if !ss.success then err "${nm}.<sub>" "sub" rt else node pre (rt ++ [ null ]) ss.value)
-        else if !(builtins.isAttrs t) then
-          [ ]
-        else
-          let
-            ks = builtins.tryEval (builtins.attrNames t);
-          in
-          if !ks.success then
-            err "${dot pre}.<keys>" "keys" rt
-          else
-            builtins.concatMap (k: node (pre ++ [ k ]) (rt ++ [ k ]) t.${k}) ks.value;
-    in
-    builtins.concatStringsSep "\n" (node [ ] [ ] ev.options);
-  # The node `route` names, reached by the steps the walk took, and the step that refused there forced.
-  node =
-    let
-      rt = builtins.fromJSON route;
-      step = builtins.head rt;
-      at = builtins.foldl' (t: k: if k == null then subsOf t else t.${k}) ev.options (builtins.tail rt);
-    in
-    if step == "isopt" then
-      isOpt at
-    else if step == "opt" then
-      forced (builtins.toJSON (one at))
-    else if step == "sub" then
-      builtins.attrNames (subsOf at)
-    else if step == "keys" then
-      builtins.attrNames at
-    else
-      throw "nixos-bar: unknown node step ${builtins.toJSON step}";
+  # THE DOCS WALK is the shared one (`bar-walk.nix`, which stage 3 imports too), over every entry the
+  # manual's `rawOpts` holds, internal and invisible options included (`published = false`). A string path,
+  # as `genLibFile` is: `--readonly-mode` refuses the store copy a path literal would make.
+  bw = import s.walkFile {
+    inherit nplib route;
+    options = ev.options;
+    published = false;
+  };
   reads = {
     toplevel = ev.config.system.build.toplevel.drvPath;
     options = ev.config.system.build.manual.optionsJSON.drvPath;
-    inherit walk node;
-    docsLen = builtins.length (nplib.optionAttrSetToDocList ev.options);
+    inherit (bw) walk node docsLen;
   };
 in
 {

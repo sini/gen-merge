@@ -91,7 +91,7 @@ set -euo pipefail
 # <register> <id form> <decrease-trailer key> <perf-rise trailer key, or -> <reference lock nodes,> <arm inputs, or ->
 registers=(
   "ci/modules-sh-baseline.jsonl legacy Modules-Sh-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/modules-sh-hook.bash,ci/modules-sh.nix"
-  "ci/nixos-bar-baseline.jsonl json Nixos-Bar-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/nixos-bar-eval.nix,ci/nixos-bar-cells.bash,ci/nixos-bar.bash"
+  "ci/nixos-bar-baseline.jsonl json Nixos-Bar-Decrease Bar-Perf-Rise nixpkgs ci/modules-sh-lib.nix,ci/nixos-bar-eval.nix,ci/bar-walk.nix,ci/nixos-bar-cells.bash,ci/nixos-bar.bash"
   "ci/hm-bar-baseline.jsonl json Hm-Bar-Decrease Bar-Perf-Rise nixpkgs,home-manager ci/modules-sh-lib.nix,ci/hm-bar-eval.nix,ci/bar-walk.nix,ci/hm-bar.patch,ci/hm-bar.nix,ci/hm-bar-cells.bash,ci/nixos-bar.bash"
   "ci/fp-bar-baseline.jsonl json Fp-Bar-Decrease Bar-Perf-Rise nixpkgs,flake-parts-src,nix-fast-build,hercules-ci-effects ci/modules-sh-lib.nix,ci/fp-bar-eval.nix,ci/fp-bar-cells.bash,ci/fp-bar.nix,ci/nixos-bar.bash"
 )
