@@ -6978,11 +6978,14 @@ let
           && !(rewritesCheck o)
           && !(replacesVerify o)
           && !(o ? holds)
-        ) (if rewrites != null && rewrites ? bNames then rewrites.bNames.mkBefore ++ map (p: p.__pendingOf) rewrites.bNames.pending ++ rewrites.own else os)
+        ) (if rewrites != null && rewrites ? bNames then rewrites.bNames.mkBefore ++ rewrites.own else os)
         && (
           rewrites == null
           || !(rewrites ? bNames)
-          || rewrites.bNames.plain.n == 0 && rewrites.bNames.exact.n == 0 && rewrites.bNames.minPrio.n == 0
+          || rewrites.bNames.plain.n == 0
+            && rewrites.bNames.exact.n == 0
+            && rewrites.bNames.minPrio.n == 0
+            && rewrites.bNames.pending == [ ]
         )
         && (rewrites == null || !(rewrites ? answers))
       then
@@ -7047,7 +7050,11 @@ let
               !(builtins.elem completeExport rewrites.bNames.completedLeaves)
               && !(builtins.elem completeExport rewrites.keys)
               && builtins.all (o: completeExport != closuresFirst [ o ] o) rewrites.bNames.mkBefore
-              && builtins.all (p: completeExport != closuresFirst [ p.__pendingOf ] p.__pendingOf) rewrites.bNames.pending
+              && builtins.all (
+                g:
+                !(builtins.elem completeExport g.whole.completedLeaves)
+                && builtins.all (o: completeExport != closuresFirst [ o ] o) g.whole.mkBefore
+              ) rewrites.bNames.pending
             else if rewrites != null && rewrites ? exports then
               builtins.all (k: completeExport != k) rewrites.exports
               && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
@@ -7489,12 +7496,21 @@ let
           definitionOf =
             if x ? __stockCheck && !(raw ? __stockCheck) then closuresFirst [ x ] x else defaultOrderPriority;
         in
-        # one update over the node: only the set `x`'s kind names is rebuilt; the others are the node's own; a pending
-        # declaration (`pendingOf`) is listed, owed whole or relativised by each later step's join
+        # one update over the node: only the set `x`'s kind names is rebuilt; the others are the node's own. A pending
+        # declaration (`pendingOf`) is folded into the node's group for its own tree twice, whole and widened (the second
+        # built only where a later join widens that tree), so a step owes one group record, never the declarations again
         if x ? __pendingOf then
+          let
+            here = builtins.filter (g: g.tree == x.tree) d.pending;
+            g = if here == [ ] then metWith.anything.pendingGroup x.tree else head here;
+            g' = g // {
+              whole = metWith.anything.elemsOf g.whole x.__pendingOf raw defaultOrderPriority;
+              widened = metWith.anything.elemsOf g.widened x.widened raw defaultOrderPriority;
+            };
+          in
           d
           // {
-            pending = d.pending ++ [ x ];
+            pending = if here == [ ] then d.pending ++ [ g' ] else map (h: if h.tree == x.tree then g' else h) d.pending;
             unapplicable = d.unapplicable ++ [ defaultOrderPriority ];
             all = d.all ++ [ x.__pendingOf ];
           }
@@ -7568,13 +7584,10 @@ let
               sm = metWith.anything.shapeOf importedTypeWalkFuel m;
             in
             builtins.concatMap (
-              p:
-              if !(keep p.__pendingOf) then
-                [ ]
-              else if p.tree != sm && metWith.anything.widensAt p.tree sm then
-                [ p.widened ]
-              else
-                [ p.__pendingOf ]
+              g:
+              metWith.anything.refuseUnreconciledMint meets m mayOwe vocabularyDefect (
+                if g.tree != sm && metWith.anything.widensAt g.tree sm then g.widened else g.whole
+              )
             ) d.pending
         );
       # each operand as the declarations it stands for
@@ -7871,6 +7884,11 @@ let
       # whole until a later join widens them, and from that join on relativised once, against its own parameters, which no
       # later step changes (ADR-0039 THE MEET, "relativised once, at the join that widens it"); its tree and that form are
       # each built once, where first read (`refuseUnreconciledMint`)
+      pendingGroup = tree: {
+        inherit tree;
+        whole = metWith.anything.scopeDefect;
+        widened = metWith.anything.scopeDefect;
+      };
       pendingOf = o: {
         __pendingOf = o;
         tree = metWith.anything.shapeOf importedTypeWalkFuel o;
