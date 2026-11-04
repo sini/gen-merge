@@ -4052,12 +4052,15 @@ let
           (
             if x ? typeMerge then
               {
-                # every join this closure answers owes `t`'s check (`close joined`). A declaration arriving with this
-                # return's own check at its own payload (the door declared again, by any door call over `t`) is owed
-                # already, and one arriving at the join's own payload is owed whole, since no join widens it (`metWith`:
-                # an operand whose tree is the join's is owed as it is), so it is conjoined where the closure owes `t`;
-                # either way the relation is handed the functor without the declaration, which its consumer would meet
-                # again. Each arm binds one join, as the closure did before it: a binding beside it is a thunk per step
+                # every join this closure answers owes the check the record answering it was closed with (`oc`); the
+                # root's is `t`'s own (`o`), and its joins owe `t`'s relativised (`close joined`). A declaration arriving
+                # with this return's own check at its own payload (the door declared again, by any door call over `t`) is
+                # owed already, and one arriving at the join's own payload is owed beside it: no join has widened it
+                # (`metWith`: an operand whose tree is the join's is owed as it is), so it is conjoined where the closure
+                # owes `t`, relativised to that join, and every later join this closure answers owes it so (ADR-0039
+                # THE MEET: every declaration folded stays owed at every later step); either way the relation is handed
+                # the functor without the declaration, which its consumer would meet again. Each arm binds one join, as
+                # the closure did before it, and hands `close` a variable: a binding beside it is a thunk per step
                 typeMerge =
                   f:
                   if
@@ -4070,7 +4073,12 @@ let
                       let
                         j = x.typeMerge bare;
                       in
-                      if j == null then null else close joined j
+                      if j == null then
+                        null
+                      else if oc == o then
+                        close joined j
+                      else
+                        close oc j
                     )
                   else if
                     isAttrs f
@@ -4085,19 +4093,69 @@ let
                       if j == null then
                         null
                       else
-                        close {
-                          check = {
-                            __functor = _: v: joined.check v && (f.__declared.check.__verifyProjection or f.__declared.check) v;
-                            isV2MergeCoherent = true;
-                          };
-                        } j
+                        (
+                          let
+                            # the arriving declaration owed on its own parameters, the join at this step's (whose
+                            # payload is its own), read only after its check rejects: membership as `joined` reads `t`'s
+                            # base (TWIN of `joined`'s `member`: an edit to one is owed the other)
+                            d = {
+                              check = {
+                                __functor =
+                                  _: v:
+                                  (if oc == o then joined else oc).check v
+                                  && (
+                                    (f.__declared.check.__verifyProjection or f.__declared.check) v
+                                    || !(
+                                      (
+                                        if adHocChecked j then
+                                          (j.merge.v2 {
+                                            loc = [ "<base>" ];
+                                            defs = [
+                                              {
+                                                file = "<base>";
+                                                value = v;
+                                              }
+                                            ];
+                                          }).headError == null
+                                        else
+                                          j.check v
+                                      )
+                                      && (
+                                        let
+                                          r = builtins.tryEval (
+                                            builtins.deepSeq (j.merge
+                                              [ "<base>" ]
+                                              [
+                                                {
+                                                  file = "<base>";
+                                                  value = v;
+                                                }
+                                              ]
+                                            ) true
+                                          );
+                                        in
+                                        r.success && r.value
+                                      )
+                                    )
+                                  );
+                                isV2MergeCoherent = true;
+                              };
+                            };
+                          in
+                          close d j
+                        )
                     )
                   else
                     (
                       let
                         j = x.typeMerge f;
                       in
-                      if j == null then null else close joined j
+                      if j == null then
+                        null
+                      else if oc == o then
+                        close joined j
+                      else
+                        close oc j
                     );
               }
             else
@@ -4119,7 +4177,7 @@ let
                     if isAttrs (j.merged or null) then
                       j
                       // {
-                        merged = close joined j.merged;
+                        merged = if oc == o then close joined j.merged else close oc j.merged;
                       }
                     else
                       j;
@@ -4135,7 +4193,7 @@ let
                   if isAttrs (j.merged or null) then
                     j
                     // {
-                      merged = close joined j.merged;
+                      merged = if oc == o then close joined j.merged else close oc j.merged;
                     }
                   else
                     j;
@@ -4152,7 +4210,12 @@ let
                     let
                       j = x.retainedRelation.typeMerge f;
                     in
-                    if j == null then null else close joined j;
+                    if j == null then
+                      null
+                    else if oc == o then
+                      close joined j
+                    else
+                      close oc j;
                 };
               }
             else
@@ -7032,7 +7095,7 @@ let
           )
           && !(rewritesCheck o)
           && !(replacesVerify o)
-          && !(o ? holds)
+          && !(o ? once)
         ) (if rewrites != null && rewrites ? bNames then rewrites.bNames.mkBefore ++ rewrites.own else os)
         && (
           rewrites == null
@@ -7059,7 +7122,7 @@ let
             || !(m ? typeMergeRel)
             || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
             || replacesVerify o
-            || o ? holds;
+            || o ? once;
           # the join's tree is walked only by a meet that asks whether an operand widens
           widens =
             let
@@ -7205,7 +7268,7 @@ let
           carriedAtDepth true os m
         else if owed == [ ] && answers == null then
           m
-        # a held operand (a record met holding, `holds`) is held again wherever it is met. So is an operand stating a
+        # a held operand (a record met holding, which names what it met, `once`) is held again wherever it is met. So is an operand stating a
         # relation gen did not construct (a `typeMergeRel` with no `exact` witness) and not relativised to its own
         # parameters (`__stockCheck`), where it carries no element or alternatives role: its name-keeping answer
         # certifies no fold, and an element or alternatives role is met (or held) at that role's own depth
@@ -7215,7 +7278,7 @@ let
         else if
           meets == "holds"
           || answers != null
-          || builtins.catAttrs "holds" once != [ ]
+          || builtins.catAttrs "once" once != [ ]
           ||
             !(m ? typeMergeRel)
             && builtins.any (
@@ -7240,7 +7303,7 @@ let
               if answers != null then
                 # main's own selection over what its step met: owed (`mayOwe`, the meet not holding), never the join
                 (if meets == false then filter mayOwe answers else answers)
-              else if meets == "holds" || builtins.catAttrs "holds" once != [ ] then
+              else if meets == "holds" || builtins.catAttrs "once" once != [ ] then
                 # a step taken past the witness holds such an operand whole, by its unchecked fold
                 metWith.anything.freeformLeaf once
               else if !(m ? typeMergeRel) then
@@ -7348,13 +7411,14 @@ let
               walk v (map (own loc defs) kept);
             fold = met.mergeDefs or null;
             # the held record, named so its exported `typeMerge` meets a later join with IT (and so holds again), not
-            # with the unheld `met` that `meetOf`'s own `typeMerge` names; it names the declarations it met (`__heldOnce`),
-            # which its relativisation at that join owes as checks, never held (`witnessedCheck`; ADR-0039 THE MEET)
+            # with the unheld `met` that `meetOf`'s own `typeMerge` names. It is held because it names the declarations it
+            # met (`once`, the mark a held type record is read by), which its relativisation at that join owes as checks,
+            # never held (`witnessedCheck`; ADR-0039 THE MEET). A foreign type record stating a `once` attribute would be
+            # read as held (no such input is known)
             h =
               met
               // {
-                holds = true;
-                __heldOnce = once;
+                inherit once;
                 ${if types ? mkIdentity && m ? __mint then "__mint" else null} = hids.__mint;
                 ${if types ? mkIdentity && m ? __mint then "__payload" else null} = hids.__payload;
                 ${if types ? mkIdentity && m ? __mint then "__sealed" else null} = hids.__sealed;
@@ -7468,7 +7532,7 @@ let
         o:
         if
           !(o ? check || o ? admits)
-          || o ? holds
+          || o ? once
           || replacesVerify o
           || rewritesCheck o
           || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
@@ -7792,10 +7856,10 @@ let
             # met also admits the value: the debt, owed as checks. A declaration no join widens, and one of no recognised
             # stock, has no relativised form and is owed whole (a refusal, never a silent pass)
             __stockCheck =
-              if o ? __heldOnce then
+              if o ? once then
                 (
                   let
-                    sc = (metWith.anything.witnessedCheck m (builtins.removeAttrs o [ "__heldOnce" ])).__stockCheck;
+                    sc = (metWith.anything.witnessedCheck m (builtins.removeAttrs o [ "once" ])).__stockCheck;
                   in
                   v:
                   sc v
@@ -7808,7 +7872,7 @@ let
                       in
                       y ? __stockCheck && !(y.__stockCheck v)
                     )
-                  ) o.__heldOnce
+                  ) o.once
                 )
               else if s.check.isV2MergeCoherent or false && foreignValueMeta.own s then
                 s.check

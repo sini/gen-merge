@@ -971,7 +971,23 @@ let
       p = gMAt ea;
       beside = stocksOf L;
     };
+    # an override record (its functor's `type` rebuilds it), `listOf int` with an ad-hoc length check
+    shortList = {
+      p = shortListAt np.int;
+      beside = intStocks;
+    };
   };
+  shortListAt =
+    elem:
+    np.mkOptionType {
+      name = "listOf";
+      check = short;
+      inherit (np.listOf elem) merge;
+      functor = (np.listOf elem).functor // {
+        type = _: shortListAt elem;
+      };
+      nestedTypes.elemType = elem;
+    };
   ownVals = joinVals // {
     bb = [
       "b"
@@ -1179,6 +1195,16 @@ let
       "shortC npg PR long"
       "shortC npg RP long"
       "aC npg PR xaa"
+      # a declaration owed at the join's own payload stays owed at every later join, widening or not
+      "aC npg TPR xaa"
+      "aC npg PPR xaa"
+      "aC npg QQR xaa"
+      "aC npg RTPR xaa"
+      "aC npg2 TPR xaa"
+      "shortC npg TPR long"
+      "shortC npg RPR long"
+      "shortList npg TPR long"
+      "shortList npg TTPR long"
     ]
     ++ map (ownJoin "twin") [
       "aC npg PT ab"
@@ -1191,6 +1217,10 @@ let
       # a door arriving at a join that widened past its own parameters is owed relativised, never whole
       "aC npg PTR ab"
       "aC npg RTP ab"
+      # owed relativised to its own parameters at a later widening join, never whole
+      "aC npg TPR ab"
+      "aC npg TPPR ab"
+      "aC npg TQR ab"
     ]
     # a value no check rejects, served with the twin's value, in each REFUSED row's own order: a refusal for the
     # declaration set itself reds these
@@ -1206,6 +1236,9 @@ let
       "aC npg2 QQQ a"
       "shortC npg PR ok"
       "shortC npg RP ok"
+      "aC npg TPR a"
+      "shortC npg TPR ok"
+      "shortList npg TPR ok"
     ];
 in
 {
