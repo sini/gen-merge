@@ -6982,7 +6982,8 @@ let
         && (
           rewrites == null
           || !(rewrites ? bNames)
-          || rewrites.bNames.plain.n == 0
+          ||
+            rewrites.bNames.plain.n == 0
             && rewrites.bNames.exact.n == 0
             && rewrites.bNames.minPrio.n == 0
             && rewrites.bNames.pending == [ ]
@@ -7510,26 +7511,27 @@ let
           in
           d
           // {
-            pending = if here == [ ] then d.pending ++ [ g' ] else map (h: if h.tree == x.tree then g' else h) d.pending;
+            pending =
+              if here == [ ] then d.pending ++ [ g' ] else map (h: if h.tree == x.tree then g' else h) d.pending;
             unapplicable = d.unapplicable ++ [ defaultOrderPriority ];
             all = d.all ++ [ x.__pendingOf ];
           }
         else
           d
-        // (
-          if k == "mkBefore" then
-            { mkBefore = d.mkBefore ++ [ x ]; }
-          else
-            {
-              ${k} = metWith.anything.shorthandMeta d.${k} x definitionOf;
-              completedLeaves = d.completedLeaves ++ [ definitionOf ];
-            }
-        )
-        // {
-          unapplicable = d.unapplicable ++ [ defaultOrderPriority ];
-          # every form in folding order, read only where each operand is read (a module set's carriage)
-          all = d.all ++ [ x ];
-        };
+          // (
+            if k == "mkBefore" then
+              { mkBefore = d.mkBefore ++ [ x ]; }
+            else
+              {
+                ${k} = metWith.anything.shorthandMeta d.${k} x definitionOf;
+                completedLeaves = d.completedLeaves ++ [ definitionOf ];
+              }
+          )
+          // {
+            unapplicable = d.unapplicable ++ [ defaultOrderPriority ];
+            # every form in folding order, read only where each operand is read (a module set's carriage)
+            all = d.all ++ [ x ];
+          };
       # the set as the one operand `meetOf` owes; `_lk` is the declarations it stands for at this meet (owed, and not the
       # join itself, as `metWith` selects a listed operand), read only by what reads each operand (the meet's identity, a hold)
       ctorOf =
@@ -7656,7 +7658,11 @@ let
         {
           inherit es;
           same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
-          holds = a.n == b.n && n == length b.e && (a.p == b.p || a.p != { } && b.p != { }) && builtins.all (c: c.holds) es;
+          holds =
+            a.n == b.n
+            && n == length b.e
+            && (a.p == b.p || a.p != { } && b.p != { })
+            && builtins.all (c: c.holds) es;
           # `ownRead`'s `structured` over `a`, read first (a tree with no parameters reads no join) and decisive only where `holds`
           # (so `es` are all of `a`'s elements)
           structured =

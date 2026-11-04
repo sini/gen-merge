@@ -1392,7 +1392,9 @@ let
             {
               ds = o.ds ++ [ d ];
               ks = o.ks ++ [ link ];
-              bNames = structuring o.bNames (if deep != false && deep.same then interface.metWith.anything.pendingOf raw else d) raw completedLeaves link deep;
+              bNames = structuring o.bNames (
+                if deep != false && deep.same then interface.metWith.anything.pendingOf raw else d
+              ) raw completedLeaves link deep;
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
