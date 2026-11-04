@@ -316,6 +316,17 @@
           [ "$rc" -eq 0 ] || die cyclic-guarded-control "expected exit 0, got $rc"
           [ "$val" = '[ true false ]' ] || die cyclic-guarded-control "expected [ true false ], got '$val'"
 
+          # setBytesOf <arm>: as callsOf, leaving the process's own sets.bytes in `bytes`.
+          setBytesOf() {
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            rm -f "$TMPDIR/stats"
+            evalArm "$1"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die "$1" "expected exit 0, got $rc"
+            bytes=$(tr -d ' \n' < "$TMPDIR/stats" | grep -o '"sets":{[^}]*}' | grep -o '"bytes":[0-9]*' | cut -d: -f2 || true)
+            [ -n "$bytes" ] || die "$1" "the evaluator wrote no sets.bytes to $TMPDIR/stats: cannot measure"
+          }
+
           # den-hoag-qbrq9: an over-approximately keyed position's walk is linear in its definitions:
           # one position of n definitions, each with its own key, at n = 100, 400, 1600. Linear growth
           # makes the second difference in function calls 4x the first; it must stay under 5x. A
@@ -339,6 +350,18 @@
           done
           [ $((pk8000 - pk2000)) -lt $((5 * (pk2000 - pk500))) ] || die prefix-keyed-8000 "list bytes grow faster than linear in the unkeyed entries: $pk500 / $pk2000 / $pk8000"
           echo "prefix-keyed: list bytes $pk500 / $pk2000 / $pk8000 at n = 500 / 2000 / 8000"
+
+          # den-hoag-xrh86: the warm identity walk is linear in the minted instances it reads: a registry of n
+          # instances and one warm evaluation from its prior, at n = 100, 400, 1600. Linear growth makes the second
+          # difference in set bytes 4x the first; it must stay under 5x. A walk copying its map once per entry grows
+          # faster on every evaluator.
+          for n in 100 400 1600; do
+            setBytesOf "identity-walk-$n"
+            [ "$val" = "\"warm-$n\"" ] || die "identity-walk-$n" "expected value \"warm-$n\", got '$val'"
+            eval "iw$n=$bytes"
+          done
+          [ $((iw1600 - iw400)) -lt $((5 * (iw400 - iw100))) ] || die identity-walk-1600 "set bytes grow faster than linear in the minted instances: $iw100 / $iw400 / $iw1600"
+          echo "identity-walk: set bytes $iw100 / $iw400 / $iw1600 at n = 100 / 400 / 1600"
 
           # den-hoag-hnd82 (ADR-0032): the cost of a met record, as thunks per option between n = 100 and
           # 200, n options each declared twice and defined. The bounds are the landed figures, in THUNKS: they
@@ -435,8 +458,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "83" ] || die runner "expected 83 evaluations, ran $ran"
-          echo "tests-process: 83 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "86" ] || die runner "expected 86 evaluations, ran $ran"
+          echo "tests-process: 86 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

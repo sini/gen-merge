@@ -214,6 +214,39 @@ let
           ];
         }
       ]).config.l;
+  # den-hoag-xrh86: a registry of n minted instances (each declares `id_hash`), one warm evaluation from its prior;
+  # the result is forced, which reads both identity maps. The runner reads the process's set bytes at three sizes.
+  identityWalk =
+    n:
+    let
+      inst.options = {
+        id_hash = m.mkOption { type = m.types.str; };
+        addr = m.mkOption { type = m.types.str; };
+      };
+      base = [
+        {
+          options.hosts = m.mkOption { type = m.types.attrsOf (m.types.submodule inst); };
+          options.nodeId = m.mkOption {
+            type = m.types.str;
+            default = "";
+          };
+        }
+        {
+          config.hosts = builtins.listToAttrs (
+            builtins.genList (i: {
+              name = "h${toString i}";
+              value = {
+                id_hash = "id${toString i}";
+                addr = "a${toString i}";
+              };
+            }) n
+          );
+        }
+      ];
+      edit.config.nodeId = "node-1";
+      warm = (eval base).warmDecision.next { editedModules = [ edit ]; } (base ++ [ edit ]);
+    in
+    builtins.deepSeq warm.config "${warm.warmDecision.mode}-${toString (builtins.length (builtins.attrNames warm.config.hosts))}";
   keyWalkWide =
     n:
     let
@@ -573,6 +606,9 @@ let
     prefix-keyed-500 = prefixKeyed 500;
     prefix-keyed-2000 = prefixKeyed 2000;
     prefix-keyed-8000 = prefixKeyed 8000;
+    identity-walk-100 = identityWalk 100;
+    identity-walk-400 = identityWalk 400;
+    identity-walk-1600 = identityWalk 1600;
     # den-hoag-hnd82: a met record's cost, read by the runner as thunks per option.
     met-cost-val-100 = metCost "val" 100;
     met-cost-val-200 = metCost "val" 200;

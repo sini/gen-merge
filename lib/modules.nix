@@ -9596,7 +9596,8 @@ let
           identityMapOf =
             declTree: cfg:
             let
-              # The lockstep descent: declaration `d` and value `v` at loc `l`, one step each.
+              # The lockstep descent: declaration `d` and value `v` at loc `l`, one step each. It
+              # answers the map's entries as a list in walk order, built into the map once below.
               # An INSTANCE is a position whose declaration declares an `id_hash` option, which is
               # what the one mint stamps (ADR-0034: decided at the declaration, never by inspecting
               # a value). Only that instance's `id_hash` is read. `null` there is a nullable's
@@ -9611,26 +9612,28 @@ let
                   # position's key, never its value.
                   (
                     if v == null then
-                      { }
+                      [ ]
                     else
-                      {
-                        ${showOption loc} =
-                          if isAttrs v && v ? id_hash then
-                            v.id_hash
-                          else
-                            throw "gen-merge: `evalModuleTree' at option `${showOption loc}': the warm identity walk reads the option as an instance (its declaration declares `id_hash'), and the value there is ${
-                              if isAttrs v then "a set without `id_hash'" else "a ${builtins.typeOf v}"
-                            }: the type declared there holds its module set somewhere its declaration does not say";
-                      }
+                      [
+                        {
+                          name = showOption loc;
+                          value =
+                            if isAttrs v && v ? id_hash then
+                              v.id_hash
+                            else
+                              throw "gen-merge: `evalModuleTree' at option `${showOption loc}': the warm identity walk reads the option as an instance (its declaration declares `id_hash'), and the value there is ${
+                                if isAttrs v then "a set without `id_hash'" else "a ${builtins.typeOf v}"
+                              }: the type declared there holds its module set somewhere its declaration does not say";
+                        }
+                      ]
                   )
                 else if isAttrs d && isAttrs v then
                   # an evaluation's config holds no `_module` (`uncheckedConfig` drops it), so the engine's group is not read
-                  foldl' (
-                    acc: k:
-                    if k == "_module" && !(v ? _module) then acc else acc // go (loc ++ [ k ]) d.${k} (v.${k} or null)
-                  ) { } (attrNames d)
+                  concatMap (
+                    k: if k == "_module" && !(v ? _module) then [ ] else go (loc ++ [ k ]) d.${k} (v.${k} or null)
+                  ) (attrNames d)
                 else
-                  { };
+                  [ ];
 
               # An ELEMENT position IS a declared leaf whose type is the element type — which is what
               # `attrsOf`/`listOf` say themselves, descending to the element under their placeholder
@@ -9651,7 +9654,7 @@ let
               below =
                 loc: ty: v:
                 if !(isAttrs ty) then
-                  { }
+                  [ ]
                 else
                   let
                     element = interface.importedCarried "element" ty;
@@ -9666,7 +9669,7 @@ let
                     && interface.importedCarried "element" element == null
                     && (interface.importedSubstructure element).modules == null
                   then
-                    { }
+                    [ ]
                   # A WRAPPER THAT ADDS NO PATH LEVEL (gen's `nullOr`, any type whose `declares`
                   # hands its element the same prefix) holds its element's value AT
                   # this position, so it is re-entered here with the element type rather than
@@ -9683,7 +9686,7 @@ let
                   # either: it would hand the ELEMENT's declarations to the container's value at the
                   # container's own loc, and read an entry name as an instance.
                   else if element != null && elementAt == null then
-                    { }
+                    [ ]
                   else if element != null then
                     # A container: one level into the VALUE's keys or indices, each with the element
                     # type. Asked FIRST, because a container's module set IS its element's — a
@@ -9732,14 +9735,14 @@ let
                       let
                         ed = edAt "<name>";
                       in
-                      foldl' (acc: k: acc // go (loc ++ [ k ]) ed v.${k}) { } (attrNames v)
+                      concatMap (k: go (loc ++ [ k ]) ed v.${k}) (attrNames v)
                     else if isList v then
                       let
                         ed = edAt "*";
                       in
-                      foldl' (acc: m: acc // m) { } (prelude.imap0 (i: x: go (loc ++ [ (toString i) ]) ed x) v)
+                      concatLists (prelude.imap0 (i: x: go (loc ++ [ (toString i) ]) ed x) v)
                     else
-                      { }
+                      [ ]
                   else
                     let
                       sub = interface.importedSubstructure ty;
@@ -9749,16 +9752,21 @@ let
                     # with no defs supplied, so the expansion is a declaration-side spine eval and no
                     # instance-authored value is forced.
                     if sub.modules == null then
-                      { }
+                      [ ]
                     else
                       let
                         decl = sub.declares loc;
                       in
                       # A gen record states its module set by its own construction; a foreign one is
                       # asked where the set sits, and one holding it below its position is not walked.
-                      if ty ? substructure || interface.importedHeldAt loc decl then go loc decl v else { };
+                      if ty ? substructure || interface.importedHeldAt loc decl then go loc decl v else [ ];
+              entries = go [ ] declTree cfg;
+              firstWins = listToAttrs entries;
             in
-            go [ ] declTree cfg;
+            # The LAST entry of a name wins, as a `//` fold keeps it, and `listToAttrs` keeps the first:
+            # two locs can print one name, since `showOption` prints a `<…>` segment verbatim. Only a
+            # map that lost an entry to such a name is rebuilt reversed.
+            if length (attrNames firstWins) == length entries then firstWins else listToAttrs (reverse entries);
 
           identityHeld =
             if !warmActive then
