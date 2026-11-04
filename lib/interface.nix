@@ -1805,11 +1805,14 @@ let
           )
       );
     # a gen type `o` through the door (`importType` keeps it as `retainedRelation.base`): what its own relation states
-    # about deferral, asked as `lib/modules.nix` `bandedLeaves` asks it; a record whose check a wrapper rewrote carries
-    # its base's relation, which speaks for the base, so it states none
+    # about deferral, asked as `lib/modules.nix` `bandedLeaves` asks it, for a carrier (a container, or gen `either`). A
+    # doored gen LEAF is asked as main asks it: read through its door it would answer as the raw leaf, whose deferred step
+    # at three declarations and more refuses where nixpkgs serves (a refusal no door may add). A record whose check a
+    # wrapper rewrote carries its base's relation, which speaks for the base, so it states none
     base =
       o: other:
-      !(o ? _checkWitness && o ? check && o.check != o._checkWitness)
+      o ? carries
+      && !(o ? _checkWitness && o ? check && o.check != o._checkWitness)
       && (
         if o ? typeMergeRel.rewrites && o ? carries.element then
           keyed.container o other
@@ -7190,8 +7193,9 @@ let
       verified;
   # The answer of every type merge: `m` met with each operand whose check it does not carry.
   #  - A gen operand's construction certificate (`typeMergeRel.exact`) says its relation is gen's, not that
-  #    `m` carries its check (read by presence; an element container's also states its relation's key as its value,
-  #    `lib/types.nix` `listOf`, `attrsOfWith` and `nullOr`, read by `keyed.container`). It is read against `m`: the operand is carried where `m` is its own construction
+  #    `m` carries its check. It is `true` or a string: an element container's states its relation's key as its value
+  #    (`lib/types.nix` `listOf`, `attrsOfWith` and `nullOr`), which `keyed.container` alone reads; every other reader
+  #    tests presence only, and none may compare it with `true`. It is read against `m`: the operand is carried where `m` is its own construction
   #    (one check witness, compared by `==` as the check-witness protocol compares it) or `m` states a payload,
   #    a join a parametric relation built over its operands' parameters. A leaf answer carries one
   #    construction's check, its own, so an author record reusing gen's relation over its own check, a gen
@@ -8984,8 +8988,19 @@ let
                   inherit (t) functor;
                   # a descriptor gen constructed is kept beside the relation, built once with the door, so the step
                   # asks the door, as the earlier operand, what that descriptor's own relation states about deferral
-                  # (`keyed.base`), and the door's relation stays the lambda it is asked as everywhere
-                  ${if t ? typeMergeRel.exact then "base" else null} = t;
+                  # (`keyed.base`), and the door's relation stays the lambda it is asked as everywhere. A door over a door
+                  # is read through to the same descriptor (a door is transparent: door = raw), unless the inner door's
+                  # check a wrapper rewrote, which speaks for its base (V1's exclusion, on every door of the chain)
+                  ${
+                    if
+                      t ? typeMergeRel.exact
+                      || t ? retainedRelation.base && !(t ? _checkWitness && t ? check && t.check != t._checkWitness)
+                    then
+                      "base"
+                    else
+                      null
+                  } =
+                    if t ? typeMergeRel.exact then t else t.retainedRelation.base;
                   # Theirs where they derived one, the protocol's own default over their `functor'
                   # where they did not — resolved HERE, so nothing downstream re-asks the question.
                   typeMerge = callerTypeMerge t;
