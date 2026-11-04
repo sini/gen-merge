@@ -1382,7 +1382,7 @@ let
                 false;
             d =
               if deep != false && deep.holds then
-                interface.metWith.anything.relativeTo deep completedLeaves raw
+                interface.metWith.anything.relativised deep completedLeaves raw
               else
                 raw;
           in

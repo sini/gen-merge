@@ -7691,7 +7691,7 @@ let
         else if c == null then
           metWith.anything.ownRead m o
         else if c.structured && c.holds then
-          metWith.anything.relativeTo c m o
+          metWith.anything.relativised c m o
         else
           o;
       # the comparisons of the operands `a`, `b` with the join `r` one role down at `i`, whose role records are `a'`, `b'`, `r'`:
@@ -7712,7 +7712,7 @@ let
             a = metWith.anything.nodeAt r rewrites.tag.a i a;
             b = metWith.anything.nodeAt r rewrites.tag.b i b;
           };
-      # `o` owed relativised to its own parameters beside the join `m` (`relativeTo null`). A declaration's own-step form
+      # `o` owed relativised to its own parameters beside the join `m` (`relativised null`). A declaration's own-step form
       # (`seen`, `ownRead`, lib/modules.nix `defineEmbedded`) hands the comparison `c` of its tree with `m`'s, and where
       # `c.same` the join's check is OR-ed into the stock: that join widened nothing, so on its domain the declaration is
       # owed whole, and only a value a later, wider join admits beyond it is owed relativised (ADR-0039 THE MEET,
@@ -7722,11 +7722,8 @@ let
       # `c.same` is `==` over the payload trees, so a payload holding a function is the same tree on Lix only (gen-merge
       # AGENTS.md, the vocabulary row), and the OR reaches it there alone. `c.same` and `m`'s check are read only after the
       # stock rejects, so an admitted value forces neither
-      witnessedCheck = metWith.anything.relativeTo null;
-      sameTree = {
-        same = true;
-      };
-      relativeTo =
+      witnessedCheck = metWith.anything.relativised null;
+      relativised =
         c: m: o:
         let
           s = importedPartner ((wrappedBase o).functor or null);
@@ -7871,7 +7868,7 @@ let
         if metWith.anything.stated so && metWith.anything.widensAt so sm then
           (
             if so == sm then
-              metWith.anything.relativeTo metWith.anything.sameTree m o
+              metWith.anything.relativised { same = true; } m o
             else
               metWith.anything.witnessedCheck m o
           )
