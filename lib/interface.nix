@@ -1759,19 +1759,19 @@ let
                 vetoes = false;
               };
       };
-    # a container of key `key`: a partner of this key whose element `element`'s relation answers as the decider only
+    # a container of key `key`: a partner of this key, gen or foreign, whose element `element`'s relation answers as the
+    # decider only; a gen partner's element is read off its own carrier
     container =
       key: element: other:
       isAttrs other
-      && (other ? retainedRelation || !(other ? typeMergeRel))
       && !(other ? __derivation)
       && (other.name or null) == key
       && element ? typeMergeRel.later
-      && (
-        let
-          s = carriedAt "element" other;
-        in
-        s != null && element.typeMergeRel.later s
+      && element.typeMergeRel.later (
+        if other ? carries && !(other ? retainedRelation) then
+          other.carries.element or null
+        else
+          carriedAt "element" other
       );
     # `either`'s: a FOREIGN partner keyed `either` that states no gen role, which the rebuilt partner's relation joins
     either =

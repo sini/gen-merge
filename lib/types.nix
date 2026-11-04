@@ -1403,7 +1403,7 @@ let
           );
         typeMergeRel = {
           exact = true;
-          # a FOREIGN partner of this key whose element this element's relation answers as the decider only: the
+          # a partner of this key, gen or foreign, whose element this element's relation answers as the decider only: the
           # container's meet is built on that answer, so it is the decider's only too (the leaf's `later`,
           # `interface.keyed.leaf`, one role down)
           later = interface.keyed.container "listOf" element;

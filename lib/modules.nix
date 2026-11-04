@@ -1150,9 +1150,11 @@ let
         if
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
-          # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked
+          # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked; a gen
+          # container's later carrying a role is asked too, since its element's relation answers the partner's element so
+          # (`interface.keyed.container`) and the container's join would be built on that answer and never read
           if
-            (later ? retainedRelation || !(later ? typeMergeRel))
+            (later ? retainedRelation || !(later ? typeMergeRel) || later ? carries)
             && earlier.typeMergeRel ? later
             && earlier.typeMergeRel.later later
             # a record whose check a wrapper rewrote carries its base's relation, which speaks for the base, so it is asked as any
@@ -1186,9 +1188,10 @@ let
           (
             let
               tried = builtins.tryEval (
-                # a deferred step's pair is never one value (the earlier states `typeMergeRel` and no `retainedRelation`, the later
-                # `retainedRelation` or no `typeMergeRel`), so `mergeTypesBy` meets a join stating no relation whole: met here directly
-                if rewrites == null && veto ? later then
+                # a deferred step's pair with a foreign later is never one value (the earlier states `typeMergeRel` and no
+                # `retainedRelation`, the later `retainedRelation` or no `typeMergeRel`), so `mergeTypesBy` meets a join stating no
+                # relation whole: met here directly. A gen later's relation decides as any step's does, asked once
+                if rewrites == null && veto ? later && (later ? retainedRelation || !(later ? typeMergeRel)) then
                   (
                     let
                       x = relationMergeWithin null later earlier;
