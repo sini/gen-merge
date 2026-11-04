@@ -710,6 +710,155 @@ in
         };
       };
 
+    # A DECLARATION IS OWED WHOLE UNTIL A JOIN WIDENS ITS PARAMETERS (`interface.metWith.anything.pendingOf`;
+    # ADR-0039 THE MEET, "relativised once, at the join that widens it"). A foreign `int` refinement whose functor
+    # rebuilds a type narrower than itself is owed whole beside gen's `int`, which states no parameters and so widens
+    # none, at two declarations and where two constructions of one name and payload meet first: the value either
+    # rejects is rejected in every order, at the top and one role down. Two constructions of one enum tree met first
+    # stay owed whole there, and the later join that widens the tree relativises each once: a member of neither's own
+    # parameters is served, a member one of them refuses is rejected.
+    test-a-declaration-is-owed-whole-until-a-join-widens-its-parameters =
+      let
+        both = nixpkgsLib.mkOptionType {
+          name = "int";
+          check = x: builtins.isInt x && x != 7 && x != 9;
+          merge = nixpkgsLib.options.mergeEqualOption;
+        };
+        narrowInt =
+          n:
+          let
+            self = nixpkgsLib.mkOptionType {
+              name = "int";
+              check = x: builtins.isInt x && x != n;
+              merge = nixpkgsLib.options.mergeEqualOption;
+              functor = nixpkgsLib.types.defaultFunctor "int" // {
+                type = _: both;
+                payload = {
+                  refined = true;
+                };
+                binOp = a: _b: a;
+              };
+              typeMerge =
+                f:
+                if
+                  f.name == "int"
+                  && (
+                    f.payload == null
+                    ||
+                      f.payload == {
+                        refined = true;
+                      }
+                  )
+                then
+                  self
+                else
+                  null;
+            };
+          in
+          self;
+        letters = w: builtins.filter (c: builtins.isString c && c != "") (builtins.split "" w);
+        shapes = {
+          leaf = {
+            d = {
+              G = gt.int;
+              A = narrowInt 7;
+              B = narrowInt 9;
+            };
+            v = x: x;
+          };
+          listOf = {
+            d = {
+              G = gt.listOf gt.int;
+              A = t.listOf (narrowInt 7);
+              B = t.listOf (narrowInt 9);
+            };
+            v = x: [ x ];
+          };
+        };
+        w1 = t.addCheck (t.enum [
+          "a"
+          "b"
+        ]) (v: v != "a");
+        w2 = t.addCheck (t.enum [
+          "a"
+          "b"
+        ]) (v: v != "b");
+      in
+      {
+        expr = {
+          narrow = builtins.mapAttrs (
+            _: s:
+            builtins.listToAttrs (
+              map
+                (w: {
+                  name = w;
+                  value = map (x: ev (map (c: s.d.${c}) (letters w)) (s.v x)) [
+                    7
+                    9
+                    8
+                  ];
+                })
+                [
+                  "GA"
+                  "AG"
+                  "GAB"
+                  "GBA"
+                  "GABA"
+                  "BAB"
+                ]
+            )
+          ) shapes;
+          widenedAfterOwnTree =
+            map
+              (
+                x:
+                ev [
+                  (t.enum [ "c" ])
+                  w1
+                  w2
+                ] x
+              )
+              [
+                "a"
+                "b"
+                "c"
+              ];
+        };
+        expected = {
+          narrow =
+            let
+              # at 7, 9 and 8: A's rejected value, B's, and the value both admit
+              one = n: [
+                "MERGED ${n} / REJECTED"
+                "MERGED ${n} / ACCEPTED"
+                "MERGED ${n} / ACCEPTED"
+              ];
+              two = n: [
+                "MERGED ${n} / REJECTED"
+                "MERGED ${n} / REJECTED"
+                "MERGED ${n} / ACCEPTED"
+              ];
+              words = n: {
+                GA = one n;
+                AG = one n;
+                GAB = two n;
+                GBA = two n;
+                GABA = two n;
+                BAB = two n;
+              };
+            in
+            {
+              leaf = words "int";
+              listOf = words "listOf";
+            };
+          widenedAfterOwnTree = [
+            "MERGED enum / REJECTED"
+            "MERGED enum / REJECTED"
+            "MERGED enum / ACCEPTED"
+          ];
+        };
+      };
+
     # AN ENUM UNDER A STEP-FREE WRAPPER FOLDS TO THE UNION (`interface.metWith`'s `widens`, which reads
     # the whole parameter tree; den-hoag-kbiu2). Two nixpkgs `nullOr`, `uniq` or `either` declarations over
     # one-member enums are relativised to their own parameters as the bare enums are, so each member is
