@@ -7596,8 +7596,14 @@ let
         if d.pending == [ ] || m == null then
           d
         else
+          metWith.anything.commitAt (metWith.anything.shapeOf importedTypeWalkFuel m) d;
+      # `commit` against the join's tree `sm` handed down (lib/modules.nix `structuring`)
+      commitAt =
+        sm: d:
+        if d.pending == [ ] then
+          d
+        else
           let
-            sm = metWith.anything.shapeOf importedTypeWalkFuel m;
             w = filter (t: t != sm && metWith.anything.widensAt t sm) d.pending;
           in
           if w == [ ] then
@@ -7751,6 +7757,13 @@ let
             );
           };
       # `ownRead` read off the comparison `c` of `o`'s tree with `m`'s (`node`), walking only where `c` is `null`
+      # `seen` with `o`'s tree handed down (`null`: none)
+      seenAt =
+        tree: c: m: o:
+        if tree != null && c != null && c != false && c.structured && c.holds && c.same then
+          metWith.anything.pendingAt tree o
+        else
+          metWith.anything.seen c m o;
       seen =
         c: m: o:
         if c == false then
@@ -7909,9 +7922,11 @@ let
       # whole until a later join widens them, and from that join on relativised once, against its own parameters, which no
       # later step changes (ADR-0039 THE MEET, "relativised once, at the join that widens it"); its tree and that form are
       # each built once, where first read (`refuseUnreconciledMint`)
-      pendingOf = o: {
+      pendingOf = o: metWith.anything.pendingAt (metWith.anything.shapeOf importedTypeWalkFuel o) o;
+      # `pendingOf` over `o`'s tree handed down (lib/modules.nix `structuring`)
+      pendingAt = tree: o: {
         __pendingOf = o;
-        tree = metWith.anything.shapeOf importedTypeWalkFuel o;
+        inherit tree;
         widened = metWith.anything.witnessedCheck o o;
       };
       ownRead =

@@ -1374,13 +1374,9 @@ let
             # the declaration's tree compared with the step's join's ONCE: its own-step form here (`ownRead`'s test, read off
             # it) and at every node down the debt tree (`structuring`); a tree stating no parameter at any node is relativised
             # at none (`false`), so it builds no comparison
+            sj = interface.metWith.anything.shapeOf interface.importedTypeWalkFuel completedLeaves;
             deep =
-              if interface.metWith.anything.stated so then
-                interface.metWith.anything.node so (
-                  interface.metWith.anything.shapeOf interface.importedTypeWalkFuel completedLeaves
-                )
-              else
-                false;
+              if interface.metWith.anything.stated so then interface.metWith.anything.node so sj else false;
             d =
               if deep != false && deep.holds && !deep.same then
                 interface.metWith.anything.witnessedCheck completedLeaves raw
@@ -1393,9 +1389,17 @@ let
             {
               ds = o.ds ++ [ d ];
               ks = o.ks ++ [ link ];
-              bNames = structuring o.bNames (
-                if deep != false && deep.same then interface.metWith.anything.pendingOf raw else d
-              ) raw completedLeaves link deep;
+              bNames =
+                structuring o.bNames
+                  (if deep != false && deep.same then interface.metWith.anything.pendingAt so raw else d)
+                  raw
+                  completedLeaves
+                  link
+                  deep
+                  {
+                    o = so;
+                    j = sj;
+                  };
             };
         # the empty debt tree, every node empty, built as deep as a step descends
         inlineOwn = {
@@ -1409,8 +1413,9 @@ let
         # the tree `t` extended by the declaration `raw`, owed as `x` at this node, over the step's join `completedLeaves` there
         # (`deep`: `raw`'s tree compared with `completedLeaves`' at this node, `interface.metWith.anything.node`; `null` walks;
         # `false`: no node of `raw`'s tree states a parameter, so none is relativised)
+        # (`trees`: `raw`'s tree and `completedLeaves`' at this node, handed down where `deep`'s node is, else `null`)
         structuring =
-          t: x: raw: completedLeaves: defaultOrderPriority: deep:
+          t: x: raw: completedLeaves: defaultOrderPriority: deep: trees:
           let
             protocolNames = y: if y == null then null else y.__meetJoin or y;
             markShared =
@@ -1420,22 +1425,34 @@ let
               else
                 let
                   c = interface.metWith.anything.nodeAt completedLeaves deep allow raw;
+                  # the trees at this role are the parents' subtrees exactly where `nodeAt` read the comparison there
+                  ts =
+                    if trees != null && c != null && c != false then
+                      {
+                        o = builtins.elemAt trees.o.e allow;
+                        j = builtins.elemAt trees.j.e allow;
+                      }
+                    else
+                      null;
                 in
                 structuring importLeaf (
                   if lintLib == null then
                     mergeConfigAttrs
                   else
-                    interface.metWith.anything.seen c lintLib mergeConfigAttrs
-                ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs) c;
+                    interface.metWith.anything.seenAt (if ts == null then null else ts.o) c lintLib mergeConfigAttrs
+                ) mergeConfigAttrs lintLib (keyOf mergeConfigAttrs) c ts;
             re = interface.carriedAt "element" raw;
             ra = interface.carriedAt "alternatives" raw;
             completeParametric =
               if completedLeaves == null then null else interface.carriedAt "alternatives" completedLeaves;
           in
           {
-            node =
-              interface.metWith.anything.elemsOf (interface.metWith.anything.commit completedLeaves t.node) x raw
-                defaultOrderPriority;
+            node = interface.metWith.anything.elemsOf (
+              if trees != null && completedLeaves != null then
+                interface.metWith.anything.commitAt trees.j t.node
+              else
+                interface.metWith.anything.commit completedLeaves t.node
+            ) x raw defaultOrderPriority;
             el = markShared t.el re (
               if completedLeaves == null then
                 null
