@@ -1382,9 +1382,7 @@ let
                 false;
             d =
               if deep != false && deep.holds then
-                interface.metWith.anything.witnessedCheck (
-                  if deep.same then completedLeaves.check else null
-                ) completedLeaves raw
+                interface.metWith.anything.relativeTo deep completedLeaves raw
               else
                 raw;
           in

@@ -6717,15 +6717,15 @@ let
         else
           (v: c v && o.verify v == null);
       jc = direct j.check;
-      # a widened operand's stock check (`metWith`): it is owed only where its own parameters admit
+      # a widened operand's stock check (`metWith`): it is owed only where its own parameters admit. A reader decides the
+      # form by its presence and forces it only once the operand's own check rejects, so an admitted value builds no stock
       stockOf = o: if o ? __stockCheck then direct o.__stockCheck else null;
       ocs = map (
         o:
         let
           c = dom o;
-          s = stockOf o;
         in
-        if s == null then c else (v: c v || !(s v))
+        if !(o ? __stockCheck) then c else (v: c v || !(direct o.__stockCheck v))
       ) os;
       oc = head ocs;
       c0 = dom o1;
@@ -6750,7 +6750,7 @@ let
           (v: jc v && ov v == null)
         else if length os == 1 then
           (v: jc v && oc v)
-        else if length os == 2 && s0 == null && s1 == null then
+        else if length os == 2 && !(o1 ? __stockCheck) && !(elemAt os 1 ? __stockCheck) then
           (v: jc v && c0 v && c1 v)
         else if length os == 2 then
           (v: jc v && (c0 v || s0 != null && !(s0 v)) && (c1 v || s1 != null && !(s1 v)))
@@ -7052,7 +7052,7 @@ let
               && builtins.all (o: completeExport != closuresFirst [ o ] o) (rewrites.own or [ ])
             else
               builtins.all (o: completeExport != closuresFirst [ o ] o) os;
-          rel = map (o: if fresh && widens o then metWith.anything.witnessedCheck null m o else o);
+          rel = map (o: if fresh && widens o then metWith.anything.witnessedCheck m o else o);
           # a step owing a met accumulator's debt (`rewrites.ds`, each declaration in its own-step form) relativises only its own
           # earlier operand (`rewrites.own`); the debt is owed as it is
           owed =
@@ -7070,7 +7070,7 @@ let
                       if
                         fresh && (if rewrites.tag.a == null then widens x else !rewrites.tag.a.same && rewrites.tag.a.holds)
                       then
-                        metWith.anything.witnessedCheck null m x
+                        metWith.anything.witnessedCheck m x
                       else
                         x
                     )
@@ -7085,7 +7085,7 @@ let
                       if
                         fresh && (if rewrites.tag.b == null then widens y else !rewrites.tag.b.same && rewrites.tag.b.holds)
                       then
-                        metWith.anything.witnessedCheck null m y
+                        metWith.anything.witnessedCheck m y
                       else
                         y
                     )
@@ -7109,7 +7109,7 @@ let
                     [
                       (
                         if fresh && (if c == null then widens o else !c.same && c.holds) then
-                          metWith.anything.witnessedCheck null m o
+                          metWith.anything.witnessedCheck m o
                         else
                           o
                       )
@@ -7391,9 +7391,8 @@ let
               (v: o.verify v == null)
             else
               (v: c v && o.verify v == null);
-          st = if o ? __stockCheck then direct o.__stockCheck else null;
         in
-        if st == null then d else (v: d v || !(st v));
+        if !(o ? __stockCheck) then d else (v: d v || !(direct o.__stockCheck v));
       lint =
         o:
         if o ? verify && (!(o ? typeMergeRel) || replacesVerify o) then
@@ -7692,7 +7691,7 @@ let
         else if c == null then
           metWith.anything.ownRead m o
         else if c.structured && c.holds then
-          metWith.anything.witnessedCheck (if c.same then m.check else null) m o
+          metWith.anything.relativeTo c m o
         else
           o;
       # the comparisons of the operands `a`, `b` with the join `r` one role down at `i`, whose role records are `a'`, `b'`, `r'`:
@@ -7713,15 +7712,22 @@ let
             a = metWith.anything.nodeAt r rewrites.tag.a i a;
             b = metWith.anything.nodeAt r rewrites.tag.b i b;
           };
-      # `o` owed relativised to its own parameters beside the join `m`. `jc` (`null`: none) is a check OR-ed into the
-      # stock: a declaration's own-step form (`seen`, `ownRead`, lib/modules.nix `defineEmbedded`) at a join of its own
-      # tree hands that join's check, because that join widened nothing: on its domain the declaration is owed whole, and
-      # only a value a later, wider join admits beyond it is owed relativised (ADR-0039 THE MEET, "wherever a widening join
-      # reaches it"). The stock alone holds that only where it admits what `m` admits: a foreign functor whose `type`
-      # rebuilds the refinement itself (`_: self`) makes the stock the declaration, its form `c v || !(c v)`, and a second
-      # construction of the same name and payload as `m` would drop it (den-hoag-ob4k0)
-      witnessedCheck =
-        jc: m: o:
+      # `o` owed relativised to its own parameters beside the join `m` (`relativeTo null`). A declaration's own-step form
+      # (`seen`, `ownRead`, lib/modules.nix `defineEmbedded`) hands the comparison `c` of its tree with `m`'s, and where
+      # `c.same` the join's check is OR-ed into the stock: that join widened nothing, so on its domain the declaration is
+      # owed whole, and only a value a later, wider join admits beyond it is owed relativised (ADR-0039 THE MEET,
+      # "wherever a widening join reaches it"). The stock alone holds that only where it admits what `m` admits: a foreign
+      # functor whose `type` rebuilds the refinement itself (`_: self`) makes the stock the declaration, its form
+      # `c v || !(c v)`, and a second construction of the same name and payload as `m` would drop it (den-hoag-ob4k0).
+      # `c.same` is `==` over the payload trees, so a payload holding a function is the same tree on Lix only (gen-merge
+      # AGENTS.md, the vocabulary row), and the OR reaches it there alone. `c.same` and `m`'s check are read only after the
+      # stock rejects, so an admitted value forces neither
+      witnessedCheck = metWith.anything.relativeTo null;
+      sameTree = {
+        same = true;
+      };
+      relativeTo =
+        c: m: o:
         let
           s = importedPartner ((wrappedBase o).functor or null);
         in
@@ -7735,107 +7741,120 @@ let
             # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
             # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
             # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
-            # level); a stock of no recognised name keeps its own check. Asked only of a value the operand's check
-            # rejects (`meetOf`)
+            # level); a stock of no recognised name keeps its own check (ADR-0039 reading 5's open defect under the
+            # parity-defect rule (3), which the join's check OR-ed in above leaves open). Asked only of a value the
+            # operand's check rejects (`meetOf`)
             __stockCheck =
-              let
-                st =
-                  if s.check.isV2MergeCoherent or false then
-                    s.check
-                  else if
-                    ((m.functor or { }).payload or null) ? elemType
-                    && !(s ? _checkWitness && s.check == s._checkWitness)
-                    && !(isV2 s)
-                    && (s.getSubModules or null) == null
-                  then
-                    v:
-                    let
-                      p = importedRehomeAt recognitionDoor null s;
-                      j =
-                        if p.container == "either" then
-                          constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
-                        else
-                          constructors.${p.container} p.element;
-                      defs = [
-                        {
-                          file = "<stock>";
-                          value = v;
-                        }
-                      ];
-                      # a member passes its element's check at every element (nixpkgs merges only checked definitions),
-                      # so a value with an element failing it is decided without building the judge, read off the roles
-                      # the recognition reads and asked first; the recognition is then asked only where the stock's own
-                      # check (main's answer for an unrecognised name) admits the value. A check that throws, and an
-                      # element stating a property, are left to the judge
-                      roles = statedRoles s;
-                      name = (s.functor or { }).name or null;
-                      r = builtins.tryEval (
-                        if roles ? alternatives then
-                          prelude.any (a: a.check v) roles.alternatives
-                        else if !(roles ? element) then
-                          true
-                        else if name == "nullOr" then
-                          v == null || roles.element.check v
-                        else if name == "listOf" then
-                          isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
-                        else if name == "attrsWith" then
-                          isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
-                        else
-                          true
-                      );
-                    in
-                    if r.success && !r.value then
-                      s.check v && p == null
-                    else if p == null then
-                      s.check v
-                    else
-                      (
-                        if isV2 j then
-                          (
-                            let
-                              result = j.merge.v2 {
-                                loc = [ "<stock>" ];
-                                inherit defs;
-                              };
-                              r = builtins.tryEval (builtins.deepSeq result.value true);
-                            in
-                            (j.check v) && r.success && r.value
-                          )
-                        else
-                          j.check v
-                          && (
-                            let
-                              r = builtins.tryEval (builtins.deepSeq (j.merge [ "<stock>" ] defs) true);
-                            in
-                            r.success && r.value
-                          )
-                      )
-                  else if
-                    s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
-                  then
+              if s.check.isV2MergeCoherent or false then
+                (
+                  if c == null then
                     s.check
                   else
-                    v:
-                    let
-                      defs = [
-                        {
-                          file = "<stock>";
-                          value = v;
-                        }
-                      ];
-                    in
-                    (s.merge.v2 {
-                      loc = [ "<stock>" ];
-                      inherit defs;
-                    }).headError == null
-                    && (
-                      let
-                        r = builtins.tryEval (builtins.deepSeq (s.merge [ "<stock>" ] defs) true);
-                      in
-                      r.success && r.value
+                    (v: (s.check._fn or s.check) v || c.same && (m.check._fn or m.check) v)
+                )
+              else if
+                ((m.functor or { }).payload or null) ? elemType
+                && !(s ? _checkWitness && s.check == s._checkWitness)
+                && !(isV2 s)
+                && (s.getSubModules or null) == null
+              then
+                v:
+                (
+                  let
+                    p = importedRehomeAt recognitionDoor null s;
+                    j =
+                      if p.container == "either" then
+                        constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
+                      else
+                        constructors.${p.container} p.element;
+                    defs = [
+                      {
+                        file = "<stock>";
+                        value = v;
+                      }
+                    ];
+                    # a member passes its element's check at every element (nixpkgs merges only checked definitions),
+                    # so a value with an element failing it is decided without building the judge, read off the roles
+                    # the recognition reads and asked first; the recognition is then asked only where the stock's own
+                    # check (main's answer for an unrecognised name) admits the value. A check that throws, and an
+                    # element stating a property, are left to the judge
+                    roles = statedRoles s;
+                    name = (s.functor or { }).name or null;
+                    r = builtins.tryEval (
+                      if roles ? alternatives then
+                        prelude.any (a: a.check v) roles.alternatives
+                      else if !(roles ? element) then
+                        true
+                      else if name == "nullOr" then
+                        v == null || roles.element.check v
+                      else if name == "listOf" then
+                        isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
+                      else if name == "attrsWith" then
+                        isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
+                      else
+                        true
                     );
-              in
-              if jc == null then st else (v: st v || jc v);
+                  in
+                  if r.success && !r.value then
+                    s.check v && p == null
+                  else if p == null then
+                    s.check v
+                  else
+                    (
+                      if isV2 j then
+                        (
+                          let
+                            result = j.merge.v2 {
+                              loc = [ "<stock>" ];
+                              inherit defs;
+                            };
+                            r = builtins.tryEval (builtins.deepSeq result.value true);
+                          in
+                          (j.check v) && r.success && r.value
+                        )
+                      else
+                        j.check v
+                        && (
+                          let
+                            r = builtins.tryEval (builtins.deepSeq (j.merge [ "<stock>" ] defs) true);
+                          in
+                          r.success && r.value
+                        )
+                    )
+                )
+                || c != null && c.same && (m.check._fn or m.check) v
+              else if
+                s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
+              then
+                (
+                  if c == null then
+                    s.check
+                  else
+                    (v: (s.check._fn or s.check) v || c.same && (m.check._fn or m.check) v)
+                )
+              else
+                v:
+                (
+                  let
+                    defs = [
+                      {
+                        file = "<stock>";
+                        value = v;
+                      }
+                    ];
+                  in
+                  (s.merge.v2 {
+                    loc = [ "<stock>" ];
+                    inherit defs;
+                  }).headError == null
+                  && (
+                    let
+                      r = builtins.tryEval (builtins.deepSeq (s.merge [ "<stock>" ] defs) true);
+                    in
+                    r.success && r.value
+                  )
+                )
+                || c != null && c.same && (m.check._fn or m.check) v;
           }
         else
           o;
@@ -7850,7 +7869,12 @@ let
           sm = metWith.anything.shapeOf importedTypeWalkFuel m;
         in
         if metWith.anything.stated so && metWith.anything.widensAt so sm then
-          metWith.anything.witnessedCheck (if so == sm then m.check else null) m o
+          (
+            if so == sm then
+              metWith.anything.relativeTo metWith.anything.sameTree m o
+            else
+              metWith.anything.witnessedCheck m o
+          )
         else
           o;
       functorRecord =
