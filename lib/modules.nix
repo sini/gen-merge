@@ -1150,11 +1150,22 @@ let
         if
           earlier ? typeMergeRel && decidable && !(later ? wraps && interface.wrapsKeyOf later earlier)
         then
-          # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked; a gen
-          # container's later carrying a role is asked too, since its element's relation answers the partner's element so
-          # (`interface.keyed.container`) and the container's join would be built on that answer and never read
+          # a relation that answers a FOREIGN later as the decider only says so before its join, and is not asked. A gen
+          # container's later is asked too where its carried element is one a relation can answer so (foreign, a door return,
+          # or a carrier one role down: `interface.keyed.container`'s partner element, restated inline: a call per step), since
+          # the earlier container's join would be built on its element's decider-only answer and never read
           if
-            (later ? retainedRelation || !(later ? typeMergeRel) || later ? carries)
+            (
+              later ? retainedRelation
+              || !(later ? typeMergeRel)
+              ||
+                later ? carries.element
+                && (
+                  later.carries.element ? retainedRelation
+                  || !(later.carries.element ? typeMergeRel)
+                  || later.carries.element ? carries
+                )
+            )
             && earlier.typeMergeRel ? later
             && earlier.typeMergeRel.later later
             # a record whose check a wrapper rewrote carries its base's relation, which speaks for the base, so it is asked as any
