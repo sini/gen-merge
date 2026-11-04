@@ -9511,6 +9511,9 @@ let
                 else
                   null;
               inherit strict uncheckedConfig;
+              # this evaluation's identity map as a PRIOR, walked once and shared by every warm
+              # evaluation started from it (`priorIdentities`)
+              identities = identityMapOf allOptions uncheckedConfig;
               # the declaration tree the next warm evaluation walks this one's identities with: the
               # unserved one, as that evaluation walks its own (`nextIdentities`)
               options = allOptions;
@@ -9767,12 +9770,14 @@ let
                   remerged = attrNames warmDecision.remerged;
                 }
                 {
-                  # EACH CONFIG IS WALKED WITH ITS OWN TREE. `warmFrom` is a prior result record and
-                  # this one exports `options = allOptions`, so the prior tree is already in hand.
+                  # EACH CONFIG IS WALKED WITH ITS OWN TREE. `warmFrom` is a prior result record, and its
+                  # map is its own `warmDecision.identities`, walked over its own tree once and shared by
+                  # every warm evaluation started from it: recomputing it per evaluation re-walked the
+                  # prior's minted instances each time, O(instances) per override (den-hoag-xrh86).
                   # Using `allOptions` for both would be wrong and silently so: a decl-side edit that
                   # ADDS an option is the discrimination the warm path exists to make, and one that
                   # REMOVES an option leaves the next tree under-describing the prior config.
-                  priorIdentities = identityMapOf warmFrom.warmDecision.options warmFrom.warmDecision.uncheckedConfig;
+                  priorIdentities = warmFrom.warmDecision.identities;
                   nextIdentities = identityMapOf allOptions config;
                 };
 
@@ -10148,6 +10153,10 @@ let
         warmDecision = result.warmDecision // {
           uncheckedConfig = builtins.seq result.identityHeld (
             builtins.seq result.config result.warmDecision.uncheckedConfig
+          );
+          # the prior identity map carries instance values too, so it is read through the same refusal
+          identities = builtins.seq result.identityHeld (
+            builtins.seq result.config result.warmDecision.identities
           );
           # The warm continuation, an internal memo field: the published door over `o`, warm-started from
           # THIS evaluation's own record, unread through its refusal, so a prior's refusal is never the
