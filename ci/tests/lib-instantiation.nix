@@ -192,15 +192,19 @@ in
         ]).x;
       expected = "served";
     };
-    # Given, the instance's `lib` is delivered as given, `null` included: whether one was given is the
-    # argument set's key (den-hoag-xrh86), and nixpkgs delivers every argument it is handed, a caller's
-    # `lib = null` reaching its modules as `null`. A refusal reads "refused".
-    test-a-given-null-lib-is-delivered-as-given = {
+    # A given `null` instance `lib` is refused by name where a module reads it, as nixpkgs' module system
+    # refuses a null instance (`{ lib }:`, a type error there); a caller's `specialArgs.lib = null` is
+    # delivered on both engines (den-hoag-xrh86). A refusal reads "refused".
+    test-a-given-null-lib-is-refused-where-read = {
       expr =
         let
           r = builtins.tryEval (nullRead (genMergeWithLib null) { });
         in
         if r.success then r.value else "refused";
+      expected = "refused";
+    };
+    test-a-caller-null-lib-is-delivered-as-nixpkgs-delivers-it = {
+      expr = nullRead G { lib = null; };
       expected = nullRead N { lib = null; };
     };
     test-with-no-lib-a-lib-read-is-still-refused = {
