@@ -420,6 +420,27 @@ let
     in
     if rebuilt == null then null else (importedSubstructure rebuilt).declares prefix;
 
+  # WHETHER A FOREIGN TYPE HOLDS ITS MODULE SET AT ITS OWN POSITION, read off the declaration it hands
+  # back when asked at `prefix`. `getSubModules` says which module set a type is built from, not where
+  # its instances sit: nixpkgs' `listOf`/`attrsOf`/`functionTo` forward their element's set, and
+  # `coercedTo` its final type's. The foreign protocol stamps every option record it builds with its
+  # `loc`, so the placement is stated by the declaration stratum itself: the set sits at `prefix` iff
+  # some option of `decl` is located at `prefix` followed by its own path in `decl`. A container's
+  # options sit one placeholder segment below (`*`, `<name>`, `<function body>`) and none qualifies. An
+  # option record stating no `loc` states no placement. `any`, not the first leaf: a freeform
+  # submodule's `_freeformOptions` sits below its placeholder beside options that sit at `prefix`.
+  importedHeldAt =
+    prefix: decl:
+    let
+      go =
+        rel: d:
+        if isAttrs d && (d._type or null) == "option" then
+          (d.loc or null) == prefix ++ rel
+        else
+          isAttrs d && prelude.any (k: go (rel ++ [ k ]) d.${k}) (attrNames d);
+    in
+    go [ ] decl;
+
   # EVERY TYPE THIS ONE WRAPS, flattened, whichever vocabulary states it — a role may carry one type
   # or a positional list of them, and the foreign side says the same thing in its introspection alias.
   # For a walker that only wants to reach the wrapped types (the portable-subset lint's `functionTo`
@@ -453,7 +474,9 @@ let
       t.substructure
     else
       {
-        declares = t.getSubOptions or (_prefix: { });
+        # A field read only in its protocol's shape: a `getSubOptions` that is not a function
+        # states no declaration, and calling it would abort where the fold never reads it.
+        declares = if isFunction (t.getSubOptions or null) then t.getSubOptions else (_prefix: { });
         modules = t.getSubModules or null;
         rebuild = t.substSubModules or (_m: null);
       };
@@ -1890,6 +1913,7 @@ in
     importedElementPrefix
     importedEmpty
     importedFold
+    importedHeldAt
     importedMerge
     importedRawFold
     importedMergeReason

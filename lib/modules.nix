@@ -3972,7 +3972,16 @@ let
                 if isOptLeaf d then
                   below loc (d.type or null) v
                 else if isAttrs d && d ? id_hash && isOptLeaf d.id_hash then
-                  (if v == null then { } else { ${showOption loc} = v.id_hash; })
+                  (
+                    if v == null then
+                      { }
+                    else if isAttrs v && v ? id_hash then
+                      { ${showOption loc} = v.id_hash; }
+                    else
+                      throw "gen-merge: the warm identity walk reads option `${showOption loc}' as an instance (its declaration declares `id_hash'), and the value there is ${
+                        if isAttrs v then "a set without `id_hash'" else "a ${builtins.typeOf v}"
+                      }: the type declared there holds its module set somewhere its declaration does not say"
+                  )
                 else if isAttrs d && isAttrs v then
                   foldl' (acc: k: acc // go (loc ++ [ k ]) d.${k} (v.${k} or null)) { } (attrNames d)
                 else
@@ -4091,7 +4100,15 @@ let
                     # descent at the same loc. `substructure.declares` runs a nested `evalModuleTree`
                     # with no defs supplied, so the expansion is a declaration-side spine eval and no
                     # instance-authored value is forced.
-                    if sub.modules == null then { } else go loc (sub.declares loc) v;
+                    if sub.modules == null then
+                      { }
+                    else
+                      let
+                        decl = sub.declares loc;
+                      in
+                      # A gen record states its module set by its own construction; a foreign one is
+                      # asked where the set sits, and one holding it below its position is not walked.
+                      if ty ? substructure || interface.importedHeldAt loc decl then go loc decl v else { };
             in
             go [ ] declTree cfg;
 
