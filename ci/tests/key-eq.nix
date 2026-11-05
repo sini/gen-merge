@@ -173,14 +173,14 @@ in
         oneModule = [ "a" ];
       };
     };
-    # The published list is the fast path's own: the names `moduleClosure` tests inline by `?` (read off
-    # the source between its binding and the closure it falls to) are exactly `moduleSyntax.closure`, so
-    # neither side moves alone.
+    # The published list is the fast path's own: the names the plain-list test (`removal.isPlain`, the one
+    # spelling every collection walk reads) tests by `?`, read off the source between its binding and the end of
+    # its body, are exactly `moduleSyntax.closure`, so neither side moves alone.
     test-closure-keys-are-the-fast-paths-tests =
       let
         src = builtins.readFile ../../lib/modules.nix;
-        after = builtins.elemAt (builtins.split "\n  moduleClosureWith =\n" src) 2;
-        body = builtins.head (builtins.split "removal[.]closure specialArgs" after);
+        after = builtins.elemAt (builtins.split "\n    isPlain =\n" src) 2;
+        body = builtins.head (builtins.split "\n      [)] plain;\n" after);
         tested = builtins.filter builtins.isList (builtins.split "e[.]content [?] ([A-Za-z_]+)" body);
       in
       {
