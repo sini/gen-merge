@@ -7484,7 +7484,7 @@ let
         unapplicable = [ ];
         all = [ ];
       };
-      # (`c`: `raw`'s tree compared with the join `m`'s at this node, `node`; `m`: that join, `null` where none is there, `false`
+      # (`c`: `raw`'s tree compared with the join `m`'s at this node, `pair`; `m`: that join, `null` where none is there, `false`
       # once the node is committed against it.) A node holding a pending declaration is first committed against `m` (`close`).
       # A declaration a join of its own tree meets (`c.same`) is pending: folded whole into the node's sets, and widened into
       # its widened view (begun as the node itself at the first pending declaration, `base`); once a view exists, each
@@ -7683,8 +7683,7 @@ let
           builtins.genList (i: i) (length a.e)
         );
       # two trees compared ONCE, node by node: `same` is `a == b` and `holds` is `widensAt a b`, each a node's own test over
-      # its elements' answers (`es`), so a role meet below reads its node (`below`) instead of walking its subtree again; the
-      # node keeps the two trees it compared, so a fold reading it below reads them there too (lib/modules.nix `structuring`)
+      # its elements' answers (`es`), so a role meet below reads its node (`below`) instead of walking its subtree again
       node =
         a: b:
         let
@@ -7692,6 +7691,33 @@ let
           es =
             if n == length b.e then
               builtins.genList (i: metWith.anything.node (elemAt a.e i) (elemAt b.e i)) n
+            else
+              [ ];
+        in
+        {
+          inherit es;
+          same = a.n == b.n && n == length b.e && a.p == b.p && builtins.all (c: c.same) es;
+          holds =
+            a.n == b.n
+            && n == length b.e
+            && (a.p == b.p || a.p != { } && b.p != { })
+            && builtins.all (c: c.holds) es;
+          # `seen`'s `structured` over `a`, read first (a tree with no parameters reads no join) and decisive only where `holds`
+          # (so `es` are all of `a`'s elements)
+          structured =
+            a.p != { } && (a.p._type or null) != "option-type"
+            || a.e != [ ] && builtins.any (c: c.structured) es;
+        };
+      # `node` as the fold's debt reads it (lib/modules.nix `defineEmbedded`, `structuring`): each node keeps the two trees it
+      # compared (`a`, the declaration's; `b`, the join's), so the fold reads them at every role it descends, and the meet's
+      # own comparisons, which read neither, keep none
+      pair =
+        a: b:
+        let
+          n = length a.e;
+          es =
+            if n == length b.e then
+              builtins.genList (i: metWith.anything.pair (elemAt a.e i) (elemAt b.e i)) n
             else
               [ ];
         in
@@ -7770,7 +7796,7 @@ let
               ) (length rewrites.own)
             );
           };
-      # a declaration `o`'s own-step form beside the join `m`, read off the comparison `c` of `o`'s tree with `m`'s (`node`;
+      # a declaration `o`'s own-step form beside the join `m`, read off the comparison `c` of `o`'s tree with `m`'s (`pair`;
       # `false`: `o`'s tree states no parameter): relativised where `m` widens its tree; whole where `m` is its own tree, pending
       # until a later join widens it (`elemsOf`, which reads `c.same`); else whole
       seen =
