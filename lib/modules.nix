@@ -1376,7 +1376,7 @@ let
             # at none (`false`), so it builds no comparison
             deep =
               if interface.metWith.anything.stated so then
-                interface.metWith.anything.node so (
+                interface.metWith.anything.pair so (
                   interface.metWith.anything.shapeOf interface.importedTypeWalkFuel completedLeaves
                 )
               else
@@ -1420,12 +1420,15 @@ let
                   # the role's comparison read off this node's; where none is read there (a role that is not its payload
                   # element), its own trees compared once, and read node by node below it
                   c =
-                    if lintLib != null && interface.metWith.anything.nodeAt completedLeaves deep allow raw == null then
-                      interface.metWith.anything.node (interface.metWith.anything.shapeOf interface.importedTypeWalkFuel mergeConfigAttrs) (
+                    let
+                      c0 = interface.metWith.anything.nodeAt completedLeaves deep allow raw;
+                    in
+                    if lintLib != null && c0 == null then
+                      interface.metWith.anything.pair (interface.metWith.anything.shapeOf interface.importedTypeWalkFuel mergeConfigAttrs) (
                         interface.metWith.anything.shapeOf interface.importedTypeWalkFuel lintLib
                       )
                     else
-                      interface.metWith.anything.nodeAt completedLeaves deep allow raw;
+                      c0;
                 in
                 structuring importLeaf (
                   if lintLib == null then
