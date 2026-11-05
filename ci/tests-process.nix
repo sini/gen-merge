@@ -459,6 +459,31 @@
           [ "$per" -le "1406" ] || die staged-cost-rename "a rename adds $per thunks over a direct definition, over its bound 1406; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
           echo "staged-cost: $per thunks for a rename over a direct definition (bound 1406)"
 
+          # den-hoag-staged-stratum-inner-eval-nhjxu B1: ONE CLOSURE DECISION PER COLLECTION ENVIRONMENT. Over the
+          # census's fixtures, the decision builder (`removal.decideClosure`) runs once per (evaluation, environment):
+          # 1 / 3 / 2, the environments the census instrument tells apart by `root` (the gen-merge 99ddac8 census read
+          # 4 / 5 / 3 collections). A count below it has merged two environments, one above it has missed a share. Every
+          # other walk re-applies along a decision (`removal.closureAlong`), none recomputes it in full
+          # (`moduleClosureWith`), and the level walk runs only inside a decision: 3 / 6 / 3 chains, where 99ddac8 ran
+          # 12 / 12 / 6, one per walk. A build whose walks still recompute it reads them back. The nested staged child
+          # walks once more than 99ddac8 (6 against 5): its passes' environment decides at pass 0's poisoned fold, which
+          # no pass consumes the output of a later pass through.
+          for row in root-staged:5021:1:4:3 nested-staged:5421:3:6:6 nested-plain:421:2:3:3; do
+            IFS=: read -r cell want dec walks lv <<<"$row"
+            export NIX_COUNT_CALLS=1
+            thunksOf "closure-env-$cell"
+            unset NIX_COUNT_CALLS
+            [ "$val" = "$want" ] || die "closure-env-$cell" "expected value $want, got '$val'"
+            counts=$(python3 -I ${./fn-calls.py} "$TMPDIR/stats" "$libSrc/modules.nix" decideClosure closureAlong moduleClosureWith moduleLevels) ||
+              die "closure-env-$cell" "the call counts cannot be measured"
+            { read -r d; read -r a; read -r w; read -r l; } <<<"$counts"
+            [ "$d" = "$dec" ] || die "closure-env-$cell" "the closure decision ran $d times, over $dec collection environments"
+            [ $((d + a + w)) = "$walks" ] || die "closure-env-$cell" "$((d + a + w)) walks ($d decided, $a along, $w recomputed), expected $walks"
+            [ "$w" = 0 ] || die "closure-env-$cell" "$w walks recomputed the decision in full"
+            [ "$l" = "$lv" ] || die "closure-env-$cell" "the level walk ran $l chains, expected $lv (one per decision)"
+            echo "closure-env $cell: $d decisions, $a walks along, $l level chains"
+          done
+
           # den-hoag-7o7i9 (ADR-0032): a module graph read, as thunks per module between n = 100 and 400, every
           # node's `disabled` forced. With no removal the bound is the figure before removal existed (gen-merge
           # e3e1305), so a per-node re-walk of the closure (x92 at n = 400) reds it; with one removal the marking
@@ -495,8 +520,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "86" ] || die runner "expected 86 evaluations, ran $ran"
-          echo "tests-process: 86 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "89" ] || die runner "expected 89 evaluations, ran $ran"
+          echo "tests-process: 89 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

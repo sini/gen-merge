@@ -348,6 +348,70 @@ let
           [ { new = 3; } ]
       )
     )).config.new;
+  # The collection-environment census's three fixtures (den-hoag-staged-stratum-inner-eval-nhjxu B1): a root-level
+  # evaluation that takes the staged passes, and a gen-native nested tree whose child takes them or not. The value
+  # reads `a + 10 b + 100 c + 1000 d`.
+  closureEnv =
+    scen:
+    let
+      int = m.types.int;
+      plain = {
+        key = "plain";
+        options.a = m.mkOption {
+          type = int;
+          default = 0;
+        };
+        config.b = 2;
+        options.c = m.mkOption {
+          type = int;
+          default = 0;
+        };
+      };
+      leaf = {
+        key = "leaf";
+        options.b = m.mkOption { type = int; };
+      };
+      imp = {
+        key = "imp";
+        imports = [ leaf ];
+        config.a = 1;
+      };
+      staged =
+        { options, ... }:
+        {
+          options.d =
+            m.mkOption { default = 5; } // (if options.a.type != null then { type = options.a.type; } else { });
+        };
+      host = {
+        options.sub = m.mkOption {
+          type = m.types.submodule (
+            if scen == "nested-plain" then
+              [
+                plain
+                imp
+              ]
+            else
+              [
+                plain
+                imp
+                staged
+              ]
+          );
+          default = { };
+        };
+        config.sub.c = 4;
+      };
+      v =
+        if scen == "root-staged" then
+          (eval [
+            plain
+            imp
+            staged
+          ]).config
+        else
+          (eval [ host ]).config.sub;
+    in
+    v.a + 10 * v.b + 100 * v.c + 1000 * (v.d or 0);
   metCost =
     mode: n:
     let
@@ -622,6 +686,11 @@ let
     # adds over the direct definition.
     staged-cost-plain = stagedCost false;
     staged-cost-rename = stagedCost true;
+    # den-hoag-staged-stratum-inner-eval-nhjxu B1: one closure decision per collection environment, read by the runner
+    # as the call counts of the decision builder, the walks and the level walk.
+    closure-env-root-staged = closureEnv "root-staged";
+    closure-env-nested-staged = closureEnv "nested-staged";
+    closure-env-nested-plain = closureEnv "nested-plain";
     # den-hoag-y4w78: the spine's cost on a chain of `listOf` over a submodule, read by the runner as thunks between
     # depth 1 and 30.
     spine-cost-1 = spineCost 1;

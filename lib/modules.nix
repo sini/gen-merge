@@ -3457,23 +3457,59 @@ let
             go (i + 1) c;
       in
       go 1 0;
+  # `moduleLevels r`: with `r` false, the kept list. With `r` true (a collection's DECISION walk, `decideClosure`),
+  # `{ flat; levels; simple; }`: the kept list, one record per level of what the decision read (`null` on a level
+  # naming no node key, which keeps every entry; else every entry's meeting key and path, and the kept positions,
+  # `null` where the level keeps all), and whether every entry it dropped is a path its key's holder spells too, the
+  # one drop that reads nothing but those two (`keyedDrop`'s first arm). The flag is the first formal, so the list
+  # walk binds nothing it would not bind without it.
   moduleLevels =
-    class: callM: seen: level:
+    r: class: callM: seen: level:
     if level == [ ] then
-      [ ]
+      (
+        if r then
+          {
+            flat = [ ];
+            levels = null;
+            simple = true;
+          }
+        else
+          [ ]
+      )
     # a level naming no node key drops nothing and meets nothing: it is its own kept list, binds none of the
     # keyed level's `at`, `first`, `opt` and `kept`, and hands `seen` on unchanged
     else if !(any namesNodeKey level) then
-      level
-      ++ moduleLevels class callM seen (
-        concatMap (
-          { content, ... }@e:
-          if e ? dis then
-            removal.walk.keptEntries e.dis callM e (importsOf content)
-          else
-            moduleEntries callM e (importsOf content)
-        ) level
-      )
+      if r then
+        let
+          next = moduleLevels r class callM seen (
+            concatMap (
+              { content, ... }@e:
+              if e ? dis then
+                removal.walk.keptEntries e.dis callM e (importsOf content)
+              else
+                moduleEntries callM e (importsOf content)
+            ) level
+          );
+        in
+        {
+          flat = level ++ next.flat;
+          levels = {
+            r = null;
+            next = next.levels;
+          };
+          inherit (next) simple;
+        }
+      else
+        level
+        ++ moduleLevels r class callM seen (
+          concatMap (
+            { content, ... }@e:
+            if e ? dis then
+              removal.walk.keptEntries e.dis callM e (importsOf content)
+            else
+              moduleEntries callM e (importsOf content)
+          ) level
+        )
     else
       let
         at = prelude.imap0 (p: e: {
@@ -3546,53 +3582,99 @@ let
         # kept, and the keyed one is its key's first holder (`meetKeyOf` names a key only where `nodeKeyOf`
         # does), so the level is its own kept list without the per-entry tests. The scan stops at the second
         # keyed entry.
-        kept =
-          if seen == { } && loneKeyed level then
-            level
-          else
-            map (x: x.e) (
-              filter (
+        kept = if seen == { } && loneKeyed level then level else map (x: x.e) keptAt;
+        keptAt = filter (
+          x:
+          x.k == null
+          || (
+            if !(seen ? ${x.k}) && first.${x.k}.p == x.p then
+              true
+            else if (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict" then
+              opt.keep.${toString x.p} or true
+            else if seen ? ${x.k} || first.${x.k}.p != x.p then
+              keyedDrop class callM (
+                _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
+              ) (seen.${x.k} or first.${x.k}) x
+            else
+              true
+          )
+        ) at;
+      in
+      if r then
+        let
+          lone = seen == { } && loneKeyed level;
+          next =
+            moduleLevels r class callM
+              (
+                first
+                // seen
+                // {
+                  "~" = (seen."~" or { }) // opt.reps;
+                  "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+                }
+              )
+              (
+                concatMap (
+                  { content, ... }@e:
+                  if e ? dis then
+                    removal.walk.keptEntries e.dis callM e (importsOf content)
+                  else
+                    moduleEntries callM e (importsOf content)
+                ) kept
+              );
+        in
+        {
+          flat = kept ++ next.flat;
+          levels = {
+            r = {
+              keys = map (x: x.k) at;
+              paths = map removal.pathOfEntry level;
+              keep = if lone then null else map (x: x.p) keptAt;
+            };
+            next = next.levels;
+          };
+          simple =
+            (
+              lone
+              || all (
                 x:
                 x.k == null
+                || (!(seen ? ${x.k}) && first.${x.k}.p == x.p)
                 || (
-                  if !(seen ? ${x.k}) && first.${x.k}.p == x.p then
-                    true
-                  else if (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict" then
-                    opt.keep.${toString x.p} or true
-                  else if seen ? ${x.k} || first.${x.k}.p != x.p then
-                    keyedDrop class callM (
-                      _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
-                    ) (seen.${x.k} or first.${x.k}) x
-                  else
-                    true
+                  let
+                    w = seen.${x.k} or first.${x.k};
+                  in
+                  isPathModule x.e.m0 && isPathModule w.e.m0 && toString x.e.m0 == toString w.e.m0
                 )
               ) at
+            )
+            && next.simple;
+        }
+      else
+        kept
+        # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
+        # a key is itself decided against it, and must never replace it (den-hoag-9zyp7 gate v0 C1). The
+        # refined-key chain under "" is this level's, which already holds every shallower one.
+        ++
+          moduleLevels r class callM
+            (
+              first
+              // seen
+              // {
+                # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
+                "~" = (seen."~" or { }) // opt.reps;
+                "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+              }
+            )
+            (
+              concatMap (
+                { content, ... }@e:
+                if e ? dis then
+                  removal.walk.keptEntries e.dis callM e (importsOf content)
+                else
+                  moduleEntries callM e (importsOf content)
+              ) kept
             );
-      in
-      kept
-      # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
-      # a key is itself decided against it, and must never replace it (den-hoag-9zyp7 gate v0 C1). The
-      # refined-key chain under "" is this level's, which already holds every shallower one.
-      ++
-        moduleLevels class callM
-          (
-            first
-            // seen
-            // {
-              # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
-              "~" = (seen."~" or { }) // opt.reps;
-              "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
-            }
-          )
-          (
-            concatMap (
-              { content, ... }@e:
-              if e ? dis then
-                removal.walk.keptEntries e.dis callM e (importsOf content)
-              else
-                moduleEntries callM e (importsOf content)
-            ) kept
-          );
   # `root.collected`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by the
   # own-module count (`childTree`). A root whose `collected` is not that permutation of `mods` drops or invents
   # modules silently, so a caller holding other modules (a re-evaluation) passes no `collected`.
@@ -3607,21 +3689,7 @@ let
       plain =
         if root ? collected then moduleEntries callM root root.collected else moduleEntries callM root mods;
     in
-    if
-      all (m0: !(builtins.isPath m0 || isPathString m0)) mods
-      && all (
-        e:
-        !(
-          # published as `moduleSyntax.closure` (lib/default.nix), spelled here as `?` tests: a list read
-          # here costs a thunk per module entry, and a let slot for it one per evaluation
-          e.content ? disabledModules
-          || e.content ? imports
-          || e.content ? key
-          || e.content ? require
-          || (e.m0.__moduleKey or null) != null
-        )
-      ) plain
-    then
+    if removal.isPlain mods plain then
       plain
     else
       removal.closure specialArgs class callM root mods plain;
@@ -3690,21 +3758,149 @@ let
     # walk's result is the one binding the clean path pays.
     none = { };
     statesNone = e: !(e.content ? disabledModules);
+    # A PLAIN LIST, its own closure: no path, and no entry naming `imports`, `require`, `key`, `disabledModules` or a
+    # record node key. Published as `moduleSyntax.closure` (lib/default.nix), spelled here as `?` tests: a list read
+    # here costs a thunk per module entry.
+    isPlain =
+      mods: plain:
+      all (m0: !(builtins.isPath m0 || isPathString m0)) mods
+      && all (
+        e:
+        !(
+          e.content ? disabledModules
+          || e.content ? imports
+          || e.content ? key
+          || e.content ? require
+          || (e.m0.__moduleKey or null) != null
+        )
+      ) plain;
+    # an entry's path spelling, which a decision's drops read beside its key (`moduleLevels true`)
+    pathOfEntry = { m0, ... }: if isPathModule m0 then toString m0 else null;
+    # ── ONE CLOSURE DECISION PER COLLECTION ENVIRONMENT (den-hoag-staged-stratum-inner-eval-nhjxu, B1) ──────────
+    # A collection's DECISION (which entries exist, their keys, their dedup and order, the removal) is a function of
+    # its ENVIRONMENT, every argument but the application function: the module list, `specialArgs`, `class` and
+    # `root`. Within one evaluation the first three are one value at every collection site, so its environments are
+    # told apart by `root` alone: the located one (the guard's spine, the value stratum, every resolution level) and,
+    # on a located evaluation that takes the staged passes, the unlocated one (`stagedDeclarations`). Each
+    # environment's decision is computed once (`decideClosure`, the first walk of the environment by construction:
+    # the guard's spine, or the passes' pass 0) and every later walk in it re-applies along it (`closureAlong`), one
+    # application per (node, environment) as before.
+    #
+    # The decision is shared only where it read nothing but what the record holds: a plain list (`"plain"`), or a
+    # level walk that removed nothing and dropped no entry but a path its key's holder spells too (a chain of level
+    # records, `{ r; next; }`, `next = null` past the last). Any other collection (`null`: a removal, a key
+    # comparison, a refined meeting, a losing occurrence that is not the same file) is walked again in full, as
+    # before. A later walk checks every field the decision read: the plain-list test; per level each entry's meeting
+    # key, and on a level that drops, its path (the two that fix the drops: a level dropping nothing keeps every
+    # entry whatever their paths); and no entry stating `disabledModules`. The check is forced into the walk's
+    # result, and refuses by name where a field differs. Only a module that catches a refused read can differ, and
+    # every value walk over it diverges (`infinite recursion`), so the refusal names what would otherwise abort
+    # (A -> R, ADR-0039 rule (3)). Bound in this record, so every argument of the walk is a variable.
+    decideClosure =
+      class: specialArgs: callM: root: mods:
+      let
+        plain =
+          if root ? collected then moduleEntries callM root root.collected else moduleEntries callM root mods;
+        u = moduleLevels true class callM none plain;
+      in
+      if isPlain mods plain then
+        {
+          flat = plain;
+          closure = "plain";
+        }
+      else if all statesNone u.flat then
+        {
+          inherit (u) flat;
+          closure = if u.simple then u.levels else null;
+        }
+      else
+        {
+          flat = removed specialArgs class callM root mods;
+          closure = null;
+        };
+    differs =
+      e: what:
+      throw "gen-merge: module `${e._file}' is collected differently by two walks of one evaluation: its ${what} differs from the declaration guard's. A module whose `imports', `key' or `disabledModules' read an argument the guard refuses, and catches the refusal, takes another shape where the argument is served; state them unconditionally.";
+    along =
+      callM: d: level:
+      if d == null then
+        (if level == [ ] then [ ] else differs (head level) "`imports' list")
+      else if d.r == null then
+        (
+          if any namesNodeKey level then
+            differs (head (filter namesNodeKey level)) "key"
+          else
+            level
+            ++ along callM d.next (
+              concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content)) level
+            )
+        )
+      else
+        let
+          keys = map meetKeyOf level;
+          kept =
+            if keys != d.r.keys || (d.r.keep != null && map pathOfEntry level != d.r.paths) then
+              let
+                at = filter (
+                  i:
+                  builtins.elemAt keys i != builtins.elemAt d.r.keys i
+                  || (d.r.keep != null && pathOfEntry (builtins.elemAt level i) != builtins.elemAt d.r.paths i)
+                ) (prelude.genList (i: i) (if length keys < length d.r.keys then length keys else length d.r.keys));
+              in
+              if at == [ ] then
+                differs (head (level ++ [ { _file = "<unknown-file>"; } ])) "`imports' list"
+              else
+                differs (builtins.elemAt level (head at)) "key"
+            else if d.r.keep == null then
+              level
+            else
+              map (builtins.elemAt level) d.r.keep;
+        in
+        kept
+        ++ along callM d.next (
+          concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content)) kept
+        );
+    closureAlong =
+      class: specialArgs: callM: root: mods: closure:
+      let
+        plain =
+          if root ? collected then moduleEntries callM root root.collected else moduleEntries callM root mods;
+      in
+      if closure == null then
+        moduleClosureWith class specialArgs callM root mods
+      else if closure == "plain" then
+        (
+          if isPlain mods plain then
+            plain
+          else
+            differs (head (
+              filter (e: !(isPlain [ ] [ e ])) plain ++ plain
+            )) "`imports', `key' or `disabledModules'"
+        )
+      else
+        let
+          flat = along callM closure plain;
+        in
+        if all statesNone flat then
+          flat
+        else
+          differs (head (filter (e: !(statesNone e)) flat)) "`disabledModules'";
     closure =
       specialArgs: class: callM: root: mods: plain:
       let
-        u = moduleLevels class callM none plain;
+        u = moduleLevels false class callM none plain;
       in
-      if all statesNone u then
-        u
-      else
-        let
-          occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
-          dis = walk.keysOf (specialArgs.modulesPath or "") occ;
-        in
-        builtins.seq (walk.checked class occ) (
-          moduleLevels class callM { } (walk.keptEntries dis callM root mods)
-        );
+      if all statesNone u then u else removed specialArgs class callM root mods;
+    # the collection of a tree one of whose modules states `disabledModules`
+    removed =
+      specialArgs: class: callM: root: mods:
+      let
+        occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
+        dis = walk.keysOf (specialArgs.modulesPath or "") occ;
+      in
+      builtins.seq (walk.checked class occ) (
+        moduleLevels false class callM { } (walk.keptEntries dis callM root mods)
+      );
     # Whether a collection removed anything: every module of a non-empty tree removed, or a removal's
     # entries carrying a non-empty key set.
     removes = flat: mods: if flat == [ ] then mods != [ ] else (head flat).dis or { } != { };
@@ -5306,6 +5502,13 @@ let
         );
       # Pass n's view: `options` stamped from pass n-1's view fold, and the module arguments that fold
       # publishes (pass 0's view fold binds no argument and reads the poison).
+      # The passes' collection environment decides once, at pass 0's view fold (its poisoned application, so no pass
+      # reads a later pass's computation): the spine's decision where the evaluation is unlocated (`args.closure`),
+      # else pass 0's own. Every other fold re-applies along it.
+      p0 = stratum (args // { optionsView = go 0; });
+      argsD = args // {
+        closure = if args.closure != null then args.closure else p0.closure;
+      };
       go =
         n:
         if n == 0 then
@@ -5315,7 +5518,7 @@ let
           }
         else
           let
-            prev = stratum (args // { optionsView = go (n - 1); });
+            prev = if n == 1 then p0 else stratum (argsD // { optionsView = go (n - 1); });
           in
           {
             options = stampOptions prev.sitesAt prefix prev.options;
@@ -5323,7 +5526,7 @@ let
           };
       # G = 300: a cycle reads down every pass at about thirteen call frames each, so it refuses by name
       # well inside the evaluators' default call depth of 10000.
-      sk = stratum (args // { optionsView = go 300; });
+      sk = stratum (argsD // { optionsView = go 300; });
       tried = map (p: {
         inherit p;
         w = builtins.tryEval (
@@ -6800,6 +7003,8 @@ let
       prefix ? [ ],
       optionsView ? null,
       root ? null,
+      # the collection environment's decision, where an earlier walk of it decided (`closureAlong`); `null` decides
+      closure ? null,
     }:
     # Closedness is decided first (see THE DECLARATION GUARD), once. On a closed set `callD` returns
     # every module unchanged, so the closed branch folds with `moduleClosure (m: m)` and binds none of
@@ -6814,9 +7019,7 @@ let
       && builtins.catAttrs "require" modules == [ ]
     then
       let
-        flat = (if class == null then moduleClosure else moduleClosureWith class) specialArgs (
-          m: m
-        ) root modules;
+        flat = (removal.decideClosure class specialArgs (m: m) root modules).flat;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -6955,9 +7158,12 @@ let
           else
             notAModule m;
 
+        decided = removal.decideClosure class specialArgs callD root modules;
         flat =
-          (if class == null then moduleClosure else moduleClosureWith class) specialArgs callD root
-            modules;
+          if closure == null then
+            decided.flat
+          else
+            removal.closureAlong class specialArgs callD root modules closure;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -6969,10 +7175,13 @@ let
       # `declLeafEntries`, `moduleDefFootprint`, `declaringSitesAt`) consumes this tree or a value
       # traced back to it, so guarding the producer here covers all five tags at any nesting depth
       # on both the `.options` and `.config` planes. The view fold's record is spelled apart, so a
-      # record no staged pass reads carries no `moduleArgs` slot.
+      # record no staged pass reads carries no `moduleArgs` slot. `closure` is the collection environment's decision
+      # (`decideClosure`), which every later walk of the environment re-applies along; `? flat` stays the closed-set
+      # test.
       if optionsView == null || !(optionsView ? args) then
         {
           inherit declEntries sitesAt;
+          closure = if closure == null then decided.closure else closure;
           options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
             map (e: validateDeclSubtree prefix e.options) declEntries
           );
@@ -6985,6 +7194,7 @@ let
         in
         {
           inherit declEntries sitesAt options;
+          closure = if closure == null then decided.closure else closure;
           moduleArgs =
             if options ? _module then
               { }
@@ -7798,9 +8008,12 @@ let
                 )
                 ({
                   # no `root`: the passes decide admission only, and a refusal naming a module's file is
-                  # raised first by the spine's own collection (`s`)
+                  # raised first by the spine's own collection (`s`). Where the evaluation is unlocated the
+                  # passes are the spine's collection environment, and re-apply along its decision; a located
+                  # one's passes decide their own (`stagedDeclarations`).
                   inherit specialArgs prefix;
                   modules = modList;
+                  closure = if root == null then s.closure else null;
                 })
                 s
             );
@@ -8197,7 +8410,9 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else
-                  builtins.seq declarationGuard (moduleClosure specialArgs callM root modList)
+                  builtins.seq declarationGuard (
+                    removal.closureAlong null specialArgs callM root modList declarationGuard.closure
+                  )
               )
             else
               let
@@ -8205,7 +8420,9 @@ let
                   if declarationGuard ? flat then
                     declarationGuard.flat
                   else
-                    builtins.seq declarationGuard (moduleClosureWith class specialArgs callM root modList);
+                    builtins.seq declarationGuard (
+                      removal.closureAlong class specialArgs callM root modList declarationGuard.closure
+                    );
               in
               # nixpkgs' `checkModule` over the collection; a removed or losing module is checked where
               # the guard collects (`removal.walk.checked`)

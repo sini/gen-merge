@@ -1207,6 +1207,84 @@ in
       };
     };
 
+    # ONE CLOSURE DECISION PER COLLECTION ENVIRONMENT (den-hoag-staged-stratum-inner-eval-nhjxu B1, `removal.decideClosure`):
+    # a later walk re-applies along the decision only after checking every field the decision read, so a module
+    # that CATCHES the guard's refused `options` read in one of them keeps base's verdict. Each catcher's value walk
+    # diverges, as nixpkgs' `evalModules` does on `catch-plain` (rc 1, `infinite recursion encountered`; its control
+    # without the catcher serves). A build whose decision is shared past a `disabledModules` statement serves both
+    # `catch-disabled` fixtures (`{ a = 1; b = 2; c = 0; }`, with `d = 5` where staged), and one whose re-walk skips
+    # the key comparison serves `catch-key`.
+    flake.testsError.closure-decision =
+      let
+        int = t.int;
+        plain = {
+          key = "plain";
+          options.a = gm.mkOption {
+            type = int;
+            default = 0;
+          };
+          config.b = 2;
+          options.c = gm.mkOption {
+            type = int;
+            default = 0;
+          };
+        };
+        leaf = {
+          key = "leaf";
+          options.b = gm.mkOption { type = int; };
+        };
+        imp = {
+          key = "imp";
+          imports = [ leaf ];
+          config.a = 1;
+        };
+        # a module the spine cannot resolve, so the staged passes run
+        staged =
+          { options, ... }:
+          {
+            options.d =
+              gm.mkOption { default = 5; }
+              // (if options.a.type != null then { type = options.a.type; } else { });
+          };
+        caught = options: (builtins.tryEval (options ? a)).value;
+        catchDisabled =
+          { options, ... }:
+          {
+            disabledModules = if caught options then [ { key = "leaf"; } ] else [ ];
+          };
+        catchKey =
+          { options, ... }:
+          {
+            key = if caught options then "k1" else "k0";
+          };
+        diverges = modules: {
+          expr = builtins.deepSeq (gm.evalModuleTree { } modules).config null;
+          expectedError = {
+            type = "EvalError";
+            msg = "infinite recursion encountered";
+          };
+        };
+      in
+      {
+        test-catch-disabled-plain-diverges = diverges [
+          plain
+          imp
+          catchDisabled
+        ];
+        test-catch-disabled-staged-diverges = diverges [
+          plain
+          imp
+          staged
+          catchDisabled
+        ];
+        test-catch-key-staged-diverges = diverges [
+          plain
+          imp
+          staged
+          catchKey
+        ];
+      };
+
     # A redeclared option whose two types do not merge is refused BY NAME. The message is the whole
     # of what the author gets — there is no bad intermediate to inspect, because the point of the
     # rule is that one is never built.
