@@ -21376,7 +21376,7 @@
 {"key":{"kind":"doc","name":"services.pihole-ftl.stateDirectory","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.pihole-ftl.useDnsmasqConfig","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.pihole-ftl.user","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.pihole-ftl.webserverEnabled","n":0},"verdict":"PASS-CLASS","class":["gen-merge: option `services.pihole-ftl.settings' has no definitions after priority resolution"]}
+{"key":{"kind":"doc","name":"services.pihole-ftl.webserverEnabled","n":0},"verdict":"PASS-CLASS","class":["gen-merge: option `services.pihole-ftl.settings' has no definitions after priority resolution"],"refusal":{"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":"error: gen-merge: option `services.pihole-ftl.settings' has no definitions after priority resolution","nix-instantiate (Lix, like Nix) 2.96.0":"error: gen-merge: option `services.pihole-ftl.settings' has no definitions after priority resolution","nix-instantiate (Nix) 2.35.4":"error: gen-merge: option `services.pihole-ftl.settings' has no definitions after priority resolution"}}
 {"key":{"kind":"doc","name":"services.pihole-web.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.pihole-web.hostName","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.pihole-web.package","n":0},"verdict":"PASS"}
@@ -32915,7 +32915,7 @@
 {"key":{"kind":"doc","name":"swapDevices.*.encrypted.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.encrypted.keyFile","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.encrypted.label","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"swapDevices.*.isDevice","n":0},"verdict":"PASS-CLASS","class":["gen-merge: option `swapDevices.*.device' has no definitions after priority resolution"]}
+{"key":{"kind":"doc","name":"swapDevices.*.isDevice","n":0},"verdict":"PASS-CLASS","class":["gen-merge: option `swapDevices.*.device' has no definitions after priority resolution"],"refusal":{"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":"error: gen-merge: option `swapDevices.*.device' has no definitions after priority resolution","nix-instantiate (Lix, like Nix) 2.96.0":"error: gen-merge: option `swapDevices.*.device' has no definitions after priority resolution","nix-instantiate (Nix) 2.35.4":"error: gen-merge: option `swapDevices.*.device' has no definitions after priority resolution"}}
 {"key":{"kind":"doc","name":"swapDevices.*.label","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.options","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"swapDevices.*.priority","n":0},"verdict":"PASS"}

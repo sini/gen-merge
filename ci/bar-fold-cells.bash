@@ -12,6 +12,9 @@ if [ "$name" = modules-sh ]; then idf='.key | [.kind, .env, .argv] | tojson' pre
 row=$(jq -cn 'first(inputs | select(.perf != null and (.perf | length) >= 3))' "$reg")
 pass=$(jq -rn "first(inputs | select(.verdict == \"PASS\")) | $idf" "$reg")
 [ -n "$row" ] && [ -n "$pass" ] || { echo "FAIL $name fixture: no perf row with three columns, or no PASS row"; exit 1; }
+# A row carrying a refusal text, for the text cell; every stage's register has one.
+text=$(jq -cn 'first(inputs | select(.refusal != null))' "$reg")
+[ -n "$text" ] || { echo "FAIL $name fixture: no row carries a refusal text"; exit 1; }
 # The row's columns: one of each evaluator family, and a second Determinate one.
 col() { jq -r --arg f "$1" '[.perf | keys[] | select(contains($f))] | .[-1]' <<<"$row"; }
 det=$(col '(Determinate ') lix=$(col '(Lix') nix=$(col '(Nix)')
@@ -53,6 +56,17 @@ log moved0.log "$det" '.value.gen.thunks += 1'
 log det2.log "$det2" .
 # A column's log with its REFUSALS count line gone (den-hoag-pvy24).
 grep -v " REFUSALS $name " "$w/c0.log" >"$w/nocount0.log"
+# The text row's own column, and that column's log with the row's REFUSAL text moved.
+tcol=$(jq -r '.refusal | keys[0]' <<<"$text")
+for e in "$det" "$lix" "$nix"; do [ "$e" = "$tcol" ] && break; done
+[ "$e" = "$tcol" ] || { echo "FAIL $name fixture: the text row's first column $tcol is no CI column of the perf row"; exit 1; }
+tc=0
+for e in "$det" "$lix" "$nix"; do [ "$e" = "$tcol" ] && break; tc=$((tc + 1)); done
+tk=$(jq -c .key <<<"$text")
+jq -cR --argjson k "$tk" --arg bar "$name" '. as $l | if startswith("2026-11-03T00:00:00.0000000Z REFUSAL \($bar) {")
+  then (ltrimstr("2026-11-03T00:00:00.0000000Z REFUSAL \($bar) ") | fromjson) as $r
+    | if $r.key == $k then "2026-11-03T00:00:00.0000000Z REFUSAL \($bar) " + ($r | .text += " (moved)" | tojson) else $l end
+  else $l end' "$w/c$tc.log" | jq -r . >"$w/text$tc.log"
 
 # Three distinct columns carrying the register's own figures: the register, byte for byte.
 fold same "$w/c0.log" "$w/c1.log" "$w/c2.log"
@@ -64,6 +78,13 @@ say ms "$([ "$rc" = 0 ] && [ "$got" = "$want" ] && echo ok || echo "a fold movin
 fold moved "$w/moved0.log" "$w/c1.log" "$w/c2.log"
 d=$(jq -n --slurpfile a "$reg" --slurpfile b "$w/moved.reg" '[range($a | length) as $i | select($a[$i] != $b[$i])] | length')
 say moved "$([ "$rc" = 0 ] && [ "$d" = 1 ] && echo ok || echo "$d rows changed, want 1")"
+# THE TEXT CELL (den-hoag-pvy24): one column's refusal text moved is one changed row, carrying the log's text.
+logs=("$w/c0.log" "$w/c1.log" "$w/c2.log")
+logs[tc]=$w/text$tc.log
+fold text "${logs[@]}"
+d=$(jq -n --slurpfile a "$reg" --slurpfile b "$w/text.reg" '[range($a | length) as $i | select($a[$i] != $b[$i])] | length')
+t=$(jq -rn --argjson k "$tk" --arg c "$tcol" 'first(inputs | select(.key == $k)) | .refusal[$c]' "$w/text.reg")
+say text "$([ "$rc" = 0 ] && [ "$d" = 1 ] && [ "$t" = "$(jq -r --arg c "$tcol" '.refusal[$c]' <<<"$text") (moved)" ] && echo ok || echo "$d rows changed, want 1 carrying the moved text")"
 # A log with no REFUSALS count line is a column that printed no refusals, never one with none: refused, register untouched.
 fold nocount "$w/nocount0.log" "$w/c1.log" "$w/c2.log"
 say nocount "$([ "$rc" = 2 ] && grep -q "count lines, not one" "$w/nocount.err" && [ "$got" = "$want" ] && echo ok || echo "not refused for its missing count line with the register untouched")"

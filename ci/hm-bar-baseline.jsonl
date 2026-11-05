@@ -6484,9 +6484,9 @@
 {"key":{"kind":"test","name":"imv-empty-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"inori-default-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"inori-full-config"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"input-method-fcitx5-configuration"},"verdict":"PASS-CLASS"}
-{"key":{"kind":"test","name":"input-method-fcitx5-disabled-systemd"},"verdict":"PASS-CLASS"}
-{"key":{"kind":"test","name":"input-method-fcitx5-user-session-variables"},"verdict":"PASS-CLASS"}
+{"key":{"kind":"test","name":"input-method-fcitx5-configuration"},"verdict":"PASS-CLASS","refusal":{"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Lix, like Nix) 2.96.0":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Nix) 2.35.4":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:"}}
+{"key":{"kind":"test","name":"input-method-fcitx5-disabled-systemd"},"verdict":"PASS-CLASS","refusal":{"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Lix, like Nix) 2.96.0":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Nix) 2.35.4":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:"}}
+{"key":{"kind":"test","name":"input-method-fcitx5-user-session-variables"},"verdict":"PASS-CLASS","refusal":{"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Lix, like Nix) 2.96.0":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Nix) 2.35.4":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:"}}
 {"key":{"kind":"test","name":"input-method-kime-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"intelli-shell-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"irssi-example-settings"},"verdict":"PASS"}
@@ -7048,7 +7048,7 @@
 {"key":{"kind":"test","name":"qt-kvantum-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"qt-kvantum-themes"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"qt-platform-theme-gnome"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"qt-platform-theme-gtk"},"verdict":"PASS-CLASS"}
+{"key":{"kind":"test","name":"qt-platform-theme-gtk"},"verdict":"PASS-CLASS","refusal":{"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Lix, like Nix) 2.96.0":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:","nix-instantiate (Nix) 2.35.4":"error: Refusing to evaluate package 'gtk+-2.24.33' in <store>/pkgs/by-name/gt/gtk2/package.nix:155 because it has problems:"}}
 {"key":{"kind":"test","name":"qt-platform-theme-gtk2"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"qt-platform-theme-gtk3"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"qt-qt5ct-settings"},"verdict":"PASS"}
@@ -7395,7 +7395,7 @@
 {"key":{"kind":"test","name":"wallust"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"watson-empty-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"watson-example-settings"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"waveterm-example-config"},"verdict":"PASS-CLASS"}
+{"key":{"kind":"test","name":"waveterm-example-config"},"verdict":"PASS-CLASS","refusal":{"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":"error: 'waveterm' has been removed due to EOL Electron and lack of maintainers in nixpkgs","nix-instantiate (Lix, like Nix) 2.96.0":"error: 'waveterm' has been removed due to EOL Electron and lack of maintainers in nixpkgs","nix-instantiate (Nix) 2.35.4":"error: 'waveterm' has been removed due to EOL Electron and lack of maintainers in nixpkgs"}}
 {"key":{"kind":"test","name":"way-displays-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"waybar-deprecated-modules-option"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"waybar-settings-complex"},"verdict":"PASS"}
