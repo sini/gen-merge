@@ -33,6 +33,7 @@
 #                        row's reference lock nodes moved AND every gen member lock node (owner sini, repo
 #                        gen-*), gen-merge's own lib/, and the row's arm inputs are unchanged between the
 #                        two revisions (an arm input absent at one revision and present at the other moved).
+#                        A revision is a commit that moves the register or a valid stamp (THE STAMP, below).
 #                        home-manager, flake-parts-src, nix-fast-build and hercules-ci-effects are reference pins
 #                        as nixpkgs is: both arms evaluate them, and none is a gen member. ADR-0032: a bound re-anchors
 #                        "only when the environment moves — the evaluator or a REFERENCE pin … and never
@@ -69,6 +70,16 @@
 #
 # `nixos-bar --write-baseline` and `--fold` print every hash a change needs. Git reads trailers from a
 # message's LAST paragraph only, so all of a commit's trailers go in one paragraph (one `-m`).
+#
+# THE STAMP. An empty commit S on the first-parent line whose last paragraph carries
+# `Bar-Registers-Unmoved: <its first parent P, 40-hex> run <P's CI run id>` records that every register at P is P's
+# measured figures (the three evaluator columns of that run read 0 disagreements). A valid stamp is a revision of
+# every register present at S, so a landing that moved something under test and left every figure unmoved (a
+# member-pin relock) can be closed off before the next `reanchor`: S's tree is P's, so a range starting at S starts
+# at the attested state. Checked from git alone: the value is exactly `<40-hex> run <digits>` (several trailers are
+# joined and refused), the sha is S^1 in full, and S's tree is S^1's. Any other stamp is REFUSED (exit 1) and is no
+# revision. NOT checked: that run <id> was green. That is the stamp writer's read, recorded for review, and S's own
+# CI run (tree(S) = tree(P)) re-measures P when S is pushed alone.
 #
 # A FORCE-PUSH rewrites the history this walks, so on a GitHub push event with `forced: true` two more
 # reads run against the history the push replaced (`before`): its own register revisions that HEAD no
@@ -141,6 +152,29 @@ underTestAt() {
 hashOf() { printf '%s' "$1" | sha256sum | cut -c1-12; }
 refused=0 checked=0
 summary=""
+# The stamps (THE STAMP, above), read once. `unfold` joins a folded trailer value, so a TAB-led continuation line in
+# one commit's message can never read as another commit's `%H<TAB><value>` line.
+stampKey=Bar-Registers-Unmoved
+stamps=()
+stampLog=$(git log --first-parent --format="%H%x09%(trailers:key=$stampKey,valueonly,unfold,separator=%x20)" HEAD) ||
+  control "cannot read the $stampKey trailers on HEAD's history"
+while IFS=$'\t' read -r s v; do
+  [ -n "$v" ] || continue
+  p=$(git rev-parse --verify -q "${s}^1") || p=none
+  if ! grep -qE '^[0-9a-f]{40} run [0-9]+$' <<<"$v"; then
+    why="its $stampKey value '$v' is not '<full sha> run <CI run id>', once"
+  elif [ "${v%% *}" != "$p" ]; then
+    why="it names ${v:0:9}, but its first parent is ${p:0:9}"
+  elif [ "$(git rev-parse "${s}^{tree}")" != "$(git rev-parse "${p}^{tree}")" ]; then
+    why="it changes the tree of its first parent ${p:0:9}"
+  else
+    stamps+=("$s")
+    echo "stamp ${s:0:9}: registers unmoved at ${p:0:9} (${v#* })"
+    continue
+  fi
+  echo "REFUSED stamp ${s:0:9} ($why)"
+  refused=$((refused + 1))
+done <<<"$stampLog"
 # judge <label> <old rev> <old register spec> <new rev> <trailer range>…: the falls (and perf rises) from
 # the old register to <new rev>'s, each needing an admission among the trailers of the ranges.
 judge() {
@@ -225,7 +259,16 @@ for spec in "${registers[@]}"; do
   read -r reg form decrease rise refs inputs <<<"$spec"
   arm=${reg#ci/}
   arm=${arm%-baseline.jsonl}
-  mapfile -t revs < <(git rev-list --first-parent HEAD -- "$reg")
+  # A valid stamp is a revision of every register present at it, merged in first-parent order.
+  own=()
+  for s in "${stamps[@]}"; do git cat-file -e "${s}:$reg" 2>/dev/null && own+=("$s"); done
+  if [ "${#own[@]}" -eq 0 ]; then
+    mapfile -t revs < <(git rev-list --first-parent HEAD -- "$reg")
+  else
+    fp=$(git rev-list --first-parent HEAD) && regRevs=$(git rev-list --first-parent HEAD -- "$reg") ||
+      control "cannot list HEAD's first-parent revisions of $reg"
+    mapfile -t revs < <(grep -Fx -f <(printf '%s\n' "$regRevs" "${own[@]}") <<<"$fp")
+  fi
   [ "${#revs[@]}" -gt 0 ] || control "no revision of $reg on HEAD's history"
   # revs is newest first; revs[i+1] is the revision revs[i] replaced.
   for ((i = 0; i + 1 < ${#revs[@]}; i++)); do
