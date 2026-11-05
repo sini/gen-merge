@@ -156,7 +156,9 @@ ciGreen() {
   local repo=${GITHUB_REPOSITORY:-sini/gen-merge} tok=${GH_TOKEN:-${GITHUB_TOKEN:-}} body
   local auth=()
   [ -z "$tok" ] || auth=(-H "Authorization: Bearer $tok")
-  body=$(curl -fsSL "${auth[@]}" -H 'Accept: application/vnd.github+json' \
+  # The endpoint answers an intermittent 500 (measured: one URL alternating 200 and 500 call to call), so
+  # curl retries a transient status; one still failing after the retries is the CONTROL FAILED below.
+  body=$(curl -fsSL --retry 6 --retry-delay 5 --max-time 60 "${auth[@]}" -H 'Accept: application/vnd.github+json' \
     "https://api.github.com/repos/$repo/commits/$1/check-runs?per_page=100") ||
     control "cannot read the check runs of ${1:0:9} from $repo"
   jq -er '
