@@ -231,7 +231,7 @@ in
       };
     };
     # the node graph reads one node per key: the closure's own spelling (`moduleKeyOf`) agrees with
-    # the merge path's (`nodeKeyOf`), or `alignedGraph` refuses by name
+    # the merge path's (`nodeKeyOf`): one record is both
     test-the-graph-reads-one-node-for-a-shared-path-key =
       let
         ev =

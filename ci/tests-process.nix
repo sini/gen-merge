@@ -305,6 +305,22 @@
           n=$(traced)
           [ "$n" -ge 1 ] || die candidate-modules-control "expected the selected child to apply the module, counted $n"
 
+          # den-hoag-module-fn-reapplied-cwege G1 / G1b: a module is applied once per argument environment,
+          # the declaration spine and the value collection, and a read of the identity-keyed closure applies
+          # nothing again: a keyed module (`graph-spy-defs`) and an anonymous function module imported
+          # inline (`graph-spy-anon`) read 2 with `_module.args`' definitions read, as with none read
+          # (`graph-spy`, the control). A staged pass is its own environment (`graph-spy-staged`, 4: the
+          # boundary, so the cell is never read as covering the passes). Each value is nixpkgs'.
+          for arm in graph-spy graph-spy-defs graph-spy-anon graph-spy-staged; do
+            evalArm "$arm"
+            [ "$rc" -eq 0 ] || die "$arm" "expected exit 0, got $rc"
+            [ "$val" = "true" ] || die "$arm" "expected nixpkgs' value (true), got '$val'"
+            n=$(traced)
+            want=2
+            [ "$arm" = graph-spy-staged ] && want=4
+            [ "$n" = "$want" ] || die "$arm" "expected $want applications of the spy module, counted $n"
+          done
+
           # den-hoag-staged-stratum-inner-eval-nhjxu perf batch §A.4: the resolution level serves a nixpkgs-typed
           # pending declaration nixpkgs' value, and the level reaches the `pkgs` it reads (the label's control).
           evalArm level-serves
@@ -503,8 +519,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "87" ] || die runner "expected 87 evaluations, ran $ran"
-          echo "tests-process: 87 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "91" ] || die runner "expected 91 evaluations, ran $ran"
+          echo "tests-process: 91 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

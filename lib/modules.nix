@@ -2399,13 +2399,7 @@ let
           && all (e: nodeKeyOf e == null) (
             prelude.genList (builtins.elemAt flat) (if nTop < nFlat then nTop else nFlat)
           );
-        graph =
-          let
-            graph0 = removal.closeKept flat (removal.rootOrder root (moduleTop callM modList).roots);
-          in
-          alignedGraph "the `_module.args' definitions" flat (
-            if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
-          );
+        graph = (entryGraph callM root flat modList).graph;
         k = length (root.nests.modules or [ ]);
         # a top-level module's authored index, read through the root's order (`rootOrder`), as
         # `declAnchorOf`'s `i`
@@ -3041,41 +3035,55 @@ let
     in
     moduleIdOf treeId c.group c.key;
 
-  # THE IDENTITY-KEYED CLOSURE, the graph's own: one level of it is the modules one importer names,
-  # each applied through the caller's `callM`, as the element the closure keys (`moduleKeyOf`).
-  # `importer` and `i` locate the element for its minted id; `next` is its imports' elements. It is
-  # built only where the graph is read (the family) or where the warm path needs a node's origin; the
-  # merge path collects by `moduleClosure` below, which keeps the same order and the same nodes.
-  moduleLevel =
-    callM: importer: mods:
-    prelude.imap0 (
-      i: m0:
+  # THE IDENTITY-KEYED CLOSURE IS THE COLLECTION'S OWN ENTRIES (den-hoag-module-fn-reapplied-cwege, F-B).
+  # Every entry `moduleEntries` builds is a node of the graph: `importer` and `i` locate it for its minted
+  # id, `key` is the spelling the closure keys it by (`moduleKeyOf`), and `next` is every import
+  # occurrence of its applied content, each applied once, there. So the merge path's levels
+  # (`moduleLevels`), the removal's walks and every graph reader walk ONE set of records, and a module
+  # is applied once per argument environment: the graph never applies `callM` again.
+  #
+  # A collection's top is the tree as importer (`key` `""`), holding the tree's own module list as
+  # entries (`roots`, its import edges in authored order, a module named twice included). Every
+  # top-level entry's `importer` is that top, so a reader holding the collection reads its top off any
+  # top-level entry (`entryTopOf`). `entryRoot` is the top's importer fields where the evaluation has
+  # no located root: the importer `moduleEntries` attributes `"<unknown-file>"` to, with no
+  # reservation scope.
+  entryRoot = {
+    _file = "<unknown-file>";
+    key = "";
+    nk = "";
+    m0 = null;
+    content = null;
+  };
+  # The top of a collection `flat` of the module list `mods`: its first entry's importer, which is a
+  # top-level entry wherever the collection holds one. A collection that removed every module holds
+  # none, and its top is built from `mods` here: the only graph read whose nodes no collection holds.
+  entryTopOf =
+    callM: root: flat: mods:
+    if flat != [ ] then
+      (head flat).importer
+    else
       let
-        m = callM m0;
-        self = {
-          key = moduleKeyOf importer i m0 m;
-          inherit
-            importer
-            i
-            m0
-            m
-            ;
-          next = moduleLevel callM self (importsOf m);
+        top = (if root == null then entryRoot else root) // {
+          roots = moduleEntries callM top mods;
         };
       in
-      self
-    ) mods;
-  # A tree's closure's top: the tree as importer, holding the tree's own module list (`roots`, its
-  # import edges, a module named twice included).
-  moduleTop =
-    callM: mods:
+      top;
+  # A collection's identity-keyed graph, `{ top; graph; }`: `graph` is `flat` itself, node for node, its
+  # keys refined where it holds one node key twice (`a3.refinedGraph`). One collection, so the two can
+  # never disagree, and no reader pairs a second walk with it.
+  entryGraph =
+    callM: root: flat: mods:
     let
-      top = {
-        key = "";
-        roots = moduleLevel callM top mods;
-      };
+      top = entryTopOf callM root flat mods;
     in
-    top;
+    if a3.collidedOf flat == { } then
+      {
+        inherit top;
+        graph = flat;
+      }
+    else
+      a3.refinedGraph flat top;
   # The closure from a start set: ONE `genericClosure`, a FIFO work list, so it is breadth-first,
   # imports are yielded in declaration order and the first occurrence reached wins, as nixpkgs'
   # `filterModules`. A losing occurrence takes its imports with it. The done-set is the finite set of
@@ -3125,48 +3133,78 @@ let
   # an off-scope entry is the same three-field record as before, with no `reserved` field: the
   # off-scope path allocates nothing per entry (measured on the hub perf bench, whose
   # `deepSubmodule` alloc gate rejects one added argument or let slot here).
+  #
+  # Each entry is also its graph node (THE IDENTITY-KEYED CLOSURE, above): `importer`, `i`, a lazy
+  # `key`, and a lazy `next` holding every import occurrence of `content`, applied there and nowhere else.
+  # A null importer is the occurrence walk's untreed top (`removal.walk.keysOfTree`), whose entries key
+  # under `entryRoot`.
   moduleEntries =
     callM: importer: mods:
-    map (
-      m0:
-      let
-        m = callM m0;
-      in
-      if importer == null then
-        {
-          inherit m0;
-          _file =
-            if builtins.isPath m0 || isPathString m0 then
-              toString (m._file or m0)
-            else
-              toString (m0._file or (m._file or "<unknown-file>"));
-          content = m;
-        }
-      else if
-        (importer.m0.__reservedKeys or (importer.content.__reservedKeys or (importer.reserved or null)))
-        == null
-      then
-        {
-          inherit m0;
-          _file =
-            if builtins.isPath m0 || isPathString m0 then
-              toString (m._file or m0)
-            else
-              toString (m0._file or (m._file or importer._file));
-          content = m;
-        }
-      else
-        {
-          inherit m0;
-          _file =
-            if builtins.isPath m0 || isPathString m0 then
-              toString (m._file or m0)
-            else
-              toString (m0._file or (m._file or importer._file));
-          content = m;
-          reserved = importer.m0.__reservedKeys or (importer.content.__reservedKeys or importer.reserved);
-        }
-    ) mods;
+    if importer == null then
+      builtins.genList (
+        i:
+        let
+          m0 = builtins.elemAt mods i;
+          m = callM m0;
+          self = {
+            inherit m0 i;
+            importer = entryRoot;
+            _file =
+              if builtins.isPath m0 || isPathString m0 then
+                toString (m._file or m0)
+              else
+                toString (m0._file or (m._file or "<unknown-file>"));
+            content = m;
+            key = moduleKeyOf entryRoot i m0 m;
+            next = moduleEntries callM self (importsOf m);
+          };
+        in
+        self
+      ) (length mods)
+    else if
+      (importer.m0.__reservedKeys or (importer.content.__reservedKeys or (importer.reserved or null)))
+      == null
+    then
+      builtins.genList (
+        i:
+        let
+          m0 = builtins.elemAt mods i;
+          m = callM m0;
+          self = {
+            inherit m0 i importer;
+            _file =
+              if builtins.isPath m0 || isPathString m0 then
+                toString (m._file or m0)
+              else
+                toString (m0._file or (m._file or importer._file));
+            content = m;
+            key = moduleKeyOf importer i m0 m;
+            next = moduleEntries callM self (importsOf m);
+          };
+        in
+        self
+      ) (length mods)
+    else
+      builtins.genList (
+        i:
+        let
+          m0 = builtins.elemAt mods i;
+          m = callM m0;
+          self = {
+            inherit m0 i importer;
+            _file =
+              if builtins.isPath m0 || isPathString m0 then
+                toString (m._file or m0)
+              else
+                toString (m0._file or (m._file or importer._file));
+            content = m;
+            reserved = importer.m0.__reservedKeys or (importer.content.__reservedKeys or importer.reserved);
+            key = moduleKeyOf importer i m0 m;
+            next = moduleEntries callM self (importsOf m);
+          };
+        in
+        self
+      ) (length mods);
   # A node key is an attribute name, which may carry no string context: a path module's store path
   # (or a key computed from one) names its node, and the context is not part of the name.
   # THE RECORD-CHANNEL KEY (den-hoag-9zyp7 OQ2 (a2)): a `__functor` module may name its NODE on its
@@ -3308,54 +3346,43 @@ let
           ) flat
         )
       );
-    levelC =
-      C: callM: importer: mods:
-      prelude.imap0 (
-        i: m0:
-        let
-          m = callM m0;
-          k0 = moduleKeyOf importer i m0 m;
-          self = {
-            key =
-              if C ? ${k0} then
-                refinedKeyOf k0 {
-                  content = m;
-                  inherit m0;
-                }
-              else
-                k0;
-            inherit
-              importer
-              i
-              m0
-              m
-              ;
-            next = levelC C callM self (importsOf m);
-          };
-        in
-        self
-      ) mods;
-    topR =
-      C: callM: mods:
+    # A collected entry as its refined node: its key refined where `C` holds its node key, its importer
+    # the refined node of the entry that imports it, and its `next` the refined nodes of its own import
+    # occurrences. A projection of the collection's records: nothing is applied again.
+    refineUnder =
+      C: importer: e:
       let
-        top = {
-          key = "";
-          roots = levelC C callM top mods;
+        k0 = moduleKeyOf importer e.i e.m0 e.content;
+        self = e // {
+          key = if C ? ${k0} then refinedKeyOf k0 e else k0;
+          inherit importer;
+          next = map (refineUnder C self) e.next;
         };
       in
-      top;
-    # The kept graph of a collection is the unrefined closure, except where that closure is SHORTER
-    # than `flat` (two constructions of one node key, which the unrefined closure dedups and nothing
-    # else shortens): then it is this one, refined. Each graph reader spells the test inline, so a tree
-    # with no such pair never forces this binding. `{ top; graph; }`.
-    refinedGraph =
-      root: flat: callM: mods:
+      self;
+    refineEntry =
+      C: top: e:
+      refineUnder C (if e.importer.key == "" then top else refineEntry C top e.importer) e;
+    topR =
+      C: top:
       let
-        t = topR (collidedOf flat) callM mods;
+        t = top // {
+          roots = map (refineUnder C t) top.roots;
+        };
+      in
+      t;
+    # The kept graph of a collection is the collection itself, except where it holds one node key twice
+    # (two constructions of one node key): then its nodes are spelled refined, the first included. `{ top;
+    # graph; }`, the graph node for node by node with `flat`.
+    refinedGraph =
+      flat: top:
+      let
+        C = collidedOf flat;
+        t = topR C top;
       in
       {
         top = t;
-        graph = removal.closeKept flat (removal.rootOrder root t.roots);
+        graph = map (refineEntry C t) flat;
       };
   };
   # `chain null`: the refined-key maps of x's level (head) and of every shallower level (tail), built
@@ -3466,13 +3493,7 @@ let
     else if !(any namesNodeKey level) then
       level
       ++ moduleLevels class callM seen (
-        concatMap (
-          { content, ... }@e:
-          if e ? dis then
-            removal.walk.keptEntries e.dis callM e (importsOf content)
-          else
-            moduleEntries callM e (importsOf content)
-        ) level
+        concatMap (e: if e ? dis then removal.walk.keptEntries e.dis e e.next else e.next) level
       )
     else
       let
@@ -3573,26 +3594,15 @@ let
       # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
       # a key is itself decided against it, and must never replace it (den-hoag-9zyp7 gate v0 C1). The
       # refined-key chain under "" is this level's, which already holds every shallower one.
-      ++
-        moduleLevels class callM
-          (
-            first
-            // seen
-            // {
-              # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
-              "~" = (seen."~" or { }) // opt.reps;
-              "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
-            }
-          )
-          (
-            concatMap (
-              { content, ... }@e:
-              if e ? dis then
-                removal.walk.keptEntries e.dis callM e (importsOf content)
-              else
-                moduleEntries callM e (importsOf content)
-            ) kept
-          );
+      ++ moduleLevels class callM (
+        first
+        // seen
+        // {
+          # one lazy attribute: the deeper levels' reps are forced only where a later occurrence collides
+          "~" = (seen."~" or { }) // opt.reps;
+          "" = _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null;
+        }
+      ) (concatMap (e: if e ? dis then removal.walk.keptEntries e.dis e e.next else e.next) kept);
   # `root.collected`, where present, is read INSTEAD of `mods`: every caller builds it as `mods` rotated by the
   # own-module count (`childTree`). A root whose `collected` is not that permutation of `mods` drops or invents
   # modules silently, so a caller holding other modules (a re-evaluation) passes no `collected`.
@@ -3604,8 +3614,10 @@ let
   moduleClosureWith =
     class: specialArgs: callM: root: mods:
     let
-      plain =
-        if root ? collected then moduleEntries callM root root.collected else moduleEntries callM root mods;
+      top = (if root == null then entryRoot else root) // {
+        roots = moduleEntries callM top mods;
+      };
+      plain = if root ? collected then removal.rootOrder root top.roots else top.roots;
     in
     if
       all (m0: !(builtins.isPath m0 || isPathString m0)) mods
@@ -3624,7 +3636,7 @@ let
     then
       plain
     else
-      removal.closure specialArgs class callM root mods plain;
+      removal.closure specialArgs class callM top plain;
 
   # ── MODULE REMOVAL (`disabledModules`): the reference's `collectModules`, in the one collection ──────
   # The reference loads every OCCURRENCE of the import tree (`collectStructuredModules`, no dedup),
@@ -3691,7 +3703,7 @@ let
     none = { };
     statesNone = e: !(e.content ? disabledModules);
     closure =
-      specialArgs: class: callM: root: mods: plain:
+      specialArgs: class: callM: top: plain:
       let
         u = moduleLevels class callM none plain;
       in
@@ -3699,11 +3711,11 @@ let
         u
       else
         let
-          occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
+          occ = walk.occurrences (walk.occurrenceLevel top top.roots);
           dis = walk.keysOf (specialArgs.modulesPath or "") occ;
         in
         builtins.seq (walk.checked class occ) (
-          moduleLevels class callM { } (walk.keptEntries dis callM root mods)
+          moduleLevels class callM { } (walk.keptEntries dis top top.roots)
         );
     # Whether a collection removed anything: every module of a non-empty tree removed, or a removal's
     # entries carrying a non-empty key set.
@@ -3801,13 +3813,14 @@ let
       # occurrence), so a keyed import cycle closes, where the reference overflows; an anonymous module
       # is its importer's occurrence and its position.
       occurrences =
-        callM: start:
+        start:
         builtins.genericClosure {
           startSet = start;
-          operator = e: occurrenceLevel callM e (importsOf e.content);
+          operator = e: occurrenceLevel e e.next;
         };
+      # `es`: the importer's entries (its `next`, or a top's `roots`), applied where they were collected
       occurrenceLevel =
-        callM: importer: mods:
+        importer: es:
         let
           ik = if importer == null then "" else importer.key;
           node =
@@ -3835,7 +3848,7 @@ let
               else
                 "a${ik}:${toString i}";
           }
-        ) (moduleEntries callM importer mods);
+        ) es;
       # The reference's load-time checks over occurrences: `unifyModuleSyntax`'s (`moduleSyntaxChecked`)
       # and `checkModule`'s, which reads the evaluation's `class` alone. A caller's `specialArgs._class`
       # is the `_class` argument a module reads, never the class it is held to, so `specialArgs` is not
@@ -3850,7 +3863,7 @@ let
           false
         else
           let
-            occ = occurrences callM [ (e // { key = "l"; }) ];
+            occ = occurrences [ (e // { key = "l"; }) ];
           in
           builtins.seq (checked class occ) (any (o: o.content ? disabledModules) occ);
       # An entry's reference key, its importer's given (`""` at the top).
@@ -3862,9 +3875,9 @@ let
           builtins.unsafeDiscardStringContext (toString e.content.key)
         else
           "${pk}:anon-${toString (i + 1)}";
-      # `moduleEntries`, without the entries whose key `dis` names.
+      # The importer's entries `es` (its `next`, or a top's `roots`), without the entries whose key `dis` names.
       keptEntries =
-        dis: callM: importer: mods:
+        dis: importer: xs:
         let
           pk = if importer == null then "" else importer.nk;
           es = prelude.imap0 (
@@ -3873,7 +3886,7 @@ let
               nk = nixKeyOf pk i e;
             in
             if dis ? ${nk} then [ ] else [ (e // { inherit nk dis; }) ]
-          ) (moduleEntries callM importer mods);
+          ) xs;
         in
         # rotated before the filter, so the count is the authored one; only a located root (never an
         # importing entry) pays for the rotation, the walk's other importers read `es` as it is
@@ -3888,64 +3901,18 @@ let
         else if mods == [ ] then
           { }
         else
-          keysOf (specialArgs.modulesPath or "") (occurrences callM (occurrenceLevel callM null mods));
+          keysOf (specialArgs.modulesPath or "") (
+            occurrences (occurrenceLevel null (moduleEntries callM null mods))
+          );
     };
   };
   # An entry's source class: a hand-built entry states it, a collected one is classified on demand.
   srcClassOf = e: e.srcClass or (classifyModule e.m0);
 
-  # THE TWO COLLECTIONS AGREE, checked node by node where the graph is read (never on a merge):
-  # `flat` (the merge path's level walk) and the identity-keyed `genericClosure` are argued to be the
-  # same nodes in the same order, and a graph reader pairs them by index, so every index is checked
-  # before it is paired: the same group, the same node key on the key group, and the same source
-  # shape (a path's string, an attrset's names, else its type). `alignedGraph` returns the graph or
-  # refuses by name, naming the first index that disagrees.
-  moduleShape =
-    m0:
-    if builtins.isPath m0 || isPathString m0 then
-      "p" + builtins.unsafeDiscardStringContext (toString m0)
-    else if isAttrs m0 then
-      "a" + concatStringsSep "," (attrNames m0)
-    else
-      builtins.typeOf m0;
-  alignedGraph =
-    what: flat: graph:
-    let
-      n = length flat;
-      agrees =
-        i:
-        let
-          e = builtins.elemAt flat i;
-          g = builtins.elemAt graph i;
-          k = nodeKeyOf e;
-        in
-        (
-          if k == null then
-            builtins.substring 0 1 g.key == "a"
-          # a node the kept graph spells refined ((a3), `a3.refinedGraph`) agrees by its refinement
-          else
-            k == g.key
-            || (
-              let
-                r = a3.refineOf e;
-              in
-              r != null && g.key == k + a3.sep + r
-            )
-        )
-        && moduleShape e.m0 == moduleShape g.m0;
-      bad = filter (i: !(agrees i)) (prelude.genList (i: i) n);
-    in
-    if length graph != n then
-      throw "gen-merge: ${what} reads ${toString (length graph)} module nodes where the tree collected ${toString n}; the two collections of one module set disagree"
-    else if bad != [ ] then
-      throw "gen-merge: ${what} pairs module node ${toString (head bad)} with a different module than the tree collected there; the two collections of one module set disagree"
-    else
-      graph;
-
   # THE FAMILY a minting tree publishes (`nta.modules`): one child per closure entry, grouped by
-  # namespace, minted only when the family is read. Its ids come from the identity-keyed closure
-  # (`moduleTop`), paired with the merge path's entries by index after `alignedGraph` has checked
-  # every index; its content is the merge path's own entry, shared rather than applied again. Each seed
+  # namespace, minted only when the family is read. Its ids come from the identity-keyed closure,
+  # which is the merge path's own entries (`entryGraph`), so node and entry are one record by index;
+  # its content is that entry's, never applied again. Each seed
   # addresses its entry's `m0` in the host attribute `definitions`, whose last list is the tree's
   # closure (`knotDefinitions`, after the nested family's lists); each position record
   # discriminates the node by data (`mode = "module"`, den-hoag-9d80v) and carries what the node
@@ -3953,8 +3920,7 @@ let
   moduleFamily =
     treeId: defIndex: flat: kg:
     let
-      inherit (kg) top;
-      graph = alignedGraph "the module family of `${treeId}'" flat kg.graph;
+      inherit (kg) top graph;
       n = length flat;
       indexed = prelude.genList (
         i:
@@ -7143,19 +7109,7 @@ let
     let
       r = self.get id knotAttr;
     in
-    let
-      top0 = moduleTop r._callM r._modList;
-      graph0 = removal.closeKept r._flat (removal.rootOrder r._root top0.roots);
-    in
-    moduleFamily id (length r._nested.groups) r._flat (
-      if length graph0 == length r._flat then
-        {
-          top = top0;
-          graph = graph0;
-        }
-      else
-        a3.refinedGraph r._root r._flat r._callM r._modList
-    );
+    moduleFamily id (length r._nested.groups) r._flat (entryGraph r._callM r._root r._flat r._modList);
   knotDefinitions =
     let
       nestedDefinitions = n: map (g: g.definitions) n.groups;
@@ -7354,16 +7308,7 @@ let
               builtins.elemAt seeds (i - nOwn)
             else
               tree ++ [ { module = i; } ];
-          graph =
-            let
-              graph0 = removal.closeKept flat (removal.rootOrder r._root (moduleTop r._callM r._modList).roots);
-            in
-            alignedGraph "the declaration anchors" flat (
-              if length graph0 == length flat then
-                graph0
-              else
-                (a3.refinedGraph r._root flat r._callM r._modList).graph
-            );
+          graph = (entryGraph r._callM r._root flat r._modList).graph;
           anch =
             g:
             if g.importer.key == "" then
@@ -8189,8 +8134,8 @@ let
           # while the guard sat unforced one binding away.
           #
           # `flat` IS the tree's module collection (`moduleClosure`), in closure order: the fold below
-          # reads it, and the minted `modules` family pairs it with the identity-keyed closure after
-          # `alignedGraph` has checked every node.
+          # reads it, and the minted `modules` family reads its entries as the identity-keyed closure's
+          # nodes (`entryGraph`).
           flat =
             if class == null then
               (
@@ -8453,16 +8398,10 @@ let
           origin =
             let
               baseLen = length modList - length editedModules;
-              # the node keys come from the identity-keyed closure, in `flat`'s order (`moduleFamily`)
-              top0 = moduleTop callM modList;
-              graph0 = removal.closeKept flat (removal.rootOrder root top0.roots);
-              # the refined graph is spelled at its two reads, so the split binds what it did before
-              roots =
-                (if length graph0 == length flat then top0 else (a3.refinedGraph root flat callM modList).top)
-                .roots;
-              aligned = alignedGraph "the warm origin split" flat (
-                if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
-              );
+              # the node keys come from the identity-keyed closure, `flat`'s own entries (`moduleFamily`)
+              kg = entryGraph callM root flat modList;
+              inherit (kg.top) roots;
+              aligned = kg.graph;
               keyAt = i: (builtins.elemAt aligned i).key;
               editKeys = map (e: e.key) (removal.closeKept flat (drop baseLen roots));
               baseKeys = listToAttrs (
@@ -10125,7 +10064,7 @@ let
             go =
               parent: n:
               let
-                m = result._callM n.m0;
+                m = n.content;
                 isPath = builtins.isPath n.m0 || isPathString n.m0;
                 file = toString (m._file or (if isPath then n.m0 else parent.file));
                 key = toString (
@@ -10143,7 +10082,7 @@ let
               map (go {
                 file = "<unknown-file>";
                 key = "";
-              }) (moduleTop result._callM modList).roots
+              }) (entryTopOf result._callM result._root result._flat modList).roots
             )
           );
         options =
@@ -10403,8 +10342,6 @@ in
     # the splice EXECUTION rides `evalModuleTree`.
     moduleClosure
     moduleKeyOf
-    # the graph-read path's node-by-node agreement check, for its own cell (`module-graph.nix`)
-    alignedGraph
     warmDecide
     declLeafPaths
     moduleDefFootprint

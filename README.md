@@ -63,8 +63,8 @@ gen-scope's evaluator and the self-referential `config` knot is an ordinary attr
 4. **self-referential `config` fixpoint** — one local `fix` per call; `config._module.args.X = config` lets siblings cross-reference.
 5. **`imports` as graph edges** — each tree's modules are nodes keyed by nixpkgs' key rule; a diamond or
    a repeated key is one node (`ci/tests/module-graph.nix`). A merge collects them by a breadth-first
-   level walk that keys only keyed and path modules. The identity-keyed `genericClosure` is the graph's,
-   built only when the graph is read, and checked node by node against the merge's list first. A module
+   level walk that keys only keyed and path modules. The graph's nodes are the collection's own entries,
+   each applying its imports once, so a graph read applies no module again. A module
    may name others in `disabledModules`, and the collection drops every occurrence of a named module
    with its imports, as nixpkgs' `collectModules` does ([Module removal](#module-removal-disabledmodules)).
 6. **the `(loc, defs)` custom-merge escape hatch** — `mkOptionType { merge = loc: defs: …; }`. A

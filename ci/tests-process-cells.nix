@@ -331,6 +331,124 @@ let
     builtins.foldl' (a: c: a + read c) 0 (builtins.attrValues r.config.xs);
   # One option defined through a stock nixpkgs rename, whose alias leaf runs the staged declaration
   # passes, or defined directly, which runs none.
+  # den-hoag-module-fn-reapplied-cwege G1 / G1b: one application of a module per argument environment. A
+  # keyed spy module (and, for `anon`, an anonymous function module imported inline) traces the run's label
+  # once per application; `args` defines `_module.args`, so reading its definitions reads the identity-keyed
+  # closure. The runner counts the label: the declaration spine and the value collection are the two
+  # environments, and a graph read must apply nothing again. `staged` adds a staged pass (`options` read by
+  # a declaration), the boundary control: its two extra applications are the pass's, not the graph's. The
+  # cell answers whether the value is nixpkgs' (hand-derived), so a count that falls by dropping a module
+  # reads false.
+  graphSpy =
+    scen:
+    let
+      int = m.types.int;
+      plain = {
+        key = "plain";
+        options.a = m.mkOption {
+          type = int;
+          default = 0;
+        };
+        options.c = m.mkOption { type = int; };
+        config.b = 2;
+      };
+      leaf = {
+        key = "leaf";
+        options.b = m.mkOption { type = int; };
+      };
+      imp = {
+        key = "imp";
+        imports = [ leaf ];
+        config.a = 1;
+      };
+      cfg =
+        { config, ... }:
+        {
+          config.c = config.a + 1;
+        };
+      spy =
+        { ... }:
+        builtins.trace label {
+          key = "spy";
+          options.s = m.mkOption {
+            type = int;
+            default = 3;
+          };
+        };
+      args = {
+        _module.args.extra = 7;
+      };
+      anon =
+        { ... }:
+        {
+          imports = [
+            (
+              { ... }:
+              builtins.trace label {
+                options.t = m.mkOption {
+                  type = int;
+                  default = 1;
+                };
+              }
+            )
+          ];
+        };
+      staged =
+        { options, ... }:
+        {
+          options.d =
+            m.mkOption { default = 5; } // (if options.a.type != null then { type = options.a.type; } else { });
+        };
+      r = eval (
+        {
+          spy = [
+            plain
+            imp
+            cfg
+            spy
+          ];
+          defs = [
+            plain
+            imp
+            cfg
+            spy
+            args
+          ];
+          staged = [
+            plain
+            imp
+            cfg
+            spy
+            staged
+          ];
+          anon = [
+            plain
+            imp
+            cfg
+            args
+            anon
+          ];
+        }
+        .${scen}
+      );
+      c = {
+        a = 1;
+        b = 2;
+        c = 2;
+      };
+    in
+    if scen == "defs" then
+      r.config == c // { s = 3; } && builtins.length r.options._module.args.definitionsWithLocations == 2
+    else if scen == "anon" then
+      r.config == c // { t = 1; } && builtins.length r.options._module.args.definitionsWithLocations == 2
+    else if scen == "staged" then
+      r.config == c
+      // {
+        s = 3;
+        d = 5;
+      }
+    else
+      r.config == c // { s = 3; };
   # den-hoag-staged-stratum-inner-eval-nhjxu perf batch §A.4, the level's value pin (`ctrl2`): a nixpkgs-typed
   # declaration whose WHNF reads `pkgs` is left pending by the passes and served by the resolution level, as
   # nixpkgs serves it, while the root's `pkgs` reads another option's `isDefined`. The `pkgs` definition
@@ -662,6 +780,11 @@ let
     met-cost-s3-200 = metCost "s3" 200;
     # den-hoag-8tmd5: the staged declaration passes' cost, read by the runner as the thunks the rename
     # adds over the direct definition.
+    # den-hoag-module-fn-reapplied-cwege G1 / G1b: the runner counts the spy's applications.
+    graph-spy = graphSpy "spy";
+    graph-spy-defs = graphSpy "defs";
+    graph-spy-staged = graphSpy "staged";
+    graph-spy-anon = graphSpy "anon";
     # den-hoag-staged-stratum-inner-eval-nhjxu §A.4: the level's value pin.
     level-serves = levelServes;
     staged-cost-plain = stagedCost false;
