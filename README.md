@@ -3744,8 +3744,9 @@ the evaluator `UNRECORDED-REFUSAL`, each a disagreement whose cure is the fold i
 ratchet guard reads verdicts and perf only, so a moved text on an unchanged verdict needs no trailer.
 
 The register's perf is written from CI's own columns and nowhere else: `--write-baseline` keeps every
-perf entry as committed, so a local evaluator's `--version` line, which no CI column re-reads, never
-enters a register. Dispatch `ci.yml` on the branch, download each
+perf entry as committed, so `--write-baseline` never writes a local evaluator's `--version` line, which
+no CI column re-reads, into a register. `--fold` checks only that its three logs name the three evaluator
+families, not that each is a CI pin, so a fold fed a non-CI log would still write that log's key. Dispatch `ci.yml` on the branch, download each
 column's job log with `gh api --allow-escape-sequences repos/sini/gen-merge/actions/jobs/<id>/logs`,
 `--fold`, commit. The fold prints each `RISE` with its trailer hash; the hash is that of
 `<id>\t<evaluator>`, so it never changes between folds, and only which rows rise does. The commit that
