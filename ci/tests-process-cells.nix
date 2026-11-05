@@ -331,6 +331,48 @@ let
     builtins.foldl' (a: c: a + read c) 0 (builtins.attrValues r.config.xs);
   # One option defined through a stock nixpkgs rename, whose alias leaf runs the staged declaration
   # passes, or defined directly, which runs none.
+  # den-hoag-staged-stratum-inner-eval-nhjxu perf batch §A.4, the level's value pin (`ctrl2`): a nixpkgs-typed
+  # declaration whose WHNF reads `pkgs` is left pending by the passes and served by the resolution level, as
+  # nixpkgs serves it, while the root's `pkgs` reads another option's `isDefined`. The `pkgs` definition
+  # traces the run's label, so the runner sees the level reach the arguments. A value pin: its red is any
+  # move off nixpkgs' value.
+  levelServes =
+    let
+      np = import "${nixpkgsSrc}/lib";
+      r = eval [
+        {
+          options.z = np.mkOption {
+            type = np.types.int;
+            default = 0;
+          };
+        }
+        (
+          { pkgs, ... }:
+          {
+            options.p =
+              np.mkOption {
+                type = pkgs.t;
+                default = "x";
+              }
+              // np.optionalAttrs (pkgs.t != null) { };
+          }
+        )
+        (
+          { options, ... }:
+          {
+            _module.args.pkgs = builtins.trace label (
+              if options.z.isDefined then { t = np.types.str; } else { t = np.types.str; }
+            );
+          }
+        )
+      ];
+    in
+    {
+      inherit (r.config) p z;
+    } == {
+      p = "x";
+      z = 0;
+    };
   stagedCost =
     renamed:
     let
@@ -620,6 +662,8 @@ let
     met-cost-s3-200 = metCost "s3" 200;
     # den-hoag-8tmd5: the staged declaration passes' cost, read by the runner as the thunks the rename
     # adds over the direct definition.
+    # den-hoag-staged-stratum-inner-eval-nhjxu §A.4: the level's value pin.
+    level-serves = levelServes;
     staged-cost-plain = stagedCost false;
     staged-cost-rename = stagedCost true;
     # den-hoag-y4w78: the spine's cost on a chain of `listOf` over a submodule, read by the runner as thunks between

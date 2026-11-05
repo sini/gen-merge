@@ -305,6 +305,14 @@
           n=$(traced)
           [ "$n" -ge 1 ] || die candidate-modules-control "expected the selected child to apply the module, counted $n"
 
+          # den-hoag-staged-stratum-inner-eval-nhjxu perf batch §A.4: the resolution level serves a nixpkgs-typed
+          # pending declaration nixpkgs' value, and the level reaches the `pkgs` it reads (the label's control).
+          evalArm level-serves
+          [ "$rc" -eq 0 ] || die level-serves "expected exit 0, got $rc"
+          [ "$val" = "true" ] || die level-serves "expected nixpkgs' value (true), got '$val'"
+          n=$(traced)
+          [ "$n" -ge 1 ] || die level-serves "expected the root's pkgs to be read, counted $n"
+
           # den-hoag-type-description-parity-5k1l1: a cycle closed through a foreign record's
           # `description` dies in the infinite-recursion channel (the argued exception), and the same
           # shapes over an acyclic foreign member answer nixpkgs' phrase.
@@ -495,8 +503,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "86" ] || die runner "expected 86 evaluations, ran $ran"
-          echo "tests-process: 86 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "87" ] || die runner "expected 87 evaluations, ran $ran"
+          echo "tests-process: 87 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

@@ -34,6 +34,7 @@
   genMerge,
   genMergeCore,
   nixpkgsLib,
+  modulesShLib,
   interface,
   genMergeVocab,
   genMergeWith,
@@ -5498,6 +5499,78 @@ in
               lib = all3 "CALLER";
               anArg = all3 "CALLER";
             };
+        };
+      };
+
+    # ── THE LEVEL'S LAW PINS (den-hoag-staged-stratum-inner-eval-nhjxu perf batch §A.4) ─────────────
+    # A pending declaration is decided by reading it inside the resolution level, so a gen-typed
+    # declaration whose presence reads `pkgs` keeps the refusal by name when `pkgs` reads it back (ADR-0033:
+    # "A declaration whose top constructor is gen's keeps the refusal by name"). Serving the level the
+    # root's `pkgs` (00lh0's cut, struck) moves `gcyc` to `infinite recursion encountered`; its acyclic
+    # twin `gctrl` refuses by the `isDefined` text either way. Over the bar's bridge (`modulesShLib`):
+    # nixpkgs' `lib`, gen's `evalModules`.
+    flake.testsError.level-law =
+      let
+        np = nixpkgsLib;
+        z = {
+          options.z = np.mkOption {
+            type = np.types.int;
+            default = 0;
+          };
+        };
+        pGen =
+          { pkgs, ... }:
+          {
+            options.p =
+              gm.mkOption {
+                type = gm.types.str;
+                default = "x";
+              }
+              // np.optionalAttrs pkgs.flag { description = "d"; };
+          };
+        run =
+          pkgsModule:
+          let
+            r = modulesShLib.evalModules {
+              modules = [
+                z
+                pGen
+                pkgsModule
+              ];
+            };
+          in
+          builtins.deepSeq { inherit (r.config) p z; } null;
+      in
+      {
+        test-a-gen-declaration-whose-presence-reads-pkgs-reading-it-back-refuses-by-name = {
+          expr = run (
+            { config, ... }:
+            {
+              _module.args.pkgs = {
+                flag = config.p == "x";
+                t = np.types.str;
+              };
+            }
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read `config' while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output";
+          };
+        };
+        test-control-the-same-declaration-over-an-acyclic-pkgs-refuses-by-the-isDefined-text = {
+          expr = run (
+            { options, ... }:
+            {
+              _module.args.pkgs = {
+                flag = options.z.isDefined;
+                t = np.types.str;
+              };
+            }
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a gen option record does not answer `isDefined': it is the declaration, not the evaluated option";
+          };
         };
       };
 
