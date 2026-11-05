@@ -33,6 +33,11 @@
 #                        row's reference lock nodes moved AND every gen member lock node (owner sini, repo
 #                        gen-*), gen-merge's own lib/, and the row's arm inputs are unchanged between the
 #                        two revisions (an arm input absent at one revision and present at the other moved).
+#                        OR, where that range test fails, at the commit: the newer revision's first parent
+#                        carries the older register, nothing under test differs between the two, a reference
+#                        node does, and every evaluator column of the parent's CI concluded success (so its
+#                        figures were its measurement). A landing that moves no figure writes no revision, so
+#                        the range can hold a gen change whose effect the parent's green CI shows to be nil.
 #                        home-manager, flake-parts-src, nix-fast-build and hercules-ci-effects are reference pins
 #                        as nixpkgs is: both arms evaluate them, and none is a gen member. ADR-0032: a bound re-anchors
 #                        "only when the environment moves — the evaluator or a REFERENCE pin … and never
@@ -52,7 +57,8 @@
 #                        SET-MOVED reads no COST line either). Admitted only where the set moved, so it can
 #                        never carry a rise on an unchanged set, AND where nothing under test moved
 #                        (reanchor's second half: every gen member lock node, lib/ and the row's arm inputs
-#                        unchanged between the two revisions), so a cost change riding a set move is never
+#                        unchanged between the two revisions, or at the commit as reanchor reads it, less the
+#                        reference move), so a cost change riding a set move is never
 #                        admitted with it: the set move and the cost each take their own revision, or the
 #                        cost a cost class. Named by the row's own hash, never by the arm wildcard.
 #
@@ -80,12 +86,14 @@
 # - whether the named census row exists, or a correction's reason is right: the trailer is the record;
 # - which change a relock admission covers: it is as wide as the gap between two register revisions,
 #   so once a reference node moved anywhere in that gap, a gen-merge regression landed in it with a `relock`
-#   trailer is admitted too (a `reanchor` is not that wide: it refuses on any gen pin, lib/ or arm-input move);
+#   trailer is admitted too (a `reanchor` is not that wide: it refuses on any gen pin, lib/ or arm-input move after the
+#   commit whose figures the older register holds, the older revision or a green first parent);
 # - its own edits: it runs from HEAD's tree, so a commit that weakens this file or
 #   `modules-sh-ratchet.jq`, or moves a register and edits `registers` with it, escapes it. Review reads
 #   every diff to `ci/modules-sh-ratchet.*` and to `registers`.
 #
-# Needs git and jq, never an evaluator. Run from the repository root:  bash ci/modules-sh-ratchet.sh
+# Needs git and jq, never an evaluator, and curl with GitHub's API only where a reanchor or set admission falls
+# to the first-parent test. Run from the repository root:  bash ci/modules-sh-ratchet.sh
 # EXIT: 0 every fall admitted · 1 REFUSED, naming each key · 2 CONTROL FAILED, history not read.
 set -euo pipefail
 # <register> <id form> <decrease-trailer key> <perf-rise trailer key, or -> <reference lock nodes,> <arm inputs, or ->
@@ -139,12 +147,67 @@ underTestAt() {
   done
 }
 hashOf() { printf '%s' "$1" | sha256sum | cut -c1-12; }
+# ciGreen <rev>: `green` when every evaluator column's check run on <rev> completed in success, else why
+# not. A green column read 0 disagreements on every register (a disagreement exits the bar runs 1), so the
+# committed figures were that commit's own measurement. Read from GitHub's public check-runs endpoint
+# (`GITHUB_REPOSITORY`, else this repository; a `GH_TOKEN` or `GITHUB_TOKEN` is sent when set). An
+# unreadable answer is a CONTROL FAILED, never a refusal.
+ciGreen() {
+  local repo=${GITHUB_REPOSITORY:-sini/gen-merge} tok=${GH_TOKEN:-${GITHUB_TOKEN:-}} body
+  local auth=()
+  [ -z "$tok" ] || auth=(-H "Authorization: Bearer $tok")
+  body=$(curl -fsSL "${auth[@]}" -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/$repo/commits/$1/check-runs?per_page=100") ||
+    control "cannot read the check runs of ${1:0:9} from $repo"
+  jq -er '
+    if (.check_runs | type) != "array" or .total_count > (.check_runs | length) then error("unpaged") else . end
+    | [.check_runs[] | select(.name | startswith("evaluators / "))] as $c
+    | (["nix", "determinate", "lix"] | map("evaluators / \(.)")) - ($c | map(.name)) as $missing
+    | [$c[] | select(.status != "completed" or .conclusion != "success") | "\(.name) \(.status)/\(.conclusion)"] as $bad
+    | if ($missing | length) > 0 then "no \($missing | join(", ")) check run"
+      elif ($bad | length) > 0 then "not green: \($bad | join(", "))"
+      else "green" end' <<<"$body" || control "cannot read the check runs of ${1:0:9} from $repo"
+}
+# atParent: the commit-granular environment test, once per judge. A register revision is written only when a
+# figure moves, so the older revision can sit many landings back and the range test refuses a re-anchor
+# over a landing that moved no figure (den-hoag-lock-currency-ruling-ez1yq). The rise is equally the
+# environment's when <new> moves nothing under test against its first parent, the older register IS that
+# parent's, and the parent's columns were green: its figures were its measurement, and <new> differs from it
+# in environment only. Sets `psame` (nothing under test moved, parent green), `penv` (that, and a reference
+# node moved) and `pwhy`.
+atParent() {
+  local p up rp g
+  [ -z "$pdone" ] || return 0
+  pdone=yes psame=no penv=no
+  if ! p=$(git rev-parse -q --verify "${new}^1^{commit}"); then
+    pwhy="${new:0:9} has no first parent"
+    return 0
+  fi
+  if [ "$(git rev-parse "$oldSpec")" != "$(git rev-parse -q --verify "${p}:$reg")" ]; then
+    pwhy="the older register is not ${new:0:9}'s first parent's"
+    return 0
+  fi
+  up=$(underTestAt "$p") || exit 2
+  if [ "$up" != "$ub" ]; then
+    pwhy="a gen member pin, lib/ or an arm input moved in ${p:0:9}..${new:0:9}"
+    return 0
+  fi
+  g=$(ciGreen "$p") || exit 2
+  if [ "$g" != green ]; then
+    pwhy="the first parent ${p:0:9}'s CI is $g"
+    return 0
+  fi
+  psame=yes pwhy="${new:0:9} moves nothing under test against its first parent ${p:0:9}, whose CI is green"
+  rp=$(refsAt "$p") || exit 2
+  if [ "$rp" != "$b" ]; then penv=yes; else pwhy="no reference node ($refs) moved in ${p:0:9}..${new:0:9}"; fi
+}
 refused=0 checked=0
 summary=""
 # judge <label> <old rev> <old register spec> <new rev> <trailer range>…: the falls (and perf rises) from
 # the old register to <new rev>'s, each needing an admission among the trailers of the ranges.
 judge() {
   local label=$1 old=$2 oldSpec=$3 new=$4 fallen rises trailers="" ptrailers="" r a b ua ub moved same env key was now h adm why c e par above cands
+  local pdone="" psame=no penv=no pwhy=""
   shift 4
   checked=$((checked + 1))
   fallen=$(jq -rn --arg keyform "$form" --slurpfile old <(git show "$oldSpec") --slurpfile new <(git show "${new}:$reg") \
@@ -200,16 +263,21 @@ judge() {
     mapfile -t cands < <(grep -E "^(($h|$arm:\\*) (reanchor|parity|floor $row|owner $row)|$h set)\$" <<<"$ptrailers" || true)
     adm="" why="no $rise: $h (or $arm:*) trailer in $*"
     for c in "${cands[@]}"; do
+      # The range test first; the first-parent test (`atParent`) only where it fails.
+      if [[ ("${c#* }" == set && "$setmv" == yes && "$same" != yes) || ("${c#* }" == reanchor && "$env" == no) ]]; then
+        atParent
+      fi
       if [[ "${c#* }" == set && "$setmv" != yes ]]; then
         why="a set admission, but the row's summed set did not move in ${old:0:9}..${new:0:9}"
-      elif [[ "${c#* }" == set && "$same" != yes ]]; then
-        why="a set admission, but a gen member pin, lib/ or an arm input moved in ${old:0:9}..${new:0:9}, so the figures carry a change under test"
-      elif [[ "${c#* }" == reanchor && "$env" == no ]]; then
-        why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: reference ($refs) moved=$moved, and a gen member pin, lib/ or an arm input moved, or no reference node did"
+      elif [[ "${c#* }" == set && "$same" != yes && "$psame" != yes ]]; then
+        why="a set admission, but a gen member pin, lib/ or an arm input moved in ${old:0:9}..${new:0:9}, so the figures carry a change under test; and at the first parent: $pwhy"
+      elif [[ "${c#* }" == reanchor && "$env" == no && "$penv" != yes ]]; then
+        why="a reanchor admission, but the environment did not move alone in ${old:0:9}..${new:0:9}: reference ($refs) moved=$moved, and a gen member pin, lib/ or an arm input moved, or no reference node did; and at the first parent: $pwhy"
       elif [[ "${c#* }" == parity && "$par" == no && "$above" == no ]]; then
         why="a parity admission, but the rise crosses parity: at parity at the anchor, above it now"
       else
         adm=$c
+        [[ ("${c#* }" == set && "$same" != yes) || ("${c#* }" == reanchor && "$env" == no) ]] && adm+="; $pwhy"
         break
       fi
     done
