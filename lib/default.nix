@@ -803,6 +803,13 @@ in
   # asks pays no thunk for it.
   verifyValue = type: value: strategies.verifyValue type value;
 
+  # nixpkgs' `lib.modules.evalOptionValue` (den-hoag-ien5k T3): the evaluated option record over a caller's
+  # definitions, by the engine's own option fold; its contract and the single-survivor statement are at the
+  # binding (lib/modules.nix `evalOptionValue`). A lambda, as `verifyValue` is.
+  evalOptionValue =
+    loc: opt: defs:
+    core.evalOptionValue loc opt defs;
+
   inherit (strategies) partialAttrsOf;
   # `submodule` whose every declared option folds PARTIALLY (den-hoag-5ov3p), the declared-plane twin of
   # `partialAttrsOf`: an option's value is its winning definitions merged, under the priority that selected

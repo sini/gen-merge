@@ -435,6 +435,19 @@
           # THUNKS; an optimization lowers it in the same change, and a rise needs an owner reading. den-hoag-x5kcl
           # lowered it by 87: a type's export allocates nothing it does not decide, and by 58 more: the empty values a
           # constructor states are bound once (den-hoag-o24ji).
+          # den-hoag-ien5k T3 GM3 (ADR-0032): `evalOptionValue` over one definition at a leaf type, as thunks per call
+          # between n = 100 and 400. The bound is the landed figure, in THUNKS; an optimization lowers it in the same
+          # change, and a rise needs an owner reading.
+          thunksOf eov-cost-100
+          [ "$val" = "100" ] || die eov-cost-100 "expected value 100, got '$val'"
+          t100=$thunks
+          thunksOf eov-cost-400
+          [ "$val" = "400" ] || die eov-cost-400 "expected value 400, got '$val'"
+          per=$(((thunks - t100) / 300))
+          [ "$per" -gt 0 ] || die eov-cost-400 "evalOptionValue costs $per thunks per call: cannot measure"
+          [ "$per" -le "33" ] || die eov-cost-400 "evalOptionValue over one definition costs $per thunks per call, over its bound 33"
+          echo "eov-cost: $per thunks per call (bound 33)"
+
           thunksOf spine-cost-1
           [ "$val" = "1" ] || die spine-cost-1 "expected value 1, got '$val'"
           t1=$thunks
@@ -495,8 +508,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "86" ] || die runner "expected 86 evaluations, ran $ran"
-          echo "tests-process: 86 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "88" ] || die runner "expected 88 evaluations, ran $ran"
+          echo "tests-process: 88 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

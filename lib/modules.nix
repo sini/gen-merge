@@ -6704,6 +6704,80 @@ let
         typeDefs = builtins.seq _ro merged.typeDefs;
       };
 
+  # nixpkgs' `lib.modules.evalOptionValue loc opt defs` (ADR-0039; den-hoag-ien5k T3): the evaluated option
+  # record `serveOptions` serves, over the CALLER's definitions, by the engine's own option fold
+  # (`mergeOptionWith`: the default seed, the priority pass, the type's fold, `apply`, the `readOnly` count).
+  # As nixpkgs' `defsFinal`, `files`, `definitions` and `definitionsWithLocations` are the definitions that
+  # SURVIVE the priority pass, and `highestPrio` is the priority that selected them.
+  #
+  # THE STATEMENT (owner-ruled 2026-11-05): where every definition in `defs` shows its priority without forcing
+  # anything (it carries no property, or it is one bare `mkOverride` (`mkDefault`, `mkForce`) whose content
+  # carries none), and at most one definition survives the priority pass, the value is the fold of that
+  # survivor alone, and so does not depend on the order of `defs`. The fold discharges and filters overrides
+  # before it merges, as nixpkgs' `mergeDefinitions` does, so a single survivor IS the merge. Outside that
+  # domain (an `mkIf`, any `mkMerge`, an `mkOrder`, an override over a property) a priority is decided only
+  # by discharging, which forces an `mkIf`'s condition, as nixpkgs' fold forces it.
+  # The lone case: one property-free definition of an option that is not `readOnly` outranks the declared
+  # default (100 < 1500), so it is the one survivor and the fold reads it alone, skipping the default seed.
+  # Where the option fold hands the type through unchanged (a leaf checker, or a container: this fold
+  # carries no evaluation to thread it into), the lone case's value is the value-only fold (`mergeDefs`, the
+  # rich fold's twin) and its record is that one definition, so no provenance is built.
+  evalOptionValue =
+    loc: opt: defs:
+    let
+      lone = length defs == 1 && !(opt.readOnly or false) && !((head defs).value ? _type);
+      d = head defs;
+      v = mergeDefs loc opt.type defs;
+    in
+    if
+      lone
+      && opt ? type
+      && opt.type != null
+      && (opt.type ? verify && !(opt.type ? mergeDefs.threaded) || opt.type ? carries)
+    then
+      opt
+      // {
+        value = if opt ? apply then opt.apply v else v;
+        highestPrio = defaultPriority;
+        definitions = [ d.value ];
+        files = [ d.file ];
+        definitionsWithLocations = defs;
+        isDefined = true;
+        valueMeta = interface.foreignValueMeta true opt.type loc defs;
+        __toString = _: showOption loc;
+      }
+    else
+      evalOptionValueRich loc opt defs lone;
+  evalOptionValueRich =
+    loc: opt: defs: lone:
+    let
+      r = mergeOptionWith {
+        coreShortCircuit = false;
+        carried = true;
+        strict = false;
+        prefix = [ ];
+      } loc (if lone && opt ? default then removeAttrs opt [ "default" ] else opt) defs;
+      # nixpkgs gives the default's definition the file `head opt.declarations`
+      dwl = map (
+        d:
+        if d.file == "<default>" && opt.declarations or [ ] != [ ] then
+          d // { file = head opt.declarations; }
+        else
+          d
+      ) r.typeDefs;
+    in
+    opt
+    // {
+      inherit (r) value;
+      highestPrio = if r.prov.priority == null then 9999 else r.prov.priority;
+      definitions = map (d: d.value) dwl;
+      files = map (d: d.file) dwl;
+      definitionsWithLocations = dwl;
+      isDefined = dwl != [ ];
+      valueMeta = if opt ? type then interface.foreignValueMeta true opt.type loc dwl else { };
+      __toString = _: showOption loc;
+    };
+
   # ── STRATUM 1 — THE DECLARATION FOLD. NOT A FIXPOINT ──────────────────────────────────────────
   # ADR-0033, whose operative clause is `NOTHING CONSUMES ITS OWN STRATUM'S IN-FLIGHT OUTPUT`, and
   # whose closing word names the count: `two-level types`. This engine is a two-level type system,
@@ -10301,6 +10375,7 @@ in
     hasEmptyValue
     coalesceUnmatched
     mergeOption
+    evalOptionValue
     mergeOneOption
     # This engine's own no-`.merge` default — one winner passes, equal winners collapse, unequal
     # winners are refused by option path. Exported for the same reason `mergeTypes` is: a type in

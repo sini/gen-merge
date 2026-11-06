@@ -14446,5 +14446,60 @@ in
           ))
         ]) (text "dup-a.nix" "dup-b.nix" "default");
       };
+
+    # ── nixpkgs' `evalOptionValue`, on this engine (den-hoag-ien5k T3): the texts its refusals carry ───────
+    # `ci/tests/eval-option-value.nix` reads these as "REFUSED" beside nixpkgs. A nested type (`submodule`, a
+    # container of one) is a child of the one evaluation that holds it, so its fold outside one is refused by
+    # name, as `mergeDefs` refuses it; nixpkgs evaluates it again (a refusal where nixpkgs serves, recorded on
+    # den-hoag-ien5k).
+    # Red at gen-merge main 99ddac8: `evalOptionValue` is absent, so each cell aborts on the missing attribute.
+    flake.testsError.eval-option-value =
+      let
+        eov =
+          o: defs:
+          (gm.evalOptionValue [ "x" ] (o // { declarations = [ "decl" ]; }) (
+            map (v: {
+              file = "f";
+              value = v;
+            }) defs
+          )).value;
+        sub = t.submodule { options.a = gm.mkOption { type = t.str; }; };
+      in
+      {
+        test-a-read-only-option-defined-beside-its-default-names-the-count = {
+          expr = force (
+            eov (gm.mkOption {
+              type = t.listOf t.str;
+              default = [ "d" ];
+              readOnly = true;
+            }) [ [ "x" ] ]
+          );
+          expectedError = {
+            type = "ThrownError";
+            msg = "the option `x' is read-only, but it is defined 2 times \\(its declared default counts as one\\)";
+          };
+        };
+        test-an-undefined-option-names-itself = {
+          expr = force (eov (gm.mkOption { type = t.listOf t.str; }) [ ]);
+          expectedError = {
+            type = "ThrownError";
+            msg = "the option `x' is used but not defined";
+          };
+        };
+        test-a-nested-type-outside-an-evaluation-is-refused-by-name = {
+          expr = force (eov (gm.mkOption { type = sub; }) [ { a = "y"; } ]);
+          expectedError = {
+            type = "ThrownError";
+            msg = "`submodule' at option `x': its called `mergeDefs' does not evaluate the nested tree";
+          };
+        };
+        test-a-container-of-a-nested-type-outside-an-evaluation-is-refused-by-name = {
+          expr = force (eov (gm.mkOption { type = t.listOf sub; }) [ [ { a = "y"; } ] ]);
+          expectedError = {
+            type = "ThrownError";
+            msg = "does not evaluate the nested tree";
+          };
+        };
+      };
   };
 }

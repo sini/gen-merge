@@ -265,6 +265,28 @@ let
   # A chain of `d` gen `listOf` over a submodule, its module set read off the outer type: the spine walks the chain,
   # and each gen container on it answers its own `getSubModules` once the rest of the chain is shown to bottom out
   # (den-hoag-y4w78), so the walk is quadratic in the depth (`tests-process.nix` holds the bound).
+  # den-hoag-ien5k T3 GM3: `evalOptionValue` over one definition at a leaf type, `n` times (one option each), every
+  # value read; the runner reads thunks per call.
+  eovCost =
+    n:
+    let
+      o = m.mkOption {
+        type = m.types.listOf m.types.str;
+        default = [ ];
+      };
+    in
+    builtins.foldl' (
+      a: i:
+      a
+      +
+        builtins.length
+          (m.evalOptionValue [ "x${toString i}" ] o [
+            {
+              file = "f";
+              value = [ "a" ];
+            }
+          ]).value
+    ) 0 (builtins.genList (i: i) n);
   spineCost =
     d:
     let
@@ -624,6 +646,8 @@ let
     staged-cost-rename = stagedCost true;
     # den-hoag-y4w78: the spine's cost on a chain of `listOf` over a submodule, read by the runner as thunks between
     # depth 1 and 30.
+    eov-cost-100 = eovCost 100;
+    eov-cost-400 = eovCost 400;
     spine-cost-1 = spineCost 1;
     spine-cost-30 = spineCost 30;
     # den-hoag-7o7i9: a module graph read over n anonymous modules, every node's `disabled` forced,
