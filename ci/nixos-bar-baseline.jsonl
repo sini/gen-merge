@@ -2305,6 +2305,7 @@
 {"key":{"kind":"doc","name":"programs.compsize.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.coolercontrol.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.coolercontrol.nvidiaSupport","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.coolercontrol.plugins.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.corectrl.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.corectrl.gpuOverclock.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.corectrl.gpuOverclock.ppfeaturemask","n":0},"verdict":"PASS"}
@@ -2467,6 +2468,8 @@
 {"key":{"kind":"doc","name":"programs.foot.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.foot.theme","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.foot.xdg.serverAutostart","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.framework-settings.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.framework-settings.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.fuse.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.fuse.mountMax","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.fuse.userAllowOther","n":0},"verdict":"PASS"}
@@ -3091,6 +3094,10 @@
 {"key":{"kind":"doc","name":"programs.vivid.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.vivid.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.vivid.theme","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.vlc.chromecast.openFirewall","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.vlc.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.vlc.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.vlc.plugins","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.vscode.defaultEditor","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.vscode.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.vscode.enterprisePolicies","n":0},"verdict":"PASS"}
