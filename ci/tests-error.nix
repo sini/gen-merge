@@ -14480,7 +14480,8 @@ in
           };
         };
         test-an-undefined-option-names-itself = {
-          expr = force (eov (gm.mkOption { type = t.listOf t.str; }) [ ]);
+          # a type with no empty value (`listOf` has one, `[ ]`, on both engines)
+          expr = force (eov (gm.mkOption { type = t.str; }) [ ]);
           expectedError = {
             type = "ThrownError";
             msg = "the option `x' is used but not defined";
