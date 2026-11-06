@@ -153,13 +153,14 @@ hashOf() { printf '%s' "$1" | sha256sum | cut -c1-12; }
 refused=0 checked=0
 summary=""
 # The stamps (THE STAMP, above), read once. `unfold` joins a folded trailer value, so a TAB-led continuation line in
-# one commit's message can never read as another commit's `%H<TAB><value>` line.
+# one commit's message can never read as another commit's `%H<TAB><value>` line. The key is read beside the value
+# (`keyonly`), because a key with an empty value prints the same value as no key; it is a refused stamp.
 stampKey=Bar-Registers-Unmoved
 stamps=()
-stampLog=$(git log --first-parent --format="%H%x09%(trailers:key=$stampKey,valueonly,unfold,separator=%x20)" HEAD) ||
+stampLog=$(git log --first-parent --format="%H%x09%(trailers:key=$stampKey,keyonly,separator=%x20)%x09%(trailers:key=$stampKey,valueonly,unfold,separator=%x20)" HEAD) ||
   control "cannot read the $stampKey trailers on HEAD's history"
-while IFS=$'\t' read -r s v; do
-  [ -n "$v" ] || continue
+while IFS=$'\t' read -r s k v; do
+  [ -n "$k" ] || continue
   p=$(git rev-parse --verify -q "${s}^1") || p=none
   if ! grep -qE '^[0-9a-f]{40} run [0-9]+$' <<<"$v"; then
     why="its $stampKey value '$v' is not '<full sha> run <CI run id>', once"
