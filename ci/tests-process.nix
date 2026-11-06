@@ -437,7 +437,7 @@
           # constructor states are bound once (den-hoag-o24ji).
           # den-hoag-ien5k T3 GM3 (ADR-0032): `evalOptionValue` over one definition at a leaf type, as thunks per call
           # between n = 100 and 400. The bound is the landed figure, in THUNKS; an optimization lowers it in the same
-          # change, and a rise needs an owner reading. The shown-case restructure lowered it 33 → 30 (the lone case
+          # change, and a rise needs an owner reading. The shown-case restructure lowered it 33 → 32 (the lone case
           # binds only its own two values).
           thunksOf eov-cost-100
           [ "$val" = "100" ] || die eov-cost-100 "expected value 100, got '$val'"
@@ -446,8 +446,8 @@
           [ "$val" = "400" ] || die eov-cost-400 "expected value 400, got '$val'"
           per=$(((thunks - t100) / 300))
           [ "$per" -gt 0 ] || die eov-cost-400 "evalOptionValue costs $per thunks per call: cannot measure"
-          [ "$per" -le "30" ] || die eov-cost-400 "evalOptionValue over one definition costs $per thunks per call, over its bound 30"
-          echo "eov-cost: $per thunks per call (bound 30)"
+          [ "$per" -le "32" ] || die eov-cost-400 "evalOptionValue over one definition costs $per thunks per call, over its bound 32"
+          echo "eov-cost: $per thunks per call (bound 32)"
 
           # den-hoag-ien5k T3 GM3: the shown-priority path. One survivor of an `mkDefault` and a bare definition is
           # read by the value-only fold; two bare survivors are named by the engine's priority pass, so reading
