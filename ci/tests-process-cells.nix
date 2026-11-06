@@ -287,6 +287,47 @@ let
             }
           ]).value
     ) 0 (builtins.genList (i: i) n);
+  # den-hoag-ien5k T3 GM3: the shown-priority path, `n` times. `one`: an `mkDefault` and a bare definition, whose one
+  # survivor's value is read (the value-only fold); `two`: two bare definitions, whose `files` alone is read (the
+  # engine's priority pass, so no fold is forced).
+  eovShownCost =
+    mode: n:
+    let
+      o = m.mkOption {
+        type = m.types.listOf m.types.str;
+        default = [ ];
+      };
+      ds =
+        if mode == "one" then
+          [
+            {
+              file = "k";
+              value = m.mkDefault [ "k" ];
+            }
+            {
+              file = "f";
+              value = [ "a" ];
+            }
+          ]
+        else
+          [
+            {
+              file = "k";
+              value = [ "k" ];
+            }
+            {
+              file = "f";
+              value = [ "a" ];
+            }
+          ];
+    in
+    builtins.foldl' (
+      a: i:
+      let
+        r = m.evalOptionValue [ "x${toString i}" ] o ds;
+      in
+      a + (if mode == "one" then builtins.length r.value else builtins.length r.files - 1)
+    ) 0 (builtins.genList (i: i) n);
   spineCost =
     d:
     let
@@ -648,6 +689,10 @@ let
     # depth 1 and 30.
     eov-cost-100 = eovCost 100;
     eov-cost-400 = eovCost 400;
+    eov-shown-one-100 = eovShownCost "one" 100;
+    eov-shown-one-400 = eovShownCost "one" 400;
+    eov-shown-two-100 = eovShownCost "two" 100;
+    eov-shown-two-400 = eovShownCost "two" 400;
     spine-cost-1 = spineCost 1;
     spine-cost-30 = spineCost 30;
     # den-hoag-7o7i9: a module graph read over n anonymous modules, every node's `disabled` forced,

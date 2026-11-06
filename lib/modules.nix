@@ -10292,23 +10292,29 @@ in
   # Where the option fold hands the type through unchanged (a leaf checker, or a container: this fold
   # carries no evaluation to thread it into), the lone case's value is the value-only fold (`mergeDefs`, the
   # rich fold's twin) and its record is that one definition, so no provenance is built.
+  # The shown case, the statement's domain: where every definition shows its priority, the engine's own priority
+  # pass (`filterOverrides`) names the survivors. One survivor below the default seed's 1500 outranks the seed, and
+  # at such a type its value is the value-only fold of that survivor alone; several survivors keep the rich fold's
+  # value, with `files` named by the pass, so a caller asking only how many survived forces no fold. The lone case
+  # is tested first and binds only its own two values: each `let` binding is a thunk per call.
   # Bound HERE, in the exported set, one binding with its rich arm inline, and not as two `let` bindings: each is a
   # thunk on every process that loads this library. MEASURED (den-hoag-ien5k T3 build): +3 thunks per load as two
   # `let` bindings and a surface wrapper, +2 here with the surface's `inherit` (one per file, the floor of a
   # published name on the core/surface split).
   evalOptionValue =
     loc: opt: defs:
-    let
-      lone = length defs == 1 && !(opt.readOnly or false) && !((head defs).value ? _type);
-      d = head defs;
-      v = mergeDefs loc opt.type defs;
-    in
     if
-      lone
+      length defs == 1
+      && !(opt.readOnly or false)
+      && !((head defs).value ? _type)
       && opt ? type
       && opt.type != null
       && (opt.type ? verify && !(opt.type ? mergeDefs.threaded) || opt.type ? carries)
     then
+      let
+        d = head defs;
+        v = mergeDefs loc opt.type defs;
+      in
       opt
       // {
         value = if opt ? apply then opt.apply v else v;
@@ -10321,35 +10327,89 @@ in
         __toString = _: showOption loc;
       }
     else
-      (
-        let
-          r = mergeOptionWith {
-            coreShortCircuit = false;
-            carried = true;
-            strict = false;
-            prefix = [ ];
-          } loc (if lone && opt ? default then removeAttrs opt [ "default" ] else opt) defs;
-          # nixpkgs gives the default's definition the file `head opt.declarations`
-          dwl = map (
+      let
+        # Every definition shows its priority without forcing (no property, or one bare override over none):
+        # the engine's own priority pass reads it off the definitions, and its survivors decide the record.
+        shown =
+          defs != [ ]
+          && !(opt.readOnly or false)
+          && builtins.all (
+            d: !(d.value ? _type) || d.value._type == "override" && !(d.value.content ? _type)
+          ) defs;
+        ws = filterOverrides (
+          map (
             d:
-            if d.file == "<default>" && opt.declarations or [ ] != [ ] then
-              d // { file = head opt.declarations; }
+            if d.value ? _type then
+              {
+                inherit (d) file;
+                inherit (d.value) priority;
+                value = d.value.content;
+              }
             else
-              d
-          ) r.typeDefs;
+              {
+                inherit (d) file value;
+                priority = defaultPriority;
+              }
+          ) defs
+        );
+        rich =
+          lone:
+          let
+            r = mergeOptionWith {
+              coreShortCircuit = false;
+              carried = true;
+              strict = false;
+              prefix = [ ];
+            } loc (if lone && opt ? default then removeAttrs opt [ "default" ] else opt) defs;
+            # nixpkgs gives the default's definition the file `head opt.declarations`
+            dwl = map (
+              d:
+              if d.file == "<default>" && opt.declarations or [ ] != [ ] then
+                d // { file = head opt.declarations; }
+              else
+                d
+            ) r.typeDefs;
+          in
+          opt
+          // {
+            inherit (r) value;
+            highestPrio = if r.prov.priority == null then 9999 else r.prov.priority;
+            definitions = map (d: d.value) dwl;
+            files = map (d: d.file) dwl;
+            definitionsWithLocations = dwl;
+            isDefined = dwl != [ ];
+            valueMeta = if opt ? type then interface.foreignValueMeta true opt.type loc dwl else { };
+            __toString = _: showOption loc;
+          };
+      in
+      # a shown survivor below the default seed's 1500 outranks the seed, so the pass needs no seed
+      if !(shown && (head ws).priority < 1500) then
+        rich (length defs == 1 && !(opt.readOnly or false) && !((head defs).value ? _type))
+      else if
+        length ws == 1
+        && opt ? type
+        && opt.type != null
+        && (opt.type ? verify && !(opt.type ? mergeDefs.threaded) || opt.type ? carries)
+      then
+        let
+          w = head ws;
+          dw = [ { inherit (w) file value; } ];
+          v = mergeDefs loc opt.type dw;
         in
         opt
         // {
-          inherit (r) value;
-          highestPrio = if r.prov.priority == null then 9999 else r.prov.priority;
-          definitions = map (d: d.value) dwl;
-          files = map (d: d.file) dwl;
-          definitionsWithLocations = dwl;
-          isDefined = dwl != [ ];
-          valueMeta = if opt ? type then interface.foreignValueMeta true opt.type loc dwl else { };
+          value = if opt ? apply then opt.apply v else v;
+          highestPrio = w.priority;
+          definitions = [ w.value ];
+          files = [ w.file ];
+          definitionsWithLocations = dw;
+          isDefined = true;
+          valueMeta = interface.foreignValueMeta true opt.type loc dw;
           __toString = _: showOption loc;
         }
-      );
+      else
+        # several survivors: the record's survivors are the pass's, so a caller reading `files` forces no fold
+        rich false // { files = map (w: w.file) ws; };
   inherit
     evalModuleTree
     # The engine behind the door (a root evaluation), and the nested evaluation a nesting type's

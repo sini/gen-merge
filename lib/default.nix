@@ -881,6 +881,10 @@ in
           )
         )) stated { } mods;
 
+  # The priority a bare definition takes, under nixpkgs' public name (`lib.modules.defaultOverridePriority`), so a
+  # caller deciding by priority reads this engine's law and restates none (den-hoag-ien5k T3: gen-schema's
+  # registry-level membership test).
+  defaultOverridePriority = priority.defaultPriority;
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
     mkOverride
