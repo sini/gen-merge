@@ -787,6 +787,10 @@ in
     # vocabulary censuses (the linkset, the p5 scan, the tree-type census) enumerate as nixpkgs-shaped types.
     mergeDefsPartial
     mergeOneOption
+    # nixpkgs' `lib.modules.evalOptionValue` (den-hoag-ien5k T3): the evaluated option record over a caller's
+    # definitions, by the engine's own option fold; its contract and the single-survivor statement are at the
+    # binding (lib/modules.nix, the exported set's `evalOptionValue`).
+    evalOptionValue
     showOption
     # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; } modules`.
     mkCoreValue
@@ -802,13 +806,6 @@ in
   # gen-types' `verify` shape. Outside `types`, which holds only types; a lambda, so a process that never
   # asks pays no thunk for it.
   verifyValue = type: value: strategies.verifyValue type value;
-
-  # nixpkgs' `lib.modules.evalOptionValue` (den-hoag-ien5k T3): the evaluated option record over a caller's
-  # definitions, by the engine's own option fold; its contract and the single-survivor statement are at the
-  # binding (lib/modules.nix `evalOptionValue`). A lambda, as `verifyValue` is.
-  evalOptionValue =
-    loc: opt: defs:
-    core.evalOptionValue loc opt defs;
 
   inherit (strategies) partialAttrsOf;
   # `submodule` whose every declared option folds PARTIALLY (den-hoag-5ov3p), the declared-plane twin of
