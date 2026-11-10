@@ -353,10 +353,24 @@ in
         ];
     };
     # the priority a bare definition takes, published as nixpkgs publishes it (`lib.modules.defaultOverridePriority`):
-    # gen-schema's registry-level membership test reads it, so it restates no priority law
+    # gen-schema's registry-level membership test reads it, so it restates no priority law. A literal on the
+    # surface: it equals nixpkgs' and the priority the engine's own fold gives a bare definition (the lone case's
+    # `highestPrio`)
     test-default-override-priority-is-nixpkgs = {
-      expr = gm.defaultOverridePriority;
-      expected = nl.modules.defaultOverridePriority;
+      expr = {
+        published = gm.defaultOverridePriority;
+        engine =
+          (gm.evalOptionValue [ "x" ] (gm.mkOption { type = gm.types.listOf gm.types.str; }) [
+            {
+              file = "f";
+              value = [ "a" ];
+            }
+          ]).highestPrio;
+      };
+      expected = {
+        published = nl.modules.defaultOverridePriority;
+        engine = nl.modules.defaultOverridePriority;
+      };
     };
     test-gm4-equals-nixpkgs = {
       expr = gm4 gm;

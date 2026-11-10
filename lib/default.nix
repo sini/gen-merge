@@ -789,8 +789,7 @@ in
     mergeOneOption
     # nixpkgs' `lib.modules.evalOptionValue` (den-hoag-ien5k T3): the evaluated option record over a caller's
     # definitions, by the engine's own option fold; its contract and the single-survivor statement are at the
-    # binding (lib/modules.nix, the exported set's `evalOptionValue`).
-    evalOptionValue
+    # binding below (`evalOptionValue`, beside `defaultOverridePriority`).
     showOption
     # Fixed-input kernel marker (spec §2.5) — pairs with `evalModuleTree { coreShortCircuit = true; } modules`.
     mkCoreValue
@@ -881,10 +880,151 @@ in
           )
         )) stated { } mods;
 
+  # nixpkgs' `lib.modules.evalOptionValue loc opt defs` (ADR-0039; den-hoag-ien5k T3): the evaluated option
+  # record `serveOptions` serves, over the CALLER's definitions, by the engine's own option fold
+  # (`mergeOptionWith`: the default seed, the priority pass, the type's fold, `apply`, the `readOnly` count).
+  # As nixpkgs' `defsFinal`, `files`, `definitions` and `definitionsWithLocations` are the definitions that
+  # SURVIVE the priority pass, and `highestPrio` is the priority that selected them.
+  #
+  # THE STATEMENT (owner-ruled 2026-11-05): where every definition in `defs` shows its priority without forcing
+  # anything (it carries no property, or it is one bare `mkOverride` (`mkDefault`, `mkForce`) whose content
+  # carries none), and at most one definition survives the priority pass, the value is the fold of that
+  # survivor alone, and so does not depend on the order of `defs`. The fold discharges and filters overrides
+  # before it merges, as nixpkgs' `mergeDefinitions` does, so a single survivor IS the merge. Outside that
+  # domain (an `mkIf`, any `mkMerge`, an `mkOrder`, an override over a property) a priority is decided only
+  # by discharging, which forces an `mkIf`'s condition, as nixpkgs' fold forces it.
+  # The lone case: one property-free definition of an option that is not `readOnly` outranks the declared
+  # default (100 < 1500), so it is the one survivor and the fold reads it alone, skipping the default seed.
+  # Where the option fold hands the type through unchanged (a leaf checker, or a container: this fold
+  # carries no evaluation to thread it into), the lone case's value is the value-only fold (`mergeDefs`, the
+  # rich fold's twin) and its record is that one definition, so no provenance is built.
+  # The shown case, the statement's domain: where every definition shows its priority, the engine's own priority
+  # pass (`filterOverrides`) names the survivors. One survivor below the default seed's 1500 outranks the seed, and
+  # at such a type its value is the value-only fold of that survivor alone; several survivors keep the rich fold's
+  # value, with `files` named by the pass, so a caller asking only how many survived forces no fold. The lone case
+  # is tested first and binds only its own two values: each `let` binding is a thunk per call.
+  # Bound HERE, on the surface, as one direct lambda over the engine's own `mergeOptionWith` and `filterOverrides`
+  # (core exports read by `inherit`, which allocates nothing): a published name costs its one binding, and no core
+  # binding sits behind it. MEASURED (den-hoag-ien5k T3 build v2, per load ×3): +2 as a core binding with the surface's
+  # `inherit`, +1 here.
+  # A NESTED TYPE IS REFUSED BY NAME, as `mergeDefs` refuses it (8qenh C+B): a `submodule`, or a container of one, is a
+  # child of the one evaluation that holds it, and this fold makes no second evaluation for it.
+  evalOptionValue =
+    loc: opt: defs:
+    if
+      builtins.length defs == 1
+      && !(opt.readOnly or false)
+      && !((builtins.head defs).value ? _type)
+      && opt ? type
+      && opt.type != null
+      && (opt.type ? verify && !(opt.type ? mergeDefs.threaded) || opt.type ? carries)
+    then
+      let
+        d = builtins.head defs;
+        v = core.mergeDefs loc opt.type defs;
+      in
+      opt
+      // {
+        value = if opt ? apply then opt.apply v else v;
+        highestPrio = priority.defaultPriority;
+        definitions = [ d.value ];
+        files = [ d.file ];
+        definitionsWithLocations = defs;
+        isDefined = true;
+        valueMeta = core.interface.foreignValueMeta true opt.type loc defs;
+        __toString = _: core.showOption loc;
+      }
+    else
+      let
+        # Every definition shows its priority without forcing (no property, or one bare override over none):
+        # the engine's own priority pass reads it off the definitions, and its survivors decide the record.
+        shown =
+          defs != [ ]
+          && !(opt.readOnly or false)
+          && builtins.all (
+            d: !(d.value ? _type) || d.value._type == "override" && !(d.value.content ? _type)
+          ) defs;
+        ws = core.filterOverrides (
+          map (
+            d:
+            if d.value ? _type then
+              {
+                inherit (d) file;
+                inherit (d.value) priority;
+                value = d.value.content;
+              }
+            else
+              {
+                inherit (d) file value;
+                priority = priority.defaultPriority;
+              }
+          ) defs
+        );
+        rich =
+          lone:
+          let
+            r = core.mergeOptionWith {
+              coreShortCircuit = false;
+              carried = true;
+              strict = false;
+              prefix = [ ];
+            } loc (if lone && opt ? default then removeAttrs opt [ "default" ] else opt) defs;
+            # nixpkgs gives the default's definition the file `head opt.declarations`
+            dwl = map (
+              d:
+              if d.file == "<default>" && opt.declarations or [ ] != [ ] then
+                d // { file = builtins.head opt.declarations; }
+              else
+                d
+            ) r.typeDefs;
+          in
+          opt
+          // {
+            inherit (r) value;
+            highestPrio = if r.prov.priority == null then 9999 else r.prov.priority;
+            definitions = map (d: d.value) dwl;
+            files = map (d: d.file) dwl;
+            definitionsWithLocations = dwl;
+            isDefined = dwl != [ ];
+            valueMeta = if opt ? type then core.interface.foreignValueMeta true opt.type loc dwl else { };
+            __toString = _: core.showOption loc;
+          };
+      in
+      # a shown survivor below the default seed's 1500 outranks the seed, so the pass needs no seed
+      if !(shown && (builtins.head ws).priority < 1500) then
+        rich (
+          builtins.length defs == 1 && !(opt.readOnly or false) && !((builtins.head defs).value ? _type)
+        )
+      else if
+        builtins.length ws == 1
+        && opt ? type
+        && opt.type != null
+        && (opt.type ? verify && !(opt.type ? mergeDefs.threaded) || opt.type ? carries)
+      then
+        let
+          w = builtins.head ws;
+          dw = [ { inherit (w) file value; } ];
+          v = core.mergeDefs loc opt.type dw;
+        in
+        opt
+        // {
+          value = if opt ? apply then opt.apply v else v;
+          highestPrio = w.priority;
+          definitions = [ w.value ];
+          files = [ w.file ];
+          definitionsWithLocations = dw;
+          isDefined = true;
+          valueMeta = core.interface.foreignValueMeta true opt.type loc dw;
+          __toString = _: core.showOption loc;
+        }
+      else
+        # several survivors: the record's survivors are the pass's, so a caller reading `files` forces no fold
+        rich false // { files = map (w: w.file) ws; };
   # The priority a bare definition takes, under nixpkgs' public name (`lib.modules.defaultOverridePriority`), so a
   # caller deciding by priority reads this engine's law and restates none (den-hoag-ien5k T3: gen-schema's
-  # registry-level membership test).
-  defaultOverridePriority = priority.defaultPriority;
+  # registry-level membership test). A literal, not `priority.defaultPriority`: a literal binding allocates no thunk
+  # (MEASURED −1 per load ×3), and the parity cell holds it equal to nixpkgs' and to the engine's `defaultPriority`.
+  defaultOverridePriority = 100;
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
     mkOverride
