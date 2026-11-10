@@ -300,7 +300,6 @@ let
   priority = import ./priority.nix { inherit prelude; };
   # The priority a bare definition takes (priority.nix's `defaultPriority`), a literal: a literal let binding allocates
   # nothing per load, and `evalOptionValue` reads it as a variable, which allocates nothing per call (a select would).
-  # The parity cell holds it equal to nixpkgs' and to the engine fold's `highestPrio` (GM2 compares every shape).
   defaultPriority = 100;
   # ★ THE DOOR IS FORCED BY `core` ITSELF, NOT BY THE FIRST USE OF THE EVALUATOR. `scope` is read
   # only where the knot is driven, so without this `seq` a defective evaluator would sit unexamined
@@ -909,8 +908,7 @@ in
   # is tested first and binds only its own two values: each `let` binding is a thunk per call.
   # Bound HERE, on the surface, as one direct lambda over the engine's own `mergeOptionWith` and `filterOverrides`
   # (core exports read by `inherit`, which allocates nothing): a published name costs its one binding, and no core
-  # binding sits behind it. MEASURED (den-hoag-ien5k T3 build v2, per load ×3): +2 as a core binding with the surface's
-  # `inherit`, +1 here.
+  # binding sits behind it.
   # A NESTED TYPE IS REFUSED BY NAME, as `mergeDefs` refuses it (8qenh C+B): a `submodule`, or a container of one, is a
   # child of the one evaluation that holds it, and this fold makes no second evaluation for it.
   evalOptionValue =
@@ -1025,9 +1023,8 @@ in
         # several survivors: the record's survivors are the pass's, so a caller reading `files` forces no fold
         rich false // { files = map (w: w.file) ws; };
   # The priority a bare definition takes, under nixpkgs' public name (`lib.modules.defaultOverridePriority`), so a
-  # caller deciding by priority reads this engine's law and restates none (den-hoag-ien5k T3: gen-schema's
-  # registry-level membership test). The let-bound literal (above), read as a variable: MEASURED −1 per load ×3 against
-  # a select of `priority.defaultPriority`.
+  # caller deciding by priority reads this engine's law and restates none. Reading the let-bound literal (above)
+  # as a variable avoids the allocation of a select of `priority.defaultPriority`.
   defaultOverridePriority = defaultPriority;
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
