@@ -298,6 +298,10 @@ let
     if defect == null then types else throw "gen-merge: ${defect}";
 
   priority = import ./priority.nix { inherit prelude; };
+  # The priority a bare definition takes (priority.nix's `defaultPriority`), a literal: a literal let binding allocates
+  # nothing per load, and `evalOptionValue` reads it as a variable, which allocates nothing per call (a select would).
+  # The parity cell holds it equal to nixpkgs' and to the engine fold's `highestPrio` (GM2 compares every shape).
+  defaultPriority = 100;
   # ★ THE DOOR IS FORCED BY `core` ITSELF, NOT BY THE FIRST USE OF THE EVALUATOR. `scope` is read
   # only where the knot is driven, so without this `seq` a defective evaluator would sit unexamined
   # until some consumer happened to evaluate a module tree — a refusal raised inside the fixpoint,
@@ -926,7 +930,7 @@ in
       opt
       // {
         value = if opt ? apply then opt.apply v else v;
-        highestPrio = priority.defaultPriority;
+        highestPrio = defaultPriority;
         definitions = [ d.value ];
         files = [ d.file ];
         definitionsWithLocations = defs;
@@ -956,7 +960,7 @@ in
             else
               {
                 inherit (d) file value;
-                priority = priority.defaultPriority;
+                priority = defaultPriority;
               }
           ) defs
         );
@@ -1022,9 +1026,9 @@ in
         rich false // { files = map (w: w.file) ws; };
   # The priority a bare definition takes, under nixpkgs' public name (`lib.modules.defaultOverridePriority`), so a
   # caller deciding by priority reads this engine's law and restates none (den-hoag-ien5k T3: gen-schema's
-  # registry-level membership test). A literal, not `priority.defaultPriority`: a literal binding allocates no thunk
-  # (MEASURED −1 per load ×3), and the parity cell holds it equal to nixpkgs' and to the engine's `defaultPriority`.
-  defaultOverridePriority = 100;
+  # registry-level membership test). The let-bound literal (above), read as a variable: MEASURED −1 per load ×3 against
+  # a select of `priority.defaultPriority`.
+  defaultOverridePriority = defaultPriority;
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
     mkOverride
