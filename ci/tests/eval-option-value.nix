@@ -63,6 +63,17 @@ let
       .options.x
     );
 
+  # as `direct`, each definition in its own file, so `files` shows the survivors' order
+  directIx =
+    M: s:
+    readRec true (
+      eov M [ "x" ] (M.mkOption s.opt // { declarations = [ "decl" ]; }) (
+        genList (i: {
+          file = "d${toString i}";
+          value = builtins.elemAt s.defs i;
+        }) (length s.defs)
+      )
+    );
   # every ordering of a list
   perms =
     l:
@@ -253,6 +264,73 @@ let
         (M.mkDefault n)
       ]
     );
+  # ADR-0039 parity-defect rule (1): a definition the priority pass discards is never read, so a throw under a
+  # losing `mkDefault` serves the winner as nixpkgs does, in either order and beside a property; `forceOfIfFalse`, a
+  # survivor whose content is a property, is still refused by type as nixpkgs refuses it
+  losers =
+    M:
+    let
+      F = M.mkForce [ "forced" ];
+      X = M.mkDefault (throw "a losing definition's content was read");
+    in
+    mapAttrs
+      (_: defs: {
+        opt = {
+          type = M.types.listOf M.types.str;
+          default = [ ];
+        };
+        inherit defs;
+      })
+      {
+        b2 = [
+          F
+          X
+        ];
+        b2r = [
+          X
+          F
+        ];
+        ordLast = [
+          F
+          X
+          (M.mkBefore [ "b" ])
+        ];
+        ifLast = [
+          F
+          X
+          (M.mkIf false (throw "an mkIf false content was read"))
+        ];
+        forceOfIfFalse = [
+          (M.mkForce (M.mkIf false [ "z" ]))
+          [ "p" ]
+        ];
+      };
+  # several survivors whose content is a property: the record (`files` included) is nixpkgs', which sorts an `mkOrder`
+  # content and keeps an override or `mkIf` content as the definition
+  survivorContent =
+    M:
+    mapAttrs
+      (_: defs: {
+        opt = {
+          type = M.types.listOf M.types.str;
+          default = [ ];
+        };
+        inherit defs;
+      })
+      {
+        two-order = [
+          (M.mkForce [ "a" ])
+          (M.mkForce (M.mkBefore [ "b" ]))
+        ];
+        two-nested = [
+          (M.mkForce (M.mkDefault [ "a" ]))
+          (M.mkForce [ "b" ])
+        ];
+        two-if-false = [
+          (M.mkForce [ "a" ])
+          (M.mkForce (M.mkIf false [ "b" ]))
+        ];
+      };
   readOnlyLone =
     M:
     safe
@@ -375,6 +453,20 @@ in
     test-gm4-equals-nixpkgs = {
       expr = gm4 gm;
       expected = gm4 nl;
+    };
+    test-a-losing-content-is-never-read = {
+      expr = mapAttrs (_: s: (direct gm s).value) (losers gm);
+      expected = {
+        b2 = [ "forced" ];
+        b2r = [ "forced" ];
+        ordLast = [ "forced" ];
+        ifLast = [ "forced" ];
+        forceOfIfFalse = "REFUSED";
+      };
+    };
+    test-a-losing-content-is-never-read-equals-nixpkgs = {
+      expr = mapAttrs (_: directIx gm) (losers gm // survivorContent gm);
+      expected = mapAttrs (_: directIx nl) (losers nl // survivorContent nl);
     };
   };
 }

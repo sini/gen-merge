@@ -894,18 +894,21 @@ in
   # carries none), and at most one definition survives the priority pass, the value is the fold of that
   # survivor alone, and so does not depend on the order of `defs`. The fold discharges and filters overrides
   # before it merges, as nixpkgs' `mergeDefinitions` does, so a single survivor IS the merge. Outside that
-  # domain (an `mkIf`, any `mkMerge`, an `mkOrder`, an override over a property) a priority is decided only
-  # by discharging, which forces an `mkIf`'s condition, as nixpkgs' fold forces it.
+  # domain (an `mkIf`, any `mkMerge`, an `mkOrder`) a priority is decided only by discharging, which forces an
+  # `mkIf`'s condition, as nixpkgs' fold forces it. A bare override shows its priority whatever its content, and
+  # the content of a definition the priority pass discards is never read, as nixpkgs' `filterOverrides'` reads
+  # none (ADR-0039): whether a content carries a property is asked of the survivors alone, after the pass.
   # The lone case: one property-free definition of an option that is not `readOnly` outranks the declared
   # default (100 < 1500), so it is the one survivor and the fold reads it alone, skipping the default seed.
   # Where the option fold hands the type through unchanged (a leaf checker, or a container: this fold
   # carries no evaluation to thread it into), the lone case's value is the value-only fold (`mergeDefs`, the
   # rich fold's twin) and its record is that one definition, so no provenance is built.
   # The shown case, the statement's domain: where every definition shows its priority, the engine's own priority
-  # pass (`filterOverrides`) names the survivors. One survivor below the default seed's 1500 outranks the seed, and
-  # at such a type its value is the value-only fold of that survivor alone; several survivors keep the rich fold's
-  # value, with `files` named by the pass, so a caller asking only how many survived forces no fold. The lone case
-  # is tested first and binds only its own two values: each `let` binding is a thunk per call.
+  # pass (`filterOverrides`) names the survivors. Where no survivor's content carries a property, one survivor below
+  # the default seed's 1500 outranks the seed, and at such a type its value is the value-only fold of that survivor
+  # alone; several survivors keep the rich fold's value, with `files` named by the pass, so a caller asking only how
+  # many survived forces no fold. A survivor whose content carries a property takes the rich fold's value. The lone
+  # case is tested first and binds only its own two values: each `let` binding is a thunk per call.
   # Bound HERE, on the surface, as one direct lambda over the engine's own `mergeOptionWith` and `filterOverrides`
   # (core exports read by `inherit`, which allocates nothing): a published name costs its one binding, and no core
   # binding sits behind it.
@@ -938,14 +941,11 @@ in
       }
     else
       let
-        # Every definition shows its priority without forcing (no property, or one bare override over none):
-        # the engine's own priority pass reads it off the definitions, and its survivors decide the record.
-        shown =
-          defs != [ ]
-          && !(opt.readOnly or false)
-          && builtins.all (
-            d: !(d.value ? _type) || d.value._type == "override" && !(d.value.content ? _type)
-          ) defs;
+        # Every definition shows its priority without its content being read (no property, or one bare override):
+        # the engine's own priority pass reads it off the definitions, and its survivors decide the record. One
+        # binding serves this test and the survivors' test below, so neither allocates a lambda of its own per call.
+        bare = d: !(d.value ? _type) || d.value._type == "override";
+        shown = defs != [ ] && !(opt.readOnly or false) && builtins.all bare defs;
         ws = core.filterOverrides (
           map (
             d:
@@ -992,13 +992,15 @@ in
             __toString = _: core.showOption loc;
           };
       in
-      # a shown survivor below the default seed's 1500 outranks the seed, so the pass needs no seed
+      # a shown survivor below the default seed's 1500 outranks the seed, so the pass needs no seed; a survivor's
+      # content is read only after the pass, and the value-only fold takes one that carries no property
       if !(shown && (builtins.head ws).priority < 1500) then
         rich (
           builtins.length defs == 1 && !(opt.readOnly or false) && !((builtins.head defs).value ? _type)
         )
       else if
         builtins.length ws == 1
+        && !((builtins.head ws).value ? _type)
         && opt ? type
         && opt.type != null
         && (opt.type ? verify && !(opt.type ? mergeDefs.threaded) || opt.type ? carries)
@@ -1020,8 +1022,12 @@ in
           __toString = _: core.showOption loc;
         }
       else
-        # several survivors: the record's survivors are the pass's, so a caller reading `files` forces no fold
-        rich false // { files = map (w: w.file) ws; };
+      # otherwise the record's survivors are the pass's, so a caller reading `files` forces no fold; a survivor
+      # whose content is an `mkIf`, `mkMerge` or `mkOrder` keeps the rich fold's files (nixpkgs sorts an `mkOrder`)
+      if builtins.all bare ws then
+        rich false // { files = map (w: w.file) ws; }
+      else
+        rich false;
   # The priority a bare definition takes, under nixpkgs' public name (`lib.modules.defaultOverridePriority`), so a
   # caller deciding by priority reads this engine's law and restates none. Reading the let-bound literal (above)
   # as a variable avoids the allocation of a select of `priority.defaultPriority`.
