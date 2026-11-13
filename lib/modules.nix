@@ -6942,7 +6942,16 @@ let
                   then
                     optionsView.args.moduleArgs.${name}
                   else
-                    inadmissible "config" "read the module argument `${name}'"
+                    # Unserved here; the guard cannot tell absent from `_module.args`-only without forcing config.
+                    throw
+                      "gen-merge: a module read the module argument `${name}' while its own declarations were being folded, and `${name}' is not among the arguments this evaluation serves while declaring options (its `specialArgs'${
+                        if engine ? lib then ", and the `lib' this engine was instantiated with" else ""
+                      })${
+                        if name == "lib" && !(engine ? lib) then
+                          "; this engine was instantiated without a `lib', so it serves none"
+                        else
+                          ""
+                      }. A value set only through `_module.args' is `config', so it cannot be read while options are being declared: pass `${name}' through `specialArgs' instead"
                 )
               ) formals;
             in

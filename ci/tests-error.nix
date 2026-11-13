@@ -5523,6 +5523,29 @@ in
       };
     };
 
+    # ── A DECLARING MODULE READING AN UNSERVED ARGUMENT IS POINTED AT `specialArgs` ──────────────
+    # `genMerge` is instantiated with no `lib`, so a `{ lib, ... }:` module reading `lib` while declaring
+    # options reads an argument nothing serves (den #766). The refusal keeps the declaration-guard class
+    # prefix and names the remedy, `specialArgs`, and the missing instantiating `lib`.
+    flake.testsError.unserved-declaration-argument = {
+      test-lib-on-a-no-lib-engine-points-at-specialArgs = {
+        expr =
+          force
+            (gm.evalModuleTree { } [
+              (
+                { lib, ... }:
+                {
+                  options = builtins.seq lib { weft = gm.mkOption { type = t.str; }; };
+                }
+              )
+            ]).options;
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-merge: a module read the module argument `lib' while its own declarations were being folded.*instantiated without a `lib'.*`specialArgs'.*";
+        };
+      };
+    };
+
     # ── WHICH REFUSAL FIRED WHEN A FOREIGN SELF-MERGE IS DECLINED ───────────────────────────────
     # The containment itself is a boolean and is asserted on the value plane
     # (`tests/nixpkgs-protocol.nix`). WHICH refusal fired is a claim about the message, which
