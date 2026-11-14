@@ -6745,6 +6745,8 @@ let
           o1.verify
         else
           null;
+      # every arm conjoins `jc`, the join's own check: a later join is asked of the root past every met record (this
+      # record's `typeMerge`) and met with this record, so each skipped record's check is still owed through this one
       conj =
         if length os == 1 && ov != null then
           (v: jc v && ov v == null)
@@ -6818,8 +6820,21 @@ let
           typeMerge =
             f:
             let
-              # a foreign relation's assert is no answer (`joinInRebuiltPartner`'s `tryEval`)
-              asked = builtins.tryEval (callerTypeMerge j f);
+              # a foreign relation's assert is no answer (`joinInRebuiltPartner`'s `tryEval`). A join that is itself
+              # a met record is asked of its root join, past every met record a fold built over it: the answer is met
+              # with this record, whose check conjoins each of theirs and whose functor is theirs. A held record
+              # answers for itself, as its fold is what a later step holds
+              asked = builtins.tryEval (
+                if j ? __meetJoin && !(j ? holds) then
+                  (
+                    let
+                      root = t: if t ? __meetJoin && !(t ? holds) then root t.__meetJoin else callerTypeMerge t f;
+                    in
+                    root j.__meetJoin
+                  )
+                else
+                  callerTypeMerge j f
+              );
               r = if asked.success then asked.value else null;
             in
             if r == null then null else metWith.core false r [ met ];
@@ -7309,7 +7324,18 @@ let
                 typeMerge =
                   f:
                   let
-                    asked = builtins.tryEval (callerTypeMerge m f);
+                    # asked of the root join past every met record, as `meetOf`'s own `typeMerge` asks it
+                    asked = builtins.tryEval (
+                      if m ? __meetJoin && !(m ? holds) then
+                        (
+                          let
+                            root = t: if t ? __meetJoin && !(t ? holds) then root t.__meetJoin else callerTypeMerge t f;
+                          in
+                          root m.__meetJoin
+                        )
+                      else
+                        callerTypeMerge m f
+                    );
                     r = if asked.success then asked.value else null;
                   in
                   if r == null then null else metWith.core false r [ h ];
