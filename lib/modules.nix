@@ -3719,14 +3719,15 @@ let
     closure =
       specialArgs: class: callM: root: mods: plain:
       if isAttrs plain then
-        # a later walk of the environment, re-applying along the first walk's decision `plain.flat`:
+        # a later walk of the environment, re-applying along the first walk's decision `flat` (`plain` is the guard's
+        # record, handed whole so the call passes no selected argument, or a pass fold's copy of its `closure`):
         # its kept entries in order, each recorded level's decision (`at`, `seen`, `first`, `kept`) on that level's
         # first kept entry. `prev` lists, per level this walk re-applied keyed, the decision's `first` beside this
         # walk's own `level`, so every key a level reads is held as this walk holds it, and every dropped occurrence
         # is decided against this walk's own holder: the same path (`keyedDrop`'s first arm, the one drop a shared
         # decision makes). Any difference walks in full, as base does.
         let
-          flat = plain.flat;
+          flat = (plain.closure or plain).flat;
           next = concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content));
           fill =
             n: prev:
@@ -7180,7 +7181,8 @@ let
                 if
                   all (
                     r:
-                    all (
+                    !(r ? kept)
+                    || all (
                       {
                         p,
                         k,
@@ -7192,16 +7194,14 @@ let
                         builtins.substring 0 1 k == "k"
                         && (
                           (!(r.seen ? ${k}) && r.first.${k}.p == p)
-                          || (
-                            let
-                              w = r.seen.${k} or r.first.${k};
-                            in
-                            isPathModule e.m0 && isPathModule w.e.m0 && toString e.m0 == toString w.e.m0
-                          )
+                          ||
+                            isPathModule e.m0
+                            && isPathModule (r.seen.${k} or r.first.${k}).e.m0
+                            && toString e.m0 == toString (r.seen.${k} or r.first.${k}).e.m0
                         )
                       )
                     ) r.at
-                  ) (filter (e: e ? kept) flat)
+                  ) flat
                 then
                   {
                     inherit flat;
@@ -8431,9 +8431,7 @@ let
                 if declarationGuard ? flat then
                   declarationGuard.flat
                 else if (declarationGuard.closure or null) != null then
-                  builtins.seq declarationGuard (
-                    removal.closure specialArgs null callM root modList declarationGuard.closure
-                  )
+                  builtins.seq declarationGuard (removal.closure specialArgs null callM root modList declarationGuard)
                 else
                   builtins.seq declarationGuard (moduleClosure specialArgs callM root modList)
               )
@@ -8444,7 +8442,7 @@ let
                     declarationGuard.flat
                   else if (declarationGuard.closure or null) != null then
                     builtins.seq declarationGuard (
-                      removal.closure specialArgs class callM root modList declarationGuard.closure
+                      removal.closure specialArgs class callM root modList declarationGuard
                     )
                   else
                     builtins.seq declarationGuard (moduleClosureWith class specialArgs callM root modList);
