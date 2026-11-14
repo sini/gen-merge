@@ -2407,8 +2407,8 @@ let
             if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
           );
         k = length (root.nests.modules or [ ]);
-        # the top level's own decision, where the collection removed nothing: the `kept` its first kept entry
-        # carries (a level the guard decided on the slow branch, re-emitted by the re-walk); else base's rule
+        # the top level's own decision, where the collection removed nothing: the record its
+        # first kept entry carries (a level decided on the slow branch), else the level kept whole
         top0 = if flat == [ ] || removal.removes flat modList then null else head flat;
         # a top-level module's authored index, read through the root's order (`rootOrder`), as
         # `declAnchorOf`'s `i`
@@ -2424,7 +2424,7 @@ let
                 in
                 if p + k < nTop then p + k else p + k - nTop
             )
-          else if topPlain then
+          else if top0 != null || topPlain then
             (
               if fi >= nTop then
                 null
@@ -3560,10 +3560,9 @@ let
         # does), so the level is its own kept list without the per-entry tests. The scan stops at the second
         # keyed entry.
         kept =
-          # nothing held yet (`""` is bound by every keyed level; a deciding walk's `closure` marker is not a key)
-          if !(seen ? "") && loneKeyed level then
+          if seen == { } && loneKeyed level then
             level
-          else if seen ? closure then
+          else
             let
               keep = filter (
                 x:
@@ -3582,9 +3581,8 @@ let
                 )
               ) at;
             in
-            # the DECIDING walk (its held set carries `closure`: the declaration guard's): the level's decision rides
-            # its first kept entry, for a later walk of the environment to re-apply along (`removal.closure` over
-            # `{ flat; }`); only this, the slow branch, records
+            # the level's decision rides its first kept entry, for a later walk of the
+            # environment to re-apply along (`removal.closure` over `{ flat; }`); only this, the slow branch, records
             map (
               x:
               if x.p == (head keep).p && !(x.e ? dis) then
@@ -3595,27 +3593,7 @@ let
                 }
               else
                 x.e
-            ) keep
-          # every other walk: nothing reads its decision, so it records none
-          else
-            map (x: x.e) (
-              filter (
-                x:
-                x.k == null
-                || (
-                  if !(seen ? ${x.k}) && first.${x.k}.p == x.p then
-                    true
-                  else if (x.e.m0.__keyEq.onDistinct or null) == "refuse-on-conflict" then
-                    opt.keep.${toString x.p} or true
-                  else if seen ? ${x.k} || first.${x.k}.p != x.p then
-                    keyedDrop class callM (
-                      _: [ (a3.distinctFirst seen first at) ] ++ (seen."" or (_: [ ])) null
-                    ) (seen.${x.k} or first.${x.k}) x
-                  else
-                    true
-                )
-              ) at
-            );
+            ) keep;
       in
       kept
       # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
@@ -3793,10 +3771,11 @@ let
                 )
               ) at
             then
-              # the top level's `kept` is re-emitted, the one field `moduleOwn.definitions`' `idx` reads off it
+              # the top level's `kept` is re-emitted only where it dropped: a top level kept whole is read by position
+              # (`moduleOwn.definitions`' `idx`), so its copy would be paid by every re-walk and read by none
               map (
                 { p, ... }:
-                if n == 0 && p == (head kept).p then
+                if n == 0 && p == (head kept).p && length kept != length at then
                   builtins.elemAt level p // { inherit kept; }
                 else
                   builtins.elemAt level p
@@ -7162,45 +7141,6 @@ let
               u
             else
               (if class == null then moduleClosure else moduleClosureWith class) specialArgs callD root modules
-          # THE DECIDING WALK: the guard's, the one walk a later walk of its environment reads. moduleClosureWith and
-          # `removal.closure`'s base body, spelled here so that no binding is added, with the held set starting as
-          # `{ closure = true; }`: its keyed levels record their decision, and no other walk's do
-          else if optionsView == null then
-            let
-              plain =
-                if root ? collected then
-                  moduleEntries callD root root.collected
-                else
-                  moduleEntries callD root modules;
-            in
-            if
-              all (m0: !(builtins.isPath m0 || isPathString m0)) modules
-              && all (
-                e:
-                !(
-                  e.content ? disabledModules
-                  || e.content ? imports
-                  || e.content ? key
-                  || e.content ? require
-                  || (e.m0.__moduleKey or null) != null
-                )
-              ) plain
-            then
-              plain
-            else
-              let
-                u = moduleLevels class callD { closure = true; } plain;
-              in
-              if all (e: !(e.content ? disabledModules)) u then
-                u
-              else
-                let
-                  occ = removal.walk.occurrences callD (removal.walk.occurrenceLevel callD root modules);
-                  dis = removal.walk.keysOf (specialArgs.modulesPath or "") occ;
-                in
-                builtins.seq (removal.walk.checked class occ) (
-                  moduleLevels class callD { } (removal.walk.keptEntries dis callD root modules)
-                )
           else
             (if class == null then moduleClosure else moduleClosureWith class) specialArgs callD root modules;
         declEntries = prelude.imap0 (i: e: {

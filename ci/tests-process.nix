@@ -462,10 +462,8 @@
           # den-hoag-staged-stratum-inner-eval-nhjxu (ADR-0032): one closure decision per collection environment. A
           # later walk of the guard's environment re-applies along the guard's decision, so `moduleLevels` and
           # `moduleClosureWith` run fewer times than one full walk per stratum (12 / 12 / 6 and 4 / 5 / 3 before the
-          # shared decision; the guard's deciding walk calls no `moduleClosureWith`). The bounds are the landed figures,
-          # as calls by name (NIX_COUNT_CALLS), the most-called curried lambda of each name. A name the evaluator lists
-          # no call for ran 0 times; a stats file with no per-function counts, or no `moduleLevels` call, is a broken
-          # instrument.
+          # shared decision). The bounds are the landed figures, as calls by name (NIX_COUNT_CALLS), the most-called
+          # curried lambda of each name; a stats file without them is a broken instrument.
           walkCallsOf() {
             export NIX_COUNT_CALLS=1
             callsOf "$1"
@@ -473,12 +471,12 @@
             walks=$(python3 -c 'import json, sys
           f = json.load(open(sys.argv[1])).get("functions")
           if f is None: sys.exit(2)
-          c = lambda n: max([x["count"] for x in f if x.get("name") == n] or [0])
+          c = lambda n: max([x["count"] for x in f if x.get("name") == n] or [-1])
           print(c("moduleLevels"), c("moduleClosureWith"))' "$TMPDIR/stats") || die "$1" "the evaluator wrote no per-function counts to $TMPDIR/stats: cannot measure"
             read -r levels closures <<< "$walks"
-            [ "$levels" -ge 1 ] || die "$1" "no moduleLevels call was counted ($walks): cannot measure"
+            { [ "$levels" -ge 1 ] && [ "$closures" -ge 1 ]; } || die "$1" "no moduleLevels or moduleClosureWith call was counted ($walks): cannot measure"
           }
-          for bound in rootStaged:3:0 nestedStaged:9:3 nestedPlain:3:1; do
+          for bound in rootStaged:3:1 nestedStaged:9:4 nestedPlain:3:2; do
             cell=''${bound%%:*} rest=''${bound#*:}
             maxLevels=''${rest%%:*} maxClosures=''${rest#*:}
             walkCallsOf "closure-walk-$cell"
