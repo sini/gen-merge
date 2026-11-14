@@ -459,6 +459,40 @@
           [ "$per" -le "1406" ] || die staged-cost-rename "a rename adds $per thunks over a direct definition, over its bound 1406; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
           echo "staged-cost: $per thunks for a rename over a direct definition (bound 1406)"
 
+          # den-hoag-staged-stratum-inner-eval-nhjxu (ADR-0032): one closure decision per collection environment. A
+          # later walk of the guard's environment re-applies along the guard's decision, so `moduleLevels` and
+          # `moduleClosureWith` run fewer times than one full walk per stratum (12 / 12 / 6 and 4 / 5 / 3 before the
+          # shared decision). The bounds are the landed figures, as calls by name (NIX_COUNT_CALLS), the most-called
+          # curried lambda of each name; a stats file without them is a broken instrument.
+          walkCallsOf() {
+            export NIX_COUNT_CALLS=1
+            callsOf "$1"
+            unset NIX_COUNT_CALLS
+            walks=$(python3 -c 'import json, sys
+          f = json.load(open(sys.argv[1])).get("functions")
+          if f is None: sys.exit(2)
+          c = lambda n: max([x["count"] for x in f if x.get("name") == n] or [-1])
+          print(c("moduleLevels"), c("moduleClosureWith"))' "$TMPDIR/stats") || die "$1" "the evaluator wrote no per-function counts to $TMPDIR/stats: cannot measure"
+            read -r levels closures <<< "$walks"
+            { [ "$levels" -ge 1 ] && [ "$closures" -ge 1 ]; } || die "$1" "no moduleLevels or moduleClosureWith call was counted ($walks): cannot measure"
+          }
+          for bound in rootStaged:3:1 nestedStaged:9:4 nestedPlain:3:2; do
+            cell=''${bound%%:*} rest=''${bound#*:}
+            maxLevels=''${rest%%:*} maxClosures=''${rest#*:}
+            walkCallsOf "closure-walk-$cell"
+            [ "$levels" -le "$maxLevels" ] || die "closure-walk-$cell" "moduleLevels ran $levels times, over its bound $maxLevels: a later walk of one environment re-decides its closure"
+            [ "$closures" -le "$maxClosures" ] || die "closure-walk-$cell" "moduleClosureWith ran $closures times, over its bound $maxClosures"
+            echo "closure-walk $cell: moduleLevels $levels (bound $maxLevels), moduleClosureWith $closures (bound $maxClosures)"
+          done
+          # A removal that appears at pass >= 1 is walked by every pass it reaches, never shared past: the spy it names
+          # is applied at least as often as base applies it (903), where a pass sharing the guard's removal-free
+          # decision applies it 303 times. The value stratum's read recurses on every arm.
+          evalArm closure-removal-shift
+          [ "$rc" -ne 0 ] || die closure-removal-shift "expected a death, got exit 0 with '$val'"
+          grep -q 'infinite recursion encountered' "$TMPDIR/err" || die closure-removal-shift "death is not the infinite-recursion channel"
+          n=$(traced)
+          [ "$n" -ge 903 ] || die closure-removal-shift "the removed spy was applied $n times, under 903: a pass shared a decision past a removal"
+
           # den-hoag-7o7i9 (ADR-0032): a module graph read, as thunks per module between n = 100 and 400, every
           # node's `disabled` forced. With no removal the bound is the figure before removal existed (gen-merge
           # e3e1305), so a per-node re-walk of the closure (x92 at n = 400) reds it; with one removal the marking
@@ -495,8 +529,8 @@
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "86" ] || die runner "expected 86 evaluations, ran $ran"
-          echo "tests-process: 86 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "90" ] || die runner "expected 90 evaluations, ran $ran"
+          echo "tests-process: 90 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

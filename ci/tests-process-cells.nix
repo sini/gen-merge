@@ -487,6 +487,124 @@ let
       ({ moduleType, ... }: { config._module.check = f moduleType; })
     ]).config.a;
 
+  # The shared closure decision (lib/modules.nix, `removal.closure` over the guard's record): which collection
+  # environments one evaluation walks, and how often each walk runs. `closureWalk` holds three shapes: a top-level
+  # evaluation whose spine does not resolve (passes, unlocated), a nested tree whose child's spine does not resolve
+  # (passes under a located root), and the same nested tree with no staged module.
+  closureWalk =
+    shape:
+    let
+      int = m.types.int;
+      plain = {
+        key = "plain";
+        options.a = m.mkOption {
+          type = int;
+          default = 0;
+        };
+        config.b = 2;
+        options.c = m.mkOption {
+          type = int;
+          default = 0;
+        };
+      };
+      leaf = {
+        key = "leaf";
+        options.b = m.mkOption { type = int; };
+      };
+      imp = {
+        key = "imp";
+        imports = [ leaf ];
+        config.a = 1;
+      };
+      staged =
+        { options, ... }:
+        {
+          options.d =
+            m.mkOption { default = 5; } // (if options.a.type != null then { type = options.a.type; } else { });
+        };
+      child =
+        if shape == "nestedPlain" then
+          [
+            plain
+            imp
+          ]
+        else
+          [
+            plain
+            imp
+            staged
+          ];
+      host = {
+        options.sub = m.mkOption {
+          type = m.types.submodule child;
+          default = { };
+        };
+        config.sub.c = 4;
+      };
+      r = eval (
+        if shape == "rootStaged" then
+          [
+            plain
+            imp
+            staged
+          ]
+        else
+          [ host ]
+      );
+      v = if shape == "rootStaged" then r.config else r.config.sub;
+    in
+    builtins.deepSeq v v;
+  # A module whose `disabledModules` PRESENCE shifts at pass >= 1, naming a traced keyed module, so the passes'
+  # collections differ from the guard's by a removal; the value stratum's read of it recurses on every arm.
+  closureRemovalShift =
+    let
+      int = m.types.int;
+      plain = {
+        key = "plain";
+        options.a = m.mkOption {
+          type = int;
+          default = 0;
+        };
+        config.b = 2;
+        options.c = m.mkOption {
+          type = int;
+          default = 0;
+        };
+      };
+      imp = {
+        key = "imp";
+        imports = [
+          {
+            key = "leaf";
+            options.b = m.mkOption { type = int; };
+          }
+        ];
+        config.a = 1;
+      };
+      staged =
+        { options, ... }:
+        {
+          options.d =
+            m.mkOption { default = 5; } // (if options.a.type != null then { type = options.a.type; } else { });
+        };
+      spy =
+        { ... }:
+        builtins.trace label {
+          key = "spy";
+          config.c = 3;
+        };
+      disShift =
+        { options, ... }:
+        if (builtins.tryEval (options ? a)).value then { disabledModules = [ { key = "spy"; } ]; } else { };
+      r = eval [
+        plain
+        imp
+        staged
+        spy
+        disShift
+      ];
+    in
+    builtins.deepSeq r.config r.config;
   cells = {
     # den-hoag-jbddy: the engine's own option names are read without evaluating a submodule (0),
     # where the same names read off a freeform submodule's `getSubOptions` evaluate it (the control).
@@ -622,6 +740,11 @@ let
     # adds over the direct definition.
     staged-cost-plain = stagedCost false;
     staged-cost-rename = stagedCost true;
+    # the shared closure decision: walks per collection environment, and a removal shifting between passes
+    closure-walk-rootStaged = closureWalk "rootStaged";
+    closure-walk-nestedStaged = closureWalk "nestedStaged";
+    closure-walk-nestedPlain = closureWalk "nestedPlain";
+    closure-removal-shift = closureRemovalShift;
     # den-hoag-y4w78: the spine's cost on a chain of `listOf` over a submodule, read by the runner as thunks between
     # depth 1 and 30.
     spine-cost-1 = spineCost 1;

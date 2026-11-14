@@ -14469,5 +14469,217 @@ in
           ))
         ]) (text "dup-a.nix" "dup-b.nix" "default");
       };
+
+    # THE SHARED CLOSURE DECISION (lib/modules.nix, `removal.closure` over a record): a later walk of one collection
+    # environment re-applies along the guard's decision, and decides every dropped occurrence against its own holder
+    # (`keyedDrop`'s first arm, the same path), else walks in full. A module that CATCHES the guard's refused read
+    # moves its own collection between environments; each shape below aborts as base does, on the infinite-recursion
+    # channel, because the value stratum's read of it recurses (ADR-0008 §3). RED: a re-walk that keeps a different
+    # file under a held key (no holder path at a dropped-whole level) serves `catchDropWhole` and
+    # `catchDropWholeStaged`; one that skips the key-list check serves `catchKeyStaged`. The two cycle cells are the
+    # depth control: a staged declaration reading its own type refuses by name, through the passes as base does.
+    flake.testsError.closure-decision =
+      let
+        fx = ./tests/_fixtures/closure-decision;
+        int = t.int;
+        a0 = gm.mkOption {
+          type = int;
+          default = 0;
+        };
+        plain = {
+          key = "plain";
+          options.a = a0;
+          config.b = 2;
+          options.c = a0;
+        };
+        plainA = {
+          key = "plain";
+          options.a = a0;
+        };
+        leaf = {
+          key = "leaf";
+          options.b = gm.mkOption { type = int; };
+        };
+        imp = {
+          key = "imp";
+          imports = [ leaf ];
+          config.a = 1;
+        };
+        staged =
+          { options, ... }:
+          {
+            options.d =
+              gm.mkOption { default = 5; }
+              // (if options.a.type != null then { type = options.a.type; } else { });
+          };
+        caught = options: (builtins.tryEval (options ? a)).value;
+        catcher =
+          { options, ... }:
+          {
+            disabledModules = if caught options then [ { key = "leaf"; } ] else [ ];
+          };
+        catchImp =
+          { options, ... }:
+          {
+            imports =
+              if caught options then
+                [
+                  {
+                    key = "extra";
+                    config.c = 7;
+                  }
+                ]
+              else
+                [ ];
+          };
+        catchKey =
+          { options, ... }:
+          {
+            key = if caught options then "k1" else "k0";
+          };
+        shiftImp =
+          { options, ... }:
+          {
+            imports =
+              if caught options then
+                [
+                  (fx + "/y.nix")
+                  (fx + "/w.nix")
+                ]
+              else
+                [
+                  (fx + "/x.nix")
+                  (fx + "/w.nix")
+                ];
+          };
+        spy =
+          { ... }:
+          {
+            key = "spy";
+            config.c = 3;
+          };
+        disShift =
+          { options, ... }: if caught options then { disabledModules = [ { key = "spy"; } ]; } else { };
+        cyc =
+          { options, ... }:
+          {
+            options.d = builtins.seq options.d.type (
+              gm.mkOption {
+                default = 5;
+                type = int;
+              }
+            );
+          };
+        tree = c: ms: builtins.deepSeq (gm.evalModuleTree c ms).config null;
+        recurses = expr: {
+          inherit expr;
+          expectedError = {
+            type = "EvalError";
+            msg = "infinite recursion encountered";
+          };
+        };
+        refusesByName = expr: {
+          inherit expr;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read `options' while its own declarations were being folded";
+          };
+        };
+      in
+      {
+        test-a-catching-removal-recurses = recurses (
+          tree { } [
+            plain
+            imp
+            catcher
+          ]
+        );
+        test-a-catching-removal-under-the-passes-recurses = recurses (
+          tree { } [
+            plain
+            imp
+            staged
+            catcher
+          ]
+        );
+        test-a-catching-key-under-the-passes-recurses = recurses (
+          tree { } [
+            plain
+            imp
+            staged
+            catchKey
+          ]
+        );
+        test-a-catching-import-under-the-passes-recurses = recurses (
+          tree { } [
+            plain
+            imp
+            staged
+            catchImp
+          ]
+        );
+        test-a-catching-import-recurses = recurses (
+          tree { } [
+            plain
+            imp
+            catchImp
+          ]
+        );
+        test-a-different-file-at-a-level-dropped-whole-recurses = recurses (
+          tree { } [
+            plainA
+            (fx + "/dx.nix")
+            (fx + "/da.nix")
+          ]
+        );
+        test-a-different-file-at-a-level-dropped-whole-under-the-passes-recurses = recurses (
+          tree { } [
+            plainA
+            staged
+            (fx + "/dx.nix")
+            (fx + "/da.nix")
+          ]
+        );
+        test-an-import-shifting-files-under-one-key-recurses = recurses (
+          tree { class = "nixos"; } [
+            plain
+            imp
+            staged
+            shiftImp
+          ]
+        );
+        test-a-removal-shifting-between-passes-recurses = recurses (
+          tree { } [
+            plain
+            imp
+            staged
+            spy
+            disShift
+          ]
+        );
+        test-a-staged-declaration-reading-its-own-type-refuses-by-name = refusesByName (
+          tree { } [
+            {
+              options.e = a0;
+            }
+            cyc
+          ]
+        );
+        test-a-staged-declaration-reading-its-own-type-beside-a-recorded-level-refuses-by-name =
+          refusesByName
+            (
+              tree { } [
+                {
+                  options.e = a0;
+                }
+                cyc
+                {
+                  key = "k1";
+                  config.e = 1;
+                }
+                { key = "k2"; }
+              ]
+            );
+      };
   };
 }

@@ -2407,11 +2407,24 @@ let
             if length graph0 == length flat then graph0 else (a3.refinedGraph root flat callM modList).graph
           );
         k = length (root.nests.modules or [ ]);
+        # the top level's own decision, where the collection removed nothing: the record its
+        # first kept entry carries (a level decided on the slow branch), else the level kept whole
+        top0 = if flat == [ ] || removal.removes flat modList then null else head flat;
         # a top-level module's authored index, read through the root's order (`rootOrder`), as
         # `declAnchorOf`'s `i`
         idx =
           fi:
-          if topPlain then
+          if top0 != null && top0 ? kept then
+            (
+              if fi >= length top0.kept then
+                null
+              else
+                let
+                  p = (builtins.elemAt top0.kept fi).p;
+                in
+                if p + k < nTop then p + k else p + k - nTop
+            )
+          else if top0 != null || topPlain then
             (
               if fi >= nTop then
                 null
@@ -3550,8 +3563,8 @@ let
           if seen == { } && loneKeyed level then
             level
           else
-            map (x: x.e) (
-              filter (
+            let
+              keep = filter (
                 x:
                 x.k == null
                 || (
@@ -3566,8 +3579,21 @@ let
                   else
                     true
                 )
-              ) at
-            );
+              ) at;
+            in
+            # the level's decision rides its first kept entry, for a later walk of the
+            # environment to re-apply along (`removal.closure` over `{ flat; }`); only this, the slow branch, records
+            map (
+              x:
+              if x.p == (head keep).p && !(x.e ? dis) then
+                x.e
+                // {
+                  inherit at seen first;
+                  kept = keep;
+                }
+              else
+                x.e
+            ) keep;
       in
       kept
       # the EARLIEST holder of a node key stays its holder (`first // seen`): a later level's first of
@@ -3692,19 +3718,143 @@ let
     statesNone = e: !(e.content ? disabledModules);
     closure =
       specialArgs: class: callM: root: mods: plain:
-      let
-        u = moduleLevels class callM none plain;
-      in
-      if all statesNone u then
-        u
+      if isAttrs plain then
+        # a later walk of the environment, re-applying along the first walk's decision `plain.flat`:
+        # its kept entries in order, each recorded level's decision (`at`, `seen`, `first`, `kept`) on that level's
+        # first kept entry. `prev` lists, per level this walk re-applied keyed, the decision's `first` beside this
+        # walk's own `level`, so every key a level reads is held as this walk holds it, and every dropped occurrence
+        # is decided against this walk's own holder: the same path (`keyedDrop`'s first arm, the one drop a shared
+        # decision makes). Any difference walks in full, as base does.
+        let
+          flat = plain.flat;
+          next = concatMap ({ content, ... }@e: moduleEntries callM e (importsOf content));
+          fill =
+            n: prev:
+            {
+              at,
+              seen,
+              first,
+              kept,
+              ...
+            }:
+            level:
+            if
+              map meetKeyOf level == map (x: x.k) at
+              # every key the level reads: held as this walk holds it, and a dropped one decided by `keyedDrop`'s first
+              # arm, which reads no key comparison
+              && all (
+                {
+                  p,
+                  k,
+                  ...
+                }:
+                k == null
+                || (
+                  (seen ? ${k}) == any (x: x.first ? ${k}) prev
+                  && (
+                    !(seen ? ${k}) && first.${k}.p == p
+                    || (
+                      let
+                        x = builtins.elemAt level p;
+                        w =
+                          if seen ? ${k} then
+                            let
+                              g = prelude.last (filter (g: g.first ? ${k}) prev);
+                            in
+                            builtins.elemAt g.level g.first.${k}.p
+                          else
+                            builtins.elemAt level first.${k}.p;
+                      in
+                      isPathModule x.m0 && isPathModule w.m0 && toString x.m0 == toString w.m0
+                    )
+                  )
+                )
+              ) at
+            then
+              # the top level's `kept` is re-emitted only where it dropped: a top level kept whole is read by position
+              # (`moduleOwn.definitions`' `idx`), so its copy would be paid by every re-walk and read by none
+              map (
+                { p, ... }:
+                if n == 0 && p == (head kept).p && length kept != length at then
+                  builtins.elemAt level p // { inherit kept; }
+                else
+                  builtins.elemAt level p
+              ) kept
+              ++ steps (n + length kept) ([ { inherit first level; } ] ++ prev) (
+                next (map ({ p, ... }: builtins.elemAt level p) kept)
+              )
+            else
+              [ { left = true; } ];
+          steps =
+            n: prev: level:
+            if level == [ ] then
+              (if n == length flat then [ ] else [ { left = true; } ])
+            else if n >= length flat then
+              # a level the first walk dropped whole: every occurrence decided against this walk's own holder, by the
+              # same path
+              (
+                if
+                  all (
+                    e:
+                    let
+                      k = meetKeyOf e;
+                      g = prelude.last (filter (g: g.first ? ${k}) prev);
+                      w = builtins.elemAt g.level g.first.${k}.p;
+                    in
+                    k != null
+                    && builtins.substring 0 1 k == "k"
+                    && any (x: x.first ? ${k}) prev
+                    && isPathModule e.m0
+                    && isPathModule w.m0
+                    && toString e.m0 == toString w.m0
+                  ) level
+                then
+                  [ ]
+                else
+                  [ { left = true; } ]
+              )
+            else if (builtins.elemAt flat n) ? kept then
+              fill n prev (builtins.elemAt flat n) level
+            else if any namesNodeKey level then
+              # kept whole and keyed: a lone keyed level reached with nothing held
+              (
+                if prev == [ ] && loneKeyed level then
+                  level
+                  ++ steps (n + length level) [
+                    {
+                      first.${meetKeyOf (head (filter namesNodeKey level))}.p = 0;
+                      level = filter namesNodeKey level;
+                    }
+                  ] (next level)
+                else
+                  [ { left = true; } ]
+              )
+            else
+              level ++ steps (n + length level) prev (next level);
+          u = steps 0 [ ] (
+            if root ? collected then moduleEntries callM root root.collected else moduleEntries callM root mods
+          );
+        in
+        # a pass's fold (`plain ? left`) judges the walk itself, so its fallback starts from the fold's own frame and a
+        # departing pass adds no call frame to the pass chain
+        if plain ? left || builtins.catAttrs "left" u == [ ] && all statesNone u then
+          u
+        else
+          (if class == null then moduleClosure else moduleClosureWith class) specialArgs callM root mods
       else
         let
-          occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
-          dis = walk.keysOf (specialArgs.modulesPath or "") occ;
+          u = moduleLevels class callM none plain;
         in
-        builtins.seq (walk.checked class occ) (
-          moduleLevels class callM { } (walk.keptEntries dis callM root mods)
-        );
+        if all statesNone u then
+          u
+        else
+          let
+            occ = walk.occurrences callM (walk.occurrenceLevel callM root mods);
+            dis = walk.keysOf (specialArgs.modulesPath or "") occ;
+          in
+          builtins.seq (walk.checked class occ) (
+            moduleLevels class callM { } (walk.keptEntries dis callM root mods)
+          );
     # Whether a collection removed anything: every module of a non-empty tree removed, or a removal's
     # entries carrying a non-empty key set.
     removes = flat: mods: if flat == [ ] then mods != [ ] else (head flat).dis or { } != { };
@@ -5306,21 +5456,39 @@ let
         );
       # Pass n's view: `options` stamped from pass n-1's view fold, and the module arguments that fold
       # publishes (pass 0's view fold binds no argument and reads the poison).
+      # where the evaluation is unlocated, the passes' environment is the guard's, and pass 0's
+      # decision is the guard's own walk's: every pass re-applies along it (`closure` on the view)
       go =
         n:
         if n == 0 then
-          {
-            options = null;
-            args.moduleArgs = { };
-          }
+          (
+            if (s0.closure or null) != null && !s0.closure.located then
+              {
+                options = null;
+                args.moduleArgs = { };
+                inherit (s0) closure;
+              }
+            else
+              {
+                options = null;
+                args.moduleArgs = { };
+              }
+          )
         else
           let
             prev = stratum (args // { optionsView = go (n - 1); });
           in
-          {
-            options = stampOptions prev.sitesAt prefix prev.options;
-            args = prev;
-          };
+          if (s0.closure or null) != null && !s0.closure.located then
+            {
+              options = stampOptions prev.sitesAt prefix prev.options;
+              args = prev;
+              inherit (s0) closure;
+            }
+          else
+            {
+              options = stampOptions prev.sitesAt prefix prev.options;
+              args = prev;
+            };
       # G = 300: a cycle reads down every pass at about thirteen call frames each, so it refuses by name
       # well inside the evaluators' default call depth of 10000.
       sk = stratum (args // { optionsView = go 300; });
@@ -6965,8 +7133,16 @@ let
             notAModule m;
 
         flat =
-          (if class == null then moduleClosure else moduleClosureWith class) specialArgs callD root
-            modules;
+          if optionsView != null && optionsView ? closure then
+            let
+              u = removal.closure specialArgs class callD root modules (optionsView.closure // { left = true; });
+            in
+            if builtins.catAttrs "left" u == [ ] && all removal.statesNone u then
+              u
+            else
+              (if class == null then moduleClosure else moduleClosureWith class) specialArgs callD root modules
+          else
+            (if class == null then moduleClosure else moduleClosureWith class) specialArgs callD root modules;
         declEntries = prelude.imap0 (i: e: {
           idx = i;
           file = e._file;
@@ -6980,12 +7156,61 @@ let
       # on both the `.options` and `.config` planes. The view fold's record is spelled apart, so a
       # record no staged pass reads carries no `moduleArgs` slot.
       if optionsView == null || !(optionsView ? args) then
-        {
-          inherit declEntries sitesAt;
-          options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
-            map (e: validateDeclSubtree prefix e.options) declEntries
-          );
-        }
+        (
+          # the guard's walk publishes its decision only where it recorded one (a slow level)
+          if
+            optionsView != null || flat == [ ] || (head flat) ? dis || builtins.catAttrs "kept" flat == [ ]
+          then
+            {
+              inherit declEntries sitesAt;
+              options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
+                map (e: validateDeclSubtree prefix e.options) declEntries
+              );
+            }
+          else
+            {
+              inherit declEntries sitesAt;
+              options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
+                map (e: validateDeclSubtree prefix e.options) declEntries
+              );
+              closure =
+                # shareable where every recorded level read nothing but its keys and paths: each occurrence unkeyed,
+                # its key's first holder or a same-path drop (`keyedDrop`'s first arm, which reads no key comparison); no
+                # meeting key
+                if
+                  all (
+                    r:
+                    all (
+                      {
+                        p,
+                        k,
+                        e,
+                        ...
+                      }:
+                      k == null
+                      || (
+                        builtins.substring 0 1 k == "k"
+                        && (
+                          (!(r.seen ? ${k}) && r.first.${k}.p == p)
+                          || (
+                            let
+                              w = r.seen.${k} or r.first.${k};
+                            in
+                            isPathModule e.m0 && isPathModule w.e.m0 && toString e.m0 == toString w.e.m0
+                          )
+                        )
+                      )
+                    ) r.at
+                  ) (filter (e: e ? kept) flat)
+                then
+                  {
+                    inherit flat;
+                    located = root != null;
+                  }
+                else
+                  null;
+            }
+        )
       else
         let
           options = mergeOptionDeclTrees (onRedeclare sitesAt) prefix (
@@ -8205,6 +8430,10 @@ let
               (
                 if declarationGuard ? flat then
                   declarationGuard.flat
+                else if (declarationGuard.closure or null) != null then
+                  builtins.seq declarationGuard (
+                    removal.closure specialArgs null callM root modList declarationGuard.closure
+                  )
                 else
                   builtins.seq declarationGuard (moduleClosure specialArgs callM root modList)
               )
@@ -8213,6 +8442,10 @@ let
                 f =
                   if declarationGuard ? flat then
                     declarationGuard.flat
+                  else if (declarationGuard.closure or null) != null then
+                    builtins.seq declarationGuard (
+                      removal.closure specialArgs class callM root modList declarationGuard.closure
+                    )
                   else
                     builtins.seq declarationGuard (moduleClosureWith class specialArgs callM root modList);
               in
