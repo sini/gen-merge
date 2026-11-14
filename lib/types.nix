@@ -816,13 +816,26 @@ let
           if other ? carries && !(other ? retainedRelation) || stated == null then
             null
           else if rewrites == null then
-            mergeElemTypes element stated
+            (
+              if statedAnswer == null then
+                mergeElemTypes element stated
+              else
+                core.mergeTypesWithinAnswered statedAnswer element stated
+            )
           else
             # a fold step owing a debt meets the element pair with it, one role down (`core.readers`, `core.exports`)
             rewrites.exports (rewrites.readers rewrites (t: t.el) (
               interface.carriedAt "element"
             )) element stated;
         joinOver = if metFirst != null then stated else element;
+        # the element pair's own answer, asked once: the merge one role down reads it, and so does the twin's refusal
+        # carried up (`twinRefuses`), which a foreign engine's ask reads at every enclosing level (`stated` is the
+        # partner's element wherever it states one, so the arm over `partnerElem` reads it too)
+        statedAnswer =
+          if element ? typeMergeRel && !(stated ? wraps && interface.wrapsKeyOf stated element) then
+            element.typeMergeRel stated
+          else
+            null;
         # a partner whose payload is its element alone states no parameters to agree on: it is rebuilt
         # over the met element by its own constructor, and its relation is not asked. A door return is joined so
         # only where gen cannot read its stated relation whole (`importedOffered`) and its own closed relation,
@@ -877,20 +890,6 @@ let
               carried = joinOver;
               self = rebuild joinOver;
             } other;
-        # The element pair's own reason, where it states one, rides the refusal: the option is named
-        # at the top, and the cause sits one level down.
-        elementRefusal =
-          partner:
-          let
-            cause = core.mergeTypesReasonWithin element partner;
-          in
-          {
-            refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partner}', whose element types do not merge${
-              if cause == null then "" else ": ${cause}"
-            }";
-            # the element pair's refusal decides without vetoing (`nullaryRel`), so the container's does too
-            vetoes = !(element ? typeMergeRel) || ((element.typeMergeRel partner).vetoes or true);
-          };
       in
       if foreignJoin != null && !(foreignJoin ? adHocChecked) then
         let
@@ -926,7 +925,11 @@ let
             # the element is the pair's own met (`metFirst`), so a step owing no debt meets it no second time
             # (`lib/modules.nix` `relationMergeWithin`): the one descent is this one
             ${if metFirst != null then "rolesMet" else null} = true;
-            twinRefuses = element ? typeMergeRel && ((element.typeMergeRel stated).twinRefuses or false);
+            twinRefuses =
+              element ? typeMergeRel
+              && ((if statedAnswer == null then element.typeMergeRel stated else statedAnswer).twinRefuses
+                or false
+              );
           }
       else if partnerElem == null then
         let
@@ -937,7 +940,23 @@ let
         if embeddedElem == null then
           { refused = "`${name}' and a partner that states no element type of its own"; }
         else if mergeElemTypes element embeddedElem == null then
-          elementRefusal embeddedElem
+          (
+            # The element pair's own reason, where it states one, rides the refusal: the option is named
+            # at the top, and the cause sits one level down. Spelled at each refusal, so a pair that merges allocates
+            # nothing for it
+            partner:
+            let
+              cause = core.mergeTypesReasonWithin element partner;
+            in
+            {
+              refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partner}', whose element types do not merge${
+                if cause == null then "" else ": ${cause}"
+              }";
+              # the element pair's refusal decides without vetoing (`nullaryRel`), so the container's does too
+              vetoes = !(element ? typeMergeRel) || ((element.typeMergeRel partner).vetoes or true);
+            }
+          )
+            embeddedElem
         else if foreignJoin ? adHocChecked then
           {
             refused = "`${name}' over `${nameOf element}' and a partner over `${nameOf embeddedElem}' whose own relation joins this pair with an ad-hoc `type // { check = ...; }' override, which the v2 merge protocol refuses";
@@ -950,20 +969,45 @@ let
         let
           merged =
             if rewrites == null then
-              mergeElemTypes element partnerElem
+              (
+                if statedAnswer == null then
+                  mergeElemTypes element partnerElem
+                else
+                  core.mergeTypesWithinAnswered statedAnswer element partnerElem
+              )
             else
               rewrites.exports (rewrites.readers rewrites (t: t.el) (
                 interface.carriedAt "element"
               )) element partnerElem;
         in
         if merged == null then
-          elementRefusal partnerElem
+          (
+            # The element pair's own reason, where it states one, rides the refusal: the option is named
+            # at the top, and the cause sits one level down. Spelled at each refusal, so a pair that merges allocates
+            # nothing for it
+            partner:
+            let
+              cause = core.mergeTypesReasonWithin element partner;
+            in
+            {
+              refused = "`${name}' over `${nameOf element}' and `${name}' over `${nameOf partner}', whose element types do not merge${
+                if cause == null then "" else ": ${cause}"
+              }";
+              # the element pair's refusal decides without vetoing (`nullaryRel`), so the container's does too
+              vetoes = !(element ? typeMergeRel) || ((element.typeMergeRel partner).vetoes or true);
+            }
+          )
+            partnerElem
         else
           {
             merged = rebuild merged;
             ${if rewrites == null then null else "rolesMet"} = true;
             # the element pair's join the twin refuses, carried up as `vetoes` is (read by a foreign engine's ask)
-            twinRefuses = element ? typeMergeRel && ((element.typeMergeRel partnerElem).twinRefuses or false);
+            twinRefuses =
+              element ? typeMergeRel
+              && ((if statedAnswer == null then element.typeMergeRel partnerElem else statedAnswer).twinRefuses
+                or false
+              );
           };
 
   # An element's substructure, whichever vocabulary it speaks. A gen type answers from its own

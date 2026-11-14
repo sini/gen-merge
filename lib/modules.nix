@@ -1042,6 +1042,100 @@ let
       ];
   mergeTypes = mergeTypesBy relationMerge;
   mergeTypesWithin = mergeTypesBy (relationMergeWithin null);
+  # The descent's step over a relation answer its caller has already asked (`lib/types.nix` `elementRelIn`, whose
+  # `twinRefuses` reads the same answer), so the pair is asked once. The answer is read as `relationMergeWithin`'s
+  # stated-relation arm reads it with no thread, and the step is `mergeTypesBy`'s; both are restated here, as
+  # `bandedLeaves` restates the first, so a step that hands its answer allocates no call its asked twin does not
+  mergeTypesWithinAnswered =
+    answer: a: b:
+    let
+      m =
+        if answer.meets or false then
+          (
+            let
+              r = answer.merged;
+            in
+            if answer.holds or false then
+              interface.metWith.importLeaf null (
+                interface.metWith.metWith null "holds"
+                  (
+                    if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
+                      r
+                    else
+                      rolesMet null r a b
+                  )
+                  [
+                    a
+                    b
+                  ]
+              )
+            else if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
+              (interface.metWith.importLeaf null (
+                interface.metWith.metWith null true r [
+                  a
+                  b
+                ]
+              ))
+            else
+              (interface.metWith.importLeaf null (
+                interface.metWith.metWith null true (if answer.rolesMet or false then r else rolesMet null r a b) [
+                  a
+                  b
+                ]
+              ))
+          )
+        else if answer ? merged then
+          (
+            if answer.rolesMet or false then
+              answer.merged
+            else if
+              a ? retainedRelation
+              && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
+            then
+              rolesMet null answer.merged a b
+            else
+              answer.merged
+          )
+        else
+          null;
+    in
+    if m == null then
+      null
+    else if !(dropsWrappedCheck m a || dropsWrappedCheck m b) then
+      if
+        m ? typeMergeRel
+        && (
+          !(a ? check || a ? admits)
+          ||
+            a ? typeMergeRel.exact
+            && (
+              m ? carries || (a._checkWitness or null) == (m._checkWitness or null) || interface.statesPayload m
+            )
+        )
+        && (
+          !(b ? check || b ? admits)
+          ||
+            b ? typeMergeRel.exact
+            && (
+              m ? carries || (b._checkWitness or null) == (m._checkWitness or null) || interface.statesPayload m
+            )
+        )
+        && !(a ? holds)
+        && !(b ? holds)
+      then
+        m
+      else
+        interface.metWith.core false m [
+          a
+          b
+        ]
+    else if interface.sameValue a b then
+      interface.sameValue.kept m a b
+    else
+      interface.metWith.core false m [
+        a
+        b
+      ];
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -10614,6 +10708,7 @@ in
     # Their descent past the pre-flight, for a relation's own recursion (`lib/types.nix`
     # `mergeElemTypes`): an operand there is a sub-tree of one the entry already walked.
     mergeTypesWithin
+    mergeTypesWithinAnswered
     mergeTypesReasonWithin
     # A nested tree's position record and the report mode its child evaluates in (den-hoag-n6dh7),
     # on the internal seam for the key walk that mints the children.
