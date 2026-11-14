@@ -3,7 +3,8 @@
 # and never reads a first holder's `__keyEq`; the publisher and the re-walk test only keys and paths, so a
 # `__keyEq` that reads `config` or throws stays unread and the evaluation serves. RED: a shareability test that
 # reads `__keyEq` (`keqOf … == null`) refuses the first two by the guard's `config` refusal or the throw, and the
-# third at its same-path drop. The controls state `__keyEq = null`, so every arm serves them.
+# third at its same-path drop. The controls state `__keyEq = null`, so every arm serves them. The last cell reads
+# the top level's positions off a re-walk that dropped.
 { genMerge, ... }:
 let
   gm = genMerge;
@@ -16,9 +17,33 @@ let
     };
   };
   serve = ms: (gm.evalModuleTree { } ms).config;
+  # the `_module.args` definitions in the order the option reads them, each by the names it defines
+  argsOrder =
+    ms:
+    map (d: builtins.attrNames d.value)
+      (gm.evalModuleTree { } ms).options._module.args.definitionsWithLocations;
 in
 {
   flake.tests.closure-decision = {
+    # A re-walk's top level that dropped a same-path duplicate states its kept positions, so a module imported below
+    # it stays below the internal definitions, as base reads it. RED: a re-walk that states no positions reads the
+    # imported module by position, as a top-level one, and moves it after the internal set.
+    test-a-dropping-top-level-keeps-its-modules-positions = {
+      expr = argsOrder [
+        (fx + "/d.nix")
+        (fx + "/d.nix")
+        { imports = [ { _module.args.q = 1; } ]; }
+        { _module.args.r = 2; }
+      ];
+      expected = [
+        [ "q" ]
+        [
+          "extendModules"
+          "moduleType"
+        ]
+        [ "r" ]
+      ];
+    };
     test-a-key-comparison-reading-config-is-never-forced = {
       expr = serve [
         plain
