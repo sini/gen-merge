@@ -56,10 +56,12 @@ log moved0.log "$det" '.value.gen.thunks += 1'
 log det2.log "$det2" .
 # A column's log with its REFUSALS count line gone (den-hoag-pvy24).
 grep -v " REFUSALS $name " "$w/c0.log" >"$w/nocount0.log"
-# The text row's own column, and that column's log with the row's REFUSAL text moved.
-tcol=$(jq -r '.refusal | keys[0]' <<<"$text")
+# The text row's own column, and that column's log with the row's REFUSAL text moved. The column is the first of the
+# perf row's CI columns the text row carries a text for, never the text row's first key: a register keeps a retired
+# evaluator's texts beside the current ones, and a retired key can sort first.
+tcol=$(jq -r --arg d "$det" --arg l "$lix" --arg n "$nix" '[.refusal | keys[] | select(. == $d or . == $l or . == $n)] | .[0] // ""' <<<"$text")
 for e in "$det" "$lix" "$nix"; do [ "$e" = "$tcol" ] && break; done
-[ "$e" = "$tcol" ] || { echo "FAIL $name fixture: the text row's first column $tcol is no CI column of the perf row"; exit 1; }
+[ "$e" = "$tcol" ] || { echo "FAIL $name fixture: the text row carries no refusal text for a CI column of the perf row"; exit 1; }
 tc=0
 for e in "$det" "$lix" "$nix"; do [ "$e" = "$tcol" ] && break; tc=$((tc + 1)); done
 tk=$(jq -c .key <<<"$text")
