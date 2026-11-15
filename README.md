@@ -2525,6 +2525,60 @@ merge a hand-built type copying its functor binds at the same position), and a l
 tree, where nixpkgs serves: `uniq (listOf (lazyAttrsOf e))` with a key below the list `mkIf` on the
 read tree, or `uniq (listOf (attrsOf e))` with a second element's key `mkIf` on it.
 
+**The migration spelling for a value-reading merge: `apply` at the option root.** A reshape that
+reads its elements' values (a `filterAttrs` or `mapAttrs` over the folded value, a key swap, a deep
+read), written inside a type's `merge` as a `//` override over a chain holding a gen nesting element,
+is refused by name or aborts uncatchably where nixpkgs serves (above). Where that chain is the
+option's own type, move the read out of the type's `merge` and into the option's `apply`, over the
+same chain with no override. The module system runs `apply` once, after the fold, over the folded
+value, and there gen serves nixpkgs' value:
+
+```nix
+# np = nixpkgs' lib.types; types and mkOption are gen-merge's
+pod = types.attrsOf (types.submodule {
+  options.ready = mkOption { type = types.bool; default = false; };
+});
+dropUnready = lib.filterAttrs (_: p: p.containers.main.ready);
+reshape = g: t: t // {
+  merge = loc: defs: g (t.merge loc defs);
+  substSubModules = m: reshape g (t.substSubModules m);
+};
+# defined: pods.web.containers.main.ready = true; pods.db.containers.main.ready = false;
+
+# before: the read inside the type's merge
+options.pods = mkOption {
+  type = np.uniq (reshape dropUnready (np.lazyAttrsOf (np.attrsOf pod)));
+};
+# builtins.attrNames config.pods
+# ⇒ nixpkgs: [ "web" ]
+# ⇒ gen-merge: aborts uncatchably, error: attribute 'main' missing
+
+# after: the same read as the option's apply
+options.pods = mkOption {
+  type = np.uniq (np.lazyAttrsOf (np.attrsOf pod));
+  apply = dropUnready;
+};
+# builtins.attrNames config.pods
+# ⇒ [ "web" ]   (nixpkgs and gen-merge alike; config.pods.web.containers.main.ready ⇒ true)
+```
+
+**Its scope is the option root.** The spelling holds only where the reshape wraps the option's whole
+type, as above. A reshape below the root (the reshaped type as an element of another container) has
+no spelling yet: no gen-merge type constructor states a post-fold reshape, and the equivalence is
+measured at the root position only. An additive constructor for the nested position is planned.
+
+**It migrates code; it does not serve the old form.** The override form is still refused or aborts
+as stated above. Measured over the residue at the option root, 32 shapes abort and 75 are refused by
+name, each where nixpkgs serves; all of them remain open defects (the owner's parity-defect rule,
+2026-10-09). This spelling is not a waiver, and the refusals are not an accepted divergence.
+
+**Moving the lambda to `apply` does not make it inert or identity-safe.** `apply` decides where the
+reshape runs, not what it is. It is still a caller closure the engine cannot inspect: it forces
+whatever it reads, it may throw, and its result is whatever it returns. The position guarantees only
+that it reads the folded value and never the definitions. Nothing checks that a tree it keeps, moves
+or rebuilds still sits at the key its definitions declared, and code that needs that guarantee does
+not get it from `apply`.
+
 **At the option root, a foreign record stating a module set is mounted as nixpkgs mounts it.**
 nixpkgs' `fixupOptionType` rebuilds a declared
 option's type over the declaration's module set, at the option's root only, and the rebuild reaches
