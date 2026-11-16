@@ -48,7 +48,8 @@
         cp -r ${./bench} $out/ci/bench
         # `leaf-context-cost` mounts the README's output slot and its twin from the cells' own fixtures
         mkdir -p $out/ci/tests/_fixtures
-        cp ${./tests/_fixtures/output-slot-over-raw.nix} ${./tests/_fixtures/output-slot-relatives.nix} $out/ci/tests/_fixtures/
+        cp ${./tests/_fixtures/output-slot-over-raw.nix} $out/ci/tests/_fixtures/output-slot-over-raw.nix
+        cp ${./tests/_fixtures/output-slot-relatives.nix} $out/ci/tests/_fixtures/output-slot-relatives.nix
       '';
     in
     {

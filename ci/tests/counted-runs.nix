@@ -168,6 +168,12 @@ in
         plain = 1;
       }
       {
+        file = "bench/leaf-context-cost.sh";
+        counted = 1;
+        keyed = 0;
+        plain = 0;
+      }
+      {
         file = "bench/redeclaration-cost.sh";
         counted = 1;
         keyed = 0;
