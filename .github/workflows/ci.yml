@@ -13,8 +13,13 @@ jobs:
   # rewrites it when that lock moves.
   evaluators:
     uses: sini/gen-harness/.github/workflows/evaluators.yml@d307db2ae27329fddf1a2bf2652ea1c64d065cf0
-    with:
-      # den-hoag-06toi: the modules.sh baseline never lowers the bar silently. A HISTORY property (each
-      # revision of the register against its predecessor), so it reads git, never an evaluator; it unshallows
-      # the depth-1 checkout itself. It runs in every column because `extra-run` does, at a cost of seconds.
-      extra-run: bash ci/modules-sh-ratchet.sh
+
+  # den-hoag-06toi: the bar registers never lower the bar silently. A HISTORY property (each revision of a
+  # register against its predecessor), so it reads git and jq, never an evaluator, and runs once beside the
+  # matrix rather than in each column, where its output was byte-identical (den-hoag-qbs25). It unshallows
+  # the depth-1 checkout itself.
+  ratchet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash ci/modules-sh-ratchet.sh
