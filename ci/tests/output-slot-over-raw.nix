@@ -744,21 +744,29 @@ let
 in
 {
   flake.tests.output-slot-over-raw = {
-    # the README's block is the fixture's, byte for byte
+    # the README's block is the fixture's, line for line, fenced. Read as line lists: a substring search over
+    # the whole README overflows the default stack.
     test-the-readme-spelling-is-the-fixture =
       let
-        lines = builtins.filter builtins.isString (
-          builtins.split "\n" (builtins.readFile ./_fixtures/output-slot-over-raw.nix)
+        linesOf = f: builtins.filter builtins.isString (builtins.split "\n" (builtins.readFile f));
+        lines = linesOf ./_fixtures/output-slot-over-raw.nix;
+        readme = linesOf ../../README.md;
+        idx = l: xs: lib.lists.findFirstIndex (x: x == l) null xs;
+        begin = idx "  # README-BEGIN" lines;
+        body = map (lib.removePrefix "  ") (
+          lib.sublist (begin + 1) (idx "  # README-END" lines - begin - 1) lines
         );
-        idx = m: lib.lists.findFirstIndex (l: lib.hasInfix m l) null lines;
-        body = lib.sublist (idx "# README-BEGIN" + 1) (idx "# README-END" - idx "# README-BEGIN" - 1) lines;
-        dedent = map (lib.removePrefix "  ") body;
-        block = lib.concatStringsSep "\n" dedent + "\n";
+        n = builtins.length body;
+        at = idx (builtins.head body) readme;
       in
       {
         expr = {
-          nonEmpty = builtins.length body > 10;
-          inReadme = lib.hasInfix "```nix\n${block}```\n" (builtins.readFile ../../README.md);
+          nonEmpty = n > 10;
+          inReadme =
+            at != null
+            && builtins.elemAt readme (at - 1) == "```nix"
+            && lib.sublist at n readme == body
+            && builtins.elemAt readme (at + n) == "```";
         };
         expected = {
           nonEmpty = true;
