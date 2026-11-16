@@ -1,20 +1,16 @@
 # The cells of `checks.bar-fold` (`bar-fold.nix`) for one bar's `--fold`:
 #   bar-fold-cells.bash <name> <bin> <register>
 # Each cell folds three synthetic column logs, built from a perf row of the committed register, into a copy of
-# that register and reads the copy's md5 against the register's own. Prints `PASS <name> <cell>` or
+# that register (the FIXTURE, below) and reads the folded copy's md5 against the fixture's own. Prints `PASS <name> <cell>` or
 # `FAIL <name> <cell>: <why>`, one line per cell; the derivation holds their count.
 set -u
 name=$1 bin=$2 reg=$3
 w=$(mktemp -d)
-want=$(md5sum <"$reg")
 # A row's identity as the bar's compare spells it, and a verdict line's prefix (modules-sh prints the line).
 if [ "$name" = modules-sh ]; then idf='.key | [.kind, .env, .argv] | tojson' pre='L1 '; else idf='.key | tojson' pre=''; fi
 row=$(jq -cn 'first(inputs | select(.perf != null and (.perf | length) >= 3))' "$reg")
 pass=$(jq -rn "first(inputs | select(.verdict == \"PASS\")) | $idf" "$reg")
 [ -n "$row" ] && [ -n "$pass" ] || { echo "FAIL $name fixture: no perf row with three columns, or no PASS row"; exit 1; }
-# A row carrying a refusal text, for the text cell; every stage's register has one.
-text=$(jq -cn 'first(inputs | select(.refusal != null))' "$reg")
-[ -n "$text" ] || { echo "FAIL $name fixture: no row carries a refusal text"; exit 1; }
 # The row's columns: one of each evaluator family, and a second Determinate one.
 col() { jq -r --arg f "$1" '[.perf | keys[] | select(contains($f))] | .[-1]' <<<"$row"; }
 det=$(col '(Determinate ') lix=$(col '(Lix') nix=$(col '(Nix)')
@@ -22,6 +18,27 @@ det2=$(jq -r --arg d "$det" '[.perf | keys[] | select(contains("(Determinate ") 
 for e in "$det" "$lix" "$nix" "$det2"; do
   [ -n "$e" ] && [ "$e" != null ] || { echo "FAIL $name fixture: the perf row lacks a column of each family and two Determinate ones"; exit 1; }
 done
+# THE FIXTURE: the register with ONE row of its own made a refusal carrying a text for each CI column, so the text
+# cell reads the refusal-text path whatever the register holds. A register need hold no refusal row: a reference move
+# that serves its last refused cell leaves it none (hm-bar at nixpkgs d4f25a3, waveterm-example-config). The row is
+# the first one that is neither the perf row nor the PASS row the verdict lines name, written as jq writes a register
+# row, so the folds below reproduce the fixture byte for byte.
+fx=$(jq -cn --argjson p "$row" --arg pass "$pass" "first(inputs | select(.key != \$p.key and ($idf) != \$pass))" "$reg")
+[ -n "$fx" ] || { echo "FAIL $name fixture: no row besides the perf and PASS rows to carry a refusal text"; exit 1; }
+jq -c --argjson f "$fx" --arg d "$det" --arg l "$lix" --arg n "$nix" \
+  'if .key == $f.key then .verdict = "FAIL" | .refusal = ({($d): "error: bar-fold fixture: a refusal", ($l): "error: bar-fold fixture: a refusal", ($n): "error: bar-fold fixture: a refusal"} | to_entries | sort_by(.key) | from_entries) else . end' \
+  "$reg" >"$w/fixture.reg"
+# A bar's `--fold` reads the register its build baked in (`base`, `BAR_BASE`), never F, so the fixture is folded by a
+# copy of the bar whose one baked register path, asserted to be this register, names the fixture instead.
+baked=$(grep -oE "/nix/store/[a-z0-9]{32}-$name-baseline\.jsonl" "$bin" | sort -u)
+[ "$(wc -w <<<"$baked")" = 1 ] && cmp -s "$baked" "$reg" ||
+  { echo "FAIL $name fixture: $bin does not bake exactly one register path holding this register"; exit 1; }
+sed "s#$baked#$w/fixture.reg#g" "$bin" >"$w/bar"
+chmod +x "$w/bar"
+bin=$w/bar
+reg=$w/fixture.reg
+want=$(md5sum <"$reg")
+text=$(jq -cn --argjson f "$fx" 'first(inputs | select(.key == $f.key))' "$reg")
 # log <file> <column> <jq over the column's perf entry>: one column's log, its PERF line for the row, then the
 # column's REFUSAL line for every register row carrying a text for it, and their count line (den-hoag-pvy24).
 log() {
