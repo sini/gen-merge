@@ -3685,7 +3685,7 @@ register in the same change:
 ```sh
 nix run ./ci#modules-sh -- --write-baseline ci/modules-sh-baseline.jsonl
 nix run ./ci#modules-sh -- --fold F A.log B.log C.log  # merge CI's three column logs' PERF lines
-bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it as the evaluators' extra step
+bash ci/modules-sh-ratchet.sh   # the history guard; CI runs it once, as the `ratchet` job
 ```
 
 - **The reference run** is nixpkgs' `lib` under the same hook, and it must PASS every assertion of its
