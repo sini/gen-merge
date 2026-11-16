@@ -39,6 +39,10 @@
     "module": "SERVED",
     "string": "REFUSED"
   },
+  "attrsOf.postFold": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
   "eitherL": {
     "module": "SERVED",
     "string": "SERVED"
@@ -76,6 +80,10 @@
     "string": "SERVED"
   },
   "eitherL.option": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
+  "eitherL.postFold": {
     "module": "SERVED",
     "string": "SERVED"
   },
@@ -119,6 +127,10 @@
     "module": "SERVED",
     "string": "SERVED"
   },
+  "eitherR.postFold": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
   "lazyAttrsOf": {
     "module": "SERVED",
     "string": "REFUSED"
@@ -156,6 +168,10 @@
     "string": "SERVED"
   },
   "lazyAttrsOf.option": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "lazyAttrsOf.postFold": {
     "module": "SERVED",
     "string": "REFUSED"
   },
@@ -199,6 +215,10 @@
     "module": "SERVED",
     "string": "REFUSED"
   },
+  "listOf.postFold": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
   "nullOr": {
     "module": "SERVED",
     "string": "REFUSED"
@@ -236,6 +256,10 @@
     "string": "SERVED"
   },
   "nullOr.option": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "nullOr.postFold": {
     "module": "SERVED",
     "string": "REFUSED"
   },
@@ -279,6 +303,10 @@
     "module": "SERVED",
     "string": "SERVED"
   },
+  "oneOfL.postFold": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
   "oneOfR": {
     "module": "SERVED",
     "string": "SERVED"
@@ -319,6 +347,10 @@
     "module": "SERVED",
     "string": "SERVED"
   },
+  "oneOfR.postFold": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
   "option": {
     "module": "SERVED",
     "string": "REFUSED"
@@ -356,6 +388,54 @@
     "string": "SERVED"
   },
   "option.option": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "option.postFold": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "postFold": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "postFold.attrsOf": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "postFold.eitherL": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
+  "postFold.eitherR": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
+  "postFold.lazyAttrsOf": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "postFold.listOf": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "postFold.nullOr": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "postFold.oneOfL": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
+  "postFold.oneOfR": {
+    "module": "SERVED",
+    "string": "SERVED"
+  },
+  "postFold.option": {
+    "module": "SERVED",
+    "string": "REFUSED"
+  },
+  "postFold.postFold": {
     "module": "SERVED",
     "string": "REFUSED"
   }

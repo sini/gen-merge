@@ -101,17 +101,18 @@ decision trace.
 
 **Structural merge strategies** — `lib/types.nix`
 
-| Export                    | Signature                                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `submodule`               | `module\|[module] -> type` (a child of the one evaluation; binds per-key `name`)                                          |
-| `listOf`                  | `type -> type` (concat in def order, each element merged through the element type)                                        |
-| `attrsOf` / `lazyAttrsOf` | `type -> type` (per-key merge; byte-identical output, distinct functor names)                                             |
-| `deferredModule`          | `type` (a value) — merges defs into `{ imports = [ … ]; }`, never forced                                                  |
-| `nullOr` / `option`       | `type -> type` (`option` is the same binding as `nullOr`); null defs drop                                                 |
-| `either`                  | `type -> type -> type`                                                                                                    |
-| `oneOf`                   | `[type] -> type` (left-nested `either`, as nixpkgs; empty list throws)                                                    |
-| `raw`                     | `type` (a value) — one winner, or all-equal winners                                                                       |
-| `anything`                | `type` (a value) — lists concat, attrsets recurse per key, else the leaf fold; a value carrying `__mint` is carried whole |
+| Export                    | Signature                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `submodule`               | `module\|[module] -> type` (a child of the one evaluation; binds per-key `name`)                                                      |
+| `listOf`                  | `type -> type` (concat in def order, each element merged through the element type)                                                    |
+| `attrsOf` / `lazyAttrsOf` | `type -> type` (per-key merge; byte-identical output, distinct functor names)                                                         |
+| `deferredModule`          | `type` (a value) — merges defs into `{ imports = [ … ]; }`, never forced                                                              |
+| `nullOr` / `option`       | `type -> type` (`option` is the same binding as `nullOr`); null defs drop                                                             |
+| `postFold`                | `(value -> value) -> type -> type` — `g ∘ fold`: folds the element at its own position, then `g` over the folded value; sealed in `g` |
+| `either`                  | `type -> type -> type`                                                                                                                |
+| `oneOf`                   | `[type] -> type` (left-nested `either`, as nixpkgs; empty list throws)                                                                |
+| `raw`                     | `type` (a value) — one winner, or all-equal winners                                                                                   |
+| `anything`                | `type` (a value) — lists concat, attrsets recurse per key, else the leaf fold; a value carrying `__mint` is carried whole             |
 
 **Unified type namespace**
 
@@ -485,7 +486,7 @@ nix eval --json .#lib --apply 'l: { top = builtins.attrNames l; types = builtins
 Current output (verbatim):
 
 ```json
-{"top":["anything","attrsOf","bandedLeaves","closuresFirst","declaredOptions","deferredModule","deriveType","either","engineOptionNames","evalModuleTree","importedCarried","importedTypeWalkFuel","lazyAttrsOf","lint","listOf","mergeDefaultOption","mergeDefs","mergeDefsPartial","mergeOneOption","mergeTypes","mkAfter","mkBefore","mkCoreValue","mkDefault","mkDefinition","mkForce","mkIf","mkMerge","mkOption","mkOptionDefault","mkOptionType","mkOrder","mkOverride","moduleSyntax","nullOr","oneOf","option","partialAttrsOf","partialSubmodule","priorityBand","pureModule","raw","refusingSubmodule","showOption","submodule","types","verifyValue"],"types":["any","anything","attrs","attrsOf","bool","checkedAttrs","checkedAttrsOf","checkedListOf","checkedOption","comparisonSubject","conservativeEq","defaultOnError","deferredModule","defineType","derivation","deriveType","either","enum","float","formatErrors","function","idOf","identityGuard","int","intersection","lazyAttrsOf","list","listOf","mkIdentity","mkOption","mkOptionType","mkType","mkValidator","never","null","nullOr","number","oneOf","option","optionType","optionalAttr","path","pathLike","payloadOf","raw","refined","refinements","rewritesCheck","runValidators","stampOk","str","strict","string","struct","submodule","tuple","typeEq","typeWitness","typedef","typedef'","union","unspecified","witnessRecord","witnessedCheck"]}
+{"top":["anything","attrsOf","bandedLeaves","closuresFirst","declaredOptions","deferredModule","deriveType","either","engineOptionNames","evalModuleTree","importedCarried","importedTypeWalkFuel","lazyAttrsOf","lint","listOf","mergeDefaultOption","mergeDefs","mergeDefsPartial","mergeOneOption","mergeTypes","mkAfter","mkBefore","mkCoreValue","mkDefault","mkDefinition","mkForce","mkIf","mkMerge","mkOption","mkOptionDefault","mkOptionType","mkOrder","mkOverride","moduleSyntax","nullOr","oneOf","option","partialAttrsOf","partialSubmodule","priorityBand","pureModule","raw","refusingSubmodule","showOption","submodule","types","verifyValue"],"types":["any","anything","attrs","attrsOf","bool","checkedAttrs","checkedAttrsOf","checkedListOf","checkedOption","comparisonSubject","conservativeEq","defaultOnError","deferredModule","defineType","derivation","deriveType","either","enum","float","formatErrors","function","idOf","identityGuard","int","intersection","lazyAttrsOf","list","listOf","mkIdentity","mkOption","mkOptionType","mkType","mkValidator","never","null","nullOr","number","oneOf","option","optionType","optionalAttr","path","pathLike","payloadOf","postFold","raw","refined","refinements","rewritesCheck","runValidators","stampOk","str","strict","string","struct","submodule","tuple","typeEq","typeWitness","typedef","typedef'","union","unspecified","witnessRecord","witnessedCheck"]}
 ```
 
 The `types` half depends on the LOCKED `gen-types` input (`flake.lock`), so a leaf-name change there

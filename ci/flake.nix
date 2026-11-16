@@ -236,6 +236,8 @@
       };
       extraModules = [
         ./tests-error.nix
+        # `types.postFold`'s refusals, over the cases its value cells read (`tests/post-fold.nix`).
+        ./tests-error-post-fold.nix
         # P5's scanner: one generated error-plane cell per (public operation, wrong-shape arm), and
         # its exceptions register beside it.
         ./tests-error-p5-scan.nix
