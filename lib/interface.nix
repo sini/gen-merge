@@ -1831,6 +1831,8 @@ let
           false
         else if isNesting t || t ? __threadedForeign then
           true
+        else if t ? canNest then
+          t.canNest
         else
           let
             wrapped = declaredWrapped t;
@@ -3216,7 +3218,7 @@ let
     (
       # a foreign v2 element owing no `verify` and no override: the general arm's record below, built with no
       # branch inside its fields. TWIN of that arm's `check` and v2 `merge`: an edit to one is owed the other
-      if !top && isV2 r && !(r ? typeMergeRel) && !(o ? verify) && !(adHocChecked o) then
+      if top != true && isV2 r && !(r ? typeMergeRel) && !(o ? verify) && !(adHocChecked o) then
         r
         // {
           check = {
@@ -3254,7 +3256,7 @@ let
             v2 = args: adHocFold o args.loc args.defs;
           };
         }
-        // (if top then { inherit (o) check; } else { })
+        // (if top == true then { inherit (o) check; } else { })
       else
         r
         // {
@@ -3262,7 +3264,8 @@ let
             # a FOREIGN carrier's own check is asked elsewhere: a declaration list's root is mounted, and
             # the mount meets its rebuild's (`homedRootFixed`); a v2 element's merge computes its own
             # `headError`. A gen carrier and a v1 element are asked it here.
-            __functor = if r ? typeMergeRel || !top && !(isV2 r) then _: x: r.check x && holds x else _: holds;
+            __functor =
+              if r ? typeMergeRel || top != true && !(isV2 r) then _: x: r.check x && holds x else _: holds;
             isV2MergeCoherent = true;
           };
         }
@@ -3296,10 +3299,10 @@ let
               # TWIN: the branch-free arm above builds this `check` and `merge` for an element owing no `verify`
               # an owed `verify` is read once, on the merged value, in the same `headError`
               {
-                merge = if !top && o ? verify then rebuildClosed.verifiedMerge o.verify m else m;
+                merge = if top != true && o ? verify then rebuildClosed.verifiedMerge o.verify m else m;
               }
             )
-          else if !top && o ? verify && r ? merge then
+          else if top != true && o ? verify && r ? merge then
             { merge = rebuildClosed.verifiedMerge o.verify r.merge; }
           else
             { }
@@ -3502,7 +3505,7 @@ let
           c0 = (head owedC).check.__verifyProjection or (head owedC).check;
           c1 = (elemAt owedC 1).check.__verifyProjection or (elemAt owedC 1).check;
           adHoc = filter isAdHoc owedC;
-          j = below fuel ts r;
+          j = if top == null then optioned fuel ts r else below fuel ts r;
         in
         if owed == [ ] then
           j
@@ -3592,7 +3595,19 @@ let
             if carriedAt "element" e == null then
               carryElement e (optioned fuel [ e ] (e.substSubModules m))
             else
-              go false (fuel - 1) [ e ] (rebuild (fuel - 1) e m);
+              # nothing under the element owes, or the rebuild below carried every level under it: this level alone
+              go (
+                if
+                  fuel > 1
+                  && (
+                    !(owesIn (fuel - 1) (carriedAt "element" e))
+                    || isList ((carriedAt "element" e).getSubModules or null)
+                  )
+                then
+                  null
+                else
+                  false
+              ) (fuel - 1) [ e ] (rebuild (fuel - 1) e m);
           # `over t c`, inlined: it is asked once per mounted root
           x =
             if t ? recarry && t ? carries.element then
@@ -9074,6 +9089,9 @@ let
       over "composite" "lazy attribute set of " [ "noun" "composite" ] el
     else if el != null && name == "nullOr" then
       over "conjunction" "null or " [ "noun" "conjunction" ] el
+    # a post-fold reshape adds no phrase: it reads as its element, as nixpkgs' `t // { merge = …; }` keeps `t`'s
+    else if el != null && name == "postFold" then
+      phraseOfMember (b - 1) el
     else if isList alts && length alts == 2 && name == "either" then
       let
         pa = phraseOfMember (b - 1) (head alts);

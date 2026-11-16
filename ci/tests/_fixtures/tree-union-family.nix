@@ -90,6 +90,25 @@ let
       mk = ts: x: ts.lazyAttrsOf x;
       wrap = v: { k = v; };
     };
+    # nixpkgs has no `postFold`; its reference side is the same reshape written as a `//` override of
+    # the element's `merge` (and its rebuild), which is what a nixpkgs author writes. The reshape is the
+    # identity, so the form tests the construction's transparency, not a reshape's value.
+    postFold = {
+      of = "postFold";
+      mk =
+        ts: x:
+        let
+          over =
+            g: a:
+            a
+            // {
+              merge = loc: defs: g (a.merge loc defs);
+              substSubModules = m: over g (a.substSubModules m);
+            };
+        in
+        (ts.postFold or over) (v: v) x;
+      wrap = v: v;
+    };
   };
   names = builtins.attrNames forms;
   # Keyed `outer.inner` for depth 2, the key the measured mount table uses.

@@ -3907,7 +3907,8 @@ in
                 [ "k" ]
               else
                 [ ];
-            nullableOnly = builtins.all (f: f == "nullOr" || f == "option") parts;
+            # `postFold` adds no step and no check of its own, so it is transparent here as `nullOr` is
+            nullableOnly = builtins.all (f: f == "nullOr" || f == "option" || f == "postFold") parts;
             recorded = table.${c.construction}.${c.definition};
           in
           {

@@ -2047,7 +2047,7 @@ in
         expected = {
           family = [ ];
           hand = [ ];
-          cells = 180;
+          cells = 220;
         };
       };
 

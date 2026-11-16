@@ -3124,4 +3124,122 @@ in
       interface.sameValue.dropped t (interface.rebuildClosed.imported t (mkOptionType t))
     else
       interface.rebuildClosed.imported t (mkOptionType t);
+  # ── A POST-FOLD RESHAPE, BY CONSTRUCTION ─────────────────────────────────────────────────────────────
+  # `postFold g element` folds `element` at its own loc, adding no step, and its value is `g` over that
+  # folded value: `g ∘ fold`, never `fold ∘ map h`. `g` is handed the folded value and never the
+  # definitions, so a reshape written here cannot rewrite what the element's definitions declare; the
+  # keys, trees and checks below are the element's own. `g` is a caller closure: it may force what it
+  # reads, throw, or return anything, so the type is SEALED in it (ADR-0034's per-component limb): the
+  # element enters the mark by its tag, `g` as a sealed component with its subject in `__sealed`, and an
+  # identity demanded of it is refused by name. Its relation is the sealed one: one `g` binding over one
+  # element redeclared merges, any other partner is refused by name.
+  # Bound in the export rather than in the file's `let`, whose slot every evaluation would pay for.
+  postFold =
+    let
+      postFold =
+        g: element:
+        let
+          split = loc: defs: [
+            {
+              step = [ ];
+              inherit loc defs;
+              type = element;
+            }
+          ];
+          called =
+            loc: defs:
+            g (
+              (if interface.owesThroughForeign element then homedFoldElement else foldElement) (
+                head (split loc defs)
+              )
+            );
+          # decided per component by the leaf vocabulary's one comparison (gen-types `typeEq`, ADR-0034): the
+          # element by its identity, `g` by its sealed subject, so one `g` binding over one element merges,
+          # wherever the partner was rebuilt (a foreign engine recovers it from the functor), and any other
+          # partner is refused by name
+          sealedRel =
+            self: other:
+            if isAttrs other && types ? typeEq && types.typeEq self other then
+              { merged = self; }
+            else
+              {
+                refused = "`postFold' and `${nameOf other}': a post-fold reshape is a caller-supplied function, which cannot be compared, so only one `g' binding over one element redeclared merges";
+              };
+          self = defineType (
+            identified "postFold" [ element ]
+              (tags: {
+                element = head tags;
+                fn = {
+                  sealed = true;
+                };
+              })
+              [
+                {
+                  path = [ "fn" ];
+                  value = g;
+                }
+              ]
+              {
+                name = "postFold";
+                # its walk answer is its element's: `canNest` reads it here once per record, not once per walk through it
+                canNest = interface.canNest element;
+                # `g` over the element's own empty value (`g ∘ fold []`), as `core.whenEmptyOf` reads it (gen first, then
+                # the boundary); an element with no empty value leaves the option undefined, as the element does
+                whenEmpty =
+                  let
+                    w = element.whenEmpty or (interface.importedEmpty element);
+                  in
+                  if w ? value then { value = g w.value; } else w;
+                carries.element = element;
+                recarry =
+                  c:
+                  postFold g (
+                    if isAttrs c && c ? element then
+                      c.element
+                    else
+                      throw (
+                        "gen-merge: the option type `postFold' states a `carries' gen cannot read at `element': `carries' "
+                        + "states by role what a type carries (`element', `alternatives' or `moduleSet'), as an attribute "
+                        + "set its constructor writes beside its `recarry' and its fold, so a `carries' stated by hand (a "
+                        + "`//' over a constructed type, or a descriptor's own) must state the role its readers ask for. "
+                        + "Build the type with its constructor over what it should carry, or state `carries' and `recarry' "
+                        + "together in `types.mkType'"
+                      )
+                  );
+                typeMergeRel = {
+                  exact = true;
+                  __functor = _: sealedRel self;
+                };
+                substructure = {
+                  forward = null;
+                  modules = interface.spineModules interface.importedTypeWalkFuel element;
+                  declares = interface.spineDeclares interface.importedTypeWalkFuel element;
+                  rebuild =
+                    m:
+                    if carriesSub element then
+                      postFold g (
+                        if element ? verify then
+                          interface.rebuildClosed.element element ((subOf element).rebuild m)
+                        else
+                          (subOf element).rebuild m
+                      )
+                    else
+                      self;
+                };
+                admits = v: isValid element v;
+                inherit split;
+                mergeDefs = {
+                  __functor = _: called;
+                  container = "postFold";
+                  threaded =
+                    ev: loc: defs:
+                    g (threadElement ev (head (split loc defs)));
+                  headJudge = loc: defs: interface.importedHeadJudge element loc defs;
+                };
+              }
+          );
+        in
+        self;
+    in
+    postFold;
 }

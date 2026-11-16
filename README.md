@@ -2562,10 +2562,55 @@ options.pods = mkOption {
 # ⇒ [ "web" ]   (nixpkgs and gen-merge alike; config.pods.web.containers.main.ready ⇒ true)
 ```
 
-**Its scope is the option root.** The spelling holds only where the reshape wraps the option's whole
-type, as above. A reshape below the root (the reshaped type as an element of another container) has
-no spelling yet: no gen-merge type constructor states a post-fold reshape, and the equivalence is
-measured at the root position only. An additive constructor for the nested position is planned.
+**Below the root: `types.postFold g e`.** `apply` exists only at an option. A reshape below the
+root (the reshaped type as an element of another container) is spelled with the constructor
+`types.postFold g e`, at any position. It folds `e` where it stands, adds no step, and its value is
+`g` over the folded value: `g ∘ fold`, exactly what `apply` does at the root. `g` is handed the
+folded value, never the definitions, so a definition rewrite cannot be written with it:
+
+```nix
+# before: the read inside the type's merge, one container down
+options.clusters = mkOption {
+  type = np.attrsOf (np.uniq (reshape dropUnready (np.lazyAttrsOf (np.attrsOf pod))));
+};
+# defined: clusters.east.web.containers.main.ready = true; clusters.east.db.containers.main.ready = false;
+# builtins.attrNames config.clusters.east
+# ⇒ nixpkgs: [ "web" ]
+# ⇒ gen-merge: aborts uncatchably, error: attribute 'main' missing
+
+# after: the same read through the constructor
+options.clusters = mkOption {
+  type = np.attrsOf (np.uniq (types.postFold dropUnready (np.lazyAttrsOf (np.attrsOf pod))));
+};
+# builtins.attrNames config.clusters.east
+# ⇒ [ "web" ]   (gen-merge's engine, and nixpkgs' evalModules over the same declaration)
+```
+
+At the root, `postFold g e` is `apply = g` over `e`, on a defined option and an undefined one alike.
+
+- **Checks are the element's.** Each definition is judged by `e`'s check, and a rejected one is
+  refused by name. The value `g` returns is not checked, as neither nixpkgs spelling checks it. An
+  `addCheck` over the constructor is enforced by gen's engine; nixpkgs drops it, with or without the
+  constructor.
+- **The empty value.** Where the element folds nothing (an undefined option, or every definition
+  discharged by `mkIf false`), `postFold g e` serves `g` of the element's empty value, as `apply`
+  does; an element with no empty value leaves the option undefined. A `g` that reads keys therefore
+  throws catchably on an empty fold, as `apply` does.
+- **Identity.** The type is sealed in `g`: `idOf` refuses by name, naming `'fn'`, over the
+  constructor and over any container holding it. A tree `g` moves keeps the name its definitions
+  declared.
+- **Redeclaration.** One `postFold g e` value declared at several positions of one option is that
+  construction, where `e`'s own redeclaration serves. Any other pair is refused by name, and nixpkgs'
+  twin silently drops `g`. So `postFold (lib.filterAttrs p) e` built separately in each declaration
+  is refused, because a partial application is a new function each time; one lambda written once and
+  evaluated per declaration is refused; and a `postFold` over a submodule cannot be extended by
+  redeclaring it over a second submodule, as the plain submodule can. Bind `g` once and declare the
+  one value. A check carried on a step above a redeclared `postFold` is met there; an `addCheck` copy
+  of the constructor itself, declared beside it, is a different partner and is refused, valid
+  definitions included.
+
+Cells: `ci/tests/post-fold.nix`, each against nixpkgs' twin and mounted in nixpkgs' engine, and
+`ci/tests-error-post-fold.nix`, one per refusal.
 
 **It migrates code; it does not serve the old form.** The override form is still refused or aborts
 as stated above. Measured over the residue at the option root, 32 shapes abort and 75 are refused by
