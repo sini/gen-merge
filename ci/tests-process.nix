@@ -90,18 +90,37 @@
             exit 2
           }
           echo "tests-process: serial options: ''${SERIAL_EVAL[*]:-(none)}"
-          # den-hoag-06toi stage 1 runs FIRST, then stage 2 (den-hoag-fwkzx), stage 3
-          # (den-hoag-stage3-home-manager-nk0o6) and stage 4 (den-hoag-stage4-flake-parts-3qh4l), and their
+          # den-hoag-06toi stage 1, stage 2 (den-hoag-fwkzx), stage 3 (den-hoag-stage3-home-manager-nk0o6) and
+          # stage 4 (den-hoag-stage4-flake-parts-3qh4l) run before the cells, reported in that order, and their
           # statuses are held to the end, so a red cell below
           # (which stops this runner) never hides their reports, nor their reports the cells.
-          modulesRc=0
-          ${modulesSh}/bin/modules-sh || modulesRc=$?
-          nixosBarRc=0
-          ${nixosBar}/bin/nixos-bar || nixosBarRc=$?
-          hmBarRc=0
-          ${hmBar}/bin/hm-bar || hmBarRc=$?
-          fpBarRc=0
-          ${fpBar}/bin/fp-bar || fpBarRc=$?
+          # The four stages are independent processes, so they run AT ONCE, each in a fresh directory of its own
+          # (its cwd and TMPDIR, as the plane's fresh TMPDIR was when they ran in turn). Each one's stdout and
+          # stderr are held and replayed in stage order once all four end, so the log reads as it did in turn.
+          # Verdicts and counts are unchanged by it; only the wall `ms`, which no comparison reads, moves
+          # (den-hoag-qbs25 U3'). A stage that leaves no status is a failed one.
+          stages=$(mktemp -d)
+          runStage() {
+            local rc=0
+            mkdir "$stages/$1"
+            (cd "$stages/$1" && TMPDIR="$stages/$1" "$2" > "$stages/$1.out" 2> "$stages/$1.err") || rc=$?
+            echo "$rc" > "$stages/$1.rc"
+          }
+          runStage modules ${modulesSh}/bin/modules-sh &
+          runStage nixosBar ${nixosBar}/bin/nixos-bar &
+          runStage hmBar ${hmBar}/bin/hm-bar &
+          runStage fpBar ${fpBar}/bin/fp-bar &
+          wait
+          for s in modules nixosBar hmBar fpBar; do
+            cat "$stages/$s.out"
+            cat "$stages/$s.err" >&2
+          done
+          rcOf() { cat "$stages/$1.rc" 2> /dev/null || echo 1; }
+          modulesRc=$(rcOf modules)
+          nixosBarRc=$(rcOf nixosBar)
+          hmBarRc=$(rcOf hmBar)
+          fpBarRc=$(rcOf fpBar)
+          rm -rf "$stages"
           # The bench sweeps, each held to the end as the bars are. The counted ones read the serial options
           # through GEN_SERIAL_EVAL, as under the ci devshell. 0/0 is a false pass, so the count is held too.
           export GEN_SERIAL_EVAL=${inputs.gen-harness.lib.serialEval { inherit pkgs; }}
