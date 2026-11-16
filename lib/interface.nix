@@ -8825,7 +8825,26 @@ let
       let
         first = (head defs).value;
       in
-      if all (d: d.value == first) defs then first else throw (showConflict loc defs);
+      # the quotient rule's string arm, as `modules.nix` `mergeLeaf` states it (its values read once,
+      # on the string path only)
+      if all (d: d.value == first) defs then
+        (
+          if builtins.isString first then
+            let
+              vs = builtins.catAttrs "value" defs;
+            in
+            if builtins.any builtins.hasContext vs then
+              let
+                union = builtins.concatStringsSep "" (map (builtins.substring 0 0) vs);
+              in
+              if builtins.getContext union == builtins.getContext first then first else first + union
+            else
+              first
+          else
+            first
+        )
+      else
+        throw (showConflict loc defs);
 
   # isOptionType — the DUAL of the `_type = "option-type"` stamp `exportType` applies below, asked
   # here rather than spelled at the asking site. The engine needs it at the declaration boundary,

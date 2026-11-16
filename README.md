@@ -2859,6 +2859,69 @@ gen-merge because it carries `.merge`; a gen-types checker does **not** run insi
 (enforced by `ci/tests/purity.nix`) — the same value-injection philosophy as
 [gen-flake](https://github.com/sini/gen-flake).
 
+## An output slot that merges by shape, over `raw`
+
+A framework running inside nixpkgs' `lib.evalModules` (flake-parts, or a framework's own outer evaluation)
+often wants one output slot whose definitions merge by their shape and whose leaves must agree. gen-merge
+exports no type for it. The slot is four lines over the leaf fold `types.raw` already publishes to nixpkgs'
+engine, mounted once as a freeform (`_module.freeformType = lib.types.lazyAttrsOf slot`):
+
+```nix
+# nixpkgs-facing: `lib` is nixpkgs' lib, `genMerge` is gen-merge's flake `lib` output; the name is the consumer's
+slot = lib.mkOptionType {
+  name = "slot";
+  merge =
+    loc: defs:
+    let
+      vs = map (d: d.value) defs;
+    in
+    if builtins.all builtins.isList vs then
+      builtins.concatLists vs
+    else if builtins.all (v: builtins.isAttrs v && !lib.isDerivation v && !(v ? __mint)) vs then
+      (lib.types.lazyAttrsOf slot).merge loc defs
+    else
+      genMerge.types.raw.merge loc defs;
+};
+```
+
+`lib/` stays nixpkgs-free: the spelling names nixpkgs' `lib` and lives here and in `ci/`, where its cells
+mount it (`ci/tests/_fixtures/output-slot-over-raw.nix`, which holds this block verbatim; a cell asserts
+the two are byte-equal).
+
+**The law.** Definitions reach a fold in reverse module order, so the fold's head is the last module.
+
+1. **Lists concatenate.** If every definition is a list, the value is their concatenation, in that order.
+   Elements are carried as written, never merged, a property marker included.
+2. **Plain attrsets merge per key, lazily.** If every definition is an attrset that is neither a
+   derivation (`type == "derivation"`) nor a construction (`? __mint`), the value is the per-key fold of
+   `lazyAttrsOf` over the slot itself. Each key's definitions take the engine's spine (discharge,
+   `filterOverrides`, `sortProperties`), so a property below the top level is discharged, a lone
+   definition included. No value is forced until it is read, and a key whose every definition discharges
+   is present and refuses when read.
+3. **Everything else is `raw`'s fold.** One definition is its own value. Several are served if every one
+   is `==` to the head, and are otherwise refused by name: `gen-merge: the option `<loc>' has conflicting
+   definitions:`, then each file and value. A served string carries the union of every definition's string context (see the `raw\` line under "Known byte-mode boundaries").
+
+"Agree" is Nix's own `==`. It forces the compared values whole. It compares derivations by `outPath`, so
+two definitions of one build agree whatever else they carry and the head is served whole (`override`,
+`overrideAttrs` callable); that is why derivations alone are opaque in arm 2. On functions it is the
+evaluator's own answer: `[ f f ]` is refused on Nix and Determinate and served on Lix, as nixpkgs'
+`mergeEqualOption` splits. Two structurally equal cyclic values abort uncatchably at arm 3, the
+declared exception below. A construction is never rebuilt: any definition carrying `__mint` sends the
+fold to arm 3, so a construction is served only where every definition is `==` to the head, and a
+merged body under one mark cannot form (a comparison mints nothing). Mixed shapes reach arm 3 and refuse
+unless `==`.
+
+**Against nixpkgs.** nixpkgs has no type with this law. The same shape in nixpkgs' vocabulary alone,
+`mergeEqualOption` at the leaf, gives the slot's value on every cell but five, all constructions: it
+rebuilds a marked body per key (`{ __mint; l = [ 1 ]; }`, `{ l = [ 2 ]; }` reads `{ __mint; l = [ 2 1 ]; }`,
+where the slot refuses). On gen-merge's own engine the slot gives the same value as on nixpkgs'. A
+redeclared refinement of the slot is refused on both engines, as nixpkgs' twin is; a consumer that needs
+the slot declared twice has no export for it here. Pinned by `ci/tests/output-slot-over-raw.nix` (the law,
+laziness, string context, refined checks and the relatives: nixpkgs' twin and two consumers' copies),
+`ci/tests-error.nix` (`output-slot-over-raw`, the five refusals on both engines) and
+`ci/bench/leaf-context-cost.sh` (per added definition per key, at or under the twin on every shape).
+
 ## Byte-mode scope (and the deferred structural seam)
 
 This is **byte-mode**: it reproduces nixpkgs' order-sensitive merge exactly — the cut-over
@@ -3243,9 +3306,30 @@ same modules.
   container drops an override on one that nests nothing and admits `deriveType` over a foreign
   container, a base `deriveType` refuses by name.
 
-- `raw` uses `mergeEqualOption` (multiple equal-valued defs collapse); nixpkgs `raw` is
-  `mergeOneOption` (throws on >1 def even if equal). Not exercised by the surface — add a strict
-  `raw` only if a consumer hits it.
+- **`raw` serves equal definitions, where nixpkgs' `raw` (`mergeOneOption`) refuses any second one.**
+  gen `raw` folds by `mergeEqualOption`'s decision: several definitions are served when all are `==`,
+  and are otherwise refused by name, on both engines. Refusing as nixpkgs does would turn working
+  values into refusals, so `raw` serves, under its stated law (the decision and the kept datum below)
+  and with every declared check enforced: a refinement of `raw` declared once refuses its planted value
+  defined twice, on both engines (`ci/tests/output-slot-over-raw.nix`). A strict `raw` is added only if a
+  consumer needs one.
+
+  **The kept datum is the union of the collapsed strings' contexts.** `==` ignores string context, so
+  the leaf fold (`mergeLeaf`, and `leafFold`, its export) serves an `==`-equal string collapse as the
+  head carrying every definition's context, as Nix's own concatenation does; the decision stays `==`'s.
+  It holds for every gen leaf that folds by it (`raw`, `str`, `path`, `enum`, `anything`'s leaf arm,
+  and `nullOr`, `either`, `attrsOf` and `lazyAttrsOf` over them). nixpkgs' `mergeEqualOption` keeps the
+  head's context, which silently drops a dependency edge, so here gen keeps a strict superset of
+  nixpkgs' context on the same decision. The union is one concatenation per collapse, and the head is
+  copied only when the union adds to its context, so its cost does not grow with the string's length
+  (`ci/bench/leaf-context-cost.sh`). Pinned per leaf and per engine by `ci/tests/merge-leaf.nix`.
+
+  **The residue is an open defect.** Nix exposes context only on strings, so a collapse whose served
+  value is not a string keeps the head's context: a construction compared whole, two fixed-output
+  derivations of one `outPath` (the head's `drvPath` is kept), and a plain attrset under `raw`. A union
+  there needs a walk of the value, and a walk overflows uncatchably on a pointer-shared cyclic value that
+  `==` short-circuits. The per-key `==` collapse of `attrs` and of a check-only `mkOptionType`'s attrset
+  fold likewise keeps one definition's context, as nixpkgs' `attrs` does.
 
 - **A leaf `freeformType` folds the undeclared plane as one leaf value, so key-level properties
   are returned as data, not discharged.** A type with no fold of its own (a gen leaf, a bare
@@ -3653,9 +3737,9 @@ per unsupported construct), `interface` (the protocol boundary: T3, the C-1/C-2/
 predicates, and a mounted-in-real-`lib.evalModules` arm with its mutants), `type-merge-relation`
 (C-4 — the engine's dispatch basis), `linkset` (the declared-disjointness export merge), and `purity`.
 
-Six sweeps sit outside the suites, because what they read is not an in-language assertion: an exit
+Seven sweeps sit outside the suites, because what they read is not an in-language assertion: an exit
 code (an abort that escapes `tryEval`) or a thunk count against a bound. Each is read by one evaluator
-at a time, so the process plane (`ci --tests-process`) runs all six in every CI column, under that
+at a time, so the process plane (`ci --tests-process`) runs all seven in every CI column, under that
 column's evaluator, and a sweep reading INVALID or over its bound reds the column:
 
 ```bash
@@ -3665,6 +3749,7 @@ column's evaluator, and a sweep reading INVALID or over its bound reds the colum
 ./ci/bench/reserved-scope-cost.sh  # `nrThunks`: what `__reservedKeys` costs per scoped entry, against its bound
 ./ci/bench/declat-cost.sh          # `nrThunks`: a seed's declaration address, linear in depth and breadth
 ./ci/bench/redeclaration-cost.sh   # `nrThunks` and bytes: a redeclaration's marginal cost, against its bounds
+./ci/bench/leaf-context-cost.sh    # `nrThunks` and bytes: the output slot against its twin, and the context union by string length
 ```
 
 Running the suites directly through the nix-unit CLI (`nix-unit --flake ./ci#tests`, or the devshell

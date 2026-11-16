@@ -35,6 +35,7 @@
         "declat-cost"
         "either-totality"
         "interface-cost"
+        "leaf-context-cost"
         "redeclaration-cost"
         "reserved-scope-cost"
         "selfmerge-totality"
@@ -45,6 +46,9 @@
         cp ${../flake.lock} $out/flake.lock
         cp ${./flake.lock} $out/ci/flake.lock
         cp -r ${./bench} $out/ci/bench
+        # `leaf-context-cost` mounts the README's output slot and its twin from the cells' own fixtures
+        mkdir -p $out/ci/tests/_fixtures
+        cp ${./tests/_fixtures/output-slot-over-raw.nix} ${./tests/_fixtures/output-slot-relatives.nix} $out/ci/tests/_fixtures/
       '';
     in
     {
