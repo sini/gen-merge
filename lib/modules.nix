@@ -6550,7 +6550,22 @@ let
         vals = map (w: w.value) winners;
         first = head vals;
       in
-      if all (v: v == first) vals then first else throw (showConflict loc winners);
+      # `==` ignores string context, so an equal-string collapse keeps the UNION of the definitions'
+      # contexts, as concatenation does (ADR-0034's quotient rule); `interface.nix` `leafFold` states
+      # the same arm. One concatenation per collapse, and the head is copied only when the union adds
+      # to its context, so the cost does not grow with the string's length.
+      if all (v: v == first) vals then
+        (
+          if builtins.isString first && builtins.any builtins.hasContext vals then
+            let
+              union = builtins.concatStringsSep "" (map (builtins.substring 0 0) vals);
+            in
+            if builtins.getContext union == builtins.getContext first then first else first + union
+          else
+            first
+        )
+      else
+        throw (showConflict loc winners);
 
   # ── mergeDefaultOption — the nixpkgs SHAPE-DIRECTED default-merge law ─────────────────────────
   # The nixpkgs `lib.mergeDefaultOption` analogue: the combination law nixpkgs applies at a position

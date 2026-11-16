@@ -14681,5 +14681,127 @@ in
               ]
             );
       };
+
+    # THE OUTPUT SLOT OVER `raw` REFUSES BY NAME (`tests/output-slot-over-raw.nix` holds its law): a
+    # definition pair its law cannot serve is refused with gen-merge's conflict text, at the full location
+    # and naming both files, on nixpkgs' engine and on gen-merge's alike. Five shapes: unequal scalars, an
+    # unequal key below the top level (`x.p.a`), two derivations with two `outPath`s, a list beside an
+    # attrset, and a construction beside a plain body (a construction is never rebuilt). RED: the leaf that
+    # serves the head (`tests/_fixtures/output-slot-relatives.nix` `serveHead`) serves all five; den v1's
+    # copy refuses in its own words and names no file.
+    flake.testsError.output-slot-over-raw =
+      let
+        slot = import ./tests/_fixtures/output-slot-over-raw.nix {
+          lib = nixpkgsLib;
+          inherit genMerge;
+        };
+        drv = op: {
+          type = "derivation";
+          outPath = op;
+          name = "d";
+        };
+        cases = {
+          scalarNe = {
+            defs = [
+              1
+              2
+            ];
+            at = "x";
+            shown = [
+              "2"
+              "1"
+            ];
+          };
+          nestedNe = {
+            defs = [
+              { p.a = 1; }
+              { p.a = 2; }
+            ];
+            at = "x\\.p\\.a";
+            shown = [
+              "2"
+              "1"
+            ];
+          };
+          drvNe = {
+            defs = [
+              (drv "/nix/store/aaaa-d")
+              (drv "/nix/store/bbbb-d")
+            ];
+            at = "x";
+            shown = [
+              "<a set>"
+              "<a set>"
+            ];
+          };
+          mixed = {
+            defs = [
+              [ 1 ]
+              { a = 1; }
+            ];
+            at = "x";
+            shown = [
+              "<a set>"
+              "<a list>"
+            ];
+          };
+          mintMixed = {
+            defs = [
+              {
+                __mint = "m";
+                l = [ 1 ];
+              }
+              { l = [ 2 ]; }
+            ];
+            at = "x";
+            shown = [
+              "<a set>"
+              "<a set>"
+            ];
+          };
+        };
+        mods =
+          L: c:
+          [
+            {
+              _file = "/decl.nix";
+              options.x = L.mkOption { type = slot; };
+            }
+          ]
+          ++ nixpkgsLib.imap1 (i: v: {
+            _file = "/def${toString i}.nix";
+            config.x = v;
+          }) c.defs;
+        value =
+          eng: c:
+          let
+            cfg =
+              if eng == "np" then
+                (nixpkgsLib.evalModules { modules = mods nixpkgsLib c; }).config
+              else
+                (genMerge.evalModuleTree { } (mods genMerge c)).config;
+          in
+          force cfg.x;
+      in
+      nixpkgsLib.listToAttrs (
+        nixpkgsLib.concatMap
+          (
+            eng:
+            nixpkgsLib.mapAttrsToList (
+              n: c:
+              nixpkgsLib.nameValuePair "test-${eng}-${n}-refuses-at-its-location-naming-both-files" {
+                expr = value eng c;
+                expectedError = {
+                  type = "ThrownError";
+                  msg = "^gen-merge: the option `${c.at}' has conflicting definitions:\n- In `/def2\\.nix': ${builtins.elemAt c.shown 0}\n- In `/def1\\.nix': ${builtins.elemAt c.shown 1}$";
+                };
+              }
+            ) cases
+          )
+          [
+            "np"
+            "gen"
+          ]
+      );
   };
 }
