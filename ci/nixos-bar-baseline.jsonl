@@ -810,6 +810,7 @@
 {"key":{"kind":"doc","name":"fonts.fontconfig.hinting.style","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"fonts.fontconfig.includeUserConf","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"fonts.fontconfig.localConf","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"fonts.fontconfig.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"fonts.fontconfig.penultimate","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"fonts.fontconfig.renderMonoTTFAsBitmap","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"fonts.fontconfig.subpixel.lcdfilter","n":0},"verdict":"PASS"}
@@ -2521,6 +2522,8 @@
 {"key":{"kind":"doc","name":"programs.gpaste.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.gphoto2.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.gpu-screen-recorder.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.gpu-screen-recorder.gtk.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.gpu-screen-recorder.gtk.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.gpu-screen-recorder.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.gpu-screen-recorder.ui.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.gpu-screen-recorder.ui.notifPackage","n":0},"verdict":"PASS"}
@@ -2771,6 +2774,8 @@
 {"key":{"kind":"doc","name":"programs.opengamepadui.inputplumber.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.opengamepadui.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.opengamepadui.powerstation.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.openlogi.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"programs.openlogi.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.openvpn3.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.openvpn3.log-service","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"programs.openvpn3.log-service._module.args","n":0},"verdict":"PASS"}
@@ -7922,6 +7927,17 @@
 {"key":{"kind":"doc","name":"services.displayManager.noctalia-greeter.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.displayManager.noctalia-greeter.passwordlessSyncUsers","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.displayManager.noctalia-greeter.settings","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.home","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.osk.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.osk.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.phocConfig","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.phocConfig._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.phocConfig._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.phocConfig._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.phocConfig._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.displayManager.phrog.phocPackage","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.displayManager.plasma-login-manager.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.displayManager.plasma-login-manager.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.displayManager.plasma-login-manager.settings","n":0},"verdict":"PASS"}
@@ -9029,6 +9045,10 @@
 {"key":{"kind":"doc","name":"services.fail2ban.packageFirewall","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.fakeroute.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.fakeroute.route","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.falco.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.falco.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.falco.rules","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.falco.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.fanout.bufferSize","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.fanout.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.fanout.fanoutDevices","n":0},"verdict":"PASS"}
@@ -9932,7 +9952,6 @@
 {"key":{"kind":"doc","name":"services.forgejo.settings.server.ROOT_URL","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.forgejo.settings.server.SSH_PORT","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.forgejo.settings.server.STATIC_ROOT_PATH","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.forgejo.settings.session.COOKIE_SECURE","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.forgejo.ssh.clonePort","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.forgejo.ssh.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.forgejo.stateDir","n":0},"verdict":"PASS"}
@@ -11766,6 +11785,101 @@
 {"key":{"kind":"doc","name":"services.greetd.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.greetd.useTextGreeter","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.greetd.vt","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.bookdropDir","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.booksDir","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost.extraConfig","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost.hostName","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost.listenAddresses","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost.logFormat","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost.serverAliases","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.caddy.virtualHost.useACMEHost","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.database.createLocally","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.database.host","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.database.name","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.database.passwordFile","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.database.port","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.database.user","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.domain","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.environment","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.environmentFile","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.extraArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.group","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.host","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.acmeFallbackHost","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.acmeRoot","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.addSSL","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.basicAuth","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.basicAuthFile","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.default","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.enableACME","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.extraConfig","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.forceSSL","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.globalRedirect","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.http2","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.http3","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.http3_hq","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.kTLS","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*.addr","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*.extraParameters","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*.port","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*.proxyProtocol","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listen.*.ssl","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.listenAddresses","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.alias","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.basicAuth","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.basicAuthFile","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.extraConfig","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.fastcgiParams","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.index","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.priority","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.proxyPass","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.proxyWebsockets","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.recommendedProxySettings","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.recommendedUwsgiSettings","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.return","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.root","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.tryFiles","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.useGrpcErrorPages","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.locations.<name>.uwsgiPass","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.onlySSL","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.quic","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.redirectCode","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.rejectSSL","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.reuseport","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.root","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.serverAliases","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.serverName","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.sslCertificate","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.sslCertificateKey","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.sslTrustedCertificate","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.nginx.virtualHost.useACMEHost","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.port","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.stateDir","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.grimmory.user","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.grist.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.grist.enableEnterprise","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.grist.enableRedis","n":0},"verdict":"PASS"}
@@ -13159,6 +13273,7 @@
 {"key":{"kind":"doc","name":"services.immich-public-proxy.openFirewall","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich-public-proxy.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich-public-proxy.port","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.immich-public-proxy.publicBaseUrl","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich-public-proxy.settings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich-public-proxy.settings._module.args","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich-public-proxy.settings._module.check","n":0},"verdict":"PASS"}
@@ -13176,6 +13291,7 @@
 {"key":{"kind":"doc","name":"services.immich.database.name","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich.database.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich.database.port","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.immich.database.setupSQL","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich.database.user","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.immich.environment","n":0},"verdict":"PASS"}
@@ -13599,6 +13715,31 @@
 {"key":{"kind":"doc","name":"services.jellyfin.transcoding.throttleTranscoding","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.jellyfin.user","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.jellyseerr","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.dataDir","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.database.createLocally","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.group","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.openFirewall","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.secretFiles","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.secretFiles.JWT_SECRET","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.secretFiles.POSTGRES_PASSWORD","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.secretFiles._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.secretFiles._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.secretFiles._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.secretFiles._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings.JS_LISTEN_IP","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings.JS_PORT","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings.POSTGRES_DB","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings.POSTGRES_IP","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings.POSTGRES_PORT","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings.POSTGRES_USER","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.settings._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.jellystat.user","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.jenkins.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.jenkins.environment","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.jenkins.extraGroups","n":0},"verdict":"PASS"}
@@ -14910,6 +15051,7 @@
 {"key":{"kind":"doc","name":"services.lasuite-docs.backendPackage","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.bind","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.celery.extraArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.collaborationServer.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.collaborationServer.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.collaborationServer.port","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.collaborationServer.settings","n":0},"verdict":"PASS"}
@@ -14928,6 +15070,7 @@
 {"key":{"kind":"doc","name":"services.lasuite-docs.gunicorn.extraArgs","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.postgresql.createLocally","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.redis.createLocally","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.redis.port","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.s3Url","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.secretKeyPath","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings","n":0},"verdict":"PASS"}
@@ -14940,11 +15083,26 @@
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings.DJANGO_CONFIGURATION","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings.DJANGO_SECRET_KEY_FILE","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings.DJANGO_SETTINGS_MODULE","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.settings.JWT_PRIVATE_KEY_FILE","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings.REDIS_URL","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.settings.YHUB_API_BASE_URL","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings._module.args","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings._module.check","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings._module.freeformType","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-docs.settings._module.specialArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.package","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings.COLLABORATION_BACKEND_BASE_URL","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings.COLLABORATION_SERVER_ORIGIN","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings.PORT","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings.POSTGRES","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings.REDIS","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings.SOFT_MIGRATION","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings.YHUB_JWT_PRIVATE_KEY_FILE","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings._module.args","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings._module.check","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings._module.freeformType","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.lasuite-docs.yhub.settings._module.specialArgs","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-drive.bind","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-drive.celery.extraArgs","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.lasuite-drive.domain","n":0},"verdict":"PASS"}
@@ -19442,10 +19600,7 @@
 {"key":{"kind":"doc","name":"services.nix-store-gcs-proxy.<name>.address","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.nix-store-gcs-proxy.<name>.bucketName","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.nix-store-gcs-proxy.<name>.enable","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.nixops-dns.dnsmasq","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.nixops-dns.domain","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.nixops-dns.enable","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.nixops-dns.user","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.nixops-dns","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.nixosManual.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.nixseparatedebuginfod","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.nixseparatedebuginfod2.cacheExpirationDelay","n":0},"verdict":"PASS"}
@@ -19935,6 +20090,7 @@
 {"key":{"kind":"doc","name":"services.omada.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.omada.group","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.omada.openFirewallDevicePorts","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.omada.openFirewallPortalPorts","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.omada.openFirewallWebPorts","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.omada.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.omada.user","n":0},"verdict":"PASS"}
@@ -25657,6 +25813,7 @@
 {"key":{"kind":"doc","name":"services.qbit-manage.webServer.host","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.qbit-manage.webServer.openFirewall","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.qbit-manage.webServer.port","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.qbittorrent.configFile","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.qbittorrent.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.qbittorrent.extraArgs","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.qbittorrent.group","n":0},"verdict":"PASS"}
@@ -27087,6 +27244,7 @@
 {"key":{"kind":"doc","name":"services.scrutiny.settings.web.listen.basepath","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.scrutiny.settings.web.listen.host","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.scrutiny.settings.web.listen.port","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"services.scx","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.scx-loader.config","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.scx-loader.config._module.args","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.scx-loader.config._module.check","n":0},"verdict":"PASS"}
@@ -27096,10 +27254,6 @@
 {"key":{"kind":"doc","name":"services.scx-loader.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.scx-loader.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.scx-loader.schedsPackages","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.scx.enable","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.scx.extraArgs","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.scx.package","n":0},"verdict":"PASS"}
-{"key":{"kind":"doc","name":"services.scx.scheduler","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.sdrplayApi.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.searx.configFile","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"services.searx.configureNginx","n":0},"verdict":"PASS"}
@@ -34251,6 +34405,7 @@
 {"key":{"kind":"doc","name":"virtualisation.oci-containers.containers.<name>.privileged","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"virtualisation.oci-containers.containers.<name>.pull","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"virtualisation.oci-containers.containers.<name>.serviceName","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"virtualisation.oci-containers.containers.<name>.tmpFs","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"virtualisation.oci-containers.containers.<name>.user","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"virtualisation.oci-containers.containers.<name>.volumes","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"virtualisation.oci-containers.containers.<name>.workdir","n":0},"verdict":"PASS"}
@@ -34379,6 +34534,11 @@
 {"key":{"kind":"doc","name":"warnings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"xdg.autostart.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"xdg.autostart.install","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"xdg.directories.cache-home","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"xdg.directories.config-home","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"xdg.directories.data-home","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"xdg.directories.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","name":"xdg.directories.state-home","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"xdg.icons.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"xdg.icons.fallbackCursorThemes","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"xdg.menus.enable","n":0},"verdict":"PASS"}
@@ -34412,13 +34572,13 @@
 {"key":{"kind":"doc","name":"zramSwap.priority","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"zramSwap.swapDevices","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","name":"zramSwap.writebackDevice","n":0},"verdict":"PASS"}
-{"key":{"kind":"docs-walk"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":18572185,"bytes":1252013614,"ms":6321},"ref":{"thunks":10987277,"bytes":707995082,"ms":3349}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":18582878,"bytes":1258121808,"ms":10687},"ref":{"thunks":10987277,"bytes":711313664,"ms":6024}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":17907919,"bytes":860422113,"ms":7213},"ref":{"thunks":11010273,"bytes":519379735,"ms":4062}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":18263686,"bytes":1227890906,"ms":7900},"ref":{"thunks":11011639,"bytes":704158152,"ms":4304}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":18274379,"bytes":1234000944,"ms":8364},"ref":{"thunks":11011639,"bytes":707477944,"ms":4583}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":17894722,"bytes":1217200122,"ms":7863},"ref":{"thunks":11011639,"bytes":704158152,"ms":4110}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":17905415,"bytes":1223310160,"ms":10028},"ref":{"thunks":11011639,"bytes":707477944,"ms":5780}}}}
-{"key":{"kind":"options"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":3911344,"bytes":353722254,"ms":1762},"ref":{"thunks":1996222,"bytes":187422710,"ms":1044}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":3913919,"bytes":356708624,"ms":3168},"ref":{"thunks":1996222,"bytes":189832856,"ms":1864}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":3742456,"bytes":269580761,"ms":2018},"ref":{"thunks":2016606,"bytes":156647460,"ms":1250}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":3852518,"bytes":342182242,"ms":2124},"ref":{"thunks":2017248,"bytes":183429709,"ms":1328}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":3855093,"bytes":345171368,"ms":2456},"ref":{"thunks":2017248,"bytes":185841840,"ms":1436}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":3740211,"bytes":339044394,"ms":1918},"ref":{"thunks":2017248,"bytes":183429709,"ms":1207}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":3742786,"bytes":342033520,"ms":2953},"ref":{"thunks":2017248,"bytes":185841840,"ms":1784}}}}
-{"key":{"kind":"toplevel","cfg":"ec2"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":9789431,"bytes":762783254,"ms":3433},"ref":{"thunks":7130877,"bytes":551646479,"ms":2356}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":9792234,"bytes":767236544,"ms":6230},"ref":{"thunks":7130877,"bytes":555452960,"ms":4249}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":9338950,"bytes":578761967,"ms":4036},"ref":{"thunks":7150953,"bytes":440461486,"ms":2886}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":9533936,"bytes":738960168,"ms":4219},"ref":{"thunks":7152091,"bytes":544147623,"ms":3024}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":9536739,"bytes":743415776,"ms":4788},"ref":{"thunks":7152091,"bytes":547955680,"ms":3255}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":9336754,"bytes":733517240,"ms":4027},"ref":{"thunks":7152091,"bytes":544147623,"ms":2915}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":9339557,"bytes":737972848,"ms":5807},"ref":{"thunks":7152091,"bytes":547955680,"ms":4045}}}}
-{"key":{"kind":"toplevel","cfg":"gnome"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":11050733,"bytes":855245033,"ms":4062},"ref":{"thunks":8190053,"bytes":633000322,"ms":3033}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":11053573,"bytes":859081640,"ms":7467},"ref":{"thunks":8190054,"bytes":636178656,"ms":5211}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10575615,"bytes":660491338,"ms":4825},"ref":{"thunks":8210146,"bytes":514342741,"ms":3595}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10784277,"bytes":831361307,"ms":5107},"ref":{"thunks":8211297,"bytes":625491806,"ms":3671}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10787117,"bytes":835200232,"ms":5586},"ref":{"thunks":8211298,"bytes":628671744,"ms":4037}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10573306,"bytes":825540019,"ms":4894},"ref":{"thunks":8211297,"bytes":625491806,"ms":3524}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10576146,"bytes":829378944,"ms":6793},"ref":{"thunks":8211298,"bytes":628671744,"ms":4995}}}}
-{"key":{"kind":"toplevel","cfg":"kde"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":11154455,"bytes":869241068,"ms":4138},"ref":{"thunks":8331614,"bytes":649468853,"ms":2900}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":11157303,"bytes":872413728,"ms":7434},"ref":{"thunks":8331614,"bytes":651981432,"ms":5437}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10677586,"bytes":677545565,"ms":5028},"ref":{"thunks":8351828,"bytes":532988352,"ms":3708}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10886968,"bytes":845342982,"ms":5154},"ref":{"thunks":8352980,"bytes":641975249,"ms":3808}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10889816,"bytes":848518152,"ms":5641},"ref":{"thunks":8352980,"bytes":644489624,"ms":4190}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10675255,"bytes":839498902,"ms":5032},"ref":{"thunks":8352980,"bytes":641975249,"ms":3685}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10678103,"bytes":842674072,"ms":7121},"ref":{"thunks":8352980,"bytes":644489624,"ms":5226}}}}
-{"key":{"kind":"toplevel","cfg":"lapp"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":9605649,"bytes":751319850,"ms":3478},"ref":{"thunks":6990930,"bytes":543000480,"ms":2426}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":9608443,"bytes":755776920,"ms":6268},"ref":{"thunks":6990930,"bytes":546813688,"ms":4254}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":9163125,"bytes":571910931,"ms":3936},"ref":{"thunks":7010988,"bytes":435361551,"ms":2810}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":9353720,"bytes":727804076,"ms":4118},"ref":{"thunks":7012123,"bytes":535499896,"ms":3003}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":9356514,"bytes":732263464,"ms":4858},"ref":{"thunks":7012123,"bytes":539314680,"ms":3231}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":9160915,"bytes":722478756,"ms":3965},"ref":{"thunks":7012123,"bytes":535499896,"ms":2909}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":9163709,"bytes":726938144,"ms":5819},"ref":{"thunks":7012123,"bytes":539314680,"ms":3995}}}}
-{"key":{"kind":"toplevel","cfg":"pantheon"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":11028025,"bytes":856772268,"ms":3986},"ref":{"thunks":8183680,"bytes":635547051,"ms":2893}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":11030865,"bytes":860382208,"ms":7383},"ref":{"thunks":8183681,"bytes":638498904,"ms":5238}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10553589,"bytes":663773405,"ms":4801},"ref":{"thunks":8203740,"bytes":518308170,"ms":3585}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10761777,"bytes":832897366,"ms":5006},"ref":{"thunks":8204912,"bytes":628042067,"ms":3673}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10764617,"bytes":836509624,"ms":5516},"ref":{"thunks":8204913,"bytes":630995496,"ms":4024}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10551301,"bytes":827088374,"ms":4895},"ref":{"thunks":8204912,"bytes":628042067,"ms":3525}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10554141,"bytes":830700632,"ms":6863},"ref":{"thunks":8204913,"bytes":630995496,"ms":4985}}}}
-{"key":{"kind":"toplevel","cfg":"smallContainer"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":7633935,"bytes":615373635,"ms":2770},"ref":{"thunks":5450018,"bytes":438101382,"ms":1970}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":7636738,"bytes":619721680,"ms":5248},"ref":{"thunks":5450018,"bytes":441890640,"ms":3482}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":7248696,"bytes":476517272,"ms":3365},"ref":{"thunks":5469055,"bytes":359071767,"ms":2364}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":7405821,"bytes":592772097,"ms":3500},"ref":{"thunks":5470586,"bytes":430550984,"ms":2467}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":7408624,"bytes":597122064,"ms":4000},"ref":{"thunks":5470586,"bytes":434341856,"ms":2681}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":7246899,"bytes":588233529,"ms":3391},"ref":{"thunks":5470586,"bytes":430550984,"ms":2343}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":7249702,"bytes":592583496,"ms":4825},"ref":{"thunks":5470586,"bytes":434341856,"ms":3350}}}}
-{"key":{"kind":"toplevel","cfg":"tinyContainer"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":7427919,"bytes":603215405,"ms":2693},"ref":{"thunks":5287598,"bytes":428392522,"ms":1878}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":7430713,"bytes":607583584,"ms":4995},"ref":{"thunks":5287598,"bytes":432204904,"ms":3629}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":7049954,"bytes":468728578,"ms":3371},"ref":{"thunks":5306606,"bytes":352906507,"ms":2362}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":7203034,"bytes":580691755,"ms":3427},"ref":{"thunks":5308141,"bytes":420840860,"ms":2422}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":7205828,"bytes":585061856,"ms":3876},"ref":{"thunks":5308141,"bytes":424654856,"ms":2611}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":7048184,"bytes":576264203,"ms":3323},"ref":{"thunks":5308141,"bytes":420840860,"ms":2308}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":7050978,"bytes":580634304,"ms":4781},"ref":{"thunks":5308141,"bytes":424654856,"ms":3266}}}}
-{"key":{"kind":"toplevel","cfg":"xfce"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":10830924,"bytes":839797375,"ms":3942},"ref":{"thunks":8021701,"bytes":620854726,"ms":2758}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":10833772,"bytes":843503048,"ms":7449},"ref":{"thunks":8021701,"bytes":623900984,"ms":5054}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10356722,"bytes":648797128,"ms":4695},"ref":{"thunks":8041788,"bytes":504793365,"ms":3474}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10564507,"bytes":815915537,"ms":4886},"ref":{"thunks":8042933,"bytes":613347662,"ms":3545}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10567355,"bytes":819623528,"ms":5437},"ref":{"thunks":8042933,"bytes":616395496,"ms":3901}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10354384,"bytes":810115033,"ms":4771},"ref":{"thunks":8042933,"bytes":613347662,"ms":3404}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10357232,"bytes":813823024,"ms":6710},"ref":{"thunks":8042933,"bytes":616395496,"ms":4812}}}}
+{"key":{"kind":"docs-walk"},"verdict":"PASS","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":18572185,"bytes":1252013614,"ms":6321},"ref":{"thunks":10987277,"bytes":707995082,"ms":3349}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":18582878,"bytes":1258121808,"ms":10687},"ref":{"thunks":10987277,"bytes":711313664,"ms":6024}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":17756327,"bytes":858653636,"ms":7819},"ref":{"thunks":9385727,"bytes":473581625,"ms":5317}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":18263686,"bytes":1227890906,"ms":7900},"ref":{"thunks":11011639,"bytes":704158152,"ms":4304}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":18274379,"bytes":1234000944,"ms":8364},"ref":{"thunks":11011639,"bytes":707477944,"ms":4583}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":17743228,"bytes":1212503117,"ms":13672},"ref":{"thunks":9387189,"bytes":631167514,"ms":9138}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":17753921,"bytes":1218641136,"ms":9366},"ref":{"thunks":9387189,"bytes":634517528,"ms":5942}}}}
+{"key":{"kind":"options"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":3911344,"bytes":353722254,"ms":1762},"ref":{"thunks":1996222,"bytes":187422710,"ms":1044}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":3913919,"bytes":356708624,"ms":3168},"ref":{"thunks":1996222,"bytes":189832856,"ms":1864}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":3723529,"bytes":269866506,"ms":2563},"ref":{"thunks":1682229,"bytes":149618604,"ms":1586}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":3852518,"bytes":342182242,"ms":2124},"ref":{"thunks":2017248,"bytes":183429709,"ms":1328}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":3855093,"bytes":345171368,"ms":2456},"ref":{"thunks":2017248,"bytes":185841840,"ms":1436}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":3721284,"bytes":339134203,"ms":3146},"ref":{"thunks":1682878,"bytes":169059557,"ms":2824}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":3723859,"bytes":342135888,"ms":2493},"ref":{"thunks":1682878,"bytes":171483560,"ms":2563}}}}
+{"key":{"kind":"toplevel","cfg":"ec2"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":9789431,"bytes":762783254,"ms":3433},"ref":{"thunks":7130877,"bytes":551646479,"ms":2356}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":9792234,"bytes":767236544,"ms":6230},"ref":{"thunks":7130877,"bytes":555452960,"ms":4249}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":9053025,"bytes":573587238,"ms":4725},"ref":{"thunks":5839572,"bytes":404057463,"ms":3283}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":9533936,"bytes":738960168,"ms":4219},"ref":{"thunks":7152091,"bytes":544147623,"ms":3024}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":9536739,"bytes":743415776,"ms":4788},"ref":{"thunks":7152091,"bytes":547955680,"ms":3255}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":9050827,"bytes":723052463,"ms":7475},"ref":{"thunks":5840699,"bytes":481696464,"ms":4976}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":9053630,"bytes":727524216,"ms":5238},"ref":{"thunks":5840699,"bytes":485520136,"ms":3601}}}}
+{"key":{"kind":"toplevel","cfg":"gnome"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":11050733,"bytes":855245033,"ms":4062},"ref":{"thunks":8190053,"bytes":633000322,"ms":3033}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":11053573,"bytes":859081640,"ms":7467},"ref":{"thunks":8190054,"bytes":636178656,"ms":5211}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10276407,"bytes":654368962,"ms":5639},"ref":{"thunks":6776999,"bytes":473303449,"ms":3994}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10784277,"bytes":831361307,"ms":5107},"ref":{"thunks":8211297,"bytes":625491806,"ms":3671}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10787117,"bytes":835200232,"ms":5586},"ref":{"thunks":8211298,"bytes":628671744,"ms":4037}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10274132,"bytes":813417851,"ms":7338},"ref":{"thunks":6778140,"bytes":555537010,"ms":6396}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10276972,"bytes":817128168,"ms":5357},"ref":{"thunks":6778141,"bytes":558587560,"ms":4085}}}}
+{"key":{"kind":"toplevel","cfg":"kde"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":11154455,"bytes":869241068,"ms":4138},"ref":{"thunks":8331614,"bytes":649468853,"ms":2900}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":11157303,"bytes":872413728,"ms":7434},"ref":{"thunks":8331614,"bytes":651981432,"ms":5437}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10385448,"bytes":672467152,"ms":5831},"ref":{"thunks":6930325,"bytes":493306565,"ms":5282}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10886968,"bytes":845342982,"ms":5154},"ref":{"thunks":8352980,"bytes":641975249,"ms":3808}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10889816,"bytes":848518152,"ms":5641},"ref":{"thunks":8352980,"bytes":644489624,"ms":4190}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10383152,"bytes":828984841,"ms":8899},"ref":{"thunks":6931468,"bytes":573915702,"ms":7606}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10386000,"bytes":832186496,"ms":6252},"ref":{"thunks":6931468,"bytes":576456032,"ms":4940}}}}
+{"key":{"kind":"toplevel","cfg":"lapp"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":9605649,"bytes":751319850,"ms":3478},"ref":{"thunks":6990930,"bytes":543000480,"ms":2426}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":9608443,"bytes":755776920,"ms":6268},"ref":{"thunks":6990930,"bytes":546813688,"ms":4254}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":8874640,"bytes":566670010,"ms":4495},"ref":{"thunks":5730644,"bytes":400059648,"ms":3282}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":9353720,"bytes":727804076,"ms":4118},"ref":{"thunks":7012123,"bytes":535499896,"ms":3003}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":9356514,"bytes":732263464,"ms":4858},"ref":{"thunks":7012123,"bytes":539314680,"ms":3231}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":8872463,"bytes":711909355,"ms":6167},"ref":{"thunks":5731768,"bytes":474795577,"ms":4141}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":8875257,"bytes":716383544,"ms":4470},"ref":{"thunks":5731768,"bytes":478624632,"ms":2989}}}}
+{"key":{"kind":"toplevel","cfg":"pantheon"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":11028025,"bytes":856772268,"ms":3986},"ref":{"thunks":8183680,"bytes":635547051,"ms":2893}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":11030865,"bytes":860382208,"ms":7383},"ref":{"thunks":8183681,"bytes":638498904,"ms":5238}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10260367,"bytes":658562693,"ms":5523},"ref":{"thunks":6782200,"bytes":478384940,"ms":4037}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10761777,"bytes":832897366,"ms":5006},"ref":{"thunks":8204912,"bytes":628042067,"ms":3673}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10764617,"bytes":836509624,"ms":5516},"ref":{"thunks":8204913,"bytes":630995496,"ms":4024}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10258115,"bytes":816453310,"ms":9794},"ref":{"thunks":6783364,"bytes":559878613,"ms":5262}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10260955,"bytes":820093128,"ms":5321},"ref":{"thunks":6783365,"bytes":562859072,"ms":3818}}}}
+{"key":{"kind":"toplevel","cfg":"smallContainer"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":7633935,"bytes":615373635,"ms":2770},"ref":{"thunks":5450018,"bytes":438101382,"ms":1970}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":7636738,"bytes":619721680,"ms":5248},"ref":{"thunks":5450018,"bytes":441890640,"ms":3482}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":7061748,"bytes":472834323,"ms":3864},"ref":{"thunks":4455090,"bytes":330342980,"ms":2671}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":7405821,"bytes":592772097,"ms":3500},"ref":{"thunks":5470586,"bytes":430550984,"ms":2467}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":7408624,"bytes":597122064,"ms":4000},"ref":{"thunks":5470586,"bytes":434341856,"ms":2681}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":7059964,"bytes":580937652,"ms":5537},"ref":{"thunks":4456625,"bytes":380790197,"ms":3934}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":7062767,"bytes":585300144,"ms":4403},"ref":{"thunks":4456625,"bytes":384593672,"ms":2906}}}}
+{"key":{"kind":"toplevel","cfg":"tinyContainer"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":7427919,"bytes":603215405,"ms":2693},"ref":{"thunks":5287598,"bytes":428392522,"ms":1878}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":7430713,"bytes":607583584,"ms":4995},"ref":{"thunks":5287598,"bytes":432204904,"ms":3629}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":6863192,"bytes":464983125,"ms":3864},"ref":{"thunks":4325864,"bytes":325253136,"ms":2948}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":7203034,"bytes":580691755,"ms":3427},"ref":{"thunks":5308141,"bytes":420840860,"ms":2422}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":7205828,"bytes":585061856,"ms":3876},"ref":{"thunks":5308141,"bytes":424654856,"ms":2611}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":6861435,"bytes":568930910,"ms":5297},"ref":{"thunks":4327403,"bytes":372834529,"ms":3364}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":6864229,"bytes":573313136,"ms":3887},"ref":{"thunks":4327403,"bytes":376660728,"ms":2845}}}}
+{"key":{"kind":"toplevel","cfg":"xfce"},"verdict":"PASS","claim":"identity","perf":{"nix-instantiate (Nix) 2.35.3":{"gen":{"thunks":10830924,"bytes":839797375,"ms":3942},"ref":{"thunks":8021701,"bytes":620854726,"ms":2758}},"nix-instantiate (Determinate Nix 3.23.3) 2.35.3":{"gen":{"thunks":10833772,"bytes":843503048,"ms":7449},"ref":{"thunks":8021701,"bytes":623900984,"ms":5054}},"nix-instantiate (Lix, like Nix) 2.96.0":{"gen":{"thunks":10064530,"bytes":643594162,"ms":6107},"ref":{"thunks":6633718,"bytes":465460129,"ms":4695}},"nix-instantiate (Nix) 2.35.4":{"gen":{"thunks":10564507,"bytes":815915537,"ms":4886},"ref":{"thunks":8042933,"bytes":613347662,"ms":3545}},"nix-instantiate (Determinate Nix 3.24.1) 2.35.3":{"gen":{"thunks":10567355,"bytes":819623528,"ms":5437},"ref":{"thunks":8042933,"bytes":616395496,"ms":3901}},"nix-instantiate (Nix) 2.35.6":{"gen":{"thunks":10062226,"bytes":799499251,"ms":7900},"ref":{"thunks":6634853,"bytes":545917706,"ms":5964}},"nix-instantiate (Determinate Nix 3.24.2) 2.35.3":{"gen":{"thunks":10065074,"bytes":803228144,"ms":6843},"ref":{"thunks":6634853,"bytes":548985912,"ms":4352}}}}
