@@ -1313,16 +1313,17 @@ let
                             + (if length conflicting == 1 then " " else "s ")
                             + concatStringsSep ", " (map (k: "`${k}'") conflicting);
                         }
-                      # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
-                      # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
-                      # the union nixpkgs builds. Pinned by
-                      # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
+                      # DECLARATION ORDER: the declaration planes ask the EARLIER declaration's relation about the
+                      # later one (`lib/modules.nix` `declaredPair`), so the partner is the later declaration and
+                      # its modules come after: nixpkgs' `binOp`, `lhs.modules ++ rhs.modules`, which a
+                      # declaration list stating no module set mounts as it is (nixpkgs d17afff, den-hoag-b9fl0).
+                      # Pinned by `nulled-module-set.test-order-*`; a rebuild over stated sets replaces this list.
                       else if refusedKeys == [ ] && !(other ? refusedArgs) then
-                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (partnerMods ++ mods); }
+                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (mods ++ partnerMods); }
                       else
                         {
                           merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
-                            partnerMods ++ mods
+                            mods ++ partnerMods
                           );
                         }
                   );
@@ -1545,16 +1546,17 @@ let
                             + (if length conflicting == 1 then " " else "s ")
                             + concatStringsSep ", " (map (k: "`${k}'") conflicting);
                         }
-                      # AUTHORED ORDER: the declaration planes ask the LATER declaration's relation about the
-                      # earlier one (`lib/modules.nix` `declaredPair`), so the partner's modules come first,
-                      # the union nixpkgs builds. Pinned by
-                      # `decl-merge.test-submodule-redeclaration-unions-in-authored-order`.
+                      # DECLARATION ORDER: the declaration planes ask the EARLIER declaration's relation about the
+                      # later one (`lib/modules.nix` `declaredPair`), so the partner is the later declaration and
+                      # its modules come after: nixpkgs' `binOp`, `lhs.modules ++ rhs.modules`, which a
+                      # declaration list stating no module set mounts as it is (nixpkgs d17afff, den-hoag-b9fl0).
+                      # Pinned by `nulled-module-set.test-order-*`; a rebuild over stated sets replaces this list.
                       else if refusedKeys == [ ] && !(other ? refusedArgs) then
-                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (partnerMods ++ mods); }
+                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (mods ++ partnerMods); }
                       else
                         {
                           merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
-                            partnerMods ++ mods
+                            mods ++ partnerMods
                           );
                         }
                   );

@@ -395,6 +395,7 @@ let
           upTo.merged = v.type;
           declaredTypes = [ v.type ];
           prior = typed;
+          single = true;
         }
       else
         v.type
@@ -1271,7 +1272,8 @@ let
     else
       { merged = m; };
   # nixpkgs `fixupOptionType`: the merged type rebuilt over the AUTHORED concatenation of every
-  # declaration's own module set, replacing whatever module list the join's `binOp` built, and
+  # declaration's own module set, replacing whatever module list the join's `binOp` built, or, where that
+  # concatenation is empty, the join kept as it is (nixpkgs d17afff, den-hoag-b9fl0), and
   # restricted by every check a declaration states that the rebuild cannot carry, at every depth
   # (`interface.carriedAtDepth`, den-hoag-8ip0d): nixpkgs' rebuild erases them, gen's enforces them. A type
   # that states no module set (a leaf, `either`, `oneOf`) is returned as is. Lives on the
@@ -1295,7 +1297,16 @@ let
     if sub.modules == null || interface.sameValue.modules r.upTo.merged == null then
       r.upTo.merged
     else
-      interface.carriedAtDepth true r.declaredTypes (sub.rebuild (concatMap own r.prior));
+      let
+        ms = concatMap own r.prior;
+      in
+      # nixpkgs' `fixupOptionType` keeps the merged type as it is where the declarations state no module set
+      # (`opt.options == [ ]`, nixpkgs d17afff): it is the join of the copies' functors, mounting the sets they carry,
+      # earlier declaration first (den-hoag-b9fl0). A single declaration's empty list is a stated `[ ]`, where keeping
+      # and rebuilding agree, so it skips the test (`single`)
+      interface.carriedAtDepth true r.declaredTypes (
+        if !(r.single or false) && ms == [ ] then r.upTo.merged else sub.rebuild ms
+      );
   # The list, in AUTHORED order; stops at the first refusing step. A one-element list is itself.
   #
   # ★ THE ACCUMULATOR'S DEBT IS THE FOLD'S, NOT THE RECORD'S (den-hoag-meet-carrier-join-check-reowed-15va3). A met record
