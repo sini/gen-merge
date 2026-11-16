@@ -3091,51 +3091,59 @@ let
       # sameValue.modules merged == null`, one test here: `sameValue.modules` answers `null` or `sub.modules`, so its
       # `null` is the disjunction. The typed sites are walked once per such mount,
       # and an option that shadowed nothing keeps the label's one lazy binding.
-      fixed = s (
+      fixed =
         if site ? overridden && site ? sitesAt then
           let
             typed = filter (x: x.decl ? type) (site.sitesAt loc);
           in
           if length typed > 1 && sameValue.modules t != null then
-            prelude.concatMap (
-              x:
-              let
-                ms = sameValue.modules x.decl.type;
-              in
-              if ms == null then
-                [ ]
-              else
-                map (m: {
-                  _file = x.file;
-                  imports = [ m ];
-                }) ms
-            ) typed
-          else
             let
-              file = (head (typed ++ [ { file = "<unknown-file>"; } ])).file;
+              own = prelude.concatMap (
+                x:
+                let
+                  ms = sameValue.modules x.decl.type;
+                in
+                if ms == null then
+                  [ ]
+                else
+                  map (m: {
+                    _file = x.file;
+                    imports = [ m ];
+                  }) ms
+              ) typed;
+            in
+            # nixpkgs' `fixupOptionType` keeps the merged type as it is where the declarations state no module set
+            # (`opt.options == [ ]`, nixpkgs d17afff): the copies' carried sets, never an empty rebuild (den-hoag-b9fl0)
+            if own == [ ] then t else s own
+          else
+            s (
+              let
+                file = (head (typed ++ [ { file = "<unknown-file>"; } ])).file;
+              in
+              map (m: {
+                _file = file;
+                imports = [ m ];
+              }) t.getSubModules
+            )
+        else
+          s (
+            let
+              file =
+                let
+                  f = if site ? sitesAt.file && site.sitesAt.file != null then site.sitesAt.file loc else null;
+                in
+                if f != null then
+                  f
+                else if site ? sitesAt then
+                  (head (filter (x: x.decl ? type) (site.sitesAt loc) ++ [ { file = "<unknown-file>"; } ])).file
+                else
+                  "<unknown-file>";
             in
             map (m: {
               _file = file;
               imports = [ m ];
             }) t.getSubModules
-        else
-          let
-            file =
-              let
-                f = if site ? sitesAt.file && site.sitesAt.file != null then site.sitesAt.file loc else null;
-              in
-              if f != null then
-                f
-              else if site ? sitesAt then
-                (head (filter (x: x.decl ? type) (site.sitesAt loc) ++ [ { file = "<unknown-file>"; } ])).file
-              else
-                "<unknown-file>";
-          in
-          map (m: {
-            _file = file;
-            imports = [ m ];
-          }) t.getSubModules
-      );
+          );
       mountable =
         (isFunction s || isAttrs s && s ? __functor) && isAttrs fixed && fixed ? merge && fixed ? check;
       # judged on the record as written (a re-homing disagreement), then mounted as the rebuild over
@@ -3338,7 +3346,8 @@ let
   # any depth (`adHocFold`, den-hoag-ku5dt Q1), as it is alone: the carried record is that override, so
   # each reader that folds it refuses it. Over a module set the override is owed as any check is. A
   # module set copied with a `// { verify }` is owed too: no rebuild reads `verify`, so a redeclaration would
-  # drop it where the copy declared alone refuses (den-hoag-y4w78). The carried record states that `verify`,
+  # drop it where the copy declared alone refuses (den-hoag-y4w78); so is such a copy stating no module set while it
+  # carries one, whose carried set a declaration list stating none mounts (den-hoag-b9fl0). The carried record states that `verify`,
   # read once on the MERGED value as gen's fold reads a copy's own; folded into each definition's check, it
   # would refuse two definitions whose merged value it admits. A record stating a RETAINED relation (a gen
   # completion over a relation the author stated, `retainedRelation`) is owed as well: its join is the
@@ -3356,7 +3365,12 @@ let
           !(!(o ? check || o ? admits) || o ? typeMergeRel.exact)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
-          || o ? verify && isList (o.getSubModules or null)
+          ||
+            o ? verify
+            && (
+              isList (o.getSubModules or null)
+              || o.getSubModules or [ ] == null && (importedSubstructure o).modules != null
+            )
           || o ? retainedRelation
         );
       # `owes`, inlined: it is asked once per element of every rebuild
@@ -3367,7 +3381,12 @@ let
           !(!(o ? check || o ? admits) || o ? typeMergeRel.exact)
           || rewritesCheck o
           || o ? substructure.mount && !(o ? verify) && isList (o.getSubModules or null)
-          || o ? verify && isList (o.getSubModules or null)
+          ||
+            o ? verify
+            && (
+              isList (o.getSubModules or null)
+              || o.getSubModules or [ ] == null && (importedSubstructure o).modules != null
+            )
           || o ? retainedRelation
           || fuel > 0 && owesIn (fuel - 1) (carriedAt "element" o)
         );

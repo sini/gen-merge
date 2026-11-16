@@ -277,9 +277,9 @@ in
       };
 
     # e07bf: two `submodule` declarations merge to a submodule over the union of their modules, in
-    # AUTHORED order, as nixpkgs unions them. The partner of the deciding (later) declaration is the
-    # earlier one, so the relation puts the partner's modules first; this is the only pin on that
-    # line of `mkSubmodule`'s relation. `ref` is nixpkgs live over the same records.
+    # the order nixpkgs' rebuild mounts them, later-first. The rebuild replaces the join's module list, so
+    # this does not read `mkSubmodule`'s relation order; `nulled-module-set.test-order-*` pins that, on the
+    # kept join. `ref` is nixpkgs live over the same records.
     test-submodule-redeclaration-unions-in-authored-order =
       let
         first = t.submodule {
