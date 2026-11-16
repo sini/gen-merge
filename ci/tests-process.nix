@@ -497,7 +497,7 @@
           # node's `disabled` forced. With no removal the bound is the figure before removal existed (gen-merge
           # e3e1305), so a per-node re-walk of the closure (x92 at n = 400) reds it; with one removal the marking
           # is one walk of the tree. The bounds are the landed figures, in THUNKS.
-          for bound in graph-cost:16 graph-cost-removal:68; do
+          for bound in graph-cost:16 graph-cost-removal:59; do
             cell=''${bound%%:*} max=''${bound#*:} want=0
             [ "$cell" = graph-cost ] || want=1
             thunksOf "$cell-100"
@@ -514,8 +514,10 @@
           # 400, at each site that re-evaluates it (the type reused, `extendModules`, `emptyValue`). The located
           # name modules and wrappers are nixpkgs' own list, so the rise they brought is authorized while the row
           # stays at or under its reference arm, nixpkgs over the same construction: gen/ref <= 1. Every site's set
-          # carries the child's definitions, so each reads the sum of the children's `v`.
-          for cell in again extN emptyV; do
+          # carries the child's definitions, so each reads the sum of the children's `v`. Each site also holds gen's
+          # landed figure as its bound (ADR-0032: an optimization lowers the bound in the same change).
+          for bound in again:1213 extN:1111 emptyV:1088; do
+            cell=''${bound%%:*} max=''${bound#*:}
             for eng in gen nixpkgs; do
               thunksOf "reuse-cost-$cell-$eng-100"
               [ "$val" = "4950" ] || die "reuse-cost-$cell-$eng-100" "expected value 4950, got '$val'"
@@ -525,7 +527,8 @@
               eval "per_$eng=$(((thunks - t100) / 300))"
             done
             [ "$per_gen" -le "$per_nixpkgs" ] || die "reuse-cost-$cell-gen-400" "a re-evaluated module set ($cell) costs $per_gen thunks per child, over nixpkgs' $per_nixpkgs; ADR-0032: a rise crossing its reference is returned as a repair"
-            echo "reuse-cost $cell: $per_gen thunks per child (nixpkgs $per_nixpkgs)"
+            [ "$per_gen" -le "$max" ] || die "reuse-cost-$cell-gen-400" "a re-evaluated module set ($cell) costs $per_gen thunks per child, over its bound $max"
+            echo "reuse-cost $cell: $per_gen thunks per child (bound $max, nixpkgs $per_nixpkgs)"
           done
 
           # 0/0 is a false pass: the runner must have executed every cell above.

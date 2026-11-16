@@ -344,7 +344,7 @@ let
   # read twice, so the test costs no evaluation the distribution did not already pay for.
   pushDownProperties =
     v:
-    if isProperty v then
+    if v ? _type then
       if v._type == "merge" then
         foldl' mergeConfigAttrs { } (map pushDownProperties v.contents)
       else if v._type == "if" || v._type == "override" then

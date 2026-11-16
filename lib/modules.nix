@@ -2855,16 +2855,21 @@ let
   #
   # Each is spelled as the per-entry function the body maps, never as a wrapper over the list: a
   # call per evaluation is an environment per evaluation, which the same row prices.
-  pushedEntry = e: {
-    inherit (e) _file;
-    attrs = pushDownProperties (configOf e);
-  };
+  pushedEntry =
+    { _file, ... }@e:
+    {
+      inherit _file;
+      attrs = pushDownProperties (configOf e);
+    };
   # Each module's options root, beside the file that declared it and its position in the fold.
-  declEntry = i: e: {
-    idx = i;
-    file = e._file;
-    options = optionsOf e.content;
-  };
+  declEntry =
+    i:
+    { _file, content, ... }:
+    {
+      idx = i;
+      file = _file;
+      options = optionsOf content;
+    };
   # The freeform declarations by KEY, value unforced: a top-level `freeformType` and each module's
   # `_module.freeformType`, one entry per contribution.
   topFreeformEntry = e: {
@@ -3481,10 +3486,16 @@ let
       ++ moduleLevels class callM seen (
         concatMap (
           { content, ... }@e:
-          if e ? dis then
-            removal.walk.keptEntries e.dis callM e (importsOf content)
+          let
+            i = importsOf content;
+          in
+          # an entry importing nothing contributes no entry, so no walk is built for it (nixpkgs 6d6a008)
+          if i == [ ] then
+            [ ]
+          else if e ? dis then
+            removal.walk.keptEntries e.dis callM e i
           else
-            moduleEntries callM e (importsOf content)
+            moduleEntries callM e i
         ) level
       )
     else
@@ -8948,10 +8959,14 @@ let
               # `a.b = mkIf c { … }' distributes into `b's keys), yielding plain attrsets per module.
               # `modIndex` (the originating module instance, threaded from `topDefs`) rides every def so
               # unmatched keys can be coalesced per module at the root — see `coalesceUnmatched`.
-              pushed = map (d: {
-                inherit (d) file modIndex;
-                attrs = pushDownProperties d.value;
-              }) rawDefs;
+              pushed = map (
+                { file, value, ... }@d:
+                {
+                  inherit file;
+                  inherit (d) modIndex;
+                  attrs = pushDownProperties value;
+                }
+              ) rawDefs;
               # The DECLARED keys' definitions, grouped once per level (nixpkgs `mergeModules'`'s
               # `pushedDownDefinitionsByName`), so each key is answered by a lookup rather than a scan of
               # `pushed`. Only the declared keys are grouped (`intersectAttrs opts`): the undeclared ones
