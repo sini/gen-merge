@@ -7383,11 +7383,13 @@ let
                     null
                   else
                     let
+                      # the declaration a door copy states (`__declared`), the one this step holds
+                      stated = if isAttrs f && f ? __declared then [ f.__declared ] else [ ];
                       declared = (
-                        # the partner's DECLARATION, as the export's derived arm reads it: the slot a door copy states
-                        # (`__declared`), else the partner its functor recovers (`importedPartner`); none for a bare functor
-                        if isAttrs f && f ? __declared then
-                          [ f.__declared ]
+                        # the partner's DECLARATION, as the export's derived arm reads it: the slot a door copy states,
+                        # else the partner its functor recovers (`importedPartner`); none for a bare functor
+                        if stated != [ ] then
+                          stated
                         else
                           let
                             # only a payload carrying the partner's member records rebuilds the declaration itself
@@ -7407,7 +7409,7 @@ let
                             sd != metWith.anything.shapeOf importedTypeWalkFuel r
                             && metWith.anything.widensAt sd (metWith.anything.shapeOf importedTypeWalkFuel r)
                           )
-                        ) (if isAttrs f && f ? __declared then [ f.__declared ] else [ ])
+                        ) stated
                         ++ [ h ];
                     } false r ([ h ] ++ declared);
                 merge =
