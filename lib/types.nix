@@ -1088,8 +1088,9 @@ let
   # `{ ctor; members; args = tags: { … }; sealed; }`, minted IN PLACE OF the module list's seal (ADR-0034's
   # construction clause: a constructor and its argument components, members by mark and caller content
   # sealed). Stated only through `refusingSubmodule`'s first operand (lib/default.nix). `withArgs` and `rebuild` keep
-  # it; the relation's union and `recarry` pass `null`, since a union of two declarations, or a module set
-  # a caller carries in, is no longer that library's construction, and the list's seal returns.
+  # it; the relation's union states its own: the join `gen-merge.submodule-join` over its two operands, each a
+  # member by its mark, in module order (den-hoag-2vtgj). `recarry` passes `null`, since a module set a caller
+  # carries in is no longer that library's construction, and the list's seal returns.
   mkSubmodule =
     partial: ctor: refusedKeys: stated: args: modOrMods:
     let
@@ -1313,18 +1314,43 @@ let
                             + (if length conflicting == 1 then " " else "s ")
                             + concatStringsSep ", " (map (k: "`${k}'") conflicting);
                         }
-                      # DECLARATION ORDER: the declaration planes ask the EARLIER declaration's relation about the
-                      # later one (`lib/modules.nix` `declaredPair`), so the partner is the later declaration and
-                      # its modules come after: nixpkgs' `binOp`, `lhs.modules ++ rhs.modules`, which a
+                      # DECLARATION ORDER: the declaration planes ask the LATER declaration's relation for the join
+                      # with the earlier one (`lib/modules.nix` `declaredPair`, `mergeTypesWithin later earlier`; the
+                      # earlier relation is asked first only as the veto), so the partner is the earlier declaration
+                      # and its modules come after: nixpkgs' `binOp`, `lhs.modules ++ rhs.modules`, which a
                       # declaration list stating no module set mounts as it is (nixpkgs d17afff, den-hoag-b9fl0).
                       # Pinned by `nulled-module-set.test-order-*`; a rebuild over stated sets replaces this list.
                       else if refusedKeys == [ ] && !(other ? refusedArgs) then
-                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (mods ++ partnerMods); }
+                        {
+                          merged = mkSubmodule partial ctor refusedKeys {
+                            # the union is gen-merge's construction over its two operands, in the order their module sets
+                            # concatenate, each a member by its mark and sealed where its own identity is (den-hoag-2vtgj;
+                            # `lib/interface.nix` `metIdentity`'s shape); inline, since let-bound in `mkSubmodule` it
+                            # allocates for every submodule
+                            ctor = "gen-merge.submodule-join";
+                            members = [
+                              (mkSubmodule partial ctor refusedKeys stated args mods)
+                              other
+                            ];
+                            args = tags: { operands = tags; };
+                            sealed = [ ];
+                          } (args // partnerArgs) (mods ++ partnerMods);
+                        }
                       else
                         {
-                          merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
-                            mods ++ partnerMods
-                          );
+                          merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) {
+                            # the union is gen-merge's construction over its two operands, in the order their module sets
+                            # concatenate, each a member by its mark and sealed where its own identity is (den-hoag-2vtgj;
+                            # `lib/interface.nix` `metIdentity`'s shape); inline, since let-bound in `mkSubmodule` it
+                            # allocates for every submodule
+                            ctor = "gen-merge.submodule-join";
+                            members = [
+                              (mkSubmodule partial ctor refusedKeys stated args mods)
+                              other
+                            ];
+                            args = tags: { operands = tags; };
+                            sealed = [ ];
+                          } (args // partnerArgs) (mods ++ partnerMods);
                         }
                   );
               };
@@ -1546,18 +1572,43 @@ let
                             + (if length conflicting == 1 then " " else "s ")
                             + concatStringsSep ", " (map (k: "`${k}'") conflicting);
                         }
-                      # DECLARATION ORDER: the declaration planes ask the EARLIER declaration's relation about the
-                      # later one (`lib/modules.nix` `declaredPair`), so the partner is the later declaration and
-                      # its modules come after: nixpkgs' `binOp`, `lhs.modules ++ rhs.modules`, which a
+                      # DECLARATION ORDER: the declaration planes ask the LATER declaration's relation for the join
+                      # with the earlier one (`lib/modules.nix` `declaredPair`, `mergeTypesWithin later earlier`; the
+                      # earlier relation is asked first only as the veto), so the partner is the earlier declaration
+                      # and its modules come after: nixpkgs' `binOp`, `lhs.modules ++ rhs.modules`, which a
                       # declaration list stating no module set mounts as it is (nixpkgs d17afff, den-hoag-b9fl0).
                       # Pinned by `nulled-module-set.test-order-*`; a rebuild over stated sets replaces this list.
                       else if refusedKeys == [ ] && !(other ? refusedArgs) then
-                        { merged = mkSubmodule partial ctor refusedKeys null (args // partnerArgs) (mods ++ partnerMods); }
+                        {
+                          merged = mkSubmodule partial ctor refusedKeys {
+                            # the union is gen-merge's construction over its two operands, in the order their module sets
+                            # concatenate, each a member by its mark and sealed where its own identity is (den-hoag-2vtgj;
+                            # `lib/interface.nix` `metIdentity`'s shape); inline, since let-bound in `mkSubmodule` it
+                            # allocates for every submodule
+                            ctor = "gen-merge.submodule-join";
+                            members = [
+                              (mkSubmodule partial ctor refusedKeys stated args mods)
+                              other
+                            ];
+                            args = tags: { operands = tags; };
+                            sealed = [ ];
+                          } (args // partnerArgs) (mods ++ partnerMods);
+                        }
                       else
                         {
-                          merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) null (args // partnerArgs) (
-                            mods ++ partnerMods
-                          );
+                          merged = mkSubmodule partial ctor (refusedArgsUnion refusedKeys other) {
+                            # the union is gen-merge's construction over its two operands, in the order their module sets
+                            # concatenate, each a member by its mark and sealed where its own identity is (den-hoag-2vtgj;
+                            # `lib/interface.nix` `metIdentity`'s shape); inline, since let-bound in `mkSubmodule` it
+                            # allocates for every submodule
+                            ctor = "gen-merge.submodule-join";
+                            members = [
+                              (mkSubmodule partial ctor refusedKeys stated args mods)
+                              other
+                            ];
+                            args = tags: { operands = tags; };
+                            sealed = [ ];
+                          } (args // partnerArgs) (mods ++ partnerMods);
                         }
                   );
               };
