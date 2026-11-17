@@ -383,8 +383,10 @@ stated), `members` the minted inputs (entering by their marks), `args` the inert
 caller content. It is minted in place of the module list's seal, so two constructions over equal
 arguments are one type and two over different arguments are two. The statement must cover every input
 `mods` depends on, or two different module sets mint one type. `withArgs` keeps it; a rebuild keeps it
-and seals the module set it is rebuilt over beside it; a union of two declarations and a `recarry` seal
-the module list again. Any other first operand is refused by name, so a call that hands the key list
+and seals the module set it is rebuilt over beside it; a `recarry` seals the module list again. A union of
+two declarations states its own construction, `gen-merge.submodule-join`, over the two operands in the order
+their module sets concatenate, each a member by its mark and sealed where its own identity is, so joins of two
+different statements are two types and a statement beside a plain `submodule` is kept. Any other first operand is refused by name, so a call that hands the key list
 first is refused where it is written.
 
 ## Provenance
