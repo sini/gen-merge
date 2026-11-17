@@ -5,7 +5,8 @@
 #   - a check-only door copy names itself as the declaration (`functor.__declared`) whenever it is carried, so the
 #     relation that decides owes its check;
 #   - a met record's typeMerge owes the partner's declaration beside itself, and is itself owed whole;
-#   - a held step owes the partner's declaration and holds its unchecked fold, unless the join widens its parameters.
+#   - a held step owes the partner's declaration, and holds the unchecked fold of one a door copy states, unless the
+#     join widens its parameters; a partner recovered from its functor is owed but not held.
 {
   genMerge,
   nixpkgsLib,
@@ -363,16 +364,19 @@ in
         "REFUSED"
       ]) mixPool;
     };
-    # RED (the element 7 or 9 a refinement rejects served, every spelling, raw and through the door) unless a held step
-    # owes the partner's declaration and holds its fold; the element every declaration admits is served
-    test-a-held-step-owes-and-holds-the-partner = {
+    # A held step does not hold a partner recovered from its functor: holding that rebuilt fold beside an ad-hoc held
+    # record refuses free values main and nixpkgs' twin serve (ADR-0039 parity-defect rule (2)). So the element 7 or 9
+    # a refinement rejects is served at every spelling, raw and through the door, as main serves it: an open defect
+    # (SILENT-D, den-hoag-alnjf), asserted as the value it produces so a build refusing it reds it. The element every
+    # declaration admits is served.
+    test-a-held-step-serves-what-a-recovered-partner-rejects = {
       expr = heldGrid;
       expected = nl.mapAttrs (
         _: _:
         nl.genAttrs [ "raw" "door" ] (
           _:
-          nl.genAttrs [ "ABG" "ABGG" "AGBG" "BAG" ] (_: [
-            "REFUSED"
+          nl.genAttrs [ "ABG" "ABGG" "AGBG" "BAG" ] (w: [
+            [ (if w == "BAG" then 9 else 7) ]
             [ 8 ]
           ])
         )
