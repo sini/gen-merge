@@ -103,33 +103,40 @@
             own-check-reads candidate-modules phrase-cycle foreign-knot name-keyset cyclic-derive key-walk-wide
             prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk graph-cost reuse-cost"
           allBlocks="modules-sh nixos-bar hm-bar fp-bar ${pkgs.lib.concatStringsSep " " benches} $cellBlocks"
-          partial=0 picked="" skipped=""
+          partial=0 picked="" skipped="" selected=" "
           [ -z "''${TESTS_PROCESS_ONLY+x}" ] || partial=1
-          sel() {
-            [ "$partial" = 1 ] || return 0
-            local g
+          # The selection is parsed ONCE, here, into `selected`; `sel` only reads it. The grammar is comma-separated
+          # globs of [A-Za-z0-9-] with `*` and `?`: whitespace, a newline, an empty element and any other glob
+          # character refuse, and so does an element matching no block. `[[ == ]]` never expands a pathname.
+          refuseSel() {
+            echo "tests-process: TESTS_PROCESS_ONLY=$(printf %q "$TESTS_PROCESS_ONLY"): $1; refusing rather than reading green. Blocks: $(echo $allBlocks)" >&2
+            exit 2
+          }
+          if [ "$partial" = 1 ]; then
+            selRe='^[A-Za-z0-9*?-]+(,[A-Za-z0-9*?-]+)*$'
+            [[ $TESTS_PROCESS_ONLY =~ $selRe ]] || refuseSel "not a comma-separated list of block globs ([A-Za-z0-9-], * and ?)"
             IFS=, read -ra globs <<< "$TESTS_PROCESS_ONLY"
             for g in "''${globs[@]}"; do
-              # shellcheck disable=SC2053 # the right side is the glob
-              [[ $1 == $g ]] && { picked+=" $1"; return 0; }
+              hit=0
+              for b in $allBlocks; do
+                # shellcheck disable=SC2053 # the right side is the glob
+                if [[ $b == $g ]]; then
+                  hit=1
+                  [[ $selected == *" $b "* ]] || selected+="$b "
+                fi
+              done
+              [ "$hit" = 1 ] || refuseSel "'$g' matches no block"
             done
+            n=$(echo $selected | wc -w)
+            [ "$n" -gt 0 ] || refuseSel "it selects no block"
+            echo "tests-process: PARTIAL run, TESTS_PROCESS_ONLY='$TESTS_PROCESS_ONLY' selects $n of $(echo $allBlocks | wc -w) blocks:$selected"
+          fi
+          sel() {
+            [ "$partial" = 1 ] || return 0
+            if [[ $selected == *" $1 "* ]]; then picked+=" $1"; return 0; fi
             skipped+=" $1"
             return 1
           }
-          if [ "$partial" = 1 ]; then
-            n=0
-            for b in $allBlocks; do
-              for g in ''${TESTS_PROCESS_ONLY//,/ }; do
-                # shellcheck disable=SC2053
-                if [[ $b == $g ]]; then n=$((n + 1)); break; fi
-              done
-            done
-            [ "$n" -gt 0 ] || {
-              echo "tests-process: TESTS_PROCESS_ONLY='$TESTS_PROCESS_ONLY' matches no block; refusing rather than reading green. Blocks: $(echo $allBlocks)" >&2
-              exit 2
-            }
-            echo "tests-process: PARTIAL run, TESTS_PROCESS_ONLY='$TESTS_PROCESS_ONLY' selects $n of $(echo $allBlocks | wc -w) blocks"
-          fi
           # den-hoag-06toi stage 1 runs FIRST, then stage 2 (den-hoag-fwkzx), stage 3
           # (den-hoag-stage3-home-manager-nk0o6) and stage 4 (den-hoag-stage4-flake-parts-3qh4l), and their
           # statuses are held to the end, so a red cell below
@@ -640,6 +647,7 @@
             echo "tests-process: 90 cells, every exit read unpiped, every death on its named channel, every count read" > $out
           else
             [ "$ran" = "$blkWant" ] || die runner "the selected blocks declare $blkWant evaluations, ran $ran"
+            [ "$(echo $picked | wc -w)" = "$n" ] && [ -n "$picked" ] || die runner "selected $n blocks ($selected), ran:''${picked:- none}"
             echo "tests-process: PARTIAL — $ran of 90 evaluations; ran:''${picked:- none}; skipped:''${skipped:- none}; NOT a plane pass" > $out
           fi
         ''
