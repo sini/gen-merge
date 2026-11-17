@@ -5,7 +5,8 @@
 #   - a check-only door copy names itself as the declaration (`functor.__declared`) whenever it is carried, so the
 #     relation that decides owes its check;
 #   - a met record's typeMerge owes the partner's declaration beside itself, and is itself owed whole;
-#   - a held step owes the partner's declaration and holds its unchecked fold, unless the join widens its parameters.
+#   - a held step owes the partner's declaration (a partner recovered from its functor only where the payload carries
+#     its member records) beside the held record, and holds the held record alone.
 {
   genMerge,
   nixpkgsLib,
@@ -340,9 +341,196 @@ let
       "XX"
     ]
   ) (nl.mapAttrs (_: metOf) doors);
+  # The jg grid's cells (den-hoag-5t126 jg.nix, read over the declarations `_fixtures/exported-typemerge-jg-cells.nix`
+  # lists): A / B are foreign declarations placed through a door, G gen's or nixpkgs' own, every word an order of them.
+  #   ref     A / B: an `int` refinement rejecting 7 / 9 whose author typeMerge answers itself; its functor rebuilds,
+  #           by kind: itself (ci), a record rejecting 7 and 9 (narrow), nixpkgs `int` (wider), a refinement rejecting
+  #           the payload's bound and 8 (narrowTM)
+  #   shortC / shortList  A: `listOf int` admitting lists shorter than 2, by `addCheck` / by an ad-hoc `// { check }`
+  #           listOf whose functor rebuilds itself; B nixpkgs `listOf int`; G `listOf int`
+  jgRej =
+    kind: n:
+    let
+      anyBound = kind == "narrowTM";
+      pl = if anyBound then { bound = n; } else { refined = true; };
+      plain =
+        bad:
+        nl.mkOptionType {
+          name = "int";
+          check = x: isInt x && !(elem x bad);
+          merge = nl.options.mergeEqualOption;
+        };
+      self = nl.mkOptionType {
+        name = "int";
+        check = x: isInt x && x != n;
+        merge = nl.options.mergeEqualOption;
+        functor = np.defaultFunctor "int" // {
+          type =
+            {
+              ci = _: self;
+              narrow =
+                _:
+                plain [
+                  7
+                  9
+                ];
+              wider = _: np.int;
+              narrowTM =
+                p:
+                plain [
+                  p.bound
+                  8
+                ];
+            }
+            .${kind};
+          payload = pl;
+          binOp = a: _b: a;
+        };
+        typeMerge =
+          f:
+          if f.name == "int" && (f.payload == null || f.payload == pl || anyBound && f.payload ? bound) then
+            self
+          else
+            null;
+      };
+    in
+    self;
+  jgShort = v: builtins.length v < 2;
+  jgShortListAt =
+    elem:
+    np.mkOptionType {
+      name = "listOf";
+      check = v: builtins.isList v && jgShort v;
+      inherit (np.listOf elem) merge;
+      functor = (np.listOf elem).functor // {
+        type = _: jgShortListAt elem;
+      };
+      nestedTypes.elemType = elem;
+    };
+  jgFam =
+    fam: kind:
+    {
+      ref = {
+        A = jgRej kind 7;
+        B = jgRej kind 9;
+        Gg = gt.int;
+        Gn = np.int;
+      };
+      shortC = {
+        A = np.addCheck (np.listOf np.int) jgShort;
+        B = np.listOf np.int;
+        Gg = gt.listOf np.int;
+        Gn = np.listOf np.int;
+      };
+      shortList = {
+        A = jgShortListAt np.int;
+        B = np.listOf np.int;
+        Gg = gt.listOf np.int;
+        Gn = np.listOf np.int;
+      };
+    }
+    .${fam};
+  jgVal = {
+    "7" = 7;
+    "9" = 9;
+    "8" = 8;
+    ok = [ 2 ];
+    long = [
+      2
+      3
+    ];
+  };
+  jgWrap = {
+    leaf = {
+      w = _c: t: t;
+      v = x: x;
+    };
+    lo = {
+      w = c: c.listOf;
+      v = x: [ x ];
+    };
+    nu = {
+      w = c: c.nullOr;
+      v = x: x;
+    };
+    ao = {
+      w = c: c.attrsOf;
+      v = x: { k = x; };
+    };
+  };
+  jgPlaced =
+    s: p: d: x:
+    let
+      w = jgWrap.${s}.w;
+      tru = _: true;
+    in
+    {
+      top = d (w np x);
+      npin = w np (d x);
+      genin = w gt (d x);
+      dd = d (d (w np x));
+      ckO = np.addCheck (d (w np x)) tru;
+      ckI = d (np.addCheck (w np x) tru);
+      ckE = w np (np.addCheck (d x) tru);
+    }
+    .${p};
+  jgGenAt =
+    tys: v:
+    let
+      x =
+        (gm.evalModuleTree { } (map (t: { options.p = gm.mkOption { type = t; }; }) tys ++ [ { p = v; } ]))
+        .config.p;
+      o = tryEval (deepSeq x x);
+    in
+    if o.success then o.value else "REFUSED";
+  # one cell: the declaration word `w` at "<fam>/<kind>/<shape>/<place>/<form>/<G>/<engine>/<value>"
+  jgRead =
+    key: w:
+    let
+      at = builtins.elemAt (nl.splitString "/" key);
+      F = jgFam (at 0) (at 1);
+      s = at 2;
+      d = (doors // { raw = x: x; }).${at 4};
+      ds = {
+        G = jgWrap.${s}.w (if at 5 == "gG" then gt else np) (if at 5 == "gG" then F.Gg else F.Gn);
+        A = jgPlaced s (at 3) d F.A;
+        B = jgPlaced s (at 3) d F.B;
+      };
+    in
+    (if at 6 == "gen" then jgGenAt else readAt "p") (map (c: ds.${c}) (chars w)) (
+      jgWrap.${s}.v jgVal.${at 7}
+    );
+  jgCells = import ./_fixtures/exported-typemerge-jg-cells.nix;
+  jgGrid = nl.mapAttrs (key: map (jgRead key));
+  jgServed = nl.mapAttrs (
+    key:
+    map (
+      _: jgWrap.${builtins.elemAt (nl.splitString "/" key) 2}.v jgVal.${nl.last (nl.splitString "/" key)}
+    )
+  );
 in
 {
   flake.tests.exported-typemerge-debt = {
+    # RED (453 owed values served, as main and nixpkgs' twin serve them) unless a held step owes the container partner
+    # its functor recovers, beside the held record: shortC / shortList's `long`, a list the short-list declaration
+    # rejects, and ref's 7 / 9 where the door copy sits inside gen's `nullOr` beside nixpkgs' `nullOr int`
+    test-a-held-step-owes-the-partner-it-recovers = {
+      expr = jgGrid jgCells.refused;
+      expected = nl.mapAttrs (_: map (_: "REFUSED")) jgCells.refused;
+    };
+    # RED (1,596 free values refused, values main and nixpkgs' twin serve) where a leaf functor's rebuilt stock (a
+    # refinement rejecting 7 and 9, or the payload's bound and 8) is recovered as the partner's declaration: only a payload
+    # carrying member records rebuilds the declaration (ADR-0039 parity-defect rule (2))
+    test-a-leaf-functor-s-rebuilt-stock-is-not-its-declaration = {
+      expr = jgGrid jgCells.servedNarrow;
+      expected = jgServed jgCells.servedNarrow;
+    };
+    # RED (426 free `[ 2 ]` values refused, values main and nixpkgs' twin serve) where a held step holds a recovered
+    # partner beside an ad-hoc `// { check }` held record (ADR-0039 parity-defect rule (2))
+    test-a-recovered-partner-is-not-held-beside-an-ad-hoc-record = {
+      expr = jgGrid jgCells.servedShort;
+      expected = jgServed jgCells.servedShort;
+    };
     # RED (22 orders serve "x", every one ending in the gen leaf) unless the check-only copy names its declaration
     # whenever it is carried; the admitted value is served at every order
     test-a-check-only-door-copy-is-owed-at-every-order = {
@@ -363,16 +551,19 @@ in
         "REFUSED"
       ]) mixPool;
     };
-    # RED (the element 7 or 9 a refinement rejects served, every spelling, raw and through the door) unless a held step
-    # owes the partner's declaration and holds its fold; the element every declaration admits is served
-    test-a-held-step-owes-and-holds-the-partner = {
+    # A held step does not hold a partner recovered from its functor: holding that rebuilt fold beside an ad-hoc held
+    # record refuses free values main and nixpkgs' twin serve (ADR-0039 parity-defect rule (2)). So the element 7 or 9
+    # a refinement rejects is served at every spelling, raw and through the door, as main serves it: an open defect
+    # (SILENT-D, den-hoag-alnjf), asserted as the value it produces so a build refusing it reds it. The element every
+    # declaration admits is served.
+    test-a-held-step-serves-what-a-recovered-partner-rejects = {
       expr = heldGrid;
       expected = nl.mapAttrs (
         _: _:
         nl.genAttrs [ "raw" "door" ] (
           _:
-          nl.genAttrs [ "ABG" "ABGG" "AGBG" "BAG" ] (_: [
-            "REFUSED"
+          nl.genAttrs [ "ABG" "ABGG" "AGBG" "BAG" ] (w: [
+            [ (if w == "BAG" then 9 else 7) ]
             [ 8 ]
           ])
         )
