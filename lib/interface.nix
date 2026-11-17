@@ -7405,7 +7405,7 @@ let
                             sd != metWith.anything.shapeOf importedTypeWalkFuel r
                             && metWith.anything.widensAt sd (metWith.anything.shapeOf importedTypeWalkFuel r)
                           )
-                        ) declared
+                        ) (if isAttrs f && f ? __declared then [ f.__declared ] else [ ])
                         ++ [ h ];
                     } false r ([ h ] ++ declared);
                 merge =
