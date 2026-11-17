@@ -7375,8 +7375,10 @@ let
                     r = if asked.success then asked.value else null;
                   in
                   # a step over a held record, as `lib/modules.nix` `mergeDeclaredTypes` holds one: the partner's declaration
-                  # is owed beside this record, and held by its unchecked fold unless the join widens its own parameters,
-                  # where it is owed relativised by its check (ADR-0039 THE MEET), as `metWith` relativises an operand
+                  # is owed beside this record; a declaration a door copy states is also held by its unchecked fold unless
+                  # the join widens its own parameters, where it is owed relativised by its check (ADR-0039 THE MEET), as
+                  # `metWith` relativises an operand. A partner recovered from its functor is owed, not held: holding its
+                  # rebuilt fold beside an ad-hoc held record refuses values nixpkgs serves (ADR-0039 rule (2))
                   if r == null then
                     null
                   else
@@ -7405,7 +7407,7 @@ let
                             sd != metWith.anything.shapeOf importedTypeWalkFuel r
                             && metWith.anything.widensAt sd (metWith.anything.shapeOf importedTypeWalkFuel r)
                           )
-                        ) declared
+                        ) (if isAttrs f && f ? __declared then [ f.__declared ] else [ ])
                         ++ [ h ];
                     } false r ([ h ] ++ declared);
                 merge =
