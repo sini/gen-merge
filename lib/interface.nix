@@ -6856,7 +6856,24 @@ let
               );
               r = if asked.success then asked.value else null;
             in
-            if r == null then null else metWith.core false r [ met ];
+            # the step's own operands owed beside this record: the partner nixpkgs hands it is a declaration of the option
+            if r == null then
+              null
+            else
+              metWith.core false r (
+                [ met ]
+                ++ (
+                  # the partner's DECLARATION, as the export's derived arm reads it: the slot a door copy states
+                  # (`__declared`), else the partner its functor recovers (`importedPartner`); none for a bare functor
+                  if isAttrs f && f ? __declared then
+                    [ f.__declared ]
+                  else
+                    let
+                      p = importedPartner f;
+                    in
+                    if isAttrs p then [ p ] else [ ]
+                )
+              );
           ${if types ? mkIdentity && j ? __mint then "__mint" else null} = ids.__mint;
           ${if types ? mkIdentity && j ? __mint then "__payload" else null} = ids.__payload;
           ${if types ? mkIdentity && j ? __mint then "__sealed" else null} = ids.__sealed;
@@ -7357,7 +7374,39 @@ let
                     );
                     r = if asked.success then asked.value else null;
                   in
-                  if r == null then null else metWith.core false r [ h ];
+                  # a step over a held record, as `lib/modules.nix` `mergeDeclaredTypes` holds one: the partner's declaration
+                  # is owed beside this record, and held by its unchecked fold unless the join widens its own parameters,
+                  # where it is owed relativised by its check (ADR-0039 THE MEET), as `metWith` relativises an operand
+                  if r == null then
+                    null
+                  else
+                    let
+                      declared = (
+                        # the partner's DECLARATION, as the export's derived arm reads it: the slot a door copy states
+                        # (`__declared`), else the partner its functor recovers (`importedPartner`); none for a bare functor
+                        if isAttrs f && f ? __declared then
+                          [ f.__declared ]
+                        else
+                          let
+                            p = importedPartner f;
+                          in
+                          if isAttrs p then [ p ] else [ ]
+                      );
+                    in
+                    metWith.metWith {
+                      answers =
+                        builtins.filter (
+                          d:
+                          let
+                            sd = metWith.anything.shapeOf importedTypeWalkFuel d;
+                          in
+                          !(
+                            sd != metWith.anything.shapeOf importedTypeWalkFuel r
+                            && metWith.anything.widensAt sd (metWith.anything.shapeOf importedTypeWalkFuel r)
+                          )
+                        ) declared
+                        ++ [ h ];
+                    } false r ([ h ] ++ declared);
                 merge =
                   if met.merge ? v2 then
                     met.merge
@@ -8497,7 +8546,7 @@ let
                 metWith.core false r [ s ];
             # the functor names this copy as the declaration (`__declared`) beside its completion's `type`: nixpkgs hands
             # a redeclaration's relation only the partner's functor; `type` stays the completion
-            ${if replacesVerify x && x ? functor then "functor" else null} = x.functor // {
+            ${if x ? functor then "functor" else null} = x.functor // {
               __declared = s;
             };
           }
