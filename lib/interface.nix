@@ -7405,7 +7405,19 @@ let
                             sd != metWith.anything.shapeOf importedTypeWalkFuel r
                             && metWith.anything.widensAt sd (metWith.anything.shapeOf importedTypeWalkFuel r)
                           )
-                        ) declared
+                        ) (
+                          let
+                            # the v2 refusal's own predicate, read over the element tree the fold would hold
+                            carriesAdHoc =
+                              fuel: t:
+                              isAttrs t
+                              && (
+                                adHocChecked t
+                                || fuel > 0 && builtins.any (carriesAdHoc (fuel - 1)) (builtins.attrValues (t.nestedTypes or { }))
+                              );
+                          in
+                          builtins.filter (d: !(carriesAdHoc importedTypeWalkFuel d)) declared
+                        )
                         ++ [ h ];
                     } false r ([ h ] ++ declared);
                 merge =
