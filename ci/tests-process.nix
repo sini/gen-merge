@@ -103,8 +103,8 @@
             own-check-reads candidate-modules phrase-cycle foreign-knot name-keyset cyclic-derive key-walk-wide
             prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk graph-cost reuse-cost"
           allBlocks="modules-sh nixos-bar hm-bar fp-bar ${pkgs.lib.concatStringsSep " " benches} $cellBlocks"
-          partial=0 picked="" skipped="" selected=" "
-          [ -z "''${TESTS_PROCESS_ONLY+x}" ] || partial=1
+          tpsel_partial=0 tpsel_picked="" tpsel_skipped="" tpsel_selected=" "
+          [ -z "''${TESTS_PROCESS_ONLY+x}" ] || tpsel_partial=1
           # The selection is parsed ONCE, here, into `selected`; `sel` only reads it. The grammar is comma-separated
           # globs of [A-Za-z0-9-] with `*` and `?`: whitespace, a newline, an empty element and any other glob
           # character refuse, and so does an element matching no block. `[[ == ]]` never expands a pathname.
@@ -112,29 +112,29 @@
             echo "tests-process: TESTS_PROCESS_ONLY=$(printf %q "$TESTS_PROCESS_ONLY"): $1; refusing rather than reading green. Blocks: $(echo $allBlocks)" >&2
             exit 2
           }
-          if [ "$partial" = 1 ]; then
-            selRe='^[A-Za-z0-9*?-]+(,[A-Za-z0-9*?-]+)*$'
-            [[ $TESTS_PROCESS_ONLY =~ $selRe ]] || refuseSel "not a comma-separated list of block globs ([A-Za-z0-9-], * and ?)"
-            IFS=, read -ra globs <<< "$TESTS_PROCESS_ONLY"
-            for g in "''${globs[@]}"; do
-              hit=0
-              for b in $allBlocks; do
+          if [ "$tpsel_partial" = 1 ]; then
+            tpsel_re='^[A-Za-z0-9*?-]+(,[A-Za-z0-9*?-]+)*$'
+            [[ $TESTS_PROCESS_ONLY =~ $tpsel_re ]] || refuseSel "not a comma-separated list of block globs ([A-Za-z0-9-], * and ?)"
+            IFS=, read -ra tpsel_globs <<< "$TESTS_PROCESS_ONLY"
+            for tpsel_g in "''${tpsel_globs[@]}"; do
+              tpsel_hit=0
+              for tpsel_b in $allBlocks; do
                 # shellcheck disable=SC2053 # the right side is the glob
-                if [[ $b == $g ]]; then
-                  hit=1
-                  [[ $selected == *" $b "* ]] || selected+="$b "
+                if [[ $tpsel_b == $tpsel_g ]]; then
+                  tpsel_hit=1
+                  [[ $tpsel_selected == *" $tpsel_b "* ]] || tpsel_selected+="$tpsel_b "
                 fi
               done
-              [ "$hit" = 1 ] || refuseSel "'$g' matches no block"
+              [ "$tpsel_hit" = 1 ] || refuseSel "'$tpsel_g' matches no block"
             done
-            n=$(echo $selected | wc -w)
-            [ "$n" -gt 0 ] || refuseSel "it selects no block"
-            echo "tests-process: PARTIAL run, TESTS_PROCESS_ONLY='$TESTS_PROCESS_ONLY' selects $n of $(echo $allBlocks | wc -w) blocks:$selected"
+            tpsel_n=$(echo $tpsel_selected | wc -w)
+            [ "$tpsel_n" -gt 0 ] || refuseSel "it selects no block"
+            echo "tests-process: PARTIAL run, TESTS_PROCESS_ONLY='$TESTS_PROCESS_ONLY' selects $tpsel_n of $(echo $allBlocks | wc -w) blocks:$tpsel_selected"
           fi
           sel() {
-            [ "$partial" = 1 ] || return 0
-            if [[ $selected == *" $1 "* ]]; then picked+=" $1"; return 0; fi
-            skipped+=" $1"
+            [ "$tpsel_partial" = 1 ] || return 0
+            if [[ $tpsel_selected == *" $1 "* ]]; then tpsel_picked+=" $1"; return 0; fi
+            tpsel_skipped+=" $1"
             return 1
           }
           # den-hoag-06toi stage 1 runs FIRST, then stage 2 (den-hoag-fwkzx), stage 3
@@ -162,7 +162,7 @@
             echo "tests-process: bench $b exited $rc"
             [ "$rc" -eq 0 ] || benchRc=1
           done
-          [ "$partial" = 1 ] || [ "$benchWant" -eq ${toString (builtins.length benches)} ] || {
+          [ "$tpsel_partial" = 1 ] || [ "$benchWant" -eq ${toString (builtins.length benches)} ] || {
             echo "tests-process: CONTROL FAILED: selected $benchWant bench sweeps in a full run, want ${toString (builtins.length benches)}" >&2
             benchRc=2
           }
@@ -187,19 +187,19 @@
           }
           # blk <name> <n> … endblk: a cell group and its declared evaluation count, held exactly. A full run
           # checks every declaration, so a selected run's count is one CI has already verified.
-          blkSeen=0 blkWant=0 blk=""
+          tpsel_blkSeen=0 tpsel_blkWant=0 tpsel_blk=""
           blk() {
-            [ -z "$blk" ] || die "$1" "block $1 opened inside block $blk"
+            [ -z "$tpsel_blk" ] || die "$1" "block $1 opened inside block $tpsel_blk"
             [[ " $(echo $cellBlocks) " == *" $1 "* ]] || die "$1" "block $1 is not in cellBlocks"
-            blk=$1 blkN=$2 blkStart=$ran
-            blkSeen=$((blkSeen + 1)) blkWant=$((blkWant + $2))
-            if [ "$1" = outer-options-read ] && [ "$partial" = 1 ]; then
+            tpsel_blk=$1 tpsel_blkN=$2 tpsel_blkStart=$ran
+            tpsel_blkSeen=$((tpsel_blkSeen + 1)) tpsel_blkWant=$((tpsel_blkWant + $2))
+            if [ "$1" = outer-options-read ] && [ "$tpsel_partial" = 1 ]; then
               echo "tests-process: note: outer-options-read is environment-sensitive: under store = daemon with a redirected state dir it dies before evaluating (den-hoag-qbs25 U4); gen-harness 7d54046's store = auto, pinned here, is what CI resolves"
             fi
           }
           endblk() {
-            [ $((ran - blkStart)) = "$blkN" ] || die "$blk" "block $blk ran $((ran - blkStart)) evaluations, declared $blkN"
-            blk=""
+            [ $((ran - tpsel_blkStart)) = "$tpsel_blkN" ] || die "$tpsel_blk" "block $tpsel_blk ran $((ran - tpsel_blkStart)) evaluations, declared $tpsel_blkN"
+            tpsel_blk=""
           }
           # evalArm <arm>: runs one cell in its own process; leaves rc/val set. The value variable
           # is `val`, never `out` — `out` is the derivation's own output path.
@@ -641,14 +641,14 @@
           endblk; fi
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          if [ "$partial" = 0 ]; then
-            [ "$blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
+          if [ "$tpsel_partial" = 0 ]; then
+            [ "$tpsel_blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $tpsel_blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
             [ "$ran" = "90" ] || die runner "expected 90 evaluations, ran $ran"
             echo "tests-process: 90 cells, every exit read unpiped, every death on its named channel, every count read" > $out
           else
-            [ "$ran" = "$blkWant" ] || die runner "the selected blocks declare $blkWant evaluations, ran $ran"
-            [ "$(echo $picked | wc -w)" = "$n" ] && [ -n "$picked" ] || die runner "selected $n blocks ($selected), ran:''${picked:- none}"
-            echo "tests-process: PARTIAL — $ran of 90 evaluations; ran:''${picked:- none}; skipped:''${skipped:- none}; NOT a plane pass" > $out
+            [ "$ran" = "$tpsel_blkWant" ] || die runner "the selected blocks declare $tpsel_blkWant evaluations, ran $ran"
+            [ "$(echo $tpsel_picked | wc -w)" = "$tpsel_n" ] && [ -n "$tpsel_picked" ] || die runner "selected $tpsel_n blocks ($tpsel_selected), ran:''${tpsel_picked:- none}"
+            echo "tests-process: PARTIAL — $ran of 90 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
           fi
         ''
         + ''
@@ -658,7 +658,7 @@
           [ "$hmBarRc" -eq 0 ] || exit "$hmBarRc"
           [ "$fpBarRc" -eq 0 ] || exit "$fpBarRc"
           [ "$benchRc" -eq 0 ] || exit "$benchRc"
-          [ "$partial" = 0 ] || { echo "tests-process: PARTIAL green, exit 3: the selected blocks passed; this is not the plane" >&2; exit 3; }
+          [ "$tpsel_partial" = 0 ] || { echo "tests-process: PARTIAL green, exit 3: the selected blocks passed; this is not the plane" >&2; exit 3; }
         ''
       );
     };
