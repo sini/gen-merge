@@ -7388,7 +7388,8 @@ let
                           [ f.__declared ]
                         else
                           let
-                            p = importedPartner f;
+                            # only a payload carrying the partner's member records rebuilds the declaration itself
+                            p = if payloadRole (f.payload or null) == null then null else importedPartner f;
                           in
                           if isAttrs p then [ p ] else [ ]
                       );
