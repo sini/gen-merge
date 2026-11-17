@@ -95,31 +95,72 @@
             exit 2
           }
           echo "tests-process: serial options: ''${SERIAL_EVAL[*]:-(none)}"
+          # den-hoag-qbs25 · TESTS_PROCESS_ONLY=<glob>[,<glob>…] runs only the named blocks: a bar, a bench sweep,
+          # or a cell group (named below, each with its own controls). Unset, every block runs and the plane is
+          # today's. A selected run is PARTIAL: it never prints the plane's line, and green it exits 3, never 0,
+          # so no gate reading this program's exit or its line can be satisfied by it.
+          cellBlocks="outer-options-read rename-cycle-read undeclared-gen-abort engine-option-names mt-regress
+            own-check-reads candidate-modules phrase-cycle foreign-knot name-keyset cyclic-derive key-walk-wide
+            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk graph-cost reuse-cost"
+          allBlocks="modules-sh nixos-bar hm-bar fp-bar ${pkgs.lib.concatStringsSep " " benches} $cellBlocks"
+          partial=0 picked="" skipped=""
+          [ -z "''${TESTS_PROCESS_ONLY+x}" ] || partial=1
+          sel() {
+            [ "$partial" = 1 ] || return 0
+            local g
+            IFS=, read -ra globs <<< "$TESTS_PROCESS_ONLY"
+            for g in "''${globs[@]}"; do
+              # shellcheck disable=SC2053 # the right side is the glob
+              [[ $1 == $g ]] && { picked+=" $1"; return 0; }
+            done
+            skipped+=" $1"
+            return 1
+          }
+          if [ "$partial" = 1 ]; then
+            n=0
+            for b in $allBlocks; do
+              for g in ''${TESTS_PROCESS_ONLY//,/ }; do
+                # shellcheck disable=SC2053
+                if [[ $b == $g ]]; then n=$((n + 1)); break; fi
+              done
+            done
+            [ "$n" -gt 0 ] || {
+              echo "tests-process: TESTS_PROCESS_ONLY='$TESTS_PROCESS_ONLY' matches no block; refusing rather than reading green. Blocks: $(echo $allBlocks)" >&2
+              exit 2
+            }
+            echo "tests-process: PARTIAL run, TESTS_PROCESS_ONLY='$TESTS_PROCESS_ONLY' selects $n of $(echo $allBlocks | wc -w) blocks"
+          fi
           # den-hoag-06toi stage 1 runs FIRST, then stage 2 (den-hoag-fwkzx), stage 3
           # (den-hoag-stage3-home-manager-nk0o6) and stage 4 (den-hoag-stage4-flake-parts-3qh4l), and their
           # statuses are held to the end, so a red cell below
           # (which stops this runner) never hides their reports, nor their reports the cells.
           modulesRc=0
-          ${modulesSh}/bin/modules-sh || modulesRc=$?
+          if sel modules-sh; then ${modulesSh}/bin/modules-sh || modulesRc=$?; fi
           nixosBarRc=0
-          ${nixosBar}/bin/nixos-bar || nixosBarRc=$?
+          if sel nixos-bar; then ${nixosBar}/bin/nixos-bar || nixosBarRc=$?; fi
           hmBarRc=0
-          ${hmBar}/bin/hm-bar || hmBarRc=$?
+          if sel hm-bar; then ${hmBar}/bin/hm-bar || hmBarRc=$?; fi
           fpBarRc=0
-          ${fpBar}/bin/fp-bar || fpBarRc=$?
+          if sel fp-bar; then ${fpBar}/bin/fp-bar || fpBarRc=$?; fi
           # The bench sweeps, each held to the end as the bars are. The counted ones read the serial options
           # through GEN_SERIAL_EVAL, as under the ci devshell. 0/0 is a false pass, so the count is held too.
           export GEN_SERIAL_EVAL=${inputs.gen-harness.lib.serialEval { inherit pkgs; }}
-          benchRc=0 benchRan=0
+          benchRc=0 benchRan=0 benchWant=0
           for b in ${pkgs.lib.concatStringsSep " " benches}; do
+            sel "$b" || continue
+            benchWant=$((benchWant + 1))
             rc=0
             ${pkgs.bash}/bin/bash ${benchTree}/ci/bench/$b.sh || rc=$?
             benchRan=$((benchRan + 1))
             echo "tests-process: bench $b exited $rc"
             [ "$rc" -eq 0 ] || benchRc=1
           done
-          [ "$benchRan" -eq ${toString (builtins.length benches)} ] || {
-            echo "tests-process: CONTROL FAILED: ran $benchRan bench sweeps, want ${toString (builtins.length benches)}" >&2
+          [ "$partial" = 1 ] || [ "$benchWant" -eq ${toString (builtins.length benches)} ] || {
+            echo "tests-process: CONTROL FAILED: selected $benchWant bench sweeps in a full run, want ${toString (builtins.length benches)}" >&2
+            benchRc=2
+          }
+          [ "$benchRan" -eq "$benchWant" ] || {
+            echo "tests-process: CONTROL FAILED: ran $benchRan bench sweeps, want $benchWant" >&2
             benchRc=2
           }
         ''
@@ -136,6 +177,22 @@
           die() {
             echo "tests-process: FAILED at cell $1: $2" >&2
             exit 1
+          }
+          # blk <name> <n> … endblk: a cell group and its declared evaluation count, held exactly. A full run
+          # checks every declaration, so a selected run's count is one CI has already verified.
+          blkSeen=0 blkWant=0 blk=""
+          blk() {
+            [ -z "$blk" ] || die "$1" "block $1 opened inside block $blk"
+            [[ " $(echo $cellBlocks) " == *" $1 "* ]] || die "$1" "block $1 is not in cellBlocks"
+            blk=$1 blkN=$2 blkStart=$ran
+            blkSeen=$((blkSeen + 1)) blkWant=$((blkWant + $2))
+            if [ "$1" = outer-options-read ] && [ "$partial" = 1 ]; then
+              echo "tests-process: note: outer-options-read is environment-sensitive: under store = daemon with a redirected state dir it dies before evaluating (den-hoag-qbs25 U4); gen-harness 7d54046's store = auto, pinned here, is what CI resolves"
+            fi
+          }
+          endblk() {
+            [ $((ran - blkStart)) = "$blkN" ] || die "$blk" "block $blk ran $((ran - blkStart)) evaluations, declared $blkN"
+            blk=""
           }
           # evalArm <arm>: runs one cell in its own process; leaves rc/val set. The value variable
           # is `val`, never `out` — `out` is the derivation's own output path.
@@ -191,6 +248,7 @@
             [ -n "$bytes" ] || die "$1" "the evaluator wrote no list.bytes to $TMPDIR/stats: cannot measure"
           }
 
+          if sel outer-options-read; then blk outer-options-read 3
           # den-hoag-xzchx C3 — the outer fixpoint reading the evaluation's own `options` from a
           # plain attrset DIVERGES: non-zero exit, the infinite-recursion channel, no value. An
           # admission that skips the declaration guard for a formal-free module answers here.
@@ -205,7 +263,9 @@
           evalArm outer-default-read
           [ "$rc" -eq 0 ] || die outer-default-read "expected exit 0, got $rc"
           [ "$val" = '"on"' ] || die outer-default-read "expected value \"on\", got '$val'"
+          endblk; fi
 
+          if sel rename-cycle-read; then blk rename-cycle-read 3
           # den-hoag-9oc7y: a rename cycle dies on the guard's named channel under the staged passes;
           # a declaration reading a field its target lacks dies as nixpkgs does, and a module catching
           # a stamped-view refusal reaches the recursion abort (the stated prices).
@@ -218,7 +278,9 @@
           evalArm catch-group
           [ "$rc" -eq 0 ] || die catch-group "expected exit 0, got $rc"
           [ "$val" = '{ x = 3; }' ] || die catch-group "expected nixpkgs' value { x = 3; }, got '$val'"
+          endblk; fi
 
+          if sel undeclared-gen-abort; then blk undeclared-gen-abort 6
           # den-hoag-2tna3: nixpkgs' abort and divergence in a declaration of a module not declared gen
           # grammar are inherited, on nixpkgs' channel.
           for arm in undeclared-gen-abort unread-root-declaration-aborts; do
@@ -236,7 +298,9 @@
           evalArm undeclared-gen-diverges
           [ "$rc" -ne 0 ] || die undeclared-gen-diverges "expected a death, got exit 0 with '$val'"
           grep -q 'infinite recursion encountered' "$TMPDIR/err" || die undeclared-gen-diverges "death is not the infinite-recursion channel"
+          endblk; fi
 
+          if sel engine-option-names; then blk engine-option-names 12
           # den-hoag-jbddy: the engine's option names cost no evaluation; its control, the same names
           # read off `getSubOptions`, evaluates, and both print one record.
           names='{ freeformSubmodule = [ "_freeformOptions" "_module" ]; submodule = [ "_module" ]; }'
@@ -276,7 +340,9 @@
           [ "$val" = "3" ] || die one-eval-control-two-roots "expected value 3, got '$val'"
           n=$(traced)
           [ "$n" = "2" ] || die one-eval-control-two-roots "the spy's control expected 2 evaluations, counted $n"
+          endblk; fi
 
+          if sel mt-regress; then blk mt-regress 6
           # den-hoag-8qenh C17, den-hoag-d2o0g: a module deep-forcing its own `moduleType` dies on the
           # call-depth channel, on gen-merge and on nixpkgs alike.
           for arm in mt-regress-formal mt-regress-args mt-regress-depth; do
@@ -286,7 +352,9 @@
               grep -Eq 'stack overflow|max-call-depth exceeded' "$TMPDIR/err" || die "$side" "death is not the call-depth channel"
             done
           done
+          endblk; fi
 
+          if sel own-check-reads; then blk own-check-reads 4
           # A `_module.check` computed from the evaluation's own `moduleType` dies on the call-depth channel,
           # on gen-merge and on nixpkgs alike.
           for arm in own-check-reads-nested own-check-reads-desc; do
@@ -296,7 +364,9 @@
               grep -Eq 'stack overflow|max-call-depth exceeded' "$TMPDIR/err" || die "$side" "death is not the call-depth channel"
             done
           done
+          endblk; fi
 
+          if sel candidate-modules; then blk candidate-modules 2
           # den-hoag-n6dh7 U2-l (gate O1): a candidate's `result` refuses before its member's modules
           # are applied — the traced module is applied 0 times — and a selected child applies it.
           evalArm candidate-modules
@@ -309,7 +379,9 @@
           [ "$val" = "1" ] || die candidate-modules-control "expected value 1, got '$val'"
           n=$(traced)
           [ "$n" -ge 1 ] || die candidate-modules-control "expected the selected child to apply the module, counted $n"
+          endblk; fi
 
+          if sel phrase-cycle; then blk phrase-cycle 5
           # den-hoag-type-description-parity-5k1l1: a cycle closed through a foreign record's
           # `description` dies in the infinite-recursion channel (the argued exception), and the same
           # shapes over an acyclic foreign member answer nixpkgs' phrase.
@@ -324,7 +396,9 @@
           evalArm phrase-cycle-control
           [ "$rc" -eq 0 ] || die phrase-cycle-control "expected exit 0, got $rc"
           [ "$val" = '"null or (list of signed integer) | list of (null or string)"' ] || die phrase-cycle-control "expected nixpkgs' phrases, got '$val'"
+          endblk; fi
 
+          if sel foreign-knot; then blk foreign-knot 3
           # den-hoag-23dqs: a foreign knot closed through a gen door dies in the infinite-recursion
           # channel at construction (the argued exception); crossed once, the same knot answers.
           for arm in foreign-knot-mkoptiontype foreign-knot-derivetype; do
@@ -335,7 +409,9 @@
           evalArm foreign-knot-crossed-once
           [ "$rc" -eq 0 ] || die foreign-knot-crossed-once "expected exit 0, got $rc"
           [ "$val" = '[ 1 [ 2 ] ]' ] || die foreign-knot-crossed-once "expected [ 1 [ 2 ] ], got '$val'"
+          endblk; fi
 
+          if sel name-keyset; then blk name-keyset 2
           # den-hoag-fpxsd: a submodule module whose `_module.args` key set reads `name` dies in the
           # infinite-recursion channel, as nixpkgs' `submoduleWith` does; a value reading it answers.
           evalArm name-keyset-reads-name
@@ -344,7 +420,9 @@
           evalArm name-keyset-control
           [ "$rc" -eq 0 ] || die name-keyset-control "expected exit 0, got $rc"
           [ "$val" = '"x:x"' ] || die name-keyset-control "expected value \"x:x\", got '$val'"
+          endblk; fi
 
+          if sel cyclic-derive; then blk cyclic-derive 3
           # den-hoag-iaram: a type that is its own derivation dies at construction in the
           # infinite-recursion channel, and an unguarded cycle's out-of-domain check in the call-depth
           # channel (the argued exceptions); a guarded cycle through a derivation answers.
@@ -357,6 +435,7 @@
           evalArm cyclic-guarded-control
           [ "$rc" -eq 0 ] || die cyclic-guarded-control "expected exit 0, got $rc"
           [ "$val" = '[ true false ]' ] || die cyclic-guarded-control "expected [ true false ], got '$val'"
+          endblk; fi
 
           # setBytesOf <arm>: as callsOf, leaving the process's own sets.bytes in `bytes`.
           setBytesOf() {
@@ -369,6 +448,7 @@
             [ -n "$bytes" ] || die "$1" "the evaluator wrote no sets.bytes to $TMPDIR/stats: cannot measure"
           }
 
+          if sel key-walk-wide; then blk key-walk-wide 3
           # den-hoag-qbrq9: an over-approximately keyed position's walk is linear in its definitions:
           # one position of n definitions, each with its own key, at n = 100, 400, 1600. Linear growth
           # makes the second difference in function calls 4x the first; it must stay under 5x. A
@@ -379,7 +459,9 @@
             eval "kw$n=$calls"
           done
           [ $((kw1600 - kw400)) -lt $((5 * (kw400 - kw100))) ] || die key-walk-wide-1600 "function calls grow faster than linear in the definitions: $kw100 / $kw400 / $kw1600"
+          endblk; fi
 
+          if sel prefix-keyed; then blk prefix-keyed 3
           # den-hoag-xrh86: a level's lone-keyed test is linear in the unkeyed entries before its keyed one: one level
           # of n unkeyed modules and one keyed module, at n = 500, 2000, 8000. Linear growth makes the second difference
           # in list bytes 4x the first; it must stay under 5x. A lone test copying the level once per unkeyed entry
@@ -392,7 +474,9 @@
           done
           [ $((pk8000 - pk2000)) -lt $((5 * (pk2000 - pk500))) ] || die prefix-keyed-8000 "list bytes grow faster than linear in the unkeyed entries: $pk500 / $pk2000 / $pk8000"
           echo "prefix-keyed: list bytes $pk500 / $pk2000 / $pk8000 at n = 500 / 2000 / 8000"
+          endblk; fi
 
+          if sel identity-walk; then blk identity-walk 3
           # den-hoag-xrh86: the warm identity walk is linear in the minted instances it reads: a registry of n
           # instances and one warm evaluation from its prior, at n = 100, 400, 1600. Linear growth makes the second
           # difference in set bytes 4x the first; it must stay under 5x. A walk copying its map once per entry grows
@@ -404,7 +488,9 @@
           done
           [ $((iw1600 - iw400)) -lt $((5 * (iw400 - iw100))) ] || die identity-walk-1600 "set bytes grow faster than linear in the minted instances: $iw100 / $iw400 / $iw1600"
           echo "identity-walk: set bytes $iw100 / $iw400 / $iw1600 at n = 100 / 400 / 1600"
+          endblk; fi
 
+          if sel met-cost; then blk met-cost 8
           # den-hoag-hnd82 (ADR-0032): the cost of a met record, as thunks per option between n = 100 and
           # 200, n options each declared twice and defined. The bounds are the landed figures, in THUNKS: they
           # read the same on Nix, Determinate and Lix, while allocated bytes move with the loading route. An
@@ -432,7 +518,9 @@
             [ "$per" -le "$max" ] || die "met-cost-$mode-200" "a met record ($mode) costs $per thunks per option, over its bound $max; ADR-0032: this row is above its reference, so a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
             echo "met-cost $mode: $per thunks per option (bound $max)"
           done
+          endblk; fi
 
+          if sel spine-cost; then blk spine-cost 2
           # den-hoag-y4w78 (ADR-0032): the spine's cost over a chain of `listOf` over a submodule, as the thunks to read
           # its module set at depth 30 over depth 1. A gen container answers its own `getSubModules = null` once the rest
           # of its chain bottoms out, and for a container stating none of its own that field is its own walk of the rest,
@@ -448,7 +536,9 @@
           per=$((thunks - t1))
           [ "$per" -le "4321" ] || die spine-cost-30 "the spine costs $per thunks from depth 1 to 30, over its bound 4321"
           echo "spine-cost: $per thunks from depth 1 to 30 (bound 4321)"
+          endblk; fi
 
+          if sel staged-cost; then blk staged-cost 2
           # den-hoag-8tmd5 (ADR-0032): the staged declaration passes' cost, as the thunks a rename's alias adds over
           # the same option defined directly. The passes are tried once at a constant depth and an earlier pass is
           # built only when a later pass reads it, so the cost does not grow with that depth: a pass that forced the
@@ -463,7 +553,9 @@
           per=$((thunks - t0))
           [ "$per" -le "1406" ] || die staged-cost-rename "a rename adds $per thunks over a direct definition, over its bound 1406; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
           echo "staged-cost: $per thunks for a rename over a direct definition (bound 1406)"
+          endblk; fi
 
+          if sel closure-walk; then blk closure-walk 4
           # den-hoag-staged-stratum-inner-eval-nhjxu (ADR-0032): one closure decision per collection environment. A
           # later walk of the guard's environment re-applies along the guard's decision, so `moduleLevels` and
           # `moduleClosureWith` run fewer times than one full walk per stratum (12 / 12 / 6 and 4 / 5 / 3 before the
@@ -497,7 +589,9 @@
           grep -q 'infinite recursion encountered' "$TMPDIR/err" || die closure-removal-shift "death is not the infinite-recursion channel"
           n=$(traced)
           [ "$n" -ge 903 ] || die closure-removal-shift "the removed spy was applied $n times, under 903: a pass shared a decision past a removal"
+          endblk; fi
 
+          if sel graph-cost; then blk graph-cost 4
           # den-hoag-7o7i9 (ADR-0032): a module graph read, as thunks per module between n = 100 and 400, every
           # node's `disabled` forced. With no removal the bound is the figure before removal existed (gen-merge
           # e3e1305), so a per-node re-walk of the closure (x92 at n = 400) reds it; with one removal the marking
@@ -514,7 +608,9 @@
             [ "$per" -le "$max" ] || die "$cell-400" "a module graph read costs $per thunks per module, over its bound $max"
             echo "$cell: $per thunks per module (bound $max)"
           done
+          endblk; fi
 
+          if sel reuse-cost; then blk reuse-cost 12
           # den-hoag-1k5mi (ADR-0032): a published module set re-evaluated, as thunks per child between n = 100 and
           # 400, at each site that re-evaluates it (the type reused, `extendModules`, `emptyValue`). The located
           # name modules and wrappers are nixpkgs' own list, so the rise they brought is authorized while the row
@@ -535,10 +631,17 @@
             [ "$per_gen" -le "$max" ] || die "reuse-cost-$cell-gen-400" "a re-evaluated module set ($cell) costs $per_gen thunks per child, over its bound $max"
             echo "reuse-cost $cell: $per_gen thunks per child (bound $max, nixpkgs $per_nixpkgs)"
           done
+          endblk; fi
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "90" ] || die runner "expected 90 evaluations, ran $ran"
-          echo "tests-process: 90 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          if [ "$partial" = 0 ]; then
+            [ "$blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
+            [ "$ran" = "90" ] || die runner "expected 90 evaluations, ran $ran"
+            echo "tests-process: 90 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          else
+            [ "$ran" = "$blkWant" ] || die runner "the selected blocks declare $blkWant evaluations, ran $ran"
+            echo "tests-process: PARTIAL — $ran of 90 evaluations; ran:''${picked:- none}; skipped:''${skipped:- none}; NOT a plane pass" > $out
+          fi
         ''
         + ''
           cat "$out"
@@ -546,7 +649,8 @@
           [ "$nixosBarRc" -eq 0 ] || exit "$nixosBarRc"
           [ "$hmBarRc" -eq 0 ] || exit "$hmBarRc"
           [ "$fpBarRc" -eq 0 ] || exit "$fpBarRc"
-          exit "$benchRc"
+          [ "$benchRc" -eq 0 ] || exit "$benchRc"
+          [ "$partial" = 0 ] || { echo "tests-process: PARTIAL green, exit 3: the selected blocks passed; this is not the plane" >&2; exit 3; }
         ''
       );
     };
