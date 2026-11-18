@@ -49,18 +49,16 @@ served() {
 }
 
 cells() {
-  local jobs i e n t f p key want mem s0
+  local i e n t f p key want s0
   local -a units tpls planes
   kinds
-  mem=$(($(awk '/^MemTotal:/ { print $2 }' /proc/meminfo) * 1024))
 
   # PHASE 1, the suite: units, the memo check, the templates and their poison reads, up to BAR_JOBS processes at
-  # once (default: the host's cores), each under a GC heap of BAR_HEAP bytes (default: the host's memory over
-  # BAR_JOBS); an evaluation that exceeds it is CONTROL FAILED (`evalArm`), never a verdict.
-  jobs=${BAR_JOBS:-$(nproc)}
-  export GC_MAXIMUM_HEAP_SIZE=${BAR_HEAP:-$((mem / jobs))}
+  # once, each under a GC heap of BAR_HEAP bytes (defaults: `barBudget`, from the memory the run may use); an
+  # evaluation that exceeds it is CONTROL FAILED (`evalArm`), never a verdict.
+  echo "$BAR_NAME: phase 1:"
+  barBudget
   s0=$(date +%s)
-  echo "$BAR_NAME: phase 1: $jobs processes at once, each under a GC heap of $GC_MAXIMUM_HEAP_SIZE bytes"
   evalArm names ref names --argstr read names
   [ "$rc" -eq 0 ] || control "the unit names read refused: $(grep -E '^ *error' "$tmp/names.err" | tail -1)"
   mapfile -t units < <(jq -c '.v[]' "$tmp/names.out")
@@ -137,12 +135,12 @@ cells() {
   done
   echo "$BAR_NAME: phase 1: $n units, the memo cell, ${#tpls[@]} templates (${tpls[*]}) and their poison reads, $(($(date +%s) - s0)) s"
 
-  # PHASE 2, the real flakes, ONE EVALUATION AT A TIME, under a GC heap of the host's memory less 2 GiB of
-  # headroom (BAR_HEAP overrides it), so `evalArm`'s out-of-memory control, not the kernel, decides an
-  # evaluation that outgrows it. Each flake's `names` read is evaluated once more on the poison engine.
-  export GC_MAXIMUM_HEAP_SIZE=${BAR_HEAP:-$((mem - 2147483648))}
+  # PHASE 2, the real flakes, ONE EVALUATION AT A TIME, under a GC heap of all the room `barBudget` reads now
+  # (BAR_HEAP overrides it), so `evalArm`'s out-of-memory control, not the kernel, decides an evaluation that
+  # outgrows it. Each flake's `names` read is evaluated once more on the poison engine.
+  echo "$BAR_NAME: phase 2:"
+  barBudget 1
   s0=$(date +%s)
-  echo "$BAR_NAME: phase 2: 1 process at a time, under a GC heap of $GC_MAXIMUM_HEAP_SIZE bytes"
   for f in $(jq -r '.flakes | keys[]' "$BAR_SRCS"); do
     mapfile -t planes < <(jq -r --arg f "$f" '.flakes[$f].planes[]' "$BAR_SRCS")
     for p in "${planes[@]}"; do

@@ -247,6 +247,8 @@
         ./tests-process.nix
         # Every bar's `--fold`, run with no evaluator: a sandboxed check (`checks.bar-fold`).
         ./bar-fold.nix
+        # hm-bar's and fp-bar's memory budget over planted cgroup trees: a sandboxed check (`checks.bar-budget`).
+        ./bar-budget.nix
       ];
     };
 }

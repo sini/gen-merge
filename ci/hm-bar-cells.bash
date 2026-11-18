@@ -25,9 +25,9 @@ ifdArm() {
 wargs() { printf '%s\n' --argstr read "$1" --argstr set "$wset" --argstr route "$2"; }
 
 # THE TESTS run in chunks of 50 of the sorted names (home-manager's own CI chunk size), one process per chunk
-# per arm, each test under `tryEval` (`hm-bar-eval.nix`'s `chunk` read). Up to BAR_JOBS processes run at once
-# (default: the host's cores), each under its own memory cap, a GC heap of BAR_HEAP bytes (default: the
-# host's memory over BAR_JOBS); an evaluation that exceeds it is CONTROL FAILED (`evalArm`), never a verdict.
+# per arm, each test under `tryEval` (`hm-bar-eval.nix`'s `chunk` read). Up to BAR_JOBS processes run at once,
+# each under its own memory cap, a GC heap of BAR_HEAP bytes (defaults: `barBudget`, from the memory the run may
+# use); an evaluation that exceeds it is CONTROL FAILED (`evalArm`), never a verdict.
 #
 # A chunk that exits non-zero on EITHER arm is re-run one test per process on BOTH arms, so that test's value
 # and refusal text come from its own process, and both arms read every test at the same grain. A test
@@ -247,10 +247,7 @@ tests() {
 }
 
 cells() {
-  local jobs
-  jobs=${BAR_JOBS:-$(nproc)}
-  export GC_MAXIMUM_HEAP_SIZE=${BAR_HEAP:-$(($(awk '/^MemTotal:/ { print $2 }' /proc/meminfo) * 1024 / jobs))}
-  echo "$BAR_NAME: $jobs processes at once, each under a GC heap of $GC_MAXIMUM_HEAP_SIZE bytes"
+  barBudget
   for wset in hm nixos darwin; do
     docsWalk "{\"kind\":\"docs-walk\",\"set\":\"$wset\"}" "$wset" wargs
   done
