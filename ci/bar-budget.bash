@@ -45,7 +45,8 @@ barBudget() {
     n=$(grep -c '^0::' "$proc/self/cgroup" 2>/dev/null || true)
     [ "$n" = 1 ] || bad "$proc/self/cgroup holds $n cgroup v2 entries, not 1"
     rel=$(sed -n 's/^0:://p' "$proc/self/cgroup")
-    [[ $rel =~ ^(/[^/]+)*/?$ && ! $rel =~ (^|/)\.\.?(/|$) ]] || bad "the cgroup path '$rel' is not absolute and canonical"
+    # `/`, or `/` and slash-separated names with no trailing slash: never empty, relative, `.`, `..` or `//`.
+    [[ $rel =~ ^/([^/]+(/[^/]+)*)?$ && ! $rel =~ (^|/)\.\.?(/|$) ]] || bad "the cgroup path '$rel' is not absolute and canonical"
     n=$(awk -v m="$sys" '{ for (i = 7; i < NF; i++) if ($i == "-") break } $(i + 1) == "cgroup2" && $5 == m { print $4 }' \
       "$proc/self/mountinfo" 2>/dev/null || true)
     [ "$n" = / ] || bad "no cgroup2 mount at $sys with root / in $proc/self/mountinfo (read: '${n//$'\n'/ }'), so $rel cannot be placed"
@@ -68,6 +69,7 @@ barBudget() {
   fi
   if [ -z "$want" ]; then
     n=$(nproc)
+    [[ $n =~ ^[1-9][0-9]{0,3}$ ]] || bad "nproc reads '$n', not an integer 1-9999"
     want=$((room / ${heap:-$floor}))
     ((want <= n)) || want=$n
     ((want >= 1)) || bad "$room bytes of room hold no ${heap:-$floor}-byte heap"

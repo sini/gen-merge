@@ -36,7 +36,7 @@ run() {
   shift 2
   (
     set -euo pipefail
-    nproc() { echo 32; }
+    nproc() { echo "${NPROC-32}"; }
     BAR_NAME=cell BAR_PROCFS=$t/proc BAR_SYSFS=$t/sys
     # shellcheck disable=SC1090
     source "$w/$impl.bash"
@@ -127,6 +127,13 @@ tree dot 120 0::/a/./b /a/b memory.max max
 want dot "$(run budget dot)" 2
 tree dblslash 120 0::/a//b /a/b memory.max max
 want dblslash "$(run budget dblslash)" 2
+tree emptypath 120 0:: / memory.max $((7 * G)) / memory.current 0
+want emptypath "$(run budget emptypath)" 2
+tree trailing 120 0::/a/ /a memory.max max
+want trailing "$(run budget trailing)" 2
+# nproc must read a positive integer too (it bounds the job count's arithmetic).
+want nproc-empty "$(NPROC= run budget scope12)" 2
+want nproc-huge "$(NPROC=99999 run budget scope12)" 2
 # A MemAvailable past 15 digits of kB (10^10 GiB), and a limit past 18 digits, refuse.
 tree hugemem 10000000000 0::/run.scope /run.scope memory.max max
 want hugemem "$(run budget hugemem)" 2
