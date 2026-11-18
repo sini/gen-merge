@@ -18,6 +18,9 @@ tree() {
   mkdir -p "$t/proc/self" "$t/sys"
   if [ "$2" != - ]; then echo "MemAvailable: $(($2 * 1048576)) kB" >"$t/proc/meminfo"; else : >"$t/proc/meminfo"; fi
   if [ "$3" != - ]; then echo "$3" >"$t/proc/self/cgroup"; else echo "4:memory:/legacy" >"$t/proc/self/cgroup"; fi
+  # The cgroup2 mount at the planted /sys/fs/cgroup, its root `/` unless MOUNT_ROOT says otherwise (`none`: no line).
+  [ "${MOUNT_ROOT:-/}" = none ] || echo "28 52 0:3 ${MOUNT_ROOT:-/} $t/sys rw,nosuid - cgroup2 cgroup2 rw,nsdelegate" >"$t/proc/self/mountinfo"
+  echo "29 52 0:4 / $t/proc rw - proc proc rw" >>"$t/proc/self/mountinfo"
   shift 3
   while [ $# -gt 0 ]; do
     d=$t/sys$1 f=$2 v=$3
@@ -89,11 +92,23 @@ tree nocurrent 120 0::/run.scope /run.scope memory.max $((12 * G))
 want nocurrent "$(run budget nocurrent)" 2
 tree nomeminfo - 0::/run.scope /run.scope memory.max max
 want nomeminfo "$(run budget nomeminfo)" 2
+# A cgroup namespace viewing the outer mount (bitstream, `unshare -Ur --cgroup` under a 12G scope: root
+# /../../../../.., own path `/`), which would otherwise read the host root's (absent) limit; no cgroup2 mount.
+MOUNT_ROOT=/../../../../.. tree outerns 120 0::/ / memory.current 0
+want outerns "$(run budget outerns)" 2
+MOUNT_ROOT=none tree nomount 120 0::/run.scope /run.scope memory.max max
+want nomount "$(run budget nomount)" 2
 # OVERRIDES: both set are honoured with nothing read (the v1 host would fail closed); one set fills the other.
 want override-both "$(BAR_JOBS=4 BAR_HEAP=$((5 * G / 2)) run budget v1)" 0 4 $((5 * G / 2))
 want override-jobs "$(BAR_JOBS=2 run budget scope12)" 0 2 $((9 * G / 2))
 want override-heap "$(BAR_HEAP=$((4 * G)) run budget scope12)" 0 2 $((4 * G))
 want override-jobs-floor "$(BAR_JOBS=8 run budget scope12)" 2
+# INVALID OVERRIDES fail closed: zero, negative, non-numeric, a unit suffix.
+want override-jobs-zero "$(BAR_JOBS=0 run budget scope12)" 2
+want override-jobs-text "$(BAR_JOBS=four run budget scope12)" 2
+want override-heap-zero "$(BAR_HEAP=0 run budget scope12)" 2
+want override-heap-negative "$(BAR_HEAP=-1 run budget scope12)" 2
+want override-heap-suffix "$(BAR_HEAP=2G BAR_JOBS=4 run budget scope12)" 2
 # PHASE 2 (`barBudget 1`): one process, all the room.
 want phase2 "$(run budget scope12 1)" 0 1 $((9 * G))
 want phase2-tiny "$(run budget tiny 1)" 2
