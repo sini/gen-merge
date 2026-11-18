@@ -9041,43 +9041,47 @@ let
                 # it, as nixpkgs' `mergeOptionDecls` is. A key the spine does not hold (the engine's own
                 # `_module` keys) is decided off the merged tree.
                 if isOptLeaf ((if loc == [ ] then spine.options or { } else spine).${k} or opts.${k}) then
-                  # A root `_module` leaf never splices: prev's returned `config` is `_module`-free.
-                  if
-                    warmCtx.active
-                    && (if loc == [ ] then k else head loc) != "_module"
-                    && warmCtx.isClean (builtins.toJSON (loc ++ [ k ]))
-                  then
+                  # A root `_module` leaf never splices: prev's returned `config` is `_module`-free. `lk` and
+                  # `abs` are bound on the warm path only, where the decision and the splice share them; a
+                  # cold merge binds nothing per key (nixpkgs b59a585).
+                  if warmCtx.active then
                     let
                       lk = loc ++ [ k ];
                       abs = prefix ++ lk;
                     in
-                    # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
-                    # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
-                    # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
-                    # (both the decl set and the def set at this loc come only from CLEAN modules).
-                    # The decision and both splices take the RELATIVE `lk`: the footprint `isClean` decides
-                    # over (`declLeafPaths`/`moduleDefFootprint`) and prev's `config`/`provenance` are all
-                    # rooted at `[ ]` whatever the `prefix`. `abs` names nothing in them.
-                    {
-                      name = k;
-                      m = {
-                        value = getAttrByPath lk warmCtx.prevConfig;
-                        prov = getAttrByPath lk warmCtx.prevProv;
-                        typeDefs = getAttrByPath lk warmCtx.prevDefs;
-                        # The reused leaf's findings are the PRIOR eval's report records at and below `abs`,
-                        # passed through unchanged: both are in the absolute frame. The same §2 predicate
-                        # (decls and defs here come only from clean modules) makes that report the cold
-                        # merge's, so reuse survives and nothing is re-merged. The prior report holds entries
-                        # at or below `abs` only from this leaf's own channel (an undeclared key elsewhere is
-                        # captured above a declared leaf, never below one). Read only through the walk's
-                        # declaration guard below, like the cold record's `undeclared`.
-                        undeclared =
-                          let
-                            n = length abs;
-                          in
-                          filter (u: length u.path >= n && take n u.path == abs) warmCtx.prevUndeclared;
-                      };
-                    }
+                    if head lk != "_module" && warmCtx.isClean (builtins.toJSON lk) then
+                      # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
+                      # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
+                      # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
+                      # (both the decl set and the def set at this loc come only from CLEAN modules).
+                      # The decision and both splices take the RELATIVE `lk`: the footprint `isClean` decides
+                      # over (`declLeafPaths`/`moduleDefFootprint`) and prev's `config`/`provenance` are all
+                      # rooted at `[ ]` whatever the `prefix`. `abs` names nothing in them.
+                      {
+                        name = k;
+                        m = {
+                          value = getAttrByPath lk warmCtx.prevConfig;
+                          prov = getAttrByPath lk warmCtx.prevProv;
+                          typeDefs = getAttrByPath lk warmCtx.prevDefs;
+                          # The reused leaf's findings are the PRIOR eval's report records at and below `abs`,
+                          # passed through unchanged: both are in the absolute frame. The same §2 predicate
+                          # (decls and defs here come only from clean modules) makes that report the cold
+                          # merge's, so reuse survives and nothing is re-merged. The prior report holds entries
+                          # at or below `abs` only from this leaf's own channel (an undeclared key elsewhere is
+                          # captured above a declared leaf, never below one). Read only through the walk's
+                          # declaration guard below, like the cold record's `undeclared`.
+                          undeclared =
+                            let
+                              n = length abs;
+                            in
+                            filter (u: length u.path >= n && take n u.path == abs) warmCtx.prevUndeclared;
+                        };
+                      }
+                    else
+                      {
+                        name = k;
+                        m = warmCtx.mergeOption abs opts.${k} (subDefs k);
+                      }
                   else
                     {
                       name = k;
