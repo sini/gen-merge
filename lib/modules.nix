@@ -3497,16 +3497,14 @@ let
       ++ moduleLevels class callM seen (
         concatMap (
           { content, ... }@e:
-          let
-            i = importsOf content;
-          in
-          # an entry importing nothing contributes no entry, so no walk is built for it (nixpkgs 6d6a008)
-          if i == [ ] then
+          # an entry stating neither `imports` nor `require` imports nothing (`importsOf` is `[ ]`), so no walk is
+          # built for it and nothing is bound per entry (nixpkgs 6d6a008, d55f650)
+          if !(content ? imports || content ? require) then
             [ ]
           else if e ? dis then
-            removal.walk.keptEntries e.dis callM e i
+            removal.walk.keptEntries e.dis callM e (importsOf content)
           else
-            moduleEntries callM e i
+            moduleEntries callM e (importsOf content)
         ) level
       )
     else
@@ -3649,6 +3647,31 @@ let
   # check reads (`removal.walk.checked`). `moduleClosure` is its null specialisation, bound once, so a tree stating no
   # class applies the collection to its four arguments and pays nothing per evaluation for a class it never states.
   moduleClosure = moduleClosureWith null;
+  # An evaluation's published module set, `typeOver`'s `moduleSet` (read there). At file scope and over variables only,
+  # so `extendModules` reads the set as nixpkgs reads `regularModules`, without building the module type.
+  moduleSetOf =
+    root: knot: modList: prefix: r:
+    let
+      located =
+        if root == null then
+          (ms: ms)
+        else
+          map (m: {
+            _file = root._file;
+            imports = [ m ];
+          });
+    in
+    if knot.positioned then
+      [ namePlaceholderModule ]
+      ++ located (take r._own.nOwn modList)
+      ++ [ (positionModule prefix) ]
+      ++ drop r._own.nOwn modList
+    else if r._own.holds then
+      [ namePlaceholderModule ] ++ located (prelude.init modList)
+    else if root != null then
+      throw "gen-merge: an evaluation located by its importer (`root') is neither positioned nor closed by the name placeholder, so its module set has no place for the name modules and is not published"
+    else
+      modList;
   moduleClosureWith =
     class: specialArgs: callM: root: mods:
     let
@@ -8086,28 +8109,7 @@ let
           # named (den-hoag-d2o0g OQ3). The groups are the `_module.args` record's (`_own`); an evaluation
           # its importer locates (`root`) is one of the two that name it, so its own modules are never
           # published unlocated.
-          moduleSet =
-            let
-              located =
-                if root == null then
-                  (ms: ms)
-                else
-                  map (m: {
-                    _file = root._file;
-                    imports = [ m ];
-                  });
-            in
-            if knot.positioned then
-              [ namePlaceholderModule ]
-              ++ located (take r._own.nOwn modList)
-              ++ [ (positionModule prefix) ]
-              ++ drop r._own.nOwn modList
-            else if r._own.holds then
-              [ namePlaceholderModule ] ++ located (prelude.init modList)
-            else if root != null then
-              throw "gen-merge: an evaluation located by its importer (`root') is neither positioned nor closed by the name placeholder, so its module set has no place for the name modules and is not published"
-            else
-              modList;
+          moduleSet = moduleSetOf root knot modList prefix r;
           # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
           # (den-hoag-n6dh7 items 1, 4, 5). The tree is a child of the one evaluation that holds it,
           # and `threaded` / `threadedReported` read it through that evaluation's accessor: the site
@@ -8986,10 +8988,14 @@ let
               # `modIndex` (the originating module instance, threaded from `topDefs`) rides every def so
               # unmatched keys can be coalesced per module at the root — see `coalesceUnmatched`.
               pushed = map (
-                { file, value, ... }@d:
                 {
-                  inherit file;
-                  inherit (d) modIndex;
+                  file,
+                  value,
+                  modIndex,
+                  ...
+                }:
+                {
+                  inherit file modIndex;
                   attrs = pushDownProperties value;
                 }
               ) rawDefs;
@@ -9034,17 +9040,21 @@ let
               # provenance mirrors config's loc structure attribute-for-attribute.
               declaredPairs = mapAttrs (
                 k: _:
-                let
-                  lk = loc ++ [ k ];
-                  abs = prefix ++ lk;
-                in
                 # Leafness is a fact of the DECLARATIONS (stratum 1), read off the spine, so a redeclared
                 # leaf's merged record (whose type merge may refuse) is forced only by the read that reaches
                 # it, as nixpkgs' `mergeOptionDecls` is. A key the spine does not hold (the engine's own
                 # `_module` keys) is decided off the merged tree.
                 if isOptLeaf ((if loc == [ ] then spine.options or { } else spine).${k} or opts.${k}) then
                   # A root `_module` leaf never splices: prev's returned `config` is `_module`-free.
-                  if warmCtx.active && head lk != "_module" && warmCtx.isClean (builtins.toJSON lk) then
+                  if
+                    warmCtx.active
+                    && (if loc == [ ] then k else head loc) != "_module"
+                    && warmCtx.isClean (builtins.toJSON (loc ++ [ k ]))
+                  then
+                    let
+                      lk = loc ++ [ k ];
+                      abs = prefix ++ lk;
+                    in
                     # REUSABLE — gen-memo admits this location as clean: splice prev's leaf value + provenance record
                     # (the same memoized thunks). `getAttrByPath` is lazy: an unforced prev leaf stays
                     # unforced, a forced one is free. Byte-identical to the cold merge by the §2 predicate
@@ -9075,15 +9085,14 @@ let
                   else
                     {
                       name = k;
-                      m = warmCtx.mergeOption abs opts.${k} (subDefs k);
+                      m = warmCtx.mergeOption (prefix ++ loc ++ [ k ]) opts.${k} (subDefs k);
                     }
                 else
                   {
                     name = k;
                     group = true;
-                    m = mergeTree lk ((if loc == [ ] then spine.options or { } else spine).${k} or { }) opts.${k} (
-                      subDefs k
-                    );
+                    m = mergeTree (loc ++ [ k ]) ((if loc == [ ] then spine.options or { } else spine).${k} or { }
+                    ) opts.${k} (subDefs k);
                   }
               ) opts;
 
@@ -10131,7 +10140,7 @@ let
                     evalModuleTreeWith knotRoot true false (
                       {
                         # nixpkgs' `regularModules ++ modules`: the published module set, extended
-                        modules = engine.moduleType.substructure.modules ++ modules;
+                        modules = moduleSetOf root knot modList p0 result ++ modules;
                         specialArgs = s0 // specialArgs;
                         prefix = if e ? prefix then prefix else p0;
                         inherit check coreShortCircuit;

@@ -624,7 +624,7 @@
           # stays at or under its reference arm, nixpkgs over the same construction: gen/ref <= 1. Every site's set
           # carries the child's definitions, so each reads the sum of the children's `v`. Each site also holds gen's
           # landed figure as its bound (ADR-0032: an optimization lowers the bound in the same change).
-          for bound in again:1213 extN:1111 emptyV:1088; do
+          for bound in again:1170 extN:1030 emptyV:1046; do
             cell=''${bound%%:*} max=''${bound#*:}
             for eng in gen nixpkgs; do
               thunksOf "reuse-cost-$cell-$eng-100"
