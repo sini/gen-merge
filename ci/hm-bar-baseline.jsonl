@@ -2767,6 +2767,11 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.opkssh.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opkssh.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.opkssh.settings","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.oyui.config","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.oyui.configFile","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.oyui.enable","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.oyui.enableJujutsuIntegration","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.oyui.package","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pandoc.citationStyles","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pandoc.defaults","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.pandoc.defaultsFile","n":0},"verdict":"PASS"}
@@ -3326,6 +3331,7 @@
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.server.enable","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.server.environmentFile","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.server.extraArgs","n":0},"verdict":"PASS"}
+{"key":{"kind":"doc","set":"hm","name":"programs.t3code.themes","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.t3code.userSettings","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.taskwarrior.colorTheme","n":0},"verdict":"PASS"}
 {"key":{"kind":"doc","set":"hm","name":"programs.taskwarrior.config","n":0},"verdict":"PASS"}
@@ -6952,6 +6958,9 @@
 {"key":{"kind":"test","name":"openstackclient-mixed-options"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"opkssh-basic-config"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"osmscout-server"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"oyui-empty-config"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"oyui-example-config"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"oyui-jujutsu-integration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pam-session-variables"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pam-yubico-no-ids"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"pam-yubico-with-ids"},"verdict":"PASS"}
@@ -7304,6 +7313,7 @@
 {"key":{"kind":"test","name":"t3code-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"t3code-settings-empty"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"t3code-settings-immutable"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"t3code-themes"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"tahoe-lafs-basic"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"tailscale-systray-basic"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"tailscale-systray-theme"},"verdict":"PASS"}
@@ -7453,7 +7463,7 @@
 {"key":{"kind":"test","name":"wayfire-configuration"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"wayfire-wf-shell"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"wayle-basic-config"},"verdict":"PASS"}
-{"key":{"kind":"test","name":"wayprompt-empty-settings"},"verdict":"PASS"}
+{"key":{"kind":"test","name":"wayprompt-empty-settings"},"verdict":"PASS-CLASS"}
 {"key":{"kind":"test","name":"wayprompt-example-settings"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"wayvnc-simple"},"verdict":"PASS"}
 {"key":{"kind":"test","name":"wbg-service"},"verdict":"PASS"}
