@@ -13,8 +13,8 @@ _: {
         n=$(grep -c '^PASS ' cells.out || true)
         ! grep -q '^FAIL ' cells.out || rc=1
         [ "$rc" = 0 ] || { echo "bar-budget: a cell failed"; exit 1; }
-        [ "$n" = 27 ] || { echo "bar-budget: collected $n cells, want exactly 27"; exit 1; }
-        echo "bar-budget: 27 cells" > $out
+        [ "$n" = 39 ] || { echo "bar-budget: collected $n cells, want exactly 39"; exit 1; }
+        echo "bar-budget: 39 cells" > $out
       '';
     };
 }

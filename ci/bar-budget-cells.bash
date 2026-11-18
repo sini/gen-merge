@@ -15,7 +15,8 @@ cmp -s "$src" "$w/mutant.bash" && { echo "FAIL mutant: the sed did not cut the a
 # A value `DIR` makes the file a directory (unreadable as a file).
 tree() {
   local t=$w/$1 d f v
-  mkdir -p "$t/proc/self" "$t/sys"
+  mkdir -p "$t/proc/self/ns" "$t/sys"
+  ln -s "${CGNS:-cgroup:[4026531835]}" "$t/proc/self/ns/cgroup"
   if [ "$2" != - ]; then echo "MemAvailable: $(($2 * 1048576)) kB" >"$t/proc/meminfo"; else : >"$t/proc/meminfo"; fi
   if [ "$3" != - ]; then echo "$3" >"$t/proc/self/cgroup"; else echo "4:memory:/legacy" >"$t/proc/self/cgroup"; fi
   # The cgroup2 mount at the planted /sys/fs/cgroup, its root `/` unless MOUNT_ROOT says otherwise (`none`: no line).
@@ -40,7 +41,7 @@ run() {
     # shellcheck disable=SC1090
     source "$w/$impl.bash"
     barBudget "$@" >/dev/null 2>"$w/err"
-    echo "0 $BAR_JOBS $GC_MAXIMUM_HEAP_SIZE"
+    echo "0 $barJobs $GC_MAXIMUM_HEAP_SIZE${PRINT_BAR_JOBS:+ ${BAR_JOBS:-unset}}"
   ) || echo "$? - -"
 }
 # want <cell> <got> <rc> [<jobs> <heap>]: the cell's verdict.
@@ -49,7 +50,7 @@ want() {
   if [ "$rc" != 0 ]; then
     [ "${got%% *}" = "$rc" ] && echo "PASS $c" || echo "FAIL $c: want exit $rc, got '$got'"
   else
-    [ "$got" = "0 $4 $5" ] && echo "PASS $c" || echo "FAIL $c: want '0 $4 $5', got '$got' ($(cat "$w/err"))"
+    [ "$got" = "0 $4 $5${6:+ $6}" ] && echo "PASS $c" || echo "FAIL $c: want '0 $4 $5${6:+ $6}', got '$got' ($(cat "$w/err"))"
   fi
 }
 
@@ -109,6 +110,32 @@ want override-jobs-text "$(BAR_JOBS=four run budget scope12)" 2
 want override-heap-zero "$(BAR_HEAP=0 run budget scope12)" 2
 want override-heap-negative "$(BAR_HEAP=-1 run budget scope12)" 2
 want override-heap-suffix "$(BAR_HEAP=2G BAR_JOBS=4 run budget scope12)" 2
+# Overrides past the digit bounds refuse before any arithmetic (a 2^63 heap would wrap).
+want override-jobs-huge "$(BAR_JOBS=10000 run budget scope12)" 2
+want override-heap-huge "$(BAR_HEAP=9223372036854775808 BAR_JOBS=1 run budget scope12)" 2
+# A cgroup namespace other than the initial one (a container, or `unshare --cgroup` with cgroup2 remounted, whose
+# root reads `/` and hides the tighter ancestors above it) refuses, even with an otherwise clean tree.
+CGNS='cgroup:[4026532999]' tree container 120 0::/ / memory.current 0
+want container "$(run budget container)" 2
+# A cgroup path that is relative, carries `..` or `.`, or doubles a slash refuses, so the ancestor walk is only
+# ever over the canonical path below the mount.
+tree relpath 120 0::run.scope /run.scope memory.max max
+want relpath "$(run budget relpath)" 2
+tree dotdot 120 0::/a/../.. /a memory.max max
+want dotdot "$(run budget dotdot)" 2
+tree dot 120 0::/a/./b /a/b memory.max max
+want dot "$(run budget dot)" 2
+tree dblslash 120 0::/a//b /a/b memory.max max
+want dblslash "$(run budget dblslash)" 2
+# A MemAvailable past 15 digits of kB (10^10 GiB), and a limit past 18 digits, refuse.
+tree hugemem 10000000000 0::/run.scope /run.scope memory.max max
+want hugemem "$(run budget hugemem)" 2
+tree hugelim 120 0::/run.scope /run.scope memory.max 9999999999999999999 /run.scope memory.current 0
+want hugelim "$(run budget hugelim)" 2
+# PHASE 2 (`barBudget 1`) leaves BAR_JOBS as phase 1 exported it, unset or the operator's.
+want phase2-keeps-unset "$(PRINT_BAR_JOBS=1 run budget scope12 1)" 0 1 $((9 * G)) unset
+want phase2-keeps-operator "$(PRINT_BAR_JOBS=1 BAR_JOBS=7 run budget scope12 1)" 0 1 $((9 * G)) 7
+want phase1-exports "$(PRINT_BAR_JOBS=1 run budget scope12)" 0 3 $((9 * G / 3)) 3
 # PHASE 2 (`barBudget 1`): one process, all the room.
 want phase2 "$(run budget scope12 1)" 0 1 $((9 * G))
 want phase2-tiny "$(run budget tiny 1)" 2
