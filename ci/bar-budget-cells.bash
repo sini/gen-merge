@@ -135,9 +135,9 @@ want trailing "$(run budget trailing)" 2
 want nproc-empty "$(NPROC= run budget scope12)" 2
 want nproc-huge "$(NPROC=99999 run budget scope12)" 2
 # A MemAvailable past 15 digits of kB (10^10 GiB), and a limit past 18 digits, refuse.
-tree hugemem 10000000000 0::/run.scope /run.scope memory.max max
+tree hugemem 953675000 0::/run.scope /run.scope memory.max max
 want hugemem "$(run budget hugemem)" 2
-tree hugelim 120 0::/run.scope /run.scope memory.max 9999999999999999999 /run.scope memory.current 0
+tree hugelim 120 0::/run.scope /run.scope memory.max 1000000000000000000 /run.scope memory.current 0
 want hugelim "$(run budget hugelim)" 2
 # PHASE 2 (`barBudget 1`) leaves BAR_JOBS as phase 1 exported it, unset or the operator's.
 want phase2-keeps-unset "$(PRINT_BAR_JOBS=1 run budget scope12 1)" 0 1 $((9 * G)) unset
@@ -146,4 +146,12 @@ want phase1-exports "$(PRINT_BAR_JOBS=1 run budget scope12)" 0 3 $((9 * G / 3)) 
 # PHASE 2 (`barBudget 1`): one process, all the room.
 want phase2 "$(run budget scope12 1)" 0 1 $((9 * G))
 want phase2-tiny "$(run budget tiny 1)" 2
+# nproc caps the jobs when the room holds more floor heaps than there are cores.
+want nproc-cap "$(NPROC=2 run budget scope12)" 0 2 $((9 * G / 2))
+# memory.high binds where memory.max reads `max` (systemd MemoryHigh= alone).
+tree highonly 120 0::/run.scope /run.scope memory.max max /run.scope memory.high $((7 * G)) /run.scope memory.current 0
+want highonly "$(run budget highonly)" 0 2 $((5 * G / 2))
+# A malformed memory.current refuses.
+tree badcur 120 0::/run.scope /run.scope memory.max $((12 * G)) /run.scope memory.current 1G
+want badcur "$(run budget badcur)" 2
 rm -rf "$w"
