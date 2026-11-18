@@ -3647,31 +3647,6 @@ let
   # check reads (`removal.walk.checked`). `moduleClosure` is its null specialisation, bound once, so a tree stating no
   # class applies the collection to its four arguments and pays nothing per evaluation for a class it never states.
   moduleClosure = moduleClosureWith null;
-  # An evaluation's published module set, `typeOver`'s `moduleSet` (read there). At file scope and over variables only,
-  # so `extendModules` reads the set as nixpkgs reads `regularModules`, without building the module type.
-  moduleSetOf =
-    root: knot: modList: prefix: r:
-    let
-      located =
-        if root == null then
-          (ms: ms)
-        else
-          map (m: {
-            _file = root._file;
-            imports = [ m ];
-          });
-    in
-    if knot.positioned then
-      [ namePlaceholderModule ]
-      ++ located (take r._own.nOwn modList)
-      ++ [ (positionModule prefix) ]
-      ++ drop r._own.nOwn modList
-    else if r._own.holds then
-      [ namePlaceholderModule ] ++ located (prelude.init modList)
-    else if root != null then
-      throw "gen-merge: an evaluation located by its importer (`root') is neither positioned nor closed by the name placeholder, so its module set has no place for the name modules and is not published"
-    else
-      modList;
   moduleClosureWith =
     class: specialArgs: callM: root: mods:
     let
@@ -8109,7 +8084,28 @@ let
           # named (den-hoag-d2o0g OQ3). The groups are the `_module.args` record's (`_own`); an evaluation
           # its importer locates (`root`) is one of the two that name it, so its own modules are never
           # published unlocated.
-          moduleSet = moduleSetOf root knot modList prefix r;
+          moduleSet =
+            let
+              located =
+                if root == null then
+                  (ms: ms)
+                else
+                  map (m: {
+                    _file = root._file;
+                    imports = [ m ];
+                  });
+            in
+            if knot.positioned then
+              [ namePlaceholderModule ]
+              ++ located (take r._own.nOwn modList)
+              ++ [ (positionModule prefix) ]
+              ++ drop r._own.nOwn modList
+            else if r._own.holds then
+              [ namePlaceholderModule ] ++ located (prelude.init modList)
+            else if root != null then
+              throw "gen-merge: an evaluation located by its importer (`root') is neither positioned nor closed by the name placeholder, so its module set has no place for the name modules and is not published"
+            else
+              modList;
           # ONE fold value, whose two evaluating forms READ the tree rather than evaluate it
           # (den-hoag-n6dh7 items 1, 4, 5). The tree is a child of the one evaluation that holds it,
           # and `threaded` / `threadedReported` read it through that evaluation's accessor: the site
@@ -10139,8 +10135,34 @@ let
                     }:
                     evalModuleTreeWith knotRoot true false (
                       {
-                        # nixpkgs' `regularModules ++ modules`: the published module set, extended
-                        modules = moduleSetOf root knot modList p0 result ++ modules;
+                        # nixpkgs' `regularModules ++ modules`: the published module set, extended. The set is
+                        # `typeOver`'s `moduleSet`, restated so the extension builds no type to read it, and binds
+                        # nothing outside this call
+                        modules =
+                          (
+                            let
+                              located =
+                                if root == null then
+                                  (ms: ms)
+                                else
+                                  map (m: {
+                                    _file = root._file;
+                                    imports = [ m ];
+                                  });
+                            in
+                            if knot.positioned then
+                              [ namePlaceholderModule ]
+                              ++ located (take result._own.nOwn modList)
+                              ++ [ (positionModule p0) ]
+                              ++ drop result._own.nOwn modList
+                            else if result._own.holds then
+                              [ namePlaceholderModule ] ++ located (prelude.init modList)
+                            else if root != null then
+                              throw "gen-merge: an evaluation located by its importer (`root') is neither positioned nor closed by the name placeholder, so its module set has no place for the name modules and is not published"
+                            else
+                              modList
+                          )
+                          ++ modules;
                         specialArgs = s0 // specialArgs;
                         prefix = if e ? prefix then prefix else p0;
                         inherit check coreShortCircuit;
