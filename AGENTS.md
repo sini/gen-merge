@@ -443,6 +443,11 @@ process cells `one-eval-*` and `candidate-modules*` (`ci/tests-process.nix`).
   planted-override test ×3 with 0 R→S. Spec: den-ag-design
   `specs/2026-10-13-gen-merge-derivetype-foreign-base-spec.md`.
 
+- **A raw `//` copy overriding a completed record's `nests` or `split` is an ADR-0039 interoperability limit**,
+  not a parity row (den-hoag-2flb7): gen's engine reads the copy's field, nixpkgs' reads the base's. Note:
+  den-ag-design `specs/2026-11-19-gen-merge-raw-structure-copy-interop-note.md`; cells:
+  `ci/tests/raw-structure-copy-interop.nix`.
+
 ## Theory
 
 `README.md` states its claims as one flat **Theoretical foundations** list (no Implements /
