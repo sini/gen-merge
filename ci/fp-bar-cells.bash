@@ -136,8 +136,9 @@ cells() {
   echo "$BAR_NAME: phase 1: $n units, the memo cell, ${#tpls[@]} templates (${tpls[*]}) and their poison reads, $(($(date +%s) - s0)) s"
 
   # PHASE 2, the real flakes, ONE EVALUATION AT A TIME, under a GC heap of all the room `barBudget` reads now
-  # (BAR_HEAP overrides it), so `evalArm`'s out-of-memory control, not the kernel, decides an evaluation that
-  # outgrows it. Each flake's `names` read is evaluated once more on the poison engine.
+  # (an explicit BAR_HEAP is taken as intentional and this phase's room is then not read), so `evalArm`'s
+  # out-of-memory control, not the kernel, decides an evaluation that outgrows it. Each flake's `names` read is
+  # evaluated once more on the poison engine.
   echo "$BAR_NAME: phase 2:"
   barBudget 1
   s0=$(date +%s)

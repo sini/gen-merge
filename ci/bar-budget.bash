@@ -11,8 +11,10 @@
 #   jobs = min(nproc, room / FLOOR), heap = room / jobs (FLOOR: the heap the measured BAR_JOBS=4 BAR_HEAP=2.5GiB
 #   workaround served the full register at, under a 12G scope).
 # OVERRIDES are the operator's responsibility: BAR_JOBS and BAR_HEAP, when set, must be positive integers (anything
-# else fails closed) and are honoured as given. With ONE set, the other is still derived from the room, so the
-# product stays bounded by it; with BOTH set nothing is read and nothing bounds them but the operator.
+# else fails closed) and are honoured as given. In a parallel phase with ONE set, the other is still derived from
+# the room, so the product stays bounded by it; with BOTH set nothing is read and nothing bounds them but the
+# operator. A serial phase (`barBudget 1`) fixes the jobs, so an explicit BAR_HEAP there is taken as intentional and
+# the phase's current room is NOT read: phase 1's check is no proof of the headroom left by the time phase 2 runs.
 # SUPPORTED: a process in the initial cgroup namespace (a host, a VM, a CI runner), where every ancestor is visible.
 # Inside any other cgroup namespace (a container) ancestors above its root are hidden, so it fails closed there.
 # FAILS CLOSED (exit 2, CONTROL FAILED, never a verdict) when the room cannot be read (a cgroup namespace other
@@ -33,7 +35,7 @@ barBudget() {
   [ -z "$want" ] || [[ $want =~ ^[1-9][0-9]{0,3}$ ]] || bad "BAR_JOBS (or the phase's jobs) reads '$want', not an integer 1-9999"
   [ -z "$heap" ] || [[ $heap =~ ^[1-9][0-9]{0,15}$ ]] || bad "BAR_HEAP reads '$heap', not an integer of bytes 1-9999999999999999"
   if [ -n "$want" ] && [ -n "$heap" ]; then
-    by="BAR_JOBS and BAR_HEAP, the operator's"
+    by="the given jobs and BAR_HEAP, taken as intentional; the room is not read"
   else
     # The kB field is read as text and scaled here, so no awk number formatting can reach the arithmetic.
     room=$(awk '/^MemAvailable:/ { print $2 }' "$proc/meminfo" 2>/dev/null || true)
