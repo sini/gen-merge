@@ -245,20 +245,23 @@ pkgs.writeShellApplication {
     # SAME ASSERTIONS: both runs recorded one id set.
     ids() { jq -c '[.key.kind, .key.env, .key.argv]' "$1" | sort; }
     cmp -s <(ids "$tmp/ref.jsonl") <(ids "$tmp/gen.jsonl") || control "the two runs recorded different assertions"
-    # gen's records, each with the reference run's {rc, verdict, perf} joined by id.
+    # gen's records, each with the reference run's {rc, verdict, perf, err} joined by id (`err` is THE SHARED
+    # THROW's reference refusal, `modules-sh-compare.jq`).
     jq -c --slurpfile ref "$tmp/ref.jsonl" \
-      '($ref | map({ key: (.key | [.kind, .env, .argv] | tojson), value: { rc, verdict, perf } }) | from_entries) as $R
+      '($ref | map({ key: (.key | [.kind, .env, .argv] | tojson), value: { rc, verdict, perf, err } }) | from_entries) as $R
       | . + { ref: $R[.key | [.kind, .env, .argv] | tojson] }' "$tmp/gen.jsonl" >"$tmp/records.jsonl"
 
-    jq -rs --arg mode perf --arg ev "$line" --slurpfile base "$base" -f ${./modules-sh-compare.jq} "$tmp/records.jsonl"
+    # THE SHARED THROW's roots: each tree's `tests/`, where the suite's fixtures and no engine source lie.
+    roots='{"gen":"${genTree}/tests","ref":"${refTree}/tests"}'
+    jq -rs --arg mode perf --arg ev "$line" --slurpfile base "$base" --argjson roots "$roots" -f ${./modules-sh-compare.jq} "$tmp/records.jsonl"
     if [ "''${1:-}" = --write-baseline ]; then
       [ $# -ge 2 ] || control "usage: modules-sh --write-baseline F"
-      jq -rs --arg mode write --arg ev "$line" --slurpfile base "$base" -f ${./modules-sh-compare.jq} "$tmp/records.jsonl" >"$2"
+      jq -rs --arg mode write --arg ev "$line" --slurpfile base "$base" --argjson roots "$roots" -f ${./modules-sh-compare.jq} "$tmp/records.jsonl" >"$2"
       echo "modules-sh: wrote $(wc -l <"$2") rows to $2"
       admissions "$2"
       exit 0
     fi
-    jq -rs --arg mode check --arg ev "$line" --slurpfile base "$base" -f ${./modules-sh-compare.jq} "$tmp/records.jsonl" >"$tmp/report"
+    jq -rs --arg mode check --arg ev "$line" --slurpfile base "$base" --argjson roots "$roots" -f ${./modules-sh-compare.jq} "$tmp/records.jsonl" >"$tmp/report"
     cat "$tmp/report"
     tail -1 "$tmp/report" | grep -q '; 0 disagreements$'
   '';

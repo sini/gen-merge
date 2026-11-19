@@ -3811,7 +3811,8 @@ input) twice: once over nixpkgs' own `lib` (the reference), and once with top-le
 replaced by `evalModuleTree`. It scores every gen assertion against the committed register
 `ci/modules-sh-baseline.jsonl`: one row per assertion, keyed by its check function, env flags and argv,
 with verdict `PASS`, `PASS-CLASS` (gen-merge refuses by name for nixpkgs' reason, pinned by the row's
-`class` literals) or `FAIL`. Any disagreement in either direction exits 1, so a fix ratchets the
+`class` literals, or both runs refuse with the same user `throw`, one fixture site and one final error
+text: the shared throw, `ci/modules-sh-compare.jq`) or `FAIL`. Any disagreement in either direction exits 1, so a fix ratchets the
 register in the same change:
 
 ```sh

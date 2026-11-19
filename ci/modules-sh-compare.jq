@@ -13,8 +13,29 @@
 # evaluation's FINAL error line exactly, never as a substring: a named refusal quoting those words,
 # or any other abort, stays FAIL.
 #
+# THE SHARED THROW, stage 2's rule (`nixos-bar-compare.jq`, den-hoag-refusal-class-consumer-throw-ovyos) read
+# over this register's records: a refusal no engine raises by name, the user's own `throw`, is matched against
+# the REFERENCE run's refusal of the same assertion, never against a register literal. A FAIL on a row with no
+# `class` (a class row is judged by its class alone) is PASS-CLASS when both evaluations refused (non-zero exit) and
+#   S1  each refusal's innermost frame, the last `… ` line before its last `error:` line, is the evaluator's
+#       own report of the `throw` builtin (`while calling the 'throw' builtin` or `caused by explicit throw`,
+#       either label, on any evaluator): an `abort`, a failed `assert`, or an evaluator error outside a throw
+#       stays FAIL. An error raised evaluating a throw's own message carries the throw frame and is admitted
+#       only under S2 and S3;
+#   S2  each refusal's innermost position, the last `at /<path>:<line>:<col>:` line of its `--show-trace` text
+#       (the throw frame's own position when it has one; a position-less throw reads its nearest enclosing
+#       frame), lies under its own tree's `tests/` ($roots, the two trees' `tests/` directories), at the same
+#       path, line and column below it. Neither engine's sources lie there, so the site is the suite's fixture,
+#       never gen-merge's code throwing the same words;
+#   S3  the text from each refusal's last `error:` line to its end is byte-identical.
+# Same site and same message is the refusal's identity, stronger than its class. It is checked on every run,
+# so the reference moving its message or its site moves the row to FAIL; a row is admitted by the fold's
+# IMPROVED line, as any other. It owes no OVER-REACH: its witness is the reference's own refusal of this
+# assertion, which a row where nixpkgs serves never has.
+#
 # PASS-CLASS is SOUND, NOT COMPLETE: a same-class refusal gen-merge raises in nixpkgs' words, or with a
-# degraded field (`<unknown-file>`), cannot be pinned and stays FAIL. The bar undercounts, never over.
+# degraded field (`<unknown-file>`), cannot be pinned and stays FAIL; so does a throw from a file outside
+# `tests/`, or one whose message names a store path (each tree's differs). The bar undercounts, never over.
 #
 # OVER-REACH, checked on every run: a class literal that also fires on a row where nixpkgs SERVES (every
 # non-`checkConfigError` assertion, which the reference passes) names a refusal gen-merge makes for some
@@ -45,6 +66,16 @@ def dupsOf: group_by(.) | map(select(length > 1) | .[0]);
 def counts: if type == "object" then map_values(if type == "object" then del(.ms) else . end) else . end;
 def perfKind: .key.kind | IN("checkConfigOutput", "checkExpression");
 def lastErr: (. // "") | split("\n") | map(select(test("^ *error:"))) | last // "(no error line)" | sub("^ +"; "");
+# THE SHARED THROW's reads (S1-S3), `nixos-bar-compare.jq`'s `site` and `final`, over a record's stderr.
+def site: (. // "") | split("\n") | map(select(test("^ *at /"))) | last // null | if . == null then null else sub("^ *at "; "") end;
+def final: (. // "") | split("\n") | (map(test("^ *error:")) | rindex(true)) as $i | if $i == null then null else .[$i:] | join("\n") end;
+def thrown: (. // "") | split("\n") | (map(test("^ *error:")) | rindex(true)) as $i
+  | if $i == null then false else .[:$i] | map(select(test("^ *… "))) | last // "" | test("^ *… (while calling the 'throw' builtin|caused by explicit throw)$") end;
+def shared($roots): (.ref.err | site) as $s | (.err | site) as $g
+  | .rc != 0 and .ref.rc != 0 and (.ref.err | thrown) and (.err | thrown)
+    and $s != null and $g != null and ($s | startswith($roots.ref + "/")) and ($g | startswith($roots.gen + "/"))
+    and ($s | ltrimstr($roots.ref)) == ($g | ltrimstr($roots.gen))
+    and (.ref.err | final) != null and (.ref.err | final) == (.err | final);
 def storeFree: gsub("/nix/store/[0-9a-z]{32}-[^/\\s'`\"):]*"; "<store>");
 def refusalOf: if (.got == "FAIL" or .got == "PASS-CLASS") and .rc != 0 then .err | lastErr | storeFree else null end;
 def validRefusal: .refusal == null or ((.refusal | type) == "object" and .verdict != "PASS"
@@ -81,7 +112,10 @@ def parity: if .gen == null or .ref == null then null
   | if .verdict == "PASS" or $r == { } then del(.refusal) else .refusal = $r end
   | tojson
 else
-. as $recs
+($ARGS.named.roots // null) as $roots
+| if ($roots | type) != "object" or ([$roots.gen, $roots.ref] | any(type != "string" or (startswith("/nix/store/") | not)))
+  then error("roots: \($mode) needs --argjson roots, the two trees' tests/ directories {gen, ref}, store paths; got \($roots | tojson)") else . end
+| . as $recs
 | ($base | map({ key: (.key | id), value: . }) | from_entries) as $B
 | ($recs | map(.key | id) | dupsOf) as $dups
 | ($base | map(.key | id) | dupsOf) as $baseDups
@@ -99,9 +133,11 @@ else
                 == "error: infinite recursion encountered"
              then "PASS-CLASS" else "FAIL" end)
           elif ($b.class // null) != null and $r.rc != 0 and ($b.class | all(. as $c | $r.err | contains($c))) then "PASS-CLASS"
+          elif ($b.class // null) == null and ($r | shared($roots)) then "PASS-CLASS"
           else "FAIL" end
         )
       }
+    | .shared = (.got == "PASS-CLASS" and (.base.class // null) == null)
   )) as $runs
 | ($runs | map(.id)) as $seen
 | if $mode == "perf" then
@@ -162,6 +198,6 @@ else
             end ]
     ) as $bad
     | ($bad[]),
-      "modules-sh: \($runs | length) assertions, baseline \($base | length): \([$runs[] | select(.got == "PASS")] | length) PASS, \([$runs[] | select(.got == "PASS-CLASS")] | length) PASS-CLASS, \([$runs[] | select(.got == "FAIL")] | length) FAIL; \($bad | length) disagreements"
+      "modules-sh: \($runs | length) assertions, baseline \($base | length): \([$runs[] | select(.got == "PASS")] | length) PASS, \([$runs[] | select(.got == "PASS-CLASS")] | length) PASS-CLASS (\([$runs[] | select(.shared)] | length) shared throw), \([$runs[] | select(.got == "FAIL")] | length) FAIL; \($bad | length) disagreements"
   end
 end
