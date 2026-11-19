@@ -7393,7 +7393,7 @@ let
                   # is owed beside this record, relativised by its check where the join widens its own parameters (ADR-0039
                   # THE MEET, as `metWith` relativises an operand), and the held record alone is held. Holding a partner
                   # recovered from its functor beside an ad-hoc held record refuses values nixpkgs serves (ADR-0039 rule
-                  # (2)), and holding a declaration a door copy states moves no reading: it is owed already
+                  # (2)), and holding a declaration a door copy states moves no reading; the cells this leaves unserved are carried open
                   if r == null then
                     null
                   else

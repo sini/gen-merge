@@ -554,7 +554,7 @@ in
     # A held step does not hold a partner recovered from its functor: holding that rebuilt fold beside an ad-hoc held
     # record refuses free values main and nixpkgs' twin serve (ADR-0039 parity-defect rule (2)). So the element 7 or 9
     # a refinement rejects is served at every spelling, raw and through the door, as main serves it: an open defect
-    # (SILENT-D, den-hoag-alnjf), asserted as the value it produces so a build refusing it reds it. The element every
+    # (SILENT-D, den-hoag-zvxz6), asserted as the value it produces so a build refusing it reds it. The element every
     # declaration admits is served.
     test-a-held-step-serves-what-a-recovered-partner-rejects = {
       expr = heldGrid;
