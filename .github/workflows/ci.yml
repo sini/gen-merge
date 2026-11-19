@@ -13,6 +13,8 @@ jobs:
   # rewrites it when that lock moves.
   evaluators:
     uses: sini/gen-harness/.github/workflows/evaluators.yml@01815a58507927ad18e6ac4caf511042b3dd57ce
+    with:
+      split-planes: true
 
   # den-hoag-06toi: the bar registers never lower the bar silently. A HISTORY property (each revision of a
   # register against its predecessor), so it reads git and jq, never an evaluator, and runs once beside the
