@@ -7597,8 +7597,13 @@ let
       # - an option default is the tree's address (none for a root) with `{ default = true; }`.
       # The attrset markers are never an option name, an attribute step or an index, so no two
       # declarations share an address. The spelling carries module identity without the mint (7gp66 OQ4
-      # (b′)): keyed and path modules keep their address under reorder, an anonymous module moves with
-      # its own position in its importer (design §1 item 2).
+      # (b′)): in gen's engine keyed and path modules keep their address under reorder, an anonymous
+      # module moves with its own position in its importer (design §1 item 2). Under a FOREIGN mount
+      # the export bridge's root (`nestedTreeAt`) is handed nixpkgs' `{ file; value; }` list, which
+      # carries no module key, so each seed is a top-level module of that root, anchored `a:<i>` by its
+      # index in nixpkgs' hand-over order: there no keyed or path declaring module's address survives,
+      # and a seed's address moves when the modules are reordered (ADR-0025 item 1, the
+      # interoperability limit; pinned by gen-aspects `ci/tests/foreign-include-order.nix`).
       declAnchorOf =
         r: p: seeds:
         let

@@ -2197,8 +2197,11 @@ a module states `name` is decided by that key set, so it cannot wait on `name`.
 
 **A nesting type may evaluate its child at the position its seed was declared at (`nests.locOf`).** A
 nesting type that states `nests.declAt = true` is handed, on each seed, its declaration address (`declAt`):
-the declaring module's anchor, the option path and the structural path the discharge took, which no
-reorder of keyed or path modules moves. Such a type may also state `nests.locOf = loc: d: …`. It is
+the declaring module's anchor, the option path and the structural path the discharge took, which in gen's
+engine no reorder of keyed or path modules moves. Mounted through nixpkgs' `lib.evalModules`, the export
+bridge is handed only `{ file; value; }` per definition, with no module key, so there the anchor is the
+definition's index in nixpkgs' hand-over order and moves when the modules are reordered, keyed and path
+modules included. Such a type may also state `nests.locOf = loc: d: …`. It is
 opt-in, and read only together with `declAt` and only for a child over ONE seed: `loc` is the merge
 position and `d` that seed's `{ file; value; declAt; }`, and the list it returns is the child tree's
 `prefix`. So the child's option locs, the positions its messages name and its default `name` render
