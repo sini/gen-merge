@@ -6779,8 +6779,8 @@ let
           o1.verify
         else
           null;
-      # every arm conjoins `jc`, the join's own check: a later join is asked of the root past every met record (this
-      # record's `typeMerge`) and met with this record, so each skipped record's check is still owed through this one
+      # every arm conjoins `jc`, the join's own check: a later join is asked of the root past every met or held record
+      # (this record's `typeMerge`) and met with this record, so each skipped record's check is still owed through this one
       conj =
         if length os == 1 && ov != null then
           (v: jc v && ov v == null)
@@ -6855,14 +6855,13 @@ let
             f:
             let
               # a foreign relation's assert is no answer (`joinInRebuiltPartner`'s `tryEval`). A join that is itself
-              # a met record is asked of its root join, past every met record a fold built over it: the answer is met
-              # with this record, whose check conjoins each of theirs and whose functor is theirs. A held record
-              # answers for itself, as its fold is what a later step holds
+              # a met or held record is asked of its root join, past every met or held record a fold built over it: the
+              # answer is met with this record, whose check conjoins each of theirs and whose functor is theirs
               asked = builtins.tryEval (
-                if j ? __meetJoin && !(j ? holds) then
+                if j ? __meetJoin then
                   (
                     let
-                      root = t: if t ? __meetJoin && !(t ? holds) then root t.__meetJoin else callerTypeMerge t f;
+                      root = t: if t ? __meetJoin then root t.__meetJoin else callerTypeMerge t f;
                     in
                     root j.__meetJoin
                   )
@@ -7061,16 +7060,41 @@ let
           answers = if rewrites == null then null else rewrites.answers or null;
           mayOwe =
             o:
+            # a held operand owes nothing at a thread-free meet over a held carrier that states it holds it (`holds`: its
+            # check in the carrier's, its fold demanded at the carrier's node), as an operand that IS the carrier owes nothing.
+            # The statement names the record it was made for (`holds.record`) and is read only where the carrier's `check`
+            # and `mergeDefs` are that record's, compared slot by slot as the check-witness protocol compares: a `//` that
+            # replaced either is not the record the statement was made for, and states nothing. `merge` is compared too:
+            # `importedFold` folds a met record whose `merge` states `v2` by that `merge`, not by `mergeDefs`
             !(
-              !(o ? check || o ? admits)
-              ||
-                o ? typeMergeRel.exact
-                && (((o._checkWitness or null) == (m._checkWitness or null)) || (m.functor.payload or null) != null)
+              o ? holds
+              && rewrites == null
+              && m ? __meetJoin
+              && m ? holds.record
+              &&
+                builtins.intersectAttrs {
+                  check = null;
+                  mergeDefs = null;
+                  merge = null;
+                } m == builtins.intersectAttrs {
+                  check = null;
+                  mergeDefs = null;
+                  merge = null;
+                } m.holds.record
+              && builtins.any (c: closuresFirst [ c ] c == closuresFirst [ o ] o) m.holds.record.holds.members
             )
-            || !(m ? typeMergeRel)
-            || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
-            || replacesVerify o
-            || o ? holds;
+            && (
+              !(
+                !(o ? check || o ? admits)
+                ||
+                  o ? typeMergeRel.exact
+                  && (((o._checkWitness or null) == (m._checkWitness or null)) || (m.functor.payload or null) != null)
+              )
+              || !(m ? typeMergeRel)
+              || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
+              || replacesVerify o
+              || o ? holds
+            );
           # the join's tree is walked only by a meet that asks whether an operand widens
           widens =
             let
@@ -7331,40 +7355,51 @@ let
                 else
                   v
               ) vs;
-            own =
-              loc: defs: o:
-              let
-                # the fold the operand merges by WITHOUT a definition check (its check is owed already):
-                # `lib/modules.nix` `rawFold`, stated over this unit's own bindings so the meet takes no formal
-                # for it (`leafFold` is `mergeLeaf` on the same definitions)
-                f =
-                  if o ? mergeDefs then
-                    o.mergeDefs.unchecked or o.mergeDefs
-                  else
-                    let
-                      imported = importedRawFold o;
-                    in
-                    if imported == null then leafFold else imported;
-              in
-              if f ? v2 then
-                (
-                  let
-                    r = f.v2 { inherit loc defs; };
-                  in
-                  if r.headError or null != null then throw r.headError.message else r.value
-                )
-              else
-                f loc defs;
+            # each held operand's value, by the fold it merges by WITHOUT a definition check (its check is owed already):
+            # `lib/modules.nix` `rawFold`, stated over this unit's own bindings so the meet takes no formal for it
+            # (`leafFold` is `mergeLeaf` on the same definitions). Written where it is applied, so a hold binds no slot for it
             demand =
               loc: defs: v:
-              walk v (map (own loc defs) kept);
-            fold = met.mergeDefs or null;
+              walk v (
+                map (
+                  o:
+                  let
+                    f =
+                      if o ? mergeDefs then
+                        o.mergeDefs.unchecked or o.mergeDefs
+                      else
+                        let
+                          imported = importedRawFold o;
+                        in
+                        if imported == null then leafFold else imported;
+                  in
+                  if f ? v2 then
+                    (
+                      let
+                        r = f.v2 { inherit loc defs; };
+                      in
+                      if r.headError or null != null then throw r.headError.message else r.value
+                    )
+                  else
+                    f loc defs
+                ) kept
+              );
+            # what this hold states it holds (read by `mayOwe`), and the record it states it for: each held operand `once`
+            # states as itself (`members`), so its check is conjoined in `met`'s and, on this arm, `kept` (`freeformLeaf once`)
+            # demands its fold. A step owing a debt holds its answered pair, whose accumulator's check is not owed
+            # (lib/modules.nix `mergeDeclaredTypes`), so it states none; a spelled read stands for declarations `kept`
+            # expands, so it is not stated as itself. `holds` is this record on a held type record; on a relation's answer,
+            # a tree comparison and in the meet's identity arguments it is a boolean
+            holds = {
+              record = h;
+              members = if answers != null then [ ] else filter (o: o ? holds && !(o ? spelledRead)) once;
+            };
             # the held record, named so its exported `typeMerge` meets a later join with IT (and so holds again), not
             # with the unheld `met` that `meetOf`'s own `typeMerge` names
             h =
               met
               // {
-                holds = true;
+                inherit holds;
                 ${if types ? mkIdentity && m ? __mint then "__mint" else null} = hids.__mint;
                 ${if types ? mkIdentity && m ? __mint then "__payload" else null} = hids.__payload;
                 ${if types ? mkIdentity && m ? __mint then "__sealed" else null} = hids.__sealed;
@@ -7375,12 +7410,12 @@ let
                 typeMerge =
                   f:
                   let
-                    # asked of the root join past every met record, as `meetOf`'s own `typeMerge` asks it
+                    # asked of the root join past every met or held record, as `meetOf`'s own `typeMerge` asks it
                     asked = builtins.tryEval (
-                      if m ? __meetJoin && !(m ? holds) then
+                      if m ? __meetJoin then
                         (
                           let
-                            root = t: if t ? __meetJoin && !(t ? holds) then root t.__meetJoin else callerTypeMerge t f;
+                            root = t: if t ? __meetJoin then root t.__meetJoin else callerTypeMerge t f;
                           in
                           root m.__meetJoin
                         )
@@ -7432,7 +7467,7 @@ let
                     (loc: defs: demand loc defs (met.merge loc defs));
               }
               // (
-                if fold == null then
+                if (met.mergeDefs or null) == null then
                   # a carrier with no fold of its own (a gen leaf) is folded by the engine's leaf fold, which never
                   # reads `merge`: the hold states the carrier's alone fold, demanded as above (`rawFold` over a
                   # type stating no `mergeDefs`)
@@ -7448,10 +7483,10 @@ let
                   }
                 else
                   {
-                    mergeDefs = (if isAttrs fold then fold else { }) // {
+                    mergeDefs = (if isAttrs met.mergeDefs then met.mergeDefs else { }) // {
                       __functor =
                         _: loc: defs:
-                        demand loc defs (fold loc defs);
+                        demand loc defs (met.mergeDefs loc defs);
                     };
                   }
               );

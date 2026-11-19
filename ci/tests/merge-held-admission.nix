@@ -419,6 +419,240 @@ in
       );
     };
 
+    # A HELD OPERAND ITS CARRIER DOES NOT HOLD IS OWED: `x` is the met record of `listOf int` and `listOf positive`,
+    # `y` of `listOf int` and `listOf (between 0 10)`, each re-declared as an author does (`type = options.o.type`).
+    # Declared together, the step meets a carrier holding one of them beside the other, so `[ 0 ]`, which `x` alone
+    # refuses, is refused on both engines; a carrier owes nothing again only for an operand it states it holds.
+    test-a-held-operand-its-carrier-does-not-hold-is-owed =
+      let
+        mt =
+          tys:
+          (gm.evalModuleTree { } (map (ty: { options.o = gm.mkOption { type = ty; }; }) tys)).options.o.type;
+        x = mt [
+          (gm.types.listOf gm.types.int)
+          (gm.types.listOf np.ints.positive)
+        ];
+        y = mt [
+          (gm.types.listOf gm.types.int)
+          (gm.types.listOf (np.ints.between 0 10))
+        ];
+      in
+      {
+        expr = {
+          gen = ev [ x y ] [ 0 ] 1;
+          gen-good = ev [ x y ] [ 5 ] 1;
+          nixpkgs = evNixpkgs [ x y ] [ 0 ];
+          nixpkgs-good = evNixpkgs [ x y ] [ 5 ];
+          x-alone = ev [ x ] [ 0 ] 1;
+          y-alone = ev [ y ] [ 0 ] 1;
+        };
+        expected = {
+          gen = "REFUSED";
+          gen-good = "SERVED";
+          nixpkgs = "REFUSED";
+          nixpkgs-good = "SERVED";
+          x-alone = "REFUSED";
+          y-alone = "SERVED";
+        };
+      };
+
+    # A HELD RECORD COPIED WITH ITS CHECK OR ITS FOLD REPLACED HOLDS NOTHING: `z` is the element record of `x` and `y`
+    # declared together, a held record stating it holds `x`'s element (`px`). A `//` copy answering itself from its own
+    # `typeMerge` and replacing `check` (`tTrue`, `tInt`) or the fold (`fDefs`, `fNested`, the fold record copied with
+    # its `__functor` replaced) is not the record that statement was made for, so `px` beside it is owed: `0` and `-1`,
+    # which `px` alone refuses, and the two definitions `1` and `2`, which `px`'s fold refuses, are refused. A copy
+    # replacing only `typeMerge` (`tm`) keeps the check and the fold the statement was made for, so `px` owes nothing
+    # beside it and is still refused by that check. A copy keeping `check` and `mergeDefs` but stating a v2 `merge`
+    # (`mv2`, nixpkgs' merge protocol, serving the head definition) is folded by that `merge`, so it is not the record
+    # the statement was made for either, and `px` beside it is owed.
+    test-a-held-record-copied-with-its-check-or-fold-replaced-holds-nothing =
+      let
+        mt =
+          tys:
+          (gm.evalModuleTree { } (map (ty: { options.o = gm.mkOption { type = ty; }; }) tys)).options.o.type;
+        el = r: r.nestedTypes.elemType;
+        x = mt [
+          (gm.types.listOf gm.types.int)
+          (gm.types.listOf np.ints.positive)
+        ];
+        y = mt [
+          (gm.types.listOf gm.types.int)
+          (gm.types.listOf (np.ints.between 0 10))
+        ];
+        px = el x;
+        z = el (mt [
+          x
+          y
+        ]);
+        first = _: defs: (builtins.head defs).value;
+        tTrue = z // {
+          check = _: true;
+          typeMerge = _: tTrue;
+        };
+        tInt = z // {
+          check = gm.types.int.check;
+          typeMerge = _: tInt;
+        };
+        fDefs = z // {
+          mergeDefs = first;
+          typeMerge = _: fDefs;
+        };
+        fNested = z // {
+          mergeDefs =
+            if builtins.isAttrs z.mergeDefs then z.mergeDefs // { __functor = _: first; } else first;
+          typeMerge = _: fNested;
+        };
+        tm = z // {
+          typeMerge = _: tm;
+        };
+        mv2 = z // {
+          merge = {
+            __functor = _: first;
+            v2 = args: {
+              value = (builtins.head args.defs).value;
+              headError = null;
+              valueMeta = { };
+            };
+          };
+          typeMerge = _: mv2;
+        };
+        # gen's engine over distinct definitions
+        evDefs =
+          tys: vs:
+          let
+            res = gm.evalModuleTree { } (
+              map (ty: { options.x = gm.mkOption { type = ty; }; }) tys ++ map (v: { x = v; }) vs
+            );
+          in
+          verdict (tryEval (deepSeq res.config.x res.config.x));
+      in
+      {
+        expr = {
+          check-true = evDefs [ px tTrue ] [ 0 ];
+          check-true-twice = evDefs [ px px tTrue ] [ (-1) ];
+          check-int = evDefs [ px tInt ] [ 0 ];
+          check-int-twice = evDefs [ px px tInt ] [ (-1) ];
+          check-true-good = evDefs [ px tTrue ] [ 5 ];
+          fold = evDefs [ px fDefs ] [ 1 2 ];
+          fold-nested = evDefs [ px fNested ] [ 1 2 ];
+          fold-good = evDefs [ px fDefs ] [ 5 ];
+          type-merge = evDefs [ px tm ] [ 0 ];
+          type-merge-good = evDefs [ px tm ] [ 5 ];
+          merge-v2 = evDefs [ px mv2 ] [ 0 ];
+          merge-v2-two = evDefs [ px mv2 ] [ 1 2 ];
+          merge-v2-twice = evDefs [ px px mv2 ] [ 0 ];
+          merge-v2-twice-two = evDefs [ px px mv2 ] [ 1 2 ];
+          merge-v2-good = evDefs [ px mv2 ] [ 5 ];
+          px-alone = evDefs [ px ] [ 0 ];
+          px-alone-two = evDefs [ px ] [ 1 2 ];
+          copy-alone = evDefs [ tTrue ] [ 0 ];
+        };
+        expected = {
+          check-true = "REFUSED";
+          check-true-twice = "REFUSED";
+          check-int = "REFUSED";
+          check-int-twice = "REFUSED";
+          check-true-good = "SERVED";
+          fold = "REFUSED";
+          fold-nested = "REFUSED";
+          fold-good = "SERVED";
+          type-merge = "REFUSED";
+          type-merge-good = "SERVED";
+          merge-v2 = "REFUSED";
+          merge-v2-two = "REFUSED";
+          merge-v2-twice = "REFUSED";
+          merge-v2-twice-two = "REFUSED";
+          merge-v2-good = "SERVED";
+          px-alone = "REFUSED";
+          px-alone-two = "REFUSED";
+          copy-alone = "SERVED";
+        };
+      };
+
+    # HELD RECORDS THROUGH BOTH DOORS SERVE WHAT EACH SERVES: `px`, `py` and `z` (above) raw, through `mkOptionType` and
+    # through `types.mkOptionType`, declared in every word of two to four of them. Gen's engine refuses a word's
+    # definitions exactly where one of its records declared alone refuses them, and otherwise serves what each serves
+    # (the alone oracle), for `0`, `11`, `5`, `-1` and the two definitions `1` and `2`. `expr` lists the words that
+    # break it.
+    test-held-records-through-both-doors-serve-what-each-serves =
+      let
+        mt =
+          tys:
+          (gm.evalModuleTree { } (map (ty: { options.o = gm.mkOption { type = ty; }; }) tys)).options.o.type;
+        el = r: r.nestedTypes.elemType;
+        x = mt [
+          (gm.types.listOf gm.types.int)
+          (gm.types.listOf np.ints.positive)
+        ];
+        y = mt [
+          (gm.types.listOf gm.types.int)
+          (gm.types.listOf (np.ints.between 0 10))
+        ];
+        z = el (mt [
+          x
+          y
+        ]);
+        letters = {
+          px = el x;
+          py = el y;
+          inherit z;
+          d1px = gm.mkOptionType (el x);
+          d1z = gm.mkOptionType z;
+          d2px = gm.types.mkOptionType (el x);
+          d2z = gm.types.mkOptionType z;
+        };
+        names = builtins.attrNames letters;
+        wordsOf =
+          n:
+          if n == 1 then
+            map (c: [ c ]) names
+          else
+            builtins.concatMap (w: map (c: w ++ [ c ]) names) (wordsOf (n - 1));
+        words = wordsOf 2 ++ wordsOf 3 ++ wordsOf 4;
+        values = {
+          zero = [ 0 ];
+          eleven = [ 11 ];
+          five = [ 5 ];
+          negative = [ (-1) ];
+          two = [
+            1
+            2
+          ];
+        };
+        served =
+          tys: vs:
+          let
+            r = tryEval (
+              let
+                v =
+                  (gm.evalModuleTree { } (
+                    map (ty: { options.x = gm.mkOption { type = ty; }; }) tys ++ map (v: { x = v; }) vs
+                  )).config.x;
+              in
+              deepSeq v v
+            );
+          in
+          if r.success then { value = r.value; } else null;
+        alone = builtins.mapAttrs (c: t: builtins.mapAttrs (_: served [ t ]) values) letters;
+      in
+      {
+        expr = builtins.concatMap (
+          w:
+          builtins.concatMap (
+            k:
+            let
+              each = map (c: alone.${c}.${k}) w;
+              want = if builtins.elem null each then null else builtins.head each;
+            in
+            if served (map (c: letters.${c}) w) values.${k} == want then
+              [ ]
+            else
+              [ "${builtins.concatStringsSep "," w} ${k}" ]
+          ) (builtins.attrNames values)
+        ) words;
+        expected = [ ];
+      };
+
     # A HELD RECORD HANDED TO NIXPKGS' ENGINE KEEPS ITS HOLD: its exported `typeMerge` meets a later join with the
     # held record, so `bobbinR int` declared first and the held pair after it refuses 70000, which the held pair alone
     # refuses. The other order is decided by the later raw nixpkgs declaration's own relation (ADR-0039, Not covered).
