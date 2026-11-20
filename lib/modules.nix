@@ -640,10 +640,17 @@ let
       # a `meets` answer is the carrier: met at every role it carries and at the top. A join carrying no role
       # (no element, no alternatives, no payload to hold an option) is met at the top alone, so it pays no
       # `rolesMet`, which would read nothing of it
+      #
+      # A join whose pair the twin refuses carries `twinRefuses = true` (here, at the meets arm's `r` and the plain
+      # return): a property of the join this pair built, read one level up as the element pair's twin answer
+      # (`lib/types.nix` `elementRelIn`, which then asks the pair no second time). It rides the published type
+      # (`options.<loc>.type`), and no relation reads it off an operand: an operand's stamp says nothing of a new pair
       if answer.meets or false then
         (
           let
-            r = answer.merged;
+            r = (
+              if answer.twinRefuses or false then answer.merged // { twinRefuses = true; } else answer.merged
+            );
           in
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it
@@ -720,6 +727,8 @@ let
       # the mark tells the two apart
       else if answer ? merged then
         (
+          # unstamped: a `rolesMet` answer with no `meets` is stated only under a step's debt (`lib/types.nix`
+          # `elementRelIn`, `eitherMemberwise`), whose twin answer no reader asks
           if answer.rolesMet or false then
             answer.merged
           else if
@@ -730,7 +739,7 @@ let
           then
             rolesMet rewrites answer.merged a b
           else
-            answer.merged
+            (if answer.twinRefuses or false then answer.merged // { twinRefuses = true; } else answer.merged)
         )
       else
         null

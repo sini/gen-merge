@@ -1276,6 +1276,74 @@ in
         };
       };
 
+    # vhcac c5: the twin answer two levels down rides the joins that carry it. `gt.listOf (gt.listOf gt.int)` beside
+    # an `acc` partner (the cell above) under two lists, nixpkgs' engine, both orders: partner first, nixpkgs asks
+    # gen's exported relation, whose answer is the twin's only if the inner list's join still states it. `nn` puts
+    # nixpkgs' lists over the partner (the meets arm's join); `gg` puts gen's (the plain return's join). `twin` is
+    # the all-nixpkgs pair, live, and every row equals the literal.
+    test-mixed-leaf-payload-partner-twin-answer-at-depth-two =
+      let
+        acc =
+          let
+            self = np.mkOptionType {
+              name = "int";
+              check = _: true;
+              merge = np.options.mergeEqualOption;
+              functor = np.types.defaultFunctor "int" // {
+                type = _: self;
+                payload.refined = true;
+                binOp = a: _b: a;
+              };
+              typeMerge =
+                f':
+                if f'.name == "int" && (f'.payload == null || f'.payload == { refined = true; }) then
+                  self
+                else
+                  null;
+            };
+          in
+          self;
+        read =
+          Ts:
+          let
+            r = np.evalModules {
+              modules = map (T: { options.x = np.mkOption { type = T; }; }) Ts ++ [ { x = [ [ 7 ] ]; } ];
+            };
+            tried = builtins.tryEval (builtins.deepSeq r.config.x "served");
+          in
+          if tried.success then tried.value else "REFUSED";
+        orders = g: p: {
+          genFirst = read [
+            g
+            p
+          ];
+          partnerFirst = read [
+            p
+            g
+          ];
+        };
+        nl = np.types;
+      in
+      {
+        expr = {
+          nn = orders (t.listOf (t.listOf t.int)) (nl.listOf (nl.listOf acc));
+          gg = orders (t.listOf (t.listOf t.int)) (t.listOf (t.listOf acc));
+          twin = orders (nl.listOf (nl.listOf nl.int)) (nl.listOf (nl.listOf acc));
+        };
+        expected =
+          let
+            want = {
+              genFirst = "served";
+              partnerFirst = "REFUSED";
+            };
+          in
+          {
+            nn = want;
+            gg = want;
+            twin = want;
+          };
+      };
+
     # n8cpq: an embedding row is reached by the CONSTRUCTION it stands for, never by a caller-chosen
     # name. A gen type NAMED like a row (`enum "path"`, `struct "path"`, `typedef { } "string"`, a
     # `mkOptionType` descriptor, a `defineType` record) beside the nixpkgs type that row stands for is refused in both
