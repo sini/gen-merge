@@ -644,7 +644,8 @@ let
       # A join whose pair the twin refuses carries `twinRefuses = true` (here, at the meets arm's `r` and the plain
       # return): a property of the join this pair built, read one level up as the element pair's twin answer
       # (`lib/types.nix` `elementRelIn`, which then asks the pair no second time). It rides the published type
-      # (`options.<loc>.type`), and no relation reads it off an operand: an operand's stamp says nothing of a new pair
+      # (`options.<loc>.type`), and no relation reads it off an operand: an operand's stamp says nothing of a new pair.
+      # A step owing a debt states no twin answer (its one reader, `interface.exportType`'s typeMerge, asks with none)
       if answer.meets or false then
         (
           let
@@ -654,6 +655,9 @@ let
           in
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it
+          # a held answer states no twin answer: the held writers (lib/interface.nix) and the twin-answer writers
+          # (lib/types.nix) are disjoint, so the held branch's rebuild has no stamp to lose
+          assert !((answer.holds or false) && answer ? twinRefuses);
           if answer.holds or false then
             interface.metWith.importLeaf rewrites (
               interface.metWith.metWith rewrites "holds"
@@ -728,7 +732,7 @@ let
       else if answer ? merged then
         (
           # unstamped: a `rolesMet` answer with no `meets` is stated only under a step's debt (`lib/types.nix`
-          # `elementRelIn`, `eitherMemberwise`), whose twin answer no reader asks
+          # `elementRelIn`, `eitherMemberwise`), which states no twin answer
           if answer.rolesMet or false then
             answer.merged
           else if

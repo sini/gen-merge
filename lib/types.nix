@@ -926,7 +926,7 @@ let
             # the element is the pair's own met (`metFirst`), so a step owing no debt meets it no second time
             # (`lib/modules.nix` `relationMergeWithin`): the one descent is this one
             ${if metFirst != null then "rolesMet" else null} = true;
-            twinRefuses =
+            ${if rewrites == null then "twinRefuses" else null} =
               element ? typeMergeRel
               && (
                 if metFirst != null then
@@ -970,14 +970,8 @@ let
             merged = rebuild merged;
             ${if rewrites == null then null else "rolesMet"} = true;
             # the element pair's join the twin refuses, carried up as `vetoes` is (read by a foreign engine's ask)
-            twinRefuses =
-              element ? typeMergeRel
-              && (
-                if rewrites == null then
-                  merged.twinRefuses or false
-                else
-                  (element.typeMergeRel partnerElem).twinRefuses or false
-              );
+            ${if rewrites == null then "twinRefuses" else null} =
+              element ? typeMergeRel && (merged.twinRefuses or false);
           };
 
   # An element's substructure, whichever vocabulary it speaks. A gen type answers from its own

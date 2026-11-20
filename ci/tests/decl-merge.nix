@@ -1276,12 +1276,12 @@ in
         };
       };
 
-    # vhcac c5: the twin answer two levels down rides the joins that carry it. `gt.listOf (gt.listOf gt.int)` beside
-    # an `acc` partner (the cell above) under two lists, nixpkgs' engine, both orders: partner first, nixpkgs asks
-    # gen's exported relation, whose answer is the twin's only if the inner list's join still states it. `nn` puts
-    # nixpkgs' lists over the partner (the meets arm's join); `gg` puts gen's (the plain return's join). `twin` is
-    # the all-nixpkgs pair, live, and every row equals the literal.
-    test-mixed-leaf-payload-partner-twin-answer-at-depth-two =
+    # vhcac c5: the twin answer two and three levels down rides the joins that carry it. `gt.listOf^d gt.int` beside an
+    # `acc` partner (the cell above) under d lists, d = 2 and 3, nixpkgs' engine, both orders: partner first, nixpkgs
+    # asks gen's exported relation, whose answer is the twin's only if every inner list's join still states it. `nn` /
+    # `nnn` put nixpkgs' lists over the partner (the meets arm's join); `gg` / `ggg` put gen's (the plain return's join).
+    # `twin2` / `twin3` are the all-nixpkgs pairs, live, and every row equals the literal.
+    test-mixed-leaf-payload-partner-twin-answer-at-depth-two-and-three =
       let
         acc =
           let
@@ -1303,32 +1303,44 @@ in
             };
           in
           self;
+        nest =
+          l: d: ty:
+          if d == 0 then ty else l.listOf (nest l (d - 1) ty);
+        defAt = d: v: if d == 0 then v else [ (defAt (d - 1) v) ];
         read =
-          Ts:
+          d: Ts:
           let
             r = np.evalModules {
-              modules = map (T: { options.x = np.mkOption { type = T; }; }) Ts ++ [ { x = [ [ 7 ] ]; } ];
+              modules = map (T: { options.x = np.mkOption { type = T; }; }) Ts ++ [ { x = defAt d 7; } ];
             };
             tried = builtins.tryEval (builtins.deepSeq r.config.x "served");
           in
           if tried.success then tried.value else "REFUSED";
-        orders = g: p: {
-          genFirst = read [
+        orders = d: g: p: {
+          genFirst = read d [
             g
             p
           ];
-          partnerFirst = read [
+          partnerFirst = read d [
             p
             g
           ];
         };
         nl = np.types;
+        at = d: {
+          n = orders d (nest t d t.int) (nest nl d acc);
+          g = orders d (nest t d t.int) (nest t d acc);
+          twin = orders d (nest nl d nl.int) (nest nl d acc);
+        };
       in
       {
         expr = {
-          nn = orders (t.listOf (t.listOf t.int)) (nl.listOf (nl.listOf acc));
-          gg = orders (t.listOf (t.listOf t.int)) (t.listOf (t.listOf acc));
-          twin = orders (nl.listOf (nl.listOf nl.int)) (nl.listOf (nl.listOf acc));
+          nn = (at 2).n;
+          gg = (at 2).g;
+          twin2 = (at 2).twin;
+          nnn = (at 3).n;
+          ggg = (at 3).g;
+          twin3 = (at 3).twin;
         };
         expected =
           let
@@ -1340,7 +1352,10 @@ in
           {
             nn = want;
             gg = want;
-            twin = want;
+            twin2 = want;
+            nnn = want;
+            ggg = want;
+            twin3 = want;
           };
       };
 
