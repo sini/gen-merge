@@ -7967,8 +7967,10 @@ let
         if isAttrs s && s ? check then
           o
           // {
-            # an ad-hoc override's functor rebuilds the override, whose check is the debt, never its parameters:
-            # membership is its v2 merge's, `headError` and the forced merge, as `rebuildClosed.own` reads a base.
+            # a v2 stock stating no module set is a member by its v2 merge, `headError` and the forced merge, as
+            # `rebuildClosed.own` reads a base, whether its check is the coherent one or an ad-hoc override's (whose
+            # functor rebuilds the override, its check the debt, never its parameters): a coherent container check is
+            # shallow by nixpkgs' v2 protocol, so an element outside the stock's parameters is the merge's to reject.
             # (`adHocChecked`, restated inline: this is asked of every widened operand of every meet)
             # a non-v2 container stock whose check is not its completion's witness rebuilds the operand, whose check is
             # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
@@ -7977,9 +7979,7 @@ let
             # level); a stock of no recognised name keeps its own check (ADR-0039 reading 5's open defect under the
             # parity-defect rule (3)). Asked only of a value the operand's check rejects (`meetOf`)
             __stockCheck =
-              if s.check.isV2MergeCoherent or false then
-                s.check
-              else if
+              if
                 ((m.functor or { }).payload or null) ? elemType
                 && !(s ? _checkWitness && s.check == s._checkWitness)
                 && !(isV2 s)
@@ -8049,9 +8049,7 @@ let
                         )
                     )
                 )
-              else if
-                s.check.isV2MergeCoherent or false || !((s.merge or { }) ? v2) || (s.getSubModules or null) != null
-              then
+              else if !((s.merge or { }) ? v2) || (s.getSubModules or null) != null then
                 s.check
               else
                 v:
@@ -8064,10 +8062,16 @@ let
                       }
                     ];
                   in
-                  (s.merge.v2 {
-                    loc = [ "<stock>" ];
-                    inherit defs;
-                  }).headError == null
+                  # a coherent check is the head `headError` reads (nixpkgs' `checkV2MergeCoherence`), asked without a merge
+                  (
+                    if s.check.isV2MergeCoherent or false then
+                      s.check v
+                    else
+                      (s.merge.v2 {
+                        loc = [ "<stock>" ];
+                        inherit defs;
+                      }).headError == null
+                  )
                   && (
                     let
                       r = builtins.tryEval (builtins.deepSeq (s.merge [ "<stock>" ] defs) true);

@@ -900,6 +900,11 @@ let
       twin = legacyAt np.listOf short plain lax ea;
       beside = stocksOf L;
     };
+    # a coherent v2 stock under nixpkgs' `addCheck`: its check is shallow (`isList`), its element membership its merge's
+    gC = {
+      p = np.addCheck (np.listOf ea) short;
+      beside = stocksOf L;
+    };
     gE = {
       p = eitherAt (np.enum [ "a" ]) (np.enum [ "x" ]);
       beside = rec {
@@ -1009,6 +1014,14 @@ let
       # the alternatives role
       "gE door TP x"
       "gE npg TP x"
+      # a coherent v2 stock under `addCheck`: inside its own parameters, rejected by its check, at N = 2, 3, 4
+      "gC door TP xaa"
+      "gC door PT xaa"
+      "gC raw TP xaa"
+      "gC door2 TP xaa"
+      "gC door TPP xaa"
+      "gC door TPU xaa"
+      "gC door UPTP xaa"
       # the second door
       "gL door2 TP xaa"
       "gL door2 PT xaa"
@@ -1064,6 +1077,27 @@ let
             "npg PT"
             "door TP"
             "door PT"
+          ]
+      # a coherent v2 stock under `addCheck`, outside its own parameters: its element membership is its merge's, so
+      # the twin's value is served beside gen's widening `listOf` at every N and order a declaration sits on one side
+      ++
+        concatMap
+          (o: [
+            "gC ${o} ab"
+            "gC ${o} bb"
+          ])
+          [
+            "door TP"
+            "door PT"
+            "raw TP"
+            "door2 TP"
+            "door2 PT"
+            "door TPP"
+            "door PPT"
+            "door TPU"
+            "door TPPP"
+            "npg TP"
+            "npg PT"
           ]
     )
     ++ map (ownJoin "control") (
