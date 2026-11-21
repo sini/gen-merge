@@ -37,7 +37,10 @@
 # `hm-bar.patch` is the arm's one change to it, applied to a copy and refused when it does not apply: the test
 # driver returns nmt's argument record instead of nmt's derivations, and the docs driver exports each set's
 # evaluation (`docsEval`) beside its output. nmt is home-manager's own pin: the `url` and `sha256` its test
-# driver hands `fetchTarball`, read off that file's text, fetched here, at build, so no evaluation fetches.
+# driver hands `fetchTarball`, read off that file's text and fetched here as a fixed-output derivation, at
+# build, so no evaluation fetches. Realising it consults substituters on every evaluator, where Lix's eval-time
+# `builtins.fetchTarball` goes only to the url (den-hoag-rh5ot). `name = "source"` is `fetchTarball`'s, so the
+# store path is the one that call returns.
 #
 # COST: the process-plane step's budget is 20 minutes per column (`modules-sh.nix`'s COST header), shared
 # with stages 1 and 2 and the cells. The chunk processes run concurrently (`hm-bar-cells.bash`), which is
@@ -66,7 +69,7 @@ let
         url = builtins.elemAt m 0;
         sha256 = builtins.elemAt m 1;
       };
-  nmt = builtins.fetchTarball nmtPin;
+  nmt = pkgs.fetchzip (nmtPin // { name = "source"; });
   tree = pkgs.runCommand "hm-bar-tree" { } ''
     cp -r ${hmSrc} $out
     chmod -R u+w $out
