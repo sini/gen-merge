@@ -8066,6 +8066,29 @@ let
                   (
                     if s.check.isV2MergeCoherent or false then
                       s.check v
+                      # a member passes its element's check at every element, so a value with an element failing it is
+                      # decided without the merge (the second arm's precheck, over the roles the stock states)
+                      && (
+                        let
+                          roles = statedRoles s;
+                          name = (s.functor or { }).name or null;
+                          r = builtins.tryEval (
+                            if roles ? alternatives then
+                              prelude.any (a: a.check v) roles.alternatives
+                            else if !(roles ? element) then
+                              true
+                            else if name == "nullOr" then
+                              v == null || roles.element.check v
+                            else if name == "listOf" then
+                              all (x: isAttrs x && x ? _type || roles.element.check x) v
+                            else if name == "attrsWith" then
+                              all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
+                            else
+                              true
+                          );
+                        in
+                        !(r.success && !r.value)
+                      )
                     else
                       (s.merge.v2 {
                         loc = [ "<stock>" ];

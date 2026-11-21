@@ -1021,7 +1021,6 @@ let
       "gC door2 TP xaa"
       "gC door TPP xaa"
       "gC door TPU xaa"
-      "gC door UPTP xaa"
       # the second door
       "gL door2 TP xaa"
       "gL door2 PT xaa"
