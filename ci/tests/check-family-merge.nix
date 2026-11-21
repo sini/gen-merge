@@ -50,6 +50,38 @@ let
     in
     if (tryEval (deepSeq res.config.p true)).success then "SERVED" else "REFUSED";
 
+  # whether nixpkgs' own `evalModules` serves the value over the same declarations (the twin)
+  twinServed =
+    tys: val:
+    let
+      res = nixpkgsLib.evalModules {
+        modules = map (ty: { options.p = nixpkgsLib.mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
+      };
+    in
+    if (tryEval (deepSeq res.config.p true)).success then "SERVED" else "REFUSED";
+
+  # what declarations owed whole owe the value: service only where every declared check accepts it (ADR-0039, the meet)
+  owedWhole = tys: val: if builtins.all (ty: ty.check val) tys then "SERVED" else "REFUSED";
+
+  # a foreign leaf named `nm` refusing `n`, whose functor rebuilds at its own payload and whose join answers the left
+  # operand: payload-dependent, so two different payloads are two different declarations (den-hoag-auio2)
+  payrebAs =
+    nm: n:
+    let
+      self = nixpkgsLib.mkOptionType {
+        name = nm;
+        check = x: builtins.isInt x && x != n;
+        merge = nixpkgsLib.options.mergeEqualOption;
+        functor = t.defaultFunctor nm // {
+          type = p: payrebAs nm p.bound;
+          payload.bound = n;
+          binOp = a: _b: a;
+        };
+        typeMerge = f: if f.name == nm && (f.payload == null || f.payload ? bound) then self else null;
+      };
+    in
+    self;
+
   # the relation alone, for a pair no value distinguishes
   merged =
     a: b:
@@ -2734,5 +2766,86 @@ in
         mixed-submodule-21 = "submodule";
       };
     };
+
+    # OPEN DEFECT (den-hoag-auio2, ADR-0039 parity-defect rule (3)). This cell DESCRIBES an observed divergence; it
+    # does not assert it correct. A foreign `int` whose functor rebuilds at its own payload (`binOp` answers the left
+    # operand, so the join keeps only its check) is declared at two different non-empty payloads, each through gen's
+    # `mkOptionType` door. The declared checks owe 7 a refusal (`meet`); gen serves it, as nixpkgs' twin does. The fix
+    # that meets the partner flips `gen` to the `meet` and reds this cell: that fix rewrites `gen` to "REFUSED".
+    test-open-defect-auio2-a-payload-dependent-int-partner-serves-what-its-check-rejects =
+      let
+        ds = [
+          (payrebAs "int" 7)
+          (payrebAs "int" 9)
+        ];
+      in
+      {
+        expr = {
+          gen = served (map gm.mkOptionType ds) 7;
+          twin = twinServed ds 7;
+          meet = owedWhole ds 7;
+        };
+        expected = {
+          gen = "SERVED";
+          twin = "SERVED";
+          meet = "REFUSED";
+        };
+      };
+
+    # OPEN DEFECT (den-hoag-auio2, ADR-0039 parity-defect rule (3)). The same divergence under a name no recognition
+    # reads (`myint`): this cell DESCRIBES it and must be flipped by the fix that serves the novel name, rewriting `gen`
+    # to "REFUSED".
+    test-open-defect-auio2-a-novel-name-payload-dependent-partner-serves-what-its-check-rejects =
+      let
+        ds = [
+          (payrebAs "myint" 7)
+          (payrebAs "myint" 9)
+        ];
+      in
+      {
+        expr = {
+          gen = served (map gm.mkOptionType ds) 7;
+          twin = twinServed ds 7;
+          meet = owedWhole ds 7;
+        };
+        expected = {
+          gen = "SERVED";
+          twin = "SERVED";
+          meet = "REFUSED";
+        };
+      };
+
+    # The control for the two open-defect cells: gen's own `enum` at two different parameters, through the same door,
+    # is a union (ADR-0039): a value is owed service where a declaration's parameters hold it and every such
+    # declaration's check accepts it (an enum's check is its parameters, so `meet` reads any check). gen serves exactly
+    # that, so the declared check is kept. RED where the join is owed whole (`a`, `b` refused).
+    test-a-gen-enum-at-two-parameters-through-the-door-is-the-union =
+      let
+        ds = [
+          (gt.enum "e" [ "a" ])
+          (gt.enum "e" [ "b" ])
+        ];
+        read = v: {
+          gen = served (map gm.mkOptionType ds) v;
+          meet = if builtins.any (d: d.check v) ds then "SERVED" else "REFUSED";
+        };
+      in
+      {
+        expr = nixpkgsLib.genAttrs [ "a" "b" "c" ] read;
+        expected = {
+          a = {
+            gen = "SERVED";
+            meet = "SERVED";
+          };
+          b = {
+            gen = "SERVED";
+            meet = "SERVED";
+          };
+          c = {
+            gen = "REFUSED";
+            meet = "REFUSED";
+          };
+        };
+      };
   };
 }
