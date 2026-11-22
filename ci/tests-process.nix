@@ -84,6 +84,12 @@
           cd "$TMPDIR"
           # The evaluator the cells run under, from this process and the binary they call.
           echo "evaluator: $(nix-instantiate --version | sed -n 1p)"
+          # Its family, projected from that line as the registers key a column (`nixos-bar.bash`).
+          evaluatorFamily=$(nix-instantiate --version | sed -n 1p | sed -nE 's/^nix-instantiate \((Determinate|Lix|Nix)[ ,)].*/\1/p')
+          [ -n "$evaluatorFamily" ] || {
+            echo "tests-process: CONTROL FAILED: no evaluator family of Nix, Determinate and Lix in '$(nix-instantiate --version | sed -n 1p)'" >&2
+            exit 2
+          }
           # A thunk count is defined only for a serial run, so the counted cells below (`callsOf`, `thunksOf`) are
           # serial, and every other cell runs under the column's own evaluator, Determinate's parallel one
           # included. The options are resolved once (gen-harness `lib.serialEval`); `evalArm` carries them only
@@ -173,7 +179,7 @@
         ''
         + ''
           export NIX_STATE_DIR=$TMPDIR/nix-state NIX_LOG_DIR=$TMPDIR/nix-log
-          ran=0
+          ran=0 chainK=""
           # The spy's trace label, generated fresh per run and never written down, so no text a cell
           # or a document carries can be mistaken for a firing.
           label="spy-$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
@@ -217,6 +223,7 @@
               --argstr genScopeSrc "$genScopeSrc" \
               --argstr label "$label" \
               --argstr nixpkgsSrc "$nixpkgsSrc" \
+              --argstr chainK "$chainK" \
               "$cells" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
           }
@@ -295,13 +302,26 @@
             [ "$rc" -ne 0 ] || die "$arm" "expected a death, got exit 0 with '$val'"
             grep -q 'declaration aborted' "$TMPDIR/err" || die "$arm" "death is not the declaration's own abort"
           done
-          # den-hoag-2tna3 arm (c): value-read chains at the base's call-depth ceilings serve their length.
-          for cell in value-chain-root:91 value-chain-group:92 value-chain-group-unheld:1248; do
-            arm=''${cell%%:*} want=''${cell#*:}
+          # den-hoag-2tna3 arm (c): value-read chains at gen-merge's own call-depth ceilings serve their length, k per
+          # evaluator family because Determinate 3.24.3 counts selections towards max-call-depth (each k passes, k+1
+          # dies). Arm B, the relational form (gen serves the base's ceiling on the same evaluator, ADR-0033
+          # 2026-10-20), re-arms when den-hoag-t93en lands. Every chain is run and every failure reported.
+          case $evaluatorFamily in
+            Determinate) chains="value-chain-root:87 value-chain-group:88 value-chain-group-unheld:768" ;;
+            *) chains="value-chain-root:91 value-chain-group:92 value-chain-group-unheld:1248" ;;
+          esac
+          chainFails=""
+          for cell in $chains; do
+            arm=''${cell%%:*} chainK=''${cell#*:}
             evalArm "$arm"
-            [ "$rc" -eq 0 ] || die "$arm" "expected exit 0 (a chain of $want value reads), got $rc: $(grep -m1 -E 'error' "$TMPDIR/err")"
-            [ "$val" = "$want" ] || die "$arm" "expected value $want, got '$val'"
+            if [ "$rc" -ne 0 ]; then
+              chainFails="$chainFails; $arm: expected exit 0 (a chain of $chainK value reads), got $rc: $(grep -m1 -E 'error' "$TMPDIR/err" || true)"
+            elif [ "$val" != "$chainK" ]; then
+              chainFails="$chainFails; $arm: expected value $chainK, got '$val'"
+            fi
           done
+          chainK=""
+          [ -z "$chainFails" ] || die value-chain "$evaluatorFamily:''${chainFails#; }"
           evalArm undeclared-gen-diverges
           [ "$rc" -ne 0 ] || die undeclared-gen-diverges "expected a death, got exit 0 with '$val'"
           grep -q 'infinite recursion encountered' "$TMPDIR/err" || die undeclared-gen-diverges "death is not the infinite-recursion channel"

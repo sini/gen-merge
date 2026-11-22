@@ -14572,11 +14572,13 @@ in
             );
           };
         tree = c: ms: builtins.deepSeq (gm.evalModuleTree c ms).config null;
+        # The uncatchable abort, on either channel: which one a cycle reaches is the evaluator's frame accounting,
+        # not gen's (ADR-0033 L31-32, ledger OQ7); Determinate 3.24.3 counts selections towards max-call-depth.
         recurses = expr: {
           inherit expr;
           expectedError = {
             type = "EvalError";
-            msg = "infinite recursion encountered";
+            msg = "infinite recursion encountered|max-call-depth exceeded";
           };
         };
         refusesByName = expr: {

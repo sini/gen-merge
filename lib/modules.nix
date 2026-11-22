@@ -5510,8 +5510,10 @@ let
               options = stampOptions prev.sitesAt prefix prev.options;
               args = prev;
             };
-      # G = 300: a cycle reads down every pass at about thirteen call frames each, so it refuses by name
-      # well inside the evaluators' default call depth of 10000.
+      # G = 300: a cycle reads down every pass at about 33 call frames each, so the deepest descent needs about
+      # 9952 of the evaluators' default call depth of 10000, a margin of 48 frames. Where the evaluator counts
+      # attribute selections (about 37 frames a pass) it exceeds the limit, and the cycle aborts on the
+      # call-depth channel instead of the infinite-recursion one.
       sk = stratum (args // { optionsView = go 300; });
       tried = map (p: {
         inherit p;

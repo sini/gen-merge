@@ -27,6 +27,8 @@
   # A trace label generated fresh per run by the runner, which counts its lines on stderr.
   label ? "",
   nixpkgsSrc ? null,
+  # The value-chain cells' length, set by the runner per evaluator family; unset, those cells throw.
+  chainK ? "",
 }:
 let
   prelude = import "${genPreludeSrc}/lib";
@@ -966,11 +968,11 @@ let
         )
       ]).config.z;
     # den-hoag-2tna3 arm (c): a chain of k value reads, each option's default reading the previous one under
-    # d held frames, at the root or in a group with no definitions. gen-merge serves every chain the base
-    # served, up to Nix's call depth: the runner reads k at the base's ceilings.
-    value-chain-root = valueChain false 100 91;
-    value-chain-group = valueChain true 100 92;
-    value-chain-group-unheld = valueChain true 0 1248;
+    # d held frames, at the root or in a group with no definitions. k is the runner's: gen-merge's own ceiling
+    # on the evaluator family it invokes (`chainK`), a ratchet on gen's frames per hop.
+    value-chain-root = valueChain false 100 (builtins.fromJSON chainK);
+    value-chain-group = valueChain true 100 (builtins.fromJSON chainK);
+    value-chain-group-unheld = valueChain true 0 (builtins.fromJSON chainK);
     catch-group =
       let
         np = import "${nixpkgsSrc}/lib";
