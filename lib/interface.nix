@@ -3921,7 +3921,7 @@ let
     # `u`'s debt laid on the join's member `w`, and kept through every later join of it: the member's own `typeMerge`
     # answers its join carrying `u`'s debt again (`__member` names `u`), so a later step's join holds the carried member
     # and `members` leaves it as it is
-    "carried'" =
+    member =
       fuel: u: w:
       let
         c = carryBy false (rebuildClosed.joined true u) (
@@ -3941,7 +3941,7 @@ let
               let
                 j = c.typeMerge f;
               in
-              if !(isAttrs j) || adHocChecked j || j ? typeMergeRel then j else rebuildClosed."carried'" fuel u j;
+              if !(isAttrs j) || adHocChecked j || j ? typeMergeRel then j else rebuildClosed.member fuel u j;
           }
         else
           { }
@@ -3963,7 +3963,7 @@ let
           then
             null
           else
-            rebuildClosed."carried'" fuel u w;
+            rebuildClosed.member fuel u w;
         e = carry (carriedAt "element" t) (carriedAt "element" j);
         x = if e == null then null else rebuiltOverAt "element" e j;
         y =
