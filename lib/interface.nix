@@ -8062,7 +8062,8 @@ let
                         true
                     );
                     # an element role that is a foreign leaf (no roles, no v2 merge, no `verify`) is a member exactly where its
-                    # check admits, so a value whose every element passed it is decided by the stock's head check alone
+                    # check admits, so where every element passed it a coherent stock's head check (the head test, never a
+                    # debt) decides the value alone
                     leaf = e: isAttrs e && !(e ? verify) && !(isV2 e) && statedRoles e == { };
                   in
                   if r.success && !r.value then
@@ -8070,7 +8071,8 @@ let
                   else if p == null then
                     s.check v
                   else if
-                    r.success
+                    s.check.isV2MergeCoherent or false
+                    && r.success
                     && (roles ? element && leaf roles.element || roles ? alternatives && all leaf roles.alternatives)
                   then
                     s.check v
