@@ -3916,10 +3916,32 @@ let
         # definition, on a join that is coherent; a join that is the override again is refused by name (`close`)
         o = {
           check = {
-            __functor = _: t.check;
+            __functor = _: debt;
             isV2MergeCoherent = true;
           };
         };
+        # `ty`'s own merge of `v` as one definition, forced: membership at every depth, where a container's `check`
+        # reads its own depth only and its members' checks are read by its merge
+        deep =
+          ty: v:
+          let
+            r = builtins.tryEval (
+              builtins.deepSeq (ty.merge
+                [ "<base>" ]
+                [
+                  {
+                    file = "<base>";
+                    value = v;
+                  }
+                ]
+              ) true
+            );
+          in
+          r.success && r.value;
+        # `t`'s debt is `t`'s membership, judged at every depth as the base's is (THE MEET, ADR-0039: every declared
+        # check, a member's `addCheck` below a container included), never `t.check` alone, which a join's rebuild
+        # replaces below the container's own depth (den-hoag-f3uez)
+        debt = v: t.check v && deep t v;
         b =
           let
             p = importedPartner (t.functor or null);
@@ -3967,25 +3989,10 @@ let
                         else
                           b.check v
                       )
-                      && (
-                        let
-                          r = builtins.tryEval (
-                            builtins.deepSeq (b.merge
-                              [ "<base>" ]
-                              [
-                                {
-                                  file = "<base>";
-                                  value = v;
-                                }
-                              ]
-                            ) true
-                          );
-                        in
-                        r.success && r.value
-                      );
+                      && deep b v;
                   in
                   if params then
-                    t.check v
+                    debt v
                     || !(
                       let
                         p = importedRehomeAt recognitionDoor null b;
@@ -4048,7 +4055,7 @@ let
                       verdict
                     )
                   else
-                    !member || t.check v;
+                    !member || debt v;
                 isV2MergeCoherent = true;
               };
             };
