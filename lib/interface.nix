@@ -4076,7 +4076,8 @@ let
                       verdict
                     )
                   else
-                    !member || debt v;
+                    # the debt first: a value `t` admits is served without the base's merge
+                    debt v || !member;
                 isV2MergeCoherent = true;
               };
             };
