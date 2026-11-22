@@ -8061,10 +8061,18 @@ let
                       else
                         true
                     );
+                    # an element role that is a foreign leaf (no roles, no v2 merge, no `verify`) is a member exactly where its
+                    # check admits, so a value whose every element passed it is decided by the stock's head check alone
+                    leaf = e: isAttrs e && !(e ? verify) && !(isV2 e) && statedRoles e == { };
                   in
                   if r.success && !r.value then
                     s.check v && p == null
                   else if p == null then
+                    s.check v
+                  else if
+                    r.success
+                    && (roles ? element && leaf roles.element || roles ? alternatives && all leaf roles.alternatives)
+                  then
                     s.check v
                   else
                     (
