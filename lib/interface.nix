@@ -3923,7 +3923,10 @@ let
       let
         carry =
           tm: jm:
-          if fuel <= 0 || !(isAttrs tm) || !(isAttrs jm) || adHocChecked tm || jm ? typeMergeRel then
+          # a member the join kept as it is (the same record, `==` answering on its identity first) keeps its own check
+          if
+            fuel <= 0 || !(isAttrs tm) || !(isAttrs jm) || tm == jm || adHocChecked tm || jm ? typeMergeRel
+          then
             null
           else
             carryBy false (rebuildClosed.joined true tm) (rebuildClosed.members (fuel - 1) tm jm);
@@ -4139,8 +4142,11 @@ let
             } (rebuildClosed.verify false t.verify x)
           else
             x: x;
-        close =
-          oc: x:
+        # `foreign`: `x` is a join nixpkgs' engine built (its `typeMerge`, or the fixup's `substSubModules`), whose members
+        # are rebuilt from functor payloads; gen's own relation data (`typeMergeRel`, `retainedRelation`) answer gen's
+        # joins, which carry their members as gen's engine does, and are closed as they were
+        closed =
+          foreign: oc: x:
           if isAttrs x then
             (
               let
@@ -4148,7 +4154,11 @@ let
                 # same join; any other join owes `oc`
                 # a foreign join, rebuilt from functor payloads, holds `t`'s members without their checks: each member
                 # owes its own, laid on the join's member, read per element by the join's own merge (`members`)
-                m = if x ? typeMergeRel then x else rebuildClosed.members importedTypeWalkFuel t x;
+                m =
+                  if !foreign || x ? typeMergeRel || adHocChecked x then
+                    x
+                  else
+                    rebuildClosed.members importedTypeWalkFuel t x;
                 c = if adHocChecked m then carryBy false m m else carryBy false oc m;
               in
               owed (c // rebuild oc c)
@@ -4165,7 +4175,7 @@ let
                   let
                     j = x.typeMerge f;
                   in
-                  if j == null then null else close joined j;
+                  if j == null then null else closed true joined j;
               }
             else
               { }
@@ -4186,7 +4196,7 @@ let
                     if isAttrs (j.merged or null) then
                       j
                       // {
-                        merged = close joined j.merged;
+                        merged = closed false joined j.merged;
                       }
                     else
                       j;
@@ -4202,7 +4212,7 @@ let
                   if isAttrs (j.merged or null) then
                     j
                     // {
-                      merged = close joined j.merged;
+                      merged = closed false joined j.merged;
                     }
                   else
                     j;
@@ -4219,7 +4229,7 @@ let
                     let
                       j = x.retainedRelation.typeMerge f;
                     in
-                    if j == null then null else close joined j;
+                    if j == null then null else closed false joined j;
                 };
               }
             else
@@ -4228,7 +4238,7 @@ let
           // (
             if isList (x.getSubModules or null) && x ? substSubModules then
               let
-                sub = m: close oc (x.substSubModules m);
+                sub = m: closed true oc (x.substSubModules m);
               in
               {
                 substSubModules = sub;
