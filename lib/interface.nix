@@ -3916,7 +3916,7 @@ let
         # definition, on a join that is coherent; a join that is the override again is refused by name (`close`)
         o = {
           check = {
-            __functor = _: debt;
+            __functor = _: holds;
             isV2MergeCoherent = true;
           };
         };
@@ -3958,11 +3958,12 @@ let
               );
           in
           go 16 t;
-        # `t`'s debt is `t`'s membership, judged at every depth as the base's is (THE MEET, ADR-0039: every declared
+        # `holds`: `t`'s debt, `t`'s membership judged at every depth as the base's is (THE MEET, ADR-0039: every declared
         # check, a member's `addCheck` below a container included), never `t.check` alone, which reads a container at
         # its own depth only, where nixpkgs' join rebuilds a member from its functor without the member's check
-        # (den-hoag-f3uez). Where `t` holds an incoherent member, `t.check` alone, as before
-        debt = if coherent then v: t.check v && deep t v else t.check;
+        # (den-hoag-f3uez). Where `t` holds an incoherent member, `t.check` alone, as before. The name is one the library
+        # already interns, so its load pays no symbol for it
+        holds = if coherent then v: t.check v && deep t v else t.check;
         b =
           let
             p = importedPartner (t.functor or null);
@@ -4013,7 +4014,7 @@ let
                       && deep b v;
                   in
                   if params then
-                    debt v
+                    holds v
                     || !(
                       let
                         p = importedRehomeAt recognitionDoor null b;
@@ -4077,7 +4078,7 @@ let
                     )
                   else
                     # the debt first: a value `t` admits is served without the base's merge
-                    debt v || !member;
+                    holds v || !member;
                 isV2MergeCoherent = true;
               };
             };
