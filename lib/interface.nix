@@ -3938,10 +3938,31 @@ let
             );
           in
           r.success && r.value;
+        # `t`'s merge states a membership only where nixpkgs' v2 protocol admits it at every depth: a v2 record whose
+        # check is not the coherent one (`type // { check }`, a module set's included) is refused by nixpkgs' coherence
+        # guard for every value, so the walk asks each type `t` holds, an option record's type, and never below a module
+        # set, whose members its own evaluation judges; a walk out of fuel answers `false`
+        coherent =
+          let
+            go =
+              fuel: x:
+              let
+                y = if (x._type or null) == "option" then x.type or null else x;
+              in
+              fuel > 0
+              && isAttrs y
+              && !(isV2 y && !(y.check.isV2MergeCoherent or false))
+              && (
+                y ? functor.payload.modules
+                || prelude.all (go (fuel - 1)) (builtins.attrValues (y.nestedTypes or { }))
+              );
+          in
+          go 16 t;
         # `t`'s debt is `t`'s membership, judged at every depth as the base's is (THE MEET, ADR-0039: every declared
-        # check, a member's `addCheck` below a container included), never `t.check` alone, which a join's rebuild
-        # replaces below the container's own depth (den-hoag-f3uez)
-        debt = v: t.check v && deep t v;
+        # check, a member's `addCheck` below a container included), never `t.check` alone, which reads a container at
+        # its own depth only, where nixpkgs' join rebuilds a member from its functor without the member's check
+        # (den-hoag-f3uez). Where `t` holds an incoherent member, `t.check` alone, as before
+        debt = if coherent then v: t.check v && deep t v else t.check;
         b =
           let
             p = importedPartner (t.functor or null);
