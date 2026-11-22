@@ -3909,8 +3909,59 @@ let
     # Each join is decided on the join itself, the record nixpkgs' coherence guard judges (den-hoag-kr84r): a join that
     # is an ad-hoc override again (a v2 record whose functor rebuilds it) is refused by name, and a coherent join owes
     # `t`'s check on the values `t`'s own parameters admit, which for a v2 override are those its v2 merge was built at.
-    own =
-      t: r:
+    # A FOREIGN REBUILD `j` OF A DOOR COPY `t`, ITS MEMBERS CARRYING `t`'S (den-hoag-f3uez). nixpkgs rebuilds a
+    # container from its functor's payload, and a member's `addCheck` keeps its base's functor, so the rebuild's member
+    # is the base and the member's check is dropped there (ADR-0039: gen's code inside nixpkgs' evaluation enforces its
+    # checks). Each member of `j` (its element, and the options it holds) is rebuilt carrying the debt of `t`'s member
+    # at the same place (`joined`, relative to that member's own parameters), at every depth, as nixpkgs' `addCheck`
+    # enforces a member check: per definition of the member, by the merge that reads the member, so a value nixpkgs
+    # leaves unread stays unread. A member that is an ad-hoc `type // { check }` override is not carried: nixpkgs' join
+    # drops it as nixpkgs' twin does (an open row). Bounded by `importedTypeWalkFuel`; a member deeper than that is
+    # not carried
+    members =
+      fuel: t: j:
+      let
+        carry =
+          tm: jm:
+          if fuel <= 0 || !(isAttrs tm) || !(isAttrs jm) || adHocChecked tm || jm ? typeMergeRel then
+            null
+          else
+            carryBy false (rebuildClosed.joined true tm) (rebuildClosed.members (fuel - 1) tm jm);
+        e = carry (carriedAt "element" t) (carriedAt "element" j);
+        x = if e == null then null else rebuiltOverAt "element" e j;
+        y =
+          if isAttrs x then
+            x
+            // {
+              inherit (j) description;
+              descriptionClass = j.descriptionClass or null;
+            }
+          else
+            j;
+        z = rebuiltOverAt "options" {
+          from = [ t ];
+          over =
+            _: _: o: tys:
+            builtins.foldl' (
+              acc: tm:
+              let
+                c = carry tm acc;
+              in
+              if c == null then acc else c
+            ) o.type tys;
+        } y;
+      in
+      if fuel <= 0 || !(isAttrs j) then
+        j
+      else if isAttrs z then
+        z // { inherit (y) description; }
+      else
+        y;
+    # THE DEBT A DOOR'S CLOSURE OWES ON A JOIN, `t`'s check relative to `t`'s own parameters (`own`'s `joined`), as a
+    # record `carryBy` lays: read per definition at the join's root, and per element at a member the join's merge reads
+    # (`members`, `sets` true: a module-set base there is judged at its own depth, never forced; den-hoag-f3uez)
+    joined =
+      sets: t:
       let
         # `t`'s check, a coherent check: an ad-hoc override's is carried as nixpkgs' `addCheck` carries one, judging each
         # definition, on a join that is coherent; a join that is the override again is refused by name (`close`)
@@ -3968,20 +4019,26 @@ let
                           b.check v
                       )
                       && (
-                        let
-                          r = builtins.tryEval (
-                            builtins.deepSeq (b.merge
-                              [ "<base>" ]
-                              [
-                                {
-                                  file = "<base>";
-                                  value = v;
-                                }
-                              ]
-                            ) true
-                          );
-                        in
-                        r.success && r.value
+                        # at a member (`members`), a base stating a module set is judged at its own depth: its members
+                        # are its own evaluation's, judged where its values are read; forced there, an unread option
+                        # would read as non-membership, and a field read from the option's own config would recurse
+                        sets && isList (b.getSubModules or null)
+                        || (
+                          let
+                            r = builtins.tryEval (
+                              builtins.deepSeq (b.merge
+                                [ "<base>" ]
+                                [
+                                  {
+                                    file = "<base>";
+                                    value = v;
+                                  }
+                                ]
+                              ) true
+                            );
+                          in
+                          r.success && r.value
+                        )
                       );
                   in
                   if params then
@@ -4048,10 +4105,24 @@ let
                       verdict
                     )
                   else
-                    !member || t.check v;
+                    # the debt first: a value `t` admits is served without forcing the base's merge
+                    t.check v || !member;
                 isV2MergeCoherent = true;
               };
             };
+      in
+      joined;
+    own =
+      t: r:
+      let
+        # `t`'s check as a coherent record: what `own`'s return lays on `r`'s own rebuilds (`rebuild o r`)
+        o = {
+          check = {
+            __functor = _: t.check;
+            isV2MergeCoherent = true;
+          };
+        };
+        joined = rebuildClosed.joined false t;
         # `t`'s `verify`, stated on each rebuild this closure answers as `rebuildClosed`'s own closure states it
         # below the root (`rebuildClosed.verify`: a v2 merge reads it on the merged value in `headError`, where a
         # union choosing its member reads a rejection; a non-v2 one is lifted, its own check per definition).
@@ -4075,7 +4146,10 @@ let
               let
                 # a join that is itself an ad-hoc override is refused by name, as nixpkgs' coherence guard refuses the
                 # same join; any other join owes `oc`
-                c = if adHocChecked x then carryBy false x x else carryBy false oc x;
+                # a foreign join, rebuilt from functor payloads, holds `t`'s members without their checks: each member
+                # owes its own, laid on the join's member, read per element by the join's own merge (`members`)
+                m = if x ? typeMergeRel then x else rebuildClosed.members importedTypeWalkFuel t x;
+                c = if adHocChecked m then carryBy false m m else carryBy false oc m;
               in
               owed (c // rebuild oc c)
             )
