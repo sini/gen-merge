@@ -3918,19 +3918,52 @@ let
     # leaves unread stays unread. A member that is an ad-hoc `type // { check }` override is not carried: nixpkgs' join
     # drops it as nixpkgs' twin does (an open row). Bounded by `importedTypeWalkFuel`; a member deeper than that is
     # not carried
+    # `u`'s debt laid on the join's member `w`, and kept through every later join of it: the member's own `typeMerge`
+    # answers its join carrying `u`'s debt again (`__member` names `u`), so a later step's join holds the carried member
+    # and `members` leaves it as it is
+    "carried'" =
+      fuel: u: w:
+      let
+        c = carryBy false (rebuildClosed.joined true u) (
+          # a member stating no payload holds no member of its own: a leaf, carried as it is
+          if isAttrs ((w.functor or { }).payload or null) then rebuildClosed.members (fuel - 1) u w else w
+        );
+      in
+      c
+      // {
+        __member = u;
+      }
+      // (
+        if c ? typeMerge then
+          {
+            typeMerge =
+              f:
+              let
+                j = c.typeMerge f;
+              in
+              if !(isAttrs j) || adHocChecked j || j ? typeMergeRel then j else rebuildClosed."carried'" fuel u j;
+          }
+        else
+          { }
+      );
     members =
       fuel: t: j:
       let
         carry =
           u: w:
           # a member the join kept as it is (the same record, `==` answering on its identity first) keeps its own check
-          if fuel <= 0 || !(isAttrs u) || !(isAttrs w) || u == w || adHocChecked u || w ? typeMergeRel then
+          if
+            fuel <= 0
+            || !(isAttrs u)
+            || !(isAttrs w)
+            || u == w
+            || (w.__member or null) == u
+            || adHocChecked u
+            || w ? typeMergeRel
+          then
             null
           else
-            carryBy false (rebuildClosed.joined true u) (
-              # a member stating no payload holds no member of its own: a leaf, carried as it is
-              if isAttrs ((w.functor or { }).payload or null) then rebuildClosed.members (fuel - 1) u w else w
-            );
+            rebuildClosed."carried'" fuel u w;
         e = carry (carriedAt "element" t) (carriedAt "element" j);
         x = if e == null then null else rebuiltOverAt "element" e j;
         y =
