@@ -7956,37 +7956,6 @@ let
             a = metWith.anything.nodeAt r rewrites.tag.a i a;
             b = metWith.anything.nodeAt r rewrites.tag.b i b;
           };
-      # a functor whose payload's roles are read as declared, at every depth: a met record there as its root join (`__meetJoin`,
-      # as `shapeOf` reads a met record's tree and a met record's `typeMerge` asks its root). A met role's parameters are its
-      # join's; the checks it conjoins are the fold's debt, owed by the met record itself, never its parameters
-      declaredFunctor =
-        f:
-        let
-          p = f.payload;
-          rooted =
-            t:
-            if !(isAttrs t && t ? __meetJoin) then
-              t
-            else
-              let
-                r = metWith.anything.rootJoin t;
-                rf = (wrappedBase r).functor or null;
-                re = if isAttrs rf then (rf.payload or null).elemType or null else null;
-                q =
-                  if isAttrs re && re ? __meetJoin || isList re then
-                    importedPartner (metWith.anything.declaredFunctor rf)
-                  else
-                    null;
-              in
-              if isAttrs q then q else r;
-        in
-        f
-        // {
-          payload = p // {
-            elemType = if isList p.elemType then map rooted p.elemType else rooted p.elemType;
-          };
-        };
-      rootJoin = t: if t ? __meetJoin then metWith.anything.rootJoin t.__meetJoin else t;
       # `o` owed relativised to its own parameters beside the join `m`, which it reads only to ask whether that join is a
       # container (`m.functor.payload ? elemType`); a join of `o`'s own tree answers that as `o` does, so a declaration
       # pending since its own step is relativised against itself (`elemsOf`)
@@ -8001,9 +7970,7 @@ let
             # an ad-hoc override's functor rebuilds the override, whose check is the debt, never its parameters:
             # membership is its v2 merge's, `headError` and the forced merge, as `rebuildClosed.own` reads a base.
             # (`adHocChecked`, restated inline: this is asked of every widened operand of every meet)
-            # a container stock whose check is not its completion's witness, non-v2 or v2 with the coherent check (nixpkgs'
-            # `checkV2MergeCoherence` certifies that check as the head test `headError` reads, never as the membership: a
-            # container's is shallow, its elements the merge's), rebuilds the operand, whose check is
+            # a non-v2 container stock whose check is not its completion's witness rebuilds the operand, whose check is
             # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
             # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
             # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
@@ -8019,13 +7986,43 @@ let
                 v:
                 (
                   let
-                    # the stock over the operand's functor with its met roles read as declared (`declaredFunctor`), built
-                    # only where the judge is asked
+                    # the stock over the operand's functor with its roles read as declared, at every depth: a met record there
+                    # as its root join (`__meetJoin`, as `shapeOf` reads a met record's tree and a met record's `typeMerge`
+                    # asks its root). A met role's parameters are its join's; the checks it conjoins are the fold's debt,
+                    # owed by the met record itself, never its parameters. Bound here, so only an asked judge pays for it
                     f = (wrappedBase o).functor;
                     e = (f.payload or null).elemType or null;
+                    root = t: if t ? __meetJoin then root t.__meetJoin else t;
+                    declared =
+                      g:
+                      let
+                        inner =
+                          t:
+                          if !(isAttrs t && t ? __meetJoin) then
+                            t
+                          else
+                            let
+                              r = root t;
+                              u = (wrappedBase r).functor or null;
+                              re = if isAttrs u then (u.payload or null).elemType or null else null;
+                              q =
+                                if isAttrs re && re ? __meetJoin || isList re && builtins.any (x: x ? __meetJoin) re then
+                                  importedPartner (declared u)
+                                else
+                                  null;
+                            in
+                            if isAttrs q then q else r;
+                      in
+                      g
+                      // {
+                        payload = g.payload // {
+                          elemType =
+                            if isList g.payload.elemType then map inner g.payload.elemType else inner g.payload.elemType;
+                        };
+                      };
                     d =
-                      if isAttrs e && e ? __meetJoin || isList e then
-                        importedPartner (metWith.anything.declaredFunctor f)
+                      if isAttrs e && e ? __meetJoin || isList e && builtins.any (x: x ? __meetJoin) e then
+                        importedPartner (declared f)
                       else
                         s;
                     p = importedRehomeAt recognitionDoor null d;
