@@ -919,6 +919,19 @@ let
         };
       };
     };
+    # the coherent stock as a ROLE (`listOf` of it), under gen's `attrsOf`: from N = 3 the operand is a met record and the
+    # stock's element a met role
+    gCn = {
+      p = np.listOf (np.addCheck (np.listOf ea) short);
+      beside = {
+        np.T = np.attrsOf (np.listOf (np.listOf (np.enum [ "b" ])));
+        gt.T = gt.attrsOf (gt.listOf (gt.listOf (np.enum [ "b" ])));
+      };
+      outer = {
+        np = np.attrsOf;
+        gt = gt.attrsOf;
+      };
+    };
     gE = {
       p = eitherAt (np.enum [ "a" ]) (np.enum [ "x" ]);
       beside = rec {
@@ -942,6 +955,18 @@ let
     x = "x";
     sb = "b";
     i3 = 3;
+    kaa1.k = [
+      [
+        "a"
+        "a"
+      ]
+    ];
+    kab1.k = [
+      [
+        "a"
+        "b"
+      ]
+    ];
   };
   # `cell`: "<partner> <engine> <order> <value>", the order a word over T, U (the stocks) and P (the partner); engines
   # `npg` (nixpkgs' fold over the door's return), `door` (gen's), `raw` (gen's, the record undoored), and `npg2` / `door2`
@@ -980,8 +1005,14 @@ let
         if expect == "control" then "-control" else ""
       }";
       value = {
-        expr = (if engine == "npg" || engine == "npg2" then run else runGen) (at h.beside.gt D) [ v ];
-        expected = if expect == "REFUSED" then expect else run (at h.beside.np (h.twin or h.p)) [ v ];
+        expr = (if engine == "npg" || engine == "npg2" then run else runGen) (at h.beside.gt (
+          (h.outer.gt or (t: t)) D
+        )) [ v ];
+        expected =
+          if expect == "REFUSED" then
+            expect
+          else
+            run (at h.beside.np ((h.outer.np or (t: t)) (h.twin or h.p))) [ v ];
       };
     };
   ownParameters =
@@ -1043,6 +1074,11 @@ let
       "gCe raw TP i3"
       "gCe door2 TP i3"
       "gCe door TPP i3"
+      # the coherent stock as a role, nested: inside its own parameters, rejected by its check
+      "gCn door TP kaa1"
+      "gCn door PT kaa1"
+      "gCn raw TP kaa1"
+      "gCn door TPP kaa1"
       # the second door
       "gL door2 TP xaa"
       "gL door2 PT xaa"
@@ -1127,6 +1163,14 @@ let
         "raw TP"
         "door2 TP"
         "door TPP"
+      ]
+      # the coherent stock as a role, nested, outside its own parameters: the twin's value at N = 2, 3, 4
+      ++ map (o: "gCn ${o} kab1") [
+        "door TP"
+        "door PT"
+        "raw TP"
+        "door TPP"
+        "door TPPP"
       ]
     )
     ++ map (ownJoin "control") (

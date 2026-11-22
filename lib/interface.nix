@@ -8072,6 +8072,7 @@ let
                     && r.success
                     && (roles ? element && leaf roles.element || roles ? alternatives && all leaf roles.alternatives)
                   then
+                    # for `either`, main's coherent answer; what a met alternative conjoins is debt its record owes
                     s.check v
                   else
                     (
