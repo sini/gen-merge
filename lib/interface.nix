@@ -3922,16 +3922,14 @@ let
       fuel: t: j:
       let
         carry =
-          tm: jm:
+          u: w:
           # a member the join kept as it is (the same record, `==` answering on its identity first) keeps its own check
-          if
-            fuel <= 0 || !(isAttrs tm) || !(isAttrs jm) || tm == jm || adHocChecked tm || jm ? typeMergeRel
-          then
+          if fuel <= 0 || !(isAttrs u) || !(isAttrs w) || u == w || adHocChecked u || w ? typeMergeRel then
             null
           else
-            carryBy false (rebuildClosed.joined true tm) (
+            carryBy false (rebuildClosed.joined true u) (
               # a member stating no payload holds no member of its own: a leaf, carried as it is
-              if isAttrs ((jm.functor or { }).payload or null) then rebuildClosed.members (fuel - 1) tm jm else jm
+              if isAttrs ((w.functor or { }).payload or null) then rebuildClosed.members (fuel - 1) u w else w
             );
         e = carry (carriedAt "element" t) (carriedAt "element" j);
         x = if e == null then null else rebuiltOverAt "element" e j;
@@ -3944,23 +3942,23 @@ let
             }
           else
             j;
-        z = rebuiltOverAt "options" {
+        d = rebuiltOverAt "options" {
           from = [ t ];
           over =
-            _: _: o: tys:
+            _: _: o: ts:
             builtins.foldl' (
-              acc: tm:
+              acc: u:
               let
-                c = carry tm acc;
+                c = carry u acc;
               in
               if c == null then acc else c
-            ) o.type tys;
+            ) o.type ts;
         } y;
       in
       if fuel <= 0 || !(isAttrs j) then
         j
-      else if isAttrs z then
-        z // { inherit (y) description; }
+      else if isAttrs d then
+        d // { inherit (y) description; }
       else
         y;
     # THE DEBT A DOOR'S CLOSURE OWES ON A JOIN, `t`'s check relative to `t`'s own parameters (`own`'s `joined`), as a
@@ -4148,7 +4146,7 @@ let
         # `foreign`: `x` is a join nixpkgs' engine built (its `typeMerge`, or the fixup's `substSubModules`), whose members
         # are rebuilt from functor payloads; gen's own relation data (`typeMergeRel`, `retainedRelation`) answer gen's
         # joins, which carry their members as gen's engine does, and are closed as they were
-        closed =
+        close =
           foreign: oc: x:
           if isAttrs x then
             (
@@ -4182,7 +4180,7 @@ let
                   let
                     j = x.typeMerge f;
                   in
-                  if j == null then null else closed true joined j;
+                  if j == null then null else close true joined j;
               }
             else
               { }
@@ -4203,7 +4201,7 @@ let
                     if isAttrs (j.merged or null) then
                       j
                       // {
-                        merged = closed false joined j.merged;
+                        merged = close false joined j.merged;
                       }
                     else
                       j;
@@ -4219,7 +4217,7 @@ let
                   if isAttrs (j.merged or null) then
                     j
                     // {
-                      merged = closed false joined j.merged;
+                      merged = close false joined j.merged;
                     }
                   else
                     j;
@@ -4236,7 +4234,7 @@ let
                     let
                       j = x.retainedRelation.typeMerge f;
                     in
-                    if j == null then null else closed false joined j;
+                    if j == null then null else close false joined j;
                 };
               }
             else
@@ -4245,7 +4243,7 @@ let
           // (
             if isList (x.getSubModules or null) && x ? substSubModules then
               let
-                sub = m: closed true oc (x.substSubModules m);
+                sub = m: close true oc (x.substSubModules m);
               in
               {
                 substSubModules = sub;
