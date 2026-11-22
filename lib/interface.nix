@@ -3929,7 +3929,10 @@ let
           then
             null
           else
-            carryBy false (rebuildClosed.joined true tm) (rebuildClosed.members (fuel - 1) tm jm);
+            carryBy false (rebuildClosed.joined true tm) (
+              # a member stating no payload holds no member of its own: a leaf, carried as it is
+              if isAttrs ((jm.functor or { }).payload or null) then rebuildClosed.members (fuel - 1) tm jm else jm
+            );
         e = carry (carriedAt "element" t) (carriedAt "element" j);
         x = if e == null then null else rebuiltOverAt "element" e j;
         y =
@@ -4154,12 +4157,16 @@ let
                 # same join; any other join owes `oc`
                 # a foreign join, rebuilt from functor payloads, holds `t`'s members without their checks: each member
                 # owes its own, laid on the join's member, read per element by the join's own merge (`members`)
-                m =
-                  if !foreign || x ? typeMergeRel || adHocChecked x then
-                    x
+                c =
+                  if adHocChecked x then
+                    carryBy false x x
+                  else if !foreign || x ? typeMergeRel then
+                    carryBy false oc x
                   else
-                    rebuildClosed.members importedTypeWalkFuel t x;
-                c = if adHocChecked m then carryBy false m m else carryBy false oc m;
+                    let
+                      m = rebuildClosed.members importedTypeWalkFuel t x;
+                    in
+                    if adHocChecked m then carryBy false m m else carryBy false oc m;
               in
               owed (c // rebuild oc c)
             )
