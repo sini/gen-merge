@@ -900,6 +900,25 @@ let
       twin = legacyAt np.listOf short plain lax ea;
       beside = stocksOf L;
     };
+    # a coherent v2 stock under nixpkgs' `addCheck`: its check is shallow (`isList`), its element membership its merge's
+    gC = {
+      p = np.addCheck (np.listOf ea) short;
+      beside = stocksOf L;
+    };
+    # a coherent v2 `either` under nixpkgs' `addCheck`, widened at its enum member by gen's `either`
+    gCe = {
+      p = np.addCheck (np.either (np.enum [ "a" ]) np.int) (v: v != 3);
+      beside = {
+        np = {
+          T = np.either (np.enum [ "b" ]) np.int;
+          U = np.either (np.enum [ "c" ]) np.int;
+        };
+        gt = {
+          T = gt.either (np.enum [ "b" ]) np.int;
+          U = gt.either (np.enum [ "c" ]) np.int;
+        };
+      };
+    };
     gE = {
       p = eitherAt (np.enum [ "a" ]) (np.enum [ "x" ]);
       beside = rec {
@@ -921,6 +940,8 @@ let
       j = "a";
     };
     x = "x";
+    sb = "b";
+    i3 = 3;
   };
   # `cell`: "<partner> <engine> <order> <value>", the order a word over T, U (the stocks) and P (the partner); engines
   # `npg` (nixpkgs' fold over the door's return), `door` (gen's), `raw` (gen's, the record undoored), and `npg2` / `door2`
@@ -1009,6 +1030,19 @@ let
       # the alternatives role
       "gE door TP x"
       "gE npg TP x"
+      # a coherent v2 stock under `addCheck`: inside its own parameters, rejected by its check, at N = 2, 3, 4
+      "gC door TP xaa"
+      "gC door PT xaa"
+      "gC raw TP xaa"
+      "gC door2 TP xaa"
+      "gC door TPP xaa"
+      "gC door TPU xaa"
+      # the coherent `either` stock: inside its own parameters (`int`), rejected by its check
+      "gCe door TP i3"
+      "gCe door PT i3"
+      "gCe raw TP i3"
+      "gCe door2 TP i3"
+      "gCe door TPP i3"
       # the second door
       "gL door2 TP xaa"
       "gL door2 PT xaa"
@@ -1065,6 +1099,35 @@ let
             "door TP"
             "door PT"
           ]
+      # a coherent v2 stock under `addCheck`, outside its own parameters: its element membership is its merge's, so
+      # the twin's value is served beside gen's widening `listOf` at every N and order a declaration sits on one side
+      ++
+        concatMap
+          (o: [
+            "gC ${o} ab"
+            "gC ${o} bb"
+          ])
+          [
+            "door TP"
+            "door PT"
+            "raw TP"
+            "door2 TP"
+            "door2 PT"
+            "door TPP"
+            "door PPT"
+            "door TPU"
+            "door TPPP"
+            "npg TP"
+            "npg PT"
+          ]
+      # the coherent `either` stock outside its own parameters, beside gen's `either` widening its enum member
+      ++ map (o: "gCe ${o} sb") [
+        "door TP"
+        "door PT"
+        "raw TP"
+        "door2 TP"
+        "door TPP"
+      ]
     )
     ++ map (ownJoin "control") (
       concatMap

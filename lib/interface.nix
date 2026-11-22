@@ -7956,6 +7956,37 @@ let
             a = metWith.anything.nodeAt r rewrites.tag.a i a;
             b = metWith.anything.nodeAt r rewrites.tag.b i b;
           };
+      # a functor whose payload's roles are read as declared, at every depth: a met record there as its root join (`__meetJoin`,
+      # as `shapeOf` reads a met record's tree and a met record's `typeMerge` asks its root). A met role's parameters are its
+      # join's; the checks it conjoins are the fold's debt, owed by the met record itself, never its parameters
+      declaredFunctor =
+        f:
+        let
+          p = f.payload;
+          rooted =
+            t:
+            if !(isAttrs t && t ? __meetJoin) then
+              t
+            else
+              let
+                r = metWith.anything.rootJoin t;
+                rf = (wrappedBase r).functor or null;
+                re = if isAttrs rf then (rf.payload or null).elemType or null else null;
+                q =
+                  if isAttrs re && re ? __meetJoin || isList re then
+                    importedPartner (metWith.anything.declaredFunctor rf)
+                  else
+                    null;
+              in
+              if isAttrs q then q else r;
+        in
+        f
+        // {
+          payload = p // {
+            elemType = if isList p.elemType then map rooted p.elemType else rooted p.elemType;
+          };
+        };
+      rootJoin = t: if t ? __meetJoin then metWith.anything.rootJoin t.__meetJoin else t;
       # `o` owed relativised to its own parameters beside the join `m`, which it reads only to ask whether that join is a
       # container (`m.functor.payload ? elemType`); a join of `o`'s own tree answers that as `o` does, so a declaration
       # pending since its own step is relativised against itself (`elemsOf`)
@@ -7970,25 +8001,34 @@ let
             # an ad-hoc override's functor rebuilds the override, whose check is the debt, never its parameters:
             # membership is its v2 merge's, `headError` and the forced merge, as `rebuildClosed.own` reads a base.
             # (`adHocChecked`, restated inline: this is asked of every widened operand of every meet)
-            # a non-v2 container stock whose check is not its completion's witness rebuilds the operand, whose check is
+            # a container stock whose check is not its completion's witness, non-v2 or v2 with the coherent check (nixpkgs'
+            # `checkV2MergeCoherence` certifies that check as the head test `headError` reads, never as the membership: a
+            # container's is shallow, its elements the merge's), rebuilds the operand, whose check is
             # the debt: its own parameters are its payload, judged at every depth by its constructor as its foreign
             # protocol names one (nixpkgs' `defaultTypeMerge` takes the functor name for constructor identity): the
             # container `importedRehomeAt` recognises it as, over the roles it recognises (`homedAt`'s gen rebuild, one
             # level); a stock of no recognised name keeps its own check (ADR-0039 reading 5's open defect under the
             # parity-defect rule (3)). Asked only of a value the operand's check rejects (`meetOf`)
             __stockCheck =
-              if s.check.isV2MergeCoherent or false then
-                s.check
-              else if
+              if
                 ((m.functor or { }).payload or null) ? elemType
                 && !(s ? _checkWitness && s.check == s._checkWitness)
-                && !(isV2 s)
+                && (!(isV2 s) || s.check.isV2MergeCoherent or false)
                 && (s.getSubModules or null) == null
               then
                 v:
                 (
                   let
-                    p = importedRehomeAt recognitionDoor null s;
+                    # the stock over the operand's functor with its met roles read as declared (`declaredFunctor`), built
+                    # only where the judge is asked
+                    f = (wrappedBase o).functor;
+                    e = (f.payload or null).elemType or null;
+                    d =
+                      if isAttrs e && e ? __meetJoin || isList e then
+                        importedPartner (metWith.anything.declaredFunctor f)
+                      else
+                        s;
+                    p = importedRehomeAt recognitionDoor null d;
                     j =
                       if p.container == "either" then
                         constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
@@ -8005,7 +8045,7 @@ let
                     # the recognition reads and asked first; the recognition is then asked only where the stock's own
                     # check (main's answer for an unrecognised name) admits the value. A check that throws, and an
                     # element stating a property, are left to the judge
-                    roles = statedRoles s;
+                    roles = statedRoles d;
                     name = (s.functor or { }).name or null;
                     r = builtins.tryEval (
                       if roles ? alternatives then
