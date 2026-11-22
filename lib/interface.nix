@@ -7977,18 +7977,55 @@ let
             # level); a stock of no recognised name keeps its own check (ADR-0039 reading 5's open defect under the
             # parity-defect rule (3)). Asked only of a value the operand's check rejects (`meetOf`)
             __stockCheck =
-              if s.check.isV2MergeCoherent or false then
-                s.check
-              else if
+              if
                 ((m.functor or { }).payload or null) ? elemType
                 && !(s ? _checkWitness && s.check == s._checkWitness)
-                && !(isV2 s)
+                && (!(isV2 s) || s.check.isV2MergeCoherent or false)
                 && (s.getSubModules or null) == null
               then
                 v:
                 (
                   let
-                    p = importedRehomeAt recognitionDoor null s;
+                    # the stock over the operand's functor with its roles read as declared, at every depth: a met record there
+                    # as its root join (`__meetJoin`, as `shapeOf` reads a met record's tree and a met record's `typeMerge`
+                    # asks its root). A met role's parameters are its join's; the checks it conjoins are the fold's debt,
+                    # owed by the met record itself, never its parameters. Bound here, so only an asked judge pays for it
+                    f = (wrappedBase o).functor;
+                    e = (f.payload or null).elemType or null;
+                    root = t: if t ? __meetJoin then root t.__meetJoin else t;
+                    declared =
+                      g:
+                      let
+                        inner =
+                          t:
+                          if !(isAttrs t && t ? __meetJoin) then
+                            t
+                          else
+                            let
+                              r = root t;
+                              u = (wrappedBase r).functor or null;
+                              re = if isAttrs u then (u.payload or null).elemType or null else null;
+                              q =
+                                if isAttrs re && re ? __meetJoin || isList re && builtins.any (x: x ? __meetJoin) re then
+                                  importedPartner (declared u)
+                                else
+                                  null;
+                            in
+                            if isAttrs q then q else r;
+                      in
+                      g
+                      // {
+                        payload = g.payload // {
+                          elemType =
+                            if isList g.payload.elemType then map inner g.payload.elemType else inner g.payload.elemType;
+                        };
+                      };
+                    d =
+                      if isAttrs e && e ? __meetJoin || isList e && builtins.any (x: x ? __meetJoin) e then
+                        importedPartner (declared f)
+                      else
+                        s;
+                    p = importedRehomeAt recognitionDoor null d;
                     j =
                       if p.container == "either" then
                         constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
@@ -8005,7 +8042,7 @@ let
                     # the recognition reads and asked first; the recognition is then asked only where the stock's own
                     # check (main's answer for an unrecognised name) admits the value. A check that throws, and an
                     # element stating a property, are left to the judge
-                    roles = statedRoles s;
+                    roles = statedRoles d;
                     name = (s.functor or { }).name or null;
                     r = builtins.tryEval (
                       if roles ? alternatives then
@@ -8021,10 +8058,20 @@ let
                       else
                         true
                     );
+                    # an element role that is a foreign leaf (no roles, no v2 merge, no `verify`) is a member exactly where its
+                    # check admits, so where every element passed it a coherent stock's head check (the head test, never a
+                    # debt) decides the value alone
+                    leaf = e: isAttrs e && !(e ? verify) && !(isV2 e) && statedRoles e == { };
                   in
                   if r.success && !r.value then
                     s.check v && p == null
                   else if p == null then
+                    s.check v
+                  else if
+                    s.check.isV2MergeCoherent or false
+                    && r.success
+                    && (roles ? element && leaf roles.element || roles ? alternatives && all leaf roles.alternatives)
+                  then
                     s.check v
                   else
                     (
