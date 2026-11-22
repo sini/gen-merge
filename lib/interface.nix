@@ -3920,29 +3920,16 @@ let
             isV2MergeCoherent = true;
           };
         };
-        # `ty`'s own merge of `v` as one definition, forced: membership at every depth, where a container's `check`
-        # reads its own depth only and its members' checks are read by its merge
-        deep =
-          ty: v:
-          let
-            r = builtins.tryEval (
-              builtins.deepSeq (ty.merge
-                [ "<base>" ]
-                [
-                  {
-                    file = "<base>";
-                    value = v;
-                  }
-                ]
-              ) true
-            );
-          in
-          r.success && r.value;
-        # `t`'s merge states a membership only where nixpkgs' v2 protocol admits it at every depth: a v2 record whose
-        # check is not the coherent one (`type // { check }`, a module set's included) is refused by nixpkgs' coherence
-        # guard for every value, so the walk asks each type `t` holds, an option record's type, and never below a module
-        # set, whose members its own evaluation judges; a walk out of fuel answers `false`
-        coherent =
+        # `holds`: `t`'s debt, `t`'s membership judged at every depth as the base's is below (THE MEET, ADR-0039: every
+        # declared check, a member's `addCheck` below a container included): its `check`, and its own merge of the value
+        # as one definition, forced. Never `t.check` alone, which reads a container at its own depth only, where nixpkgs'
+        # join rebuilds a member from its functor without the member's check (den-hoag-f3uez). `t`'s merge states a
+        # membership only where nixpkgs' v2 protocol admits it at every depth (`go`): a v2 record whose check is not the
+        # coherent one (`type // { check }`, a module set's included) is refused by nixpkgs' coherence guard for every
+        # value, so the walk asks each type `t` holds, an option record's type, and never below a module set, whose
+        # members its own evaluation judges; out of fuel it answers `false`, and there the debt is `t.check`, as before.
+        # One binding per closure, under a name the library already interns; its walk runs once, when a check is asked
+        holds =
           let
             go =
               fuel: x:
@@ -3957,13 +3944,27 @@ let
                 || prelude.all (go (fuel - 1)) (builtins.attrValues (y.nestedTypes or { }))
               );
           in
-          go 16 t;
-        # `holds`: `t`'s debt, `t`'s membership judged at every depth as the base's is (THE MEET, ADR-0039: every declared
-        # check, a member's `addCheck` below a container included), never `t.check` alone, which reads a container at
-        # its own depth only, where nixpkgs' join rebuilds a member from its functor without the member's check
-        # (den-hoag-f3uez). Where `t` holds an incoherent member, `t.check` alone, as before. The name is one the library
-        # already interns, so its load pays no symbol for it
-        holds = if coherent then v: t.check v && deep t v else t.check;
+          if go 16 t then
+            v:
+            t.check v
+            && (
+              let
+                r = builtins.tryEval (
+                  builtins.deepSeq (t.merge
+                    [ "<base>" ]
+                    [
+                      {
+                        file = "<base>";
+                        value = v;
+                      }
+                    ]
+                  ) true
+                );
+              in
+              r.success && r.value
+            )
+          else
+            t.check;
         b =
           let
             p = importedPartner (t.functor or null);
@@ -4011,7 +4012,22 @@ let
                         else
                           b.check v
                       )
-                      && deep b v;
+                      && (
+                        let
+                          r = builtins.tryEval (
+                            builtins.deepSeq (b.merge
+                              [ "<base>" ]
+                              [
+                                {
+                                  file = "<base>";
+                                  value = v;
+                                }
+                              ]
+                            ) true
+                          );
+                        in
+                        r.success && r.value
+                      );
                   in
                   if params then
                     holds v
