@@ -1496,6 +1496,17 @@ while a `str` still reports that it was used but not defined. The same holds per
 survivor keeps its source position. An option `default` is a definition (at
 `mkOptionDefault` priority), so it always wins over the empty value.
 
+**Which record's `emptyValue` is read.** nixpkgs reads `emptyValue` off the record it KEEPS at the
+position, which is not always the record written, and gen-merge reads the same one. A record stating a
+module set (`getSubModules`) is rebuilt over it by its own `substSubModules`, so the rebuild's field is
+read and a `//` over the written record is dropped with it. Any other record's own `emptyValue` is
+read, so a `// { emptyValue = …; }` over it is honoured, and gen's `whenEmpty` answers only for a record
+that states no `emptyValue` at all. Where gen rebuilds a foreign container by its functor (the mount's
+per-level rebuild, the re-home over a completed element), the functor rebuilds the constructor and not a
+`//` over it, so the empty value nixpkgs' own rebuild states is carried onto the functor's rebuild, as
+its `check` is: nixpkgs' `nonEmptyListOf (submodule …)` keeps its `{ }` over `listOf`'s `[ ]`, and an
+option of it that nothing defined refuses.
+
 ### `check` — and the types whose default was wrong
 
 `check` is nixpkgs' definition-level predicate, and gen-merge never states it directly: a leaf brings

@@ -510,6 +510,8 @@ let
           # none (a nulled copy) publishes the join's (den-hoag-y4w78)
           ${if a ? getSubModules then "getSubModules" else null} =
             if a.getSubModules == null then m.getSubModules or null else a.getSubModules;
+          # and the rebuild's empty value, never a `//` the rebuild drops (den-hoag-omf1j)
+          ${if a ? emptyValue then "emptyValue" else null} = keptEmpty m;
           ${if a ? description then "description" else null} =
             if a.description == b.description or null then a.description else m.description or a.description;
           ${if a ? descriptionClass then "descriptionClass" else null} =
@@ -1189,6 +1191,27 @@ let
   # What value does this type supply when nothing defined it? `{ }` is "it declares none" and is a
   # different fact from `{ value = null; }`, which is a declared null.
   importedEmpty = t: if (t.emptyValue or { }) ? value then { inherit (t.emptyValue) value; } else { };
+
+  # The empty value nixpkgs reads: the `emptyValue` of the record nixpkgs KEEPS, so a `//` over a
+  # record's protocol field is honoured where nixpkgs honours it and dropped where nixpkgs drops it
+  # (den-hoag-omf1j). A declared option's record stating a module set is rebuilt by `fixupOptionType`
+  # (`substSubModules` over its `getSubModules`), so the rebuild's field is read; any other record's own.
+  # A record carrying no foreign field (the engine's own bound records) states its empty value in
+  # gen's word alone.
+  rebuildsRecord = t: (t.getSubModules or null) != null;
+  keptEmpty =
+    t:
+    if t == null then
+      { }
+    else if !(t ? emptyValue) then
+      t.whenEmpty or { }
+    else if t ? whenEmpty && rebuildsRecord t then
+      importedEmpty (t.substSubModules t.getSubModules)
+    # the record's own field, read as it is: its readers ask `? value` and `.value` alone
+    else if t.emptyValue ? value then
+      t.emptyValue
+    else
+      { };
 
   importedDeprecation = t: t.deprecationMessage or null;
 
@@ -2647,7 +2670,9 @@ let
       coerced = t.nestedTypes.coercedType or null;
     in
     if isAttrs x && x ? merge && x ? check then
-      carryBy false t x
+      # the record's own empty value rides on its functor's rebuild, as its check does: the functor rebuilds the
+      # constructor, not a `//` over it (nixpkgs `nonEmptyListOf`'s `{ }` over `listOf`'s) (den-hoag-omf1j)
+      carryBy false t (if t ? emptyValue then x // { inherit (t) emptyValue; } else x)
     else if e == null && replacesVerify final && !(owedCopyAt coerced) && t ? merge then
       valueRestrictedBy (completedElement door loc final) t
     else if e == null && owedCopyAt coerced && !(owedCopyAt final) && t ? merge then
@@ -3632,7 +3657,13 @@ let
             if t ? recarry && t ? carries.element then
               t.recarry (t.carries // { element = c; })
             else
-              rebuiltOverAt "element" c t;
+              let
+                y = rebuiltOverAt "element" c t;
+              in
+              # the functor rebuilds the constructor, not a `//` over it: the empty value is the one nixpkgs' own
+              # rebuild states (`nonEmptyListOf`'s `{ }` over `listOf`'s), read only where an empty value is read
+              # (den-hoag-omf1j)
+              if isAttrs y then y // { emptyValue = (t.substSubModules m).emptyValue or { }; } else y;
         in
         if fuel > 0 && owesIn fuel e && isList (e.getSubModules or null) && isAttrs x then
           x
@@ -9766,6 +9797,8 @@ in
     importedDeprecation
     importedElementPrefix
     importedEmpty
+    keptEmpty
+    rebuildsRecord
     foreignValueMeta
     importedFold
     importedHeldAt

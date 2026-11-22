@@ -4459,16 +4459,12 @@ let
   # from "a value nobody supplied", which is a mistake. `{ }` is "declares none" and `{ value = null; }`
   # is a declared null; one field cannot carry both, so the answer is a record and not a value.
   #
-  # A FOREIGN type states the same fact in the foreign protocol's words and nowhere else, so the
-  # second arm asks the boundary. Gen-first, foreign second — the same order `mergeTypes` takes.
-  whenEmptyOf =
-    type:
-    if type == null then
-      { }
-    else if type ? whenEmpty then
-      type.whenEmpty
-    else
-      interface.importedEmpty type;
+  # The value read is the one nixpkgs reads: the `emptyValue` of the record nixpkgs KEEPS at the
+  # position (`interface.keptEmpty`). A record stating a module set is rebuilt over it, so its rebuild's
+  # field is read and a `//` the rebuild drops is dropped; any other record's own field is read, so a
+  # `//` over it is honoured. `whenEmpty` alone answers only for a record that states no foreign field,
+  # the engine's own bound records (den-hoag-omf1j).
+  whenEmptyOf = interface.keptEmpty;
   emptyValueOr =
     type: err:
     let
@@ -4477,7 +4473,8 @@ let
     if empty ? value then empty.value else throw err;
   # Whether `emptyValueOr` would yield rather than throw — lets the realizer decline to short-circuit an
   # undefined option so the ONE empty-value site stays inside the fold.
-  hasEmptyValue = type: (whenEmptyOf type) ? value;
+  # a record nixpkgs rebuilds is answered by the fold's own site, which reads the rebuild's empty value
+  hasEmptyValue = type: type != null && (interface.rebuildsRecord type || (whenEmptyOf type) ? value);
 
   # The refusal of a declared `type` that is not one (ADR-0025 item 1): nixpkgs aborts on it at the
   # declaration's use, uncatchably, and an unjudged fold returns the definition unchecked. Asked
@@ -5719,7 +5716,7 @@ let
           else
             type.mergeDefs.threaded ev;
         whenEmpty =
-          if type ? nests then
+          if type ? nests && interface.rebuildsRecord type then
             { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
           else
             whenEmptyOf type;
