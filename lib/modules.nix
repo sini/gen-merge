@@ -5723,8 +5723,9 @@ let
           else
             type.mergeDefs.threaded ev;
         # the record nixpkgs keeps at this position: below a root its fix-up does not rebuild, the one written
-        # here. The root is asked only for a record the rebuild would reach, through the accessor's own records
-        # (`evAt`'s `rootAt`), so a position read with a definition pays nothing for it (den-hoag-vy14u)
+        # here. The root is asked only for a record the rebuild would reach, by asking the accessor's `child` with the
+        # accessor itself (`evAt`), which reads the root's type off the key walk's position records, so a position read
+        # with a definition pays nothing for it (den-hoag-vy14u)
         whenEmpty =
           # presence first (a nesting record, or one stating gen's word, which `keptEmpty`'s rebuild branch asks), so a
           # record no rebuild reaches pays no call; every foreign field is read by `interface` (C-1)
