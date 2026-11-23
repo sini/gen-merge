@@ -246,6 +246,97 @@ in
       };
       expected = same [ ];
     };
+    # THE ROOT'S FIX-UP REACHES ONLY THROUGH STEPS STATING A MODULE SET (den-hoag-vy14u): a union (`either`, `oneOf`)
+    # or a nulled copy states none, so nixpkgs rebuilds nothing below it and reads the record as written there.
+    # One discharged key under a lazy container reads its element's empty value.
+    test-below-either-listOf-sub-emptyValue-none-refuses = {
+      expr = both {
+        ty =
+          L:
+          (tys L).either ((tys L).lazyAttrsOf ((tys L).listOf (sub L) // { emptyValue = { }; })) (tys L).int;
+        defs = L: [ { k = L.mkIf false [ ]; } ];
+        read = c: c.o.k;
+      };
+      expected = same "<R>";
+    };
+    test-below-either-listOf-sub-emptyValue-value-serves = {
+      expr = both {
+        ty =
+          L:
+          (tys L).either ((tys L).lazyAttrsOf (
+            (tys L).listOf (sub L) // { emptyValue.value = "EV"; }
+          )) (tys L).int;
+        defs = L: [ { k = L.mkIf false [ ]; } ];
+        read = c: c.o.k;
+      };
+      expected = same "EV";
+    };
+    # a submodule record: its empty value is the threaded fold's at a rebuilt position, its own field below a union
+    test-below-oneOf-submodule-emptyValue-none-refuses = {
+      expr = both {
+        ty =
+          L:
+          (tys L).oneOf [
+            (tys L).int
+            ((tys L).lazyAttrsOf (sub L // { emptyValue = { }; }))
+          ];
+        defs = L: [ { k = L.mkIf false { }; } ];
+        read = c: c.o.k;
+      };
+      expected = same "<R>";
+    };
+    # the union under an exact container: the record is read off a container node, which carries the root's answer
+    test-below-either-under-attrsOf-emptyValue-value-serves = {
+      expr = both {
+        ty =
+          L:
+          (tys L).either ((tys L).attrsOf (
+            (tys L).lazyAttrsOf ((tys L).listOf (sub L) // { emptyValue.value = "EV"; })
+          )) (tys L).int;
+        defs = L: [ { p.k = L.mkIf false [ ]; } ];
+        read = c: c.o.p.k;
+      };
+      expected = same "EV";
+    };
+    # no union: a container whose module set is nulled stops the fix-up as a union does
+    test-below-a-nulled-container-emptyValue-none-refuses = {
+      expr = both {
+        ty =
+          L:
+          (tys L).lazyAttrsOf (
+            (tys L).lazyAttrsOf ((tys L).listOf (sub L) // { emptyValue = { }; }) // { getSubModules = null; }
+          );
+        defs = L: [ { p.k = L.mkIf false [ ]; } ];
+        read = c: c.o.p.k;
+      };
+      expected = same "<R>";
+    };
+    # controls: with no stop above it the record is rebuilt and the `//` dropped, and a submodule below the union
+    # is a root of its own whose fix-up reaches its option's record
+    test-control-bare-listOf-sub-emptyValue-none-is-rebuilt = {
+      expr = both {
+        ty = L: (tys L).lazyAttrsOf ((tys L).listOf (sub L) // { emptyValue = { }; });
+        defs = L: [ { k = L.mkIf false [ ]; } ];
+        read = c: c.o.k;
+      };
+      expected = same [ ];
+    };
+    test-control-a-submodule-below-the-union-is-a-root-of-its-own = {
+      expr = both {
+        ty =
+          L:
+          (tys L).either ((tys L).lazyAttrsOf (
+            (tys L).submodule {
+              options.q = L.mkOption {
+                type = (tys L).lazyAttrsOf ((tys L).listOf (sub L) // { emptyValue = { }; });
+              };
+            }
+          )) (tys L).int;
+        defs = L: [ { k.q.z = L.mkIf false [ ]; } ];
+        read = c: c.o.k.q.z;
+      };
+      expected = same [ ];
+    };
     # `postFold`'s empty value is `g` over its element's, read the same way (nixpkgs' twin, a `merge` override,
     # leaves the empty value unreshaped, so the cell states gen's value alone)
     test-postFold-reshapes-the-kept-empty-value = {
