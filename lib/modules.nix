@@ -462,7 +462,8 @@ let
       let
         lk = loc ++ [ k ];
       in
-      if isOptLeaf v then
+      # isOptLeaf inlined: the stamp runs once per staged pass, and the call costs a frame on each
+      if isAttrs v && (v._type or null) == "option" then
         v
         // unansweredOptionKeys
         // {
@@ -5507,10 +5508,12 @@ let
               options = stampOptions prev.sitesAt prefix prev.options;
               args = prev;
             };
-      # G = 300: a cycle reads down every pass at about 33 call frames each, so the deepest descent needs about
-      # 9952 of the evaluators' default call depth of 10000, a margin of 48 frames. Where the evaluator counts
-      # attribute selections (about 37 frames a pass) it exceeds the limit, and the cycle aborts on the
-      # call-depth channel instead of the infinite-recursion one.
+      # G = 300: no count of the tree bounds the passes a resolvable read needs, so G is a constant, and a cycle
+      # reads down all G passes. A pass costs at least 8 call frames (9 where the evaluator counts attribute
+      # selections), plus one per frame the reader holds and the module collection's walk down to the reader,
+      # so the descent's depth is G times a per-pass cost the declaration sets. Where that exceeds the
+      # evaluators' default call depth of 10000, the cycle aborts on the call-depth channel instead of the
+      # infinite-recursion one.
       sk = stratum (args // { optionsView = go 300; });
       tried = map (p: {
         inherit p;
