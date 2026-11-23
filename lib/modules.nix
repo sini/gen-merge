@@ -5731,8 +5731,7 @@ let
           else
             let
               # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free
-              root = if ev.containerNodes or false then ev.child { rootAt = ev.position; } else null;
-              written = root != null && !(interface.rebuildsRecord root);
+              written = (ev.containerNodes or false) && ev.child ev;
             in
             if type ? nests && !written then
               { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
@@ -5959,10 +5958,12 @@ let
   # group's records themselves, which an `attrsOf` of nested trees at the root folds instead of
   # splitting its definitions again (`types.nix` `attrsOfWith`, den-hoag-c7jkw.1). One field answers
   # all three, so an accessor record costs nothing for the second or the third.
-  # Asked with `rootAt`, the type at the ROOT of a position's group (`threadedAs`' `whenEmpty`, den-hoag-vy14u): a
-  # container node's is its own position record's group, any other position's the group of the walk's record there,
-  # and a position the walk minted nothing at answers `null`. It is read off records the walk already holds, so the
-  # accessor carries nothing for it.
+  # Asked with an ACCESSOR (a site stating `containerNodes`: this one, or one copied from it at a deeper position), is
+  # the record at its position the one WRITTEN there (`threadedAs`' `whenEmpty`, den-hoag-vy14u): does the ROOT of the
+  # position's group state no module set, so nixpkgs' fix-up rebuilds nothing below it? A container node's root is its
+  # own position record's group's, any other position's the group of the walk's record there, and a position the walk
+  # minted nothing at reads as rebuilt (`false`, the position-free read). It is read off records the walk already
+  # holds, so the accessor carries nothing for it, and a position read with a definition never asks.
   evAt = host: group: {
     position = [ ];
     containerNodes = true;
@@ -5975,12 +5976,16 @@ let
         if r == null then null else r.mode == "container"
       else if site ? positions then
         host.result._nested.positions.${group}
-      else if site ? rootAt then
-        if group == "container" then
-          (host.reader.getHostAt "positions").group.type
-        else
-          (host.result._nested.positions.${group}.${builtins.toJSON site.rootAt} or { group.type = null; })
-          .group.type
+      else if site ? containerNodes then
+        let
+          root =
+            if group == "container" then
+              (host.reader.getHostAt "positions").group.type
+            else
+              (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { group.type = null; })
+              .group.type;
+        in
+        root != null && !(interface.rebuildsRecord root)
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
