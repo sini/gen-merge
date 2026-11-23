@@ -1200,7 +1200,8 @@ let
   # gen's word alone.
   # The rebuild reaches a record only from a root that states a module set: a step stating none (`either`,
   # `oneOf`, a nulled copy) states none for its root too, so every record below it is the one written there
-  # (`written`, the root's answer, which the evaluation's accessor carries: `modules.nix` `evAt`, den-hoag-vy14u).
+  # (`written`, the root's answer, read off the root the evaluation's accessor carries: `modules.nix` `evAt`,
+  # den-hoag-vy14u).
   rebuildsRecord = t: (t.getSubModules or null) != null;
   keptEmpty = keptEmptyAt false;
   keptEmptyAt =
