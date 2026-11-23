@@ -1881,31 +1881,37 @@ let
   # record: a record rebuilt with `//` is read as it is, and a cycle is bounded by the fuel as `canNest` is.
   nestFact =
     let
-      decided = ans: {
-        inherit ans;
+      # the three answers a record decides alone, shared: no record allocates its own
+      yes = {
+        ans = true;
         exact = true;
         below = [ ];
+      };
+      no = yes // {
+        ans = false;
+      };
+      spent = yes // {
+        exact = false;
       };
       go =
         fuel: t:
         if !(isAttrs t) then
-          decided false
+          no
         else if isNesting t || t ? __threadedForeign then
-          decided true
+          yes
         else if t ? canNest then
-          decided t.canNest
+          (if t.canNest then yes else no)
         else
           let
             wrapped = declaredWrapped t;
           in
           if wrapped == [ ] then
-            decided false
+            no
           else if fuel <= 0 then
-            {
-              ans = true;
-              exact = false;
-              below = [ ];
-            }
+            spent
+          else if length wrapped == 1 then
+            # one element: its answer is the record's, exactly
+            (b: b // { below = [ b ]; }) (go (fuel - 1) (head wrapped))
           else
             let
               below = map (go (fuel - 1)) wrapped;

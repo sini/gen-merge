@@ -6136,12 +6136,13 @@ let
   # its own walk answers.
   homedFact =
     t0: m: f0:
-    if
-      !(isAttrs t0) || t0 ? verify || t0 ? carries || t0 ? __threadedForeign || interface.isNesting t0
-    then
-      f0
-    else
-      interface.nestFact m;
+    if homesItself t0 then f0 else interface.nestFact m;
+  homesItself =
+    t0:
+    !(isAttrs t0) || t0 ? verify || t0 ? carries || t0 ? __threadedForeign || interface.isNesting t0;
+  # The fact of the one element `e` a record with fact `nf` declares, for every element the walk reaches through it, where
+  # `homedAt` returns `e` itself; `null` where it re-homes it, and each element's own walk answers.
+  elementFact = nf: e: if homesItself e then interface.nestBelow nf 1 0 e else null;
 
   # The member a union's fold folds through: `choose`, repeated through nested unions; `null` where
   # no member takes every definition (the fold's refusal).
@@ -6223,9 +6224,8 @@ let
     keyWalk under group t (interface.nestFact t);
   keyWalk =
     under: group: t: nf: pos: loc: defs:
-    if !(isAttrs t) || !nf.ans then
-      [ ]
-    else if interface.isNesting t then
+    # a nesting type first: `canNest` answers it `true` at its first arm, so its fact is never read
+    if interface.isNesting t then
       [
         {
           key = pos;
@@ -6234,6 +6234,8 @@ let
           inherit loc defs;
         }
       ]
+    else if !(isAttrs t) || !nf.ans then
+      [ ]
     else if under != null && pos == [ ] then
       # AT THE WALK'S OWN ROOT (an option's position, or a container node's), UNDER A CONTAINER THAT
       # ADDED NO STEP (`unique`, `coercedTo`): the position is the one read, and its container's fold is
@@ -6263,7 +6265,7 @@ let
       # none.
       if admitsAll t.admits defs then
         let
-          ef = interface.nestBelow nf 1 0 t.carries.element;
+          cf = elementFact nf t.carries.element;
           # Each key's definitions, grouped once (as `mergeTree`'s `defsByKey`), in `defs`' order, so
           # each key is answered by a lookup rather than a scan of `defs`.
           defsByKey = builtins.zipAttrsWith (_: vs: vs) (
@@ -6282,9 +6284,9 @@ let
           let
             ce = interface.homedAt "evalModuleTree" (loc ++ [ k ]) t.carries.element;
           in
-          keyWalk "lazyAttrsOf" group ce (homedFact t.carries.element ce ef) (pos ++ [ k ]) (loc ++ [ k ]) (
-            addressedDefs defsByKey.${k}
-          )
+          keyWalk "lazyAttrsOf" group ce (if cf != null then cf else interface.nestFact ce) (pos ++ [ k ]) (
+            loc ++ [ k ]
+          ) (addressedDefs defsByKey.${k})
         ) (attrNames defsByKey)
       else
         [ ]
@@ -6341,16 +6343,17 @@ let
         # `interface.keysExactly`, read inline: every container the walk splits would pay a call
         # (`ci/tests/nesting-keys.nix` `nesting-keys-keys-exactly-census` holds the two equal)
         exact = t.keysExactly or (name == "attrsOf" || name == "listOf" || name == "nullOr");
+        # the element `split` hands is the one the record declares (`carries.element`, its constructor's one
+        # binding), so the walk's own fact of it is the record's `below`, read once for every element
+        # (den-hoag-03kig arm C)
+        cf = if t ? carries.element then elementFact nf t.carries.element else null;
       in
       concatMap (
         e:
         let
           ce = interface.homedAt "evalModuleTree" e.loc e.type;
         in
-        # the element `split` hands is the one the record declares (`carries.element`, its constructor's one
-        # binding), so the walk's own fact of it is the record's `below` (den-hoag-03kig arm C)
-        keyWalk (if exact then null else name) group ce
-          (homedFact e.type ce (interface.nestBelow nf 1 0 e.type))
+        keyWalk (if exact then null else name) group ce (if cf != null then cf else interface.nestFact ce)
           (pos ++ e.step)
           e.loc
           (
@@ -6407,15 +6410,15 @@ let
         mt = interface.homedAt "evalModuleTree" loc mt0;
         mf = homedFact mt0 mt (interface.nestBelow tf n i mt0);
       in
-      if !(isAttrs mt) || !mf.ans then
-        [ ]
-      else if interface.isNesting mt then
+      if interface.isNesting mt then
         [
           {
             key = pos;
             inherit loc defs;
           }
         ]
+      else if !(isAttrs mt) || !mf.ans then
+        [ ]
       else if mt ? choose then
         unionKeys under group u pos loc defs mt mf
       else if !(mt ? split) then
