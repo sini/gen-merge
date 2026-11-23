@@ -1505,15 +1505,16 @@ that states no `emptyValue` at all. The rebuild is the ROOT's: nixpkgs' `fixupOp
 where the option's root states a module set, and a single-element step that states none (`either`,
 `oneOf`, a copy with `getSubModules = null`) states none for its root, so every record below such a
 root is read as written, a `//` over its `emptyValue` included. gen-merge asks the root where its
-evaluation's accessor reaches one: at an option root, the freeform plane and a container node the
-accessor reads its root's type off the key walk's position records, only when a record the rebuild would
-reach is read empty, so a position read with a definition pays nothing for it. A gen type folded through
+evaluation's accessor reaches one: at an option root and a container node the accessor reads its root's
+type off the key walk's position records, only when a record the rebuild would reach is read empty, so a
+position read with a definition pays nothing for it. The freeform plane has no root to ask: nixpkgs fixes
+up no freeform type, so every position on it reads the record the plane holds, the one written where one
+declaration states the plane and the declarations' join where several do. A gen type folded through
 the exported `merge` (the bridge) is folded by a foreign caller, which hands it the record its own fix-up
-kept, so the record there is read as written, under a nixpkgs `attrTag` over gen records included. Four
+kept, so the record there is read as written, under a nixpkgs `attrTag` over gen records included. Three
 reads still diverge from nixpkgs. gen's fix-up of a foreign `attrTag` root reaches a tag that
 states no set; an `attrTag` states a set as soon as one tag does, so a root test covers single-element
-steps only. And the freeform plane takes its `freeformType` as the root, where nixpkgs keeps a single
-freeform definition's record as written. And the value-only fold (`mergeOption`), through which a
+steps only. And the value-only fold (`mergeOption`), through which a
 `_module.specialArgs` re-declared with a `type` folds the caller's set, carries no root, so below a union
 root there it reads a record stating a module set as rebuilt. And a nixpkgs `functionTo` over a record
 whose `emptyValue` a `//` overrides reads that record as rebuilt (`[]` for a list), below an `either` in

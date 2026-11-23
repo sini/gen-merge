@@ -1203,10 +1203,8 @@ let
   # This read is position-free and answers as if the root rebuilt; the record written is read where the root is known,
   # the positions an evaluation's accessor (`modules.nix` `evAt`) folds (`threadedAs`' `whenEmpty`, den-hoag-vy14u), and
   # at the bridge, whose accessor states the answer (`rootRebuilds`; den-hoag-ubinn). The called fold (`mergeOption`)
-  # knows no root; gen's fix-up of a foreign `attrTag` root reaches a tag stating no set; the freeform plane takes its
-  # `freeformType` as the root, where nixpkgs keeps a
-  # single freeform definition's record as written (den-hoag-6dxwr). A multi-child step (`attrTag`) states a set when
-  # any child does, so a root test reaches only single-element spines.
+  # knows no root; gen's fix-up of a foreign `attrTag` root reaches a tag stating no set. A multi-child step (`attrTag`)
+  # states a set when any child does, so a root test reaches only single-element spines.
   rebuildsRecord = t: (t.getSubModules or null) != null;
   keptEmpty =
     t:
