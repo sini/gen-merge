@@ -4466,7 +4466,7 @@ let
   # `//` over it is honoured. Below a root that states no module set the rebuild reaches nothing and the
   # record written is read, its own field: `threadedAs`' `whenEmpty` asks the root on the
   # positions an `evAt` accessor folds, and this position-free read answers everywhere else (the bridge,
-  # the called fold; den-hoag-vy14u, den-hoag-ubinn). `whenEmpty` alone answers only for a record that
+  # the called fold; den-hoag-vy14u, den-hoag-ubinn; the freeform plane's single definition, den-hoag-6dxwr). `whenEmpty` alone answers only for a record that
   # states no foreign field, the engine's own bound records (den-hoag-omf1j).
   whenEmptyOf = interface.keptEmpty;
   emptyValueOr =
