@@ -5726,18 +5726,19 @@ let
         # here. The root is asked only for a record the rebuild would reach, through the accessor's own records
         # (`evAt`'s `rootAt`), so a position read with a definition pays nothing for it (den-hoag-vy14u)
         whenEmpty =
-          # the two records a rebuild reaches here, told apart by presence first so any other record pays no call (its
-          # read is `keptEmpty`'s, which asks the same test for the second): a nesting one, and one stating a protocol
-          # field beside gen's word
-          if !(type ? nests || type ? emptyValue && type ? whenEmpty) || !(interface.rebuildsRecord type) then
+          # presence first (a nesting record, or one stating gen's word, which `keptEmpty`'s rebuild branch asks), so a
+          # record no rebuild reaches pays no call; every foreign field is read by `interface` (C-1)
+          if !(type ? nests || type ? whenEmpty) || !(interface.rebuildsRecord type) then
             whenEmptyOf type
-          # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free
+          # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free. The
+          # record written is read by its own field: a record stating a module set states `emptyValue` (the boundary
+          # mints it), so `importedEmpty` is that read
           else if (ev.containerNodes or false) && !(ev.child ev) then
-            (if type ? emptyValue then interface.importedEmpty type else type.whenEmpty or { })
+            interface.importedEmpty type
           else if type ? nests then
             { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
           else
-            interface.importedEmpty (type.substSubModules type.getSubModules);
+            whenEmptyOf type;
       in
       if type ? verify then
         {
