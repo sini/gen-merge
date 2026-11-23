@@ -6200,9 +6200,19 @@ let
   # Only an EXACT container's elements have their definitions forced to key them, as that
   # container's own fold forces them; an over-approximated position's definitions are a thunk,
   # read when its seed is.
+  # A walk's root: a nesting type, or one that nests nothing by its own record, takes a shared fact (a variable, so the
+  # root allocates no thunk for it); only a root that may nest below builds its walk's
   keyWalkRoot =
     under: group: t:
-    keyWalk under group t (interface.nestFact t);
+    if interface.isNesting t then
+      keyWalk under group t nestYes
+    else if t ? carries then
+      keyWalk under group t (interface.nestFact t)
+    else if interface.nestsNothing t then
+      keyWalk under group t nestNo
+    else
+      keyWalk under group t (interface.nestFact t);
+  inherit (interface) nestYes nestNo;
   keyWalk =
     under: group: t: nf: pos: loc: defs:
     # a nesting type first: `canNest` answers it `true` at its first arm, so its fact is never read

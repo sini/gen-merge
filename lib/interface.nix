@@ -1879,17 +1879,27 @@ let
   # `declaredWrapped` lists, in its order, at one less fuel. The key walk hands a level's `below` to the
   # level under it (`nestBelow`), so each level is answered once per walk, and nothing is stated on a
   # record: a record rebuilt with `//` is read as it is, and a cycle is bounded by the fuel as `canNest` is.
+  # the three answers a record decides alone, shared: no record allocates its own
+  nestYes = {
+    ans = true;
+    exact = true;
+    below = [ ];
+  };
+  nestNo = nestYes // {
+    ans = false;
+  };
+  # `nestFact`'s `false` read off the record alone (not a record, or one stating `canNest = false` or wrapping nothing),
+  # so a walk's root decides it with no fact built
+  nestsNothing =
+    t:
+    !(isAttrs t)
+    ||
+      !(isNesting t || t ? __threadedForeign)
+      && (if t ? canNest then !t.canNest else declaredWrapped t == [ ]);
   nestFact =
     let
-      # the three answers a record decides alone, shared: no record allocates its own
-      yes = {
-        ans = true;
-        exact = true;
-        below = [ ];
-      };
-      no = yes // {
-        ans = false;
-      };
+      yes = nestYes;
+      no = nestNo;
       spent = yes // {
         exact = false;
       };
@@ -9877,6 +9887,9 @@ in
     moduleSetPayload
     canNest
     nestFact
+    nestYes
+    nestNo
+    nestsNothing
     nestBelow
     chainEndsAtLeaf
     declaresNesting
