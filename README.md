@@ -1505,8 +1505,9 @@ that states no `emptyValue` at all. The rebuild is the ROOT's: nixpkgs' `fixupOp
 where the option's root states a module set, and a single-element step that states none (`either`,
 `oneOf`, a copy with `getSubModules = null`) states none for its root, so every record below such a
 root is read as written, a `//` over its `emptyValue` included. gen-merge asks the root where its
-evaluation's accessor carries one: an option root, the freeform plane and a container node each carry
-their root's type. Three reads still diverge from nixpkgs. A gen type folded through the exported
+evaluation's accessor reaches one: at an option root, the freeform plane and a container node the
+accessor reads its root's type off the key walk's position records, only when a record the rebuild would
+reach is read empty, so a position read with a definition pays nothing for it. Three reads still diverge from nixpkgs. A gen type folded through the exported
 `merge` (the bridge) carries no root, so a record stating a module set is read as rebuilt there, as
 under a nixpkgs `attrTag` over gen records. gen's fix-up of a foreign `attrTag` root reaches a tag that
 states no set; an `attrTag` states a set as soon as one tag does, so a root test covers single-element
