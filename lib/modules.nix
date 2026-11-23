@@ -5983,15 +5983,22 @@ let
       else if site ? positions then
         host.result._nested.positions.${group}
       else if site ? containerNodes then
-        let
-          g =
+        # the group's fields bound as formals: the root test is asked of a variable, so a read allocates no thunk
+        (
+          {
+            name ? group,
+            type,
+            ...
+          }:
+          name != "freeform" && (type == null || interface.rebuildsRecord type)
+        )
+          (
             if group == "container" then
               (host.reader.getHostAt "positions").group
             else
               (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { group.type = null; })
-              .group;
-        in
-        (g.name or group) != "freeform" && (g.type == null || interface.rebuildsRecord g.type)
+              .group
+          )
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
