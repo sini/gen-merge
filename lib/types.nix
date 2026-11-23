@@ -3240,7 +3240,7 @@ in
                 # nixpkgs keeps); an element with no empty value leaves the option undefined, as the element does
                 whenEmpty =
                   let
-                    w = interface.keptEmpty true element;
+                    w = interface.keptEmpty element;
                   in
                   if w ? value then { value = g w.value; } else w;
                 carries.element = element;
