@@ -5722,16 +5722,22 @@ let
               (type.mergeDefs.threaded ev)
           else
             type.mergeDefs.threaded ev;
-        # the record nixpkgs keeps at this position: below a root its fix-up does not rebuild (`ev.root`), the one
-        # written here; the root is asked only for a record the rebuild would reach (den-hoag-vy14u)
+        # the record nixpkgs keeps at this position: below a root its fix-up does not rebuild, the one written
+        # here. The root is asked only for a record the rebuild would reach, through the accessor's own records
+        # (`evAt`'s `rootAt`), so a position read with a definition pays nothing for it (den-hoag-vy14u)
         whenEmpty =
-          let
-            written = ev ? root && !(interface.rebuildsRecord ev.root);
-          in
-          if type ? nests && interface.rebuildsRecord type && !written then
-            { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
+          if !(interface.rebuildsRecord type) then
+            interface.keptEmptyAt false type
           else
-            interface.keptEmptyAt written type;
+            let
+              # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free
+              root = if ev.containerNodes or false then ev.child { rootAt = ev.position; } else null;
+              written = root != null && !(interface.rebuildsRecord root);
+            in
+            if type ? nests && !written then
+              { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
+            else
+              interface.keptEmptyAt written type;
       in
       if type ? verify then
         {
@@ -5953,14 +5959,13 @@ let
   # group's records themselves, which an `attrsOf` of nested trees at the root folds instead of
   # splitting its definitions again (`types.nix` `attrsOfWith`, den-hoag-c7jkw.1). One field answers
   # all three, so an accessor record costs nothing for the second or the third.
-  # `root`: the type at the root of this evaluation's positions (an option's, the freeform plane's, a container node's
-  # option's). Its fix-up rebuilds a record below it only where it states a module set (`threadedAs`' `whenEmpty`,
-  # `interface.keptEmptyAt`); the type itself is carried, so the accessor holds no thunk for the answer, which is read
-  # only where a record the rebuild would reach is read empty (den-hoag-vy14u)
-  evAt = host: group: root: {
+  # Asked with `rootAt`, the type at the ROOT of a position's group (`threadedAs`' `whenEmpty`, den-hoag-vy14u): a
+  # container node's is its own position record's group, any other position's the group of the walk's record there,
+  # and a position the walk minted nothing at answers `null`. It is read off records the walk already holds, so the
+  # accessor carries nothing for it.
+  evAt = host: group: {
     position = [ ];
     containerNodes = true;
-    inherit root;
     child =
       site:
       if site ? __genMergeMinted then
@@ -5970,6 +5975,12 @@ let
         if r == null then null else r.mode == "container"
       else if site ? positions then
         host.result._nested.positions.${group}
+      else if site ? rootAt then
+        if group == "container" then
+          (host.reader.getHostAt "positions").group.type
+        else
+          (host.result._nested.positions.${group}.${builtins.toJSON site.rootAt} or { group.type = null; })
+          .group.type
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
@@ -5978,7 +5989,7 @@ let
   # no reader, so a nesting type there folds CALLED, and refuses.
   threadedIn =
     mode: group: type:
-    if mode ? reader && interface.canNest type then threadedAs (evAt mode group type) type else type;
+    if mode ? reader && interface.canNest type then threadedAs (evAt mode group) type else type;
 
   # ── THE KEY WALK (den-hoag-n6dh7 item 2; OQ9 (M′); S1 RULED (ii) for class (b), (iii) for (a)) ──
   # Which positions of an option's value are nested trees, each with the ADDRESSES of the
@@ -7570,7 +7581,7 @@ let
       accessor = evAt {
         reader = self;
         result._nested = { inherit positions; };
-      } "container" p.group.type;
+      } "container";
     in
     {
       value = mergeDefsThreaded accessor p.loc p.member defs;
@@ -9459,7 +9470,7 @@ let
                   threadedAs (evAt {
                     reader = self;
                     inherit result;
-                  } "freeform" freeform) (interface.homedAt "evalModuleTree" prefix freeform)
+                  } "freeform") (interface.homedAt "evalModuleTree" prefix freeform)
                 else
                   freeform
               ) prefix (coalesceUnmatched false (length topDefs) realized.unmatched);
