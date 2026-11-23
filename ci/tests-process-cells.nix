@@ -288,6 +288,33 @@ let
       ++ [ (if removal then { disabledModules = [ { key = ":anon-2"; } ]; } else { }) ];
     in
     builtins.length (builtins.filter (g: g.disabled) (m.evalModuleTree { } mods).graph);
+  # n keys of a DECLARED `lazyAttrsOf (listOf submodule)` option, each defined only under `mkIf false`, every key read:
+  # each read is the element's empty value, asked of the evaluation's accessor (`evAt`'s container half,
+  # den-hoag-6dxwr). The runner reads the process's thunks at n = 100 and 400.
+  emptyReadCost =
+    n:
+    let
+      sub = m.types.submodule {
+        options.a = m.mkOption {
+          type = m.types.str;
+          default = "x";
+        };
+      };
+      keys = builtins.genList (i: "k${toString i}") n;
+      o =
+        (eval [
+          { options.o = m.mkOption { type = m.types.lazyAttrsOf (m.types.listOf sub); }; }
+          {
+            config.o = builtins.listToAttrs (
+              map (k: {
+                name = k;
+                value = m.mkIf false [ ];
+              }) keys
+            );
+          }
+        ]).config.o;
+    in
+    builtins.length (builtins.filter (k: o.${k} == [ ]) keys);
   # n positioned children of an `attrsOf` submodule, each reading one site that re-evaluates its published
   # module set (den-hoag-1k5mi): its `moduleType` reused as an option type, `extendModules`, or
   # `moduleType.emptyValue`. On gen's engine, or on nixpkgs' (the reference arm), over one construction.
@@ -758,6 +785,9 @@ let
     graph-cost-400 = graphCost false 400;
     graph-cost-removal-100 = graphCost true 100;
     graph-cost-removal-400 = graphCost true 400;
+    # den-hoag-6dxwr: a discharged read of a declared option's key, read by the runner as thunks per key.
+    empty-read-cost-100 = emptyReadCost 100;
+    empty-read-cost-400 = emptyReadCost 400;
     # den-hoag-1k5mi: a re-evaluated published module set's cost, read by the runner as thunks per child on
     # gen's engine against nixpkgs'.
   }

@@ -4466,7 +4466,7 @@ let
   # `//` over it is honoured. Below a root that states no module set the rebuild reaches nothing and the
   # record written is read, its own field: `threadedAs`' `whenEmpty` asks the accessor, whose answer an `evAt`
   # accessor reads off its root and the bridge's states (den-hoag-vy14u, den-hoag-ubinn), and this position-free read
-  # answers everywhere else (the called fold; the freeform plane's single definition, den-hoag-6dxwr). `whenEmpty` alone answers only for a record that
+  # answers everywhere else (the called fold). `whenEmpty` alone answers only for a record that
   # states no foreign field, the engine's own bound records (den-hoag-omf1j).
   whenEmptyOf = interface.keptEmpty;
   emptyValueOr =
@@ -5965,8 +5965,11 @@ let
   # nixpkgs' fix-up REBUILD the record at its position (`threadedAs`' `whenEmpty`, den-hoag-vy14u): does the ROOT of the
   # position's group state a module set? Where it states none the record is the one written there. A container node's root is its
   # own position record's group's, any other position's the group of the walk's record there, and a position the walk
-  # minted nothing at reads as rebuilt (`true`, the position-free read). It is read off records the walk already
-  # holds, so the accessor carries nothing for it, and a position read with a definition never asks.
+  # minted nothing at reads as rebuilt (`true`, the position-free read). The freeform group has no root to ask: nixpkgs
+  # fixes up no freeform type (`interface.isOptionRoot`), whose record is the value `optionType.merge` already kept
+  # (one declaration) or rebuilt (several; `mergeTypeDefs` mirrors it), so every position on its plane holds the
+  # record written there (den-hoag-6dxwr). It is read off records the walk already holds, so the accessor carries
+  # nothing for it, and a position read with a definition never asks.
   evAt = host: group: {
     position = [ ];
     containerNodes = true;
@@ -5980,15 +5983,22 @@ let
       else if site ? positions then
         host.result._nested.positions.${group}
       else if site ? containerNodes then
-        let
-          root =
+        # the group's fields bound as formals: the root test is asked of a variable, so a read allocates no thunk
+        (
+          {
+            name ? group,
+            type,
+            ...
+          }:
+          name != "freeform" && (type == null || interface.rebuildsRecord type)
+        )
+          (
             if group == "container" then
-              (host.reader.getHostAt "positions").group.type
+              (host.reader.getHostAt "positions").group
             else
               (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { group.type = null; })
-              .group.type;
-        in
-        root == null || interface.rebuildsRecord root
+              .group
+          )
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };

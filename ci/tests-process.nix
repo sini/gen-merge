@@ -107,7 +107,7 @@
           # so no gate reading this program's exit or its line can be satisfied by it.
           cellBlocks="outer-options-read rename-cycle-read undeclared-gen-abort engine-option-names mt-regress
             own-check-reads candidate-modules phrase-cycle foreign-knot name-keyset cyclic-derive key-walk-wide
-            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk graph-cost reuse-cost"
+            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk empty-read-cost graph-cost reuse-cost"
           allBlocks="modules-sh nixos-bar hm-bar fp-bar ${pkgs.lib.concatStringsSep " " benches} $cellBlocks"
           tpsel_partial=0 tpsel_picked="" tpsel_skipped="" tpsel_selected=" "
           [ -z "''${TESTS_PROCESS_ONLY+x}" ] || tpsel_partial=1
@@ -618,6 +618,23 @@
           [ "$n" -ge 903 ] || die closure-removal-shift "the removed spy was applied $n times, under 903: a pass shared a decision past a removal"
           endblk; fi
 
+          if sel empty-read-cost; then blk empty-read-cost 2
+          # den-hoag-6dxwr (ADR-0032): a discharged read of a declared option's key, as thunks per key between n = 100
+          # and 400: each read asks the evaluation's accessor whether the root rebuilds the record (`evAt`'s container
+          # half), and asking it allocates no thunk, so a call argument or a binding that selects the group's type on
+          # that path reds it by one thunk per key. The bound is the landed figure, in THUNKS: it reads the same on Nix,
+          # Determinate and Lix. An optimization lowers it in the same change.
+          max=181
+          thunksOf empty-read-cost-100
+          [ "$val" = "100" ] || die empty-read-cost-100 "expected value 100, got '$val'"
+          t100=$thunks
+          thunksOf empty-read-cost-400
+          [ "$val" = "400" ] || die empty-read-cost-400 "expected value 400, got '$val'"
+          per=$(((thunks - t100) / 300))
+          [ "$per" -le "$max" ] || die empty-read-cost-400 "a discharged read of a declared option's key costs $per thunks, over its bound $max; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
+          echo "empty-read-cost: $per thunks per key (bound $max; $t100 at n = 100, $thunks at n = 400)"
+          endblk; fi
+
           if sel graph-cost; then blk graph-cost 4
           # den-hoag-7o7i9 (ADR-0032): a module graph read, as thunks per module between n = 100 and 400, every
           # node's `disabled` forced. With no removal the bound is the figure before removal existed (gen-merge
@@ -663,12 +680,12 @@
           # 0/0 is a false pass: the runner must have executed every cell above.
           if [ "$tpsel_partial" = 0 ]; then
             [ "$tpsel_blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $tpsel_blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
-            [ "$ran" = "90" ] || die runner "expected 90 evaluations, ran $ran"
-            echo "tests-process: 90 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+            [ "$ran" = "92" ] || die runner "expected 92 evaluations, ran $ran"
+            echo "tests-process: 92 cells, every exit read unpiped, every death on its named channel, every count read" > $out
           else
             [ "$ran" = "$tpsel_blkWant" ] || die runner "the selected blocks declare $tpsel_blkWant evaluations, ran $ran"
             [ "$(echo $tpsel_picked | wc -w)" = "$tpsel_n" ] && [ -n "$tpsel_picked" ] || die runner "selected $tpsel_n blocks ($tpsel_selected), ran:''${tpsel_picked:- none}"
-            echo "tests-process: PARTIAL — $ran of 90 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
+            echo "tests-process: PARTIAL — $ran of 92 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
           fi
         ''
         + ''
