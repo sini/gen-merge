@@ -4461,14 +4461,14 @@ let
   # is a declared null; one field cannot carry both, so the answer is a record and not a value.
   #
   # The value read is the one nixpkgs reads: the `emptyValue` of the record nixpkgs KEEPS at the
-  # position (`interface.keptEmptyAt`). A record stating a module set is rebuilt over it, so its rebuild's
+  # position (`interface.keptEmpty`). A record stating a module set is rebuilt over it, so its rebuild's
   # field is read and a `//` the rebuild drops is dropped; any other record's own field is read, so a
   # `//` over it is honoured. Below a root that states no module set the rebuild reaches nothing and the
-  # record written is read (`keptEmptyAt true`): `threadedAs`' `whenEmpty` asks the root on the
+  # record written is read (`keptEmpty false`): `threadedAs`' `whenEmpty` asks the root on the
   # positions an `evAt` accessor folds, and this position-free read answers everywhere else (the bridge,
   # the called fold; den-hoag-vy14u, den-hoag-ubinn). `whenEmpty` alone answers only for a record that
   # states no foreign field, the engine's own bound records (den-hoag-omf1j).
-  whenEmptyOf = interface.keptEmptyAt false;
+  whenEmptyOf = interface.keptEmpty true;
   emptyValueOr =
     type: err:
     let
@@ -5727,16 +5727,16 @@ let
         # (`evAt`'s `rootAt`), so a position read with a definition pays nothing for it (den-hoag-vy14u)
         whenEmpty =
           if !(interface.rebuildsRecord type) then
-            interface.keptEmptyAt false type
+            interface.keptEmpty true type
           else
             let
               # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free
-              written = (ev.containerNodes or false) && ev.child ev;
+              rebuilt = !(ev.containerNodes or false) || ev.child ev;
             in
-            if type ? nests && !written then
+            if type ? nests && rebuilt then
               { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
             else
-              interface.keptEmptyAt written type;
+              interface.keptEmpty rebuilt type;
       in
       if type ? verify then
         {
@@ -5958,11 +5958,11 @@ let
   # group's records themselves, which an `attrsOf` of nested trees at the root folds instead of
   # splitting its definitions again (`types.nix` `attrsOfWith`, den-hoag-c7jkw.1). One field answers
   # all three, so an accessor record costs nothing for the second or the third.
-  # Asked with an ACCESSOR (a site stating `containerNodes`: this one, or one copied from it at a deeper position), is
-  # the record at its position the one WRITTEN there (`threadedAs`' `whenEmpty`, den-hoag-vy14u): does the ROOT of the
-  # position's group state no module set, so nixpkgs' fix-up rebuilds nothing below it? A container node's root is its
+  # Asked with an ACCESSOR (a site stating `containerNodes`: this one, or one copied from it at a deeper position), does
+  # nixpkgs' fix-up REBUILD the record at its position (`threadedAs`' `whenEmpty`, den-hoag-vy14u): does the ROOT of the
+  # position's group state a module set? Where it states none the record is the one written there. A container node's root is its
   # own position record's group's, any other position's the group of the walk's record there, and a position the walk
-  # minted nothing at reads as rebuilt (`false`, the position-free read). It is read off records the walk already
+  # minted nothing at reads as rebuilt (`true`, the position-free read). It is read off records the walk already
   # holds, so the accessor carries nothing for it, and a position read with a definition never asks.
   evAt = host: group: {
     position = [ ];
@@ -5985,7 +5985,7 @@ let
               (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { group.type = null; })
               .group.type;
         in
-        root != null && !(interface.rebuildsRecord root)
+        root == null || interface.rebuildsRecord root
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
